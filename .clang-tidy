@@ -1,0 +1,13 @@
+Checks: >
+    -*,
+    clang-analyzer-*,
+    bugprone-*,
+    performance-*,
+    portability-*,
+    readability-braces-around-statements,
+    readability-duplicate-include,
+    readability-misleading-indentation,
+    readability-redundant-control-flow
+WarningsAsErrors: ''
+HeaderFilterRegex: '(^|.*/)(src|tests)/'
+FormatStyle: file

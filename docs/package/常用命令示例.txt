@@ -1,0 +1,16 @@
+#帮助
+help
+#打印环境变量
+printenv
+#存储设备
+mmc list
+#复位
+reset
+#启动
+boot
+#设备初始化
+[[macro interval=500]]
+reset
+mmc list
+boot
+[[/macro]]

@@ -1,0 +1,112 @@
+diff --git a/psftp.c b/psftp.c
+--- a/psftp.c
++++ b/psftp.c
+@@ -36,6 +36,10 @@ static Conf *conf;
+ static bool sent_eof = false;
+ static bool serialctl_machine_list = false;
+ 
++#ifdef _WIN32
++extern bool serialctl_utf8_local_paths;
++#endif
++
+ /* ------------------------------------------------------------
+  * Seat vtable.
+  */
+@@ -2934,6 +2938,9 @@ int psftp_main(CmdlineArgList *arglist)
+             sanitise_stderr = false;
+         } else if (strcmp(argstr, "-serialctl-machine-list") == 0) {
+             serialctl_machine_list = true;
++#ifdef _WIN32
++            serialctl_utf8_local_paths = true;
++#endif
+         } else if (strcmp(argstr, "--") == 0) {
+             arglistpos++;
+             break;
+diff --git a/windows/sftp.c b/windows/sftp.c
+--- a/windows/sftp.c
++++ b/windows/sftp.c
+@@ -37,6 +37,51 @@ const bool platform_uses_x11_unix_by_default = true;
+  * File access abstraction.
+  */
+ 
++/* SerialCtl feeds PSFTP batch files as UTF-8. Keep stock PSFTP's ANSI
++ * behaviour unless its private option was selected, then open local paths
++ * through the Unicode Win32 API so names outside the system ACP work too. */
++bool serialctl_utf8_local_paths = false;
++
++static wchar_t *serialctl_local_path(const char *name)
++{
++    int length;
++    wchar_t *wide;
++
++    if (!serialctl_utf8_local_paths)
++        return NULL;
++    length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
++                                 name, -1, NULL, 0);
++    if (length <= 0)
++        return NULL;
++    wide = snewn(length, wchar_t);
++    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
++                             name, -1, wide, length)) {
++        sfree(wide);
++        return NULL;
++    }
++    return wide;
++}
++
++static HANDLE serialctl_open_local_file(
++    const char *name, DWORD access, DWORD sharing, DWORD creation,
++    DWORD attributes)
++{
++    if (serialctl_utf8_local_paths) {
++        wchar_t *wide = serialctl_local_path(name);
++        HANDLE handle;
++        if (!wide) {
++            SetLastError(ERROR_NO_UNICODE_TRANSLATION);
++            return INVALID_HANDLE_VALUE;
++        }
++        handle = CreateFileW(wide, access, sharing, NULL, creation,
++                             attributes, NULL);
++        sfree(wide);
++        return handle;
++    }
++    return CreateFileA(name, access, sharing, NULL, creation,
++                       attributes, NULL);
++}
++
+ /*
+  * Set local current directory. Returns NULL on success, or else an
+  * error message which must be freed after printing.
+@@ -106,8 +151,8 @@ RFile *open_existing_file(const char *name, uint64_t *size,
+     HANDLE h;
+     RFile *f;
+ 
+-    h = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, NULL,
+-                   OPEN_EXISTING, 0, 0);
++    h = serialctl_open_local_file(name, GENERIC_READ, FILE_SHARE_READ,
++                                  OPEN_EXISTING, 0);
+     if (h == INVALID_HANDLE_VALUE)
+         return NULL;
+ 
+@@ -159,8 +204,8 @@ WFile *open_new_file(const char *name, long perms)
+     HANDLE h;
+     WFile *f;
+ 
+-    h = CreateFile(name, GENERIC_WRITE, 0, NULL,
+-                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
++    h = serialctl_open_local_file(name, GENERIC_WRITE, 0,
++                                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL);
+     if (h == INVALID_HANDLE_VALUE)
+         return NULL;
+ 
+@@ -175,8 +220,8 @@ WFile *open_existing_wfile(const char *name, uint64_t *size)
+     HANDLE h;
+     WFile *f;
+ 
+-    h = CreateFile(name, GENERIC_WRITE, FILE_SHARE_READ, NULL,
+-                   OPEN_EXISTING, 0, 0);
++    h = serialctl_open_local_file(name, GENERIC_WRITE, FILE_SHARE_READ,
++                                  OPEN_EXISTING, 0);
+     if (h == INVALID_HANDLE_VALUE)
+         return NULL;
+ 

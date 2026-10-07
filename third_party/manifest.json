@@ -1,0 +1,85 @@
+{
+  "format_version": 1,
+  "hash_algorithm": "SHA-256",
+  "path_base": "repository-root",
+  "dependencies": [
+    {
+      "name": "PuTTY",
+      "version": "0.85",
+      "upstream": "https://www.chiark.greenend.org.uk/~sgtatham/putty/",
+      "files": [
+        {
+          "path": "third_party/putty/LICENCE",
+          "role": "license",
+          "sha256": "41d6a7dfe147511ae2c0659ba28498daa2d1fa93652d1009571bc0c70cad4fa7"
+        },
+        {
+          "path": "third_party/putty/source/putty-src-0.85.zip",
+          "role": "source-archive",
+          "sha256": "232c5c286a5b35f445dbbf49e159469acde372a3907aef738d88e28b4b0f6da2"
+        },
+        {
+          "path": "third_party/putty/patches/serialctl-resize.patch",
+          "role": "patch",
+          "sha256": "7430850d7bb2a4b806f92b7a5ed6fe1aaa41caf3620adc8077d0213fccc87f74"
+        },
+        {
+          "path": "third_party/putty/patches/serialctl-sftp-list.patch",
+          "role": "patch",
+          "sha256": "203ccdc2e7345b4d2adfda9ff6a3a8046d7a0962b6df2fd55d2da785e8ead9d0"
+        },
+        {
+          "path": "third_party/putty/patches/serialctl-sftp-exact-rename.patch",
+          "role": "patch",
+          "sha256": "9dd42fe9685e78062fae65cf21ad9b205fff3f3cc3e8c5894107ae2d82dc7386"
+        },
+        {
+          "path": "third_party/putty/patches/serialctl-sftp-utf8-local.patch",
+          "role": "patch",
+          "sha256": "0cd598f85f9a9303b3ba8b1e805f0e83ad5c240bde9df62a975e0c57452103e5"
+        },
+        {
+          "path": "third_party/putty/prebuilt/x86/plink.exe",
+          "role": "runtime",
+          "architecture": "x86",
+          "sha256": "ad5323540095763498091e9c654e617551f47e630193135d71a615e890b4d00c"
+        },
+        {
+          "path": "third_party/putty/prebuilt/x86/psftp.exe",
+          "role": "runtime",
+          "architecture": "x86",
+          "sha256": "52cae1e07d7546d1d0870b889e9ea33c6a9ed3f7ded23d167c8ac9f25acfaca5"
+        },
+        {
+          "path": "third_party/putty/prebuilt/x64/plink.exe",
+          "role": "runtime",
+          "architecture": "x64",
+          "sha256": "fb15bf12b038abb6174cb073f710eac55a68a1479769f81c0ee02d03a0c5c246"
+        },
+        {
+          "path": "third_party/putty/prebuilt/x64/psftp.exe",
+          "role": "runtime",
+          "architecture": "x64",
+          "sha256": "065a5ea3086e54fb65ba9f2e05f4b72d984fc82dda978dbd1017c9b45ee4feb8"
+        }
+      ]
+    },
+    {
+      "name": "YY-Thunks",
+      "version": "1.2.1",
+      "upstream": "https://github.com/Chuyu-Team/YY-Thunks",
+      "files": [
+        {
+          "path": "third_party/yy-thunks/LICENSE",
+          "role": "license",
+          "sha256": "09a1c20e9b40e3bbfff81e0ddc1209265f55eba07cd072c5a1bc755a134579b3"
+        },
+        {
+          "path": "third_party/yy-thunks/yy-thunks.1.2.1.nupkg",
+          "role": "package",
+          "sha256": "d2c91d654effe564a4d6f976da6e501f672692e74468ecbca774e47e27d2b468"
+        }
+      ]
+    }
+  ]
+}

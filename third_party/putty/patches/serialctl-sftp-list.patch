@@ -1,0 +1,131 @@
+diff --git a/psftp.c b/psftp.c
+--- a/psftp.c
++++ b/psftp.c
+@@ -34,6 +34,7 @@ static LogContext *psftp_logctx = NULL;
+ static Backend *backend;
+ static Conf *conf;
+ static bool sent_eof = false;
++static bool serialctl_machine_list = false;
+ 
+ /* ------------------------------------------------------------
+  * Seat vtable.
+@@ -1033,8 +1034,80 @@ void list_directory_from_sftp_warn_unsorted(void)
+     printf("Directory is too large to sort; writing file names unsorted\n");
+ }
+ 
++static void serialctl_print_hex(const char *value)
++{
++    for (const unsigned char *p = (const unsigned char *)value; *p; ++p)
++        printf("%02X", (unsigned)*p);
++}
++
++static void serialctl_complete_name_attrs(
++    const char *directory, struct fxp_name *name)
++{
++    struct sftp_packet *pktin;
++    struct sftp_request *req;
++    struct fxp_attrs attrs;
++    struct fxp_handle *dirh;
++    const char *slash = directory[strlen(directory) - 1] == '/' ? "" : "/";
++    char *path;
++
++    const unsigned long required = SSH_FILEXFER_ATTR_SIZE |
++        SSH_FILEXFER_ATTR_PERMISSIONS | SSH_FILEXFER_ATTR_ACMODTIME;
++    if ((name->attrs.flags & required) == required)
++        return;
++
++    path = dupcat(directory, slash, name->filename);
++    req = fxp_stat_send(path);
++    pktin = sftp_wait_for_reply(req);
++    if (fxp_stat_recv(pktin, req, &attrs)) {
++        if (!(name->attrs.flags & SSH_FILEXFER_ATTR_SIZE) &&
++            (attrs.flags & SSH_FILEXFER_ATTR_SIZE)) {
++            name->attrs.flags |= SSH_FILEXFER_ATTR_SIZE;
++            name->attrs.size = attrs.size;
++        }
++        if (!(name->attrs.flags & SSH_FILEXFER_ATTR_PERMISSIONS) &&
++            (attrs.flags & SSH_FILEXFER_ATTR_PERMISSIONS)) {
++            name->attrs.flags |= SSH_FILEXFER_ATTR_PERMISSIONS;
++            name->attrs.permissions = attrs.permissions;
++        }
++        if (!(name->attrs.flags & SSH_FILEXFER_ATTR_ACMODTIME) &&
++            (attrs.flags & SSH_FILEXFER_ATTR_ACMODTIME)) {
++            name->attrs.flags |= SSH_FILEXFER_ATTR_ACMODTIME;
++            name->attrs.atime = attrs.atime;
++            name->attrs.mtime = attrs.mtime;
++        }
++    }
++
++    /* Some valid v3 servers omit permissions from both READDIR and STAT.
++     * OPENDIR is an unambiguous fallback for the one fact the UI needs. */
++    if (!(name->attrs.flags & SSH_FILEXFER_ATTR_PERMISSIONS)) {
++        req = fxp_opendir_send(path);
++        pktin = sftp_wait_for_reply(req);
++        dirh = fxp_opendir_recv(pktin, req);
++        if (dirh) {
++            name->attrs.flags |= SSH_FILEXFER_ATTR_PERMISSIONS;
++            name->attrs.permissions = PERMS_DIRECTORY;
++            req = fxp_close_send(dirh);
++            pktin = sftp_wait_for_reply(req);
++            fxp_close_recv(pktin, req);
++        }
++    }
++    sfree(path);
++}
++
+ void list_directory_from_sftp_print(struct fxp_name *name)
+ {
++    if (serialctl_machine_list) {
++        printf("SERIALCTL_ENTRY\t%lu\t%"PRIu64"\t%lu\t%lu\t",
++               name->attrs.flags,
++               name->attrs.flags & SSH_FILEXFER_ATTR_SIZE ? name->attrs.size : 0,
++               name->attrs.flags & SSH_FILEXFER_ATTR_PERMISSIONS ?
++                   name->attrs.permissions : 0,
++               name->attrs.flags & SSH_FILEXFER_ATTR_ACMODTIME ?
++                   name->attrs.mtime : 0);
++        serialctl_print_hex(name->filename);
++        printf("\n");
++        return;
++    }
+     with_stripctrl(san, name->longname)
+         printf("%s\n", san);
+ }
+@@ -1125,8 +1198,11 @@ int sftp_cmd_ls(struct sftp_command *cmd)
+             }
+ 
+             for (size_t i = 0; i < names->nnames; i++)
+-                if (!wildcard || wc_match(wildcard, names->names[i].filename))
++                if (!wildcard || wc_match(wildcard, names->names[i].filename)) {
++                    if (serialctl_machine_list)
++                        serialctl_complete_name_attrs(cdir, &names->names[i]);
+                     list_directory_from_sftp_feed(ctx, &names->names[i]);
++                }
+ 
+             fxp_free_names(names);
+         }
+@@ -1200,8 +1276,14 @@ int sftp_cmd_pwd(struct sftp_command *cmd)
+         return 0;
+     }
+ 
+-    with_stripctrl(san, pwd)
+-        printf("Remote directory is %s\n", san);
++    if (serialctl_machine_list) {
++        printf("SERIALCTL_PWD\t");
++        serialctl_print_hex(pwd);
++        printf("\n");
++    } else {
++        with_stripctrl(san, pwd)
++            printf("Remote directory is %s\n", san);
++    }
+     return 1;
+ }
+ 
+@@ -2858,6 +2940,8 @@ int psftp_main(CmdlineArgList *arglist)
+             sanitise_stderr = true;
+         } else if (strcmp(argstr, "-no-sanitise-stderr") == 0) {
+             sanitise_stderr = false;
++        } else if (strcmp(argstr, "-serialctl-machine-list") == 0) {
++            serialctl_machine_list = true;
+         } else if (strcmp(argstr, "--") == 0) {
+             arglistpos++;
+             break;

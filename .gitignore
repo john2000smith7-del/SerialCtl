@@ -1,0 +1,54 @@
+# Generated build state
+/build/
+
+# Only verified release archives belong in the root bin directory
+/bin/*
+!/bin/*.zip
+
+# Legacy and accidental nested build outputs
+**/bin/
+!/bin/
+!/bin/*.zip
+**/obj/
+.vs/
+
+# CMake generated files from accidental in-source builds
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+
+# Local configuration and secrets
+/config/local/
+/secrets/
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Python and tooling state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Editor and operating-system state
+.idea/
+.vscode/
+*.user
+*.suo
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

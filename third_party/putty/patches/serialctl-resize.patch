@@ -1,0 +1,132 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4329f83..35ef65b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -135,5 +135,9 @@ add_executable(plink
+   ${platform}/plink.c
+   stubs/no-lineedit.c)
++if(MSVC AND PUTTY_SUBSYSTEM_VERSION)
++  target_link_options(plink PRIVATE
++    "/SUBSYSTEM:CONSOLE,${PUTTY_SUBSYSTEM_VERSION}")
++endif()
+ # Note: if we ever port Plink to a platform where we can't implement a
+ # serial backend, this be_list command will need to become platform-
+ # dependent, so that it only sets the SERIAL option on platforms where
+@@ -159,6 +163,10 @@ installed_program(pscp)
+ 
+ add_executable(psftp
+   psftp.c)
++if(MSVC AND PUTTY_SUBSYSTEM_VERSION)
++  target_link_options(psftp PRIVATE
++    "/SUBSYSTEM:CONSOLE,${PUTTY_SUBSYSTEM_VERSION}")
++endif()
+ be_list(psftp PSFTP SSH)
+ target_link_libraries(psftp
+   sftpclient eventloop console sshclient settings network crypto utils
+diff --git a/windows/plink.c b/windows/plink.c
+index 4cc787f..a5314f2 100644
+--- a/windows/plink.c
++++ b/windows/plink.c
+@@ -6,6 +6,7 @@
+ #include <stdlib.h>
+ #include <assert.h>
+ #include <stdarg.h>
++#include <stdint.h>
+ 
+ #include "putty.h"
+ #include "ssh.h"
+@@ -33,6 +34,20 @@ static Backend *backend;
+ static LogContext *logctx;
+ static Conf *conf;
+ 
++/*
++ * SerialCtl embeds Plink behind pipes, so Plink cannot discover the host
++ * window size through a console. The parent passes an inheritable event and
++ * shared mapping containing the latest character-cell dimensions.
++ */
++struct serialctl_resize_state {
++    volatile LONG columns;
++    volatile LONG rows;
++};
++static HANDLE serialctl_resize_event = INVALID_HANDLE_VALUE;
++static HANDLE serialctl_resize_mapping = NULL;
++static struct serialctl_resize_state *serialctl_resize = NULL;
++static HANDLE serialctl_extra_handles[1];
++
+ static void plink_echoedit_update(Seat *seat, bool echo, bool edit)
+ {
+     /* Update stdin read mode to reflect changes in line discipline. */
+@@ -273,11 +288,28 @@ static bool plink_mainloop_pre(void *vctx, const HANDLE **extra_handles,
+         sending = true;
+     }
+ 
++    if (serialctl_resize_event != INVALID_HANDLE_VALUE && serialctl_resize) {
++        serialctl_extra_handles[0] = serialctl_resize_event;
++        *extra_handles = serialctl_extra_handles;
++        *n_extra_handles = 1;
++    }
++
+     return true;
+ }
+ 
+ static bool plink_mainloop_post(void *vctx, size_t extra_handle_index)
+ {
++    if (serialctl_resize_event != INVALID_HANDLE_VALUE && serialctl_resize &&
++        extra_handle_index == 0) {
++        /* The event wait provides the synchronization point. Read the
++         * read-only mapping directly: InterlockedCompareExchange performs a
++         * write cycle even when used as a load and would fault here. */
++        LONG columns = serialctl_resize->columns;
++        LONG rows = serialctl_resize->rows;
++        if (columns > 0 && rows > 0)
++            backend_size(backend, columns, rows);
++    }
++
+     if (sending)
+         handle_unthrottle(stdin_handle, backend_sendbuffer(backend));
+ 
+@@ -372,6 +404,27 @@ int main(int argc, char **argv)
+             sanitise_stderr = FORCE_OFF;
+         } else if (!strcmp(p, "-no-antispoof")) {
+             console_antispoof_prompt = false;
++        } else if (!strcmp(p, "-serialctl-resize-event") ||
++                   !strcmp(p, "-serialctl-resize-map")) {
++            if (!nextarg) {
++                fprintf(stderr,
++                        "plink: option \"%s\" requires an argument\n", p);
++                errors = true;
++            } else {
++                const char *value_text = cmdline_arg_to_str(nextarg);
++                char *end = NULL;
++                unsigned long long value = strtoull(value_text, &end, 10);
++                if (!value_text[0] || (end && *end)) {
++                    fprintf(stderr,
++                            "plink: option \"%s\" has an invalid handle\n", p);
++                    errors = true;
++                } else if (!strcmp(p, "-serialctl-resize-event")) {
++                    serialctl_resize_event = (HANDLE)(uintptr_t)value;
++                } else {
++                    serialctl_resize_mapping = (HANDLE)(uintptr_t)value;
++                }
++                arglistpos++;
++            }
+         } else if (*p != '-') {
+             strbuf *cmdbuf = strbuf_new();
+ 
+@@ -397,6 +450,16 @@ int main(int argc, char **argv)
+     if (errors)
+         return 1;
+ 
++    if (serialctl_resize_mapping) {
++        serialctl_resize = MapViewOfFile(
++            serialctl_resize_mapping, FILE_MAP_READ, 0, 0,
++            sizeof(struct serialctl_resize_state));
++        if (!serialctl_resize) {
++            fprintf(stderr, "plink: unable to map SerialCtl resize state\n");
++            return 1;
++        }
++    }
++
+     if (!cmdline_host_ok(conf)) {
+         fprintf(stderr, "plink: no valid host name provided\n"
+                 "try \"plink --help\" for help\n");

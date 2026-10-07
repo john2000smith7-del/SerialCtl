@@ -1,0 +1,39 @@
+#pragma once
+
+#include <winsock2.h>
+#include <windows.h>
+
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+namespace serialctl {
+
+using Bytes = std::vector<std::uint8_t>;
+using DataCallback = std::function<void(const Bytes&)>;
+using StatusCallback = std::function<void(const std::wstring&, bool)>;
+
+class IConnection {
+public:
+    virtual ~IConnection() = default;
+    virtual bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) = 0;
+    virtual void Stop() = 0;
+    virtual bool Send(const Bytes& data, std::wstring& error) = 0;
+    virtual bool IsConnected() const = 0;
+    virtual void ResizeTerminal(int columns, int rows) {
+        (void)columns;
+        (void)rows;
+    }
+};
+
+struct SerialSettings {
+    std::wstring portName;
+    DWORD baudRate = 115200;
+    BYTE dataBits = 8;
+    BYTE parity = NOPARITY;
+    BYTE stopBits = ONESTOPBIT;
+    DWORD flowControl = 0;
+};
+
+} // namespace serialctl

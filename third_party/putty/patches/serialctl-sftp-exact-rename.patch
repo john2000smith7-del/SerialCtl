@@ -1,0 +1,180 @@
+diff --git a/ssh/sftp.h b/ssh/sftp.h
+--- a/ssh/sftp.h
++++ b/ssh/sftp.h
+@@ -222,6 +222,10 @@ bool fxp_remove_recv(struct sftp_packet *pktin, struct sftp_request *req);
+ struct sftp_request *fxp_rename_send(const char *srcfname,
+                                      const char *dstfname);
+ bool fxp_rename_recv(struct sftp_packet *pktin, struct sftp_request *req);
++struct sftp_request *fxp_posix_rename_send(const char *srcfname,
++                                           const char *dstfname);
++bool fxp_posix_rename_recv(struct sftp_packet *pktin,
++                           struct sftp_request *req);
+ 
+ /*
+  * Return file attributes.
+diff --git a/ssh/sftp.c b/ssh/sftp.c
+--- a/ssh/sftp.c
++++ b/ssh/sftp.c
+@@ -544,6 +544,32 @@ bool fxp_rename_recv(struct sftp_packet *pktin, struct sftp_request *req)
+     return id == 1;
+ }
+ 
++struct sftp_request *fxp_posix_rename_send(const char *srcfname,
++                                           const char *dstfname)
++{
++    struct sftp_request *req = sftp_alloc_request();
++    struct sftp_packet *pktout;
++
++    pktout = sftp_pkt_init(SSH_FXP_EXTENDED);
++    put_uint32(pktout, req->id);
++    put_stringz(pktout, "posix-rename@openssh.com");
++    put_stringz(pktout, srcfname);
++    put_stringz(pktout, dstfname);
++    sftp_send(pktout);
++
++    return req;
++}
++
++bool fxp_posix_rename_recv(struct sftp_packet *pktin,
++                           struct sftp_request *req)
++{
++    int id;
++    sfree(req);
++    id = fxp_got_status(pktin);
++    sftp_pkt_free(pktin);
++    return id == 1;
++}
++
+ /*
+  * Retrieve the attributes of a file. We have fxp_stat which works
+  * on filenames, and fxp_fstat which works on open file handles.
+diff --git a/psftp.c b/psftp.c
+--- a/psftp.c
++++ b/psftp.c
+@@ -1726,6 +1726,103 @@ int sftp_cmd_mv(struct sftp_command *cmd)
+     return ret;
+ }
+ 
++static char *serialctl_absolute_path(const char *name)
++{
++    if (name[0] == '/')
++        return dupstr(name);
++    return dupcat(pwd, pwd[strlen(pwd) - 1] == '/' ? "" : "/", name);
++}
++
++static int sftp_cmd_serialctl_rename_exact_impl(
++    struct sftp_command *cmd, bool replace)
++{
++    struct sftp_packet *pktin;
++    struct sftp_request *req;
++    char *source, *destination;
++    bool result;
++
++    if (!backend) {
++        not_connected();
++        return 0;
++    }
++    if (cmd->nwords != 3) {
++        printf("serialctl-rename: expects exactly two filenames\n");
++        return 0;
++    }
++
++    source = serialctl_absolute_path(cmd->words[1]);
++    destination = serialctl_absolute_path(cmd->words[2]);
++    if (!replace) {
++        struct fxp_attrs attrs;
++        req = fxp_stat_send(destination);
++        pktin = sftp_wait_for_reply(req);
++        if (fxp_stat_recv(pktin, req, &attrs)) {
++            printf("serialctl-rename: destination already exists\n");
++            sfree(source);
++            sfree(destination);
++            return 0;
++        }
++    }
++    req = replace ? fxp_posix_rename_send(source, destination) :
++        fxp_rename_send(source, destination);
++    pktin = sftp_wait_for_reply(req);
++    result = replace ? fxp_posix_rename_recv(pktin, req) :
++        fxp_rename_recv(pktin, req);
++    if (!result)
++        printf("serialctl-rename: %s\n", fxp_error());
++    sfree(source);
++    sfree(destination);
++    return result;
++}
++
++static int sftp_cmd_serialctl_rename_exact(struct sftp_command *cmd)
++{
++    return sftp_cmd_serialctl_rename_exact_impl(cmd, false);
++}
++
++static int sftp_cmd_serialctl_replace_exact(struct sftp_command *cmd)
++{
++    return sftp_cmd_serialctl_rename_exact_impl(cmd, true);
++}
++
++static int sftp_cmd_serialctl_remove_exact_impl(
++    struct sftp_command *cmd, bool directory)
++{
++    struct sftp_packet *pktin;
++    struct sftp_request *req;
++    char *path;
++    bool result;
++
++    if (!backend) {
++        not_connected();
++        return 0;
++    }
++    if (cmd->nwords != 2) {
++        printf("serialctl-remove: expects exactly one filename\n");
++        return 0;
++    }
++
++    path = serialctl_absolute_path(cmd->words[1]);
++    req = directory ? fxp_rmdir_send(path) : fxp_remove_send(path);
++    pktin = sftp_wait_for_reply(req);
++    result = directory ? fxp_rmdir_recv(pktin, req) :
++        fxp_remove_recv(pktin, req);
++    if (!result)
++        printf("serialctl-remove: %s\n", fxp_error());
++    sfree(path);
++    return result;
++}
++
++static int sftp_cmd_serialctl_remove_exact(struct sftp_command *cmd)
++{
++    return sftp_cmd_serialctl_remove_exact_impl(cmd, false);
++}
++
++static int sftp_cmd_serialctl_rmdir_exact(struct sftp_command *cmd)
++{
++    return sftp_cmd_serialctl_remove_exact_impl(cmd, true);
++}
++
+ struct sftp_context_chmod {
+     unsigned attrs_clr, attrs_xor;
+ };
+@@ -2211,6 +2308,22 @@ static struct sftp_cmd_lookup {
+             "  The directory will not be removed unless it is empty.\n"
+             "  Wildcards may be used to specify multiple directories.\n",
+             sftp_cmd_rmdir
++    },
++    {
++        "serialctl-remove-exact", false, "SerialCtl private command", "\n",
++            sftp_cmd_serialctl_remove_exact
++    },
++    {
++        "serialctl-rename-exact", false, "SerialCtl private command", "\n",
++            sftp_cmd_serialctl_rename_exact
++    },
++    {
++        "serialctl-replace-exact", false, "SerialCtl private command", "\n",
++            sftp_cmd_serialctl_replace_exact
++    },
++    {
++        "serialctl-rmdir-exact", false, "SerialCtl private command", "\n",
++            sftp_cmd_serialctl_rmdir_exact
+     }
+ };
+ 
