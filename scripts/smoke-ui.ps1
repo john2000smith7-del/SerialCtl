@@ -19,7 +19,17 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool SetDlgItemText(IntPtr window, int id, string text);
+    [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr window, int id);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SetText(IntPtr window, uint message, IntPtr wParam, string text);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr ReadText(IntPtr window, uint message, IntPtr wParam, StringBuilder text);
+    public static void Fill(IntPtr dialog, int id, string text) {
+        IntPtr edit = GetDlgItem(dialog, id);
+        if (edit == IntPtr.Zero) throw new Exception("Missing control " + id);
+        SetText(edit, 0x000C, IntPtr.Zero, text);
+        var actual = new StringBuilder(256);
+        ReadText(edit, 0x000D, new IntPtr(actual.Capacity), actual);
+        if (actual.ToString() != text) throw new Exception("Control text mismatch " + id + ": " + actual);
+    }
     [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
     public static IntPtr Dialog(uint processId, string title) {
         IntPtr found = IntPtr.Zero;
@@ -40,7 +50,7 @@ function Wait-Dialog([int]$ProcessId, [string]$Title) {
         if ($dialog -ne [IntPtr]::Zero) { return $dialog }
         Start-Sleep -Milliseconds 100
     }
-    throw 'The expected dialog did not appear.'
+    throw "The expected dialog did not appear: $Title"
 }
 function Capture-Window([IntPtr]$Handle, [string]$Name) {
     $rect = New-Object SerialCtlUiSmoke+RECT
@@ -106,8 +116,9 @@ foreach ($architecture in @('x86','x64')) {
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]100, [IntPtr]::Zero) | Out-Null
             $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFNTSCDov57mjqU=')))
             Start-Sleep -Milliseconds 300
-            if (-not [SerialCtlUiSmoke]::SetDlgItemText($dialog, 1014, $testHost)) { throw 'Could not fill SSH host.' }
-            if (-not [SerialCtlUiSmoke]::SetDlgItemText($dialog, 1018, 'test')) { throw 'Could not fill SSH username.' }
+            [SerialCtlUiSmoke]::Fill($dialog, 1014, $testHost)
+            [SerialCtlUiSmoke]::Fill($dialog, 1018, 'test')
+            Start-Sleep -Milliseconds 200
             Capture-Window $dialog "$architecture-$theme-ssh-dialog"
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 300
