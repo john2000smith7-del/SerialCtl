@@ -202,6 +202,7 @@ if(BUILD_TESTING)
     add_executable(serial_share_backpressure_test tests/integration/SerialShareBackpressureTest.cpp
         src/connections/SerialShareConnection.cpp)
     serialctl_configure_native_target(serial_share_backpressure_test CONSOLE)
+    target_compile_definitions(serial_share_backpressure_test PRIVATE SERIALCTL_TEST_TRACE)
     target_link_libraries(serial_share_backpressure_test PRIVATE ws2_32)
     add_test(NAME serial_share_backpressure COMMAND serial_share_backpressure_test)
 

@@ -2,6 +2,12 @@
 #include "Win32Helpers.h"
 
 #include <algorithm>
+#include <cstdio>
+#ifdef SERIALCTL_TEST_TRACE
+#define SHARE_TRACE(text) std::fprintf(stderr, "share[%lu] %s\n", GetCurrentThreadId(), text)
+#else
+#define SHARE_TRACE(text) ((void)0)
+#endif
 #include <array>
 #include <string>
 
@@ -118,6 +124,7 @@ bool SerialShareConnection::Start(
 }
 
 void SerialShareConnection::Stop() {
+    SHARE_TRACE("Stop begin");
     stopping_ = true;
     SOCKET listener = listener_;
     listener_ = INVALID_SOCKET;
@@ -127,22 +134,29 @@ void SerialShareConnection::Stop() {
 
     // Finish accepting before taking the final snapshot, including clients
     // accepted concurrently with Stop.
+    SHARE_TRACE("joining accept");
     if (acceptThread_.joinable()) acceptThread_.join();
+    SHARE_TRACE("accept joined");
     std::vector<std::shared_ptr<Client>> clients;
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);
         clients = clients_;
     }
     for (const auto& client : clients) ShutdownClient(client);
+    SHARE_TRACE("clients shut down");
     for (auto& worker : clientThreads_) {
+        SHARE_TRACE("joining client");
         if (worker.second.joinable()) worker.second.join();
+        SHARE_TRACE("client joined");
     }
     clientThreads_.clear();
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);
         clients_.clear();
     }
+    SHARE_TRACE("closing device");
     device_.Close();
+    SHARE_TRACE("device closed");
     onData_ = {};
     onStatus_ = {};
 }
@@ -344,15 +358,20 @@ void SerialShareConnection::ShutdownClient(const std::shared_ptr<Client>& client
         std::lock_guard<std::mutex> queueLock(client->queueMutex);
         client->closing.store(true);
     }
+    SHARE_TRACE("notify sender");
     client->queueReady.notify_all();
     std::lock_guard<std::mutex> lock(client->lifecycleMutex);
+    SHARE_TRACE("shutdown socket begin");
     if (client->socket != INVALID_SOCKET) shutdown(client->socket, SD_BOTH);
+    SHARE_TRACE("shutdown socket end");
 }
 
 void SerialShareConnection::FinishClient(const std::shared_ptr<Client>& client) {
     client->ready.store(false);
     ShutdownClient(client);
+    SHARE_TRACE("joining sender");
     if (client->sendThread.joinable()) client->sendThread.join();
+    SHARE_TRACE("sender joined");
     {
         std::lock_guard<std::mutex> lock(client->lifecycleMutex);
         if (client->socket != INVALID_SOCKET) {
@@ -364,6 +383,7 @@ void SerialShareConnection::FinishClient(const std::shared_ptr<Client>& client) 
     if (!stopping_ && onStatus_)
         onStatus_(L"远程客户端已断开，当前 " + std::to_wstring(ClientCount()) + L" 个", false);
     client->finished.store(true);
+    SHARE_TRACE("client finished");
 }
 
 bool SerialShareConnection::QueueSend(const std::shared_ptr<Client>& client, char type, const Bytes& data) {
@@ -387,6 +407,7 @@ bool SerialShareConnection::QueueSend(const std::shared_ptr<Client>& client, cha
 }
 
 void SerialShareConnection::SendLoop(const std::shared_ptr<Client>& client) {
+    SHARE_TRACE("sender started");
     while (!stopping_ && !client->closing) {
         std::pair<char, Bytes> frame;
         {
@@ -402,6 +423,7 @@ void SerialShareConnection::SendLoop(const std::shared_ptr<Client>& client) {
             SendAll(client->socket, frame.second.data(), frame.second.size());
         if (!ok) { ShutdownClient(client); break; }
     }
+    SHARE_TRACE("sender finished");
 }
 
 void SerialShareConnection::Broadcast(const Bytes& data) {
