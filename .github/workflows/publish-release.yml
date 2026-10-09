@@ -1,0 +1,17 @@
+name: Publish verified V1.0.1 release
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the previously built archive and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s\n' 'ea01391880f18d44244c12c7fd195deb2ebcaeca55f6774a7455a8c1f3474ce2  bin/SerialCtl-V1.0.1-Win7.zip' | sha256sum --check
+          printf '%s\n' 'ea01391880f18d44244c12c7fd195deb2ebcaeca55f6774a7455a8c1f3474ce2  SerialCtl-V1.0.1-Win7.zip' > SerialCtl-V1.0.1-Win7.zip.sha256
+          gh release create v1.0.1 bin/SerialCtl-V1.0.1-Win7.zip SerialCtl-V1.0.1-Win7.zip.sha256 --repo "$GITHUB_REPOSITORY" --target 6129dab --title 'SerialCtl V1.0.1 — Windows 7 SP1' --notes-file docs/package/RELEASE-NOTES-V1.0.1.md
