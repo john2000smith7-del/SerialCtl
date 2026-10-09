@@ -68,8 +68,7 @@ private:
     std::uint16_t listenPort_;
     std::mutex channelsMutex_;
     std::map<std::wstring, std::shared_ptr<SerialShareChannel>> channels_;
-    std::shared_ptr<SerialShareChannel> FindChannel(const std::wstring& name);
-    std::shared_ptr<SerialShareChannel> OnlyChannel();
+    bool SelectClient(const std::shared_ptr<Client>& client, const std::wstring& name, ClientProtocol protocol);
     std::string ListReply();
     std::atomic<SOCKET> listener_{INVALID_SOCKET};
     std::atomic<bool> stopping_{false};

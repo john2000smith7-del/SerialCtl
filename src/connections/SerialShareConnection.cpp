@@ -158,14 +158,16 @@ bool SerialShareService::Register(const std::shared_ptr<SerialShareChannel>& cha
     std::lock_guard<std::mutex> lock(channelsMutex_);
     return channels_.emplace(NormalizeSerial(channel->settings.portName), channel).second;
 }
-std::shared_ptr<SerialShareChannel> SerialShareService::FindChannel(const std::wstring& name) {
+bool SerialShareService::SelectClient(const std::shared_ptr<Client>& client, const std::wstring& name, ClientProtocol protocol) {
+    // Publish the binding before OPEN is acknowledged. Unregister uses this same
+    // map lock, so a concurrent COM close cannot miss a half-established client.
     std::lock_guard<std::mutex> lock(channelsMutex_);
-    auto found = channels_.find(NormalizeSerial(name));
-    return found == channels_.end() || !found->second->active ? nullptr : found->second;
-}
-std::shared_ptr<SerialShareChannel> SerialShareService::OnlyChannel() {
-    std::lock_guard<std::mutex> lock(channelsMutex_);
-    return channels_.size() == 1 && channels_.begin()->second->active ? channels_.begin()->second : nullptr;
+    auto found = name.empty() ? (channels_.size() == 1 ? channels_.begin() : channels_.end()) : channels_.find(NormalizeSerial(name));
+    if (found == channels_.end() || !found->second->active) return false;
+    client->channel = found->second;
+    client->protocol = protocol;
+    client->ready = true;
+    return true;
 }
 void SerialShareService::Unregister(const std::shared_ptr<SerialShareChannel>& channel) {
     { std::lock_guard<std::mutex> lock(channelsMutex_); channels_.erase(NormalizeSerial(channel->settings.portName)); }
@@ -289,13 +291,11 @@ void SerialShareService::ClientLoop(const std::shared_ptr<Client>& client) {
         const bool version2 = first[10] == '2';
         std::string requested = first.substr(17, lineEnd == std::string::npos ? std::string::npos : lineEnd - 17);
         if (!requested.empty() && requested.back() == '\r') requested.pop_back();
-        client->channel = lineEnd == std::string::npos ? nullptr : FindChannel(MultiByteToWide(
-            reinterpret_cast<const std::uint8_t*>(requested.data()), requested.size(), CP_UTF8));
+        const bool selected = lineEnd != std::string::npos && SelectClient(client, MultiByteToWide(
+            reinterpret_cast<const std::uint8_t*>(requested.data()), requested.size(), CP_UTF8), version2 ? ClientProtocol::Version2 : ClientProtocol::Version1);
         const std::string prefix = version2 ? "SERIALCTL/2 " : "SERIALCTL/1 ";
-        const std::string response = prefix + (client->channel ? (version2 ? "OK WRITE\n" : "OK\n") : "ERR NOT_FOUND\n");
-        if (SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(response.data()), response.size()) && client->channel) {
-            client->protocol = version2 ? ClientProtocol::Version2 : ClientProtocol::Version1;
-            client->ready = true;
+        const std::string response = prefix + (selected ? (version2 ? "OK WRITE\n" : "OK\n") : "ERR NOT_FOUND\n");
+        if (SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(response.data()), response.size()) && selected) {
             if (lineEnd + 1 < first.size()) buffered.assign(first.begin() + static_cast<std::ptrdiff_t>(lineEnd + 1), first.end());
             if (!version2 && !buffered.empty()) { std::wstring error; if (!client->channel->Write(buffered, error)) client->ready = false; buffered.clear(); }
         }
@@ -304,9 +304,7 @@ void SerialShareService::ClientLoop(const std::shared_ptr<Client>& client) {
         SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(response.data()), response.size());
     } else if (!first.empty() || (read == SOCKET_ERROR && firstError == WSAETIMEDOUT)) {
         // Raw clients are safe only when a single COM is shared. Named OPEN is mandatory otherwise.
-        client->channel = OnlyChannel();
-        if (client->channel) {
-            client->ready = true;
+        if (SelectClient(client, L"", ClientProtocol::Raw)) {
             if (!first.empty()) { std::wstring error; if (!client->channel->Write(Bytes(first.begin(), first.end()), error)) client->ready = false; }
         } else {
             const std::string response = "SERIALCTL/2 ERR SELECT_REQUIRED\n";
@@ -319,7 +317,7 @@ void SerialShareService::ClientLoop(const std::shared_ptr<Client>& client) {
     setsockopt(client->socket, SOL_SOCKET, SO_RCVTIMEO,
         reinterpret_cast<const char*>(&receiveTimeout), sizeof(receiveTimeout));
 
-    if (!client->ready || stopping_) {
+    if (!client->ready || stopping_ || client->closing || !client->channel || !client->channel->active) {
         FinishClient(client);
         return;
     }
