@@ -118,7 +118,7 @@ bool SharedSerialConnection::Start(DataCallback onData, StatusCallback onStatus,
         error = L"共享串口已经连接";
         return false;
     }
-    SOCKET connected = ConnectTcpSocket(host_, port_, error, &stopping_);
+    SOCKET connected = ConnectTcpSocket(host_, port_, error, &cancelStarting_);
     if (connected == INVALID_SOCKET) return false;
     const std::string request = "SERIALCTL/2 OPEN " + WideToMultiByte(serialName_, CP_UTF8) + "\n";
     if (!SendAll(connected, request)) {
@@ -158,13 +158,12 @@ bool SharedSerialConnection::Start(DataCallback onData, StatusCallback onStatus,
 
 void SharedSerialConnection::Stop() {
     stopping_ = true;
-    SOCKET current = socket_;
-    socket_ = INVALID_SOCKET;
+    SOCKET current = socket_.exchange(INVALID_SOCKET);
     if (current != INVALID_SOCKET) {
         shutdown(current, SD_BOTH);
-        closesocket(current);
     }
     if (readThread_.joinable()) readThread_.join();
+    if (current != INVALID_SOCKET) closesocket(current);
     onData_ = {};
     onStatus_ = {};
 }

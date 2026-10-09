@@ -16,7 +16,7 @@ public:
     ~TcpConnection() override;
 
     bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) override;
-    void CancelStart() override { stopping_ = true; }
+    void CancelStart() override { cancelStarting_ = true; }
     void Stop() override;
     bool Send(const Bytes& data, std::wstring& error) override;
     bool IsConnected() const override;
@@ -32,6 +32,7 @@ private:
     std::uint16_t port_;
     bool telnet_;
     std::atomic<SOCKET> socket_{INVALID_SOCKET};
+    std::atomic_bool cancelStarting_{false};
     std::atomic<bool> stopping_{false};
     std::thread readThread_;
     std::mutex sendMutex_;

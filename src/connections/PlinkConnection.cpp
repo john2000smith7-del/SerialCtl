@@ -34,7 +34,7 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
         return false;
     }
     if (!ResolvePuttyHostKey(plink, host_, port_, username_, password_,
-            hostKey_, error, &stopping_, confirmHostKey_)) {
+            hostKey_, error, &cancelStarting_, confirmHostKey_)) {
         return false;
     }
 

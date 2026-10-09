@@ -22,7 +22,7 @@ bool TcpConnection::Start(DataCallback onData, StatusCallback onStatus, std::wst
     }
 
     const std::wstring portText = std::to_wstring(port_);
-    SOCKET connected = ConnectTcpSocket(host_, port_, error, &stopping_);
+    SOCKET connected = ConnectTcpSocket(host_, port_, error, &cancelStarting_);
     if (connected == INVALID_SOCKET) return false;
 
     BOOL noDelay = TRUE;
@@ -42,15 +42,14 @@ bool TcpConnection::Start(DataCallback onData, StatusCallback onStatus, std::wst
 
 void TcpConnection::Stop() {
     stopping_ = true;
-    SOCKET socket = socket_;
-    socket_ = INVALID_SOCKET;
+    SOCKET socket = socket_.exchange(INVALID_SOCKET);
     if (socket != INVALID_SOCKET) {
         shutdown(socket, SD_BOTH);
-        closesocket(socket);
     }
     if (readThread_.joinable()) {
         readThread_.join();
     }
+    if (socket != INVALID_SOCKET) closesocket(socket);
     onData_ = {};
     onStatus_ = {};
 }

@@ -7,6 +7,7 @@
 namespace serialctl {
 inline SOCKET ConnectTcpSocket(const std::wstring& host, std::uint16_t port,
     std::wstring& error, const std::atomic_bool* cancel = nullptr) {
+    if (cancel && cancel->load()) { error = L"连接已取消。"; return INVALID_SOCKET; }
     ADDRINFOW hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;

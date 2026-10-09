@@ -23,11 +23,19 @@ void RemoveValue(const std::wstring& host) {
 
 int wmain(int argc, wchar_t** argv) {
     if (argc > 1 && std::wstring(argv[1]) == L"-batch") {
-        bool explicitKey = false;
-        for (int i = 1; i + 1 < argc; ++i)
-            if (std::wstring(argv[i]) == L"-hostkey" && std::wstring(argv[i + 1]) == Fingerprint)
-                explicitKey = true;
+        bool explicitKey = false, hasKey = false;
+        for (int i = 1; i + 1 < argc; ++i) {
+            if (std::wstring(argv[i]) == L"-hostkey") {
+                hasKey = true;
+                explicitKey = std::wstring(argv[i + 1]) == Fingerprint;
+            }
+        }
         if (explicitKey) return 0;
+        if (hasKey) {
+            std::cout << "WARNING - HOST KEY DOES NOT MATCH!\nkey fingerprint is:\n"
+                         "ssh-ed25519 255 SHA256:changed-key\n";
+            return 1;
+        }
         std::cout << "The host key is not cached for this server\nkey fingerprint is:\n"
                      "ssh-ed25519 255 SHA256:test-fingerprint\n";
         return 1;
@@ -53,6 +61,20 @@ int wmain(int argc, wchar_t** argv) {
             ++prompts; return fingerprint == Fingerprint;
         });
     if (!trusted || prompts != 2 || key != Fingerprint) { RemoveValue(accepted); return 2; }
+    const std::wstring changed = prefix + L"-changed";
+    HKEY registry = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, RegistryPath, 0, nullptr, 0, KEY_SET_VALUE,
+            nullptr, &registry, nullptr) != ERROR_SUCCESS) { RemoveValue(accepted); return 5; }
+    const wchar_t oldKey[] = L"ssh-ed25519 255 SHA256:old-key";
+    const LONG saved = RegSetValueExW(registry, (changed + L":22").c_str(), 0, REG_SZ,
+        reinterpret_cast<const BYTE*>(oldKey), sizeof(oldKey));
+    RegCloseKey(registry);
+    key.clear();
+    const bool changedRejected = saved == ERROR_SUCCESS &&
+        !serialctl::ResolvePuttyHostKey(Executable(), changed, 22, L"test", L"", key, error,
+            nullptr, [&](const std::wstring&, std::uint16_t, const std::wstring&) { ++prompts; return true; });
+    RemoveValue(changed);
+    if (!changedRejected || prompts != 2) { RemoveValue(accepted); return 6; }
     std::wstring command = serialctl::QuoteCommandLineArgument(Executable()) +
         L" -verify-persistence " + serialctl::QuoteCommandLineArgument(accepted);
     std::vector<wchar_t> buffer(command.begin(), command.end()); buffer.push_back(L'\0');

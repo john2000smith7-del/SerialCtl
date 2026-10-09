@@ -16,7 +16,7 @@ public:
     ~PlinkConnection() override;
 
     bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) override;
-    void CancelStart() override { stopping_ = true; }
+    void CancelStart() override { cancelStarting_ = true; }
     void Stop() override;
     bool Send(const Bytes& data, std::wstring& error) override;
     bool IsConnected() const override;
@@ -46,6 +46,7 @@ private:
     HANDLE resizeEvent_ = nullptr;
     HANDLE resizeMapping_ = nullptr;
     volatile LONG* resizeState_ = nullptr;
+    std::atomic_bool cancelStarting_{false};
     std::atomic<bool> stopping_{false};
     std::thread readThread_;
     std::mutex writeMutex_;
