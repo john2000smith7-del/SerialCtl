@@ -1,6 +1,19 @@
-name: Publish verified V1.0.1 release
+name: Publish verified release
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Verified version, e.g. V1.0.2'
+        required: true
+        type: string
+      archive_sha256:
+        description: 'SHA-256 of the verified archive'
+        required: true
+        type: string
+      source_commit:
+        description: 'Full commit SHA containing the verified archive'
+        required: true
+        type: string
 permissions:
   contents: write
 jobs:
@@ -11,7 +24,15 @@ jobs:
       - name: Verify the previously built archive and publish
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_SHA256: ${{ inputs.archive_sha256 }}
+          RELEASE_COMMIT: ${{ inputs.source_commit }}
         run: |
-          printf '%s\n' 'ea01391880f18d44244c12c7fd195deb2ebcaeca55f6774a7455a8c1f3474ce2  bin/SerialCtl-V1.0.1-Win7.zip' | sha256sum --check
-          printf '%s\n' 'ea01391880f18d44244c12c7fd195deb2ebcaeca55f6774a7455a8c1f3474ce2  SerialCtl-V1.0.1-Win7.zip' > SerialCtl-V1.0.1-Win7.zip.sha256
-          gh release create v1.0.1 bin/SerialCtl-V1.0.1-Win7.zip SerialCtl-V1.0.1-Win7.zip.sha256 --repo "$GITHUB_REPOSITORY" --target 6129daba278d7e07e3bc1fcd1593b7d38a062c83 --title 'SerialCtl V1.0.1 — Windows 7 SP1' --notes-file docs/package/RELEASE-NOTES-V1.0.1.md
+          [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          git checkout --detach "$RELEASE_COMMIT"
+          RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7.zip"
+          printf '%s  %s\n' "$RELEASE_SHA256" "bin/$RELEASE_ARCHIVE" | sha256sum --check
+          printf '%s  %s\n' "$RELEASE_SHA256" "$RELEASE_ARCHIVE" > "$RELEASE_ARCHIVE.sha256"
+          gh release create "v${RELEASE_VERSION#V}" "bin/$RELEASE_ARCHIVE" "$RELEASE_ARCHIVE.sha256" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title "SerialCtl $RELEASE_VERSION — Windows 7 SP1" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
