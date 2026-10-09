@@ -209,6 +209,11 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(multi_serial_test CONSOLE)
     target_link_libraries(multi_serial_test PRIVATE ws2_32)
     add_test(NAME multi_serial COMMAND multi_serial_test)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME linux_gateway_client COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/test_gateway_client.py"
+        "$<TARGET_FILE:multi_serial_test>")
+    set_tests_properties(linux_gateway_client PROPERTIES TIMEOUT 30)
 
     add_executable(terminal_decoder_test tests/unit/TerminalDecoderTest.cpp)
     serialctl_configure_native_target(terminal_decoder_test CONSOLE)

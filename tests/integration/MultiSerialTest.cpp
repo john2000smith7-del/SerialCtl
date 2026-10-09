@@ -35,8 +35,21 @@ std::string ReplyLine(SOCKET socket) {
     while (line.size() < 4096 && recv(socket, &c, 1, 0) == 1) { line += c; if (c == '\n') break; }
     return line;
 }
-int main() {
+int ServeFixture() {
+    serialctl::SerialSettings a,b; a.portName=L"COM3"; b.portName=L"COM5";
+    serialctl::SerialShareConnection first(a,0), second(b,0); std::wstring error;
+    if (!first.Start({}, {}, error) || !second.Start({}, {}, error)) return 2;
+    std::cout << first.SharedPort() << std::endl;
+    std::string command;
+    while (std::getline(std::cin,command)) {
+        if (command=="close COM3") { first.Stop(); std::cout << "closed COM3" << std::endl; }
+        else if (command=="quit") break;
+    }
+    second.Stop(); first.Stop(); return 0;
+}
+int main(int argc, char**) {
     WSADATA wsa{}; WSAStartup(MAKEWORD(2,2), &wsa);
+    if (argc > 1) { int result=ServeFixture(); WSACleanup(); return result; }
     int result = 0;
     try {
         unsigned base = 18000;
