@@ -104,14 +104,14 @@ foreach ($architecture in @('x86','x64')) {
                 Start-Sleep -Milliseconds 200
             }
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]100, [IntPtr]::Zero) | Out-Null
-            $dialog = Wait-Dialog $application.Id '新建 SSH 连接'
+            $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFNTSCDov57mjqU=')))
             Start-Sleep -Milliseconds 300
             if (-not [SerialCtlUiSmoke]::SetDlgItemText($dialog, 1014, $testHost)) { throw 'Could not fill SSH host.' }
             if (-not [SerialCtlUiSmoke]::SetDlgItemText($dialog, 1018, 'test')) { throw 'Could not fill SSH username.' }
             Capture-Window $dialog "$architecture-$theme-ssh-dialog"
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 300
-            $confirmation = Wait-Dialog $application.Id '确认 SSH 主机身份'
+            $confirmation = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('56Gu6K6kIFNTSCDkuLvmnLrouqvku70=')))
             Capture-Window $confirmation "$architecture-$theme-host-key"
             $answer = if ($theme -eq 'dark') { 7 } else { 6 }
             [SerialCtlUiSmoke]::PostMessage($confirmation, 0x111, [IntPtr]$answer, [IntPtr]::Zero) | Out-Null
