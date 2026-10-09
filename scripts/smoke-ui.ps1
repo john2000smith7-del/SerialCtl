@@ -14,27 +14,29 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc proc, IntPtr parameter);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder name, int size);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder text, int size);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool SetDlgItemText(IntPtr window, int id, string text);
     [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
-    public static IntPtr Dialog(uint processId) {
+    public static IntPtr Dialog(uint processId, string title) {
         IntPtr found = IntPtr.Zero;
         EnumWindows(delegate(IntPtr window, IntPtr ignored) {
             uint pid; GetWindowThreadProcessId(window, out pid);
             var name = new StringBuilder(64); GetClassName(window, name, name.Capacity);
-            if (pid == processId && IsWindowVisible(window) && name.ToString() == "#32770") { found = window; return false; }
+            var caption = new StringBuilder(256); GetWindowText(window, caption, caption.Capacity);
+            if (pid == processId && IsWindowVisible(window) && name.ToString() == "#32770" && (title == null || caption.ToString() == title)) { found = window; return false; }
             return true;
         }, IntPtr.Zero);
         return found;
     }
 }
 '@
-function Wait-Dialog([int]$ProcessId) {
+function Wait-Dialog([int]$ProcessId, [string]$Title) {
     for ($attempt = 0; $attempt -lt 150; $attempt++) {
-        $dialog = [SerialCtlUiSmoke]::Dialog([uint32]$ProcessId)
+        $dialog = [SerialCtlUiSmoke]::Dialog([uint32]$ProcessId, $Title)
         if ($dialog -ne [IntPtr]::Zero) { return $dialog }
         Start-Sleep -Milliseconds 100
     }
@@ -102,13 +104,14 @@ foreach ($architecture in @('x86','x64')) {
                 Start-Sleep -Milliseconds 200
             }
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]100, [IntPtr]::Zero) | Out-Null
-            $dialog = Wait-Dialog $application.Id
-            [SerialCtlUiSmoke]::SetDlgItemText($dialog, 1014, $testHost) | Out-Null
-            [SerialCtlUiSmoke]::SetDlgItemText($dialog, 1018, 'test') | Out-Null
+            $dialog = Wait-Dialog $application.Id '新建 SSH 连接'
+            Start-Sleep -Milliseconds 300
+            if (-not [SerialCtlUiSmoke]::SetDlgItemText($dialog, 1014, $testHost)) { throw 'Could not fill SSH host.' }
+            if (-not [SerialCtlUiSmoke]::SetDlgItemText($dialog, 1018, 'test')) { throw 'Could not fill SSH username.' }
             Capture-Window $dialog "$architecture-$theme-ssh-dialog"
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 300
-            $confirmation = Wait-Dialog $application.Id
+            $confirmation = Wait-Dialog $application.Id '确认 SSH 主机身份'
             Capture-Window $confirmation "$architecture-$theme-host-key"
             $answer = if ($theme -eq 'dark') { 7 } else { 6 }
             [SerialCtlUiSmoke]::PostMessage($confirmation, 0x111, [IntPtr]$answer, [IntPtr]::Zero) | Out-Null
