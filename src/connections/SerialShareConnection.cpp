@@ -295,7 +295,9 @@ void SerialShareService::ClientLoop(const std::shared_ptr<Client>& client) {
             reinterpret_cast<const std::uint8_t*>(requested.data()), requested.size(), CP_UTF8), version2 ? ClientProtocol::Version2 : ClientProtocol::Version1);
         const std::string prefix = version2 ? "SERIALCTL/2 " : "SERIALCTL/1 ";
         const std::string response = prefix + (selected ? (version2 ? "OK WRITE\n" : "OK\n") : "ERR NOT_FOUND\n");
-        if (SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(response.data()), response.size()) && selected) {
+        const bool replied = SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(response.data()), response.size());
+        if (!replied) client->ready = false;
+        if (replied && selected) {
             if (lineEnd + 1 < first.size()) buffered.assign(first.begin() + static_cast<std::ptrdiff_t>(lineEnd + 1), first.end());
             if (!version2 && !buffered.empty()) { std::wstring error; if (!client->channel->Write(buffered, error)) client->ready = false; buffered.clear(); }
         }

@@ -2621,7 +2621,11 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
             state = L"● 已连接";
             stateColor = colors.accent;
         }
-        DrawTextSimple(dc, state, subtitle, stateColor, smallFont_, DT_LEFT | DT_SINGLELINE);
+        if (connected && session && session->mode == 1) {
+            state = session->port ? L"TCP " + std::to_wstring(session->port) + L" · 共享" : L"本地可用 · 未共享";
+            if (!session->port) stateColor = colors.danger;
+        }
+        DrawTextSimple(dc, state, subtitle, stateColor, smallFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
     } else if (item.CtlID == IdCommandList && item.itemID < commands_.size()) {
         const CommandItem& command = commands_[item.itemID];
         OverlayScrollMetrics scrollMetrics;
@@ -3258,6 +3262,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
         if (!closing_) AppendStatus(error.empty() ? L"连接已取消。" : error, true);
         return;
     }
+    if (pendingSession_->mode == 1) pendingSession_->port = static_cast<SerialShareConnection*>(pendingSession_->connection.get())->SharedPort();
     const std::uint64_t id = pendingSession_->id;
     sessions_.push_back(std::move(pendingSession_));
     RefreshConnectionList();
@@ -3265,7 +3270,10 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     for (const Bytes& data : pendingConnectionData_) AppendData(id, data);
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
-    AppendStatus(L"已连接：" + activeSession_->name, false);
+    if (activeSession_->mode == 1) {
+        AppendStatus(activeSession_->port ? L"已连接：" + activeSession_->name + L" · 共享 TCP " + std::to_wstring(activeSession_->port) :
+            L"本地串口已连接；7000–7015 均不可用，TCP 共享未启用", activeSession_->port == 0);
+    } else AppendStatus(L"已连接：" + activeSession_->name, false);
     SetFocus(terminal_);
 }
 
