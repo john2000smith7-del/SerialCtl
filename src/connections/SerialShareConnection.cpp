@@ -82,6 +82,14 @@ bool SerialShareConnection::Start(
         return false;
     }
 
+    // A listener must never block accept indefinitely during shutdown.
+    u_long nonBlocking = 1;
+    if (ioctlsocket(listener, FIONBIO, &nonBlocking) == SOCKET_ERROR) {
+        error = L"设置监听套接字失败：" + SocketErrorMessage(WSAGetLastError());
+        closesocket(listener);
+        return false;
+    }
+
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
     stopping_ = false;
@@ -151,12 +159,28 @@ void SerialShareConnection::AcceptLoop() {
     while (!stopping_) {
         SOCKET accepted = accept(listener_, nullptr, nullptr);
         if (accepted == INVALID_SOCKET) {
+            const int acceptError = WSAGetLastError();
+            if (!stopping_ && acceptError == WSAEWOULDBLOCK) {
+                SOCKET listener = listener_.load();
+                if (listener == INVALID_SOCKET) break;
+                fd_set readable{};
+                FD_ZERO(&readable);
+                FD_SET(listener, &readable);
+                timeval interval{0, 100000};
+                select(0, &readable, nullptr, nullptr, &interval);
+                continue;
+            }
             if (!stopping_ && onStatus_) {
                 onStatus_(L"接受客户端失败：" + SocketErrorMessage(WSAGetLastError()), true);
             }
             break;
         }
         if (stopping_) { closesocket(accepted); break; }
+        u_long blocking = 0;
+        if (ioctlsocket(accepted, FIONBIO, &blocking) == SOCKET_ERROR) {
+            closesocket(accepted);
+            continue;
+        }
         DWORD sendTimeout = 500;
         setsockopt(accepted, SOL_SOCKET, SO_SNDTIMEO,
             reinterpret_cast<const char*>(&sendTimeout), sizeof(sendTimeout));
@@ -314,7 +338,12 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
 }
 
 void SerialShareConnection::ShutdownClient(const std::shared_ptr<Client>& client) {
-    client->closing.store(true);
+    // Change the wait predicate under the same mutex as condition_variable::wait
+    // so notification cannot be lost between its predicate check and sleeping.
+    {
+        std::lock_guard<std::mutex> queueLock(client->queueMutex);
+        client->closing.store(true);
+    }
     client->queueReady.notify_all();
     std::lock_guard<std::mutex> lock(client->lifecycleMutex);
     if (client->socket != INVALID_SOCKET) shutdown(client->socket, SD_BOTH);

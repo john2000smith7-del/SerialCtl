@@ -1902,9 +1902,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case MessageHostKey: {
-        std::unique_ptr<HostKeyMessage> message(reinterpret_cast<HostKeyMessage*>(lParam));
-        if (message) {
-            const auto& request = **message;
+        std::unique_ptr<HostKeyMessage> hostMessage(reinterpret_cast<HostKeyMessage*>(lParam));
+        if (hostMessage) {
+            const auto& request = **hostMessage;
             bool accepted = false;
             if (!closing_ && !connectionCancel_.load()) {
                 const std::wstring prompt = L"首次连接该 SSH 主机：" + request.host + L":" +
@@ -1913,7 +1913,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 accepted = MessageBoxW(window_, prompt.c_str(), L"确认 SSH 主机身份",
                     MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
             }
-            (*message)->decision.set_value(accepted);
+            (*hostMessage)->decision.set_value(accepted);
         }
         return 0;
     }

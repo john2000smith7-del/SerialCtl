@@ -52,12 +52,17 @@ int main() {
     });
     bool initialized;
     { std::unique_lock<std::mutex> lock(mutex); initialized = ready.wait_for(lock, std::chrono::seconds(3), [&] { return connections == 2; }); }
+    std::cerr << "Clients initialized: " << initialized << '\n';
     serialctl::Bytes chunk(16384, 'a');
     const auto started = std::chrono::steady_clock::now();
     if (initialized) for (int i = 0; i < 512; ++i) { service.Send(chunk, error); Sleep(2); }
     const auto duration = std::chrono::steady_clock::now() - started;
+    std::cerr << "Serial input completed; received " << received.load() << " bytes\n";
     for (int i = 0; i < 100 && received < chunk.size() * 512; ++i) Sleep(20);
-    service.Stop(); shutdown(fast, SD_BOTH); reader.join(); closesocket(fast); closesocket(slow);
+    std::cerr << "Stopping shared service\n";
+    service.Stop();
+    std::cerr << "Shared service stopped\n";
+    shutdown(fast, SD_BOTH); reader.join(); closesocket(fast); closesocket(slow);
     WSACleanup();
     if (!initialized || duration > std::chrono::seconds(5) || received < chunk.size() * 512) return 4;
     std::cout << "Slow-client isolation and shutdown tests passed\n";
