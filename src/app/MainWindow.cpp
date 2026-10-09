@@ -15,6 +15,7 @@
 #include <commdlg.h>
 #include <shlobj.h>
 #include <windowsx.h>
+#include <ws2tcpip.h>
 
 #include <algorithm>
 #include <array>
@@ -3013,6 +3014,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
             MoveDialogItemDlu(dialog, IDC_PASSWORD_LABEL, rightColumn, 44, columnWidth, 10);
             MoveDialogItemDlu(dialog, IDC_PASSWORD, rightColumn, 56, columnWidth, 14);
         } else if (share) {
+            SetDlgItemTextW(dialog, IDC_HOST_LABEL, L"来源 IP");
             MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, fullWidth, 14);
             SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"远端串口");
             MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 44, columnWidth, 10);
@@ -3095,6 +3097,10 @@ void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
     if (discoveryThread_.joinable()) discoveryThread_.join();
     const std::wstring host = Trim(ControlText(GetDlgItem(dialog, IDC_HOST)));
     if (host.empty()) return;
+    IN_ADDR ipv4{}; IN6_ADDR ipv6{};
+    if (InetPtonW(AF_INET, host.c_str(), &ipv4) != 1 && InetPtonW(AF_INET6, host.c_str(), &ipv6) != 1) {
+        SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"请输入完整的 IP 地址"); return;
+    }
     discoveryDialog_ = dialog;
     discoveryCancel_ = false;
     discoveryFinished_ = false;
