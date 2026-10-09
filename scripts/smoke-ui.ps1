@@ -186,6 +186,15 @@ foreach ($architecture in @('x64')) {
                 Start-Sleep -Milliseconds 300
                 [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
                 Capture-Window $dialog "$architecture-$theme-connection-$mode"
+                if ($mode -eq 3) {
+                    [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]9010, [IntPtr]::Zero) | Out-Null
+                    $portDialog = Wait-Dialog $application.Id '高级共享端口'
+                    [SerialCtlUiSmoke]::Fill($portDialog, 1402, '7000')
+                    [SerialCtlUiSmoke]::AssertLabels($portDialog, $expectedUiFace)
+                    Capture-Window $portDialog "$architecture-$theme-shared-port"
+                    [SerialCtlUiSmoke]::PostMessage($portDialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+                    Start-Sleep -Milliseconds 200
+                }
                 [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
                 Start-Sleep -Milliseconds 200
             }

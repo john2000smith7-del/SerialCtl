@@ -41,6 +41,8 @@ constexpr UINT MessageConnection = WM_APP + 5;
 constexpr UINT MessageHostKey = WM_APP + 6;
 constexpr UINT MessageDiscovery = WM_APP + 7;
 constexpr UINT_PTR DiscoveryTimerId = 4003;
+constexpr int IdSharedAdvancedPort = 9010;
+constexpr int IdSharedAutoPort = 9011;
 constexpr UINT_PTR StatusTimerId = 4001;
 constexpr UINT_PTR CommandTimerId = 4002;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
@@ -2614,7 +2616,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         DeleteObject(dot);
         RECT title{card.left + 32, card.top + 6, card.right - 8, card.top + 27};
         RECT subtitle{card.left + 32, card.top + 27, card.right - 8, card.bottom - 4};
-        DrawTextSimple(dc, session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE);
+        DrawTextSimple(dc, session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         std::wstring state = connected ? L"● 已连接" : L"○ 已断开";
         COLORREF stateColor = colors.muted;
         if (connected) {
@@ -2916,26 +2918,29 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
     }
     if (message == WM_CONTEXTMENU && self->pendingMode_ == 3 && reinterpret_cast<HWND>(wParam) == GetDlgItem(dialog, IDC_SERIAL_REFRESH)) {
         HMENU menu = CreatePopupMenu();
-        AppendMenuW(menu, MF_STRING, 1, L"高级：指定服务端口…");
-        AppendMenuW(menu, MF_STRING, 2, L"恢复自动发现 7000–7015");
+        AppendMenuW(menu, MF_STRING, IdSharedAdvancedPort, L"高级：指定服务端口…");
+        AppendMenuW(menu, MF_STRING, IdSharedAutoPort, L"恢复自动发现 7000–7015");
         POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         if (point.x == -1) { RECT rect{}; GetWindowRect(GetDlgItem(dialog, IDC_SERIAL_REFRESH), &rect); point = {rect.left, rect.bottom}; }
         const UINT choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, dialog, nullptr);
         DestroyMenu(menu);
-        if (choice == 1) {
-            std::wstring value;
-            if (!self->PromptSftpValue(L"高级共享端口", L"服务端口（通常使用自动发现）", std::to_wstring(self->discoveryExplicitPort_ ? self->discoveryExplicitPort_ : DefaultSharePort), SftpInputPurpose::Port, value, dialog)) return TRUE;
-            self->discoveryExplicitPort_ = static_cast<std::uint16_t>(ParsePositive(value));
-        } else if (choice == 2) self->discoveryExplicitPort_ = 0;
-        else return TRUE;
-        ++self->discoveryGeneration_; self->discoveryCancel_ = true;
-        EnableWindow(GetDlgItem(dialog, IDOK), FALSE); SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return TRUE;
+        if (choice) PostMessageW(dialog, WM_COMMAND, choice, 0);
+        return TRUE;
     }
     if (message == WM_TIMER && wParam == DiscoveryTimerId) {
         KillTimer(dialog, DiscoveryTimerId); self->DiscoverSharedSerialPorts(dialog); return TRUE;
     }
     if (message == WM_CLOSE) { EndDialog(dialog, IDCANCEL); return TRUE; }
     if (message == WM_COMMAND) {
+        if (self->pendingMode_ == 3 && (LOWORD(wParam) == IdSharedAdvancedPort || LOWORD(wParam) == IdSharedAutoPort)) {
+            if (LOWORD(wParam) == IdSharedAdvancedPort) {
+                std::wstring value;
+                if (!self->PromptSftpValue(L"高级共享端口", L"服务端口（通常使用自动发现）", std::to_wstring(self->discoveryExplicitPort_ ? self->discoveryExplicitPort_ : DefaultSharePort), SftpInputPurpose::Port, value, dialog)) return TRUE;
+                self->discoveryExplicitPort_ = static_cast<std::uint16_t>(ParsePositive(value));
+            } else self->discoveryExplicitPort_ = 0;
+            ++self->discoveryGeneration_; self->discoveryCancel_ = true;
+            EnableWindow(GetDlgItem(dialog, IDOK), FALSE); SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return TRUE;
+        }
         if (self->pendingMode_ == 3 && LOWORD(wParam) == IDC_HOST && HIWORD(wParam) == EN_CHANGE) {
             ++self->discoveryGeneration_; self->discoveryCancel_ = true;
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE);

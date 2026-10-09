@@ -164,7 +164,7 @@ bool SharedSerialConnection::DiscoverAuto(const std::wstring& host, std::uint16_
         if (!found && result.found) { found = true; port = result.port; names = std::move(result.names); if (descriptions) *descriptions = std::move(result.descriptions); }
     }
     if (cancel && cancel->load()) { error = L"查询已取消"; return false; }
-    if (!found) error = L"未发现已共享的串口，请检查来源程序、IP 和防火墙（7000–7015）。";
+    if (!found) error = L"未发现共享串口，请检查来源程序、IP 和防火墙。";
     return found;
 }
 
