@@ -25,14 +25,23 @@ bool SendAll(SOCKET socket, const std::uint8_t* data, size_t size) {
     return true;
 }
 
-bool ReceiveExact(SOCKET socket, Bytes& buffered, std::uint8_t* data, size_t size) {
+int ReceiveCancelable(SOCKET socket, std::uint8_t* data, size_t size,
+    const std::atomic<bool>& stopping, const std::atomic<bool>& closing) {
+    while (!stopping && !closing) {
+        const int received = recv(socket, reinterpret_cast<char*>(data), static_cast<int>(size), 0);
+        if (received != SOCKET_ERROR || WSAGetLastError() != WSAETIMEDOUT) return received;
+    }
+    return 0;
+}
+
+bool ReceiveExact(SOCKET socket, Bytes& buffered, std::uint8_t* data, size_t size,
+    const std::atomic<bool>& stopping, const std::atomic<bool>& closing) {
     const size_t bufferedCount = std::min(size, buffered.size());
     std::copy_n(buffered.begin(), bufferedCount, data);
     buffered.erase(buffered.begin(), buffered.begin() + static_cast<std::ptrdiff_t>(bufferedCount));
     size_t offset = bufferedCount;
     while (offset < size) {
-        const int received = recv(socket, reinterpret_cast<char*>(data + offset),
-            static_cast<int>(size - offset), 0);
+        const int received = ReceiveCancelable(socket, data + offset, size - offset, stopping, closing);
         if (received <= 0) return false;
         offset += static_cast<size_t>(received);
     }
@@ -48,7 +57,7 @@ bool SendFrame(SOCKET socket, char type, const Bytes& payload) {
         static_cast<std::uint8_t>((payload.size() >> 8) & 0xFF),
         static_cast<std::uint8_t>(payload.size() & 0xFF)};
     return SendAll(socket, header.data(), header.size()) &&
-        (payload.empty() || SendAll(socket, payload.data(), payload.size()));
+        (payload.empty() || SendAll(socket, payload.data(), payload.size(), stopping_, client->closing));
 }
 
 } // namespace
@@ -300,9 +309,11 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
         client->protocol = ClientProtocol::Raw;
         client->ready = true;
     }
-    DWORD noTimeout = 0;
+    // Windows shutdown does not reliably wake another thread's blocking recv.
+    // A short receive timeout lets cancellation be observed even for idle peers.
+    DWORD receiveTimeout = 200;
     setsockopt(client->socket, SOL_SOCKET, SO_RCVTIMEO,
-        reinterpret_cast<const char*>(&noTimeout), sizeof(noTimeout));
+        reinterpret_cast<const char*>(&receiveTimeout), sizeof(receiveTimeout));
 
     if (!client->ready || stopping_) {
         FinishClient(client);
@@ -319,13 +330,13 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
     while (!stopping_ && !client->closing) {
         if (client->protocol == ClientProtocol::Version2) {
             std::array<std::uint8_t, 5> header{};
-            if (!ReceiveExact(client->socket, buffered, header.data(), header.size())) break;
+            if (!ReceiveExact(client->socket, buffered, header.data(), header.size(), stopping_, client->closing)) break;
             const std::uint32_t length = (static_cast<std::uint32_t>(header[1]) << 24) |
                 (static_cast<std::uint32_t>(header[2]) << 16) |
                 (static_cast<std::uint32_t>(header[3]) << 8) | static_cast<std::uint32_t>(header[4]);
             if (length > 1024 * 1024) break;
             Bytes payload(length);
-            if (length && !ReceiveExact(client->socket, buffered, payload.data(), payload.size())) break;
+            if (length && !ReceiveExact(client->socket, buffered, payload.data(), payload.size(), stopping_, client->closing)) break;
             if (header[0] == 'D') {
                 std::wstring error;
                 if (!device_.Write(payload, error)) {
@@ -337,7 +348,7 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
                 if (command == "ACQUIRE" || command == "RELEASE") SendClientControl(client, "GRANTED");
             }
         } else {
-            read = recv(client->socket, reinterpret_cast<char*>(buffer.data()), static_cast<int>(buffer.size()), 0);
+            read = ReceiveCancelable(client->socket, buffer.data(), buffer.size(), stopping_, client->closing);
             if (read <= 0) break;
             Bytes data(buffer.begin(), buffer.begin() + read);
             std::wstring error;
