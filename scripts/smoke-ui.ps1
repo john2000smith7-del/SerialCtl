@@ -98,7 +98,7 @@ public static class SerialCtlUiSmoke {
             uint pid; GetWindowThreadProcessId(window, out pid);
             var name = new StringBuilder(64); GetClassName(window, name, name.Capacity);
             var caption = new StringBuilder(256); GetWindowText(window, caption, caption.Capacity);
-            if (pid == processId && IsWindowVisible(window) && name.ToString() == "#32770" && (title == null || caption.ToString() == title)) { found = window; return false; }
+            if (pid == processId && IsWindowVisible(window) && name.ToString() == "#32770" && (String.IsNullOrEmpty(title) || caption.ToString() == title)) { found = window; return false; }
             return true;
         }, IntPtr.Zero);
         return found;
