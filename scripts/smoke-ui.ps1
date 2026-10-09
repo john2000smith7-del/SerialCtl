@@ -42,7 +42,12 @@ public static class SerialCtlUiSmoke {
     [StructLayout(LayoutKind.Sequential)] public struct SIZE { public int Width, Height; }
     [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern bool GetTextExtentPoint32(IntPtr dc, string text, int length, out SIZE extent);
     [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern int GetTextFace(IntPtr dc, int count, StringBuilder face);
-    public static void AssertLabels(IntPtr dialog) {
+    [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr CreateFont(int height, int width, int escapement, int orientation, int weight, uint italic, uint underline, uint strikeout, uint charset, uint output, uint clip, uint quality, uint pitch, string face);
+    [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
+    public static void AssertLabels(IntPtr dialog, string expectedFace) {
+        // HFONT handles are process-local. Measure the design font in this process,
+        // rather than silently selecting the stock System font with a foreign handle.
+        IntPtr font = CreateFont(-15, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 32, expectedFace);
         string failure = null;
         EnumChildWindows(dialog, delegate(IntPtr child, IntPtr unused) {
             var name = new StringBuilder(64); GetClassName(child, name, name.Capacity);
@@ -50,17 +55,17 @@ public static class SerialCtlUiSmoke {
             var text = new StringBuilder(1024); ReadText(child, 0xD, new IntPtr(text.Capacity), text);
             if (text.Length == 0) return true;
             IntPtr dc = GetDC(child);
-            IntPtr fontResult;
-            SendMessageTimeout(child, 0x31, IntPtr.Zero, IntPtr.Zero, 2, 2000, out fontResult);
-            IntPtr previous = SelectObject(dc, fontResult);
+            IntPtr previous = SelectObject(dc, font);
+            if (previous == IntPtr.Zero) throw new Exception("Cannot select design font");
             SIZE extent; GetTextExtentPoint32(dc, text.ToString(), text.Length, out extent);
             var face = new StringBuilder(128); GetTextFace(dc, face.Capacity, face);
             RECT bounds; GetClientRect(child, out bounds);
             SelectObject(dc, previous); ReleaseDC(child, dc);
-            Console.WriteLine("Label {0}: font={1}, text-height={2}, bounds-height={3}", text, face, extent.Height, bounds.Bottom);
+            Console.WriteLine("Label {0}: design-font={1}, text-height={2}, bounds-height={3}", text, face, extent.Height, bounds.Bottom);
             if (extent.Height > bounds.Bottom || extent.Width > bounds.Right) failure = "Clipped label: " + text;
             return failure == null;
         }, IntPtr.Zero);
+        DeleteObject(font);
         if (failure != null) throw new Exception(failure);
     }
     public static void AssertPanel(IntPtr window, bool collapsed) {
@@ -141,6 +146,12 @@ public static class FakePlink {
     }
 }
 '@
+$installedFonts = New-Object System.Drawing.Text.InstalledFontCollection
+$expectedUiFace = 'Segoe UI'
+foreach ($candidate in @('Microsoft YaHei UI','Microsoft YaHei','SimSun')) {
+    if ($installedFonts.Families.Name -contains $candidate) { $expectedUiFace = $candidate; break }
+}
+$installedFonts.Dispose()
 $settingsDirectory = Join-Path $env:APPDATA 'SerialCtl'
 New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
 $titles = @(([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFNTSCDov57mjqU='))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu65Liy5Y+j6L+e5o6l'))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFRlbG5ldCDov57mjqU='))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6L+e5o6l5YWx5Lqr5Liy5Y+j'))))
@@ -172,7 +183,7 @@ foreach ($architecture in @('x86','x64')) {
                 [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr](100+$mode), [IntPtr]::Zero) | Out-Null
                 $dialog = Wait-Dialog $application.Id $titles[$mode]
                 Start-Sleep -Milliseconds 300
-                [SerialCtlUiSmoke]::AssertLabels($dialog)
+                [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
                 Capture-Window $dialog "$architecture-$theme-connection-$mode"
                 [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
                 Start-Sleep -Milliseconds 200
@@ -180,11 +191,11 @@ foreach ($architecture in @('x86','x64')) {
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null
             $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
             Start-Sleep -Milliseconds 300
-            [SerialCtlUiSmoke]::AssertLabels($dialog)
+            [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-command"
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1104, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 300
-            [SerialCtlUiSmoke]::AssertLabels($dialog)
+            [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-macro"
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 200
@@ -215,7 +226,7 @@ foreach ($architecture in @('x86','x64')) {
             [SerialCtlUiSmoke]::Fill($dialog, 1014, $testHost)
             [SerialCtlUiSmoke]::Fill($dialog, 1018, 'test')
             Start-Sleep -Milliseconds 200
-            [SerialCtlUiSmoke]::AssertLabels($dialog)
+            [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-ssh-dialog"
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 300
