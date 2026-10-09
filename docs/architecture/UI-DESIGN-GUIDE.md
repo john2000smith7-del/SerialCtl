@@ -47,7 +47,7 @@ Light theme:
 
 ## Typography
 
-- UI text: Segoe UI with Microsoft YaHei UI fallback.
+- UI text: use one installed Chinese UI face consistently: Microsoft YaHei UI, then Microsoft YaHei (Windows 7), then SimSun. Use Segoe UI only if no Chinese face is installed. Measure label height with the actual selected font; never clip Chinese glyphs to fixed template bounds.
 - Terminal text: Consolas.
 - Body: 15-16 px.
 - Secondary text: 13-14 px.
@@ -108,7 +108,7 @@ Light theme:
 - Multi-command macros keep the standard command-card size. While a macro runs, its Run action becomes Stop and draws a determinate progress ring inside the same 28 px bounds; other structural command actions remain disabled until the macro completes or stops.
 - Idle status labels do not reserve permanent rows. Transient operation or error status may temporarily overlay the lower-left card and then disappear.
 - The right panel uses the same segmented tab style for Commands and SFTP. The SFTP working directory uses the shared rounded field treatment and follows the active SSH shell directory when it can be identified from the prompt. SFTP transfer actions use compact secondary buttons and remain disabled while an operation is running.
-- The right panel has a borderless 12 px splitter interaction lane, supports a 260-650 px remembered width, and may collapse to a 48 px rail containing one 28 px icon action. Resizing must preserve at least 400 px for the center terminal at the minimum supported window size.
+- The right panel has a borderless 12 px splitter interaction lane, supports a 260-650 px remembered width, and may collapse to a visible 48 px rail containing one centered 28 px icon action. The 12 px outer margin is additional to the rail width. Resizing must preserve at least 400 px for the center terminal at the minimum supported window size.
 - The SFTP browser uses a clickable breadcrumb field followed by a compact 32 px table header. File rows use the standard 36 px control rhythm, keep folders before files for every sort order, and expose Name, Size, and Modified sorting without native ListView chrome.
 - SFTP supports extended multi-selection. Destructive remote actions remain in the SFTP context menu, display the exact affected remote paths, and require confirmation. Local-file drag-in queues uploads; remote drag-out is not implied by this rule.
 - The SFTP transfer drawer uses a 32 px text-button header and 48 px transfer rows. It is collapsible, never overlays the file list, and shows queued, running, completed, failed, and canceled states. Determinate progress uses the accent token; unknown progress remains visually indeterminate without inventing a percentage.

@@ -1,4 +1,4 @@
-# SerialCtl V1.0.1 Windows 便携包
+# SerialCtl V1.0.2 Windows 便携包
 
 本压缩包同时提供 Windows x86 和 x64 原生程序：
 

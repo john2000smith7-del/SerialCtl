@@ -2,7 +2,7 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-当前正式版本：`V1.0.1`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
+当前正式版本：`V1.0.2`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
 
 ## 主要功能
 
@@ -114,7 +114,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 发布流程会重新构建并测试 x86、x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中只保留：
 
 ```text
-SerialCtl-V1.0.1-Win7.zip
+SerialCtl-V1.0.2-Win7.zip
 ```
 
 压缩包内的 `windows\x86\native` 与 `windows\x64\native` 分别包含匹配架构的 `serialctl.exe`、`plink.exe` 和 `psftp.exe`。复制到目标电脑时必须完整保留同一架构目录中的三个程序。

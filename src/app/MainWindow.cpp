@@ -166,7 +166,7 @@ MainLayoutMetrics GetMainLayoutMetrics(
     const int leftWidth = std::max(Ui::MinLeftWidth, std::min(Ui::MaxLeftWidth, width * 18 / 100));
     const int availableRight = std::max(Ui::MinRightWidth,
         width - leftWidth - Ui::Gap * 2 - Ui::MinCenterWidth);
-    const int rightWidth = rightPanelCollapsed ? Ui::CollapsedRightWidth :
+    const int rightWidth = rightPanelCollapsed ? Ui::CollapsedRightWidth + Ui::Gap :
         std::max(Ui::MinRightWidth, std::min({Ui::MaxRightWidth,
             availableRight, preferredRightWidth}));
     return {leftWidth, rightWidth, width - rightWidth, leftWidth + Ui::Gap,
@@ -686,6 +686,55 @@ void AddComboItems(HWND combo, std::initializer_list<const wchar_t*> items, int 
         SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item));
     }
     SendMessageW(combo, CB_SETCURSEL, selection, 0);
+}
+
+int CALLBACK FindUiFont(const LOGFONTW*, const TEXTMETRICW*, DWORD, LPARAM found) {
+    *reinterpret_cast<bool*>(found) = true;
+    return 0;
+}
+
+const wchar_t* UiFontFamily() {
+    HDC dc = GetDC(nullptr);
+    const wchar_t* selected = L"Segoe UI";
+    for (const wchar_t* candidate : {L"Microsoft YaHei UI", L"Microsoft YaHei", L"SimSun"}) {
+        LOGFONTW query{};
+        query.lfCharSet = DEFAULT_CHARSET;
+        lstrcpynW(query.lfFaceName, candidate, LF_FACESIZE);
+        bool found = false;
+        EnumFontFamiliesExW(dc, &query, FindUiFont, reinterpret_cast<LPARAM>(&found), 0);
+        if (found) { selected = candidate; break; }
+    }
+    ReleaseDC(nullptr, dc);
+    return selected;
+}
+
+int DialogLabelHeight(HWND control) {
+    HDC dc = GetDC(control);
+    HFONT font = reinterpret_cast<HFONT>(SendMessageW(control, WM_GETFONT, 0, 0));
+    HGDIOBJ previous = SelectObject(dc, font);
+    TEXTMETRICW metrics{};
+    GetTextMetricsW(dc, &metrics);
+    std::wstring text(static_cast<size_t>(GetWindowTextLengthW(control)) + 1, L'\0');
+    const int length = GetWindowTextW(control, &text[0], static_cast<int>(text.size()));
+    SIZE extent{};
+    if (length) GetTextExtentPoint32W(dc, text.c_str(), length, &extent);
+    SelectObject(dc, previous);
+    ReleaseDC(control, dc);
+    return std::max(static_cast<int>(metrics.tmHeight), static_cast<int>(extent.cy));
+}
+
+void FitDialogLabels(HWND dialog) {
+    for (HWND child = GetWindow(dialog, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+        wchar_t name[32]{};
+        GetClassNameW(child, name, static_cast<int>(std::size(name)));
+        if (_wcsicmp(name, L"Static") != 0 || GetDlgCtrlID(child) == 0) continue;
+        RECT rect{};
+        GetWindowRect(child, &rect);
+        MapWindowPoints(HWND_DESKTOP, dialog, reinterpret_cast<POINT*>(&rect), 2);
+        const int height = std::max(static_cast<int>(rect.bottom - rect.top), DialogLabelHeight(child));
+        SetWindowPos(child, nullptr, rect.left, rect.top, rect.right - rect.left, height,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
 }
 
 void MoveDialogItemDlu(HWND dialog, int id, int x, int y, int width, int height) {
@@ -2018,12 +2067,13 @@ HWND MainWindow::CreateChild(const wchar_t* type, const wchar_t* text, DWORD sty
 }
 
 void MainWindow::CreateControls() {
+    const wchar_t* uiFace = UiFontFamily();
     uiFont_ = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, uiFace);
     smallFont_ = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, uiFace);
     titleFont_ = CreateFontW(-18, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI Semibold");
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, uiFace);
     terminalFont_ = CreateFontW(-terminalFontHeight_, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH, L"Consolas");
 
@@ -2134,7 +2184,7 @@ void MainWindow::LayoutControls(int width, int height) {
         ? rightInnerLeft + Ui::MinRightWidth - Ui::PanelPadding * 2
         : actualRightInnerRight;
     const int toggleLeft = rightPanelCollapsed_
-        ? rightLeft + (layout.rightWidth - Ui::IconButtonSize) / 2
+        ? rightLeft + (layout.rightWidth - Ui::Gap - Ui::IconButtonSize) / 2
         : actualRightInnerRight - Ui::IconButtonSize;
     MoveWindow(rightPanelToggleButton_, toggleLeft, headerTop + 2,
         Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
@@ -2143,8 +2193,8 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(sftpTabButton_, rightInnerLeft + 2 + Ui::SegmentWidth, headerTop + 2,
         Ui::SegmentWidth, Ui::SegmentHeight, TRUE);
     const int addCommandRight = rightInnerRight - Ui::IconButtonSize - Ui::Space;
-    const int addCommandLeftLimit = rightInnerLeft + 2 + Ui::SegmentWidth * 2 + 6;
-    const int addCommandWidth = std::max(36,
+    const int addCommandLeftLimit = rightInnerLeft + 4 + Ui::SegmentWidth * 2 + Ui::Space;
+    const int addCommandWidth = std::max(Ui::IconButtonSize,
         std::min(104, addCommandRight - addCommandLeftLimit));
     SetWindowTextW(addCommandButton_, addCommandWidth >= 80 ? L"添加命令" : L"");
     MoveWindow(addCommandButton_, addCommandRight - addCommandWidth, headerTop + 2,
@@ -2985,6 +3035,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     MoveDialogItemDlu(dialog, IDOK, 158, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight);
     if (serial || share) MatchDialogControlHeight(dialog, IDC_SERIAL, IDC_SERIAL_REFRESH);
+    FitDialogLabels(dialog);
 
     const wchar_t* titles[] = {L"新建 SSH 连接", L"新建串口连接", L"新建 Telnet 连接", L"连接共享串口"};
     SetWindowTextW(dialog, titles[pendingMode_]);
@@ -5144,6 +5195,7 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
         SetDlgItemTextW(dialog, IDC_SFTP_INPUT_LABEL, self->pendingSftpInputLabel_.c_str());
         SetDlgItemTextW(dialog, IDC_SFTP_INPUT, self->pendingSftpInputValue_.c_str());
         SetDlgItemTextW(dialog, IDC_SFTP_INPUT_ERROR, L"");
+        FitDialogLabels(dialog);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_LIMITTEXT,
             self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4 : 255, 0);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_SETMARGINS,
@@ -5197,6 +5249,7 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
             }
             EnableWindow(GetDlgItem(dialog, IDOK), valid);
             SetDlgItemTextW(dialog, IDC_SFTP_INPUT_ERROR, L"");
+        FitDialogLabels(dialog);
             InvalidateRect(GetDlgItem(dialog, IDOK), nullptr, TRUE);
             InvalidateRect(GetDlgItem(dialog, IDC_SFTP_INPUT_ERROR), nullptr, TRUE);
             return TRUE;
@@ -5569,6 +5622,7 @@ void MainWindow::LayoutCommandDialog(HWND dialog) {
     MoveDialogItemDlu(dialog, IDCANCEL, 82, buttonY, 68, 18);
     MoveDialogItemDlu(dialog, IDOK, 158, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, DialogWidth, buttonY + 26);
+    FitDialogLabels(dialog);
     EnableWindow(GetDlgItem(dialog, IDC_COMMAND_ADD_STEP),
         commandDialogStepEdits_.size() < MaximumCommandSteps);
     InvalidateRect(GetDlgItem(dialog, IDC_COMMAND_ADD_STEP), nullptr, TRUE);

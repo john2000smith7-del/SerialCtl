@@ -31,6 +31,61 @@ public static class SerialCtlUiSmoke {
         if (actual.ToString() != text) throw new Exception("Control text mismatch " + id + ": " + actual);
     }
     [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll")] public static extern int MapWindowPoints(IntPtr from, IntPtr to, ref RECT rect, uint points);
+    [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr window, int x, int y, int width, int height, bool repaint);
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr window, EnumProc proc, IntPtr parameter);
+    [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr window);
+    [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr window);
+    [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr window, IntPtr dc);
+    [DllImport("gdi32.dll")] public static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
+    [StructLayout(LayoutKind.Sequential)] public struct SIZE { public int Width, Height; }
+    [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern bool GetTextExtentPoint32(IntPtr dc, string text, int length, out SIZE extent);
+    [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern int GetTextFace(IntPtr dc, int count, StringBuilder face);
+    public static void AssertLabels(IntPtr dialog) {
+        string failure = null;
+        EnumChildWindows(dialog, delegate(IntPtr child, IntPtr unused) {
+            var name = new StringBuilder(64); GetClassName(child, name, name.Capacity);
+            if (!IsWindowVisible(child) || name.ToString() != "Static") return true;
+            var text = new StringBuilder(1024); ReadText(child, 0xD, new IntPtr(text.Capacity), text);
+            if (text.Length == 0) return true;
+            IntPtr dc = GetDC(child);
+            IntPtr fontResult;
+            SendMessageTimeout(child, 0x31, IntPtr.Zero, IntPtr.Zero, 2, 2000, out fontResult);
+            IntPtr previous = SelectObject(dc, fontResult);
+            SIZE extent; GetTextExtentPoint32(dc, text.ToString(), text.Length, out extent);
+            var face = new StringBuilder(128); GetTextFace(dc, face.Capacity, face);
+            RECT bounds; GetClientRect(child, out bounds);
+            SelectObject(dc, previous); ReleaseDC(child, dc);
+            Console.WriteLine("Label {0}: font={1}, text-height={2}, bounds-height={3}", text, face, extent.Height, bounds.Bottom);
+            if (extent.Height > bounds.Bottom || extent.Width > bounds.Right) failure = "Clipped label: " + text;
+            return failure == null;
+        }, IntPtr.Zero);
+        if (failure != null) throw new Exception(failure);
+    }
+    public static void AssertPanel(IntPtr window, bool collapsed) {
+        RECT client; GetClientRect(window, out client);
+        MapWindowPoints(window, IntPtr.Zero, ref client, 2);
+        RECT toggle; GetWindowRect(GetDlgItem(window, 125), out toggle);
+        if (toggle.Right > client.Right - 12) throw new Exception("Panel toggle exceeds card edge");
+        if (collapsed) {
+            if (toggle.Left < client.Right - 60 || toggle.Right > client.Right - 12) throw new Exception("Toggle exceeds collapsed rail");
+            for (int id = 112; id <= 131; id++) if (id != 125 && IsWindowVisible(GetDlgItem(window, id))) throw new Exception("Visible collapsed control " + id);
+        } else {
+            RECT tab, add;
+            GetWindowRect(GetDlgItem(window, 118), out tab);
+            GetWindowRect(GetDlgItem(window, 115), out add);
+            if (IsWindowVisible(GetDlgItem(window, 115)) && (tab.Right + 8 > add.Left || add.Right + 8 > toggle.Left)) throw new Exception("Overlapping panel header actions");
+        }
+        string failure = null;
+        EnumChildWindows(window, delegate(IntPtr child, IntPtr unused) {
+            if (!IsWindowVisible(child)) return true;
+            RECT r; GetWindowRect(child, out r);
+            if (r.Left < client.Left || r.Right > client.Right || r.Top < client.Top || r.Bottom > client.Bottom) failure = "Child outside main window: " + GetDlgCtrlID(child);
+            return failure == null;
+        }, IntPtr.Zero);
+        if (failure != null) throw new Exception(failure);
+    }
     public static IntPtr Dialog(uint processId, string title) {
         IntPtr found = IntPtr.Zero;
         EnumWindows(delegate(IntPtr window, IntPtr ignored) {
@@ -76,24 +131,64 @@ Add-Type -OutputAssembly $mock -OutputType ConsoleApplication -TypeDefinition @'
 using System;
 public static class FakePlink {
     public static int Main(string[] args) {
-        foreach (string arg in args) if (arg == "-hostkey") return 0;
+        foreach (string arg in args) if (arg == "-b") {
+            Console.WriteLine("Remote directory is /home/test\nListing directory /home/test\n-rw-r--r-- 1 test test 12 Jan 01 2026 test.txt");
+            return 0;
+        }
+        foreach (string arg in args) if (arg == "-hostkey") { while (Console.ReadLine() != null) {} return 0; }
         Console.WriteLine("The host key is not cached for this server\nkey fingerprint is:\nssh-ed25519 255 SHA256:ui-smoke-test");
         return 1;
     }
 }
 '@
+$settingsDirectory = Join-Path $env:APPDATA 'SerialCtl'
+New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
+$titles = @(([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFNTSCDov57mjqU='))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu65Liy5Y+j6L+e5o6l'))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFRlbG5ldCDov57mjqU='))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6L+e5o6l5YWx5Lqr5Liy5Y+j'))))
 foreach ($architecture in @('x86','x64')) {
     $native = Join-Path $extract "SerialCtl-$($version.Display)/windows/$architecture/native"
     # First launch the exact packaged program with its exact packaged dependencies.
+    Set-Content -LiteralPath (Join-Path $settingsDirectory 'settings.ini') -Value "[Layout]`nRightPanelWidth=260`nRightPanelCollapsed=0" -Encoding ASCII
     $application = Start-Process -FilePath (Join-Path $native 'serialctl.exe') -PassThru
     try {
         if (-not $application.WaitForInputIdle(10000)) { throw 'Packaged application did not become idle.' }
         $application.Refresh()
         if ($application.HasExited -or $application.MainWindowHandle -eq 0) { throw 'Packaged application did not open a window.' }
-        Capture-Window $application.MainWindowHandle "$architecture-packaged-dark"
-        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]104, [IntPtr]::Zero) | Out-Null
-        Start-Sleep -Milliseconds 200
-        Capture-Window $application.MainWindowHandle "$architecture-packaged-light"
+        foreach ($theme in @('dark','light')) {
+            if ($theme -eq 'light') {
+                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]104, [IntPtr]::Zero) | Out-Null
+                Start-Sleep -Milliseconds 300
+            }
+            [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle, 0, 0, 980, 620, $true) | Out-Null
+            Start-Sleep -Milliseconds 300
+            [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
+            Capture-Window $application.MainWindowHandle "$architecture-packaged-$theme"
+            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 300
+            [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $true)
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-collapsed"
+            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 200
+            foreach ($mode in 0..3) {
+                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr](100+$mode), [IntPtr]::Zero) | Out-Null
+                $dialog = Wait-Dialog $application.Id $titles[$mode]
+                Start-Sleep -Milliseconds 300
+                [SerialCtlUiSmoke]::AssertLabels($dialog)
+                Capture-Window $dialog "$architecture-$theme-connection-$mode"
+                [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+                Start-Sleep -Milliseconds 200
+            }
+            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null
+            $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
+            Start-Sleep -Milliseconds 300
+            [SerialCtlUiSmoke]::AssertLabels($dialog)
+            Capture-Window $dialog "$architecture-$theme-command"
+            [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1104, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 300
+            [SerialCtlUiSmoke]::AssertLabels($dialog)
+            Capture-Window $dialog "$architecture-$theme-macro"
+            [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 200
+        }
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         if (-not $application.WaitForExit(10000)) { throw 'Packaged application did not close normally.' }
         if ($application.ExitCode -ne 0) { throw 'Packaged application exit code was not zero.' }
@@ -103,6 +198,7 @@ foreach ($architecture in @('x86','x64')) {
     New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
     Copy-Item (Join-Path $native '*.exe') $sandbox
     Copy-Item $mock (Join-Path $sandbox 'plink.exe') -Force
+    Copy-Item $mock (Join-Path $sandbox 'psftp.exe') -Force
     $application = Start-Process -FilePath (Join-Path $sandbox 'serialctl.exe') -PassThru
     $testHost = "serialctl-ui-$architecture-$($env:GITHUB_RUN_ID).invalid"
     try {
@@ -119,10 +215,12 @@ foreach ($architecture in @('x86','x64')) {
             [SerialCtlUiSmoke]::Fill($dialog, 1014, $testHost)
             [SerialCtlUiSmoke]::Fill($dialog, 1018, 'test')
             Start-Sleep -Milliseconds 200
+            [SerialCtlUiSmoke]::AssertLabels($dialog)
             Capture-Window $dialog "$architecture-$theme-ssh-dialog"
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 300
             $confirmation = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('56Gu6K6kIFNTSCDkuLvmnLrouqvku70=')))
+            Start-Sleep -Milliseconds 300
             Capture-Window $confirmation "$architecture-$theme-host-key"
             $answer = if ($theme -eq 'dark') { 7 } else { 6 }
             [SerialCtlUiSmoke]::PostMessage($confirmation, 0x111, [IntPtr]$answer, [IntPtr]::Zero) | Out-Null
@@ -130,6 +228,25 @@ foreach ($architecture in @('x86','x64')) {
             $result = [IntPtr]::Zero
             if ([SerialCtlUiSmoke]::SendMessageTimeout($application.MainWindowHandle, 0, [IntPtr]::Zero,
                     [IntPtr]::Zero, 2, 2000, [ref]$result) -eq [IntPtr]::Zero) { throw 'Main window became unresponsive.' }
+        }
+        foreach ($theme in @('light','dark')) {
+            if ($theme -eq 'dark') {
+                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]104, [IntPtr]::Zero) | Out-Null
+                Start-Sleep -Milliseconds 200
+            }
+            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]118, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 1000
+            if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 119))) { throw 'SFTP panel did not open.' }
+            [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-sftp"
+            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 300
+            [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $true)
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-sftp-collapsed"
+            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 200
+            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]117, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 200
         }
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         if (-not $application.WaitForExit(10000)) { throw 'Mock application did not close normally.' }
@@ -143,5 +260,5 @@ foreach ($architecture in @('x86','x64')) {
 Remove-Item -LiteralPath $extract -Recurse -Force
 Remove-Item -LiteralPath $mock -Force
 foreach ($architecture in @('x86','x64')) { Remove-Item -LiteralPath (Join-Path $OutputDirectory "mock-$architecture") -Recurse -Force }
-Write-Host '[PASS] x86/x64 packaged startup/shutdown, both themes, SSH dialogs and first-host confirmation'
+Write-Host '[PASS] x86/x64 startup/shutdown, both themes, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation'
 Write-Host '[NOT RUN] Actual Windows 7 hardware and field server tests'

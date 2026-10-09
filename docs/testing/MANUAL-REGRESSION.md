@@ -12,3 +12,10 @@
 - 日志保存、宏停止、会话切换、程序退出。
 
 CI 会启动 x86/x64 包中程序并检查深色/浅色主窗口与 SSH 提示；真实 Win7、硬件和现场服务器仍按 WIN7-HARDWARE-TEST.md 验收。
+# V1.0.2 UI regression
+
+- In both themes, inspect complete Chinese glyphs in SSH, serial, Telnet, shared serial, command/macro and SFTP input dialogs; repeat at 100%, 125% and 150% DPI on Windows 7 SP1.
+- At the minimum window size and 260 px panel width, verify that tab, add-command and collapse actions do not overlap.
+- Collapse the Commands and SFTP panels; only the centered expand button may remain in the 48 px rail. Resize, switch sessions and expand again; no panel control may escape the card.
+- CI checks both architectures and themes using real windows, label extents and control bounds. SFTP UI uses a test-only local mock. Real Win7/DPI/hardware acceptance remains not run.
+
