@@ -57,7 +57,7 @@ bool SendFrame(SOCKET socket, char type, const Bytes& payload) {
         static_cast<std::uint8_t>((payload.size() >> 8) & 0xFF),
         static_cast<std::uint8_t>(payload.size() & 0xFF)};
     return SendAll(socket, header.data(), header.size()) &&
-        (payload.empty() || SendAll(socket, payload.data(), payload.size(), stopping_, client->closing));
+        (payload.empty() || SendAll(socket, payload.data(), payload.size()));
 }
 
 } // namespace
