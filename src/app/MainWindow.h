@@ -36,7 +36,7 @@ private:
     enum class SftpTransferDirection { Upload, Download };
     enum class SftpTransferState { Queued, Running, Completed, Failed, Canceled };
     enum class SftpMutationKind { CreateDirectory, Rename, Delete, ChangeMode };
-    enum class SftpInputPurpose { Name, Mode, Path };
+    enum class SftpInputPurpose { Name, Mode, Path, Port };
 
     struct SftpTransferItem {
         std::uint64_t id = 0;
@@ -203,7 +203,7 @@ private:
     void StartSftpMutation(SftpMutationKind kind, const std::vector<std::wstring>& paths,
         const std::wstring& value = {}, const std::vector<bool>& directories = {});
     bool PromptSftpValue(const std::wstring& title, const std::wstring& label,
-        const std::wstring& initialValue, SftpInputPurpose purpose, std::wstring& value);
+        const std::wstring& initialValue, SftpInputPurpose purpose, std::wstring& value, HWND owner = nullptr);
     void HandleSftpMessage(LPARAM value);
     void SetSftpBusy(bool busy);
     void RefreshSftpList();
@@ -271,6 +271,8 @@ private:
     HWND sftpSizeHeader_ = nullptr;
     HWND sftpModifiedHeader_ = nullptr;
     HWND sftpList_ = nullptr;
+    HWND sftpTooltip_ = nullptr;
+    std::wstring sftpHoverText_;
     HWND sftpTransferToggleButton_ = nullptr;
     HWND sftpTransferList_ = nullptr;
     HWND sftpClearTransfersButton_ = nullptr;
@@ -355,6 +357,7 @@ private:
     std::atomic_bool discoveryFinished_{true};
     unsigned discoveryGeneration_ = 0;
     HWND discoveryDialog_ = nullptr;
+    std::uint16_t discoveryExplicitPort_ = 0;
     int pendingMode_ = 0;
     SerialSettings pendingSerial_;
     std::wstring pendingHost_;

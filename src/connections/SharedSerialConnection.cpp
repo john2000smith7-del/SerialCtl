@@ -47,21 +47,23 @@ bool ReceiveExact(SOCKET socket, Bytes& buffered, std::uint8_t* data, size_t siz
     return true;
 }
 
-bool ReceiveControlReply(SOCKET socket, std::string& reply, std::wstring& error) {
-    DWORD timeout = 900;
+bool ReceiveControlReply(SOCKET socket, std::string& reply, std::wstring& error, bool includeMetadata = false) {
+    DWORD timeout = 100;
+    const DWORD started = GetTickCount();
     setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
     std::array<char, 2048> buffer{};
-    while (reply.size() < 16384) {
+    while (reply.size() < 65536 && GetTickCount() - started < 1400) {
         const int read = recv(socket, buffer.data(), static_cast<int>(buffer.size()), 0);
         if (read == 0) break;
         if (read == SOCKET_ERROR) {
+            if (WSAGetLastError() == WSAETIMEDOUT) continue;
             error = L"共享服务响应超时或读取失败。";
             return false;
         }
         reply.append(buffer.data(), static_cast<size_t>(read));
         const bool completeV2 = (reply.rfind("SERIALCTL/2 OK ", 0) == 0 ||
             reply.rfind("SERIALCTL/2 ERR ", 0) == 0) && reply.find('\n') != std::string::npos;
-        if (reply.find("\n.\n") != std::string::npos || completeV2 ||
+        if ((!includeMetadata && reply.find("\n.\n") != std::string::npos) || completeV2 ||
             reply.find("SERIALCTL/1 OK\n") == 0 || reply.find("SERIALCTL/1 ERR ") == 0) break;
     }
     return true;
@@ -81,8 +83,9 @@ bool SharedSerialConnection::Discover(
     const std::wstring& host,
     std::uint16_t port,
     std::vector<std::wstring>& serialNames,
-    std::wstring& error) {
+    std::wstring& error, std::vector<std::wstring>* descriptions) {
     serialNames.clear();
+    if (descriptions) descriptions->clear();
     SOCKET connected = ConnectTcpSocket(host, port, error, nullptr, 500);
     if (connected == INVALID_SOCKET) return false;
     if (!SendAll(connected, "SERIALCTL/1 LIST\n")) {
@@ -91,11 +94,11 @@ bool SharedSerialConnection::Discover(
         return false;
     }
     std::string reply;
-    const bool received = ReceiveControlReply(connected, reply, error);
+    const bool received = ReceiveControlReply(connected, reply, error, descriptions != nullptr);
     closesocket(connected);
     if (!received) return false;
     const std::string header = "SERIALCTL/1 PORTS\n";
-    if (reply.compare(0, header.size(), header) != 0) {
+    if (reply.compare(0, header.size(), header) != 0 || reply.find("\n.\n") == std::string::npos) {
         error = L"对端不是可发现串口的 SerialCtl 共享服务。";
         return false;
     }
@@ -109,6 +112,26 @@ bool SharedSerialConnection::Discover(
             serialNames.push_back(MultiByteToWide(data, line.size(), CP_UTF8));
         }
     }
+    if (descriptions) {
+        *descriptions = serialNames;
+        const auto start = reply.find("\n.\nSERIALCTL_INFO\t3\n");
+        if (start != std::string::npos) {
+            std::istringstream metadata(reply.substr(start + std::string("\n.\nSERIALCTL_INFO\t3\n").size()));
+            while (std::getline(metadata, line)) {
+                std::vector<std::string> fields; std::istringstream record(line); std::string field;
+                while (std::getline(record, field, '\t')) fields.push_back(field);
+                if (fields.size() != 8 || fields[7] != "open") continue;
+                const auto name = MultiByteToWide(reinterpret_cast<const std::uint8_t*>(fields[0].data()), fields[0].size(), CP_UTF8);
+                auto found = std::find(serialNames.begin(), serialNames.end(), name);
+                if (found == serialNames.end()) continue;
+                const auto numeric = [](const std::string& value) { return !value.empty() && value.size() <= 10 && std::all_of(value.begin(), value.end(), [](char c) { return c >= '0' && c <= '9'; }); };
+                if (!numeric(fields[1]) || !numeric(fields[6])) continue;
+                (*descriptions)[static_cast<size_t>(found - serialNames.begin())] = name + L" · " +
+                    MultiByteToWide(reinterpret_cast<const std::uint8_t*>(fields[1].data()), fields[1].size(), CP_UTF8) + L" · " +
+                    MultiByteToWide(reinterpret_cast<const std::uint8_t*>(fields[6].data()), fields[6].size(), CP_UTF8) + L" 客户端";
+            }
+        }
+    }
     if (serialNames.empty()) {
         error = L"来源电脑当前没有已打开并共享的串口。";
         return false;
@@ -117,8 +140,11 @@ bool SharedSerialConnection::Discover(
 }
 
 bool SharedSerialConnection::DiscoverAuto(const std::wstring& host, std::uint16_t& port,
-    std::vector<std::wstring>& names, std::wstring& error, const std::atomic_bool* cancel, std::uint16_t explicitPort) {
-    struct Result { bool found = false; std::uint16_t port = 0; std::vector<std::wstring> names; };
+    std::vector<std::wstring>& names, std::wstring& error, const std::atomic_bool* cancel, std::uint16_t explicitPort, std::vector<std::wstring>* descriptions) {
+    names.clear();
+    if (descriptions) descriptions->clear();
+    if (cancel && cancel->load()) { error = L"查询已取消"; return false; }
+    struct Result { bool found = false; std::uint16_t port = 0; std::vector<std::wstring> names; std::vector<std::wstring> descriptions; };
     std::vector<std::future<Result>> queries;
     const unsigned first = explicitPort ? explicitPort : 7000;
     const unsigned last = explicitPort ? explicitPort : 7015;
@@ -128,14 +154,14 @@ bool SharedSerialConnection::DiscoverAuto(const std::wstring& host, std::uint16_
             if (cancel && cancel->load()) return result;
             result.port = static_cast<std::uint16_t>(candidate);
             std::wstring ignored;
-            result.found = Discover(host, result.port, result.names, ignored);
+            result.found = Discover(host, result.port, result.names, ignored, &result.descriptions);
             return result;
         }));
     }
     bool found = false;
     for (auto& query : queries) {
         auto result = query.get();
-        if (!found && result.found) { found = true; port = result.port; names = std::move(result.names); }
+        if (!found && result.found) { found = true; port = result.port; names = std::move(result.names); if (descriptions) *descriptions = std::move(result.descriptions); }
     }
     if (cancel && cancel->load()) { error = L"查询已取消"; return false; }
     if (!found) error = L"未发现已共享的串口，请检查来源程序、IP 和防火墙（7000–7015）。";
@@ -169,6 +195,8 @@ bool SharedSerialConnection::Start(DataCallback onData, StatusCallback onStatus,
         closesocket(connected);
         return false;
     }
+    DWORD sendTimeout = 1000;
+    setsockopt(connected, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&sendTimeout), sizeof(sendTimeout));
     DWORD noTimeout = 200;
     setsockopt(connected, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&noTimeout), sizeof(noTimeout));
     BOOL noDelay = TRUE;

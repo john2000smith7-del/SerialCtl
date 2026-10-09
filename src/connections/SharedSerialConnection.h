@@ -17,11 +17,11 @@ public:
         const std::wstring& host,
         std::uint16_t port,
         std::vector<std::wstring>& serialNames,
-        std::wstring& error);
+        std::wstring& error, std::vector<std::wstring>* descriptions = nullptr);
 
     static bool DiscoverAuto(const std::wstring& host, std::uint16_t& port,
         std::vector<std::wstring>& names, std::wstring& error,
-        const std::atomic_bool* cancel = nullptr, std::uint16_t explicitPort = 0);
+        const std::atomic_bool* cancel = nullptr, std::uint16_t explicitPort = 0, std::vector<std::wstring>* descriptions = nullptr);
     bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) override;
     void CancelStart() override { cancelStarting_ = true; }
     void Stop() override;

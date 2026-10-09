@@ -207,7 +207,7 @@ foreach ($architecture in @('x64')) {
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null
         $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
         [SerialCtlUiSmoke]::Fill($dialog, 1101, 'UI draft command')
-        [SerialCtlUiSmoke]::Fill($dialog, 1300, 'echo ui-draft')
+        [SerialCtlUiSmoke]::Fill($dialog, 1102, 'echo ui-draft')
         [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
         Start-Sleep -Milliseconds 300
         if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before) { throw 'Draft was saved automatically.' }

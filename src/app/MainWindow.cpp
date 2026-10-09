@@ -1648,6 +1648,17 @@ LRESULT CALLBACK MainWindow::OverlayListSubclassProc(HWND window, UINT message, 
 LRESULT CALLBACK MainWindow::SftpListSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     auto* self = reinterpret_cast<MainWindow*>(referenceData);
+    if (message == WM_MOUSEMOVE && window == self->sftpList_ && self->sftpTooltip_) {
+        const DWORD hit = static_cast<DWORD>(SendMessageW(window, LB_ITEMFROMPOINT, 0, lParam));
+        std::wstring text;
+        if (!HIWORD(hit) && LOWORD(hit) < self->sftpEntries_.size()) text = self->sftpEntries_[LOWORD(hit)].name;
+        if (text != self->sftpHoverText_) {
+            self->sftpHoverText_ = std::move(text);
+            TOOLINFOW tool{sizeof(tool)}; tool.hwnd = window; tool.uId = reinterpret_cast<UINT_PTR>(window);
+            tool.lpszText = const_cast<wchar_t*>(self->sftpHoverText_.c_str());
+            SendMessageW(self->sftpTooltip_, TTM_UPDATETIPTEXTW, 0, reinterpret_cast<LPARAM>(&tool));
+        }
+    }
     if (message == WM_DROPFILES && window == self->sftpList_) {
         self->HandleSftpDrop(reinterpret_cast<HDROP>(wParam));
         return 0;
@@ -1952,7 +1963,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (!result->success) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未发现可连接的串口"));
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
-        SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR, result->success ? L"已发现，可选择串口连接" : result->error.c_str());
+        SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR, result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str() : result->error.c_str());
         EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
         InvalidateRect(result->dialog, nullptr, TRUE); return 0;
     }
@@ -2123,6 +2134,15 @@ void MainWindow::CreateControls() {
     SetWindowSubclass(sftpList_, OverlayListSubclassProc, 2, reinterpret_cast<DWORD_PTR>(this));
     SetWindowSubclass(sftpList_, SftpListSubclassProc, 3, reinterpret_cast<DWORD_PTR>(this));
     DragAcceptFiles(sftpList_, TRUE);
+    sftpTooltip_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
+        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        window_, nullptr, instance_, nullptr);
+    if (sftpTooltip_) {
+        TOOLINFOW tool{sizeof(tool)}; tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS; tool.hwnd = sftpList_;
+        tool.uId = reinterpret_cast<UINT_PTR>(sftpList_); tool.lpszText = const_cast<wchar_t*>(L"");
+        SendMessageW(sftpTooltip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
+        SendMessageW(sftpTooltip_, TTM_SETMAXTIPWIDTH, 0, Ui::MaxRightWidth);
+    }
     sftpTransferToggleButton_ = CreateChild(L"BUTTON", L"传输", BS_OWNERDRAW, IdSftpTransferToggle);
     sftpTransferList_ = CreateChild(L"LISTBOX", L"", LBS_OWNERDRAWFIXED |
         LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, IdSftpTransferList);
@@ -2675,8 +2695,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         HBRUSH rowBrush = CreateSolidBrush(selected ? colors.accentSoft : colors.panel);
         FillRect(dc, &row, rowBrush);
         DeleteObject(rowBrush);
-        const int contentWidth = std::max(1,
-            static_cast<int>(row.right - row.left));
+        RECT tableClient{}; GetClientRect(sftpList_, &tableClient);
+        const int contentWidth = std::max(1, static_cast<int>(tableClient.right));
         const bool showModified = contentWidth >= 300;
         int nameWidth, sizeWidth, modifiedWidth;
         SftpColumnWidths(contentWidth, nameWidth, sizeWidth, modifiedWidth);
@@ -2889,6 +2909,23 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = 24;
         return TRUE;
     }
+    if (message == WM_CONTEXTMENU && self->pendingMode_ == 3 && reinterpret_cast<HWND>(wParam) == GetDlgItem(dialog, IDC_SERIAL_REFRESH)) {
+        HMENU menu = CreatePopupMenu();
+        AppendMenuW(menu, MF_STRING, 1, L"高级：指定服务端口…");
+        AppendMenuW(menu, MF_STRING, 2, L"恢复自动发现 7000–7015");
+        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        if (point.x == -1) { RECT rect{}; GetWindowRect(GetDlgItem(dialog, IDC_SERIAL_REFRESH), &rect); point = {rect.left, rect.bottom}; }
+        const UINT choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, dialog, nullptr);
+        DestroyMenu(menu);
+        if (choice == 1) {
+            std::wstring value;
+            if (!self->PromptSftpValue(L"高级共享端口", L"服务端口（通常使用自动发现）", std::to_wstring(self->discoveryExplicitPort_ ? self->discoveryExplicitPort_ : DefaultSharePort), SftpInputPurpose::Port, value, dialog)) return TRUE;
+            self->discoveryExplicitPort_ = static_cast<std::uint16_t>(ParsePositive(value));
+        } else if (choice == 2) self->discoveryExplicitPort_ = 0;
+        else return TRUE;
+        ++self->discoveryGeneration_; self->discoveryCancel_ = true;
+        EnableWindow(GetDlgItem(dialog, IDOK), FALSE); SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return TRUE;
+    }
     if (message == WM_TIMER && wParam == DiscoveryTimerId) {
         KillTimer(dialog, DiscoveryTimerId); self->DiscoverSharedSerialPorts(dialog); return TRUE;
     }
@@ -2930,6 +2967,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     const bool serial = pendingMode_ == 1;
     const bool ssh = pendingMode_ == 0;
     const bool share = pendingMode_ == 3;
+    discoveryExplicitPort_ = 0;
     const int serialSelectorIds[] = {IDC_SERIAL_LABEL, IDC_SERIAL};
     const int serialSettingIds[] = {IDC_BAUD_LABEL, IDC_BAUD, IDC_DATABITS_LABEL, IDC_DATABITS,
         IDC_PARITY_LABEL, IDC_PARITY, IDC_STOPBITS_LABEL, IDC_STOPBITS, IDC_FLOW_LABEL, IDC_FLOW};
@@ -3061,11 +3099,13 @@ void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
     discoveryCancel_ = false;
     discoveryFinished_ = false;
     const unsigned generation = ++discoveryGeneration_;
+    const auto explicitPort = discoveryExplicitPort_;
     EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
     SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"正在自动发现串口…");
-    discoveryThread_ = std::thread([this, host, dialog, generation] {
+    discoveryThread_ = std::thread([this, host, dialog, generation, explicitPort] {
         auto result = std::make_unique<DiscoveryMessage>(); result->dialog = dialog; result->generation = generation;
-        try { result->success = SharedSerialConnection::DiscoverAuto(host, result->port, result->names, result->error, &discoveryCancel_); }
+        try { std::vector<std::wstring> descriptions; result->success = SharedSerialConnection::DiscoverAuto(host, result->port, result->names, result->error, &discoveryCancel_, explicitPort, &descriptions);
+            if (result->success) result->names = std::move(descriptions); }
         catch (...) { result->error = L"串口查询失败"; }
         discoveryFinished_ = true;
         if (PostMessageW(window_, MessageDiscovery, 0, reinterpret_cast<LPARAM>(result.get()))) result.release();
@@ -3103,6 +3143,8 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
     }
     if (pendingMode_ == 3) {
         pendingRemoteSerial_ = text(IDC_SERIAL);
+        const auto description = pendingRemoteSerial_.find(L" · ");
+        if (description != std::wstring::npos) pendingRemoteSerial_.erase(description);
         if (pendingRemoteSerial_.empty() || pendingRemoteSerial_ == L"请先查询远端串口" ||
             pendingRemoteSerial_ == L"未发现可连接的串口" ||
             pendingRemoteSerial_ == L"请先填写正确的 IP 和端口") {
@@ -5078,13 +5120,13 @@ void MainWindow::StartSftpMutation(SftpMutationKind kind,
 }
 
 bool MainWindow::PromptSftpValue(const std::wstring& title, const std::wstring& label,
-    const std::wstring& initialValue, SftpInputPurpose purpose, std::wstring& value) {
+    const std::wstring& initialValue, SftpInputPurpose purpose, std::wstring& value, HWND owner) {
     pendingSftpInputTitle_ = title;
     pendingSftpInputLabel_ = label;
     pendingSftpInputValue_ = initialValue;
     pendingSftpInputError_.clear();
     pendingSftpInputPurpose_ = purpose;
-    if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_SFTP_INPUT), window_,
+    if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_SFTP_INPUT), owner ? owner : window_,
             SftpInputDialogProc, reinterpret_cast<LPARAM>(this)) != IDOK)
         return false;
     value = pendingSftpInputValue_;
@@ -5161,8 +5203,10 @@ void MainWindow::HandleSftpMessage(LPARAM value) {
         }
         const std::wstring pendingDirectory = session->pendingSftpDirectory;
         session->pendingSftpDirectory.clear();
-        if (active && !pendingDirectory.empty() && pendingDirectory != session->sftpDirectory)
+        if (active && session->sftpFollowTerminal && !pendingDirectory.empty() && pendingDirectory != session->sftpDirectory) {
+            session->pendingSftpDirectory = pendingDirectory;
             RefreshSftp(pendingDirectory);
+        }
         else if (learnedHomeDirectory)
             SyncSftpDirectoryFromTerminal(*session);
         if (!active && activeSession_ && selectedMode_ == 0 && !sftpBusy_)
@@ -5200,7 +5244,7 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
         SetDlgItemTextW(dialog, IDC_SFTP_INPUT_ERROR, L"");
         FitDialogLabels(dialog);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_LIMITTEXT,
-            self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4 : self->pendingSftpInputPurpose_ == SftpInputPurpose::Path ? 1024 : 255, 0);
+            self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4 : self->pendingSftpInputPurpose_ == SftpInputPurpose::Port ? 5 : self->pendingSftpInputPurpose_ == SftpInputPurpose::Path ? 1024 : 255, 0);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_SETMARGINS,
             EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
         CenterOnOwner(dialog, self->window_);
@@ -5246,6 +5290,8 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                     std::all_of(value.begin(), value.end(), [](wchar_t character) {
                         return character >= L'0' && character <= L'7';
                     });
+            } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Port) {
+                valid = ParsePositive(value) > 0 && ParsePositive(value) <= 65535;
             } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Path) {
                 valid = !value.empty() && value.find_first_of(L"\r\n\x001A") == std::wstring::npos && (value.front() == L'/' || value == L"~" || value.rfind(L"~/", 0) == 0);
             } else {
@@ -5270,6 +5316,8 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                         return character >= L'0' && character <= L'7';
                     }))
                     error = L"请输入三位或四位八进制权限，例如 644。";
+            } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Port) {
+                if (ParsePositive(value) == 0 || ParsePositive(value) > 65535) error = L"端口必须在 1–65535 之间";
             } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Path) {
                 if (value.empty() || value.find_first_of(L"\r\n\x001A") != std::wstring::npos || !(value.front() == L'/' || value == L"~" || value.rfind(L"~/", 0) == 0)) error = L"请输入绝对路径或 ~/ 路径";
             } else if (value.empty()) {

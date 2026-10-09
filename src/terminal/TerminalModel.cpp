@@ -65,6 +65,7 @@ const TerminalModel::Screen& TerminalModel::ActiveScreen() const {
 }
 
 void TerminalModel::HandleOsc(TerminalFeedResult& result) {
+    if (oscOverflow_) return;
     const size_t separator = oscBuffer_.find(L';');
     if (separator == std::wstring::npos) return;
     const auto kind = oscBuffer_.substr(0, separator);
@@ -110,7 +111,7 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
                 csiBuffer_.clear();
                 parserState_ = ParserState::Csi;
             } else if (character == 0x9d) {
-                oscBuffer_.clear();
+                oscBuffer_.clear(); oscOverflow_ = false;
                 parserState_ = ParserState::Osc;
             } else if (character == 0x90 || character == 0x98 ||
                 character == 0x9e || character == 0x9f) {
@@ -129,7 +130,7 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
                 csiBuffer_.clear();
                 parserState_ = ParserState::Csi;
             } else if (character == L']') {
-                oscBuffer_.clear();
+                oscBuffer_.clear(); oscOverflow_ = false;
                 parserState_ = ParserState::Osc;
             } else if (character == L'P' || character == L'X' ||
                 character == L'^' || character == L'_') {
@@ -162,18 +163,18 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
         case ParserState::Osc:
             if (character == L'\a' || character == 0x9c) {
                 HandleOsc(result);
-                oscBuffer_.clear();
+                oscBuffer_.clear(); oscOverflow_ = false;
                 parserState_ = ParserState::Ground;
             } else if (character == 0x1b) {
                 parserState_ = ParserState::OscEscape;
             } else if (oscBuffer_.size() < 1024) {
                 oscBuffer_ += character;
-            }
+            } else { oscOverflow_ = true; }
             break;
         case ParserState::OscEscape:
             if (character == L'\\') {
                 HandleOsc(result);
-                oscBuffer_.clear();
+                oscBuffer_.clear(); oscOverflow_ = false;
                 parserState_ = ParserState::Ground;
             } else {
                 parserState_ = ParserState::Osc;
@@ -695,7 +696,7 @@ void TerminalModel::Reset() {
     savedAttributes_ = {};
     parserState_ = ParserState::Ground;
     csiBuffer_.clear();
-    oscBuffer_.clear();
+    oscBuffer_.clear(); oscOverflow_ = false;
     logAtLineStart_ = true;
 }
 

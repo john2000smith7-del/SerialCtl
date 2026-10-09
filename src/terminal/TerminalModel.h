@@ -158,6 +158,7 @@ private:
     ParserState parserState_ = ParserState::Ground;
     std::wstring csiBuffer_;
     std::wstring oscBuffer_;
+    bool oscOverflow_ = false;
     bool logAtLineStart_ = true;
 };
 
