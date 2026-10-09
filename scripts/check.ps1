@@ -1,6 +1,6 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [ValidateSet('x86', 'x64', 'All')]
+    [ValidateSet('x64', 'All')]
     [string]$Architecture = 'All',
 
     [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]
@@ -164,6 +164,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'terminal_model_test.exe' = @('KERNEL32.dll')
         'terminal_decoder_test.exe' = @('KERNEL32.dll')
         'putty_host_key_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll')
+        'multi_serial_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'sftp_model_test.exe' = @('KERNEL32.dll')
     }

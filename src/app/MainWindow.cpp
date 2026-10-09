@@ -38,6 +38,8 @@ constexpr UINT MessageSftp = WM_APP + 3;
 constexpr UINT MessageSftpProgress = WM_APP + 4;
 constexpr UINT MessageConnection = WM_APP + 5;
 constexpr UINT MessageHostKey = WM_APP + 6;
+constexpr UINT MessageDiscovery = WM_APP + 7;
+constexpr UINT_PTR DiscoveryTimerId = 4003;
 constexpr UINT_PTR StatusTimerId = 4001;
 constexpr UINT_PTR CommandTimerId = 4002;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
@@ -76,7 +78,8 @@ enum ControlId {
     IdSftpModifiedHeader,
     IdSftpTransferToggle,
     IdSftpTransferList,
-    IdSftpClearTransfers
+    IdSftpClearTransfers,
+    IdSaveCommands
 };
 
 enum TerminalMenuId {
@@ -86,6 +89,7 @@ enum TerminalMenuId {
     IdMenuClear,
     IdMenuCopy,
     IdMenuSelectAll,
+    IdMenuPaste,
     IdMenuEncodingUtf8 = 2201,
     IdMenuEncodingGbk,
     IdMenuEncodingGb2312
@@ -107,7 +111,11 @@ enum SftpMenuId {
     IdMenuSftpRefresh,
     IdMenuSftpCopyPath,
     IdMenuSftpEnterDirectory,
-    IdMenuSftpChangeMode
+    IdMenuSftpChangeMode,
+    IdMenuSftpPath,
+    IdMenuSftpFollow,
+    IdMenuSftpPwd,
+    IdMenuSftpHook
 };
 
 enum SftpTransferMenuId {
@@ -130,12 +138,8 @@ constexpr int StandardHeight = 36;
 constexpr int CompactHeight = 32;
 constexpr int SegmentHeight = 32;
 constexpr int SegmentWidth = 70;
-constexpr int InputHeight = 42;
-constexpr int ComposerRadius = 16;
-constexpr int SendDiameter = 36;
 constexpr int PanelPadding = 16;
 constexpr int IconButtonSize = 28;
-constexpr int BottomHeight = 72;
 constexpr int MinLeftWidth = 196;
 constexpr int MaxLeftWidth = 260;
 constexpr int MinRightWidth = 260;
@@ -170,7 +174,7 @@ MainLayoutMetrics GetMainLayoutMetrics(
         std::max(Ui::MinRightWidth, std::min({Ui::MaxRightWidth,
             availableRight, preferredRightWidth}));
     return {leftWidth, rightWidth, width - rightWidth, leftWidth + Ui::Gap,
-        width - rightWidth - Ui::Gap, height - Ui::BottomHeight};
+        width - rightWidth - Ui::Gap, height - Ui::Gap};
 }
 
 struct CommandActionRects {
@@ -190,6 +194,8 @@ CommandActionRects GetCommandActionRects(const RECT& card) {
 bool PointInRect(const RECT& rect, POINT point) {
     return point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom;
 }
+
+struct DiscoveryMessage { HWND dialog; unsigned generation; std::uint16_t port = 0; std::vector<std::wstring> names; std::wstring error; bool success = false; };
 
 struct ConnectionMessage {
     bool success = false;
@@ -1060,16 +1066,6 @@ LRESULT CALLBACK MainWindow::WindowProc(HWND window, UINT message, WPARAM wParam
     return self ? self->HandleMessage(message, wParam, lParam) : DefWindowProcW(window, message, wParam, lParam);
 }
 
-LRESULT CALLBACK MainWindow::InputSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
-    UINT_PTR subclassId, DWORD_PTR referenceData) {
-    if (message == WM_KEYDOWN && wParam == VK_RETURN) {
-        reinterpret_cast<MainWindow*>(referenceData)->SendInput();
-        return 0;
-    }
-    if (message == WM_NCDESTROY) RemoveWindowSubclass(window, InputSubclassProc, subclassId);
-    return DefSubclassProc(window, message, wParam, lParam);
-}
-
 LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     auto* self = reinterpret_cast<MainWindow*>(referenceData);
@@ -1676,6 +1672,7 @@ LRESULT CALLBACK MainWindow::SftpListSubclassProc(HWND window, UINT message, WPA
         else if (window == self->sftpTransferList_) self->ShowSftpTransferContextMenu(point);
         return 0;
     }
+    if (message == WM_KEYDOWN && wParam == 'L' && (GetKeyState(VK_CONTROL) & 0x8000)) { self->EditSftpPath(); return 0; }
     if (message == WM_KEYDOWN && wParam == VK_DELETE && window == self->sftpList_) {
         self->DeleteSelectedSftpEntries();
         return 0;
@@ -1688,6 +1685,8 @@ LRESULT CALLBACK MainWindow::SftpListSubclassProc(HWND window, UINT message, WPA
 LRESULT CALLBACK MainWindow::SftpPathSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     auto* self = reinterpret_cast<MainWindow*>(referenceData);
+    if (message == WM_LBUTTONDBLCLK) { self->EditSftpPath(); return 0; }
+    if (message == WM_CONTEXTMENU) { self->ShowSftpContextMenu({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}); return 0; }
     if (message == WM_LBUTTONUP) {
         self->NavigateSftpBreadcrumb({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
         return 0;
@@ -1865,8 +1864,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             }
             else if (id == IdTheme) { darkMode_ = !darkMode_; ApplyTheme(); }
             else if (id == IdDisconnect) Disconnect();
-            else if (id == IdSend) SendInput();
-            else if (id == IdLineEnding) ShowLineEndingMenu();
+            else if (id == IdSaveCommands) SaveCommands();
             else if (id == IdImport) ImportCommands();
             else if (id == IdExport) ExportCommands();
             else if (id == IdAddCommand) AddCommand();
@@ -1945,6 +1943,19 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         return 0;
     }
+    case MessageDiscovery: {
+        std::unique_ptr<DiscoveryMessage> result(reinterpret_cast<DiscoveryMessage*>(lParam));
+        if (result->dialog != discoveryDialog_ || result->generation != discoveryGeneration_ || !IsWindow(result->dialog)) return 0;
+        HWND ports = GetDlgItem(result->dialog, IDC_SERIAL);
+        SendMessageW(ports, CB_RESETCONTENT, 0, 0);
+        for (const auto& name : result->names) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
+        if (!result->success) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未发现可连接的串口"));
+        SendMessageW(ports, CB_SETCURSEL, 0, 0);
+        if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
+        SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR, result->success ? L"已发现，可选择串口连接" : result->error.c_str());
+        EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
+        InvalidateRect(result->dialog, nullptr, TRUE); return 0;
+    }
     case MessageConnection: {
         std::unique_ptr<ConnectionMessage> result(reinterpret_cast<ConnectionMessage*>(lParam));
         if (result) CompleteConnection(result->success, result->error);
@@ -1984,20 +1995,6 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             SetBkColor(dc, colors.terminal);
             return reinterpret_cast<LRESULT>(terminalBrush_);
         }
-        if (control == input_) {
-            SetBkColor(dc, colors.panel);
-            return reinterpret_cast<LRESULT>(panelBrush_);
-        }
-        if (control == connectionList_ || control == commandList_ || control == sftpList_ ||
-            control == sftpTransferList_) {
-            SetBkColor(dc, colors.panel);
-            return reinterpret_cast<LRESULT>(panelBrush_);
-        }
-        if (control == status_) {
-            SetTextColor(dc, statusIsError_ ? colors.danger : colors.muted);
-            SetBkColor(dc, colors.panel);
-            return reinterpret_cast<LRESULT>(panelBrush_);
-        }
         if (control == connectionHeader_ || control == sftpPath_) {
             SetBkColor(dc, colors.panel);
             return reinterpret_cast<LRESULT>(panelBrush_);
@@ -2006,6 +2003,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return reinterpret_cast<LRESULT>(panelBrush_);
     }
     case WM_CLOSE:
+        if (commandsDirty_) {
+            const int choice = MessageBoxW(window_, L"命令或顺序尚未保存。是否保存后退出？", L"保存命令", MB_YESNOCANCEL | MB_ICONQUESTION);
+            if (choice == IDCANCEL || (choice == IDYES && !SaveCommands())) return 0;
+        }
+        discoveryCancel_ = true;
+        if (discoveryThread_.joinable()) discoveryThread_.join();
         closing_ = true;
         connectionCancel_.store(true);
         if (pendingSession_) pendingSession_->connection->CancelStart();
@@ -2020,12 +2023,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             logger_ = activeSession_->logger.get();
             Disconnect();
         }
-        SaveCommands();
         SaveUiState();
         if (sftpThread_.joinable()) sftpThread_.join();
         if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
         {
             MSG pending{};
+            while (PeekMessageW(&pending, window_, MessageDiscovery, MessageDiscovery, PM_REMOVE)) delete reinterpret_cast<DiscoveryMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageConnection, MessageConnection, PM_REMOVE))
                 delete reinterpret_cast<ConnectionMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageHostKey, MessageHostKey, PM_REMOVE))
@@ -2092,12 +2095,6 @@ void MainWindow::CreateControls() {
     SendMessageW(terminal_, WM_SETFONT, reinterpret_cast<WPARAM>(terminalFont_), TRUE);
     SetWindowSubclass(terminal_, TerminalSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 
-    input_ = CreateChild(L"EDIT", L"", ES_AUTOHSCROLL, IdInput);
-    SendMessageW(input_, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"输入命令，按 Enter 发送"));
-    SendMessageW(input_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(10, 10));
-    SetWindowSubclass(input_, InputSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
-    sendButton_ = CreateChild(L"BUTTON", L"发送", BS_OWNERDRAW, IdSend);
-    lineEnding_ = CreateChild(L"BUTTON", L"CR", BS_OWNERDRAW, IdLineEnding);
     status_ = CreateChild(L"STATIC", L"", SS_LEFT | SS_ENDELLIPSIS, IdStatus);
     SendMessageW(status_, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), TRUE);
     ShowWindow(status_, SW_HIDE);
@@ -2109,6 +2106,7 @@ void MainWindow::CreateControls() {
     commandList_ = CreateChild(L"LISTBOX", L"", LBS_OWNERDRAWFIXED | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, IdCommandList);
     SetWindowSubclass(commandList_, CommandListSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
     SetWindowSubclass(commandList_, OverlayListSubclassProc, 2, reinterpret_cast<DWORD_PTR>(this));
+    saveCommandsButton_ = CreateChild(L"BUTTON", L"保存", BS_OWNERDRAW, IdSaveCommands);
     importButton_ = CreateChild(L"BUTTON", L"导入", BS_OWNERDRAW, IdImport);
     exportButton_ = CreateChild(L"BUTTON", L"导出", BS_OWNERDRAW, IdExport);
     addCommandButton_ = CreateChild(L"BUTTON", L"添加命令", BS_OWNERDRAW, IdAddCommand);
@@ -2119,6 +2117,7 @@ void MainWindow::CreateControls() {
     sftpNameHeader_ = CreateChild(L"BUTTON", L"名称", BS_OWNERDRAW, IdSftpNameHeader);
     sftpSizeHeader_ = CreateChild(L"BUTTON", L"大小", BS_OWNERDRAW, IdSftpSizeHeader);
     sftpModifiedHeader_ = CreateChild(L"BUTTON", L"修改时间", BS_OWNERDRAW, IdSftpModifiedHeader);
+    for (HWND header : {sftpNameHeader_, sftpSizeHeader_}) SetWindowSubclass(header, SftpHeaderSubclassProc, 4, reinterpret_cast<DWORD_PTR>(this));
     sftpList_ = CreateChild(L"LISTBOX", L"", LBS_OWNERDRAWFIXED | LBS_NOINTEGRALHEIGHT |
         LBS_NOTIFY | LBS_EXTENDEDSEL, IdSftpList);
     SetWindowSubclass(sftpList_, OverlayListSubclassProc, 2, reinterpret_cast<DWORD_PTR>(this));
@@ -2203,19 +2202,19 @@ void MainWindow::LayoutControls(int width, int height) {
     const int listBottom = footerTop - Ui::Gap;
     MoveWindow(commandList_, rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
         std::max(20, listBottom - rightListTop), TRUE);
-    const int commandWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 2) / 3;
-    MoveWindow(importButton_, rightInnerLeft, footerTop, commandWidth, Ui::CompactHeight, TRUE);
-    MoveWindow(exportButton_, rightInnerLeft + commandWidth + Ui::Space, footerTop, commandWidth, Ui::CompactHeight, TRUE);
-    MoveWindow(deleteCommandButton_, rightInnerLeft + (commandWidth + Ui::Space) * 2, footerTop,
-        rightInnerRight - (rightInnerLeft + (commandWidth + Ui::Space) * 2), Ui::CompactHeight, TRUE);
+    const int commandWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 3) / 4;
+    int commandX = rightInnerLeft;
+    for (HWND button : {importButton_, exportButton_, deleteCommandButton_, saveCommandsButton_}) {
+        MoveWindow(button, commandX, footerTop, commandWidth, Ui::CompactHeight, TRUE);
+        commandX += commandWidth + Ui::Space;
+    }
     const int sftpContentWidth = std::max(1, rightInnerRight - rightInnerLeft);
     MoveWindow(sftpPath_, rightInnerLeft, rightListTop,
         sftpContentWidth, Ui::CompactHeight, TRUE);
     const int sftpHeaderTop = rightListTop + Ui::CompactHeight + Ui::Space;
     const bool showModifiedColumn = sftpContentWidth >= 300;
-    const int modifiedWidth = showModifiedColumn ? 104 : 0;
-    const int sizeWidth = sftpContentWidth >= 260 ? 72 : 60;
-    const int nameWidth = std::max(80, sftpContentWidth - sizeWidth - modifiedWidth);
+    int nameWidth, sizeWidth, modifiedWidth;
+    SftpColumnWidths(sftpContentWidth, nameWidth, sizeWidth, modifiedWidth);
     MoveWindow(sftpNameHeader_, rightInnerLeft, sftpHeaderTop,
         nameWidth, Ui::CompactHeight, TRUE);
     MoveWindow(sftpSizeHeader_, rightInnerLeft + nameWidth, sftpHeaderTop,
@@ -2248,21 +2247,12 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(sftpDownloadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 3, footerTop,
         rightInnerRight - (rightInnerLeft + (sftpWidth + Ui::Space) * 3), Ui::CompactHeight, TRUE);
 
-    const int composerLeft = layout.centerLeft;
-    const int composerRight = layout.centerRight;
-    const int composerTop = centerCardBottom + Ui::Gap;
-    const int sendLeft = composerRight - Ui::SendDiameter - 6;
-    const int lineEndingLeft = sendLeft - 68;
-    MoveWindow(input_, composerLeft + 14, composerTop + 7,
-        std::max(40, lineEndingLeft - composerLeft - 22), 34, TRUE);
-    MoveWindow(lineEnding_, lineEndingLeft, composerTop + 7, 60, 34, TRUE);
-    MoveWindow(sendButton_, sendLeft, composerTop + 6, Ui::SendDiameter, Ui::SendDiameter, TRUE);
     MoveWindow(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - 20,
         leftInnerRight - leftInnerLeft, 20, TRUE);
     ShowWindow(rightPanelToggleButton_, SW_SHOW);
     if (rightPanelCollapsed_) {
         for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
-                 addCommandButton_, deleteCommandButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
+                 addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
                  sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,
                  sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_, sftpUploadButton_,
                  sftpDownloadButton_})
@@ -2302,10 +2292,6 @@ void MainWindow::PaintWindow(HDC dc) {
             Ui::ToolbarHeight + Ui::Gap + Ui::PanelPadding + Ui::StandardHeight};
         DrawRoundedBox(dc, segmentFrame, Ui::Radius, colors.panelAlt, colors.border);
     }
-    RECT inputFrame{layout.centerLeft, layout.contentBottom + Ui::Gap,
-        layout.centerRight, client.bottom - Ui::Gap};
-    DrawRoundedBox(dc, inputFrame, Ui::ComposerRadius, colors.panel, colors.border);
-
     HPEN pen = CreatePen(PS_SOLID, 1, colors.border);
     HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
     MoveToEx(dc, 0, Ui::ToolbarHeight, nullptr); LineTo(dc, client.right, Ui::ToolbarHeight);
@@ -2462,7 +2448,6 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         const bool hovered = GetPropW(item.hwndItem, Ui::HoverProperty) != nullptr;
         const bool focused = (item.itemState & ODS_FOCUS) != 0;
         COLORREF outside = colors.panel;
-        if (id == IdLineEnding || id == IdSend) outside = colors.panel;
         if (id == IdCommandTab || id == IdSftpTab) outside = colors.panelAlt;
         if (id >= IdSsh && id <= IdShareSerial) outside = colors.panelAlt;
         HBRUSH outsideBrush = CreateSolidBrush(outside);
@@ -2558,38 +2543,6 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
                 DeleteObject(erase);
                 DrawChevronHorizontal(dc, arrow, colors.muted, true);
             }
-            return;
-        }
-        if (id == IdSend) {
-            const COLORREF fill = enabled ? (pressed ? RGB(0, 94, 204) :
-                (hovered ? RGB(38, 147, 255) : colors.accent)) : colors.panelAlt;
-            HBRUSH brush = CreateSolidBrush(fill);
-            HPEN borderPen = CreatePen(PS_SOLID, 1, fill);
-            HBRUSH oldBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, brush));
-            HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, borderPen));
-            Ellipse(dc, rect.left, rect.top, rect.right, rect.bottom);
-            SelectObject(dc, oldBrush); SelectObject(dc, oldPen);
-            DeleteObject(brush); DeleteObject(borderPen);
-
-            const COLORREF arrowColor = enabled ? RGB(255, 255, 255) : colors.muted;
-            HPEN arrowPen = CreatePen(PS_SOLID, 2, arrowColor);
-            oldPen = reinterpret_cast<HPEN>(SelectObject(dc, arrowPen));
-            const int cx = (rect.left + rect.right) / 2;
-            const int cy = (rect.top + rect.bottom) / 2;
-            MoveToEx(dc, cx, cy + 7, nullptr); LineTo(dc, cx, cy - 7);
-            MoveToEx(dc, cx - 5, cy - 2, nullptr); LineTo(dc, cx, cy - 7);
-            LineTo(dc, cx + 5, cy - 2);
-            SelectObject(dc, oldPen);
-            DeleteObject(arrowPen);
-            return;
-        }
-        if (id == IdLineEnding) {
-            DrawRoundedBox(dc, rect, Ui::Radius, hovered ? colors.panelAlt : colors.panel,
-                focused ? colors.accent : colors.border);
-            RECT textRect = rect; textRect.left += 13; textRect.right -= 22;
-            DrawTextSimple(dc, ControlText(item.hwndItem), textRect, colors.text, uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-            RECT arrow = rect; arrow.left = arrow.right - 22;
-            DrawChevronDown(dc, arrow, colors.muted);
             return;
         }
         if (id == IdAddCommand || id == IDC_COMMAND_ADD_STEP) {
@@ -2725,9 +2678,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         const int contentWidth = std::max(1,
             static_cast<int>(row.right - row.left));
         const bool showModified = contentWidth >= 300;
-        const int modifiedWidth = showModified ? 104 : 0;
-        const int sizeWidth = contentWidth >= 260 ? 72 : 60;
-        const int nameWidth = std::max(80, contentWidth - sizeWidth - modifiedWidth);
+        int nameWidth, sizeWidth, modifiedWidth;
+        SftpColumnWidths(contentWidth, nameWidth, sizeWidth, modifiedWidth);
         RECT icon{row.left + Ui::Space, row.top, row.left + 32, row.bottom};
         DrawSftpEntryIcon(dc, icon, entry.directory ? colors.accent : colors.muted,
             entry.directory, entry.symlink);
@@ -2838,12 +2790,11 @@ void MainWindow::ApplyTheme() {
     SendMessageW(window_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(largeIcon));
     SendMessageW(window_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallIcon));
     SetWindowTextW(themeButton_, darkMode_ ? L"浅色" : L"深色");
-    for (HWND control : {window_, connectionHeader_, connectionList_, terminal_, input_,
-             lineEnding_, status_, commandList_, sftpPath_, sftpList_, sftpTransferList_}) {
+    for (HWND control : {window_, connectionHeader_, connectionList_, terminal_, status_, commandList_, sftpPath_, sftpList_, sftpTransferList_}) {
         InvalidateRect(control, nullptr, TRUE);
     }
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
-    for (HWND button : {themeButton_, disconnectButton_, sendButton_, commandHeader_, sftpTabButton_,
+    for (HWND button : {themeButton_, disconnectButton_, saveCommandsButton_, commandHeader_, sftpTabButton_,
              rightPanelToggleButton_, importButton_, exportButton_, addCommandButton_, deleteCommandButton_,
              sftpNameHeader_, sftpSizeHeader_, sftpModifiedHeader_, sftpTransferToggleButton_,
              sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_, sftpUploadButton_,
@@ -2862,6 +2813,9 @@ void MainWindow::OpenConnectionDialog(int mode) {
             reinterpret_cast<LPARAM>(this)) == IDOK) {
         ConnectFromDialog();
     }
+    discoveryCancel_ = true;
+    if (discoveryThread_.joinable()) discoveryThread_.join();
+    discoveryDialog_ = nullptr;
     RedrawWindow(window_, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
@@ -2935,7 +2889,16 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = 24;
         return TRUE;
     }
+    if (message == WM_TIMER && wParam == DiscoveryTimerId) {
+        KillTimer(dialog, DiscoveryTimerId); self->DiscoverSharedSerialPorts(dialog); return TRUE;
+    }
+    if (message == WM_CLOSE) { EndDialog(dialog, IDCANCEL); return TRUE; }
     if (message == WM_COMMAND) {
+        if (self->pendingMode_ == 3 && LOWORD(wParam) == IDC_HOST && HIWORD(wParam) == EN_CHANGE) {
+            ++self->discoveryGeneration_; self->discoveryCancel_ = true;
+            EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
+            SetTimer(dialog, DiscoveryTimerId, 500, nullptr); return TRUE;
+        }
         if (LOWORD(wParam) == IDC_SERIAL_REFRESH && HIWORD(wParam) == BN_CLICKED) {
             if (self->pendingMode_ == 3)
                 self->DiscoverSharedSerialPorts(dialog);
@@ -2980,6 +2943,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     ShowDialogItem(dialog, IDC_SHARE_PORT, false);
     ShowDialogItem(dialog, IDC_SERIAL_REFRESH, serial || share);
     ShowDialogItem(dialog, IDC_DIALOG_NOTE, false);
+    if (share) { ShowDialogItem(dialog, IDC_PORT_LABEL, false); ShowDialogItem(dialog, IDC_PORT, false); }
 
     constexpr int dialogWidth = 238;
     constexpr int margin = 12;
@@ -3011,6 +2975,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
             MoveDialogItemDlu(dialog, IDC_PASSWORD_LABEL, rightColumn, 44, columnWidth, 10);
             MoveDialogItemDlu(dialog, IDC_PASSWORD, rightColumn, 56, columnWidth, 14);
         } else if (share) {
+            MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, fullWidth, 14);
             SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"远端串口");
             MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 44, columnWidth, 10);
             MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 56, 174, 154);
@@ -3055,6 +3020,8 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"请先查询远端串口"));
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
+        discoveryDialog_ = dialog;
+        SetTimer(dialog, DiscoveryTimerId, 500, nullptr);
     }
     AddComboItems(GetDlgItem(dialog, IDC_BAUD), {L"9600", L"38400", L"57600", L"115200", L"230400", L"460800", L"921600", L"1500000"}, 3);
     AddComboItems(GetDlgItem(dialog, IDC_DATABITS), {L"5", L"6", L"7", L"8"}, 3);
@@ -3086,36 +3053,23 @@ void MainWindow::RefreshSerialPorts(HWND dialog) {
 }
 
 void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
+    if (!discoveryFinished_) { SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return; }
+    if (discoveryThread_.joinable()) discoveryThread_.join();
     const std::wstring host = Trim(ControlText(GetDlgItem(dialog, IDC_HOST)));
-    const DWORD parsedPort = ParsePositive(Trim(ControlText(GetDlgItem(dialog, IDC_PORT))));
-    HWND ports = GetDlgItem(dialog, IDC_SERIAL);
-    SendMessageW(ports, CB_RESETCONTENT, 0, 0);
+    if (host.empty()) return;
+    discoveryDialog_ = dialog;
+    discoveryCancel_ = false;
+    discoveryFinished_ = false;
+    const unsigned generation = ++discoveryGeneration_;
     EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
-    if (host.empty() || parsedPort == 0 || parsedPort > 65535) {
-        SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"请先填写正确的 IP 和端口"));
-        SendMessageW(ports, CB_SETCURSEL, 0, 0);
-        SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"来源电脑 IP 或端口无效。");
-        InvalidateRect(ports, nullptr, TRUE);
-        return;
-    }
-
-    std::vector<std::wstring> serialNames;
-    std::wstring error;
-    if (!SharedSerialConnection::Discover(host, static_cast<std::uint16_t>(parsedPort), serialNames, error)) {
-        SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未发现可连接的串口"));
-        SendMessageW(ports, CB_SETCURSEL, 0, 0);
-        SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, error.c_str());
-        InvalidateRect(ports, nullptr, TRUE);
-        InvalidateRect(GetDlgItem(dialog, IDC_DIALOG_ERROR), nullptr, TRUE);
-        return;
-    }
-    for (const auto& name : serialNames)
-        SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
-    SendMessageW(ports, CB_SETCURSEL, 0, 0);
-    SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"");
-    EnableWindow(GetDlgItem(dialog, IDOK), TRUE);
-    InvalidateRect(ports, nullptr, TRUE);
-    InvalidateRect(GetDlgItem(dialog, IDC_DIALOG_ERROR), nullptr, TRUE);
+    SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"正在自动发现串口…");
+    discoveryThread_ = std::thread([this, host, dialog, generation] {
+        auto result = std::make_unique<DiscoveryMessage>(); result->dialog = dialog; result->generation = generation;
+        try { result->success = SharedSerialConnection::DiscoverAuto(host, result->port, result->names, result->error, &discoveryCancel_); }
+        catch (...) { result->error = L"串口查询失败"; }
+        discoveryFinished_ = true;
+        if (PostMessageW(window_, MessageDiscovery, 0, reinterpret_cast<LPARAM>(result.get()))) result.release();
+    });
 }
 
 bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
@@ -3325,8 +3279,7 @@ void MainWindow::SwitchSession(size_t index) {
     selectedMode_ = activeSession_->mode;
     selectedCodePage_ = activeSession_->codePage;
     lineEndingIndex_ = activeSession_->lineEndingIndex;
-    static const wchar_t* endingLabels[] = {L"CR", L"LF", L"CRLF", L"无"};
-    SetWindowTextW(lineEnding_, endingLabels[lineEndingIndex_]);
+
     pendingHost_ = activeSession_->host;
     pendingUsername_ = activeSession_->username;
     pendingPassword_ = activeSession_->password;
@@ -3348,18 +3301,6 @@ void MainWindow::SwitchSession(size_t index) {
     RefreshConnectionList();
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
     SetFocus(terminal_);
-}
-
-void MainWindow::SendInput() {
-    if (runningCommandIndex_ >= 0) {
-        AppendStatus(L"宏执行期间无法手动发送指令。", true);
-        return;
-    }
-    if (!connection_ || !connection_->IsConnected()) { AppendStatus(L"请先建立连接。", true); return; }
-    const std::wstring text = ControlText(input_) + SelectedLineEnding();
-    const std::string encoded = WideToMultiByte(text, SelectedCodePage());
-    Bytes data(encoded.begin(), encoded.end());
-    if (SendBytesToActive(data, localEchoEnabled_, text)) SetWindowTextW(input_, L"");
 }
 
 bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText) {
@@ -3538,6 +3479,7 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes& data) {
         session->connection->Send(Bytes(result.response.begin(), result.response.end()), ignored);
     }
     if (result.titleChanged) session->terminalTitle = result.title;
+    if (!result.workingDirectory.empty()) { session->terminalDirectory = result.workingDirectory; session->terminalDirectoryFromOsc = true; }
     SyncSftpDirectoryFromTerminal(*session);
     if (session == activeSession_) {
         if (wasAlternateScreen != session->terminal.AlternateScreen())
@@ -3590,7 +3532,14 @@ std::wstring MainWindow::DecodeTerminalData(SessionState& session, const Bytes& 
 }
 
 void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
-    if (session.mode != 0 || session.username.empty()) return;
+    if (session.mode != 0 || session.username.empty() || !session.sftpFollowTerminal) return;
+    if (!session.terminalDirectory.empty()) {
+        if (session.terminalDirectory != session.sftpDirectory && session.terminalDirectory != session.pendingSftpDirectory) {
+            session.pendingSftpDirectory = session.terminalDirectory;
+            if (&session == activeSession_ && !sftpBusy_) RefreshSftp(session.terminalDirectory);
+        }
+        if (session.terminalDirectoryFromOsc) return;
+    }
     std::wstring line = Trim(session.terminal.CurrentLineText());
     if (line.empty()) return;
 
@@ -3620,6 +3569,7 @@ void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
         directory == session.pendingSftpDirectory) return;
 
     session.pendingSftpDirectory = directory;
+    session.terminalDirectory = directory;
     if (&session == activeSession_ && !sftpBusy_) RefreshSftp(directory);
 }
 
@@ -3673,6 +3623,7 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     static const wchar_t saveLabel[] = L"保存当前日志…";
     static const wchar_t clearLabel[] = L"清空终端";
     static const wchar_t copyLabel[] = L"复制";
+    static const wchar_t pasteLabel[] = L"粘贴";
     static const wchar_t selectAllLabel[] = L"全选";
     static const wchar_t encodingUtf8Label[] = L"编码 · UTF-8";
     static const wchar_t encodingGbkLabel[] = L"编码 · GBK";
@@ -3688,7 +3639,12 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
     AppendMenuW(menu, MF_OWNERDRAW | (!activeSession_ ? MF_GRAYED : 0), IdMenuClear, clearLabel);
     AppendMenuW(menu, MF_OWNERDRAW | (!HasTerminalSelection() ? MF_GRAYED : 0), IdMenuCopy, copyLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (!connection_ || !connection_->IsConnected() || runningCommandIndex_ >= 0 || !IsClipboardFormatAvailable(CF_UNICODETEXT) ? MF_GRAYED : 0), IdMenuPaste, pasteLabel);
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuSelectAll, selectAllLabel);
+    AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
+    static const wchar_t* endings[] = {L"Enter · CR", L"Enter · LF", L"Enter · CRLF", L"Enter · 不追加换行"};
+    for (UINT index = 0; index < 4; ++index)
+        AppendMenuW(menu, MF_OWNERDRAW | (selectedMode_ == 0 ? MF_GRAYED : 0) | (lineEndingIndex_ == static_cast<int>(index) ? MF_CHECKED : 0), IdMenuEndingCr + index, endings[index]);
 
     SetForegroundWindow(window_);
     const UINT command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN,
@@ -3700,6 +3656,10 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     InvalidateRect(window_, nullptr, FALSE);
 
     switch (command) {
+    case IdMenuPaste: PasteToTerminal(); break;
+    case IdMenuEndingCr: case IdMenuEndingLf: case IdMenuEndingCrLf: case IdMenuEndingNone:
+        if (selectedMode_ != 0) { lineEndingIndex_ = static_cast<int>(command - IdMenuEndingCr); if (activeSession_) activeSession_->lineEndingIndex = lineEndingIndex_; }
+        break;
     case IdMenuLocalEcho:
         localEchoEnabled_ = !localEchoEnabled_;
         AppendStatus(localEchoEnabled_ ? L"本地回显已开启" : L"本地回显已关闭", false);
@@ -3753,36 +3713,6 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     default:
         break;
     }
-}
-
-void MainWindow::ShowLineEndingMenu() {
-    HMENU menu = CreatePopupMenu();
-    if (!menu) return;
-    static const wchar_t* labels[] = {
-        L"CR    回车 (\\r)",
-        L"LF    换行 (\\n)",
-        L"CRLF  回车 + 换行",
-        L"无    不追加换行符"
-    };
-    for (UINT index = 0; index < 4; ++index)
-        AppendMenuW(menu, MF_OWNERDRAW, IdMenuEndingCr + index, labels[index]);
-    MENUINFO info{};
-    info.cbSize = sizeof(info);
-    info.fMask = MIM_BACKGROUND;
-    info.hbrBack = panelBrush_;
-    SetMenuInfo(menu, &info);
-    RECT anchor{};
-    GetWindowRect(lineEnding_, &anchor);
-    const UINT selected = TrackPopupMenu(menu,
-        TPM_RETURNCMD | TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_NONOTIFY,
-        anchor.left, anchor.top, 0, window_, nullptr);
-    DestroyMenu(menu);
-    if (selected < IdMenuEndingCr || selected > IdMenuEndingNone) return;
-    lineEndingIndex_ = static_cast<int>(selected - IdMenuEndingCr);
-    if (activeSession_) activeSession_->lineEndingIndex = lineEndingIndex_;
-    static const wchar_t* shortLabels[] = {L"CR", L"LF", L"CRLF", L"无"};
-    SetWindowTextW(lineEnding_, shortLabels[lineEndingIndex_]);
-    InvalidateRect(lineEnding_, nullptr, TRUE);
 }
 
 void MainWindow::PasteToTerminal() {
@@ -4175,16 +4105,16 @@ std::wstring MainWindow::SelectedLineEnding() const {
 void MainWindow::SetConnectedUi(bool connected) {
     ShowWindow(disconnectButton_, connected ? SW_SHOW : SW_HIDE);
     EnableWindow(disconnectButton_, connected);
-    EnableWindow(lineEnding_, TRUE);
+
     EnableWindow(sftpTabButton_, connected && selectedMode_ == 0 && SftpClient::IsAvailable());
-    EnableWindow(input_, connected);
-    EnableWindow(sendButton_, connected);
+
+
     SetSftpBusy(sftpBusy_);
     UpdateCommandActions();
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
-    InvalidateRect(input_, nullptr, TRUE);
-    InvalidateRect(lineEnding_, nullptr, TRUE);
-    InvalidateRect(sendButton_, nullptr, TRUE);
+
+
+
     InvalidateRect(window_, nullptr, TRUE);
 }
 
@@ -4213,6 +4143,7 @@ void MainWindow::LoadUiState() {
     rightPanelWidth_ = std::max(Ui::MinRightWidth,
         std::min(Ui::MaxRightWidth, static_cast<int>(GetPrivateProfileIntW(
             L"Layout", L"RightPanelWidth", 360, path.c_str()))));
+    sftpNameWidth_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"SftpNameWidth", 180, path.c_str())), 80, 600);
     rightPanelCollapsed_ = GetPrivateProfileIntW(
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
 }
@@ -4225,6 +4156,7 @@ void MainWindow::SaveUiState() const {
         directory = DirectoryOf(modulePath);
     }
     const std::wstring path = JoinLocalPath(directory, L"settings.ini");
+    WritePrivateProfileStringW(L"Layout", L"SftpNameWidth", std::to_wstring(sftpNameWidth_).c_str(), path.c_str());
     WritePrivateProfileStringW(L"Layout", L"RightPanelWidth",
         std::to_wstring(rightPanelWidth_).c_str(), path.c_str());
     WritePrivateProfileStringW(L"Layout", L"RightPanelCollapsed",
@@ -4247,7 +4179,7 @@ void MainWindow::ShowSftpPanel(bool show) {
     sftpPanelVisible_ = show;
     if (rightPanelCollapsed_) {
         for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
-                 addCommandButton_, deleteCommandButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
+                 addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
                  sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,
                  sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_, sftpUploadButton_,
                  sftpDownloadButton_})
@@ -4259,7 +4191,7 @@ void MainWindow::ShowSftpPanel(bool show) {
 
     ShowWindow(commandHeader_, SW_SHOW);
     ShowWindow(sftpTabButton_, SW_SHOW);
-    for (HWND control : {commandList_, importButton_, exportButton_, addCommandButton_, deleteCommandButton_})
+    for (HWND control : {commandList_, importButton_, exportButton_, addCommandButton_, deleteCommandButton_, saveCommandsButton_})
         ShowWindow(control, show ? SW_HIDE : SW_SHOW);
     for (HWND control : {sftpPath_, sftpNameHeader_, sftpSizeHeader_, sftpList_,
              sftpTransferToggleButton_, sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_,
@@ -4312,6 +4244,9 @@ void MainWindow::RefreshSftp(const std::wstring& directory) {
     if (sftpBusy_ || !activeSession_ || !connection_ || selectedMode_ != 0) return;
     if (sftpThread_.joinable()) sftpThread_.join();
     const std::wstring requested = directory.empty() ? sftpDirectory_ : directory;
+    if (!directory.empty() && directory != activeSession_->pendingSftpDirectory && directory != activeSession_->sftpDirectory) {
+        activeSession_->sftpFollowTerminal = false;
+    }
     activeSession_->pendingSftpDirectory.clear();
     const std::uint64_t sessionId = activeSession_->id;
     const std::wstring host = activeSession_->host;
@@ -4375,6 +4310,60 @@ void MainWindow::SetSftpSort(SftpSortColumn column) {
     RefreshSftpList();
     for (HWND header : {sftpNameHeader_, sftpSizeHeader_, sftpModifiedHeader_})
         InvalidateRect(header, nullptr, TRUE);
+}
+
+void MainWindow::EditSftpPath() {
+    if (!activeSession_ || selectedMode_ != 0 || sftpBusy_) return;
+    std::wstring path;
+    if (PromptSftpValue(L"打开 SFTP 路径", L"远端目录（可粘贴 pwd 输出）", sftpDirectory_, SftpInputPurpose::Path, path)) {
+        if (path == L"~") path = activeSession_->sftpHomeDirectory;
+        else if (path.rfind(L"~/", 0) == 0) path = JoinSftpRemotePath(activeSession_->sftpHomeDirectory, path.substr(2));
+        if (path.empty() || path.front() != L'/') { AppendStatus(L"请输入绝对路径或 ~/ 路径", true); return; }
+        activeSession_->sftpFollowTerminal = false;
+        activeSession_->pendingSftpDirectory.clear();
+        RefreshSftp(path);
+    }
+}
+void MainWindow::QueryTerminalDirectory(bool installHook) {
+    if (!activeSession_ || selectedMode_ != 0 || runningCommandIndex_ >= 0) return;
+    const wchar_t* prompt = installHook ? L"请确认终端已回到空闲 Bash/Zsh 提示符。将为当前 Shell 安装目录通知，不修改远端配置文件。继续？" : L"请确认终端已回到空闲 Shell 提示符。将在此终端执行 pwd 并更新 SFTP 路径。继续？";
+    if (MessageBoxW(window_, prompt, L"获取终端目录", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return;
+    // Runs in the original interactive shell: a separate SSH process would report the wrong directory.
+    std::wstring command = LR"shell(__serialctl_cwd() { printf '\033]7;file://localhost%s\007' "$(pwd -P | sed 's/%/%25/g')"; }; )shell";
+    if (installHook) command += LR"shell(if [ -n "$BASH_VERSION" ]; then case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in 'declare -a '*) [[ " ${PROMPT_COMMAND[*]} " == *' __serialctl_cwd '* ]] || PROMPT_COMMAND+=(__serialctl_cwd);; *) case ";${PROMPT_COMMAND-};" in *';__serialctl_cwd;'*) ;; *) PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }__serialctl_cwd";; esac;; esac; elif [ -n "$ZSH_VERSION" ]; then (( ${precmd_functions[(Ie)__serialctl_cwd]} )) || precmd_functions+=(__serialctl_cwd); else printf 'Shell unsupported: use manual path\n'; fi; )shell";
+    command += L"__serialctl_cwd\r";
+    activeSession_->sftpFollowTerminal = true;
+    const auto bytes = WideToMultiByte(command, CP_UTF8);
+    SendBytesToActive(Bytes(bytes.begin(), bytes.end()), false);
+}
+void MainWindow::SftpColumnWidths(int width, int& name, int& size, int& modified) const {
+    modified = width >= 300 ? 104 : 0;
+    const int remaining = std::max(128, width - modified);
+    name = std::clamp(sftpNameWidth_, 80, remaining - 48);
+    size = remaining - name;
+}
+LRESULT CALLBACK MainWindow::SftpHeaderSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {
+    auto* self = reinterpret_cast<MainWindow*>(data);
+    RECT rect{}; GetClientRect(window, &rect);
+    const bool edge = GET_X_LPARAM(lParam) >= rect.right - Ui::Space;
+    if (message == WM_LBUTTONDOWN && edge) {
+        self->sftpColumnDragging_ = GetDlgCtrlID(window) == IdSftpNameHeader ? 1 : 2;
+        POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}; ClientToScreen(window, &p); self->sftpColumnDragX_ = p.x;
+        RECT name{}; GetClientRect(self->sftpNameHeader_, &name); self->sftpColumnDragWidth_ = name.right;
+        SetCapture(window); return 0;
+    }
+    if (message == WM_MOUSEMOVE && self->sftpColumnDragging_) {
+        POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}; ClientToScreen(window, &p);
+        self->sftpNameWidth_ = std::max(80, self->sftpColumnDragWidth_ + (static_cast<int>(p.x) - self->sftpColumnDragX_) * (self->sftpColumnDragging_ == 1 ? 1 : -1));
+        RECT client{}; GetClientRect(self->window_, &client); self->LayoutControls(client.right, client.bottom);
+        InvalidateRect(self->sftpList_, nullptr, TRUE); return 0;
+    }
+    if ((message == WM_LBUTTONUP || message == WM_CAPTURECHANGED) && self->sftpColumnDragging_) {
+        self->sftpColumnDragging_ = 0; if (GetCapture() == window) ReleaseCapture(); self->SaveUiState(); return 0;
+    }
+    if (message == WM_SETCURSOR) { POINT p{}; GetCursorPos(&p); ScreenToClient(window, &p); if (p.x >= rect.right - Ui::Space) { SetCursor(LoadCursorW(nullptr, IDC_SIZEWE)); return TRUE; } }
+    if (message == WM_NCDESTROY) RemoveWindowSubclass(window, SftpHeaderSubclassProc, id);
+    return DefSubclassProc(window, message, wParam, lParam);
 }
 
 void MainWindow::NavigateSftp(size_t index) {
@@ -4446,6 +4435,15 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     static const wchar_t copyLabel[] = L"复制远端路径";
     static const wchar_t enterLabel[] = L"在终端进入此目录";
     static const wchar_t modeLabel[] = L"修改权限…";
+    static const wchar_t pathLabel[] = L"输入路径（可粘贴 pwd）…";
+    static const wchar_t followLabel[] = L"跟随终端目录";
+    static const wchar_t pwdLabel[] = L"从当前终端获取目录…";
+    static const wchar_t hookLabel[] = L"启用当前 Shell 目录通知…";
+    AppendMenuW(menu, MF_OWNERDRAW | (!available ? MF_GRAYED : 0), IdMenuSftpPath, pathLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (!activeSession_ ? MF_GRAYED : 0) | (activeSession_ && activeSession_->sftpFollowTerminal ? MF_CHECKED : 0), IdMenuSftpFollow, followLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (!available || runningCommandIndex_ >= 0 ? MF_GRAYED : 0), IdMenuSftpPwd, pwdLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (!available || runningCommandIndex_ >= 0 ? MF_GRAYED : 0), IdMenuSftpHook, hookLabel);
+    AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
     AppendMenuW(menu, MF_OWNERDRAW | (!available || !anyFiles ? MF_GRAYED : 0),
         IdMenuSftpDownload, downloadLabel);
     AppendMenuW(menu, MF_OWNERDRAW | (!available ? MF_GRAYED : 0), IdMenuSftpUpload, uploadLabel);
@@ -4472,6 +4470,11 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     DeleteObject(menuBrush);
     PostMessageW(window_, WM_NULL, 0, 0);
     switch (command) {
+    case IdMenuSftpPath: EditSftpPath(); break;
+    case IdMenuSftpFollow:
+        if (activeSession_) { activeSession_->sftpFollowTerminal = !activeSession_->sftpFollowTerminal; if (activeSession_->sftpFollowTerminal) { activeSession_->pendingSftpDirectory.clear(); SyncSftpDirectoryFromTerminal(*activeSession_); } } break;
+    case IdMenuSftpPwd: QueryTerminalDirectory(false); break;
+    case IdMenuSftpHook: QueryTerminalDirectory(true); break;
     case IdMenuSftpDownload: DownloadSftp(); break;
     case IdMenuSftpUpload: UploadSftp(); break;
     case IdMenuSftpCreateDirectory: CreateSftpDirectory(); break;
@@ -5197,7 +5200,7 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
         SetDlgItemTextW(dialog, IDC_SFTP_INPUT_ERROR, L"");
         FitDialogLabels(dialog);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_LIMITTEXT,
-            self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4 : 255, 0);
+            self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4 : self->pendingSftpInputPurpose_ == SftpInputPurpose::Path ? 1024 : 255, 0);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_SETMARGINS,
             EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
         CenterOnOwner(dialog, self->window_);
@@ -5243,6 +5246,8 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                     std::all_of(value.begin(), value.end(), [](wchar_t character) {
                         return character >= L'0' && character <= L'7';
                     });
+            } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Path) {
+                valid = !value.empty() && value.find_first_of(L"\r\n\x001A") == std::wstring::npos && (value.front() == L'/' || value == L"~" || value.rfind(L"~/", 0) == 0);
             } else {
                 valid = !value.empty() && value != L"." && value != L".." &&
                     value.find_first_of(L"/\r\n\x001A") == std::wstring::npos;
@@ -5265,6 +5270,8 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                         return character >= L'0' && character <= L'7';
                     }))
                     error = L"请输入三位或四位八进制权限，例如 644。";
+            } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Path) {
+                if (value.empty() || value.find_first_of(L"\r\n\x001A") != std::wstring::npos || !(value.front() == L'/' || value == L"~" || value.rfind(L"~/", 0) == 0)) error = L"请输入绝对路径或 ~/ 路径";
             } else if (value.empty()) {
                 error = L"名称不能为空。";
             } else if (value == L"." || value == L".." ||
@@ -5343,9 +5350,17 @@ void MainWindow::LoadCommands() {
     }
 }
 
-void MainWindow::SaveCommands() {
+bool MainWindow::SaveCommands() {
     std::wstring error;
-    if (!SaveCommandsToFile(DefaultCommandsPath(), error) && window_) AppendStatus(error, true);
+    if (!SaveCommandsToFile(DefaultCommandsPath(), error)) { if (window_) AppendStatus(error, true); return false; }
+    commandsDirty_ = false;
+    UpdateCommandActions();
+    if (window_) AppendStatus(L"命令及顺序已保存", false);
+    return true;
+}
+void MainWindow::MarkCommandsDirty() {
+    commandsDirty_ = true;
+    UpdateCommandActions();
 }
 
 bool MainWindow::LoadCommandsFromFile(const std::wstring& path, std::wstring& error) {
@@ -5426,9 +5441,11 @@ bool MainWindow::LoadCommandsFromFile(const std::wstring& path, std::wstring& er
 
 bool MainWindow::SaveCommandsToFile(const std::wstring& path, std::wstring& error) const {
     FILE* file = nullptr;
-    if (_wfopen_s(&file, path.c_str(), L"wb") != 0 || !file) { error = L"无法保存命令文件。"; return false; }
+    const std::wstring temporary = path + L".tmp";
+    if (_wfopen_s(&file, temporary.c_str(), L"wb") != 0 || !file) { error = L"无法保存命令文件。"; return false; }
+    bool wrote = true;
     const unsigned char bom[] = {0xEF, 0xBB, 0xBF};
-    fwrite(bom, 1, sizeof(bom), file);
+    wrote = fwrite(bom, 1, sizeof(bom), file) == sizeof(bom);
     for (const CommandItem& item : commands_) {
         std::wstring block = L"#" + item.name + L"\r\n";
         if (item.commands.size() > 1) {
@@ -5440,9 +5457,13 @@ bool MainWindow::SaveCommandsToFile(const std::wstring& path, std::wstring& erro
             block += EscapeSingleCommandLine(item.commands.front()) + L"\r\n";
         }
         const std::string utf8 = WideToMultiByte(block, CP_UTF8);
-        fwrite(utf8.data(), 1, utf8.size(), file);
+        if (fwrite(utf8.data(), 1, utf8.size(), file) != utf8.size()) wrote = false;
     }
-    fclose(file);
+    if (fflush(file) != 0) wrote = false;
+    if (fclose(file) != 0) wrote = false;
+    if (!wrote || !MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temporary.c_str()); error = L"保存失败，原命令文件已保留。"; return false;
+    }
     return true;
 }
 
@@ -5458,18 +5479,20 @@ void MainWindow::UpdateCommandActions() {
     if (!deleteCommandButton_ || !commandList_) return;
     const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
     const bool idle = runningCommandIndex_ < 0;
-    const bool connected = connection_ && connection_->IsConnected();
+    EnableWindow(saveCommandsButton_, commandsDirty_ && idle);
+    SetWindowTextW(saveCommandsButton_, commandsDirty_ ? L"保存*" : L"保存");
+    InvalidateRect(saveCommandsButton_, nullptr, TRUE);
     EnableWindow(deleteCommandButton_, idle && selected != LB_ERR &&
         selected < static_cast<LRESULT>(commands_.size()));
     EnableWindow(importButton_, idle);
     EnableWindow(addCommandButton_, idle);
-    EnableWindow(input_, connected && idle);
-    EnableWindow(sendButton_, connected && idle);
+
+
     InvalidateRect(deleteCommandButton_, nullptr, TRUE);
     InvalidateRect(importButton_, nullptr, TRUE);
     InvalidateRect(addCommandButton_, nullptr, TRUE);
-    InvalidateRect(input_, nullptr, TRUE);
-    InvalidateRect(sendButton_, nullptr, TRUE);
+
+
     InvalidateRect(commandList_, nullptr, FALSE);
 }
 
@@ -5479,7 +5502,7 @@ void MainWindow::MoveCommand(size_t from, size_t to) {
     commands_.erase(commands_.begin() + static_cast<std::ptrdiff_t>(from));
     to = std::min(to, commands_.size());
     commands_.insert(commands_.begin() + static_cast<std::ptrdiff_t>(to), std::move(item));
-    SaveCommands();
+    MarkCommandsDirty();
     RefreshCommandList();
     SendMessageW(commandList_, LB_SETCURSEL, static_cast<WPARAM>(to), 0);
     UpdateCommandActions();
@@ -5502,7 +5525,7 @@ void MainWindow::ImportCommands() {
     RememberCommandDirectory(path);
     std::wstring error;
     if (!LoadCommandsFromFile(path, error)) { AppendStatus(error, true); return; }
-    SaveCommands();
+    MarkCommandsDirty();
     RefreshCommandList();
     AppendStatus(L"已导入常用命令。", false);
 }
@@ -5793,7 +5816,7 @@ void MainWindow::AddCommand() {
     if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
             reinterpret_cast<LPARAM>(this)) == IDOK) {
         commands_.push_back(pendingCommand_);
-        SaveCommands();
+        MarkCommandsDirty();
         RefreshCommandList();
         SendMessageW(commandList_, LB_SETCURSEL, commands_.size() - 1, 0);
         UpdateCommandActions();
@@ -5809,7 +5832,7 @@ void MainWindow::EditCommand(size_t index) {
     if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
             reinterpret_cast<LPARAM>(this)) == IDOK) {
         commands_[index] = pendingCommand_;
-        SaveCommands();
+        MarkCommandsDirty();
         RefreshCommandList();
         SendMessageW(commandList_, LB_SETCURSEL, index, 0);
         UpdateCommandActions();
@@ -5824,7 +5847,7 @@ void MainWindow::DeleteSelectedCommand() {
     const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
     if (selected == LB_ERR) return;
     commands_.erase(commands_.begin() + selected);
-    SaveCommands();
+    MarkCommandsDirty();
     RefreshCommandList();
 }
 

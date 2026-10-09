@@ -1,4 +1,4 @@
-param([Parameter(Mandatory = $true)][int]$WindowHandle)
+﻿param([Parameter(Mandatory = $true)][int]$WindowHandle)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

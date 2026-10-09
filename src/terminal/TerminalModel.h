@@ -48,6 +48,7 @@ struct TerminalFeedResult {
     std::string response;
     std::wstring logText;
     size_t scrollbackAdded = 0;
+    std::wstring workingDirectory;
     bool titleChanged = false;
     std::wstring title;
 };
@@ -121,6 +122,7 @@ private:
     void DeleteCharacters(int count);
     void InsertLines(int count);
     void DeleteLines(int count);
+    void HandleOsc(TerminalFeedResult& result);
     void ExecuteEscape(wchar_t character, TerminalFeedResult& result);
     void ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& result);
     void SetGraphicsRendition(const std::vector<int>& parameters);

@@ -36,7 +36,7 @@ private:
     enum class SftpTransferDirection { Upload, Download };
     enum class SftpTransferState { Queued, Running, Completed, Failed, Canceled };
     enum class SftpMutationKind { CreateDirectory, Rename, Delete, ChangeMode };
-    enum class SftpInputPurpose { Name, Mode };
+    enum class SftpInputPurpose { Name, Mode, Path };
 
     struct SftpTransferItem {
         std::uint64_t id = 0;
@@ -78,6 +78,9 @@ private:
         std::wstring username;
         std::wstring password;
         std::uint16_t port = 0;
+        bool sftpFollowTerminal = true;
+        std::wstring terminalDirectory;
+        bool terminalDirectoryFromOsc = false;
         std::wstring sftpDirectory = L".";
         std::wstring sftpHomeDirectory;
         std::wstring pendingSftpDirectory;
@@ -85,9 +88,6 @@ private:
     };
 
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
-    static LRESULT CALLBACK InputSubclassProc(
-        HWND window, UINT message, WPARAM wParam, LPARAM lParam,
-        UINT_PTR subclassId, DWORD_PTR referenceData);
     static LRESULT CALLBACK TerminalSubclassProc(
         HWND window, UINT message, WPARAM wParam, LPARAM lParam,
         UINT_PTR subclassId, DWORD_PTR referenceData);
@@ -133,7 +133,6 @@ private:
     void Disconnect();
     void SwitchSession(size_t index);
     SessionState* FindSession(std::uint64_t id);
-    void SendInput();
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
     void SendTerminalCharacter(wchar_t character);
     void SendTerminalKey(WPARAM key, bool shift, bool control, bool alt);
@@ -161,7 +160,6 @@ private:
     void AppendStatus(const std::wstring& text, bool isError);
     void SaveCurrentLog();
     void ShowTerminalContextMenu(POINT screenPoint);
-    void ShowLineEndingMenu();
     UINT SelectedCodePage() const;
     std::wstring SelectedLineEnding() const;
     void SetConnectedUi(bool connected);
@@ -173,6 +171,10 @@ private:
 
     void ShowSftpPanel(bool show);
     void RefreshSftp(const std::wstring& directory = {});
+    void EditSftpPath();
+    void QueryTerminalDirectory(bool installHook);
+    void SftpColumnWidths(int width, int& name, int& size, int& modified) const;
+    static LRESULT CALLBACK SftpHeaderSubclassProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     void NavigateSftp(size_t index);
     void NavigateSftpBreadcrumb(POINT point);
     void SetSftpSort(SftpSortColumn column);
@@ -207,7 +209,8 @@ private:
     void RefreshSftpList();
 
     void LoadCommands();
-    void SaveCommands();
+    bool SaveCommands();
+    void MarkCommandsDirty();
     bool LoadCommandsFromFile(const std::wstring& path, std::wstring& error);
     bool SaveCommandsToFile(const std::wstring& path, std::wstring& error) const;
     void RefreshCommandList();
@@ -252,14 +255,13 @@ private:
     HWND connectionHeader_ = nullptr;
     HWND connectionList_ = nullptr;
     HWND terminal_ = nullptr;
-    HWND input_ = nullptr;
-    HWND sendButton_ = nullptr;
-    HWND lineEnding_ = nullptr;
     HWND status_ = nullptr;
     HWND commandHeader_ = nullptr;
     HWND sftpTabButton_ = nullptr;
     HWND rightPanelToggleButton_ = nullptr;
     HWND commandList_ = nullptr;
+    HWND saveCommandsButton_ = nullptr;
+    bool commandsDirty_ = false;
     HWND importButton_ = nullptr;
     HWND exportButton_ = nullptr;
     HWND addCommandButton_ = nullptr;
@@ -323,6 +325,10 @@ private:
     SftpSortColumn sftpSortColumn_ = SftpSortColumn::Name;
     bool sftpSortAscending_ = true;
     std::vector<SftpBreadcrumbHit> sftpBreadcrumbHits_;
+    int sftpNameWidth_ = 180;
+    int sftpColumnDragging_ = 0;
+    int sftpColumnDragX_ = 0;
+    int sftpColumnDragWidth_ = 0;
     int hoveredSftpBreadcrumb_ = -1;
     std::thread sftpThread_;
     std::atomic_bool sftpOperationCancel_{false};
@@ -344,6 +350,11 @@ private:
     size_t pendingConnectionBytes_ = 0;
     bool closing_ = false;
 
+    std::thread discoveryThread_;
+    std::atomic_bool discoveryCancel_{false};
+    std::atomic_bool discoveryFinished_{true};
+    unsigned discoveryGeneration_ = 0;
+    HWND discoveryDialog_ = nullptr;
     int pendingMode_ = 0;
     SerialSettings pendingSerial_;
     std::wstring pendingHost_;

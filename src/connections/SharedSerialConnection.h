@@ -19,6 +19,9 @@ public:
         std::vector<std::wstring>& serialNames,
         std::wstring& error);
 
+    static bool DiscoverAuto(const std::wstring& host, std::uint16_t& port,
+        std::vector<std::wstring>& names, std::wstring& error,
+        const std::atomic_bool* cancel = nullptr, std::uint16_t explicitPort = 0);
     bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) override;
     void CancelStart() override { cancelStarting_ = true; }
     void Stop() override;
@@ -33,6 +36,7 @@ private:
     std::uint16_t port_;
     std::wstring serialName_;
     std::atomic<SOCKET> socket_{INVALID_SOCKET};
+    std::atomic_bool readEnded_{false};
     std::atomic_bool cancelStarting_{false};
     std::atomic<bool> stopping_{false};
     std::thread readThread_;

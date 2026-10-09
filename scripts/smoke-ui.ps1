@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([Parameter(Mandatory = $true)][string]$OutputDirectory)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -69,13 +69,14 @@ public static class SerialCtlUiSmoke {
         if (failure != null) throw new Exception(failure);
     }
     public static void AssertPanel(IntPtr window, bool collapsed) {
+        for (int id=108; id<=110; id++) if (GetDlgItem(window,id) != IntPtr.Zero) throw new Exception("Obsolete composer control " + id);
         RECT client; GetClientRect(window, out client);
         MapWindowPoints(window, IntPtr.Zero, ref client, 2);
         RECT toggle; GetWindowRect(GetDlgItem(window, 125), out toggle);
         if (toggle.Right > client.Right - 12) throw new Exception("Panel toggle exceeds card edge");
         if (collapsed) {
             if (toggle.Left < client.Right - 60 || toggle.Right > client.Right - 12) throw new Exception("Toggle exceeds collapsed rail");
-            for (int id = 112; id <= 131; id++) if (id != 125 && IsWindowVisible(GetDlgItem(window, id))) throw new Exception("Visible collapsed control " + id);
+            for (int id = 112; id <= 132; id++) if (id != 125 && IsWindowVisible(GetDlgItem(window, id))) throw new Exception("Visible collapsed control " + id);
         } else {
             RECT tab, add;
             GetWindowRect(GetDlgItem(window, 118), out tab);
@@ -155,8 +156,8 @@ $installedFonts.Dispose()
 $settingsDirectory = Join-Path $env:APPDATA 'SerialCtl'
 New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
 $titles = @(([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFNTSCDov57mjqU='))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu65Liy5Y+j6L+e5o6l'))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFRlbG5ldCDov57mjqU='))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6L+e5o6l5YWx5Lqr5Liy5Y+j'))))
-foreach ($architecture in @('x86','x64')) {
-    $native = Join-Path $extract "SerialCtl-$($version.Display)/windows/$architecture/native"
+foreach ($architecture in @('x64')) {
+    $native = $extract
     # First launch the exact packaged program with its exact packaged dependencies.
     Set-Content -LiteralPath (Join-Path $settingsDirectory 'settings.ini') -Value "[Layout]`nRightPanelWidth=260`nRightPanelCollapsed=0" -Encoding ASCII
     $application = Start-Process -FilePath (Join-Path $native 'serialctl.exe') -PassThru
@@ -200,6 +201,33 @@ foreach ($architecture in @('x86','x64')) {
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 200
         }
+        # Draft edits and reorder must not touch commands.txt until explicit Save.
+        $commandsFile = Join-Path $settingsDirectory 'commands.txt'
+        $before = (Get-FileHash $commandsFile -Algorithm SHA256).Hash
+        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null
+        $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
+        [SerialCtlUiSmoke]::Fill($dialog, 1101, 'UI draft command')
+        [SerialCtlUiSmoke]::Fill($dialog, 1300, 'echo ui-draft')
+        [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 300
+        if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before) { throw 'Draft was saved automatically.' }
+        $list = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 112)
+        [SerialCtlUiSmoke]::PostMessage($list, 0x201, [IntPtr]1, [IntPtr]((20 -shl 16) -bor 16)) | Out-Null
+        [SerialCtlUiSmoke]::PostMessage($list, 0x202, [IntPtr]0, [IntPtr]((80 -shl 16) -bor 16)) | Out-Null
+        Start-Sleep -Milliseconds 300
+        if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before) { throw 'Reorder was saved automatically.' }
+        Capture-Window $application.MainWindowHandle "$architecture-command-draft"
+        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        $confirm = Wait-Dialog $application.Id $null
+        Capture-Window $confirm "$architecture-unsaved-close"
+        [SerialCtlUiSmoke]::PostMessage($confirm, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 200
+        $application.Refresh()
+        if ($application.HasExited) { throw 'Cancel did not preserve draft window.' }
+        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]132, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 300
+        if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -eq $before) { throw 'Explicit Save did not persist draft.' }
+        if (-not (Get-Content $commandsFile -Raw).Contains('echo ui-draft')) { throw 'Saved command missing.' }
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         if (-not $application.WaitForExit(10000)) { throw 'Packaged application did not close normally.' }
         if ($application.ExitCode -ne 0) { throw 'Packaged application exit code was not zero.' }
@@ -250,6 +278,26 @@ foreach ($architecture in @('x86','x64')) {
             if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 119))) { throw 'SFTP panel did not open.' }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
             Capture-Window $application.MainWindowHandle "$architecture-$theme-sftp"
+            $pathControl = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 119)
+            [SerialCtlUiSmoke]::PostMessage($pathControl, 0x203, [IntPtr]0, [IntPtr]0) | Out-Null
+            $pathDialog = Wait-Dialog $application.Id $null
+            [SerialCtlUiSmoke]::Fill($pathDialog, 1402, '/tmp/a path')
+            [SerialCtlUiSmoke]::AssertLabels($pathDialog, $expectedUiFace)
+            Capture-Window $pathDialog "$architecture-$theme-sftp-path"
+            [SerialCtlUiSmoke]::PostMessage($pathDialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 500
+            $header = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 126)
+            $bounds = New-Object SerialCtlUiSmoke+RECT
+            [SerialCtlUiSmoke]::GetClientRect($header, [ref]$bounds) | Out-Null
+            $originalWidth = $bounds.Right
+            [SerialCtlUiSmoke]::PostMessage($header, 0x201, [IntPtr]1, [IntPtr]((16 -shl 16) -bor ($originalWidth-2))) | Out-Null
+            [SerialCtlUiSmoke]::PostMessage($header, 0x200, [IntPtr]1, [IntPtr]((16 -shl 16) -bor ($originalWidth-26))) | Out-Null
+            [SerialCtlUiSmoke]::PostMessage($header, 0x202, [IntPtr]0, [IntPtr]((16 -shl 16) -bor ($originalWidth-26))) | Out-Null
+            Start-Sleep -Milliseconds 300
+            [SerialCtlUiSmoke]::GetClientRect($header, [ref]$bounds) | Out-Null
+            if ($bounds.Right -ge $originalWidth) { throw 'SFTP name column did not resize.' }
+            [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-sftp-resized"
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $true)
@@ -270,6 +318,6 @@ foreach ($architecture in @('x86','x64')) {
 }
 Remove-Item -LiteralPath $extract -Recurse -Force
 Remove-Item -LiteralPath $mock -Force
-foreach ($architecture in @('x86','x64')) { Remove-Item -LiteralPath (Join-Path $OutputDirectory "mock-$architecture") -Recurse -Force }
-Write-Host '[PASS] x86/x64 startup/shutdown, both themes, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation'
+foreach ($architecture in @('x64')) { Remove-Item -LiteralPath (Join-Path $OutputDirectory "mock-$architecture") -Recurse -Force }
+Write-Host '[PASS] x64 startup/shutdown, both themes, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation, command drafts and Save, manual SFTP path and persisted column resize'
 Write-Host '[NOT RUN] Actual Windows 7 hardware and field server tests'

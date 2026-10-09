@@ -4,6 +4,8 @@
 
 #include <array>
 #include <sstream>
+#include <algorithm>
+#include <future>
 #include <ws2tcpip.h>
 
 namespace serialctl {
@@ -13,7 +15,7 @@ bool SendAll(SOCKET socket, const std::string& text) {
     size_t offset = 0;
     while (offset < text.size()) {
         const int sent = send(socket, text.data() + offset, static_cast<int>(text.size() - offset), 0);
-        if (sent == SOCKET_ERROR) return false;
+        if (sent <= 0) return false;
         offset += static_cast<size_t>(sent);
     }
     return true;
@@ -30,7 +32,7 @@ bool SendBytes(SOCKET socket, const std::uint8_t* data, size_t size) {
     return true;
 }
 
-bool ReceiveExact(SOCKET socket, Bytes& buffered, std::uint8_t* data, size_t size) {
+bool ReceiveExact(SOCKET socket, Bytes& buffered, std::uint8_t* data, size_t size, const std::atomic_bool& stopping) {
     const size_t bufferedCount = std::min(size, buffered.size());
     std::copy_n(buffered.begin(), bufferedCount, data);
     buffered.erase(buffered.begin(), buffered.begin() + static_cast<std::ptrdiff_t>(bufferedCount));
@@ -38,14 +40,15 @@ bool ReceiveExact(SOCKET socket, Bytes& buffered, std::uint8_t* data, size_t siz
     while (offset < size) {
         const int received = recv(socket, reinterpret_cast<char*>(data + offset),
             static_cast<int>(size - offset), 0);
-        if (received <= 0) return false;
+        if (received == SOCKET_ERROR && WSAGetLastError() == WSAETIMEDOUT && !stopping) continue;
+        if (received <= 0 || stopping) return false;
         offset += static_cast<size_t>(received);
     }
     return true;
 }
 
 bool ReceiveControlReply(SOCKET socket, std::string& reply, std::wstring& error) {
-    DWORD timeout = 1800;
+    DWORD timeout = 900;
     setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
     std::array<char, 2048> buffer{};
     while (reply.size() < 16384) {
@@ -80,7 +83,7 @@ bool SharedSerialConnection::Discover(
     std::vector<std::wstring>& serialNames,
     std::wstring& error) {
     serialNames.clear();
-    SOCKET connected = ConnectTcpSocket(host, port, error);
+    SOCKET connected = ConnectTcpSocket(host, port, error, nullptr, 500);
     if (connected == INVALID_SOCKET) return false;
     if (!SendAll(connected, "SERIALCTL/1 LIST\n")) {
         error = L"发送串口查询请求失败。";
@@ -113,6 +116,32 @@ bool SharedSerialConnection::Discover(
     return true;
 }
 
+bool SharedSerialConnection::DiscoverAuto(const std::wstring& host, std::uint16_t& port,
+    std::vector<std::wstring>& names, std::wstring& error, const std::atomic_bool* cancel, std::uint16_t explicitPort) {
+    struct Result { bool found = false; std::uint16_t port = 0; std::vector<std::wstring> names; };
+    std::vector<std::future<Result>> queries;
+    const unsigned first = explicitPort ? explicitPort : 7000;
+    const unsigned last = explicitPort ? explicitPort : 7015;
+    for (unsigned candidate = first; candidate <= last; ++candidate) {
+        queries.push_back(std::async(std::launch::async, [host, candidate, cancel] {
+            Result result;
+            if (cancel && cancel->load()) return result;
+            result.port = static_cast<std::uint16_t>(candidate);
+            std::wstring ignored;
+            result.found = Discover(host, result.port, result.names, ignored);
+            return result;
+        }));
+    }
+    bool found = false;
+    for (auto& query : queries) {
+        auto result = query.get();
+        if (!found && result.found) { found = true; port = result.port; names = std::move(result.names); }
+    }
+    if (cancel && cancel->load()) { error = L"查询已取消"; return false; }
+    if (!found) error = L"未发现已共享的串口，请检查来源程序、IP 和防火墙（7000–7015）。";
+    return found;
+}
+
 bool SharedSerialConnection::Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) {
     if (IsConnected()) {
         error = L"共享串口已经连接";
@@ -140,7 +169,7 @@ bool SharedSerialConnection::Start(DataCallback onData, StatusCallback onStatus,
         closesocket(connected);
         return false;
     }
-    DWORD noTimeout = 0;
+    DWORD noTimeout = 200;
     setsockopt(connected, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&noTimeout), sizeof(noTimeout));
     BOOL noDelay = TRUE;
     setsockopt(connected, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&noDelay), sizeof(noDelay));
@@ -150,6 +179,7 @@ bool SharedSerialConnection::Start(DataCallback onData, StatusCallback onStatus,
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
     stopping_ = false;
+    readEnded_ = false;
     readThread_ = std::thread(&SharedSerialConnection::ReadLoop, this);
     if (onStatus_)
         onStatus_(L"已连接共享串口：" + serialName_ + L" · 可直接读写", false);
@@ -177,13 +207,13 @@ bool SharedSerialConnection::Send(const Bytes& data, std::wstring& error) {
 }
 
 bool SharedSerialConnection::IsConnected() const {
-    return socket_ != INVALID_SOCKET;
+    return socket_ != INVALID_SOCKET && !readEnded_;
 }
 
 void SharedSerialConnection::ReadLoop() {
     while (!stopping_) {
         std::array<std::uint8_t, 5> header{};
-        if (!ReceiveExact(socket_, receivedBuffer_, header.data(), header.size())) {
+        if (!ReceiveExact(socket_, receivedBuffer_, header.data(), header.size(), stopping_)) {
             if (!stopping_ && onStatus_)
                 onStatus_(L"共享端已关闭连接", true);
             break;
@@ -196,7 +226,7 @@ void SharedSerialConnection::ReadLoop() {
             break;
         }
         Bytes payload(networkLength);
-        if (networkLength && !ReceiveExact(socket_, receivedBuffer_, payload.data(), payload.size())) break;
+        if (networkLength && !ReceiveExact(socket_, receivedBuffer_, payload.data(), payload.size(), stopping_)) break;
         if (header[0] == 'D') {
             if (onData_) onData_(payload);
         } else if (header[0] == 'C') {
@@ -205,6 +235,7 @@ void SharedSerialConnection::ReadLoop() {
                 onStatus_(L"远端仍在使用旧版串口互斥协议，请升级远端 SerialCtl", true);
         }
     }
+    readEnded_ = true;
 }
 
 bool SharedSerialConnection::SendFrame(char type, const Bytes& payload, std::wstring& error) {

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Release')]
     [string]$Configuration = 'Release',
@@ -69,9 +69,9 @@ $verifyRoot = Join-Path $releaseWork 'verify'
 New-Item -ItemType Directory -Path $bundleRoot, $outRoot | Out-Null
 
 $runtimeRelativePaths = New-Object System.Collections.Generic.List[string]
-foreach ($architecture in @('x86', 'x64')) {
+foreach ($architecture in @('x64')) {
     $buildDirectory = Get-SerialCtlBuildDirectory -Architecture $architecture -RepositoryRoot $repositoryRoot
-    $runtimeRelative = "windows/$architecture/native"
+    $runtimeRelative = "."
     $runtimeDestination = Join-Path $bundleRoot ($runtimeRelative.Replace('/', '\'))
     New-Item -ItemType Directory -Path $runtimeDestination -Force | Out-Null
     Invoke-SerialCtlExternalCommand -FilePath $cmakePath -Description "Install $architecture runtime into package staging" -Arguments @(
@@ -81,26 +81,28 @@ foreach ($architecture in @('x86', 'x64')) {
         '--component', 'Runtime'
     )
     foreach ($program in @('serialctl.exe', 'plink.exe', 'psftp.exe')) {
-        $runtimeRelativePaths.Add("$runtimeRelative/$program")
+        $runtimeRelativePaths.Add($program)
     }
 }
 
 $copyMap = [ordered]@{
     'docs/package/README.md' = 'README.md'
     "docs/package/RELEASE-NOTES-$($version.Display).md" = 'RELEASE-NOTES.md'
+    'tools/serialctl_client.py' = 'serialctl_client.py'
+    'docs/package/AI-SERIAL.md' = 'AI-SERIAL.md'
     'VERSION' = 'VERSION'
     'THIRD-PARTY-NOTICES.md' = 'THIRD-PARTY-NOTICES.md'
-    'docs/testing/WIN7-HARDWARE-TEST.md' = 'docs/WIN7-HARDWARE-TEST.md'
-    'docs/testing/MANUAL-REGRESSION.md' = 'docs/MANUAL-REGRESSION.md'
-    'third_party/putty/LICENCE' = 'licenses/PUTTY-LICENCE.txt'
-    'third_party/yy-thunks/LICENSE' = 'licenses/YY-THUNKS-LICENSE.txt'
+    'docs/testing/WIN7-HARDWARE-TEST.md' = 'WIN7-HARDWARE-TEST.md'
+    'docs/testing/MANUAL-REGRESSION.md' = 'MANUAL-REGRESSION.md'
+    'third_party/putty/LICENCE' = 'PUTTY-LICENCE.txt'
+    'third_party/yy-thunks/LICENSE' = 'YY-THUNKS-LICENSE.txt'
 }
 $commandExamples = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'docs\package') -Filter '*.txt' -File)
 if ($commandExamples.Count -ne 1) {
     throw 'docs/package must contain exactly one command-example TXT file'
 }
 $commandExampleRelative = Get-SerialCtlRelativePath -BasePath $repositoryRoot -Path $commandExamples[0].FullName
-$copyMap[$commandExampleRelative] = "examples/$($commandExamples[0].Name)"
+$copyMap[$commandExampleRelative] = "$($commandExamples[0].Name)"
 foreach ($sourceRelative in $copyMap.Keys) {
     $destinationRelative = [string]$copyMap[$sourceRelative]
     Copy-SerialCtlPackageFile -Source (Join-Path $repositoryRoot $sourceRelative) `
@@ -109,10 +111,10 @@ foreach ($sourceRelative in $copyMap.Keys) {
 
 $sourceState = Get-SerialCtlSourceState -RepositoryRoot $repositoryRoot
 $payloadRecords = @()
-foreach ($architecture in @('x86', 'x64')) {
+foreach ($architecture in @('x64')) {
     $payloadFiles = @()
     foreach ($program in @('serialctl.exe', 'plink.exe', 'psftp.exe')) {
-        $relativePath = "windows/$architecture/native/$program"
+        $relativePath = $program
         $fullPath = Join-Path $bundleRoot ($relativePath.Replace('/', '\'))
         $item = Get-Item -LiteralPath $fullPath
         $payloadFiles += [ordered]@{
@@ -126,7 +128,7 @@ foreach ($architecture in @('x86', 'x64')) {
         architecture = $architecture
         implementation = 'native-cpp17-win32'
         minimum_os = 'Windows 7 SP1'
-        directory = "windows/$architecture/native"
+        directory = "."
         files = $payloadFiles
     }
 }
@@ -183,7 +185,8 @@ $candidateArchive = Get-SerialCtlCandidateArchivePath -RepositoryRoot $repositor
 if (Test-Path -LiteralPath $candidateArchive) {
     Remove-Item -LiteralPath $candidateArchive -Force
 }
-Compress-Archive -LiteralPath $bundleRoot -DestinationPath $candidateArchive -CompressionLevel Optimal
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory($bundleRoot, $candidateArchive, [System.IO.Compression.CompressionLevel]::Optimal, $false)
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($candidateArchive)
@@ -202,7 +205,7 @@ try {
     $fileEntries = @($zip.Entries | Where-Object { -not [string]::IsNullOrEmpty($_.Name) } | ForEach-Object {
         $_.FullName.Replace('\', '/')
     } | Sort-Object)
-    $expectedEntries = @($expectedFiles | ForEach-Object { "$bundleName/$_" } | Sort-Object)
+    $expectedEntries = @($expectedFiles | ForEach-Object { "$_" } | Sort-Object)
     $entryDifference = @(Compare-Object -ReferenceObject $expectedEntries -DifferenceObject $fileEntries)
     if ($entryDifference.Count -gt 0) {
         throw "ZIP entry allowlist mismatch: $($entryDifference | Out-String)"
@@ -212,7 +215,7 @@ try {
 }
 
 Expand-Archive -LiteralPath $candidateArchive -DestinationPath $verifyRoot
-$verifiedBundleRoot = Join-Path $verifyRoot $bundleName
+$verifiedBundleRoot = $verifyRoot
 Assert-PackageFileSet -Root $verifiedBundleRoot -Expected $expectedFiles
 
 foreach ($relativePath in $expectedFiles) {
@@ -254,8 +257,8 @@ foreach ($relativePath in $checksumActual) {
 
 $serialCtlDlls = @('ADVAPI32.dll', 'COMCTL32.dll', 'COMDLG32.dll', 'GDI32.dll', 'KERNEL32.dll', 'ole32.dll', 'SHELL32.dll', 'USER32.dll', 'WS2_32.dll')
 $puttyDlls = @('ADVAPI32.dll', 'KERNEL32.dll', 'USER32.dll')
-foreach ($architecture in @('x86', 'x64')) {
-    $runtimeRoot = Join-Path $verifiedBundleRoot "windows\$architecture\native"
+foreach ($architecture in @('x64')) {
+    $runtimeRoot = Join-Path $verifiedBundleRoot "."
     & $binaryVerifier -Path (Join-Path $runtimeRoot 'serialctl.exe') -Architecture $architecture `
         -Subsystem GUI -ExpectedProductVersion $version.FileVersion -AllowedDll $serialCtlDlls
     foreach ($program in @('plink.exe', 'psftp.exe')) {

@@ -24,7 +24,7 @@ decode → TerminalModel::Feed
         └─ send required terminal response
 ```
 
-发送方向来自终端键盘、底部输入框或命令宏，经当前会话编码与换行规则转换后交给 `IConnection::Send`。窗口尺寸变化同步到终端模型，并通过 Telnet NAWS 或定制 Plink 通道通知远端。
+发送方向来自终端键盘、粘贴或命令宏，经当前会话编码与换行规则转换后交给 `IConnection::Send`。窗口尺寸变化同步到终端模型，并通过 Telnet NAWS 或定制 Plink 通道通知远端。
 
 ## 兼容边界
 
@@ -34,3 +34,5 @@ decode → TerminalModel::Feed
 - `legacy/csharp` 是只读历史参考，不属于该架构。
 
 界面规则见 [UI-DESIGN-GUIDE.md](UI-DESIGN-GUIDE.md)，构建与交付规则见 [build-release.md](build-release.md)。
+
+V1.1.0：SerialShareConnection 为每个 COM 持有独立 SerialDevice，进程共享 SerialShareService 按 COM 路由 TCP 客户端。每个客户端独立有界发送队列，关闭一个 COM 不影响其他 COM。查询仍使用 V1 LIST，终止标记后扩展元数据；OPEN 使用 V2 二进制帧。IP 发现由后台工作线程并行探测 7000–7015，UI 只接受当前查询代次结果。SFTP OSC7 在终端模型解析，再按会话 follow 状态同步；手动导航暂停 follow。命令编辑为草稿，显式保存采用临时文件替换。

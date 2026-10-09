@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Get-SerialCtlRepositoryRoot {
@@ -52,12 +52,12 @@ function Get-SerialCtlVersion {
 function Resolve-SerialCtlArchitectures {
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('x86', 'x64', 'All')]
+        [ValidateSet('x64', 'All')]
         [string]$Architecture
     )
 
     if ($Architecture -eq 'All') {
-        return @('x86', 'x64')
+        return @('x64')
     }
     return @($Architecture)
 }
@@ -65,13 +65,10 @@ function Resolve-SerialCtlArchitectures {
 function Get-SerialCtlCMakePlatform {
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('x86', 'x64')]
+        [ValidateSet('x64')]
         [string]$Architecture
     )
 
-    if ($Architecture -eq 'x86') {
-        return 'Win32'
-    }
     return 'x64'
 }
 
@@ -85,7 +82,7 @@ function Get-SerialCtlBuildRoot {
 function Get-SerialCtlBuildDirectory {
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('x86', 'x64')]
+        [ValidateSet('x64')]
         [string]$Architecture,
 
         [string]$RepositoryRoot = (Get-SerialCtlRepositoryRoot)
@@ -98,7 +95,7 @@ function Get-SerialCtlBuildDirectory {
 function Get-SerialCtlBuildOutputDirectory {
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('x86', 'x64')]
+        [ValidateSet('x64')]
         [string]$Architecture,
 
         [Parameter(Mandatory = $true)]
@@ -124,7 +121,7 @@ function Get-SerialCtlArchiveName {
     )
 
     $version = Get-SerialCtlVersion -RepositoryRoot $RepositoryRoot
-    return "SerialCtl-$($version.Display)-Win7.zip"
+    return "SerialCtl-$($version.Display)-Win7-x64.zip"
 }
 
 function Get-SerialCtlCandidateArchivePath {
@@ -214,7 +211,7 @@ function Get-SerialCtlVisualStudioGenerator {
             return $Matches[1]
         }
     }
-    throw 'No Visual Studio CMake generator with x86/x64 support was found'
+    throw 'No Visual Studio CMake generator with x64 support was found'
 }
 
 function Test-SerialCtlPathWithin {

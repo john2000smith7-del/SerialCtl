@@ -13,8 +13,7 @@ SerialCtl uses an Apple-inspired desktop design language adapted to native Win32
 - Standard button height: 36 px.
 - Compact dialog fields and icon buttons use a shared 28 px height; dropdowns and text fields must remain visually equal at the active DPI.
 - Compact utility button height: 32 px.
-- Terminal input-row height: 42 px.
-- The terminal composer is one 16 px radius surface. Its send action is the only circular button exception and uses a centered upward arrow, matching the Codex composer pattern.
+- Terminal fills the center card; there is no bottom composer. Paste and per-session CR/LF/CRLF settings belong in its context menu. SSH Enter stays CR.
 - Avoid one-off measurements. Add a shared metric before adding a new value.
 
 ## Color tokens
@@ -136,4 +135,8 @@ Light theme:
 - Main window checked at minimum supported size.
 - All changed dialogs checked with every field configuration.
 - Hover, pressed, focus, checked, and disabled states checked.
-- x86 and x64 builds pass Windows 7 compatibility checks.
+- x64 builds pass Windows 7 compatibility checks.
+
+## V1.1 interaction policy
+
+Command drag, add, edit, delete and import update an unsaved draft. A compact secondary Save button uses the same footer grid as Import/Export/Delete. Closing a dirty draft offers Save/Discard/Cancel. SFTP column boundaries use the resize cursor and persisted widths. Path double-click / Ctrl+L and the context menu open the shared input dialog. Manual browsing pauses terminal follow. IP discovery runs asynchronously after a 500 ms debounce; only already-open COMs are listed.

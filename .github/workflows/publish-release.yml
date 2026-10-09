@@ -32,7 +32,7 @@ jobs:
           [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           git checkout --detach "$RELEASE_COMMIT"
-          RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7.zip"
+          RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
           printf '%s  %s\n' "$RELEASE_SHA256" "bin/$RELEASE_ARCHIVE" | sha256sum --check
           printf '%s  %s\n' "$RELEASE_SHA256" "$RELEASE_ARCHIVE" > "$RELEASE_ARCHIVE.sha256"
           gh release create "v${RELEASE_VERSION#V}" "bin/$RELEASE_ARCHIVE" "$RELEASE_ARCHIVE.sha256" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title "SerialCtl $RELEASE_VERSION — Windows 7 SP1" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"

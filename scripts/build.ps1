@@ -1,6 +1,6 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [ValidateSet('x86', 'x64', 'All')]
+    [ValidateSet('x64', 'All')]
     [string]$Architecture = 'All',
 
     [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]

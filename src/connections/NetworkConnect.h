@@ -6,7 +6,7 @@
 
 namespace serialctl {
 inline SOCKET ConnectTcpSocket(const std::wstring& host, std::uint16_t port,
-    std::wstring& error, const std::atomic_bool* cancel = nullptr) {
+    std::wstring& error, const std::atomic_bool* cancel = nullptr, DWORD timeoutMs = 5000) {
     if (cancel && cancel->load()) { error = L"连接已取消。"; return INVALID_SOCKET; }
     ADDRINFOW hints{};
     hints.ai_family = AF_UNSPEC;
@@ -23,7 +23,7 @@ inline SOCKET ConnectTcpSocket(const std::wstring& host, std::uint16_t port,
     const DWORD started = GetTickCount();
     int lastError = WSAETIMEDOUT;
     for (ADDRINFOW* address = addresses; address; address = address->ai_next) {
-        if ((cancel && cancel->load()) || GetTickCount() - started >= 5000) break;
+        if ((cancel && cancel->load()) || GetTickCount() - started >= timeoutMs) break;
         SOCKET candidate = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
         if (candidate == INVALID_SOCKET) continue;
         u_long nonBlocking = 1;
@@ -35,7 +35,7 @@ inline SOCKET ConnectTcpSocket(const std::wstring& host, std::uint16_t port,
         bool ready = result == 0;
         lastError = ready ? 0 : WSAGetLastError();
         if (!ready && lastError == WSAEWOULDBLOCK) {
-            while (!(cancel && cancel->load()) && GetTickCount() - started < 5000) {
+            while (!(cancel && cancel->load()) && GetTickCount() - started < timeoutMs) {
                 fd_set writable{}, failed{};
                 FD_ZERO(&writable); FD_ZERO(&failed);
                 FD_SET(candidate, &writable); FD_SET(candidate, &failed);

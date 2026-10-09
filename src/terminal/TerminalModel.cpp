@@ -64,6 +64,43 @@ const TerminalModel::Screen& TerminalModel::ActiveScreen() const {
     return alternateScreen_ ? alternate_ : primary_;
 }
 
+void TerminalModel::HandleOsc(TerminalFeedResult& result) {
+    const size_t separator = oscBuffer_.find(L';');
+    if (separator == std::wstring::npos) return;
+    const auto kind = oscBuffer_.substr(0, separator);
+    const auto value = oscBuffer_.substr(separator + 1);
+    if (kind == L"0" || kind == L"2") { result.title = value; result.titleChanged = true; return; }
+    if (kind != L"7" || value.rfind(L"file://", 0) != 0) return;
+    const size_t slash = value.find(L'/', 7);
+    if (slash == std::wstring::npos) return;
+    std::wstring path;
+    auto hex = [](wchar_t c) -> int { if (c >= L'0' && c <= L'9') return c - L'0'; if (c >= L'a' && c <= L'f') return c - L'a' + 10; if (c >= L'A' && c <= L'F') return c - L'A' + 10; return -1; };
+    for (size_t i = slash; i < value.size();) {
+        if (value[i] != L'%') { path += value[i++]; continue; }
+        std::vector<unsigned char> bytes;
+        while (i < value.size() && value[i] == L'%') {
+            if (i + 2 >= value.size() || hex(value[i+1]) < 0 || hex(value[i+2]) < 0) return;
+            bytes.push_back(static_cast<unsigned char>((hex(value[i+1]) << 4) | hex(value[i+2]))); i += 3;
+        }
+        for (size_t j = 0; j < bytes.size();) {
+            unsigned code = bytes[j++], count = 0, minimum = 0;
+            if (code < 128) {}
+            else if (code >= 0xc2 && code <= 0xdf) { code &= 31; count = 1; minimum = 128; }
+            else if (code >= 0xe0 && code <= 0xef) { code &= 15; count = 2; minimum = 2048; }
+            else if (code >= 0xf0 && code <= 0xf4) { code &= 7; count = 3; minimum = 65536; }
+            else return;
+            if (j + count > bytes.size()) return;
+            while (count--) { if ((bytes[j] & 0xc0) != 0x80) return; code = (code << 6) | (bytes[j++] & 63); }
+            if (code < minimum || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return;
+            if (sizeof(wchar_t) == 2 && code > 0xffff) { code -= 0x10000; path += static_cast<wchar_t>(0xd800 + (code >> 10)); path += static_cast<wchar_t>(0xdc00 + (code & 1023)); }
+            else path += static_cast<wchar_t>(code);
+        }
+    }
+    if (path.empty() || path.front() != L'/') return;
+    for (wchar_t c : path) if (c < 32 || c == 127) return;
+    result.workingDirectory = std::move(path);
+}
+
 TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstring& timestamp) {
     TerminalFeedResult result;
     for (const wchar_t character : text) {
@@ -124,12 +161,7 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
             break;
         case ParserState::Osc:
             if (character == L'\a' || character == 0x9c) {
-                const size_t separator = oscBuffer_.find(L';');
-                if (separator != std::wstring::npos &&
-                    (oscBuffer_.substr(0, separator) == L"0" || oscBuffer_.substr(0, separator) == L"2")) {
-                    result.title = oscBuffer_.substr(separator + 1);
-                    result.titleChanged = true;
-                }
+                HandleOsc(result);
                 oscBuffer_.clear();
                 parserState_ = ParserState::Ground;
             } else if (character == 0x1b) {
@@ -140,12 +172,7 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
             break;
         case ParserState::OscEscape:
             if (character == L'\\') {
-                const size_t separator = oscBuffer_.find(L';');
-                if (separator != std::wstring::npos &&
-                    (oscBuffer_.substr(0, separator) == L"0" || oscBuffer_.substr(0, separator) == L"2")) {
-                    result.title = oscBuffer_.substr(separator + 1);
-                    result.titleChanged = true;
-                }
+                HandleOsc(result);
                 oscBuffer_.clear();
                 parserState_ = ParserState::Ground;
             } else {

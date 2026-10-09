@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 Set-StrictMode -Version Latest
@@ -15,10 +15,10 @@ $finalArchive = Join-Path $binRoot $archiveName
 Write-Host '==> Preflight source/version/dependency checks'
 & (Join-Path $PSScriptRoot 'check.ps1') -Architecture All -Configuration Release -SourceOnly
 
-Write-Host '==> Clean x86/x64 Release build'
+Write-Host '==> Clean x64 Release build'
 & (Join-Path $PSScriptRoot 'build.ps1') -Architecture All -Configuration Release -Clean
 
-Write-Host '==> x86/x64 automated tests'
+Write-Host '==> x64 automated tests'
 & (Join-Path $PSScriptRoot 'test.ps1') -Architecture All -Configuration Release
 
 Write-Host '==> PE, version, dependency, and Win7 compatibility checks'

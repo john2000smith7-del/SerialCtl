@@ -1,20 +1,18 @@
-# SerialCtl V1.0.2 Windows 便携包
+# SerialCtl V1.1.0
 
-本压缩包同时提供 Windows x86 和 x64 原生程序：
+适用：Windows 7 SP1 x64、Windows 10 x64、Windows 11。程序使用原生 C++17/Win32、静态运行库与 YY-Thunks；不需要安装 .NET 或 Python。
 
-```text
-windows\x86\native\
-windows\x64\native\
-```
+解压整个发布压缩包后，直接双击主目录的 `serialctl.exe`。同目录的 `plink.exe`、`psftp.exe` 是 SSH/SFTP 必需工具，请保留。不要在压缩包预览中直接运行。
 
-32 位 Windows 7 必须使用 x86；64 位 Windows 7/10/11 推荐使用 x64，也可在支持 WOW64 的系统上使用 x86。
+- 本地串口可同时打开多个 COM。每个连接有独立终端、编码、换行设置与日志，可在左侧切换。
+- 所有已打开串口共用一个 TCP 服务，默认 7000，占用时自动尝试 7001–7015。全部不可用时本地串口仍可使用，状态栏显示共享失败。
+- 远程“共享串口”仅输入 IP，自动发现已打开的 COM，选择后连接。防火墙需允许应用入站或 TCP 7000–7015；发现不通过 UDP 广播。
+- 在终端直接输入，Enter 发送。右键有粘贴及 Enter 的 CR/LF/CRLF/无设置；SSH Enter 固定为 CR，SSH 命令按钮使用 LF。粘贴保留原文本，不自动追加换行；支持 bracketed paste 的终端会启用对应保护。
+- 命令按钮可拖动排序；添加、编辑、删除、导入与调整顺序后点击“保存*”。未保存退出可选择保存、放弃或取消。导出是备份当前草稿，与本地保存独立。
+- SFTP 默认跟随终端。支持 OSC 7 路径通知，常见 user@host:/path 提示符作为回退。右键菜单可从当前空闲 Shell 获取目录或为当前 Bash/Zsh 启用目录通知（不修改远端配置文件）。请勿在程序运行或命令输入一半时触发这些操作。
+- SFTP 路径双击、文件列表 Ctrl+L 或右键“输入路径”可粘贴 `pwd` 的绝对路径；手动浏览暂停跟随，右键可重新启用。拖动“名称”列右边界调整文件名宽度，自动保存在当前用户设置。
+- Linux AI 工具见同目录 `AI-SERIAL.md` 和 `serialctl_client.py`；Python 仅供 Linux 客户端使用，Windows 主程序不依赖它。
 
-完整解压后，在目标架构目录直接运行 `serialctl.exe`。请始终让以下三个程序位于同一目录：
+配置、命令草稿保存后的文件和日志位于当前用户 `%APPDATA%\SerialCtl`；压缩包不含个人配置、密码或日志。共享保留所有客户端可读写，不增加互斥；每个 TCP 连接只绑定一个 COM。
 
-- `serialctl.exe`
-- `plink.exe`
-- `psftp.exe`
-
-本程序无需安装 .NET Framework 或 Visual C++ Redistributable。串口使用前仍需安装对应 USB/串口设备的 Windows 7 驱动。
-
-`MANIFEST.json` 描述包身份和 payload，`SHA256SUMS.txt` 用于核对包内文件。共享串口没有认证或加密，只适合可信内网。
+兼容性验证：GitHub Windows 构建、自动化测试、x64 PE 架构、子系统 6.01、静态运行库导入检查、包解压及校验、深浅主题 UI 检查。未进行真实 Windows 7 SP1、物理串口及现场 SSH/SFTP 验收，详见 `WIN7-HARDWARE-TEST.md`。

@@ -134,6 +134,13 @@ void TestUntrustedParameters() {
 } // namespace
 
 int main() {
+    serialctl::TerminalModel osc;
+    auto cwd = osc.Feed(L"\x1b]7;file://host/tmp/a%20b/%E4%B8%AD\a", L"");
+    Expect(cwd.workingDirectory == L"/tmp/a b/中", "OSC7 percent UTF8 working directory");
+    Expect(osc.Feed(L"\x1b]7;file://host/var", L"").workingDirectory.empty(), "split OSC7 retained");
+    Expect(osc.Feed(L"/log\x1b\\", L"").workingDirectory == L"/var/log", "OSC7 ST terminator");
+    Expect(osc.Feed(L"\x1b]7;file://host/%00\a", L"").workingDirectory.empty(), "invalid path control rejected");
+    Expect(osc.Feed(L"\x1b]7;file://host/%C0%AF\a", L"").workingDirectory.empty(), "overlong UTF8 rejected");
     TestUntrustedParameters();
     TestCarriageReturnAndHistoryRecall();
     TestScrollback();

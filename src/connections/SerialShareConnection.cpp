@@ -10,6 +10,7 @@
 #endif
 #include <array>
 #include <string>
+#include <cwctype>
 
 namespace serialctl {
 namespace {
@@ -62,123 +63,149 @@ bool SendFrame(SOCKET socket, char type, const Bytes& payload) {
 
 } // namespace
 
-SerialShareConnection::SerialShareConnection(SerialSettings settings, std::uint16_t listenPort)
-    : settings_(std::move(settings)), listenPort_(listenPort) {}
-
-SerialShareConnection::~SerialShareConnection() {
-    Stop();
+namespace {
+std::wstring NormalizeSerial(std::wstring name) {
+    if (name.rfind(L"\\\\.\\", 0) == 0) name.erase(0, 4);
+    std::transform(name.begin(), name.end(), name.begin(), ::towupper);
+    return name;
+}
+}
+std::shared_ptr<SerialShareService> SerialShareService::Acquire(std::uint16_t port, std::wstring& error) {
+    static std::mutex mutex;
+    static std::weak_ptr<SerialShareService> current;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (auto service = current.lock()) return service;
+    auto service = std::make_shared<SerialShareService>(port);
+    if (!service->Start(error)) return {};
+    current = service;
+    return service;
 }
 
-bool SerialShareConnection::Start(
-    DataCallback onData,
-    StatusCallback onStatus,
-    std::wstring& error) {
-    if (IsConnected()) {
-        error = L"串口共享已经启动";
+bool SerialShareService::Start(std::wstring& error) {
+    const unsigned preferred = listenPort_;
+    for (unsigned port = preferred; port <= 65535 && port < preferred + 16; ++port) {
+        SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (listener == INVALID_SOCKET) continue;
+        BOOL exclusive = TRUE;
+        if (setsockopt(listener, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+                reinterpret_cast<const char*>(&exclusive), sizeof(exclusive)) != 0) {
+            closesocket(listener); continue;
+        }
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_ANY);
+        address.sin_port = htons(static_cast<u_short>(port));
+        if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
+            listen(listener, SOMAXCONN) == SOCKET_ERROR) { closesocket(listener); continue; }
+        u_long nonBlocking = 1;
+        if (ioctlsocket(listener, FIONBIO, &nonBlocking) == SOCKET_ERROR) { closesocket(listener); continue; }
+        int length = sizeof(address);
+        getsockname(listener, reinterpret_cast<sockaddr*>(&address), &length);
+        listenPort_ = ntohs(address.sin_port);
+        listener_ = listener;
+        stopping_ = false;
+        acceptThread_ = std::thread(&SerialShareService::AcceptLoop, this);
+        return true;
+    }
+    error = L"共享端口不可用，本地串口仍可使用（默认自动尝试 7000–7015）。";
+    return false;
+}
+
+bool SerialShareConnection::Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) {
+    if (channel_) { error = L"串口已经打开"; return false; }
+    std::wstring shareError;
+    auto service = SerialShareService::Acquire(listenPort_, shareError);
+    auto channel = std::make_shared<SerialShareChannel>();
+    channel->settings = settings_;
+    channel->onStatus = onStatus;
+    std::weak_ptr<SerialShareService> weakService = service;
+    std::weak_ptr<SerialShareChannel> weakChannel = channel;
+    if (!channel->device.Open(settings_, [onData, weakService, weakChannel](const Bytes& data) {
+            if (onData) onData(data);
+            if (auto current = weakChannel.lock())
+                if (auto gateway = weakService.lock()) gateway->Broadcast(current, data);
+        }, onStatus, error)) return false;
+    channel->active = true;
+    if (service && !service->Register(channel)) {
+        channel->active = false;
+        channel->device.Close();
+        error = L"该串口已经打开";
         return false;
     }
-
-    SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (listener == INVALID_SOCKET) {
-        error = L"创建监听套接字失败：" + SocketErrorMessage(WSAGetLastError());
-        return false;
-    }
-
-    BOOL reuseAddress = TRUE;
-    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuseAddress), sizeof(reuseAddress));
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
-    address.sin_port = htons(listenPort_);
-    if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
-        listen(listener, SOMAXCONN) == SOCKET_ERROR) {
-        error = L"监听端口失败：" + SocketErrorMessage(WSAGetLastError());
-        closesocket(listener);
-        return false;
-    }
-
-    // A listener must never block accept indefinitely during shutdown.
-    u_long nonBlocking = 1;
-    if (ioctlsocket(listener, FIONBIO, &nonBlocking) == SOCKET_ERROR) {
-        error = L"设置监听套接字失败：" + SocketErrorMessage(WSAGetLastError());
-        closesocket(listener);
-        return false;
-    }
-
-    onData_ = std::move(onData);
-    onStatus_ = std::move(onStatus);
-    stopping_ = false;
-    listener_ = listener;
-
-    if (!device_.Open(
-            settings_,
-            [this](const Bytes& data) {
-                if (onData_) {
-                    onData_(data);
-                }
-                Broadcast(data);
-            },
-            onStatus_,
-            error)) {
-        closesocket(listener_);
-        listener_ = INVALID_SOCKET;
-        return false;
-    }
-
-    acceptThread_ = std::thread(&SerialShareConnection::AcceptLoop, this);
-    if (onStatus_) {
-        onStatus_(L"正在共享 " + settings_.portName + L"，TCP 端口 " + std::to_wstring(listenPort_), false);
+    channel_ = channel;
+    service_ = service;
+    if (onStatus) {
+        if (service) onStatus(L"正在共享 " + settings_.portName + L"，TCP 端口 " + std::to_wstring(service->Port()) + L" · 各串口独立 · 均可读写", false);
+        else onStatus(shareError, true);
     }
     return true;
 }
-
 void SerialShareConnection::Stop() {
-    SHARE_TRACE("Stop begin");
-    stopping_ = true;
-    SOCKET listener = listener_;
-    listener_ = INVALID_SOCKET;
-    if (listener != INVALID_SOCKET) {
-        closesocket(listener);
-    }
-
-    // Finish accepting before taking the final snapshot, including clients
-    // accepted concurrently with Stop.
-    SHARE_TRACE("joining accept");
-    if (acceptThread_.joinable()) acceptThread_.join();
-    SHARE_TRACE("accept joined");
-    std::vector<std::shared_ptr<Client>> clients;
-    {
-        std::lock_guard<std::mutex> lock(clientsMutex_);
-        clients = clients_;
-    }
-    for (const auto& client : clients) ShutdownClient(client);
-    SHARE_TRACE("clients shut down");
-    for (auto& worker : clientThreads_) {
-        SHARE_TRACE("joining client");
-        if (worker.second.joinable()) worker.second.join();
-        SHARE_TRACE("client joined");
-    }
-    clientThreads_.clear();
-    {
-        std::lock_guard<std::mutex> lock(clientsMutex_);
-        clients_.clear();
-    }
-    SHARE_TRACE("closing device");
-    device_.Close();
-    SHARE_TRACE("device closed");
-    onData_ = {};
-    onStatus_ = {};
+    if (!channel_) return;
+    channel_->active = false;
+    if (service_) service_->Unregister(channel_);
+    { std::lock_guard<std::mutex> lock(channel_->ioMutex); channel_->device.Close(); }
+    channel_.reset();
+    service_.reset();
 }
-
 bool SerialShareConnection::Send(const Bytes& data, std::wstring& error) {
-    return device_.Write(data, error);
+    if (!channel_) { error = L"串口尚未打开"; return false; }
+    return channel_->Write(data, error);
+}
+bool SerialShareConnection::IsConnected() const { return channel_ && channel_->active && channel_->device.IsOpen(); }
+
+bool SerialShareService::Register(const std::shared_ptr<SerialShareChannel>& channel) {
+    std::lock_guard<std::mutex> lock(channelsMutex_);
+    return channels_.emplace(NormalizeSerial(channel->settings.portName), channel).second;
+}
+std::shared_ptr<SerialShareChannel> SerialShareService::FindChannel(const std::wstring& name) {
+    std::lock_guard<std::mutex> lock(channelsMutex_);
+    auto found = channels_.find(NormalizeSerial(name));
+    return found == channels_.end() || !found->second->active ? nullptr : found->second;
+}
+std::shared_ptr<SerialShareChannel> SerialShareService::OnlyChannel() {
+    std::lock_guard<std::mutex> lock(channelsMutex_);
+    return channels_.size() == 1 && channels_.begin()->second->active ? channels_.begin()->second : nullptr;
+}
+void SerialShareService::Unregister(const std::shared_ptr<SerialShareChannel>& channel) {
+    { std::lock_guard<std::mutex> lock(channelsMutex_); channels_.erase(NormalizeSerial(channel->settings.portName)); }
+    std::vector<std::shared_ptr<Client>> snapshot;
+    { std::lock_guard<std::mutex> lock(clientsMutex_); snapshot = clients_; }
+    for (const auto& client : snapshot) if (client->ready && client->channel == channel) ShutdownClient(client);
+}
+std::string SerialShareService::ListReply() {
+    std::vector<std::shared_ptr<SerialShareChannel>> channels;
+    { std::lock_guard<std::mutex> lock(channelsMutex_); for (const auto& entry : channels_) if (entry.second->active) channels.push_back(entry.second); }
+    std::vector<std::shared_ptr<Client>> clients;
+    { std::lock_guard<std::mutex> lock(clientsMutex_); clients = clients_; }
+    std::string reply = "SERIALCTL/1 PORTS\n";
+    for (const auto& channel : channels) reply += WideToMultiByte(NormalizeSerial(channel->settings.portName), CP_UTF8) + "\n";
+    reply += ".\nSERIALCTL_INFO\t3\n";
+    for (const auto& channel : channels) {
+        size_t count = 0;
+        for (const auto& client : clients) if (client->ready && client->channel == channel) ++count;
+        const auto& s = channel->settings;
+        reply += WideToMultiByte(NormalizeSerial(s.portName), CP_UTF8) + "\t" + std::to_string(s.baudRate) + "\t" +
+            std::to_string(s.dataBits) + "\t" + std::to_string(s.parity) + "\t" + std::to_string(s.stopBits) + "\t" +
+            std::to_string(s.flowControl) + "\t" + std::to_string(count) + "\topen\n";
+    }
+    return reply;
 }
 
-bool SerialShareConnection::IsConnected() const {
-    return listener_ != INVALID_SOCKET && device_.IsOpen();
+void SerialShareService::Stop() {
+    stopping_ = true;
+    SOCKET listener = listener_.exchange(INVALID_SOCKET);
+    if (listener != INVALID_SOCKET) closesocket(listener);
+    if (acceptThread_.joinable()) acceptThread_.join();
+    std::vector<std::shared_ptr<Client>> clients;
+    { std::lock_guard<std::mutex> lock(clientsMutex_); clients = clients_; }
+    for (const auto& client : clients) ShutdownClient(client);
+    for (auto& worker : clientThreads_) if (worker.second.joinable()) worker.second.join();
+    clientThreads_.clear();
+    { std::lock_guard<std::mutex> lock(clientsMutex_); clients_.clear(); }
 }
 
-void SerialShareConnection::AcceptLoop() {
+void SerialShareService::AcceptLoop() {
     while (!stopping_) {
         SOCKET accepted = accept(listener_, nullptr, nullptr);
         if (accepted == INVALID_SOCKET) {
@@ -193,9 +220,7 @@ void SerialShareConnection::AcceptLoop() {
                 select(0, &readable, nullptr, nullptr, &interval);
                 continue;
             }
-            if (!stopping_ && onStatus_) {
-                onStatus_(L"接受客户端失败：" + SocketErrorMessage(WSAGetLastError()), true);
-            }
+
             break;
         }
         if (stopping_) { closesocket(accepted); break; }
@@ -213,7 +238,7 @@ void SerialShareConnection::AcceptLoop() {
         client->socket = accepted;
         {
             std::lock_guard<std::mutex> lock(clientsMutex_);
-            if (clients_.size() >= 32) {
+            if (clients_.size() >= 128) {
                 closesocket(accepted);
                 continue;
             }
@@ -224,12 +249,12 @@ void SerialShareConnection::AcceptLoop() {
                 } else ++worker;
             }
             clients_.push_back(client);
-            clientThreads_.emplace_back(client, std::thread(&SerialShareConnection::ClientLoop, this, client));
+            clientThreads_.emplace_back(client, std::thread(&SerialShareService::ClientLoop, this, client));
         }
     }
 }
 
-void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
+void SerialShareService::ClientLoop(const std::shared_ptr<Client>& client) {
     std::array<std::uint8_t, 4096> buffer{};
     DWORD handshakeTimeout = 400;
     setsockopt(client->socket, SOL_SOCKET, SO_RCVTIMEO,
@@ -255,59 +280,38 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
             first, 0, std::min(first.size(), protocolV2.size())) == 0;
         if (!matchesV1 && !matchesV2) break;
     }
-    if (!first.empty()) {
-        if (first == "SERIALCTL/1 LIST\n") {
-            const std::string response = "SERIALCTL/1 PORTS\n" +
-                WideToMultiByte(settings_.portName, CP_UTF8) + "\n.\n";
-            send(client->socket, response.data(), static_cast<int>(response.size()), 0);
-            read = 0;
-        } else if (first.rfind("SERIALCTL/2 OPEN ", 0) == 0) {
-            const size_t lineEnd = first.find('\n');
-            std::string requested = first.substr(17, lineEnd == std::string::npos ? std::string::npos : lineEnd - 17);
-            if (!requested.empty() && requested.back() == '\r') requested.pop_back();
-            if (requested != WideToMultiByte(settings_.portName, CP_UTF8)) {
-                const std::string response = "SERIALCTL/2 ERR NOT_FOUND\n";
-                send(client->socket, response.data(), static_cast<int>(response.size()), 0);
-                read = 0;
-            } else {
-                client->protocol = ClientProtocol::Version2;
-                const std::string response = "SERIALCTL/2 OK WRITE\n";
-                send(client->socket, response.data(), static_cast<int>(response.size()), 0);
-                if (lineEnd != std::string::npos && lineEnd + 1 < first.size())
-                    buffered.assign(first.begin() + static_cast<std::ptrdiff_t>(lineEnd + 1), first.end());
-                client->ready = true;
-            }
-        } else if (first.rfind("SERIALCTL/1 OPEN ", 0) == 0) {
-            const size_t lineEnd = first.find('\n');
-            std::string requested = first.substr(17, lineEnd == std::string::npos ? std::string::npos : lineEnd - 17);
-            if (!requested.empty() && requested.back() == '\r') requested.pop_back();
-            if (requested != WideToMultiByte(settings_.portName, CP_UTF8)) {
-                const std::string response = "SERIALCTL/1 ERR NOT_FOUND\n";
-                send(client->socket, response.data(), static_cast<int>(response.size()), 0);
-                read = 0;
-            } else {
-                const std::string response = "SERIALCTL/1 OK\n";
-                send(client->socket, response.data(), static_cast<int>(response.size()), 0);
-                client->protocol = ClientProtocol::Version1;
-                client->ready = true;
-                if (lineEnd != std::string::npos && lineEnd + 1 < first.size()) {
-                    Bytes tail(first.begin() + static_cast<std::ptrdiff_t>(lineEnd + 1), first.end());
-                    std::wstring error;
-                    if (!device_.Write(tail, error) && onStatus_) onStatus_(error, true);
-                }
-            }
-        } else {
-            // Existing tools such as gensio speak raw TCP. Preserve that behavior.
-            client->protocol = ClientProtocol::Raw;
+    const size_t lineEnd = first.find('\n');
+    const std::string line = lineEnd == std::string::npos ? first : first.substr(0, lineEnd + 1);
+    if (line == "SERIALCTL/1 LIST\n") {
+        const auto reply = ListReply();
+        SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(reply.data()), reply.size());
+    } else if (first.rfind("SERIALCTL/2 OPEN ", 0) == 0 || first.rfind("SERIALCTL/1 OPEN ", 0) == 0) {
+        const bool version2 = first[10] == '2';
+        std::string requested = first.substr(17, lineEnd == std::string::npos ? std::string::npos : lineEnd - 17);
+        if (!requested.empty() && requested.back() == '\r') requested.pop_back();
+        client->channel = lineEnd == std::string::npos ? nullptr : FindChannel(MultiByteToWide(
+            reinterpret_cast<const std::uint8_t*>(requested.data()), requested.size(), CP_UTF8));
+        const std::string prefix = version2 ? "SERIALCTL/2 " : "SERIALCTL/1 ";
+        const std::string response = prefix + (client->channel ? (version2 ? "OK WRITE\n" : "OK\n") : "ERR NOT_FOUND\n");
+        if (SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(response.data()), response.size()) && client->channel) {
+            client->protocol = version2 ? ClientProtocol::Version2 : ClientProtocol::Version1;
             client->ready = true;
-            Bytes data(first.begin(), first.end());
-            std::wstring error;
-            if (!device_.Write(data, error) && onStatus_) onStatus_(error, true);
+            if (lineEnd + 1 < first.size()) buffered.assign(first.begin() + static_cast<std::ptrdiff_t>(lineEnd + 1), first.end());
+            if (!version2 && !buffered.empty()) { std::wstring error; if (!client->channel->Write(buffered, error)) client->ready = false; buffered.clear(); }
         }
-    } else if (read == SOCKET_ERROR && firstError == WSAETIMEDOUT) {
-        // A receive-only raw TCP client may send nothing before serial data arrives.
-        client->protocol = ClientProtocol::Raw;
-        client->ready = true;
+    } else if (first.rfind("SERIALCTL/", 0) == 0) {
+        const std::string response = "SERIALCTL/2 ERR UNSUPPORTED\n";
+        SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(response.data()), response.size());
+    } else if (!first.empty() || (read == SOCKET_ERROR && firstError == WSAETIMEDOUT)) {
+        // Raw clients are safe only when a single COM is shared. Named OPEN is mandatory otherwise.
+        client->channel = OnlyChannel();
+        if (client->channel) {
+            client->ready = true;
+            if (!first.empty()) { std::wstring error; if (!client->channel->Write(Bytes(first.begin(), first.end()), error)) client->ready = false; }
+        } else {
+            const std::string response = "SERIALCTL/2 ERR SELECT_REQUIRED\n";
+            SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(response.data()), response.size());
+        }
     }
     // Windows shutdown does not reliably wake another thread's blocking recv.
     // A short receive timeout lets cancellation be observed even for idle peers.
@@ -320,13 +324,14 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
         return;
     }
     try {
-        client->sendThread = std::thread(&SerialShareConnection::SendLoop, this, client);
+        client->sendThread = std::thread(&SerialShareService::SendLoop, this, client);
     } catch (...) {
         FinishClient(client);
         return;
     }
-    if (onStatus_) onStatus_(L"远程客户端已连接，当前 " + std::to_wstring(ClientCount()) + L" 个 · 均可读写", false);
 
+
+    if (client->channel->onStatus) client->channel->onStatus(L"远程客户端已连接 · " + client->channel->settings.portName + L" · 均可读写", false);
     while (!stopping_ && !client->closing) {
         if (client->protocol == ClientProtocol::Version2) {
             std::array<std::uint8_t, 5> header{};
@@ -339,8 +344,7 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
             if (length && !ReceiveExact(client->socket, buffered, payload.data(), payload.size(), stopping_, client->closing)) break;
             if (header[0] == 'D') {
                 std::wstring error;
-                if (!device_.Write(payload, error)) {
-                    if (onStatus_) onStatus_(error, true);
+                if (!client->channel->Write(payload, error)) {
                     break;
                 }
             } else if (header[0] == 'C') {
@@ -352,8 +356,7 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
             if (read <= 0) break;
             Bytes data(buffer.begin(), buffer.begin() + read);
             std::wstring error;
-            if (!device_.Write(data, error)) {
-                if (onStatus_) onStatus_(error, true);
+            if (!client->channel->Write(data, error)) {
                 break;
             }
         }
@@ -362,7 +365,7 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
     FinishClient(client);
 }
 
-void SerialShareConnection::ShutdownClient(const std::shared_ptr<Client>& client) {
+void SerialShareService::ShutdownClient(const std::shared_ptr<Client>& client) {
     // Change the wait predicate under the same mutex as condition_variable::wait
     // so notification cannot be lost between its predicate check and sleeping.
     {
@@ -377,7 +380,7 @@ void SerialShareConnection::ShutdownClient(const std::shared_ptr<Client>& client
     SHARE_TRACE("shutdown socket end");
 }
 
-void SerialShareConnection::FinishClient(const std::shared_ptr<Client>& client) {
+void SerialShareService::FinishClient(const std::shared_ptr<Client>& client) {
     client->ready.store(false);
     ShutdownClient(client);
     SHARE_TRACE("joining sender");
@@ -391,13 +394,12 @@ void SerialShareConnection::FinishClient(const std::shared_ptr<Client>& client) 
         }
     }
     RemoveClient(client);
-    if (!stopping_ && onStatus_)
-        onStatus_(L"远程客户端已断开，当前 " + std::to_wstring(ClientCount()) + L" 个", false);
+
     client->finished.store(true);
     SHARE_TRACE("client finished");
 }
 
-bool SerialShareConnection::QueueSend(const std::shared_ptr<Client>& client, char type, const Bytes& data) {
+bool SerialShareService::QueueSend(const std::shared_ptr<Client>& client, char type, const Bytes& data) {
     bool overflow = false;
     {
         std::lock_guard<std::mutex> lock(client->queueMutex);
@@ -417,7 +419,7 @@ bool SerialShareConnection::QueueSend(const std::shared_ptr<Client>& client, cha
     return true;
 }
 
-void SerialShareConnection::SendLoop(const std::shared_ptr<Client>& client) {
+void SerialShareService::SendLoop(const std::shared_ptr<Client>& client) {
     SHARE_TRACE("sender started");
     while (!stopping_ && !client->closing) {
         std::pair<char, Bytes> frame;
@@ -437,28 +439,28 @@ void SerialShareConnection::SendLoop(const std::shared_ptr<Client>& client) {
     SHARE_TRACE("sender finished");
 }
 
-void SerialShareConnection::Broadcast(const Bytes& data) {
+void SerialShareService::Broadcast(const std::shared_ptr<SerialShareChannel>& channel, const Bytes& data) {
     std::vector<std::shared_ptr<Client>> snapshot;
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);
         snapshot = clients_;
     }
     for (const auto& client : snapshot) {
-        if (client->ready) QueueSend(client, 'D', data);
+        if (client->ready && client->channel == channel) QueueSend(client, 'D', data);
     }
 }
 
-void SerialShareConnection::RemoveClient(const std::shared_ptr<Client>& client) {
+void SerialShareService::RemoveClient(const std::shared_ptr<Client>& client) {
     std::lock_guard<std::mutex> lock(clientsMutex_);
     clients_.erase(std::remove(clients_.begin(), clients_.end(), client), clients_.end());
 }
 
-size_t SerialShareConnection::ClientCount() {
+size_t SerialShareService::ClientCount() {
     std::lock_guard<std::mutex> lock(clientsMutex_);
     return clients_.size();
 }
 
-bool SerialShareConnection::SendClientControl(const std::shared_ptr<Client>& client, const std::string& message) {
+bool SerialShareService::SendClientControl(const std::shared_ptr<Client>& client, const std::string& message) {
     return QueueSend(client, 'C', Bytes(message.begin(), message.end()));
 }
 
