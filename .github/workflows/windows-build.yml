@@ -1,0 +1,35 @@
+name: Windows Win7 release build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build, test and verify x86/x64 Win7 portable bundle
+        shell: powershell
+        run: ./scripts/release.ps1
+      - name: Launch packaged applications and capture UI
+        shell: powershell
+        run: ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"
+      - name: Upload verified portable bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: bin/SerialCtl-*-Win7.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-UI-evidence
+          path: ${{ runner.temp }}/serialctl-ui
+          if-no-files-found: warn

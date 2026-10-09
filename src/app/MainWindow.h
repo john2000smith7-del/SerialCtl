@@ -129,6 +129,7 @@ private:
     void DiscoverSharedSerialPorts(HWND dialog);
     bool ReadConnectionDialog(HWND dialog, std::wstring& error);
     void ConnectFromDialog();
+    void CompleteConnection(bool success, const std::wstring& error);
     void Disconnect();
     void SwitchSession(size_t index);
     SessionState* FindSession(std::uint64_t id);
@@ -335,6 +336,13 @@ private:
     std::uint64_t sftpRefreshSessionId_ = 0;
     std::wstring sftpRefreshDirectory_;
     bool statusIsError_ = false;
+
+    std::thread connectionThread_;
+    std::atomic_bool connectionCancel_{false};
+    std::unique_ptr<SessionState> pendingSession_;
+    std::vector<Bytes> pendingConnectionData_;
+    size_t pendingConnectionBytes_ = 0;
+    bool closing_ = false;
 
     int pendingMode_ = 0;
     SerialSettings pendingSerial_;

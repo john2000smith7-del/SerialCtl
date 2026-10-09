@@ -1,3 +1,4 @@
+#include "NetworkConnect.h"
 #include "TcpConnection.h"
 #include "Win32Helpers.h"
 
@@ -20,36 +21,9 @@ bool TcpConnection::Start(DataCallback onData, StatusCallback onStatus, std::wst
         return false;
     }
 
-    ADDRINFOW hints{};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    ADDRINFOW* addresses = nullptr;
     const std::wstring portText = std::to_wstring(port_);
-    const int resolveResult = GetAddrInfoW(host_.c_str(), portText.c_str(), &hints, &addresses);
-    if (resolveResult != 0) {
-        error = L"无法解析主机名，错误码：" + std::to_wstring(resolveResult);
-        return false;
-    }
-
-    SOCKET connected = INVALID_SOCKET;
-    for (ADDRINFOW* current = addresses; current; current = current->ai_next) {
-        SOCKET candidate = socket(current->ai_family, current->ai_socktype, current->ai_protocol);
-        if (candidate == INVALID_SOCKET) {
-            continue;
-        }
-        if (connect(candidate, current->ai_addr, static_cast<int>(current->ai_addrlen)) == 0) {
-            connected = candidate;
-            break;
-        }
-        closesocket(candidate);
-    }
-    FreeAddrInfoW(addresses);
-
-    if (connected == INVALID_SOCKET) {
-        error = L"连接失败：" + SocketErrorMessage(WSAGetLastError());
-        return false;
-    }
+    SOCKET connected = ConnectTcpSocket(host_, port_, error, &stopping_);
+    if (connected == INVALID_SOCKET) return false;
 
     BOOL noDelay = TRUE;
     setsockopt(connected, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&noDelay), sizeof(noDelay));

@@ -162,6 +162,9 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'shared_serial_protocol_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'tcp_connection_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'terminal_model_test.exe' = @('KERNEL32.dll')
+        'terminal_decoder_test.exe' = @('KERNEL32.dll')
+        'putty_host_key_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll')
+        'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'sftp_model_test.exe' = @('KERNEL32.dll')
     }
     foreach ($testName in $testPrograms.Keys) {

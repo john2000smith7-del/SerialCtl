@@ -113,9 +113,28 @@ void TestFullScreenCompatibilitySequences() {
         "DCS and APC control strings are ignored instead of painted as text");
 }
 
+void TestUntrustedParameters() {
+    serialctl::TerminalModel model(80, 24);
+    model.Feed(L"\x1b[-1CX", L"");
+    ExpectLine(model, 0, L"X", "negative CSI parameters are rejected");
+    model.Feed(L"\x1b[999999999999999999999999CX", L"");
+    Expect(model.CursorColumn() >= 0 && model.CursorColumn() < model.Columns(),
+        "huge cursor movements remain within the grid");
+    model.Feed(L"\x1b[999999999999999999999999AX", L"");
+    model.Feed(L"\x1b[999999999999999999999999BX", L"");
+    model.Feed(L"\x1b[999999999999999999999999DX", L"");
+    model.Feed(L"\x1b[999999999999999999999999XX", L"");
+    auto repeated = model.Feed(L"\x1b[999999999999999999999999b", L"");
+    Expect(repeated.logText.size() <= 4096, "REP work is bounded");
+    for (const wchar_t* command : {L"A", L"B", L"C", L"D", L"E", L"F", L"H", L"X", L"P", L"@"}) {
+        model.Feed(std::wstring(L"\x1b[-2147483648") + command + L"Y", L"");
+    }
+}
+
 } // namespace
 
 int main() {
+    TestUntrustedParameters();
     TestCarriageReturnAndHistoryRecall();
     TestScrollback();
     TestResizePreservesWideHistory();

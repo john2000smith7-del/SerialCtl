@@ -1,3 +1,6 @@
+#include <future>
+#include <chrono>
+#include "TerminalDecoder.h"
 #include "MainWindow.h"
 
 #include "PlinkConnection.h"
@@ -33,6 +36,8 @@ constexpr UINT MessageData = WM_APP + 1;
 constexpr UINT MessageStatus = WM_APP + 2;
 constexpr UINT MessageSftp = WM_APP + 3;
 constexpr UINT MessageSftpProgress = WM_APP + 4;
+constexpr UINT MessageConnection = WM_APP + 5;
+constexpr UINT MessageHostKey = WM_APP + 6;
 constexpr UINT_PTR StatusTimerId = 4001;
 constexpr UINT_PTR CommandTimerId = 4002;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
@@ -185,6 +190,18 @@ CommandActionRects GetCommandActionRects(const RECT& card) {
 bool PointInRect(const RECT& rect, POINT point) {
     return point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom;
 }
+
+struct ConnectionMessage {
+    bool success = false;
+    std::wstring error;
+};
+struct HostKeyRequest {
+    std::wstring host;
+    std::uint16_t port;
+    std::wstring fingerprint;
+    std::promise<bool> decision;
+};
+using HostKeyMessage = std::shared_ptr<HostKeyRequest>;
 
 struct StatusMessage {
     std::uint64_t sessionId = 0;
@@ -1852,7 +1869,19 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageData: {
         std::unique_ptr<DataMessage> data(reinterpret_cast<DataMessage*>(lParam));
-        if (data) AppendData(data->sessionId, data->data);
+        if (data) {
+            if (pendingSession_ && data->sessionId == pendingSession_->id) {
+                constexpr size_t StartupBufferLimit = 4 * 1024 * 1024;
+                if (pendingConnectionBytes_ + data->data.size() <= StartupBufferLimit) {
+                    pendingConnectionBytes_ += data->data.size();
+                    pendingConnectionData_.push_back(std::move(data->data));
+                } else {
+                    connectionCancel_.store(true);
+                    pendingSession_->connection->CancelStart();
+                    AppendStatus(L"连接初始化期间数据过多，连接已取消。", true);
+                }
+            } else AppendData(data->sessionId, data->data);
+        }
         return 0;
     }
     case MessageStatus: {
@@ -1864,6 +1893,27 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             } else if (session && session->logger) {
                 session->logger->WriteStatus(status->text);
             }
+        }
+        return 0;
+    }
+    case MessageConnection: {
+        std::unique_ptr<ConnectionMessage> result(reinterpret_cast<ConnectionMessage*>(lParam));
+        if (result) CompleteConnection(result->success, result->error);
+        return 0;
+    }
+    case MessageHostKey: {
+        std::unique_ptr<HostKeyMessage> message(reinterpret_cast<HostKeyMessage*>(lParam));
+        if (message) {
+            const auto& request = **message;
+            bool accepted = false;
+            if (!closing_ && !connectionCancel_.load()) {
+                const std::wstring prompt = L"首次连接该 SSH 主机：" + request.host + L":" +
+                    std::to_wstring(request.port) + L"\n\n主机指纹：\n" + request.fingerprint +
+                    L"\n\n请通过服务器管理员等独立渠道核对指纹。确认后将保存此指纹；密钥变化时会拒绝连接。\n\n是否信任此主机？";
+                accepted = MessageBoxW(window_, prompt.c_str(), L"确认 SSH 主机身份",
+                    MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+            }
+            (*message)->decision.set_value(accepted);
         }
         return 0;
     }
@@ -1907,6 +1957,11 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return reinterpret_cast<LRESULT>(panelBrush_);
     }
     case WM_CLOSE:
+        closing_ = true;
+        connectionCancel_.store(true);
+        if (pendingSession_) pendingSession_->connection->CancelStart();
+        if (connectionThread_.joinable()) connectionThread_.join();
+        pendingSession_.reset();
         StopCommandSequence(false);
         sftpOperationCancel_.store(true);
         sftpTransferCancel_.store(true);
@@ -1922,6 +1977,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
         {
             MSG pending{};
+            while (PeekMessageW(&pending, window_, MessageConnection, MessageConnection, PM_REMOVE))
+                delete reinterpret_cast<ConnectionMessage*>(pending.lParam);
+            while (PeekMessageW(&pending, window_, MessageHostKey, MessageHostKey, PM_REMOVE))
+                delete reinterpret_cast<HostKeyMessage*>(pending.lParam);
+            while (PeekMessageW(&pending, window_, MessageData, MessageData, PM_REMOVE))
+                delete reinterpret_cast<DataMessage*>(pending.lParam);
+            while (PeekMessageW(&pending, window_, MessageStatus, MessageStatus, PM_REMOVE))
+                delete reinterpret_cast<StatusMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE))
                 delete reinterpret_cast<SftpMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageSftpProgress, MessageSftpProgress, PM_REMOVE))
@@ -2740,6 +2803,10 @@ void MainWindow::ApplyTheme() {
 }
 
 void MainWindow::OpenConnectionDialog(int mode) {
+    if (pendingSession_) {
+        AppendStatus(L"正在连接，请等待当前连接完成。", false);
+        return;
+    }
     pendingMode_ = mode;
     if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_CONNECTION), window_, ConnectionDialogProc,
             reinterpret_cast<LPARAM>(this)) == IDOK) {
@@ -3044,19 +3111,37 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
 
 void MainWindow::ConnectFromDialog() {
     std::unique_ptr<IConnection> connection;
+    std::wstring sessionName;
     if (pendingMode_ == 0) {
         connection = std::make_unique<PlinkConnection>(pendingHost_, pendingPort_, pendingUsername_,
-            pendingPassword_, terminalVisibleColumns_, terminalVisibleRows_);
-        activeConnectionName_ = pendingUsername_ + L"@" + pendingHost_;
+            pendingPassword_, terminalVisibleColumns_, terminalVisibleRows_,
+            [this](const std::wstring& host, std::uint16_t port, const std::wstring& fingerprint) {
+                if (connectionCancel_.load()) return false;
+                auto request = std::make_shared<HostKeyRequest>();
+                request->host = host;
+                request->port = port;
+                request->fingerprint = fingerprint;
+                auto decision = request->decision.get_future();
+                auto* message = new HostKeyMessage(request);
+                if (!PostMessageW(window_, MessageHostKey, 0, reinterpret_cast<LPARAM>(message))) {
+                    delete message;
+                    return false;
+                }
+                while (decision.wait_for(std::chrono::milliseconds(50)) != std::future_status::ready) {
+                    if (connectionCancel_.load()) return false;
+                }
+                return !connectionCancel_.load() && decision.get();
+            });
+        sessionName = pendingUsername_ + L"@" + pendingHost_;
     } else if (pendingMode_ == 1) {
         connection = std::make_unique<SerialShareConnection>(pendingSerial_, DefaultSharePort);
-        activeConnectionName_ = pendingSerial_.portName + L" 本地串口";
+        sessionName = pendingSerial_.portName + L" 本地串口";
     } else if (pendingMode_ == 2) {
         connection = std::make_unique<TcpConnection>(pendingHost_, pendingPort_, true);
-        activeConnectionName_ = pendingHost_ + L":" + std::to_wstring(pendingPort_);
+        sessionName = pendingHost_ + L":" + std::to_wstring(pendingPort_);
     } else {
         connection = std::make_unique<SharedSerialConnection>(pendingHost_, pendingPort_, pendingRemoteSerial_);
-        activeConnectionName_ = pendingRemoteSerial_ + L" @ " + pendingHost_;
+        sessionName = pendingRemoteSerial_ + L" @ " + pendingHost_;
     }
 
     auto session = std::make_unique<SessionState>();
@@ -3064,7 +3149,7 @@ void MainWindow::ConnectFromDialog() {
     session->id = nextSessionId_++;
     session->mode = pendingMode_;
     session->lineEndingIndex = pendingMode_ == 0 ? 1 : 0;
-    session->name = activeConnectionName_;
+    session->name = sessionName;
     session->host = pendingHost_;
     session->username = pendingUsername_;
     session->password = pendingPassword_;
@@ -3072,18 +3157,62 @@ void MainWindow::ConnectFromDialog() {
     session->logger = std::make_unique<SessionLogger>();
     const std::uint64_t sessionId = session->id;
 
-    std::wstring error;
-    if (!session->logger->Start(session->name, error)) { AppendStatus(error, true); return; }
-    if (!connection->Start([this, sessionId](const Bytes& data) { PostData(sessionId, data); },
-            [this, sessionId](const std::wstring& text, bool isError) { PostStatus(sessionId, text, isError); }, error)) {
-        session->logger->Stop();
-        AppendStatus(error, true);
+    session->connection = std::move(connection);
+    pendingSession_ = std::move(session);
+    pendingConnectionData_.clear();
+    pendingConnectionBytes_ = 0;
+    connectionCancel_.store(false);
+    AppendStatus(L"正在连接：" + pendingSession_->name, false);
+    SessionState* pending = pendingSession_.get();
+    try {
+        connectionThread_ = std::thread([this, pending, sessionId] {
+            auto result = std::make_unique<ConnectionMessage>();
+            try {
+                if (!connectionCancel_.load() && pending->logger->Start(pending->name, result->error)) {
+                    result->success = pending->connection->Start(
+                        [this, sessionId](const Bytes& data) { PostData(sessionId, data); },
+                        [this, sessionId](const std::wstring& text, bool isError) {
+                            PostStatus(sessionId, text, isError);
+                        }, result->error);
+                }
+                if (connectionCancel_.load()) result->success = false;
+                if (!result->success) {
+                    pending->connection->Stop();
+                    pending->logger->Stop();
+                }
+            } catch (...) {
+                result->success = false;
+                result->error = L"连接初始化失败。";
+                pending->connection->Stop();
+                pending->logger->Stop();
+            }
+            if (PostMessageW(window_, MessageConnection, 0, reinterpret_cast<LPARAM>(result.get())))
+                result.release();
+        });
+    } catch (...) {
+        pendingSession_.reset();
+        AppendStatus(L"无法启动连接工作线程。", true);
+    }
+}
+
+void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
+    if (connectionThread_.joinable()) connectionThread_.join();
+    if (!pendingSession_) return;
+    if (!success || closing_ || connectionCancel_.load()) {
+        pendingSession_.reset();
+        pendingConnectionData_.clear();
+        pendingConnectionBytes_ = 0;
+        if (!closing_) AppendStatus(error.empty() ? L"连接已取消。" : error, true);
         return;
     }
-    session->connection = std::move(connection);
-    sessions_.push_back(std::move(session));
+    const std::uint64_t id = pendingSession_->id;
+    sessions_.push_back(std::move(pendingSession_));
     RefreshConnectionList();
     SwitchSession(sessions_.size() - 1);
+    for (const Bytes& data : pendingConnectionData_) AppendData(id, data);
+    pendingConnectionData_.clear();
+    pendingConnectionBytes_ = 0;
+    AppendStatus(L"已连接：" + activeSession_->name, false);
     SetFocus(terminal_);
 }
 
@@ -3392,8 +3521,9 @@ std::wstring MainWindow::DecodeTerminalData(SessionState& session, const Bytes& 
             else if ((first & 0xF8) == 0xF0) expected = 4;
             if (expected > 1 && bytes.size() - index < expected) pendingTail = bytes.size() - index;
         }
-    } else if (IsDBCSLeadByteEx(codePage, session.pendingDecodeBytes.back())) {
-        pendingTail = 1;
+    } else {
+        pendingTail = IncompleteDbcsTail(session.pendingDecodeBytes,
+            [codePage](std::uint8_t value) { return IsDBCSLeadByteEx(codePage, value) != FALSE; });
     }
 
     const size_t decodeSize = session.pendingDecodeBytes.size() - pendingTail;

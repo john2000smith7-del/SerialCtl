@@ -79,7 +79,11 @@ void MockServer(std::promise<std::uint16_t> portPromise) {
     SOCKET session = accept(listener, nullptr, nullptr);
     if (ReceiveLine(session) == "SERIALCTL/2 OPEN COM9\n") {
         const std::string ok = "SERIALCTL/2 OK WRITE\n";
-        send(session, ok.data(), static_cast<int>(ok.size()), 0);
+        // The reply and first frame share one write; the next frame is split.
+        const std::string greeting = ok + std::string("D\0\0\0\5hello", 10) + "D";
+        send(session, greeting.data(), static_cast<int>(greeting.size()), 0);
+        const std::string remaining("\0\0\0\1!", 5);
+        send(session, remaining.data(), static_cast<int>(remaining.size()), 0);
         char type = 0;
         std::string payload;
         if (ReceiveFrame(session, type, payload) && type == 'D' && payload == "ping") {
@@ -134,10 +138,10 @@ int main() {
     }
     {
         std::unique_lock<std::mutex> lock(mutex);
-        received.wait_for(lock, std::chrono::seconds(2), [&] { return payload == "pong"; });
+        received.wait_for(lock, std::chrono::seconds(2), [&] { return payload == "hello!pong"; });
     }
     connection.Stop();
     server.join();
     WSACleanup();
-    return payload == "pong" ? 0 : 5;
+    return payload == "hello!pong" ? 0 : 5;
 }

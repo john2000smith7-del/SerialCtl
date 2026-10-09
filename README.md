@@ -2,13 +2,13 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-当前正式版本：`V1.0.0`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
+当前正式版本：`V1.0.1`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
 
 ## 主要功能
 
 - Windows 7 SP1、Windows 10、Windows 11，提供 x86 和 x64 程序。
 - 本地串口终端；串口打开后可通过 TCP `7000` 端口在可信内网共享。
-- 发现并连接其他 SerialCtl 已打开的串口，支持多个客户端同时读写。
+- 发现并连接其他 SerialCtl 已打开的串口，支持最多 32 个客户端同时读写，慢客户端会被隔离断开。
 - Telnet 和 SSH；SSH 使用随包提供的定制 PuTTY `plink.exe`。
 - SSH 会话的 SFTP 文件浏览、排序、多选、上传、下载、取消、重试和文件管理。
 - 多会话切换，每个会话独立保存终端、滚动、编码、日志和 SFTP 状态。
@@ -36,6 +36,8 @@ SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具�
 4. 选择串口并连接。
 
 ### SSH 与 SFTP
+
+首次连接未知 SSH 主机会显示指纹。请通过管理员等独立渠道核对后确认；确认结果持久保存到当前用户注册表，密钥变化时拒绝连接。
 
 SSH 登录成功后，右侧 `SFTP` 页会自动读取目录。路径面包屑、排序、多选、拖入上传、传输队列和文件操作均使用同一 SSH 主机信息。
 
@@ -112,7 +114,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 发布流程会重新构建并测试 x86、x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中只保留：
 
 ```text
-SerialCtl-V1.0.0-Win7.zip
+SerialCtl-V1.0.1-Win7.zip
 ```
 
 压缩包内的 `windows\x86\native` 与 `windows\x64\native` 分别包含匹配架构的 `serialctl.exe`、`plink.exe` 和 `psftp.exe`。复制到目标电脑时必须完整保留同一架构目录中的三个程序。
@@ -133,3 +135,7 @@ SerialCtl-V1.0.0-Win7.zip
 - 终端覆盖常用 VT100/xterm 行为，少见图形协议和部分专有扩展未实现。
 - 真实 Win7 驱动、长时间大流量、具体 SSH 算法及服务器 SFTP 子系统需要现场验证。
 - `legacy/csharp` 是历史 WinForms 原型，不属于生产程序或发布包。
+
+## GitHub 自动构建与下载
+
+推送 main 或手动运行 Actions 的 `Windows Win7 release build` 会构建并验证 x86/x64。正式程序包可在仓库 Releases 下载；Actions 的 `SerialCtl-Win7-portable` 为构建产物（保留 30 天）。CI 使用 Windows Server 2022，不替代真实 Win7 SP1 与硬件验收。

@@ -193,10 +193,27 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(terminal_model_test CONSOLE)
     add_test(NAME terminal_model COMMAND terminal_model_test)
 
+    add_executable(putty_host_key_test tests/integration/PuttyHostKeyTest.cpp
+        src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
+    serialctl_configure_native_target(putty_host_key_test CONSOLE)
+    target_link_libraries(putty_host_key_test PRIVATE advapi32)
+    add_test(NAME putty_host_key COMMAND putty_host_key_test)
+
+    add_executable(serial_share_backpressure_test tests/integration/SerialShareBackpressureTest.cpp
+        src/connections/SerialShareConnection.cpp)
+    serialctl_configure_native_target(serial_share_backpressure_test CONSOLE)
+    target_link_libraries(serial_share_backpressure_test PRIVATE ws2_32)
+    add_test(NAME serial_share_backpressure COMMAND serial_share_backpressure_test)
+
+    add_executable(terminal_decoder_test tests/unit/TerminalDecoderTest.cpp)
+    serialctl_configure_native_target(terminal_decoder_test CONSOLE)
+    add_test(NAME terminal_decoder COMMAND terminal_decoder_test)
+
     add_executable(sftp_model_test
         tests/unit/SftpModelTest.cpp
         src/sftp/SftpModel.cpp
     )
     serialctl_configure_native_target(sftp_model_test CONSOLE)
     add_test(NAME sftp_model COMMAND sftp_model_test)
+    set_tests_properties(shared_serial_protocol tcp_connection terminal_model terminal_decoder sftp_model putty_host_key serial_share_backpressure PROPERTIES TIMEOUT 30)
 endif()

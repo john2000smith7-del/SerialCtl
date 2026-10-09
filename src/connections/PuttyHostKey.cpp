@@ -17,6 +17,39 @@ namespace {
 std::mutex cacheMutex;
 std::map<std::wstring, std::wstring> hostKeyCache;
 
+const wchar_t* TrustRegistryPath = L"Software\\SerialCtl\\TrustedHostKeys";
+
+std::wstring ReadTrustedKey(const std::wstring& name) {
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, TrustRegistryPath, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
+        return {};
+    DWORD type = 0, size = 0;
+    std::wstring value;
+    if (RegQueryValueExW(key, name.c_str(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS &&
+        type == REG_SZ && size >= sizeof(wchar_t) && size <= 4096) {
+        std::vector<wchar_t> buffer(size / sizeof(wchar_t) + 1, L'\0');
+        if (RegQueryValueExW(key, name.c_str(), nullptr, &type,
+                reinterpret_cast<BYTE*>(buffer.data()), &size) == ERROR_SUCCESS && type == REG_SZ)
+            value = buffer.data();
+    }
+    RegCloseKey(key);
+    return value;
+}
+
+bool SaveTrustedKey(const std::wstring& name, const std::wstring& value, std::wstring& error) {
+    HKEY key = nullptr;
+    LONG result = RegCreateKeyExW(HKEY_CURRENT_USER, TrustRegistryPath, 0, nullptr, 0,
+        KEY_SET_VALUE, nullptr, &key, nullptr);
+    if (result == ERROR_SUCCESS) {
+        result = RegSetValueExW(key, name.c_str(), 0, REG_SZ,
+            reinterpret_cast<const BYTE*>(value.c_str()),
+            static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t)));
+        RegCloseKey(key);
+    }
+    if (result != ERROR_SUCCESS) error = L"无法保存已确认的 SSH 主机密钥：" + Win32ErrorMessage(result);
+    return result == ERROR_SUCCESS;
+}
+
 std::wstring Trim(std::wstring value) {
     while (!value.empty() && iswspace(value.front())) value.erase(value.begin());
     while (!value.empty() && iswspace(value.back())) value.pop_back();
@@ -150,7 +183,8 @@ std::wstring ExtractFingerprint(const std::wstring& output) {
 
 bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& host,
     std::uint16_t port, const std::wstring& username, const std::wstring& password,
-    std::wstring& hostKey, std::wstring& error, const std::atomic_bool* cancel) {
+    std::wstring& hostKey, std::wstring& error, const std::atomic_bool* cancel,
+    const HostKeyConfirmation& confirm) {
     const std::wstring cacheKey = host + L":" + std::to_wstring(port);
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
@@ -164,6 +198,7 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
         }
     }
 
+    hostKey = ReadTrustedKey(cacheKey);
     DWORD exitCode = 1;
     std::wstring output;
     if (!RunProbe(executable, host, port, username, password, hostKey,
@@ -184,6 +219,11 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
         L"The host key is not cached for this server") != std::wstring::npos;
     const std::wstring discovered = unknownHost ? ExtractFingerprint(output) : std::wstring();
     if (!discovered.empty() && hostKey.empty()) {
+        if (!confirm || !confirm(host, port, discovered) || (cancel && cancel->load())) {
+            error = L"未信任该 SSH 主机。请通过独立渠道核对主机指纹后再连接。\n" + discovered;
+            return false;
+        }
+        if (!SaveTrustedKey(cacheKey, discovered, error)) return false;
         hostKey = discovered;
         output.clear();
         if (!RunProbe(executable, host, port, username, password, hostKey,

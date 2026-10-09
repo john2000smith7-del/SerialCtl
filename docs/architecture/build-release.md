@@ -32,3 +32,7 @@ check → clean build → test → PE compatibility check → package → extrac
 打包采用显式 allowlist，不复制整个仓库。压缩包只包含两套架构运行程序、用户文档、版本、第三方声明/许可证、MANIFEST 和包内 SHA-256 清单。PDB、OBJ、测试程序、源码、CMake cache、Git metadata、本机配置及 Secret 一律禁止进入。
 
 正式包是一个便于现场复制的双架构 bundle；x86 和 x64 仍使用独立目录，程序与同架构 PuTTY 工具不得混放。该项目特例见 `docs/decisions/0001-single-win7-release-bundle.md`。
+
+## 云端构建
+
+`.github/workflows/windows-build.yml` 在 windows-2022 运行同一 release.ps1 流程，再启动解压后的 x86/x64 程序进行 UI 冒烟检查并上传便携包。实际 Win7 验收按 docs/testing 执行。

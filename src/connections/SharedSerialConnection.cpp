@@ -1,3 +1,4 @@
+#include "NetworkConnect.h"
 #include "SharedSerialConnection.h"
 #include "Win32Helpers.h"
 
@@ -7,53 +8,6 @@
 
 namespace serialctl {
 namespace {
-
-SOCKET ConnectSocket(const std::wstring& host, std::uint16_t port, std::wstring& error) {
-    ADDRINFOW hints{};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    ADDRINFOW* addresses = nullptr;
-    const std::wstring portText = std::to_wstring(port);
-    const int resolveResult = GetAddrInfoW(host.c_str(), portText.c_str(), &hints, &addresses);
-    if (resolveResult != 0) {
-        error = L"无法解析来源电脑，错误码：" + std::to_wstring(resolveResult);
-        return INVALID_SOCKET;
-    }
-
-    SOCKET connected = INVALID_SOCKET;
-    for (ADDRINFOW* current = addresses; current; current = current->ai_next) {
-        SOCKET candidate = socket(current->ai_family, current->ai_socktype, current->ai_protocol);
-        if (candidate == INVALID_SOCKET) continue;
-        u_long nonBlocking = 1;
-        ioctlsocket(candidate, FIONBIO, &nonBlocking);
-        const int connectResult = connect(candidate, current->ai_addr, static_cast<int>(current->ai_addrlen));
-        bool ready = connectResult == 0;
-        if (!ready && WSAGetLastError() == WSAEWOULDBLOCK) {
-            fd_set writable{};
-            FD_ZERO(&writable);
-            FD_SET(candidate, &writable);
-            timeval timeout{1, 500000};
-            if (select(0, nullptr, &writable, nullptr, &timeout) > 0) {
-                int socketError = 0;
-                int errorLength = sizeof(socketError);
-                ready = getsockopt(candidate, SOL_SOCKET, SO_ERROR,
-                    reinterpret_cast<char*>(&socketError), &errorLength) == 0 && socketError == 0;
-            }
-        }
-        nonBlocking = 0;
-        ioctlsocket(candidate, FIONBIO, &nonBlocking);
-        if (ready) {
-            connected = candidate;
-            break;
-        }
-        closesocket(candidate);
-    }
-    FreeAddrInfoW(addresses);
-    if (connected == INVALID_SOCKET)
-        error = L"无法连接共享服务：" + SocketErrorMessage(WSAGetLastError());
-    return connected;
-}
 
 bool SendAll(SOCKET socket, const std::string& text) {
     size_t offset = 0;
@@ -76,8 +30,11 @@ bool SendBytes(SOCKET socket, const std::uint8_t* data, size_t size) {
     return true;
 }
 
-bool ReceiveExact(SOCKET socket, std::uint8_t* data, size_t size) {
-    size_t offset = 0;
+bool ReceiveExact(SOCKET socket, Bytes& buffered, std::uint8_t* data, size_t size) {
+    const size_t bufferedCount = std::min(size, buffered.size());
+    std::copy_n(buffered.begin(), bufferedCount, data);
+    buffered.erase(buffered.begin(), buffered.begin() + static_cast<std::ptrdiff_t>(bufferedCount));
+    size_t offset = bufferedCount;
     while (offset < size) {
         const int received = recv(socket, reinterpret_cast<char*>(data + offset),
             static_cast<int>(size - offset), 0);
@@ -123,7 +80,7 @@ bool SharedSerialConnection::Discover(
     std::vector<std::wstring>& serialNames,
     std::wstring& error) {
     serialNames.clear();
-    SOCKET connected = ConnectSocket(host, port, error);
+    SOCKET connected = ConnectTcpSocket(host, port, error);
     if (connected == INVALID_SOCKET) return false;
     if (!SendAll(connected, "SERIALCTL/1 LIST\n")) {
         error = L"发送串口查询请求失败。";
@@ -161,7 +118,7 @@ bool SharedSerialConnection::Start(DataCallback onData, StatusCallback onStatus,
         error = L"共享串口已经连接";
         return false;
     }
-    SOCKET connected = ConnectSocket(host_, port_, error);
+    SOCKET connected = ConnectTcpSocket(host_, port_, error, &stopping_);
     if (connected == INVALID_SOCKET) return false;
     const std::string request = "SERIALCTL/2 OPEN " + WideToMultiByte(serialName_, CP_UTF8) + "\n";
     if (!SendAll(connected, request)) {
@@ -187,6 +144,8 @@ bool SharedSerialConnection::Start(DataCallback onData, StatusCallback onStatus,
     setsockopt(connected, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&noTimeout), sizeof(noTimeout));
     BOOL noDelay = TRUE;
     setsockopt(connected, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&noDelay), sizeof(noDelay));
+    const size_t headerEnd = reply.find('\n') + 1;
+    receivedBuffer_.assign(reply.begin() + static_cast<std::ptrdiff_t>(headerEnd), reply.end());
     socket_ = connected;
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
@@ -225,7 +184,7 @@ bool SharedSerialConnection::IsConnected() const {
 void SharedSerialConnection::ReadLoop() {
     while (!stopping_) {
         std::array<std::uint8_t, 5> header{};
-        if (!ReceiveExact(socket_, header.data(), header.size())) {
+        if (!ReceiveExact(socket_, receivedBuffer_, header.data(), header.size())) {
             if (!stopping_ && onStatus_)
                 onStatus_(L"共享端已关闭连接", true);
             break;
@@ -238,7 +197,7 @@ void SharedSerialConnection::ReadLoop() {
             break;
         }
         Bytes payload(networkLength);
-        if (networkLength && !ReceiveExact(socket_, payload.data(), payload.size())) break;
+        if (networkLength && !ReceiveExact(socket_, receivedBuffer_, payload.data(), payload.size())) break;
         if (header[0] == 'D') {
             if (onData_) onData_(payload);
         } else if (header[0] == 'C') {

@@ -401,9 +401,14 @@ std::vector<int> TerminalModel::ParseParameters(std::wstring text, wchar_t& pref
             separator == std::wstring::npos ? std::wstring::npos : separator - start);
         if (part.empty()) values.push_back(0);
         else {
-            wchar_t* end = nullptr;
-            const long parsed = wcstol(part.c_str(), &end, 10);
-            values.push_back(end && *end == L'\0' ? static_cast<int>(parsed) : 0);
+            int parsed = 0;
+            for (wchar_t digit : part) {
+                if (digit < L'0' || digit > L'9') return {};
+                // Saturate before arithmetic; terminal coordinates never need
+                // an unbounded signed value from an untrusted peer.
+                parsed = std::min(65535, parsed * 10 + (digit - L'0'));
+            }
+            values.push_back(parsed);
         }
         if (separator == std::wstring::npos) break;
         start = separator + 1;
@@ -420,6 +425,7 @@ int TerminalModel::Parameter(const std::vector<int>& parameters, size_t index, i
 void TerminalModel::ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& result) {
     wchar_t prefix = 0;
     const std::vector<int> parameters = ParseParameters(csiBuffer_, prefix);
+    if (parameters.empty()) return;
     Screen& screen = ActiveScreen();
     const int amount = Parameter(parameters, 0, 1);
     switch (finalCharacter) {
@@ -457,7 +463,7 @@ void TerminalModel::ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& resul
     case L'm': SetGraphicsRendition(parameters); break;
     case L'b':
         if (lastPrintedCharacter_ != 0) {
-            for (int repeat = 0; repeat < amount; ++repeat)
+            for (int repeat = 0; repeat < std::min(amount, 4096); ++repeat)
                 PutCharacter(lastPrintedCharacter_, L"", result);
         }
         break;

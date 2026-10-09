@@ -11,7 +11,7 @@
         {
           "path": "third_party/putty/LICENCE",
           "role": "license",
-          "sha256": "41d6a7dfe147511ae2c0659ba28498daa2d1fa93652d1009571bc0c70cad4fa7"
+          "sha256": "3b02f87e0063430289d9681727a98818c844fc8a4d79b24b76047fa061e77f13"
         },
         {
           "path": "third_party/putty/source/putty-src-0.85.zip",

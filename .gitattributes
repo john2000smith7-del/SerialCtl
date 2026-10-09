@@ -1,0 +1,8 @@
+* text=auto eol=lf
+# Hash-controlled dependencies must retain their committed bytes on every host.
+third_party/** -text
+*.exe -text
+*.zip -text
+*.nupkg -text
+*.ico -text
+*.png -text

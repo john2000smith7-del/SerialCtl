@@ -19,8 +19,11 @@ bool SendAll(SOCKET socket, const std::uint8_t* data, size_t size) {
     return true;
 }
 
-bool ReceiveExact(SOCKET socket, std::uint8_t* data, size_t size) {
-    size_t offset = 0;
+bool ReceiveExact(SOCKET socket, Bytes& buffered, std::uint8_t* data, size_t size) {
+    const size_t bufferedCount = std::min(size, buffered.size());
+    std::copy_n(buffered.begin(), bufferedCount, data);
+    buffered.erase(buffered.begin(), buffered.begin() + static_cast<std::ptrdiff_t>(bufferedCount));
+    size_t offset = bufferedCount;
     while (offset < size) {
         const int received = recv(socket, reinterpret_cast<char*>(data + offset),
             static_cast<int>(size - offset), 0);
@@ -114,26 +117,17 @@ void SerialShareConnection::Stop() {
         closesocket(listener);
     }
 
+    // Finish accepting before taking the final snapshot, including clients
+    // accepted concurrently with Stop.
+    if (acceptThread_.joinable()) acceptThread_.join();
     std::vector<std::shared_ptr<Client>> clients;
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);
         clients = clients_;
     }
-    for (const auto& client : clients) {
-        if (client->socket != INVALID_SOCKET) {
-            shutdown(client->socket, SD_BOTH);
-            closesocket(client->socket);
-            client->socket = INVALID_SOCKET;
-        }
-    }
-
-    if (acceptThread_.joinable()) {
-        acceptThread_.join();
-    }
-    for (auto& thread : clientThreads_) {
-        if (thread.joinable()) {
-            thread.join();
-        }
+    for (const auto& client : clients) ShutdownClient(client);
+    for (auto& worker : clientThreads_) {
+        if (worker.second.joinable()) worker.second.join();
     }
     clientThreads_.clear();
     {
@@ -162,14 +156,28 @@ void SerialShareConnection::AcceptLoop() {
             }
             break;
         }
+        if (stopping_) { closesocket(accepted); break; }
+        DWORD sendTimeout = 500;
+        setsockopt(accepted, SOL_SOCKET, SO_SNDTIMEO,
+            reinterpret_cast<const char*>(&sendTimeout), sizeof(sendTimeout));
         BOOL noDelay = TRUE;
         setsockopt(accepted, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&noDelay), sizeof(noDelay));
         auto client = std::make_shared<Client>();
         client->socket = accepted;
         {
             std::lock_guard<std::mutex> lock(clientsMutex_);
+            if (clients_.size() >= 32) {
+                closesocket(accepted);
+                continue;
+            }
+            for (auto worker = clientThreads_.begin(); worker != clientThreads_.end();) {
+                if (worker->first->finished.load()) {
+                    if (worker->second.joinable()) worker->second.join();
+                    worker = clientThreads_.erase(worker);
+                } else ++worker;
+            }
             clients_.push_back(client);
-            clientThreads_.emplace_back(&SerialShareConnection::ClientLoop, this, client);
+            clientThreads_.emplace_back(client, std::thread(&SerialShareConnection::ClientLoop, this, client));
         }
     }
 }
@@ -180,6 +188,7 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
     setsockopt(client->socket, SOL_SOCKET, SO_RCVTIMEO,
         reinterpret_cast<const char*>(&handshakeTimeout), sizeof(handshakeTimeout));
     std::string first;
+    Bytes buffered;
     int read = 0;
     int firstError = 0;
     while (first.size() < buffer.size()) {
@@ -217,6 +226,8 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
                 client->protocol = ClientProtocol::Version2;
                 const std::string response = "SERIALCTL/2 OK WRITE\n";
                 send(client->socket, response.data(), static_cast<int>(response.size()), 0);
+                if (lineEnd != std::string::npos && lineEnd + 1 < first.size())
+                    buffered.assign(first.begin() + static_cast<std::ptrdiff_t>(lineEnd + 1), first.end());
                 client->ready = true;
             }
         } else if (first.rfind("SERIALCTL/1 OPEN ", 0) == 0) {
@@ -255,27 +266,28 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
     setsockopt(client->socket, SOL_SOCKET, SO_RCVTIMEO,
         reinterpret_cast<const char*>(&noTimeout), sizeof(noTimeout));
 
-    if (!client->ready) {
-        if (client->socket != INVALID_SOCKET) {
-            shutdown(client->socket, SD_BOTH);
-            closesocket(client->socket);
-            client->socket = INVALID_SOCKET;
-        }
-        RemoveClient(client);
+    if (!client->ready || stopping_) {
+        FinishClient(client);
+        return;
+    }
+    try {
+        client->sendThread = std::thread(&SerialShareConnection::SendLoop, this, client);
+    } catch (...) {
+        FinishClient(client);
         return;
     }
     if (onStatus_) onStatus_(L"远程客户端已连接，当前 " + std::to_wstring(ClientCount()) + L" 个 · 均可读写", false);
 
-    while (!stopping_) {
+    while (!stopping_ && !client->closing) {
         if (client->protocol == ClientProtocol::Version2) {
             std::array<std::uint8_t, 5> header{};
-            if (!ReceiveExact(client->socket, header.data(), header.size())) break;
+            if (!ReceiveExact(client->socket, buffered, header.data(), header.size())) break;
             const std::uint32_t length = (static_cast<std::uint32_t>(header[1]) << 24) |
                 (static_cast<std::uint32_t>(header[2]) << 16) |
                 (static_cast<std::uint32_t>(header[3]) << 8) | static_cast<std::uint32_t>(header[4]);
             if (length > 1024 * 1024) break;
             Bytes payload(length);
-            if (length && !ReceiveExact(client->socket, payload.data(), payload.size())) break;
+            if (length && !ReceiveExact(client->socket, buffered, payload.data(), payload.size())) break;
             if (header[0] == 'D') {
                 std::wstring error;
                 if (!device_.Write(payload, error)) {
@@ -298,14 +310,68 @@ void SerialShareConnection::ClientLoop(const std::shared_ptr<Client>& client) {
         }
     }
 
-    if (client->socket != INVALID_SOCKET) {
-        shutdown(client->socket, SD_BOTH);
-        closesocket(client->socket);
-        client->socket = INVALID_SOCKET;
+    FinishClient(client);
+}
+
+void SerialShareConnection::ShutdownClient(const std::shared_ptr<Client>& client) {
+    client->closing.store(true);
+    client->queueReady.notify_all();
+    std::lock_guard<std::mutex> lock(client->lifecycleMutex);
+    if (client->socket != INVALID_SOCKET) shutdown(client->socket, SD_BOTH);
+}
+
+void SerialShareConnection::FinishClient(const std::shared_ptr<Client>& client) {
+    client->ready.store(false);
+    ShutdownClient(client);
+    if (client->sendThread.joinable()) client->sendThread.join();
+    {
+        std::lock_guard<std::mutex> lock(client->lifecycleMutex);
+        if (client->socket != INVALID_SOCKET) {
+            closesocket(client->socket);
+            client->socket = INVALID_SOCKET;
+        }
     }
     RemoveClient(client);
-    if (!stopping_ && onStatus_) {
+    if (!stopping_ && onStatus_)
         onStatus_(L"远程客户端已断开，当前 " + std::to_wstring(ClientCount()) + L" 个", false);
+    client->finished.store(true);
+}
+
+bool SerialShareConnection::QueueSend(const std::shared_ptr<Client>& client, char type, const Bytes& data) {
+    bool overflow = false;
+    {
+        std::lock_guard<std::mutex> lock(client->queueMutex);
+        if (client->closing) return false;
+        constexpr size_t QueueLimit = 1024 * 1024;
+        overflow = client->queuedBytes + data.size() + 5 > QueueLimit;
+        if (!overflow) {
+            client->queue.emplace_back(type, data);
+            client->queuedBytes += data.size() + 5;
+        }
+    }
+    if (overflow) {
+        ShutdownClient(client);
+        return false;
+    }
+    client->queueReady.notify_one();
+    return true;
+}
+
+void SerialShareConnection::SendLoop(const std::shared_ptr<Client>& client) {
+    while (!stopping_ && !client->closing) {
+        std::pair<char, Bytes> frame;
+        {
+            std::unique_lock<std::mutex> lock(client->queueMutex);
+            client->queueReady.wait(lock, [&] { return stopping_ || client->closing || !client->queue.empty(); });
+            if (stopping_ || client->closing) break;
+            frame = std::move(client->queue.front());
+            client->queue.pop_front();
+            client->queuedBytes -= frame.second.size() + 5;
+        }
+        const bool ok = client->protocol == ClientProtocol::Version2 ?
+            SendFrame(client->socket, frame.first, frame.second) :
+            SendAll(client->socket, frame.second.data(), frame.second.size());
+        if (!ok) { ShutdownClient(client); break; }
     }
 }
 
@@ -316,24 +382,7 @@ void SerialShareConnection::Broadcast(const Bytes& data) {
         snapshot = clients_;
     }
     for (const auto& client : snapshot) {
-        if (!client->ready) continue;
-        std::lock_guard<std::mutex> sendLock(client->sendMutex);
-        if (client->protocol == ClientProtocol::Version2) {
-            SendFrame(client->socket, 'D', data);
-            continue;
-        }
-        size_t offset = 0;
-        while (offset < data.size() && client->socket != INVALID_SOCKET) {
-            const int sent = send(
-                client->socket,
-                reinterpret_cast<const char*>(data.data() + offset),
-                static_cast<int>(data.size() - offset),
-                0);
-            if (sent == SOCKET_ERROR) {
-                break;
-            }
-            offset += static_cast<size_t>(sent);
-        }
+        if (client->ready) QueueSend(client, 'D', data);
     }
 }
 
@@ -348,8 +397,7 @@ size_t SerialShareConnection::ClientCount() {
 }
 
 bool SerialShareConnection::SendClientControl(const std::shared_ptr<Client>& client, const std::string& message) {
-    std::lock_guard<std::mutex> sendLock(client->sendMutex);
-    return SendFrame(client->socket, 'C', Bytes(message.begin(), message.end()));
+    return QueueSend(client, 'C', Bytes(message.begin(), message.end()));
 }
 
 } // namespace serialctl

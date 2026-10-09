@@ -18,6 +18,8 @@ class IConnection {
 public:
     virtual ~IConnection() = default;
     virtual bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) = 0;
+    // Only requests cancellation; Stop and resource cleanup stay with the owner.
+    virtual void CancelStart() {}
     virtual void Stop() = 0;
     virtual bool Send(const Bytes& data, std::wstring& error) = 0;
     virtual bool IsConnected() const = 0;

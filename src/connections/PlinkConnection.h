@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Connection.h"
+#include "PuttyHostKey.h"
 
 #include <atomic>
 #include <mutex>
@@ -11,10 +12,11 @@ namespace serialctl {
 class PlinkConnection final : public IConnection {
 public:
     PlinkConnection(std::wstring host, std::uint16_t port, std::wstring username,
-        std::wstring password, int terminalColumns, int terminalRows);
+        std::wstring password, int terminalColumns, int terminalRows, HostKeyConfirmation confirm = {});
     ~PlinkConnection() override;
 
     bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) override;
+    void CancelStart() override { stopping_ = true; }
     void Stop() override;
     bool Send(const Bytes& data, std::wstring& error) override;
     bool IsConnected() const override;
@@ -33,6 +35,7 @@ private:
     std::wstring username_;
     std::wstring password_;
     std::wstring hostKey_;
+    HostKeyConfirmation confirmHostKey_;
     int terminalColumns_ = 80;
     int terminalRows_ = 24;
     std::wstring puttySessionName_;
