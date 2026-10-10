@@ -5,6 +5,7 @@
 #include "SftpClient.h"
 #include "SftpModel.h"
 #include "TerminalModel.h"
+#include "TerminalDecoder.h"
 #include "PowerPane.h"
 #include "ApiServer.h"
 #include "SessionService.h"
@@ -91,7 +92,7 @@ private:
         std::wstring terminalTitle;
         int lineEndingIndex = 0;
         UINT codePage = CP_UTF8;
-        Bytes pendingDecodeBytes;
+        TerminalDecoder decoder;
         CmdLineEditor cmdEditor;
         bool rawTrace = false;
         LONGLONG pendingPaintArrival = 0;
@@ -188,6 +189,7 @@ private:
     void SaveCurrentLog();
     void ShowTerminalContextMenu(POINT screenPoint);
     UINT SelectedCodePage() const;
+    std::string EncodeTerminalText(const std::wstring&);
     std::wstring SelectedLineEnding() const;
     void SetConnectedUi(bool connected);
     void RefreshConnectionList();

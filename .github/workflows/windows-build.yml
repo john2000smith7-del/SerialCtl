@@ -49,5 +49,6 @@ jobs:
           path: |
             ${{ runner.temp }}/serialctl-ui/*.png
             ${{ runner.temp }}/serialctl-ui/*.txt
+            ${{ runner.temp }}/serialctl-ui/*.json
             ${{ runner.temp }}/serialctl-build.txt
           if-no-files-found: warn

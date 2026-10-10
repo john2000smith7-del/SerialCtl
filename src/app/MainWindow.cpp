@@ -1740,7 +1740,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case WM_CREATE:
-        wchar_t measure[2]{}; measurePaint_=GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", measure, 2)>0;
+        { wchar_t measure[2]{}; measurePaint_=GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", measure, 2)>0; }
         LoadUiState();
         CreateControls();
         LoadCommands();
@@ -2354,7 +2354,7 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(sftpDownloadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 3, footerTop,
         rightInnerRight - (rightInnerLeft + (sftpWidth + Ui::Space) * 3), Ui::CompactHeight, TRUE);
 
-    batch.Move(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - statusHeight_,
+    batch.Move(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - Ui::CompactHeight - Ui::Space - statusHeight_,
         leftInnerRight - leftInnerLeft, statusHeight_, TRUE);
     batch.Show(rightPanelToggleButton_, SW_SHOW);
     if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) {
@@ -3439,6 +3439,9 @@ void MainWindow::DisconnectAll() {
     if(pendingSession_){pendingSession_->connection->CancelStart();sessionService_.Unregister("session-"+std::to_string(pendingSession_->id));apiServer_.SetSessions(sessionService_.Ids());}
     sftpOperationCancel_=true;sftpTransferCancel_=true;
     while(!sessions_.empty()){activeSession_=sessions_.back().get();connection_=activeSession_->connection.get();logger_=activeSession_->logger.get();Disconnect();}
+    if(connectionThread_.joinable())connectionThread_.join();
+    pendingSession_.reset();pendingConnectionData_.clear();pendingConnectionBytes_=0;
+    {std::lock_guard<std::mutex> lock(receivedMutex_);received_.clear();receivedBytes_.clear();receiveOverflow_.clear();}
     disconnectAllInProgress_=false;
     if(sftpThread_.joinable())sftpThread_.join();
     if(sftpTransferThread_.joinable())sftpTransferThread_.join();
@@ -3500,6 +3503,7 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
         AppendStatus(L"请先建立连接。", true);
         return false;
     }
+    if(data.empty()) return false;
     ScrollTerminalToBottom();
     std::wstring error;
     if (activeSession_->mode == 1 || activeSession_->mode == 4) {
@@ -3528,7 +3532,7 @@ void MainWindow::SendTerminalCharacter(wchar_t character) {
         auto& editor=activeSession_->cmdEditor;
         if (character == L'\r') {
             auto text=editor.Text()+L"\r\n";
-            auto encoded=WideToMultiByte(text,SelectedCodePage());
+            auto encoded=EncodeTerminalText(text);
             if(SendBytesToActive(Bytes(encoded.begin(),encoded.end()),false))editor.Submitted();
         } else if (character == L'\b') editor.Edit(CmdLineEditor::Key::Backspace);
         else if (character == 3) { AppendStatus(L"CMD 管道模式不支持 Ctrl+C；可使用全部断开终止进程树",true); }
@@ -3541,7 +3545,7 @@ void MainWindow::SendTerminalCharacter(wchar_t character) {
     if (character == L'\r') text = selectedMode_ == 0 ? L"\r" : SelectedLineEnding();
     else if (character == L'\b' && selectedMode_ == 0) text.assign(1, static_cast<wchar_t>(0x7f));
     else text.assign(1, character);
-    const std::string encoded = WideToMultiByte(text, selectedMode_==4&&connection_&&connection_->InputCodePage()?connection_->InputCodePage():SelectedCodePage());
+    const std::string encoded = EncodeTerminalText(text);
     if (encoded.empty() && character != 0) return;
     SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text);
 }
@@ -3606,7 +3610,7 @@ void MainWindow::SendCommand(size_t index) {
     const CommandItem& command = commands_[index];
     if (command.commands.size() == 1) {
         const std::wstring text = command.commands.front() + SelectedLineEnding();
-        const std::string encoded = WideToMultiByte(text, selectedMode_==4&&connection_&&connection_->InputCodePage()?connection_->InputCodePage():SelectedCodePage());
+        const std::string encoded = EncodeTerminalText(text);
         if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text))
             AppendStatus(L"已发送命令：" + command.commands.front(), false);
         return;
@@ -3633,7 +3637,7 @@ void MainWindow::SendNextCommandStep() {
 
     const std::wstring& step = command.commands[runningCommandStep_];
     const std::wstring text = step + runningCommandLineEnding_;
-    const std::string encoded = WideToMultiByte(text, runningCommandCodePage_);
+    const std::string encoded = selectedMode_==4 ? EncodeTerminalText(text) : WideToMultiByte(text, runningCommandCodePage_);
     if (!SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text)) {
         StopCommandSequence(false);
         return;
@@ -3725,7 +3729,6 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes& data, UINT cod
     if (!session) return;
     if(session->rawTrace&&session->logger){auto raw=Encode64(data);session->logger->WriteStatus(L"RX Base64 "+MultiByteToWide(reinterpret_cast<const std::uint8_t*>(raw.data()),raw.size(),CP_UTF8));}
     if(session->mode==4 && codePage && codePage!=session->codePage){
-        if(!session->pendingDecodeBytes.empty()){session->terminal.Feed(L"\xfffd",timestampEnabled_?CurrentTerminalTimestamp():L"");session->pendingDecodeBytes.clear();}
         session->codePage=codePage;if(session==activeSession_)selectedCodePage_=codePage;
     }
     if(arrival && !session->pendingPaintArrival) session->pendingPaintArrival=arrival;
@@ -3758,39 +3761,7 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes& data, UINT cod
 }
 
 std::wstring MainWindow::DecodeTerminalData(SessionState& session, const Bytes& data) {
-    session.pendingDecodeBytes.insert(session.pendingDecodeBytes.end(), data.begin(), data.end());
-    if (session.pendingDecodeBytes.empty()) return {};
-
-    size_t pendingTail = 0;
-    const UINT codePage = session.codePage == 20936 && !IsValidCodePage(20936) ? 936 : session.codePage;
-    if (codePage == CP_UTF8) {
-        const Bytes& bytes = session.pendingDecodeBytes;
-        size_t lead = bytes.size();
-        while (lead > 0 && (bytes[lead - 1] & 0xC0) == 0x80 && bytes.size() - lead < 3) --lead;
-        if (lead > 0) {
-            const size_t index = lead - 1;
-            const std::uint8_t first = bytes[index];
-            size_t expected = 1;
-            if ((first & 0xE0) == 0xC0) expected = 2;
-            else if ((first & 0xF0) == 0xE0) expected = 3;
-            else if ((first & 0xF8) == 0xF0) expected = 4;
-            if (expected > 1 && bytes.size() - index < expected) pendingTail = bytes.size() - index;
-        }
-    } else {
-        pendingTail = IncompleteDbcsTail(session.pendingDecodeBytes,
-            [codePage](std::uint8_t value) { return IsDBCSLeadByteEx(codePage, value) != FALSE; });
-    }
-
-    const size_t decodeSize = session.pendingDecodeBytes.size() - pendingTail;
-    std::wstring decoded;
-    if (decodeSize)
-        decoded = MultiByteToWide(session.pendingDecodeBytes.data(), decodeSize, codePage);
-    Bytes tail;
-    if (pendingTail)
-        tail.assign(session.pendingDecodeBytes.end() - static_cast<std::ptrdiff_t>(pendingTail),
-            session.pendingDecodeBytes.end());
-    session.pendingDecodeBytes = std::move(tail);
-    return decoded;
+    return session.decoder.Decode(data,session.codePage);
 }
 
 void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
@@ -3850,12 +3821,7 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
         SelectObject(dc,old);ReleaseDC(status_,dc);
         int height = text.empty() ? 0 : std::clamp(static_cast<int>(measured.bottom),Ui::Scale(20),Ui::Scale(120));
-        statusHeight_ = height;
-        MoveWindow(status_,Ui::Gap+Ui::PanelPadding,client.bottom-Ui::Gap-Ui::PanelPadding-height,
-            measured.right,height,TRUE);
-        RECT list{};GetWindowRect(connectionList_,&list);MapWindowPoints(HWND_DESKTOP,window_,reinterpret_cast<POINT*>(&list),2);
-        MoveWindow(connectionList_,list.left,list.top,list.right-list.left,
-            std::max(Ui::Scale(20),static_cast<int>(client.bottom)-Ui::Gap-Ui::PanelPadding-static_cast<int>(list.top)-(height?height+Ui::Space:0)),TRUE);
+        if(statusHeight_!=height){statusHeight_=height;LayoutControls(client.right,client.bottom);}
     }
     ShowWindow(status_, text.empty() ? SW_HIDE : SW_SHOW);
     InvalidateRect(status_, nullptr, TRUE);
@@ -3960,7 +3926,7 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
             (command == IdMenuEncodingGbk ? 936 : 20936);
         if (activeSession_) {
             activeSession_->codePage = selectedCodePage_;
-            activeSession_->pendingDecodeBytes.clear();
+            activeSession_->decoder.Reset();
         }
         const wchar_t* name = selectedCodePage_ == CP_UTF8 ? L"UTF-8" :
             (selectedCodePage_ == 936 ? L"GBK" : L"GB2312");
@@ -4015,14 +3981,14 @@ void MainWindow::PasteToTerminal() {
         ScrollTerminalToBottom();auto& editor=activeSession_->cmdEditor;
         auto draft=editor.Text();draft.insert(editor.Cursor(),pasted);auto end=draft.find_last_of(L"\r\n");
         if(end==std::wstring::npos){if(!editor.Insert(pasted))AppendStatus(L"CMD 输入过长",true);}
-        else {auto submitted=draft.substr(0,end+1);auto encoded=WideToMultiByte(submitted,SelectedCodePage());if(SendBytesToActive(Bytes(encoded.begin(),encoded.end()),false)){editor.Clear();if(!editor.Insert(draft.substr(end+1)))AppendStatus(L"CMD 尾行过长",true);}}
+        else {auto submitted=draft.substr(0,end+1);auto encoded=EncodeTerminalText(submitted);if(SendBytesToActive(Bytes(encoded.begin(),encoded.end()),false)){editor.Clear();if(!editor.Insert(draft.substr(end+1)))AppendStatus(L"CMD 尾行过长",true);}}
         ClearTerminalSelection();InvalidateRect(terminal_,nullptr,FALSE);return;
     }
     std::wstring transmitted = pasted;
     if (activeSession_->terminal.BracketedPaste())
         transmitted = std::wstring(1, 0x1b) + L"[200~" + pasted +
             std::wstring(1, 0x1b) + L"[201~";
-    const std::string encoded = WideToMultiByte(transmitted, SelectedCodePage());
+    const std::string encoded = EncodeTerminalText(transmitted);
     if (!encoded.empty()) {
         SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, pasted);
         ScrollTerminalToBottom();
@@ -4399,6 +4365,20 @@ void MainWindow::CopyTerminalSelection(bool selectAll) {
     CloseClipboard();
 }
 
+std::string MainWindow::EncodeTerminalText(const std::wstring& text) {
+    const UINT page=SelectedCodePage();
+    if(selectedMode_!=4) return WideToMultiByte(text,page);
+    BOOL replacement=FALSE;
+    const DWORD flags=page==CP_UTF8?WC_ERR_INVALID_CHARS:WC_NO_BEST_FIT_CHARS;
+    auto used=page==CP_UTF8?nullptr:&replacement;
+    int size=WideCharToMultiByte(page,flags,text.data(),static_cast<int>(text.size()),nullptr,0,nullptr,used);
+    if(size<=0 || replacement){AppendStatus(L"当前 CMD 代码页无法表示输入，请先用 chcp 切换代码页",true);return {};}
+    std::string encoded(static_cast<size_t>(size),'\0');
+    WideCharToMultiByte(page,flags,text.data(),static_cast<int>(text.size()),encoded.data(),size,nullptr,used);
+    if(replacement){AppendStatus(L"当前 CMD 代码页无法表示输入，请先用 chcp 切换代码页",true);return {};}
+    return encoded;
+}
+
 UINT MainWindow::SelectedCodePage() const {
     if(selectedMode_==4 && connection_ && connection_->InputCodePage())return connection_->InputCodePage();
     return selectedCodePage_ == 20936 && !IsValidCodePage(20936) ? 936 : selectedCodePage_;
@@ -4430,10 +4410,6 @@ void MainWindow::SetConnectedUi(bool connected) {
 }
 
 void MainWindow::RefreshConnectionList() {
-    std::vector<std::string> apiSessions;
-    for (const auto& session : sessions_)
-        if (session->mode == 1 || session->mode == 4)
-            apiSessions.push_back("session-" + std::to_string(session->id));
     apiServer_.SetSessions(sessionService_.Ids());
     size_t selectedIndex = 0;
     if (activeSession_) {
@@ -4692,17 +4668,19 @@ LRESULT CALLBACK MainWindow::SftpHeaderSubclassProc(HWND window, UINT message, W
     }
     if (message == WM_MOUSEMOVE && self->sftpColumnDragging_) {
         POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}; ClientToScreen(window, &p);
-        self->sftpNameWidth_ = std::max(80, self->sftpColumnDragWidth_ + (static_cast<int>(p.x) - self->sftpColumnDragX_) * (self->sftpColumnDragging_ == 1 ? 1 : -1));
+        const int nextWidth = std::max(Ui::Scale(80), self->sftpColumnDragWidth_ + (static_cast<int>(p.x) - self->sftpColumnDragX_) * (self->sftpColumnDragging_ == 1 ? 1 : -1));
+        if(nextWidth==self->sftpNameWidth_)return 0;
+        self->sftpNameWidth_=nextWidth;
         RECT list{}, header{}; GetWindowRect(self->sftpList_, &list);
         GetWindowRect(self->sftpNameHeader_, &header);
         MapWindowPoints(HWND_DESKTOP, self->window_, reinterpret_cast<POINT*>(&list), 2);
         MapWindowPoints(HWND_DESKTOP, self->window_, reinterpret_cast<POINT*>(&header), 2);
         int name, size, modified; self->SftpColumnWidths(list.right - list.left - Ui::OverlayScrollLaneWidth, name, size, modified);
-        HDWP batch = BeginDeferWindowPos(3);
-        batch = DeferWindowPos(batch, self->sftpNameHeader_, nullptr, list.left, header.top, name, Ui::CompactHeight, SWP_NOZORDER | SWP_NOACTIVATE);
-        batch = DeferWindowPos(batch, self->sftpSizeHeader_, nullptr, list.left + name, header.top, size, Ui::CompactHeight, SWP_NOZORDER | SWP_NOACTIVATE);
-        batch = DeferWindowPos(batch, self->sftpModifiedHeader_, nullptr, list.left + name + size, header.top, modified, Ui::CompactHeight, SWP_NOZORDER | SWP_NOACTIVATE);
-        if (batch) EndDeferWindowPos(batch);
+        UiLayoutBatch batch;
+        batch.Move(self->sftpNameHeader_,list.left,header.top,name,Ui::CompactHeight);
+        batch.Move(self->sftpSizeHeader_,list.left+name,header.top,size,Ui::CompactHeight);
+        batch.Move(self->sftpModifiedHeader_,list.left+name+size,header.top,modified,Ui::CompactHeight);
+        batch.Commit();
         RECT redraw{list.left, header.top, list.right, header.bottom};
         InvalidateRect(self->window_, &redraw, FALSE);
         for(HWND headerControl:{self->sftpNameHeader_,self->sftpSizeHeader_,self->sftpModifiedHeader_})InvalidateRect(headerControl,nullptr,FALSE);
@@ -5387,7 +5365,7 @@ void MainWindow::EnterSelectedSftpDirectoryInTerminal() {
     if ((!entry.directory && !entry.symlink) || !entry.pathSafe) return;
     const std::wstring path = JoinSftpRemotePath(sftpDirectory_, entry.name);
     const std::wstring text = L"cd -- " + QuoteShellArgument(path) + SelectedLineEnding();
-    const std::string encoded = WideToMultiByte(text, selectedMode_==4&&connection_&&connection_->InputCodePage()?connection_->InputCodePage():SelectedCodePage());
+    const std::string encoded = EncodeTerminalText(text);
     const Bytes bytes(encoded.begin(), encoded.end());
     if (SendBytesToActive(bytes, false))
         AppendStatus(L"已在终端进入该目录", false);
