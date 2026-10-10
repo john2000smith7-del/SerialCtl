@@ -4221,7 +4221,7 @@ void MainWindow::PasteToTerminal() {
             auto submitted = draft.substr(0, end + 1);
             auto encoded = EncodeTerminalText(submitted);
             if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), false)) {
-                editor.Clear();
+                editor.SubmittedBatch(submitted);
                 if (!editor.Insert(draft.substr(end + 1)))
                     AppendStatus(L"CMD 尾行过长", true);
             }

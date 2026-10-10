@@ -36,6 +36,18 @@ class CoreTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'AMBIGUOUS'):
                 Client('127.0.0.1')
 
+    def test_early_capacity_reply_survives_write_error(self):
+        class EarlyReply:
+            def settimeout(self, _): pass
+            def setsockopt(self, *args): pass
+            def getpeername(self): return ('127.0.0.1', 7000)
+            def sendall(self, _): raise ConnectionResetError('Peer already half-closed')
+            def recv(self, _):
+                return (b'HTTP/1.1 503 Service Unavailable\r\nSec-WebSocket-Protocol: serialctl.v1\r\n'
+                        b'X-SerialCtl-Instance: instance-a\r\nContent-Length: 12\r\n\r\nCLIENT_LIMIT')
+        with self.assertRaisesRegex(CapacityError, 'instance-a'):
+            Wire(EarlyReply())
+
     def test_input_bounds(self):
         client = object.__new__(Client)
         with self.assertRaises(ValueError):

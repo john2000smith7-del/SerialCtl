@@ -183,6 +183,16 @@ void TestHardLineAnchorsAndEditingReflow() {
     ExpectLine(deletion, 0, L"abc", "DCH beyond used text does not truncate preceding logical data");
 }
 void TestCmdEditor() {
+    serialctl::CmdLineEditor pasted;
+    pasted.SubmittedBatch(L"echo first\r\necho 中文\n");
+    pasted.Insert(L"unsubmitted tail");
+    pasted.Edit(serialctl::CmdLineEditor::Key::Up);
+    Expect(pasted.Text()==L"echo 中文","clipboard completed Unicode lines enter history");
+    pasted.Edit(serialctl::CmdLineEditor::Key::Up);
+    Expect(pasted.Text()==L"echo first","clipboard CRLF creates one history entry per command");
+    pasted.Edit(serialctl::CmdLineEditor::Key::Down);
+    pasted.Edit(serialctl::CmdLineEditor::Key::Down);
+    Expect(pasted.Text()==L"unsubmitted tail","history Down restores incomplete clipboard draft");
     serialctl::CmdLineEditor editor;
     for(wchar_t c:std::wstring(L"echo abXd"))editor.Insert(std::wstring(1,c));
     using Key=serialctl::CmdLineEditor::Key;

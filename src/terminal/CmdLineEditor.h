@@ -77,10 +77,19 @@ class CmdLineEditor {
         }
     }
     void Submitted() {
-        if (!text_.empty() && (history_.empty() || history_.back() != text_)) {
-            history_.push_back(text_);
-            if (history_.size() > 128)
-                history_.erase(history_.begin());
+        Remember(text_);
+        Clear();
+    }
+    void SubmittedBatch(const std::wstring &batch) {
+        size_t start = 0;
+        while (start < batch.size()) {
+            auto end = batch.find_first_of(L"\r\n", start);
+            if (end == std::wstring::npos)
+                break; // An incomplete clipboard tail remains a draft.
+            Remember(batch.substr(start, end - start));
+            start = end + 1;
+            if (batch[end] == L'\r' && start < batch.size() && batch[start] == L'\n')
+                ++start;
         }
         Clear();
     }
@@ -92,6 +101,13 @@ class CmdLineEditor {
     }
 
   private:
+    void Remember(const std::wstring &line) {
+        if (!line.empty() && (history_.empty() || history_.back() != line)) {
+            history_.push_back(line);
+            if (history_.size() > 128)
+                history_.erase(history_.begin());
+        }
+    }
     static bool High(wchar_t c) {
         return c >= 0xd800 && c <= 0xdbff;
     }

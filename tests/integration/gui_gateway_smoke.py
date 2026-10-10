@@ -124,6 +124,11 @@ with Client('127.0.0.1') as c:
     until(b'SERIALCTL_DRAFT_ASYNC')
     user32.SendMessageW(terminal, 0x102, 13, 0)
     until(b'SERIALCTL_PASTE_TAIL')
+    output.clear()
+    user32.SendMessageW(terminal, 0x100, 0x26, 0)
+    user32.SendMessageW(terminal, 0x100, 0x26, 0)
+    user32.SendMessageW(terminal, 0x102, 13, 0)
+    until(b'SERIALCTL_PASTE_FIRST')
     c.input(cmd, b'for /L %i in (1,1,100) do @echo SERIALCTL_SCROLL_%i\r\n')
     until(b'SERIALCTL_SCROLL_100')
     def painted(predicate, timeout=5):
