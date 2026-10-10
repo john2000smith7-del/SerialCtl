@@ -190,7 +190,7 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(power_service_test CONSOLE)
     target_link_libraries(power_service_test PRIVATE shell32 ws2_32)
     add_test(NAME power_service COMMAND power_service_test)
-    add_executable(cmd_connection_test tests/integration/CmdConnectionTest.cpp src/connections/CmdConnection.cpp src/connections/QueuedConnection.cpp src/connections/ChildProcess.cpp)
+    add_executable(cmd_connection_test tests/integration/CmdConnectionTest.cpp src/connections/CmdConnection.cpp src/connections/QueuedConnection.cpp src/connections/ChildProcess.cpp src/network/SessionService.cpp)
     serialctl_configure_native_target(cmd_connection_test CONSOLE)
     add_test(NAME cmd_connection COMMAND cmd_connection_test)
     set(GATEWAY_TEST_SOURCES src/network/ApiServer.cpp src/network/WebSocket.cpp

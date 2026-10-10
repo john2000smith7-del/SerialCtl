@@ -32,7 +32,7 @@ try:
         return bytes(result)
     assert exact(a, len(data)) == data and exact(b, len(data)) == data
     other.send(b'COM5\x00\xff')
-    assert exact(other, 7) == b'COM5\x00\xff'
+    assert exact(other, len(b'COM5\x00\xff')) == b'COM5\x00\xff'
     for op, params in [('disconnect', {}), ('power.output', {'enabled': True, 'channels': [2]}),
                        ('power.parameters', {'voltage': 1}), ('input', {'data': '!bad'})]:
         try:

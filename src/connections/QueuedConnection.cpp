@@ -21,13 +21,13 @@ void QueuedConnection::Stop()
         queued_ = 0;
         wake_.notify_all();
     }
+    inner_->Stop(); // Cancel transport I/O before joining a possibly blocked writer.
     if (worker_.joinable())
     {
         CancelSynchronousIo(reinterpret_cast<HANDLE>(worker_.native_handle()));
         // TCP transports have a finite send timeout; pipe writes are canceled above.
         worker_.join();
     }
-    inner_->Stop();
     status_ = {};
 }
 bool QueuedConnection::Send(const Bytes &data, std::wstring &error) { return SendObserved(data,error,{}); }

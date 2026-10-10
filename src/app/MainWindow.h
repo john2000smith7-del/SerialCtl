@@ -281,6 +281,7 @@ private:
     HWND disconnectAllButton_ = nullptr;
     bool windowResizing_ = false;
     bool disconnectAllPending_ = false;
+    bool disconnectAllInProgress_ = false;
     HWND terminal_ = nullptr;
     HWND status_ = nullptr;
     HWND statusTip_ = nullptr;

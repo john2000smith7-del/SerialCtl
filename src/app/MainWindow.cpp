@@ -2713,7 +2713,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         const bool connected=power?powerService_.State().value("connected",false):
             session&&session->connection&&session->connection->IsConnected();
         const bool active=power?powerVisible_:!powerVisible_&&session==activeSession_;
-        RECT card{rect.left, rect.top + Ui::Scale(4), rect.right, rect.bottom - Ui::Scale(4)};
+        OverlayScrollMetrics scrollMetrics;
+        RECT card{rect.left, rect.top + Ui::Scale(4), rect.right-(GetOverlayScrollMetrics(item.hwndItem,scrollMetrics)?Ui::OverlayScrollLaneWidth:0), rect.bottom - Ui::Scale(4)};
         DrawRoundedBox(dc, card, Ui::CardRadius, active ? colors.accentSoft : colors.panelAlt,
             active ? colors.accent : colors.panelAlt);
         HBRUSH dot = CreateSolidBrush(connected ? colors.accent : colors.muted);
@@ -3435,7 +3436,7 @@ void MainWindow::Disconnect() {
     activeConnectionName_.clear();
     selectedMode_ = -1;
     RefreshConnectionList();
-    if (!sessions_.empty()) SwitchSession(std::min(index, sessions_.size() - 1));
+    if (!sessions_.empty() && !closing_ && !disconnectAllInProgress_) SwitchSession(std::min(index, sessions_.size() - 1));
     else {
         ClearTerminalSelection();
         InvalidateRect(terminal_, nullptr, TRUE);
@@ -3448,10 +3449,14 @@ void MainWindow::Disconnect() {
 }
 
 void MainWindow::DisconnectAll() {
+    disconnectAllInProgress_=true;
     StopCommandSequence(false);connectionCancel_=true;
-    if(pendingSession_)pendingSession_->connection->CancelStart();
+    if(pendingSession_){pendingSession_->connection->CancelStart();sessionService_.Unregister("session-"+std::to_string(pendingSession_->id));apiServer_.SetSessions(sessionService_.Ids());}
     sftpOperationCancel_=true;sftpTransferCancel_=true;
     while(!sessions_.empty()){activeSession_=sessions_.back().get();connection_=activeSession_->connection.get();logger_=activeSession_->logger.get();Disconnect();}
+    disconnectAllInProgress_=false;
+    if(sftpThread_.joinable())sftpThread_.join();
+    if(sftpTransferThread_.joinable())sftpTransferThread_.join();
     if(powerService_.State().value("connected",false)){
         auto action=powerService_.Submit({{"type","disconnect"},{"source","local"}});
         if(action.contains("error")){AppendStatus(L"电源断开请求失败；输出状态未知",true);return;}
@@ -4372,6 +4377,7 @@ void MainWindow::CopyTerminalSelection(bool selectAll) {
 }
 
 UINT MainWindow::SelectedCodePage() const {
+    if(selectedMode_==4 && connection_ && connection_->InputCodePage())return connection_->InputCodePage();
     return selectedCodePage_ == 20936 && !IsValidCodePage(20936) ? 936 : selectedCodePage_;
 }
 
@@ -4676,6 +4682,7 @@ LRESULT CALLBACK MainWindow::SftpHeaderSubclassProc(HWND window, UINT message, W
         if (batch) EndDeferWindowPos(batch);
         RECT redraw{list.left, header.top, list.right, header.bottom};
         InvalidateRect(self->window_, &redraw, FALSE);
+        for(HWND headerControl:{self->sftpNameHeader_,self->sftpSizeHeader_,self->sftpModifiedHeader_})InvalidateRect(headerControl,nullptr,FALSE);
         InvalidateRect(self->sftpList_, nullptr, FALSE); return 0;
     }
     if ((message == WM_LBUTTONUP || message == WM_CAPTURECHANGED) && self->sftpColumnDragging_) {
