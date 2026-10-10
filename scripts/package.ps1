@@ -265,7 +265,7 @@ foreach ($relativePath in $checksumActual) {
     }
 }
 
-$serialCtlDlls = @('ADVAPI32.dll', 'COMCTL32.dll', 'COMDLG32.dll', 'GDI32.dll', 'KERNEL32.dll', 'ole32.dll', 'SHELL32.dll', 'USER32.dll', 'WS2_32.dll')
+$serialCtlDlls = @('ADVAPI32.dll', 'COMCTL32.dll', 'COMDLG32.dll', 'GDI32.dll', 'gdiplus.dll', 'KERNEL32.dll', 'ole32.dll', 'SHELL32.dll', 'USER32.dll', 'WS2_32.dll')
 $puttyDlls = @('ADVAPI32.dll', 'KERNEL32.dll', 'USER32.dll')
 foreach ($architecture in @('x64')) {
     $runtimeRoot = Join-Path $verifiedBundleRoot "."
