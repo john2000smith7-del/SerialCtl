@@ -79,6 +79,16 @@ with Client('127.0.0.1') as c:
     user32.SendMessageW(terminal,0x102,13,0)
     c.input(cmd,b'echo SERIALCTL_HISTORY_DONE\r\n')
     until(b'SERIALCTL_HISTORY_DONE')
+    c.input(cmd,b'chcp 936\r\necho SERIALCTL_GBK_READY\r\n')
+    until(b'SERIALCTL_GBK_READY')
+    state=c.request('session.get',cmd)
+    assert state['inputCodePage']==936 and state['outputCodePage']==936, state
+    for character in 'echo SERIALCTL_GBK_中文':
+        user32.SendMessageW(terminal,0x102,ord(character),0)
+    user32.SendMessageW(terminal,0x102,13,0)
+    until('SERIALCTL_GBK_中文'.encode('gbk'))
+    c.input(cmd,b'chcp 65001\r\necho SERIALCTL_UTF8_RESTORED\r\n')
+    until(b'SERIALCTL_UTF8_RESTORED')
     user32.SetForegroundWindow(window)
     delays=[]
     for sample in range(100):

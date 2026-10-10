@@ -1,12 +1,15 @@
 #include "CmdConsoleBridge.h"
 #include "MainWindow.h"
 
+// Windows SDK GDI+ declarations require the COM/property types first.
+// clang-format off
+#include <winsock2.h>
+#include <windows.h>
 #include <commctrl.h>
-#include <gdiplus.h>
 #include <objidl.h>
 #include <propidl.h>
-#include <windows.h>
-#include <winsock2.h>
+#include <gdiplus.h>
+// clang-format on
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCommand) {
     if (std::wstring(parameters) == L"--serialctl-cmd-bridge")

@@ -3536,7 +3536,7 @@ void MainWindow::SendTerminalCharacter(wchar_t character) {
             auto encoded=EncodeTerminalText(text);
             if(SendBytesToActive(Bytes(encoded.begin(),encoded.end()),false))editor.Submitted();
         } else if (character == L'\b') editor.Edit(CmdLineEditor::Key::Backspace);
-        else if (character == 3) { AppendStatus(L"CMD 管道模式不支持 Ctrl+C；可使用全部断开终止进程树",true); }
+        else if (character == 3) { AppendStatus(L"CMD 行提交模式不支持 Ctrl+C；可使用全部断开终止进程树",true); }
         else if (character >= 32 || character == L'\t') {
             if(!editor.Insert(std::wstring(1,character)))AppendStatus(L"CMD 输入超过 8191 字符",true);
         }

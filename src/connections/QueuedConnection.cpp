@@ -40,6 +40,10 @@ bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std:
         error = L"连接已断开";
         return false;
     }
+    if (data.size() > 8 * 1024 * 1024) {
+        error = L"发送队列已满，请稍后重试";
+        return false;
+    }
     Bytes prepared;
     try {
         prepared = inner_->PrepareInput(data);

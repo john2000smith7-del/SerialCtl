@@ -278,8 +278,9 @@ class UiLayoutBatch {
             GetWindowRect(combo.first, &bounds);
             int visible = bounds.bottom - bounds.top;
             if (visible != combo.second) {
-                int current = static_cast<int>(SendMessageW(combo.first, CB_GETITEMHEIGHT, -1, 0));
-                SendMessageW(combo.first, CB_SETITEMHEIGHT, -1, std::max(1, current + combo.second - visible));
+                auto selection = static_cast<WPARAM>(-1);
+                int current = static_cast<int>(SendMessageW(combo.first, CB_GETITEMHEIGHT, selection, 0));
+                SendMessageW(combo.first, CB_SETITEMHEIGHT, selection, std::max(1, current + combo.second - visible));
                 InvalidateRect(combo.first, nullptr, FALSE);
             }
         }

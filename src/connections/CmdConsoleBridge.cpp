@@ -115,7 +115,11 @@ int RunCmdConsoleBridge() {
             TerminateProcess(child.hProcess, 1);
     });
     WaitForSingleObject(child.hProcess, INFINITE);
-    CancelSynchronousIo(reinterpret_cast<HANDLE>(feeder.native_handle()));
+    // A single cancel may race with the feeder starting its next ReadFile.
+    // Reissue only during shutdown until the thread has actually exited.
+    const auto thread = reinterpret_cast<HANDLE>(feeder.native_handle());
+    while (WaitForSingleObject(thread, 10) == WAIT_TIMEOUT)
+        CancelSynchronousIo(thread);
     feeder.join();
     DWORD result = 0;
     GetExitCodeProcess(child.hProcess, &result);

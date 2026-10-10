@@ -107,6 +107,16 @@ int main() {
         return 9;
     if (cmd.IsConnected())
         return 5;
+    if (!cmd.Start([&](const Bytes &) {}, [](const auto &, bool) {}, error))
+        return 14;
+    if (!cmd.Send(Bytes{'e', 'x', 'i', 't', 13, 10}, error))
+        return 15;
+    auto exited = GetTickCount64() + 4000;
+    while (cmd.IsConnected() && GetTickCount64() < exited)
+        Sleep(1);
+    if (cmd.IsConnected())
+        return 16;
+    cmd.Stop();
     std::cout << "CMD session retains state and shuts down\n";
     return 0;
 }
