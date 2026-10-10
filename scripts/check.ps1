@@ -170,7 +170,9 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'terminal_decoder_test.exe' = @('KERNEL32.dll')
         'putty_host_key_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll')
         'multi_serial_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
-        'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll', 'PSAPI.dll')
+        # PSAPI_VERSION=2 maps the metrics call to K32GetProcessMemoryInfo,
+        # provided by KERNEL32 on Windows 7; retain the exact import check.
+        'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'sftp_model_test.exe' = @('KERNEL32.dll')
     }
     foreach ($testName in $testPrograms.Keys) {

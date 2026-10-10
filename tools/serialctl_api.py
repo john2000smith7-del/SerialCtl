@@ -18,7 +18,7 @@ def main():
     send = sub.add_parser('send')
     send.add_argument('resource')
     send.add_argument('text')
-    send.add_argument('--encoding', default='utf-8')
+    send.add_argument('--encoding')
     send.add_argument('--ending', choices=('CR', 'LF', 'CRLF', 'None'), default='CRLF')
     watch = sub.add_parser('watch')
     watch.add_argument('resource')
@@ -36,7 +36,10 @@ def main():
             result = c.wait_action(c.output(args.command == 'on'))
         elif args.command == 'send':
             ending = {'CR': '\r', 'LF': '\n', 'CRLF': '\r\n', 'None': ''}[args.ending]
-            result = c.input(c.resource(args.resource), (args.text + ending).encode(args.encoding))
+            resource=c.resource(args.resource)
+            state=c.request('session.get',resource)
+            encoding=args.encoding or ('cp%d'%state['inputCodePage'] if state['kind']=='cmd' else 'utf-8')
+            result = c.input(resource, (args.text + ending).encode(encoding))
         else:
             resource = c.resource(args.resource)
             c.subscribe(resource, args.after)

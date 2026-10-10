@@ -49,6 +49,24 @@ int main(int argc, char **) {
         triple.insert(triple.end(), data.begin(), data.end());
         triple.insert(triple.end(), data.begin(), data.end());
         Expect(drain(a, 15) == triple && drain(b, 15) == triple, "two AI clients same-COM receive and write");
+        std::thread writerA([&] {
+            for (int i = 0; i < 100; ++i)
+                a.SendRequest("input", "session-3", {{"data", Encode64(Bytes(64, 1))}});
+        });
+        std::thread writerB([&] {
+            for (int i = 0; i < 100; ++i)
+                b.SendRequest("input", "session-3", {{"data", Encode64(Bytes(64, 2))}});
+        });
+        writerA.join();
+        writerB.join();
+        auto concurrent = drain(a, 12800);
+        Expect(drain(b, 12800) == concurrent, "concurrent writers share identical ordered output");
+        for (size_t offset = 0; offset < concurrent.size(); offset += 64) {
+            Expect(concurrent[offset] == 1 || concurrent[offset] == 2, "writer identity");
+            for (size_t i = 0; i < 64; ++i)
+                Expect(concurrent[offset + i] == concurrent[offset], "complete batches never byte-interleave");
+        }
+        Wait([&] { return f.rx3->received == 12815 && desktopBytes == 12815; });
         Expect(f.rx5->received == 0, "COM3 ingress isolated from COM5");
         other.SendRequest("input", "session-5", {{"data", Encode64(data)}});
         Expect(drain(other, 5) == data, "COM5 separate stream");
@@ -84,6 +102,11 @@ int main(int argc, char **) {
             Expect(SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr,
                                                         static_cast<std::uint16_t>(secondInstance.server.Port())),
                    "explicit port selects instance");
+            SharedSerialConnection wrongInstance(L"127.0.0.1", static_cast<std::uint16_t>(secondInstance.server.Port()),
+                                                 L"COM3", firstInstance.server.Instance());
+            Expect(!wrongInstance.Start([](const Bytes &) {}, [](const auto &, bool) {}, error) &&
+                       error.find(L"INSTANCE_MISMATCH") != std::wstring::npos,
+                   "discovered instance pin prevents port reuse mismatch");
             std::atomic_bool cancel{true};
             Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, &cancel),
                    "discovery cancel");

@@ -105,6 +105,10 @@ class Wire:
             if opcode == 8:
                 if len(data) == 1:
                     raise ProtocolError('Invalid close')
+                if len(data)>=2:
+                    code=struct.unpack('!H',data[:2])[0]
+                    if code<1000 or code>=5000 or code in (1004,1005,1006,1015) or 1016<=code<3000:
+                        raise ProtocolError('Invalid Close code')
                 reason = data[2:].decode('utf-8') if len(data) >= 2 else ''
                 raise ConnectionError('Server closed: ' + reason)
             if opcode == 9:
@@ -266,7 +270,10 @@ class Client:
         return result
 
     def next_event(self, resource, timeout=None):
-        event = self.events[resource].get(timeout=timeout)
+        target=self.events[resource]
+        if target.empty() and (self.failure or self.closed):
+            raise ConnectionError(str(self.failure or 'Client closed'))
+        event = target.get(timeout=timeout)
         if isinstance(event, BaseException):
             raise event
         if event.get('type') == 'resource_gone':
@@ -297,6 +304,12 @@ class Client:
         if self.closed:
             return
         self.closed = True
+        self.failure=self.failure or ConnectionError('Client closed; queued input execution may be unknown')
+        if hasattr(self,'lock'):
+            with self.lock:
+                for target in list(self.pending.values())+list(self.events.values()):
+                    try:target.put_nowait(self.failure)
+                    except queue.Full:pass
         if self.socket:
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)

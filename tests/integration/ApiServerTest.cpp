@@ -63,6 +63,10 @@ int main() {
                        ((unsigned(close.data[0]) << 8) | close.data[1]) == expected,
                    "illegal RFC frame explicit close");
         };
+        illegal(Bytes{0x82, 0x80, 1, 2, 3, 4}, 1003);          // JSON-only application frames
+        illegal(Bytes{0x81, 0xfe, 0, 1, 1, 2, 3, 4, 0}, 1002); // canonical length
+        illegal(Bytes{0x88, 0x82, 1, 2, 3, 4, std::uint8_t(3 ^ 1), std::uint8_t(0xed ^ 2)},
+                1002);                                            // forbidden Close 1005
         illegal(Bytes{0x81, 0}, 1002);                            // client frames must be masked
         illegal(Bytes{0x89, 0xfe, 0, 126}, 1002);                 // control payload too long
         illegal(Bytes{0x80, 0x80, 1, 2, 3, 4}, 1002);             // continuation without message
@@ -133,8 +137,8 @@ int main() {
             try {
                 GatewayClient extra;
                 extra.Connect(L"127.0.0.1", capacity.server.Port());
-            } catch (const std::exception &) {
-                refused = true;
+            } catch (const std::exception &e) {
+                refused = std::string(e.what()).find("CLIENT_LIMIT") != std::string::npos;
             }
             Expect(refused, "client 129 explicitly refused at capacity");
             held.clear();

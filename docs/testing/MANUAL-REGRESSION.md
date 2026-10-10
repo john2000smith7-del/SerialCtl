@@ -1,31 +1,16 @@
-# V1.0.1 人工回归清单
+# V1.0.6 人工与动态 GUI 回归
 
-本清单是待执行步骤，不是通过证明。
+本清单是可执行步骤，不能当作通过证明。结果按“通过/失败/未运行”填写，附版本、包 SHA、系统/DPI/主题、起止时间、截图/录屏和原始收发核对。自动证据与边界见 V1.0.6-ACCEPTANCE.md。
 
-- 深色和浅色：主窗口、SSH/串口/Telnet/共享串口连接对话框、按钮状态和缩放。
-- 连接过程中操作已有会话，关闭窗口，检查无死锁；不可达地址不能冻结主窗口。
-- SSH 首次确认指纹、拒绝、已保存主机、密钥变化；不可仅从当前连接本身核对身份。
-- GBK 输入“中文”分别整包、逐字节、和 ASCII 混合发送，终端与日志均正确。
-- 终端异常/超大 ANSI 参数、备用屏幕和粘贴不造成崩溃；UTF-8 和常用宏无退化。
-- 共享串口握手后立即输出，首字节不丢失；慢客户端隔离、断开与重连。
-- SFTP 上传和单/多文件下载到同名目标，确认与取消覆盖均有效；取消后保留原文件。
-- 日志保存、宏停止、会话切换、程序退出。
-
-CI 会启动 x64 包中程序并检查深色/浅色主窗口与 SSH 提示；真实 Win7、硬件和现场服务器仍按 WIN7-HARDWARE-TEST.md 验收。
-# V1.0.2 UI regression
-
-- In both themes, inspect complete Chinese glyphs in SSH, serial, Telnet, shared serial, command/macro and SFTP input dialogs; repeat at 100%, 125% and 150% DPI on Windows 7 SP1.
-- At the minimum window size and 260 px panel width, verify that tab, add-command and collapse actions do not overlap.
-- Collapse the Commands and SFTP panels; only the centered expand button may remain in the 48 px rail. Resize, switch sessions and expand again; no panel control may escape the card.
-- CI checks x64 and both themes using real windows, label extents and control bounds. SFTP UI uses a test-only local mock. Real Win7/DPI/hardware acceptance remains not run.
-
-
-# V1.1.0 人工回归
-
-- 多 COM 独立终端及并行读写，IP 自动发现、列表元数据、关闭一个 COM 后其他连接不受影响。7000 占用后的回退及全范围不可用时本地串口正常。
-- 终端底部无发送框；右键粘贴，CR/LF/CRLF/无切换按会话保存；SSH Enter 为 CR，命令宏使用 LF。
-- 命令拖动、添加、编辑、删除及导入保持草稿；显式保存与重启恢复；退出保存/放弃/取消；导出不清除未保存状态。
-- SFTP 当前 Shell 路径通知、OSC7 分段和编码、连续切换路径、忙碌时最新路径、手动路径暂停跟随、恢复跟随；长文件名悬停与拖动列宽、重启保持。
-- ZIP 直接包含 x64 三个运行程序，解压后双击，无额外包目录；Windows 主程序无需 Python。
-
-CI 以模拟串口/SSH/SFTP 验证协议与 UI，真实硬件、远端 Shell 与 Win7 DPI 验收仍未运行。
+1. 深浅主题分别在100/125/150/200% DPI启动；约980×620最小窗口、最大化/恢复，检查中文标签、按钮、完整加号、连接方式、底部全部断开和覆盖滑块。125%以上必须真实系统缩放，不能拉伸图片冒充DPI。
+2. CMD逐键输入`echX TEST`，Home、Right×3、Delete、o、End、X、Backspace、Enter，执行应为`echo TEST`且无双回显。测试左右/插入/历史/HomeEnd、中文IME、复制、多行粘贴、CR/LF/CRLF、8191字节边界。`set TEST=kept`、`cd`后状态持久。持续后台输出时编辑草稿，输出不能覆盖草稿，提交输入与实际输出本机可见并记录来源。
+3. `chcp 936`后中文GBK，`chcp 65001`后UTF8，分别整包/逐字节；验证session.get的实际代码页。若程序从已有控制台启动，手工选择匹配编码（不会detach调用者console）。Ctrl+C/全屏交互明确拒绝或标明边界，不能报告已执行。
+4. 终端接收`a\r\n\r\nb`，真实空行有时间戳；填充区域无假时间戳。长行60字在20列软折行，放大80列合并；20列活动行缩8再放大字符完整。硬换行不合并，中文/颜色/历史/选择和阅读锚点保持；备用屏vim/top仍按VT网格。持续输出连续缩小/扩大，原始日志保持字节，不写视觉折行。
+5. 阅读历史时后台继续输出，应保留位置和“新输出”；键入、Enter、执行命令、粘贴、Shift+End回到实时位置；会话切换恢复该会话阅读位置。
+6. 保持真实串口或CMD持续输出，鼠标连续拖右侧栏、快速反向收起/展开、连续窗口缩放。捕获真实桌面或录屏中间帧，检查白块、旧控件、全页闪烁，拖动跟手、结束尺寸准确。PrintWindow仅用于布局，不代替动态画面。
+7. 真实SFTP中文长文件名，连续拖文件名表头列宽，快速切换目录、上传/下载、取消，持续终端输出期间检查残影/列边界。自动SFTP UI替身只证明控件路径，不能证明实际传输。
+8. 电源快速切换监测/记录/任务/设置各分页；旧/新标签只能一个高亮，内容不叠压，切换中间帧无残留。监测期间编辑电压/电流不被刷新覆盖；连接/模式/总输出、通道参数、下方分页按power-layout.json核对。保留一个总加电/总掉电，作用于勾选通道。
+9. 创建至少32连接，滚轮、HomeEnd/PageUpDown、拖滑块；重复状态刷新，顶部锚点和选中项保持，按钮无重叠。全部断开需真实关闭串口、CMD子进程树、SFTP传输、连接建立和任务，列表条目清空，无后台残留；断线电源不能宣称掉电成功。
+10. 打开单列命令编辑，另一程序遮挡主窗口；将编辑对话框置前，保存或取消后主窗口保持正确owner层级。关闭其他模态也检查；不能全局置顶或持续抢前台。编辑命令草稿、拖排序、显式保存、重启恢复保持原行为。
+11. SSH首次指纹拒绝/独立核对/信任/密钥变更，真实SFTP传输、Telnet远端连接正常；这些客户端功能仍存在，取消的是SerialCtl的旧串口TCP业务入口。
+12. 退出期间持续输出、慢网络、连接建立、SFTP任务、电源任务；记录耗时、进程/线程/句柄回收，无挂起。至少8小时现场记录与短时CI分开。

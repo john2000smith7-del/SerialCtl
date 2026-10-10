@@ -74,8 +74,27 @@ int main() {
             return 4;
     }
     // Cancellation of a pipe writer must terminate the real CMD process tree.
-    std::string blocked = "ping -n 20 127.0.0.1 >nul\r\n";
+    std::string blocked = "echo SERIALCTL_BLOCK_BEGIN\r\nping -n 100 127.0.0.1 >nul\r\n";
     cmd.Send(Bytes(blocked.begin(), blocked.end()), error);
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (!ready.wait_for(lock, std::chrono::seconds(4),
+                            [&] { return output.find("SERIALCTL_BLOCK_BEGIN") != std::string::npos; }))
+            return 10;
+    }
+    Bytes queued;
+    auto line = "rem " + std::string(500, 'x') + "\r\n";
+    while (queued.size() + line.size() <= 65536)
+        queued.insert(queued.end(), line.begin(), line.end());
+    bool bounded = false;
+    for (int i = 0; i < 200; ++i) {
+        if (!cmd.Send(queued, error)) {
+            bounded = true;
+            break;
+        }
+    }
+    if (!bounded)
+        return 11;
     auto stopStarted = GetTickCount64();
     cmd.Stop();
     if (GetTickCount64() - stopStarted > 5000)

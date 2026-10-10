@@ -9,7 +9,7 @@
 hello：`{"type":"hello","version":1,"instance":"...","maxClients":128,"maxInput":65536,"maxMessage":131072,"historyBytes":1048576}`。
 
 请求：`{"type":"request","version":1,"instance":"...","requestId":"unique-id","op":"input","resource":"session-3","params":{"data":"AAH/"}}`。
-响应：同一 requestId，type=response，version/instance，ok=true + result；失败 ok=false + error={code,message}。请求 ID 长 1–128 字节；op 最长 32 字节；resource 最长 128 字节。拒绝未知字段、非法类型、未知 op、伪造/越权 resource，再调用设备。每连接缓存最近 256 个请求响应，重复相同请求不再执行，参数冲突返回 REQUEST_ID_CONFLICT。缓存不是跨重连输入幂等承诺。
+响应：同一 requestId，type=response，version/instance，ok=true + result；失败 ok=false + error={code,message}。请求 ID 长 1–128 字节；op 最长 32 字节；resource 最长 128 字节。拒绝未知字段、非法类型、未知 op、伪造/越权 resource，再调用设备。每连接缓存请求响应，最多 256 个且请求与响应 JSON 合计不超过 1 MiB（任一上限到达时淘汰最旧记录），重复相同请求不再执行，参数冲突返回 REQUEST_ID_CONFLICT。缓存不是跨重连输入幂等承诺。
 
 | op | resource | params | 意义 |
 |---|---|---|---|
@@ -20,7 +20,7 @@ hello：`{"type":"hello","version":1,"instance":"...","maxClients":128,"maxInput
 | unsubscribe | session-N | {} | 取消后不再安排新事件；已在队列中的事件可能到达 |
 | events | session-N | {after:非负整数} | 有界历史查询，过大返回 HISTORY_TOO_LARGE，改用 subscribe |
 | power.get | power-1 | {} | 真实服务状态与本机勾选通道 |
-| power.output | power-1 | {enabled:bool} | 仅操作 GUI 当时勾选通道；requestId 用于原有 action 幂等 |
+| power.output | power-1 | {enabled:bool} | 仅操作 GUI 当时勾选通道；requestId 用于原有 action 幂等，应使用全局唯一 UUID |
 | action.get | 省略 | {id:string} | 电源异步 queued/running/completed/failed/canceled 状态 |
 
 不开放创建/断开连接、参数、SSH/SFTP、通道勾选、电压电流、保护、预设、模式、复位、SCPI、任务。服务无授权 UI/token，仅适合可信内网。GUI 不通过网络回连，直接调用相同 SessionService 和同一个 QueuedConnection。
@@ -31,6 +31,6 @@ hello：`{"type":"hello","version":1,"instance":"...","maxClients":128,"maxInput
 
 after 小于缓存最早序号-1（包括 after=0）、大于当前 seq，返回 HISTORY_GAP；禁止悄悄跳过。重连使用客户端已收到的最后 seq，同一 instance/session，先处理 gap 再决定是否以 session.get 当前状态开始新实时订阅（cursor 通过历史/订阅响应取得）。会话删除发送 resource_gone/TARGET_GONE，并取消订阅；ID 不在同一程序生命周期重复使用。
 
-每客户端独立 4 MiB/4096 消息发送队列，事件到达直接唤醒 sender condition_variable，无 50/100ms 输出轮询。满队列明确终止 1013 SLOW_CLIENT，取消该客户端未发队列；3 秒发送超时保证回收。若 socket 已被堵住，Close 原因可能不能送达，诊断环形记录保留原因。客户端必须核对游标/重放缺口。header 8 KiB，握手接收超时 1.5 秒，业务消息/累计分片 128 KiB；业务读取阻塞且由取消/退出 shutdown 唤醒。正常 close=1000，服务器退出1001，协议1002，JSON文本类型1003，非法UTF8/Base641007，过大1009；诊断保留最近512条阶段、来源、目标、关闭原因，并发日志路径不在设备读取热路径同步写盘。
+每客户端独立 4 MiB/4096 消息发送队列，事件到达直接唤醒 sender condition_variable，无 50/100ms 输出轮询。满队列明确终止 1013 SLOW_CLIENT，取消该客户端未发队列；3 秒发送超时保证回收。若 socket 已被堵住，Close 原因可能不能送达，诊断环形记录保留原因。客户端必须核对游标/重放缺口。header 8 KiB，握手接收超时 1.5 秒，业务消息/累计分片 128 KiB；JSON 嵌套最多 32 层；业务读取使用 Win7 重叠 WSARecv 与独立取消事件，取消/退出由事件唤醒并 CancelIoEx，等待 I/O 完成后才释放缓冲与 socket。正常 close=1000，服务器退出1001，协议1002，JSON文本类型1003，非法UTF8为1007，非法Base64为请求错误 INVALID_BASE64，过大1009；诊断保留最近512条阶段、来源、目标、关闭原因，并发日志路径不在设备读取热路径同步写盘。
 
 CMD 是持久 cmd.exe /D /Q /K 与隐藏 Win7 控制台的管道 stdin/stdout，本地 Unicode 编辑器提交完整行，网络同样只接受完整 CR/LF 结束批次，统一为 CRLF，最长 8191 字节/行。管道输入的 Ctrl+C/方向序列/全屏交互在提交前拒绝。服务状态查询返回已读真实控制台代码页；GUI 默认 OEM，chcp 后查询实际 input/output code page。应用已有 console 时不会擅自 detach，需手动选择编码。非完整行、控制字符、超长行不部分执行。允许多行命令，外部命令仍可能读取后续管道输入；交互式应用不提供真实键盘控制。GUI 草稿未提交前不混入 stdout/日志，已提交输入显示并记录来源。
