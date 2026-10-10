@@ -52,8 +52,10 @@ bool SharedSerialConnection::Discover(const std::wstring &host, std::uint16_t po
 bool SharedSerialConnection::DiscoverAuto(const std::wstring &host, std::uint16_t &port,
                                           std::vector<std::wstring> &names, std::wstring &error,
                                           const std::atomic_bool *cancel, std::uint16_t explicitPort,
-                                          std::vector<std::wstring> *descriptions) {
+                                          std::vector<std::wstring> *descriptions, std::string *instance) {
     names.clear();
+    if (instance)
+        instance->clear();
     if (descriptions)
         descriptions->clear();
     std::vector<std::future<Probe>> queries;
@@ -77,6 +79,8 @@ bool SharedSerialConnection::DiscoverAuto(const std::wstring &host, std::uint16_
         return false;
     }
     port = static_cast<std::uint16_t>(found[0].port);
+    if (instance)
+        *instance = found[0].instance;
     Result(found[0], names, descriptions);
     if (names.empty()) {
         error = L"该实例没有已打开的本地串口";
@@ -93,10 +97,12 @@ bool SharedSerialConnection::Start(DataCallback data, StatusCallback status, std
     try {
         if (!port_) {
             std::vector<std::wstring> names;
-            if (!DiscoverAuto(host_, port_, names, error, &cancel_))
+            if (!DiscoverAuto(host_, port_, names, error, &cancel_, 0, nullptr, &expectedInstance_))
                 return false;
         }
         client_.Connect(host_, port_, &cancel_, 5000);
+        if (!expectedInstance_.empty() && client_.Hello()["instance"] != expectedInstance_)
+            throw std::runtime_error("INSTANCE_MISMATCH: discover again; server restarted or port reused");
         auto resources = client_.Request("resources");
         std::string com = ws::Lower(WideToMultiByte(serialName_, CP_UTF8));
         resource_.clear();

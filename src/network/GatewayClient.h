@@ -15,6 +15,8 @@ class GatewayClient {
     void Connect(const std::wstring &, unsigned, const std::atomic_bool *cancel = nullptr, DWORD timeout = 700);
     void Close();
     void Cancel() {
+        if (readCancel_)
+            SetEvent(readCancel_);
         auto s = socket_.load();
         if (s != INVALID_SOCKET)
             shutdown(s, SD_BOTH);
@@ -28,10 +30,12 @@ class GatewayClient {
     }
     void Live() {
         ws::SocketOptions(socket_);
+        stream_->Timeout(INFINITE);
     }
 
   private:
     std::atomic<SOCKET> socket_{INVALID_SOCKET};
+    HANDLE readCancel_ = nullptr;
     std::unique_ptr<ws::Stream> stream_;
     nlohmann::json hello_;
     std::mutex send_;

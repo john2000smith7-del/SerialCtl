@@ -422,6 +422,7 @@ private:
     std::wstring pendingPassword_;
     std::uint16_t pendingPort_ = 0;
     std::wstring pendingRemoteSerial_;
+    std::string pendingRemoteInstance_;
     CommandItem pendingCommand_;
     std::wstring pendingSftpInputTitle_;
     std::wstring pendingSftpInputLabel_;

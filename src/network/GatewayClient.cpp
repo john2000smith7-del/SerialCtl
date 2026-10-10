@@ -9,7 +9,10 @@ void GatewayClient::Connect(const std::wstring &host, unsigned port, const std::
         throw std::runtime_error(WideToMultiByte(error, CP_UTF8));
     try {
         auto tail = ws::UpgradeClient(socket_, host, port);
-        stream_ = std::make_unique<ws::Stream>(socket_, true, std::move(tail));
+        readCancel_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!readCancel_)
+            throw std::runtime_error("READ_CANCEL_EVENT_FAILED");
+        stream_ = std::make_unique<ws::Stream>(socket_, true, std::move(tail), readCancel_, 3000);
         hello_ = Receive();
         if (hello_.value("type", "") != "hello" || hello_.value("version", 0) != 1)
             throw std::runtime_error("PROTOCOL_MISMATCH");
@@ -21,6 +24,10 @@ void GatewayClient::Connect(const std::wstring &host, unsigned port, const std::
 void GatewayClient::Close() {
     Cancel();
     stream_.reset();
+    if (readCancel_) {
+        CloseHandle(readCancel_);
+        readCancel_ = nullptr;
+    }
     auto s = socket_.exchange(INVALID_SOCKET);
     if (s != INVALID_SOCKET)
         closesocket(s);

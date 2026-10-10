@@ -7,6 +7,27 @@ namespace {
 Json Failure(const char *code, const std::string &detail) {
     return {{"error", {{"code", code}, {"message", detail}}}};
 }
+bool JsonDepth(const Bytes &bytes) {
+    unsigned depth = 0;
+    bool string = false, escape = false;
+    for (auto b : bytes) {
+        if (string) {
+            if (escape)
+                escape = false;
+            else if (b == '\\')
+                escape = true;
+            else if (b == '"')
+                string = false;
+        } else if (b == '"')
+            string = true;
+        else if (b == '{' || b == '[') {
+            if (++depth > 32)
+                return false;
+        } else if ((b == '}' || b == ']') && depth)
+            --depth;
+    }
+    return true;
+}
 bool Keys(const Json &j, std::initializer_list<const char *> keys) {
     if (!j.is_object())
         return false;
@@ -170,6 +191,7 @@ void ApiServer::Accept() {
                 const std::string reply =
                     "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 12\r\n\r\nCLIENT_LIMIT";
                 ws::SendAll(s, reply.data(), reply.size());
+                ws::FinishSend(s);
                 closesocket(s);
                 continue;
             }
@@ -192,7 +214,7 @@ void ApiServer::Queue(const std::shared_ptr<ClientState> &c, unsigned opcode, co
         c->queued = 0;
         auto reason = ws::ClosePayload(1013, "SLOW_CLIENT: bounded send queue exceeded; reconnect with cursor");
         c->queue.push_back({8, std::move(reason)});
-        shutdown(c->socket, SD_RECEIVE);
+        SetEvent(c->readCancel);
     } else {
         c->queue.push_back({opcode, data});
         c->queued += data.size();
@@ -213,7 +235,7 @@ void ApiServer::Close(const std::shared_ptr<ClientState> &c, unsigned code, cons
         c->queue.push_back({8, ws::ClosePayload(code, reason)});
     c->wake.notify_one();
     if (wakeReader)
-        shutdown(c->socket, SD_RECEIVE);
+        SetEvent(c->readCancel);
 }
 void ApiServer::Send(const std::shared_ptr<ClientState> &c) {
     ws::Stream stream(c->socket, false);
@@ -251,23 +273,9 @@ void ApiServer::Send(const std::shared_ptr<ClientState> &c) {
     } catch (...) {
         Trace(c, "close", "SEND_FAILED");
     }
-    if (graceful) {
-        // Unread malformed frame bytes otherwise turn closesocket into a TCP reset
-        // on Windows and can discard the protocol Close just sent. No device input
-        // is processed here. Bound the drain by time AND bytes for hostile peers.
-        shutdown(c->socket, SD_SEND);
-        const auto deadline = GetTickCount64() + 250;
-        DWORD timeout = 100;
-        setsockopt(c->socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&timeout), sizeof(timeout));
-        char discard[2048];
-        size_t drained = 0;
-        while (drained < 8192 && GetTickCount64() < deadline) {
-            int n = recv(c->socket, discard, sizeof(discard), 0);
-            if (n <= 0)
-                break;
-            drained += size_t(n);
-        }
-    }
+    if (graceful)
+        ws::FinishSend(c->socket);
+    SetEvent(c->readCancel);
     shutdown(c->socket, SD_BOTH);
 }
 void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
@@ -298,9 +306,11 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
                       {"maxMessage", ws::MaxMessage},
                       {"historyBytes", MaxHistoryBytes}});
         Trace(c, "upgraded");
-        ws::Stream stream(c->socket, false, std::move(tail));
+        ws::Stream stream(c->socket, false, std::move(tail), c->readCancel);
         while (running_) {
             auto m = stream.Receive();
+            if (!running_ || WaitForSingleObject(c->readCancel, 0) == WAIT_OBJECT_0)
+                break;
             if (m.opcode == 8) {
                 Close(c, 1000, "PEER_CLOSED", false);
                 break;
@@ -313,9 +323,16 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
                 continue;
             if (m.opcode != 1)
                 throw ws::Error(1003, "JSON_TEXT_REQUIRED");
+            if (!JsonDepth(m.data))
+                throw ws::Error(1007, "JSON_DEPTH_LIMIT");
             auto j = Json::parse(m.data.begin(), m.data.end(), nullptr, false);
             if (j.is_discarded()) {
-                Queue(c, Failure("INVALID_JSON", "JSON object required"));
+                Queue(c, Json{{"type", "response"},
+                              {"version", 1},
+                              {"instance", instance_},
+                              {"requestId", ""},
+                              {"ok", false},
+                              {"error", {{"code", "INVALID_JSON"}, {"message", "JSON object required"}}}});
                 continue;
             }
             Request(c, j);
@@ -329,6 +346,7 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
                                       "serialctl.v1\r\nConnection: close\r\nContent-Length: 51\r\n\r\nUpgrade "
                                       "required: SerialCtl WebSocket serialctl.v1\n";
             ws::SendAll(c->socket, reply.data(), reply.size());
+            ws::FinishSend(c->socket);
         }
     } catch (const std::exception &e) {
         Trace(c, "error", e.what());
@@ -368,6 +386,8 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
     if (!j.is_object()) {
         Queue(c, Json{{"type", "response"},
                       {"ok", false},
+                      {"version", 1},
+                      {"instance", instance_},
                       {"requestId", ""},
                       {"error", {{"code", "INVALID_REQUEST"}, {"message", "JSON object required"}}}});
         return;
@@ -446,12 +466,7 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
                         Queue(c, reply);
                         for (const auto &event : history["events"])
                             Queue(c, event);
-                        c->responses[id] = {j, reply};
-                        c->responseOrder.push_back(id);
-                        while (c->responseOrder.size() > 256) {
-                            c->responses.erase(c->responseOrder.front());
-                            c->responseOrder.pop_front();
-                        }
+                        CacheResponse(c, id, j, reply);
                         return;
                     }
                 }
@@ -482,15 +497,24 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
     } else
         reply["result"] = result;
     Queue(c, reply);
-    if (!id.empty() && !c->responses.count(id)) {
-        c->responses[id] = {j, reply};
-        c->responseOrder.push_back(id);
-        while (c->responseOrder.size() > 256) {
-            c->responses.erase(c->responseOrder.front());
-            c->responseOrder.pop_front();
+    if (!id.empty() && !c->responses.count(id))
+        CacheResponse(c, id, j, reply);
+}
+void ApiServer::CacheResponse(const std::shared_ptr<ClientState> &c, const std::string &id, const Json &request,
+                              const Json &response) {
+    c->responses[id] = {request, response};
+    c->responseOrder.push_back(id);
+    c->responseBytes += request.dump().size() + response.dump().size();
+    while (c->responseOrder.size() > 256 || c->responseBytes > 1024 * 1024) {
+        auto old = c->responses.find(c->responseOrder.front());
+        if (old != c->responses.end()) {
+            c->responseBytes -= old->second.first.dump().size() + old->second.second.dump().size();
+            c->responses.erase(old);
         }
+        c->responseOrder.pop_front();
     }
 }
+
 void ApiServer::Publish(const std::string &target, const Bytes &data, const char *source, const char *kind) {
     if (data.empty())
         return;

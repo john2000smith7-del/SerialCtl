@@ -237,7 +237,7 @@ bool PointInRect(const RECT& rect, POINT point) {
     return point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom;
 }
 
-struct DiscoveryMessage { HWND dialog; unsigned generation; std::uint16_t port = 0; std::vector<std::wstring> names; std::wstring error; bool success = false; };
+struct DiscoveryMessage { std::string instance; HWND dialog; unsigned generation; std::uint16_t port = 0; std::vector<std::wstring> names; std::wstring error; bool success = false; };
 
 struct ApiMessage { std::string method,path; Json body; std::promise<Json> result; std::atomic_int state{0}; };
 using ApiRequestMessage = std::shared_ptr<ApiMessage>;
@@ -2021,6 +2021,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         for (const auto& name : result->names) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         if (!result->success) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未发现可连接的串口"));
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
+        pendingRemoteInstance_=result->success?result->instance:std::string();
         if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
         SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR, result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str() : result->error.c_str());
         EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
@@ -3068,7 +3069,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     const bool serial = pendingMode_ == 1;
     const bool ssh = pendingMode_ == 0;
     const bool share = pendingMode_ == 3;
-    discoveryExplicitPort_ = 0;
+    discoveryExplicitPort_ = 0;pendingRemoteInstance_.clear();
     const int serialSelectorIds[] = {IDC_SERIAL_LABEL, IDC_SERIAL};
     const int serialSettingIds[] = {IDC_BAUD_LABEL, IDC_BAUD, IDC_DATABITS_LABEL, IDC_DATABITS,
         IDC_PARITY_LABEL, IDC_PARITY, IDC_STOPBITS_LABEL, IDC_STOPBITS, IDC_FLOW_LABEL, IDC_FLOW};
@@ -3210,7 +3211,7 @@ void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
     SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"正在自动发现串口…");
     discoveryThread_ = std::thread([this, host, dialog, generation, explicitPort] {
         auto result = std::make_unique<DiscoveryMessage>(); result->dialog = dialog; result->generation = generation;
-        try { std::vector<std::wstring> descriptions; result->success = SharedSerialConnection::DiscoverAuto(host, result->port, result->names, result->error, &discoveryCancel_, explicitPort, &descriptions);
+        try { std::vector<std::wstring> descriptions; result->success = SharedSerialConnection::DiscoverAuto(host, result->port, result->names, result->error, &discoveryCancel_, explicitPort, &descriptions, &result->instance);
             if (result->success) result->names = std::move(descriptions); }
         catch (...) { result->error = L"串口查询失败"; }
         discoveryFinished_ = true;
@@ -3295,7 +3296,7 @@ void MainWindow::ConnectFromDialog() {
     } else if (pendingMode_ == 4) {
         connection = std::make_unique<CmdConnection>(); sessionName = L"本地 CMD";
     } else {
-        connection = std::make_unique<SharedSerialConnection>(pendingHost_, pendingPort_, pendingRemoteSerial_);
+        connection = std::make_unique<SharedSerialConnection>(pendingHost_, pendingPort_, pendingRemoteSerial_,pendingRemoteInstance_);
         sessionName = pendingRemoteSerial_ + L" @ " + pendingHost_;
     }
 

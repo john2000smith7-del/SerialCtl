@@ -41,6 +41,11 @@ class ApiServer {
   private:
     struct ClientState {
         SOCKET socket = INVALID_SOCKET;
+        HANDLE readCancel = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        ~ClientState() {
+            if (readCancel)
+                CloseHandle(readCancel);
+        }
         std::uint64_t id = 0;
         std::string peer;
         std::thread reader, sender;
@@ -49,6 +54,7 @@ class ApiServer {
         std::condition_variable wake;
         std::deque<ws::Stream::Message> queue;
         size_t queued = 0;
+        size_t responseBytes = 0;
         bool closing = false;
         bool drainOnClose = false;                              // reader has ended: bounded graceful TCP close
         std::set<std::string> subscriptions;                    // protected by server mutex
@@ -64,6 +70,7 @@ class ApiServer {
     void Client(const std::shared_ptr<ClientState> &);
     void Send(const std::shared_ptr<ClientState> &);
     void Request(const std::shared_ptr<ClientState> &, const Json &);
+    void CacheResponse(const std::shared_ptr<ClientState> &, const std::string &, const Json &, const Json &);
     void Queue(const std::shared_ptr<ClientState> &, unsigned, const Bytes &);
     void Queue(const std::shared_ptr<ClientState> &, const Json &);
     void Close(const std::shared_ptr<ClientState> &, unsigned, const std::string &, bool wakeReader = true);

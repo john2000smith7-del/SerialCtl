@@ -10,11 +10,8 @@ SerialDevice::~SerialDevice() {
     Close();
 }
 
-bool SerialDevice::Open(
-    const SerialSettings& settings,
-    DataCallback onData,
-    StatusCallback onStatus,
-    std::wstring& error) {
+bool SerialDevice::Open(const SerialSettings &settings, DataCallback onData, StatusCallback onStatus,
+                        std::wstring &error) {
     if (IsOpen()) {
         error = L"串口已经打开";
         return false;
@@ -25,16 +22,15 @@ bool SerialDevice::Open(
         path = L"\\\\.\\" + path;
     }
 
-    HANDLE handle = CreateFileW(
-        path.c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
-        error = L"无法打开 " + settings.portName + L"：" + Win32ErrorMessage();
+        const DWORD code = GetLastError();
+        const auto detail = Win32ErrorMessage(code);
+        error = (code == ERROR_FILE_NOT_FOUND  ? L"DEVICE_NOT_FOUND："
+                 : code == ERROR_ACCESS_DENIED ? L"DEVICE_BUSY_OR_ACCESS_DENIED（本程序/其他程序占用或权限受限）："
+                                               : L"DEVICE_OPEN_FAILED：") +
+                settings.portName + L" · " + detail;
         return false;
     }
 
@@ -94,10 +90,13 @@ bool SerialDevice::Open(
 }
 
 void SerialDevice::Close() {
-    stopping_ = true; connected_ = false;
+    stopping_ = true;
+    connected_ = false;
     if (readThread_.joinable()) {
+        CancelSynchronousIo(reinterpret_cast<HANDLE>(readThread_.native_handle()));
         readThread_.join();
     }
+    std::lock_guard<std::mutex> writer(writeMutex_);
     HANDLE handle = handle_;
     handle_ = INVALID_HANDLE_VALUE;
     if (handle != INVALID_HANDLE_VALUE) {
@@ -107,7 +106,7 @@ void SerialDevice::Close() {
     onStatus_ = {};
 }
 
-bool SerialDevice::Write(const Bytes& data, std::wstring& error) {
+bool SerialDevice::Write(const Bytes &data, std::wstring &error) {
     std::lock_guard<std::mutex> lock(writeMutex_);
     if (!IsOpen()) {
         error = L"串口尚未打开";
@@ -117,7 +116,8 @@ bool SerialDevice::Write(const Bytes& data, std::wstring& error) {
         return true;
     }
     DWORD written = 0;
-    if (!WriteFile(handle_, data.data(), static_cast<DWORD>(data.size()), &written, nullptr) || written != data.size()) {
+    if (!WriteFile(handle_, data.data(), static_cast<DWORD>(data.size()), &written, nullptr) ||
+        written != data.size()) {
         error = L"串口写入失败：" + Win32ErrorMessage();
         return false;
     }
@@ -145,30 +145,37 @@ void SerialDevice::ReadLoop() {
             COMSTAT status{};
             if (!ClearCommError(handle_, &errors, &status)) {
                 connected_ = false;
-            if (!stopping_ && onStatus_)
+                if (!stopping_ && onStatus_)
                     onStatus_(L"读取串口队列失败：" + Win32ErrorMessage(), true);
                 return;
             }
-            if(errors && onStatus_) {
-                std::wstring message=L"串口驱动错误：";
-                if(errors&CE_FRAME)message+=L" framing";
-                if(errors&CE_RXPARITY)message+=L" parity";
-                if(errors&CE_OVERRUN)message+=L" overrun";
-                if(errors&CE_RXOVER)message+=L" rx-buffer-overflow";
-                if(errors&CE_BREAK)message+=L" break";
-                onStatus_(message+L" · flags="+std::to_wstring(errors),true);
+            if (errors && onStatus_) {
+                std::wstring message = L"串口驱动错误：";
+                if (errors & CE_FRAME)
+                    message += L" framing";
+                if (errors & CE_RXPARITY)
+                    message += L" parity";
+                if (errors & CE_OVERRUN)
+                    message += L" overrun";
+                if (errors & CE_RXOVER)
+                    message += L" rx-buffer-overflow";
+                if (errors & CE_BREAK)
+                    message += L" break";
+                onStatus_(message + L" · flags=" + std::to_wstring(errors), true);
             }
-            if (status.cbInQue == 0) break;
+            if (status.cbInQue == 0)
+                break;
             DWORD extra = 0;
             const DWORD capacity = static_cast<DWORD>(buffer.size()) - total;
             const DWORD requested = std::min(status.cbInQue, capacity);
             if (!ReadFile(handle_, buffer.data() + total, requested, &extra, nullptr)) {
                 connected_ = false;
-            if (!stopping_ && onStatus_)
+                if (!stopping_ && onStatus_)
                     onStatus_(L"读取串口失败：" + Win32ErrorMessage(), true);
                 return;
             }
-            if (extra == 0) break;
+            if (extra == 0)
+                break;
             total += extra;
         }
         if (total > 0 && onData_) {

@@ -103,6 +103,23 @@ bool SendAll(SOCKET s, const void *data, size_t n) {
     }
     return true;
 }
+void FinishSend(SOCKET socket) {
+    // Windows resets TCP when closing with unread bytes. Give the already sent
+    // protocol/HTTP error a bounded graceful delivery window, without executing
+    // any further business input. A peer may be hostile or never acknowledge.
+    shutdown(socket, SD_SEND);
+    const auto deadline = GetTickCount64() + 250;
+    DWORD timeout = 100;
+    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&timeout), sizeof(timeout));
+    char discard[2048];
+    size_t drained = 0;
+    while (drained < 8192 && GetTickCount64() < deadline) {
+        int n = recv(socket, discard, sizeof(discard), 0);
+        if (n <= 0)
+            break;
+        drained += size_t(n);
+    }
+}
 void SocketOptions(SOCKET s, DWORD timeout) {
     BOOL yes = TRUE;
     DWORD sendTimeout = 3000;
@@ -208,6 +225,8 @@ Bytes ClosePayload(unsigned code, const std::string &reason) {
     return b;
 }
 void Stream::Exact(void *data, size_t n) {
+    if (readCancel_ && WaitForSingleObject(readCancel_, 0) == WAIT_OBJECT_0)
+        throw Error(1006, "CANCELED");
     auto p = static_cast<std::uint8_t *>(data);
     size_t k = std::min(n, buffered_.size());
     std::copy_n(buffered_.begin(), k, p);
@@ -215,7 +234,37 @@ void Stream::Exact(void *data, size_t n) {
     p += k;
     n -= k;
     while (n) {
-        int got = recv(socket_, reinterpret_cast<char *>(p), int(std::min<size_t>(n, 65536)), 0);
+        int got = 0;
+        if (!readCancel_)
+            got = recv(socket_, reinterpret_cast<char *>(p), int(std::min<size_t>(n, 65536)), 0);
+        else {
+            // A cancel event wakes overlapped socket reads on Win7 without closing
+            // and potentially reusing the SOCKET while the reader still owns it.
+            WSAOVERLAPPED io{};
+            io.hEvent = WSACreateEvent();
+            if (io.hEvent == WSA_INVALID_EVENT)
+                throw Error(1011, "READ_EVENT_FAILED");
+            WSABUF buffer{static_cast<ULONG>(std::min<size_t>(n, 65536)), reinterpret_cast<char *>(p)};
+            DWORD received = 0, flags = 0;
+            bool ok = false;
+            if (WSARecv(socket_, &buffer, 1, &received, &flags, &io, nullptr) == 0)
+                ok = true;
+            else if (WSAGetLastError() == WSA_IO_PENDING) {
+                HANDLE waits[] = {readCancel_, io.hEvent};
+                auto signal = WaitForMultipleObjects(2, waits, FALSE, readTimeout_);
+                if (signal == WAIT_OBJECT_0 + 1)
+                    ok = WSAGetOverlappedResult(socket_, &io, &received, FALSE, &flags) != FALSE;
+                else {
+                    CancelIoEx(reinterpret_cast<HANDLE>(socket_), &io);
+                    // The OVERLAPPED stack storage must outlive cancellation completion.
+                    WSAGetOverlappedResult(socket_, &io, &received, TRUE, &flags);
+                }
+            }
+            WSACloseEvent(io.hEvent);
+            if (!ok)
+                throw Error(1006, "CANCELED_OR_DISCONNECTED_OR_TIMEOUT");
+            got = static_cast<int>(received);
+        }
         if (got <= 0)
             throw Error(1006, "DISCONNECTED");
         p += got;
@@ -335,6 +384,8 @@ Bytes UpgradeClient(SOCKET s, const std::wstring &host, unsigned port) {
         throw Error(1006, "HANDSHAKE_SEND_FAILED");
     Bytes tail;
     auto h = ReadHeader(s, tail);
+    if (h.first.rfind("HTTP/1.1 503", 0) == 0)
+        throw Error(1013, "CLIENT_LIMIT");
     if (h.first != "HTTP/1.1 101 Switching Protocols" || Lower(h.fields["upgrade"]) != "websocket" ||
         !Token(h.fields["connection"], "upgrade") || h.fields["sec-websocket-accept"] != AcceptKey(key) ||
         h.fields["sec-websocket-protocol"] != Protocol)

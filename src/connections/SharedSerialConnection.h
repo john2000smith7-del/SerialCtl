@@ -6,8 +6,9 @@
 namespace serialctl {
 class SharedSerialConnection final : public IConnection {
   public:
-    SharedSerialConnection(std::wstring host, std::uint16_t port, std::wstring serialName)
-        : host_(std::move(host)), port_(port), serialName_(std::move(serialName)) {}
+    SharedSerialConnection(std::wstring host, std::uint16_t port, std::wstring serialName, std::string instance = {})
+        : host_(std::move(host)), port_(port), serialName_(std::move(serialName)),
+          expectedInstance_(std::move(instance)) {}
     ~SharedSerialConnection() override {
         Stop();
     }
@@ -15,7 +16,7 @@ class SharedSerialConnection final : public IConnection {
                          std::vector<std::wstring> *descriptions = nullptr);
     static bool DiscoverAuto(const std::wstring &, std::uint16_t &, std::vector<std::wstring> &, std::wstring &,
                              const std::atomic_bool *cancel = nullptr, std::uint16_t explicitPort = 0,
-                             std::vector<std::wstring> *descriptions = nullptr);
+                             std::vector<std::wstring> *descriptions = nullptr, std::string *instance = nullptr);
     bool Start(DataCallback, StatusCallback, std::wstring &) override;
     void CancelStart() override {
         cancel_ = true;
@@ -31,7 +32,7 @@ class SharedSerialConnection final : public IConnection {
     void Read();
     std::wstring host_, serialName_;
     std::uint16_t port_;
-    std::string resource_;
+    std::string resource_, expectedInstance_;
     GatewayClient client_;
     std::atomic_bool cancel_{false}, connected_{false}, stopping_{false};
     std::thread reader_;
