@@ -1281,7 +1281,7 @@ void PowerPane::ShowConnection() {
     t.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
     t.dialog.cx = 238;
     t.dialog.cy = 240;
-    DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), ConnectProc,
+    UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), ConnectProc,
                             reinterpret_cast<LPARAM>(&data));
 }
 INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -1421,7 +1421,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         if (id == IDCANCEL) {
-            EndDialog(h, IDCANCEL);
+            UiEndOwnedDialog(h, IDCANCEL);
             return TRUE;
         }
         if (id == IDOK) {
@@ -1443,7 +1443,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     command["stopBits"] = SendMessageW(data->stop, CB_GETCURSEL, 0, 0) == 1 ? 2 : 0;
                 }
                 data->pane->Submit(command);
-                EndDialog(h, IDOK);
+                UiEndOwnedDialog(h, IDOK);
             } catch (const std::exception &e) {
                 SetWindowTextW(data->error, Wide(e.what()).c_str());
             }
@@ -1633,7 +1633,7 @@ void PowerPane::EditSequence() {
     t.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
     t.dialog.cx = 238;
     t.dialog.cy = 190;
-    if (DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
+    if (UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
                                 reinterpret_cast<LPARAM>(&data)) != IDOK)
         return;
     steps_ = ParsePowerSteps(data.value);
@@ -1647,7 +1647,7 @@ void PowerPane::ShowScpi() {
     t.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
     t.dialog.cx = 238;
     t.dialog.cy = 90;
-    if (DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
+    if (UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
                                 reinterpret_cast<LPARAM>(&data)) == IDOK)
         Submit({{"type", "diagnostic"}, {"operation", "scpi"}, {"line", WideToMultiByte(data.value, CP_UTF8)}});
 }
@@ -1703,16 +1703,16 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     MessageBoxW(h, Wide(e.what()).c_str(), L"编辑电源步骤", MB_OK | MB_ICONWARNING);
                     return TRUE;
                 }
-            EndDialog(h, IDOK);
+            UiEndOwnedDialog(h, IDOK);
             return TRUE;
         }
         if (LOWORD(w) == IDCANCEL) {
-            EndDialog(h, IDCANCEL);
+            UiEndOwnedDialog(h, IDCANCEL);
             return TRUE;
         }
     }
     if (m == WM_CLOSE) {
-        EndDialog(h, IDCANCEL);
+        UiEndOwnedDialog(h, IDCANCEL);
         return TRUE;
     }
     if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT) {

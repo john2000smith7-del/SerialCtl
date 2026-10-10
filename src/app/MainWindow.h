@@ -11,6 +11,7 @@
 #include "CmdLineEditor.h"
 #include "ToolbarIcons.h"
 #include <future>
+#include <deque>
 
 #include <atomic>
 #include <cstdint>
@@ -70,6 +71,13 @@ private:
         std::wstring path;
     };
 
+    struct ReceivedItem {
+        std::uint64_t sessionId = 0;
+        Bytes data;
+        UINT codePage = 0;
+        std::string source; // empty for output, nonempty for accepted input
+        LONGLONG arrival = 0;
+    };
     struct SessionState {
         std::uint64_t id = 0;
         int mode = -1;
@@ -86,6 +94,7 @@ private:
         Bytes pendingDecodeBytes;
         CmdLineEditor cmdEditor;
         bool rawTrace = false;
+        LONGLONG pendingPaintArrival = 0;
         std::wstring host;
         std::wstring username;
         std::wstring password;
@@ -170,7 +179,9 @@ private:
     void StopCommandSequence(bool showStatus);
     void PostData(std::uint64_t sessionId, const Bytes& data);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
-    void AppendData(std::uint64_t sessionId, const Bytes& data);
+    void AppendData(std::uint64_t sessionId, const Bytes& data, UINT codePage = 0, LONGLONG arrival = 0);
+    void QueueReceived(ReceivedItem);
+    void AppendInput(const ReceivedItem&);
     std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
     void SyncSftpDirectoryFromTerminal(SessionState& session);
     void AppendStatus(const std::wstring& text, bool isError);
@@ -384,11 +395,14 @@ private:
     std::thread connectionThread_;
     std::atomic_bool connectionCancel_{false};
     std::unique_ptr<SessionState> pendingSession_;
-    std::vector<Bytes> pendingConnectionData_;
+    std::vector<ReceivedItem> pendingConnectionData_;
     size_t pendingConnectionBytes_ = 0;
     std::atomic<bool> closing_{false};
     std::mutex receivedMutex_;
-    std::map<std::uint64_t, Bytes> received_;
+    std::deque<ReceivedItem> received_;
+    std::map<std::uint64_t, size_t> receivedBytes_;
+    bool measurePaint_ = false;
+    std::uint64_t paintSample_ = 0;
     std::set<std::uint64_t> receiveOverflow_;
     bool receivePosted_ = false;
     std::set<std::uint64_t> loggerErrorsShown_;

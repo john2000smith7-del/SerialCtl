@@ -100,14 +100,19 @@ int main() {
         Expect(f.server.Events("session-3", 1)["gap"] == true, "expired history explicitly reports gap");
         f.Remove3();
         Expect(request("session.get", "session-3")["ok"] == false, "target disappearance");
+        std::cerr << "stage=" << ++stage << " stopping first server" << std::endl;
         f.server.Stop();
+        std::cerr << "stage=" << ++stage << " first server stopped" << std::endl;
         {
+            std::cerr << "stage=" << ++stage << " capacity fixture" << std::endl;
             Fixture capacity(18900, 18915);
             std::vector<std::unique_ptr<GatewayClient>> held;
             for (size_t i = 0; i < ApiServer::MaxClients; ++i) {
                 auto client = std::make_unique<GatewayClient>();
                 client->Connect(L"127.0.0.1", capacity.server.Port());
                 held.push_back(std::move(client));
+                if (held.size() % 16 == 0)
+                    std::cerr << "capacity=" << held.size() << std::endl;
             }
             Expect(held.size() == 128, "128 simultaneous connections retained");
             bool refused = false;
@@ -119,6 +124,7 @@ int main() {
             }
             Expect(refused, "client 129 explicitly refused at capacity");
             held.clear();
+            std::cerr << "stage=" << ++stage << " capacity clients cleared" << std::endl;
         }
         std::cout << "Unified gateway scope, RFC6455, legacy rejection, byte integrity, replay and lifecycle passed\n";
     } catch (const std::exception &e) {

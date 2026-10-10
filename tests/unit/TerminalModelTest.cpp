@@ -171,6 +171,15 @@ void TestCmdEditor() {
     editor.Edit(Key::Down);Expect(editor.Text().empty(),"history Down restores draft");
     serialctl::TerminalModel output(20,5);output.Feed(L">",L"T");editor.Insert(L"中文abc");
     auto preview=output.PreviewInput(editor.Text(),editor.Cursor());ExpectLine(preview,0,L">中文abc","local preview includes Unicode draft");
+    serialctl::TerminalModel longDraft(10,3); longDraft.Feed(L">",L"T");
+    auto beginning=longDraft.PreviewInput(std::wstring(200,L'x'),0);
+    Expect(beginning.CursorDisplayLine()==0 && beginning.CursorColumn()==1,"Home in long draft preserves visible caret");
+    Expect(beginning.LineText(0)==L">xxxxxxxxx","long draft preview shows text at Home caret");
+    auto middle=longDraft.PreviewInput(std::wstring(200,L'x'),50);
+    Expect(middle.CursorColumn()==1 && middle.CursorDisplayLine()<3,"middle long draft caret remains on screen");
+    auto ending=longDraft.PreviewInput(std::wstring(200,L'x'),200);
+    Expect(ending.CursorColumn()==1 && ending.CursorDisplayLine()==2,"End in long draft has correct row after scrolling");
+    Expect(longDraft.PlainText(false).find(L'x')==std::wstring::npos,"long draft does not mutate stdout");
     output.Feed(L"async\r\n>",L"T");Expect(editor.Text()==L"中文abc","asynchronous output cannot corrupt draft");Expect(output.PlainText(false).find(L"abc")==std::wstring::npos,"unsubmitted draft never contaminates output or logs");
 }
 

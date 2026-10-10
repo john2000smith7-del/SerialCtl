@@ -730,10 +730,25 @@ std::pair<size_t,int> TerminalModel::LocateAnchor(Anchor anchor) const {
     for(size_t i=0;i<DisplayLineCount();++i){const auto& line=DisplayLine(i);if(line.logicalId==anchor.id&&anchor.offset>=line.logicalOffset){best=i;col=static_cast<int>(std::min(anchor.offset-line.logicalOffset,line.cells.size()-1));if(anchor.offset<line.logicalOffset+line.used)break;}}
     return {best,col};
 }
-TerminalModel TerminalModel::PreviewInput(const std::wstring& text,size_t cursor) const {
-    TerminalModel model(columns_,rows_);model.primary_=primary_;model.attributes_=attributes_;model.nextLogicalId_=nextLogicalId_;
-    // Copy only the live grid: a long CMD draft must not copy 20,000 history lines on each paint.
-    model.Feed(text.substr(0,cursor),L"");model.Feed(L"\x1b" L"7",L"");model.Feed(text.substr(cursor),L"");model.Feed(L"\x1b" L"8",L"");return model;
+TerminalModel TerminalModel::PreviewInput(const std::wstring& text, size_t cursor) const {
+    TerminalModel model(columns_,rows_); model.primary_=primary_; model.attributes_=attributes_; model.nextLogicalId_=nextLogicalId_;
+    // Copy only the live grid. The temporary draft may wrap into temporary history.
+    cursor = std::min(cursor, text.size());
+    model.Feed(text.substr(0,cursor),L"");
+    const bool pending = model.primary_.wrapPending;
+    auto anchor = model.CaptureAnchor(model.CursorDisplayLine(), model.CursorColumn());
+    model.Feed(text.substr(cursor),L"");
+    auto caret = model.LocateAnchor(anchor);
+    // Home/Left in a draft longer than the screen must reveal the caret, rather
+    // than restoring a stale grid row after suffix output scrolls it away.
+    size_t start = std::min(model.HistorySize(), caret.first);
+    std::vector<TerminalLine> view;
+    for (size_t i=0;i<static_cast<size_t>(rows_);++i)
+        view.push_back(start+i < model.DisplayLineCount() ? model.DisplayLine(start+i) : model.BlankLine());
+    model.history_.clear(); model.primary_.lines=std::move(view);
+    model.primary_.cursorRow=static_cast<int>(caret.first-start);model.primary_.cursorColumn=caret.second;
+    model.primary_.wrapPending=pending;
+    return model;
 }
 
 void TerminalModel::Reset() {

@@ -42,7 +42,7 @@ constexpr UINT MessageConnection = WM_APP + 5;
 constexpr UINT MessageHostKey = WM_APP + 6;
 constexpr UINT MessageDiscovery = WM_APP + 7;
 constexpr UINT MessageApi = WM_APP + 8;
-constexpr UINT MessageInputAccepted = WM_APP + 10;
+
 constexpr UINT_PTR DiscoveryTimerId = 4003;
 constexpr int IdSharedAdvancedPort = 9010;
 constexpr int IdSharedAutoPort = 9011;
@@ -239,7 +239,6 @@ bool PointInRect(const RECT& rect, POINT point) {
 
 struct DiscoveryMessage { HWND dialog; unsigned generation; std::uint16_t port = 0; std::vector<std::wstring> names; std::wstring error; bool success = false; };
 
-struct InputAcceptedMessage { std::string id, source; Bytes bytes; };
 struct ApiMessage { std::string method,path; Json body; std::promise<Json> result; std::atomic_int state{0}; };
 using ApiRequestMessage = std::shared_ptr<ApiMessage>;
 
@@ -1731,22 +1730,6 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if(disconnectAllPending_ && !powerService_.State().value("connected",false)){disconnectAllPending_=false;powerPageOpened_=false;powerVisible_=false;RECT r{};GetClientRect(window_,&r);LayoutControls(r.right,r.bottom);}
         RefreshConnectionList();
         return 0;
-    case MessageInputAccepted: {
-        std::unique_ptr<InputAcceptedMessage> m(reinterpret_cast<InputAcceptedMessage*>(lParam));
-        if (m->id.rfind("session-", 0) != 0) return 0;
-        SessionState* session = FindSession(std::stoull(m->id.substr(8)));
-        if (!session) return 0;
-        if (session->rawTrace && session->logger) session->logger->WriteStatus(L"TX Base64 " + MultiByteToWide(reinterpret_cast<const std::uint8_t*>(Encode64(m->bytes).data()), Encode64(m->bytes).size(), CP_UTF8));
-        auto text = MultiByteToWide(m->bytes.data(), m->bytes.size(), session->codePage);
-        if (session->mode == 4) {
-            auto result = session->terminal.Feed(text, timestampEnabled_ ? CurrentTerminalTimestamp() : L"");
-            if (session->logger) session->logger->WriteText(result.logText);
-            if (session->terminalScrollOffset > 0) { session->terminalScrollOffset += static_cast<int>(result.scrollbackAdded); session->terminalHasNewOutput = true; }
-            if (session == activeSession_) InvalidateRect(terminal_, nullptr, FALSE);
-        }
-        if (session->logger) session->logger->WriteStatus(L"输入来源 " + MultiByteToWide(reinterpret_cast<const std::uint8_t*>(m->source.data()), m->source.size(), CP_UTF8) + L" · " + std::to_wstring(m->bytes.size()) + L" 字节");
-        return 0;
-    }
     case MessageApi: {
         std::unique_ptr<ApiRequestMessage> pointer(reinterpret_cast<ApiRequestMessage*>(lParam));
         auto request=*pointer; int expected=0;
@@ -1757,6 +1740,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case WM_CREATE:
+        wchar_t measure[2]{}; measurePaint_=GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", measure, 2)>0;
         LoadUiState();
         CreateControls();
         LoadCommands();
@@ -1765,8 +1749,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         ApplyTheme();
         sessionService_.ObserveInput([this](const std::string& id, const Bytes& bytes, const std::string& source) {
             apiServer_.Publish(id, bytes, source.c_str(), "input");
-            auto* message = new InputAcceptedMessage{id, source, bytes};
-            if (!PostMessageW(window_, MessageInputAccepted, 0, reinterpret_cast<LPARAM>(message))) delete message;
+            const auto state = sessionService_.State(id);
+            QueueReceived({std::stoull(id.substr(8)), bytes, state.value("inputCodePage", UINT(0)), source, 0});
         });
         { std::wstring error;
           if (!apiServer_.Start([this](const auto& method, const auto& path, const auto& body) {
@@ -1998,15 +1982,16 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         break;
     }
     case MessageData: {
-        std::map<std::uint64_t, Bytes> received;
+        std::deque<ReceivedItem> received;
         std::set<std::uint64_t> overflow;
-        { std::lock_guard<std::mutex> lock(receivedMutex_); received.swap(received_); overflow.swap(receiveOverflow_); receivePosted_ = false; }
+        { std::lock_guard<std::mutex> lock(receivedMutex_); received.swap(received_); receivedBytes_.clear(); overflow.swap(receiveOverflow_); receivePosted_ = false; }
         for (auto& item : received) {
-            if (pendingSession_ && item.first == pendingSession_->id) {
-                if (pendingConnectionBytes_ + item.second.size() <= 4 * 1024 * 1024) {
-                    pendingConnectionBytes_ += item.second.size(); pendingConnectionData_.push_back(std::move(item.second));
+            if (pendingSession_ && item.sessionId == pendingSession_->id) {
+                if (pendingConnectionBytes_ + item.data.size() <= 4 * 1024 * 1024) {
+                    pendingConnectionBytes_ += item.data.size(); pendingConnectionData_.push_back(std::move(item));
                 } else { connectionCancel_ = true; pendingSession_->connection->CancelStart(); }
-            } else AppendData(item.first, item.second);
+            } else if (item.source.empty()) AppendData(item.sessionId, item.data, item.codePage, item.arrival);
+            else AppendInput(item);
         }
         for (auto id : overflow) {
             SessionState* session = FindSession(id);
@@ -2115,7 +2100,6 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
         {
             MSG pending{};
-            while (PeekMessageW(&pending, window_, MessageInputAccepted, MessageInputAccepted, PM_REMOVE)) delete reinterpret_cast<InputAcceptedMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageApi, MessageApi, PM_REMOVE)) delete reinterpret_cast<ApiRequestMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageDiscovery, MessageDiscovery, PM_REMOVE)) delete reinterpret_cast<DiscoveryMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageConnection, MessageConnection, PM_REMOVE))
@@ -2945,7 +2929,7 @@ void MainWindow::OpenConnectionDialog(int mode) {
         return;
     }
     pendingMode_ = mode;
-    if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_CONNECTION), window_, ConnectionDialogProc,
+    if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_CONNECTION), window_, ConnectionDialogProc,
             reinterpret_cast<LPARAM>(this)) == IDOK) {
         ConnectFromDialog();
     }
@@ -3039,7 +3023,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
     if (message == WM_TIMER && wParam == DiscoveryTimerId) {
         KillTimer(dialog, DiscoveryTimerId); self->DiscoverSharedSerialPorts(dialog); return TRUE;
     }
-    if (message == WM_CLOSE) { EndDialog(dialog, IDCANCEL); return TRUE; }
+    if (message == WM_CLOSE) { UiEndOwnedDialog(dialog, IDCANCEL); return TRUE; }
     if (message == WM_COMMAND) {
         if (self->pendingMode_ == 3 && (LOWORD(wParam) == IdSharedAdvancedPort || LOWORD(wParam) == IdSharedAutoPort)) {
             if (LOWORD(wParam) == IdSharedAdvancedPort) {
@@ -3069,13 +3053,11 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                 InvalidateRect(GetDlgItem(dialog, IDC_DIALOG_ERROR), nullptr, TRUE);
                 return TRUE;
             }
-            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
-            EndDialog(dialog, IDOK);
+            UiEndOwnedDialog(dialog, IDOK);
             return TRUE;
         }
         if (LOWORD(wParam) == IDCANCEL) {
-            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
-            EndDialog(dialog, IDCANCEL);
+            UiEndOwnedDialog(dialog, IDCANCEL);
             return TRUE;
         }
     }
@@ -3395,7 +3377,10 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     sessions_.push_back(std::move(pendingSession_));
     RefreshConnectionList();
     SwitchSession(sessions_.size() - 1);
-    for (const Bytes& data : pendingConnectionData_) AppendData(id, data);
+    for (const auto& item : pendingConnectionData_) {
+        if(item.source.empty()) AppendData(id, item.data, item.codePage, item.arrival);
+        else AppendInput(item);
+    }
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
     if (activeSession_->mode == 1) {
@@ -3689,15 +3674,42 @@ void MainWindow::StopCommandSequence(bool showStatus) {
 }
 
 void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data) {
+    LARGE_INTEGER arrival{}; if(measurePaint_) QueryPerformanceCounter(&arrival);
+    const auto state=sessionService_.State("session-"+std::to_string(sessionId));
+    const UINT codePage=state.value("outputCodePage", UINT(0));
     apiServer_.Publish("session-" + std::to_string(sessionId), data);
+    QueueReceived({sessionId, data, codePage, {}, arrival.QuadPart});
+}
+void MainWindow::QueueReceived(ReceivedItem item) {
+    if (closing_) return;
+    const auto id=item.sessionId;
     std::lock_guard<std::mutex> lock(receivedMutex_);
-    Bytes& pending = received_[sessionId];
-    if (data.size() + pending.size() > 4 * 1024 * 1024 || received_.size() > 64) receiveOverflow_.insert(sessionId);
-    else pending.insert(pending.end(), data.begin(), data.end());
+    auto& bytes=receivedBytes_[id];
+    if (bytes+item.data.size()>4*1024*1024 || receivedBytes_.size()>64 || received_.size()>=4096) receiveOverflow_.insert(id);
+    else {
+        bytes+=item.data.size();
+        if(!received_.empty() && item.source.empty() && received_.back().source.empty() && received_.back().sessionId==id && received_.back().codePage==item.codePage)
+            received_.back().data.insert(received_.back().data.end(),item.data.begin(),item.data.end());
+        else received_.push_back(std::move(item));
+    }
     if (!receivePosted_) {
         receivePosted_ = PostMessageW(window_, MessageData, 0, 0) != FALSE;
-        if (!receivePosted_) { received_.clear(); receiveOverflow_.insert(sessionId); }
+        if (!receivePosted_) { received_.clear(); receivedBytes_.clear(); receiveOverflow_.insert(id); }
     }
+}
+void MainWindow::AppendInput(const ReceivedItem& item) {
+    SessionState* session=FindSession(item.sessionId); if(!session) return;
+    if (session->rawTrace && session->logger) {
+        auto raw=Encode64(item.data);session->logger->WriteStatus(L"TX Base64 "+MultiByteToWide(reinterpret_cast<const std::uint8_t*>(raw.data()),raw.size(),CP_UTF8));
+    }
+    if(session->mode==4) {
+        const auto text=MultiByteToWide(item.data.data(),item.data.size(),item.codePage?item.codePage:session->codePage);
+        const auto result=session->terminal.Feed(text,timestampEnabled_?CurrentTerminalTimestamp():L"");
+        if(session->logger) session->logger->WriteText(result.logText);
+        if(session->terminalScrollOffset>0){session->terminalScrollOffset+=static_cast<int>(result.scrollbackAdded);session->terminalHasNewOutput=true;}
+        if(session==activeSession_)InvalidateRect(terminal_,nullptr,FALSE);
+    }
+    if(session->logger) session->logger->WriteStatus(L"输入来源 "+MultiByteToWide(reinterpret_cast<const std::uint8_t*>(item.source.data()),item.source.size(),CP_UTF8)+L" · "+std::to_wstring(item.data.size())+L" 字节");
 }
 
 void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError) {
@@ -3708,11 +3720,15 @@ void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, b
     if (!PostMessageW(window_, MessageStatus, 0, reinterpret_cast<LPARAM>(status))) delete status;
 }
 
-void MainWindow::AppendData(std::uint64_t sessionId, const Bytes& data) {
+void MainWindow::AppendData(std::uint64_t sessionId, const Bytes& data, UINT codePage, LONGLONG arrival) {
     SessionState* session = FindSession(sessionId);
     if (!session) return;
     if(session->rawTrace&&session->logger){auto raw=Encode64(data);session->logger->WriteStatus(L"RX Base64 "+MultiByteToWide(reinterpret_cast<const std::uint8_t*>(raw.data()),raw.size(),CP_UTF8));}
-    if(session->mode==4 && session->connection->OutputCodePage()){session->codePage=session->connection->OutputCodePage();if(session==activeSession_)selectedCodePage_=session->codePage;}
+    if(session->mode==4 && codePage && codePage!=session->codePage){
+        if(!session->pendingDecodeBytes.empty()){session->terminal.Feed(L"\xfffd",timestampEnabled_?CurrentTerminalTimestamp():L"");session->pendingDecodeBytes.clear();}
+        session->codePage=codePage;if(session==activeSession_)selectedCodePage_=codePage;
+    }
+    if(arrival && !session->pendingPaintArrival) session->pendingPaintArrival=arrival;
     const std::wstring decoded = DecodeTerminalData(*session, data);
     const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
     const bool wasAlternateScreen = session->terminal.AlternateScreen();
@@ -4217,6 +4233,13 @@ void MainWindow::PaintTerminal(HDC dc) {
     }
 
     BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
+    if(measurePaint_ && activeSession_ && activeSession_->pendingPaintArrival) {
+        LARGE_INTEGER now{},frequency{};QueryPerformanceCounter(&now);QueryPerformanceFrequency(&frequency);
+        auto microseconds=static_cast<INT_PTR>((now.QuadPart-activeSession_->pendingPaintArrival)*1000000/frequency.QuadPart);
+        SetPropW(terminal_,L"SerialCtl.PaintUsec",reinterpret_cast<HANDLE>(std::max<INT_PTR>(1,microseconds)));
+        SetPropW(terminal_,L"SerialCtl.PaintSample",reinterpret_cast<HANDLE>(static_cast<INT_PTR>(++paintSample_)));
+        activeSession_->pendingPaintArrival=0;
+    }
     SelectObject(buffer, oldBitmap);
     DeleteObject(bitmap);
     DeleteDC(buffer);
@@ -5428,7 +5451,7 @@ bool MainWindow::PromptSftpValue(const std::wstring& title, const std::wstring& 
     pendingSftpInputValue_ = initialValue;
     pendingSftpInputError_.clear();
     pendingSftpInputPurpose_ = purpose;
-    if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_SFTP_INPUT), owner ? owner : window_,
+    if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_SFTP_INPUT), owner ? owner : window_,
             SftpInputDialogProc, reinterpret_cast<LPARAM>(this)) != IDOK)
         return false;
     value = pendingSftpInputValue_;
@@ -5580,6 +5603,7 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
         self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam));
         return TRUE;
     }
+    if (message == WM_CLOSE) { UiEndOwnedDialog(dialog, IDCANCEL); return TRUE; }
     if (message == WM_COMMAND) {
         const int id = LOWORD(wParam);
         if (id == IDC_SFTP_INPUT && HIWORD(wParam) == EN_CHANGE) {
@@ -5634,13 +5658,11 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                 return TRUE;
             }
             self->pendingSftpInputValue_ = value;
-            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
-            EndDialog(dialog, IDOK);
+            UiEndOwnedDialog(dialog, IDOK);
             return TRUE;
         }
         if (id == IDCANCEL) {
-            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
-            EndDialog(dialog, IDCANCEL);
+            UiEndOwnedDialog(dialog, IDCANCEL);
             return TRUE;
         }
     }
@@ -6093,6 +6115,7 @@ INT_PTR CALLBACK MainWindow::CommandDialogProc(HWND dialog, UINT message, WPARAM
         self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam));
         return TRUE;
     }
+    if (message == WM_CLOSE) { UiEndOwnedDialog(dialog, IDCANCEL); return TRUE; }
     if (message == WM_COMMAND) {
         const int id = LOWORD(wParam);
         const int notification = HIWORD(wParam);
@@ -6162,13 +6185,11 @@ INT_PTR CALLBACK MainWindow::CommandDialogProc(HWND dialog, UINT message, WPARAM
             self->pendingCommand_.intervalMs = intervalMs;
             if (self->pendingCommand_.name.empty())
                 self->pendingCommand_.name = self->pendingCommand_.commands.front();
-            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
-            EndDialog(dialog, IDOK);
+            UiEndOwnedDialog(dialog, IDOK);
             return TRUE;
         }
         if (id == IDCANCEL) {
-            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
-            EndDialog(dialog, IDCANCEL);
+            UiEndOwnedDialog(dialog, IDCANCEL);
             return TRUE;
         }
     }
@@ -6185,7 +6206,7 @@ void MainWindow::AddCommand() {
     pendingCommand_.commands.push_back(L"");
     pendingCommand_.intervalMs = DefaultCommandIntervalMs;
     editingCommandIndex_ = -1;
-    if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
+    if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
             reinterpret_cast<LPARAM>(this)) == IDOK) {
         commands_.push_back(pendingCommand_);
         MarkCommandsDirty();
@@ -6193,7 +6214,6 @@ void MainWindow::AddCommand() {
         SendMessageW(commandList_, LB_SETCURSEL, commands_.size() - 1, 0);
         UpdateCommandActions();
     }
-    if(RemovePropW(window_,L"SerialCtlRestoreModalOwner")){SetActiveWindow(window_);if(GetForegroundWindow()!=window_)SetForegroundWindow(window_);SetFocus(commandList_);}
     RedrawWindow(window_, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
@@ -6202,7 +6222,7 @@ void MainWindow::EditCommand(size_t index) {
     if (runningCommandIndex_ >= 0 || index >= commands_.size()) return;
     pendingCommand_ = commands_[index];
     editingCommandIndex_ = static_cast<int>(index);
-    if (DialogBoxParamW(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
+    if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
             reinterpret_cast<LPARAM>(this)) == IDOK) {
         commands_[index] = pendingCommand_;
         MarkCommandsDirty();
@@ -6211,7 +6231,6 @@ void MainWindow::EditCommand(size_t index) {
         UpdateCommandActions();
     }
     editingCommandIndex_ = -1;
-    if(RemovePropW(window_,L"SerialCtlRestoreModalOwner")){SetActiveWindow(window_);if(GetForegroundWindow()!=window_)SetForegroundWindow(window_);SetFocus(commandList_);}
     RedrawWindow(window_, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
