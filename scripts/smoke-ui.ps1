@@ -262,7 +262,67 @@ foreach ($architecture in @('x64')) {
             $dialog = Wait-Dialog $application.Id 'AI API'
             Start-Sleep -Milliseconds 200
             Capture-Window $dialog "$architecture-$theme-api"
+            # End-to-end network control against the exact packaged GUI. Never capture or print the token.
+            [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($dialog,200),0x185,[IntPtr]1,[IntPtr](-1)) | Out-Null
+            for ($right=202;$right -le 206;$right++) {
+                [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($dialog,$right),0xF1,[IntPtr]1,[IntPtr]0) | Out-Null
+            }
+            [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]230,[IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 300
+            $info = New-Object Text.StringBuilder(1024)
+            [SerialCtlUiSmoke]::ReadText([SerialCtlUiSmoke]::GetDlgItem($dialog,220),0xD,[IntPtr]1024,$info) | Out-Null
+            $apiPort = [regex]::Match($info.ToString(),'端口：([0-9]+)').Groups[1].Value
+            $apiToken = [regex]::Match($info.ToString(),'Token：([0-9a-f]+)').Groups[1].Value
+            if (-not $apiPort -or -not $apiToken) { throw 'API did not enable.' }
+            $script:apiBase = 'http://127.0.0.1:' + $apiPort + '/api/v1'
+            $script:apiHeaders = @{ Authorization = 'Bearer ' + $apiToken }
+            function Request-TestApi([string]$Path,$Body=$null) {
+                if ($null -eq $Body) { return Invoke-RestMethod -Uri ($apiBase+$Path) -Headers $apiHeaders -TimeoutSec 10 }
+                return Invoke-RestMethod -Uri ($apiBase+$Path) -Headers $apiHeaders -Method Post -ContentType 'application/json' -Body ($Body|ConvertTo-Json -Compress) -TimeoutSec 10
+            }
+            function Wait-TestAction($Action) {
+                for ($attempt=0;$attempt -lt 100 -and $Action.state -in @('queued','running');$attempt++) {
+                    Start-Sleep -Milliseconds 50
+                    $Action = Request-TestApi ('/actions/'+$Action.id)
+                }
+                if ($Action.state -ne 'completed') { throw 'GUI API power action failed.' }
+            }
+            $resources = (Request-TestApi '/resources').resources
+            $cmdResource = @($resources | Where-Object { $_.kind -eq 'cmd' -and $_.connected })[-1].id
+            if (-not $cmdResource) { throw 'CMD not included in authorized resources.' }
+            Wait-TestAction (Request-TestApi '/power-supplies/power-1/connect' @{ backend='simulation' })
+            Wait-TestAction (Request-TestApi '/power-supplies/power-1/channels/parameters' @{ channels=@(1);voltage=6;current=1 })
+            Wait-TestAction (Request-TestApi '/power-supplies/power-1/channels/protection' @{ channels=@(1);enabled=$true;voltageLimit=10;currentLimit=2 })
+            Wait-TestAction (Request-TestApi '/power-supplies/power-1/channels/output' @{ channels=@(1);enabled=$true;requestId=('ui-on-'+$theme) })
+            $powerState = Request-TestApi '/power-supplies/power-1'
+            if (-not $powerState.channels[0].output -or $powerState.channels[1].output -or $powerState.channels[2].output) { throw 'GUI API changed unselected channel.' }
+            Wait-TestAction (Request-TestApi '/power-supplies/power-1/channels/output' @{ channels=@(1);enabled=$false;requestId=('ui-off-'+$theme) })
+            Wait-TestAction (Request-TestApi '/power-supplies/power-1/task' @{ channels=@(1);onMs=100;offMs=100;count=1 })
+            for ($attempt=0;$attempt -lt 50;$attempt++) {
+                $powerState = Request-TestApi '/power-supplies/power-1'
+                if (-not $powerState.task.running) { break }
+                Start-Sleep -Milliseconds 50
+            }
+            if ($powerState.task.running -or $powerState.channels[0].output) { throw 'GUI API task did not finish powered off.' }
+            $command = [Text.Encoding]::ASCII.GetBytes("echo SERIALCTL_REMOTE_VISIBLE`r`n")
+            Request-TestApi ('/sessions/'+$cmdResource+'/input') @{ data=[Convert]::ToBase64String($command) } | Out-Null
+            $received = ''
+            for ($attempt=0;$attempt -lt 50;$attempt++) {
+                $events = Request-TestApi ('/sessions/'+$cmdResource+'/events?after=0')
+                $received = (@($events.events | Where-Object { $_.type -eq 'output' } | ForEach-Object {
+                    [Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($_.data))
+                }) -join '')
+                if ($received.Contains('SERIALCTL_REMOTE_VISIBLE')) { break }
+                Start-Sleep -Milliseconds 100
+            }
+            if (-not $received.Contains('SERIALCTL_REMOTE_VISIBLE')) { throw 'GUI API CMD stream lost command output.' }
+            Wait-TestAction (Request-TestApi '/power-supplies/power-1/disconnect' @{})
+            [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]231,[IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]2,[IntPtr]::Zero) | Out-Null
+            Start-Sleep -Milliseconds 300
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-api-cmd-visible"
+            $apiToken=$null;$script:apiHeaders=@{};$info.Clear()|Out-Null
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null
             $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
             Start-Sleep -Milliseconds 300
@@ -399,5 +459,5 @@ foreach ($architecture in @('x64')) {
 Remove-Item -LiteralPath $extract -Recurse -Force
 Remove-Item -LiteralPath $mock -Force
 foreach ($architecture in @('x64')) { Remove-Item -LiteralPath (Join-Path $OutputDirectory "mock-$architecture") -Recurse -Force }
-Write-Host '[PASS] x64 startup/shutdown, both themes, power USB/RS232/simulation/protection dialogs, persistent CMD, API dialog, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation, command drafts and Save, manual SFTP path and persisted column resize'
+Write-Host '[PASS] x64 startup/shutdown, both themes, power USB/RS232/simulation/protection dialogs, persistent CMD, API dialog and real GUI HTTP/power/CMD round-trip, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation, command drafts and Save, manual SFTP path and persisted column resize'
 Write-Host '[NOT RUN] Actual Windows 7 hardware and field server tests'
