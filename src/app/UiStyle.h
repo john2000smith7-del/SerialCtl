@@ -3,23 +3,17 @@
 #include <string>
 #include <vector>
 #include <windows.h>
-namespace serialctl
-{
-struct UiColors
-{
+namespace serialctl {
+struct UiColors {
     COLORREF surface, raised, field, text, muted, border, accent, danger;
 };
-inline UiColors UiTheme(bool dark)
-{
-    return dark ? UiColors{RGB(36, 36, 38),    RGB(44, 44, 46),    RGB(20, 20, 22),
-                           RGB(245, 245, 247), RGB(152, 152, 157), RGB(58, 58, 60),
-                           RGB(10, 132, 255),  RGB(255, 69, 58)}
-                : UiColors{RGB(255, 255, 255), RGB(242, 242, 247), RGB(255, 255, 255),
-                           RGB(29, 29, 31),    RGB(110, 110, 115), RGB(210, 210, 215),
-                           RGB(0, 122, 255),   RGB(255, 59, 48)};
+inline UiColors UiTheme(bool dark) {
+    return dark ? UiColors{RGB(36, 36, 38),    RGB(44, 44, 46), RGB(20, 20, 22),   RGB(245, 245, 247),
+                           RGB(152, 152, 157), RGB(58, 58, 60), RGB(10, 132, 255), RGB(255, 69, 58)}
+                : UiColors{RGB(255, 255, 255), RGB(242, 242, 247), RGB(255, 255, 255), RGB(29, 29, 31),
+                           RGB(110, 110, 115), RGB(210, 210, 215), RGB(0, 122, 255),   RGB(255, 59, 48)};
 }
-inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius)
-{
+inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius) {
     HBRUSH brush = CreateSolidBrush(fill);
     HPEN pen = CreatePen(PS_SOLID, 1, border);
     auto oldBrush = SelectObject(dc, brush), oldPen = SelectObject(dc, pen);
@@ -29,92 +23,96 @@ inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius)
     DeleteObject(brush);
     DeleteObject(pen);
 }
-struct UiFieldStyle
-{
+struct UiFieldStyle {
     bool *dark;
     HFONT font;
     int dpi;
 };
-inline void UiResizeDialog(HWND dialog, int dpi, int width, int height)
-{
+inline void UiResizeDialog(HWND dialog, int dpi, int width, int height) {
     RECT bounds{0, 0, MulDiv(width, dpi, 96), MulDiv(height, dpi, 96)};
     AdjustWindowRectEx(&bounds, static_cast<DWORD>(GetWindowLongPtrW(dialog, GWL_STYLE)), FALSE,
                        static_cast<DWORD>(GetWindowLongPtrW(dialog, GWL_EXSTYLE)));
     SetWindowPos(dialog, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
-inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id,
-                                     DWORD_PTR)
-{
-    if (message == WM_MOUSEMOVE && !GetPropW(h, L"SerialCtl.PowerHover"))
-    {
+inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
+    if (message == WM_MOUSEMOVE && !GetPropW(h, L"SerialCtl.PowerHover")) {
         SetPropW(h, L"SerialCtl.PowerHover", reinterpret_cast<HANDLE>(1));
         TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, h, 0};
         TrackMouseEvent(&track);
         InvalidateRect(h, nullptr, FALSE);
     }
-    if (message == WM_MOUSELEAVE)
-    {
+    if (message == WM_MOUSELEAVE) {
         RemovePropW(h, L"SerialCtl.PowerHover");
         InvalidateRect(h, nullptr, FALSE);
     }
-    if (message == WM_NCDESTROY)
-    {
+    if (message == WM_NCDESTROY) {
         RemovePropW(h, L"SerialCtl.PowerHover");
         RemoveWindowSubclass(h, UiButtonProc, id);
     }
     return DefSubclassProc(h, message, w, l);
 }
-inline void UiStyleButton(HWND h)
-{
+inline void UiStyleButton(HWND h) {
     SetWindowSubclass(h, UiButtonProc, 81, 0);
 }
-inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id,
-                                    DWORD_PTR reference)
-{
+inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR reference) {
     auto *style = reinterpret_cast<UiFieldStyle *>(reference);
     wchar_t cls[32]{};
     GetClassNameW(h, cls, 32);
     bool edit = _wcsicmp(cls, L"EDIT") == 0;
     auto d = [style](int n) { return MulDiv(n, style->dpi, 96); };
     auto colors = UiTheme(*style->dark);
-    if (edit && message == WM_NCCALCSIZE)
-    {
+    if (edit && message == WM_NCCALCSIZE) {
         LRESULT result = DefSubclassProc(h, message, w, l);
-        RECT *rect =
-            w ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(l)->rgrc[0] : reinterpret_cast<RECT *>(l);
+        RECT *rect = w ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(l)->rgrc[0] : reinterpret_cast<RECT *>(l);
         InflateRect(rect, -d(8), -d(4));
         return result;
     }
-    if ((edit && message == WM_NCPAINT) || (!edit && message == WM_PAINT))
-    {
+    wchar_t parentClass[32]{};
+    GetClassNameW(GetParent(h), parentClass, 32);
+    const COLORREF outsideColor =
+        GetPropW(h, L"SerialCtl.FieldSurface") || _wcsicmp(parentClass, L"#32770") == 0 ? colors.surface : colors.field;
+    if (edit && message == WM_PRINT) {
+        HDC dc = reinterpret_cast<HDC>(w);
+        int saved = SaveDC(dc);
+        RECT bounds{};
+        GetWindowRect(h, &bounds);
+        OffsetRect(&bounds, -bounds.left, -bounds.top);
+        HBRUSH outside = CreateSolidBrush(outsideColor);
+        FillRect(dc, &bounds, outside);
+        DeleteObject(outside);
+        UiBox(dc, bounds, colors.field, GetFocus() == h ? colors.accent : colors.border, d(10));
+        POINT origin{};
+        GetViewportOrgEx(dc, &origin);
+        SetViewportOrgEx(dc, origin.x + d(8), origin.y + d(4), nullptr);
+        IntersectClipRect(dc, 0, 0, bounds.right - d(16), bounds.bottom - d(8));
+        DefSubclassProc(h, WM_PRINTCLIENT, w, PRF_CLIENT | PRF_ERASEBKGND);
+        RestoreDC(dc, saved);
+        return 0;
+    }
+    if ((edit && message == WM_NCPAINT) ||
+        (!edit && (message == WM_PAINT || message == WM_PRINT || message == WM_PRINTCLIENT))) {
         PAINTSTRUCT ps{};
-        HDC dc = edit ? GetWindowDC(h) : BeginPaint(h, &ps);
+        HDC dc = edit ? GetWindowDC(h) : message == WM_PAINT ? BeginPaint(h, &ps) : reinterpret_cast<HDC>(w);
         RECT rect{};
-        if (edit)
-        {
+        if (edit) {
             GetWindowRect(h, &rect);
             OffsetRect(&rect, -rect.left, -rect.top);
             ExcludeClipRect(dc, d(8), d(4), rect.right - d(8), rect.bottom - d(4));
-        }
-        else
+        } else
             GetClientRect(h, &rect);
-        HBRUSH outside = CreateSolidBrush(colors.raised);
+        HBRUSH outside = CreateSolidBrush(outsideColor);
         FillRect(dc, &rect, outside);
         DeleteObject(outside);
         UiBox(dc, rect, colors.field, GetFocus() == h ? colors.accent : colors.border, d(10));
-        if (!edit)
-        {
+        if (!edit) {
             int selected = static_cast<int>(SendMessageW(h, CB_GETCURSEL, 0, 0));
             std::wstring text;
-            if (selected >= 0)
-            {
+            if (selected >= 0) {
                 int length = static_cast<int>(SendMessageW(h, CB_GETLBTEXTLEN, selected, 0));
-                if (length >= 0 && length < 1024)
-                {
+                if (length >= 0 && length < 1024) {
                     std::vector<wchar_t> buffer(length + 1);
-                    SendMessageW(h, CB_GETLBTEXT, selected,
-                                 reinterpret_cast<LPARAM>(buffer.data()));
+                    SendMessageW(h, CB_GETLBTEXT, selected, reinterpret_cast<LPARAM>(buffer.data()));
                     text.assign(buffer.data());
                 }
             }
@@ -137,31 +135,29 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         }
         if (edit)
             ReleaseDC(h, dc);
-        else
+        else if (message == WM_PAINT)
             EndPaint(h, &ps);
         return 0;
     }
     LRESULT result = DefSubclassProc(h, message, w, l);
     if (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE)
         RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
-    if (message == WM_SIZE)
-    {
+    if (message == WM_SIZE) {
         RECT bounds{};
         GetWindowRect(h, &bounds);
-        SetWindowRgn(h,
-                     CreateRoundRectRgn(0, 0, bounds.right - bounds.left + 1,
-                                        bounds.bottom - bounds.top + 1, d(20), d(20)),
-                     TRUE);
+        SetWindowRgn(
+            h, CreateRoundRectRgn(0, 0, bounds.right - bounds.left + 1, bounds.bottom - bounds.top + 1, d(20), d(20)),
+            TRUE);
     }
-    if (message == WM_NCDESTROY)
+    if (message == WM_NCDESTROY) {
+        RemovePropW(h, L"SerialCtl.FieldSurface");
         RemoveWindowSubclass(h, UiFieldProc, id);
+    }
     return result;
 }
-inline void UiStyleField(HWND control, UiFieldStyle *style)
-{
+inline void UiStyleField(HWND control, UiFieldStyle *style) {
     SetWindowLongPtrW(control, GWL_STYLE, GetWindowLongPtrW(control, GWL_STYLE) & ~WS_BORDER);
-    SetWindowLongPtrW(control, GWL_EXSTYLE,
-                      GetWindowLongPtrW(control, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
+    SetWindowLongPtrW(control, GWL_EXSTYLE, GetWindowLongPtrW(control, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
     SetWindowSubclass(control, UiFieldProc, 71, reinterpret_cast<DWORD_PTR>(style));
     SetWindowPos(control, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);

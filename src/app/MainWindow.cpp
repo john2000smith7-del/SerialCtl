@@ -2233,14 +2233,14 @@ void MainWindow::LayoutControls(int width, int height) {
     if (width <= 0 || height <= 0) return;
     rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth + Ui::MinCenterWidth + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
-    int x = Ui::Gap + Ui::Space * 2;
-    const int buttonWidths[] = {84, 84, 104, 112, 88, 84};
+    int x = Ui::Space * 2;
+    const int buttonWidths[] = {89, 88, 98, 118, 92, 88};
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
         MoveWindow(toolbarButtons_[index], x, toolbarButtonTop,
             Ui::Scale(buttonWidths[index]), Ui::StandardHeight, TRUE);
         x += Ui::Scale(buttonWidths[index] + 4);
     }
-    MoveWindow(themeButton_, width - Ui::Gap - Ui::StandardHeight,
+    MoveWindow(themeButton_, width - Ui::Space * 2 - Ui::StandardHeight,
         (Ui::ToolbarHeight - Ui::StandardHeight) / 2,
         Ui::StandardHeight, Ui::StandardHeight, TRUE);
 

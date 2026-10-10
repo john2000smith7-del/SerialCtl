@@ -97,6 +97,8 @@ HWND PowerPane::Child(const wchar_t *type, const wchar_t *text, int id, DWORD st
     auto h = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | style, 0, 0, 0, 0, window_,
                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
     controls_[id] = h;
+    if ((id >= 50 && id <= 52) || (id >= 60 && id <= 62))
+        SetPropW(h, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
     SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE);
     if (id >= 90)
         SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), FALSE);
@@ -270,8 +272,11 @@ void PowerPane::Action(int id) {
                     if (!input.eof())
                         throw std::runtime_error("时间包含多余内容");
                     tm.tm_isdst = -1;
+                    auto requested = tm;
                     auto value = std::mktime(&tm);
-                    if (value == -1)
+                    if (value == -1 || tm.tm_year != requested.tm_year || tm.tm_mon != requested.tm_mon ||
+                        tm.tm_mday != requested.tm_mday || tm.tm_hour != requested.tm_hour ||
+                        tm.tm_min != requested.tm_min || tm.tm_sec != requested.tm_sec)
                         throw std::runtime_error("无效日期");
                     return value;
                 };
@@ -628,17 +633,14 @@ void PowerPane::CreateControls() {
               242 + i, BS_OWNERDRAW);
     SendMessageW(Control(232), BM_SETCHECK, BST_CHECKED, 0);
     LoadTask();
-    SYSTEMTIME now{};
-    GetLocalTime(&now);
-    now.wHour = (now.wHour + 1) % 24;
-    wchar_t time[40]{};
-    swprintf_s(time, L"%04u-%02u-%02u %02u:%02u:%02u", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
-               now.wSecond);
-    SetWindowTextW(Control(120), time);
-    now.wMinute = (now.wMinute + 1) % 60;
-    swprintf_s(time, L"%04u-%02u-%02u %02u:%02u:%02u", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
-               now.wSecond);
-    SetWindowTextW(Control(121), time);
+    for (int i = 0; i < 2; ++i) {
+        std::time_t next = std::time(nullptr) + 60 * (i + 1);
+        std::tm local{};
+        localtime_s(&local, &next);
+        wchar_t value[40]{};
+        std::wcsftime(value, 40, L"%Y-%m-%d %H:%M:%S", &local);
+        SetWindowTextW(Control(120 + i), value);
+    }
 }
 void PowerPane::SelectMode() {
     int selected = static_cast<int>(SendMessageW(Control(80), CB_GETCURSEL, 0, 0));
@@ -666,8 +668,12 @@ void PowerPane::SelectMode() {
     if (selected == 0)
         for (int i = 0; i < 3; ++i)
             SendMessageW(check_[i], BM_SETCHECK, independentSelection_ & (1 << i) ? BST_CHECKED : BST_UNCHECKED, 0);
-    if (draftMode_ == 1 || draftMode_ == 2)
-        SendMessageW(check_[1], BM_SETCHECK, SendMessageW(check_[0], BM_GETCHECK, 0, 0), 0);
+    if (draftMode_ != 0) {
+        bool selected = SendMessageW(check_[0], BM_GETCHECK, 0, 0) == BST_CHECKED ||
+                        SendMessageW(check_[1], BM_GETCHECK, 0, 0) == BST_CHECKED;
+        SendMessageW(check_[0], BM_SETCHECK, selected ? BST_CHECKED : BST_UNCHECKED, 0);
+        SendMessageW(check_[1], BM_SETCHECK, selected ? BST_CHECKED : BST_UNCHECKED, 0);
+    }
     Layout();
     Refresh();
 }
@@ -945,8 +951,11 @@ void PowerPane::PaintDetails(HDC dc, int width, int top) {
             RECT box{d(x), top + d(40), d(x + pw), top + d(188)};
             UiBox(dc, box, c.surface, c.border, d(12));
             text(metric ? L"电流 (A)" : L"电压 (V)", x + 12, 52, pw - 24);
-            int left = d(x + 12), right = d(x + pw - 12), bottom = top + d(170), plotTop = top + d(80);
-            HPEN grid = CreatePen(PS_SOLID, 1, c.border);
+            int left = d(x + 12), right = d(x + pw - 12), bottom = top + d(160), plotTop = top + d(80);
+            COLORREF gridColor =
+                RGB((GetRValue(c.border) + GetRValue(c.surface)) / 2, (GetGValue(c.border) + GetGValue(c.surface)) / 2,
+                    (GetBValue(c.border) + GetBValue(c.surface)) / 2);
+            HPEN grid = CreatePen(PS_SOLID, 1, gridColor);
             auto old = SelectObject(dc, grid);
             for (int i = 0; i <= 4; ++i) {
                 int y = plotTop + (bottom - plotTop) * i / 4;
@@ -1166,6 +1175,14 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         auto c = UiTheme(self->dark_);
         SetTextColor(reinterpret_cast<HDC>(w), c.text);
         int id = GetDlgCtrlID(reinterpret_cast<HWND>(l));
+        wchar_t cls[24]{};
+        GetClassNameW(reinterpret_cast<HWND>(l), cls, 24);
+        bool edit = _wcsicmp(cls, L"EDIT") == 0;
+        if (edit) {
+            SetTextColor(reinterpret_cast<HDC>(w), IsWindowEnabled(reinterpret_cast<HWND>(l)) ? c.text : c.muted);
+            SetBkColor(reinterpret_cast<HDC>(w), c.field);
+            return reinterpret_cast<LRESULT>(self->brush_);
+        }
         bool channel = (id >= 20 && id <= 22) || id == 201 || id == 231 || id == 232;
         SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : channel ? c.surface : c.raised);
         return reinterpret_cast<LRESULT>(m == WM_CTLCOLOREDIT ? self->brush_
@@ -1541,6 +1558,34 @@ void PowerPane::Profile(bool save) {
     }
 }
 namespace {
+Json ParsePowerSteps(const std::wstring &value) {
+    Json steps = Json::array();
+    std::wistringstream input(value);
+    std::wstring line;
+    while (std::getline(input, line)) {
+        if (line.find_first_not_of(L" \t\r") == std::wstring::npos)
+            continue;
+        std::replace(line.begin(), line.end(), L',', L' ');
+        std::wistringstream row(line);
+        row.imbue(std::locale::classic());
+        double v = 0, a = 0, seconds = 0;
+        int on = 0;
+        row >> v >> a >> seconds >> on;
+        if (row.fail())
+            throw std::runtime_error("步骤格式不正确");
+        row >> std::ws;
+        if (!row.eof() || !std::isfinite(v) || !std::isfinite(a) || !std::isfinite(seconds) || v < 0 || v > 30 ||
+            a < 0 || a > 6 || seconds < 0.1 || seconds > 604800 || (on != 0 && on != 1) || steps.size() >= 1000)
+            throw std::runtime_error("步骤数值超出范围");
+        steps.push_back({{"voltage", v},
+                         {"current", a},
+                         {"durationMs", static_cast<long long>(std::llround(seconds * 1000))},
+                         {"enabled", on == 1}});
+    }
+    if (steps.empty())
+        throw std::runtime_error("至少需要一个步骤");
+    return steps;
+}
 struct PowerTextDialog {
     PowerPane *pane;
     std::wstring title, label, value;
@@ -1565,32 +1610,7 @@ void PowerPane::EditSequence() {
     if (DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
                                 reinterpret_cast<LPARAM>(&data)) != IDOK)
         return;
-    Json steps = Json::array();
-    std::wistringstream input(data.value);
-    std::wstring line;
-    while (std::getline(input, line)) {
-        if (line.find_first_not_of(L" \t\r") == std::wstring::npos)
-            continue;
-        std::replace(line.begin(), line.end(), L',', L' ');
-        std::wistringstream row(line);
-        row.imbue(std::locale::classic());
-        double v = 0, a = 0, seconds = 0;
-        int on = 0;
-        row >> v >> a >> seconds >> on;
-        if (row.fail())
-            throw std::runtime_error("步骤格式不正确");
-        row >> std::ws;
-        if (!row.eof() || !std::isfinite(v) || !std::isfinite(a) || !std::isfinite(seconds) || v < 0 || v > 30 ||
-            a < 0 || a > 6 || seconds < 0.1 || seconds > 604800 || (on != 0 && on != 1) || steps.size() >= 1000)
-            throw std::runtime_error("步骤数值超出范围");
-        steps.push_back({{"voltage", v},
-                         {"current", a},
-                         {"durationMs", static_cast<long long>(std::llround(seconds * 1000))},
-                         {"enabled", on == 1}});
-    }
-    if (steps.empty())
-        throw std::runtime_error("至少需要一个步骤");
-    steps_ = steps;
+    steps_ = ParsePowerSteps(data.value);
 }
 void PowerPane::ShowScpi() {
     PowerTextDialog data{this, L"本机 SCPI 调试", L"单条指令（调试前后关闭三路输出）", L"*IDN?", false};
@@ -1650,6 +1670,13 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_COMMAND) {
         if (LOWORD(w) == IDOK) {
             data->value = pane->Text(data->edit);
+            if (data->multiline)
+                try {
+                    ParsePowerSteps(data->value);
+                } catch (const std::exception &e) {
+                    MessageBoxW(h, Wide(e.what()).c_str(), L"编辑电源步骤", MB_OK | MB_ICONWARNING);
+                    return TRUE;
+                }
             EndDialog(h, IDOK);
             return TRUE;
         }

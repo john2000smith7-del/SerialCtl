@@ -147,3 +147,5 @@ Power and local CMD share the center card. Power uses three checked channel card
 - Main tabs start at 336 px; details at 384 px. At small widths use stacked cards and the existing overlay scroll lane. All physical readouts are unknown until actual device responses arrive.
 - Low frequency actions are grouped under Monitor, Automation, Device Settings, and Logs/Diagnostics. Avoid persistent explanatory text and empty helper rows.
 - Sidebar collapse/expand lasts 200 ms with cubic easing. Input and output continue; update terminal cells/PTY once at the end. Hide sidebar actions during animation so their minimum layout cannot overlap the center. Direct splitter dragging has no animation.
+
+- Trend grids use the existing border token at 50% opacity over the surface. Native WM_PRINT rendering must match normal field/combobox painting; disabled edit clients retain the same field fill and muted text.
