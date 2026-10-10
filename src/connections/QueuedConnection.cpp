@@ -1,4 +1,7 @@
 #include "QueuedConnection.h"
+#include "Win32Helpers.h"
+#include <cstring>
+#include <stdexcept>
 namespace serialctl {
 bool QueuedConnection::Start(DataCallback data, StatusCallback status, std::wstring &error) {
     status_ = status;
@@ -37,15 +40,23 @@ bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std:
         error = L"连接已断开";
         return false;
     }
-    if (data.size() > 8 * 1024 * 1024 || queued_ + data.size() > 8 * 1024 * 1024) {
+    Bytes prepared;
+    try {
+        prepared = inner_->PrepareInput(data);
+    } catch (const std::exception &ex) {
+        error = std::wstring(L"输入编码或批次无效：") +
+                MultiByteToWide(reinterpret_cast<const std::uint8_t *>(ex.what()), strlen(ex.what()), CP_UTF8);
+        return false;
+    }
+    if (prepared.size() > 8 * 1024 * 1024 || queued_ + prepared.size() > 8 * 1024 * 1024) {
         error = L"发送队列已满，请稍后重试";
         return false;
     }
     if (!data.empty()) {
         if (accepted)
             accepted();
-        queue_.push_back(data);
-        queued_ += data.size();
+        queue_.push_back(std::move(prepared));
+        queued_ += queue_.back().size();
         wake_.notify_one();
     }
     return true;
@@ -63,7 +74,7 @@ void QueuedConnection::Run() {
             queued_ -= bytes.size();
         }
         std::wstring error;
-        if (!inner_->Send(bytes, error)) {
+        if (!inner_->SendPrepared(bytes, error)) {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 queue_.clear();

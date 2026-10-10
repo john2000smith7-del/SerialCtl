@@ -2,6 +2,8 @@
 #include "ChildProcess.h"
 #include "Win32Helpers.h"
 #include <array>
+#include <cstring>
+#include <stdexcept>
 namespace serialctl {
 namespace {
 std::mutex consoleQueryMutex;
@@ -28,10 +30,14 @@ bool CmdConnection::Start(DataCallback data, StatusCallback status, std::wstring
     RestrictedProcessStartup startup;
     if (!startup.Initialize(inRead, outWrite, outWrite, {}, error))
         return fail();
-    wchar_t system[MAX_PATH]{};
-    GetSystemDirectoryW(system, MAX_PATH);
-    std::wstring exe = std::wstring(system) + L"\\cmd.exe";
-    std::wstring command = L"\"" + exe + L"\" /D /Q /K";
+    wchar_t module[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, module, MAX_PATH);
+    std::wstring exe = module;
+    const auto slash = exe.find_last_of(L"\\/");
+    // Tests exercise the same installed application bridge, not a test worker.
+    if (exe.substr(slash + 1) == L"cmd_connection_test.exe")
+        exe = exe.substr(0, slash + 1) + L"serialctl.exe";
+    std::wstring command = QuoteCommandLineArgument(exe) + L" --serialctl-cmd-bridge";
     PROCESS_INFORMATION pi{};
     startup.StartupInfo()->dwFlags |= STARTF_USESHOWWINDOW;
     startup.StartupInfo()->wShowWindow = SW_HIDE;
@@ -90,7 +96,35 @@ void CmdConnection::Stop() {
     data_ = {};
     status_ = {};
 }
+Bytes CmdConnection::PrepareInput(const Bytes &bytes) {
+    static_assert(sizeof(wchar_t) == 2, "Win32 UTF-16 console bridge");
+    if (bytes.empty())
+        return {};
+    const auto page = InputCodePage();
+    auto flags = page == CP_UTF8 ? MB_ERR_INVALID_CHARS : 0;
+    int size = MultiByteToWideChar(page, flags, reinterpret_cast<const char *>(bytes.data()),
+                                   static_cast<int>(bytes.size()), nullptr, 0);
+    if (size <= 0 || size > 131072)
+        throw std::runtime_error("CMD_ENCODING_INVALID");
+    std::wstring text(static_cast<size_t>(size), L'\0');
+    if (MultiByteToWideChar(page, flags, reinterpret_cast<const char *>(bytes.data()), static_cast<int>(bytes.size()),
+                            text.data(), size) != size)
+        throw std::runtime_error("CMD_ENCODING_INVALID");
+    const std::uint32_t payload = static_cast<std::uint32_t>(text.size() * sizeof(wchar_t));
+    Bytes packet(sizeof(payload) + payload);
+    std::memcpy(packet.data(), &payload, sizeof(payload));
+    std::memcpy(packet.data() + sizeof(payload), text.data(), payload);
+    return packet;
+}
 bool CmdConnection::Send(const Bytes &bytes, std::wstring &error) {
+    try {
+        return SendPrepared(PrepareInput(bytes), error);
+    } catch (...) {
+        error = L"CMD_ENCODING_INVALID";
+        return false;
+    }
+}
+bool CmdConnection::SendPrepared(const Bytes &bytes, std::wstring &error) {
     std::lock_guard<std::mutex> lock(write_);
     if (!connected_) {
         error = L"CMD 已结束";

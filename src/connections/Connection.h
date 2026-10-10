@@ -22,6 +22,12 @@ class IConnection {
     virtual void CancelStart() {}
     virtual void Stop() = 0;
     virtual bool Send(const Bytes &data, std::wstring &error) = 0;
+    virtual Bytes PrepareInput(const Bytes &data) {
+        return data;
+    }
+    virtual bool SendPrepared(const Bytes &data, std::wstring &error) {
+        return Send(data, error);
+    }
     virtual bool IsConnected() const = 0;
     virtual unsigned InputCodePage() const {
         return 0;

@@ -12,6 +12,8 @@ class CmdConnection final : public IConnection {
     bool Start(DataCallback data, StatusCallback status, std::wstring &error) override;
     void Stop() override;
     bool Send(const Bytes &bytes, std::wstring &error) override;
+    Bytes PrepareInput(const Bytes &) override;
+    bool SendPrepared(const Bytes &, std::wstring &) override;
     unsigned InputCodePage() const override {
         return inputCodePage_;
     }

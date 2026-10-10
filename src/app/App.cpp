@@ -1,16 +1,22 @@
+#include "CmdConsoleBridge.h"
 #include "MainWindow.h"
 
 #include <commctrl.h>
-#include <winsock2.h>
-#include <windows.h>
+#include <gdiplus.h>
 #include <objidl.h>
 #include <propidl.h>
-#include <gdiplus.h>
+#include <windows.h>
+#include <winsock2.h>
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCommand) {
+    if (std::wstring(parameters) == L"--serialctl-cmd-bridge")
+        return serialctl::RunCmdConsoleBridge();
     struct GraphicsSession {
         ULONG_PTR token = 0;
-        ~GraphicsSession() { if (token) Gdiplus::GdiplusShutdown(token); }
+        ~GraphicsSession() {
+            if (token)
+                Gdiplus::GdiplusShutdown(token);
+        }
     } graphics;
     Gdiplus::GdiplusStartupInput graphicsInput;
     if (Gdiplus::GdiplusStartup(&graphics.token, &graphicsInput, nullptr) != Gdiplus::Ok)
@@ -35,7 +41,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (mainWindow.PreTranslate(message)) continue;
+        if (mainWindow.PreTranslate(message))
+            continue;
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }

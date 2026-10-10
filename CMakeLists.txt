@@ -135,6 +135,7 @@ add_executable(serialctl WIN32
     src/network/SessionService.cpp
     src/connections/ChildProcess.cpp
     src/connections/CmdConnection.cpp
+    src/connections/CmdConsoleBridge.cpp
     src/connections/QueuedConnection.cpp
     src/connections/PlinkConnection.cpp
     src/connections/PuttyHostKey.cpp
@@ -192,6 +193,7 @@ if(BUILD_TESTING)
     add_test(NAME power_service COMMAND power_service_test)
     add_executable(cmd_connection_test tests/integration/CmdConnectionTest.cpp src/connections/CmdConnection.cpp src/connections/QueuedConnection.cpp src/connections/ChildProcess.cpp src/network/SessionService.cpp)
     serialctl_configure_native_target(cmd_connection_test CONSOLE)
+    add_dependencies(cmd_connection_test serialctl)
     add_test(NAME cmd_connection COMMAND cmd_connection_test)
     set(GATEWAY_TEST_SOURCES src/network/ApiServer.cpp src/network/WebSocket.cpp
         src/network/GatewayClient.cpp src/network/SessionService.cpp
