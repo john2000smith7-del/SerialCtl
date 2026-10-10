@@ -75,8 +75,10 @@ with Client('127.0.0.1') as c:
     user32.SendMessageW(terminal,0x102,13,0)
     until('SERIALCTL_GUI_中文'.encode('utf-8'))
     # Recall and resubmit the local Unicode history through native key messages.
+    output.clear()
     user32.SendMessageW(terminal,0x100,0x26,0)
     user32.SendMessageW(terminal,0x102,13,0)
+    until('SERIALCTL_GUI_中文'.encode('utf-8'))
     c.input(cmd,b'echo SERIALCTL_HISTORY_DONE\r\n')
     until(b'SERIALCTL_HISTORY_DONE')
     c.input(cmd,b'chcp 936\r\necho SERIALCTL_GBK_READY\r\n')
@@ -89,6 +91,61 @@ with Client('127.0.0.1') as c:
     until('SERIALCTL_GBK_中文'.encode('gbk'))
     c.input(cmd,b'chcp 65001\r\necho SERIALCTL_UTF8_RESTORED\r\n')
     until(b'SERIALCTL_UTF8_RESTORED')
+    # Actual clipboard paste: a completed line executes, the incomplete tail
+    # remains a local draft until Enter. No network input bypasses this path.
+    kernel32 = ctypes.windll.kernel32
+    kernel32.GlobalAlloc.argtypes = (ctypes.c_uint, ctypes.c_size_t)
+    kernel32.GlobalAlloc.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = (ctypes.c_void_p,)
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalUnlock.argtypes = (ctypes.c_void_p,)
+    user32.OpenClipboard.argtypes = (ctypes.c_void_p,)
+    user32.SetClipboardData.argtypes = (ctypes.c_uint, ctypes.c_void_p)
+    user32.SetClipboardData.restype = ctypes.c_void_p
+    pasted = 'echo SERIALCTL_PASTE_FIRST\r\necho SERIALCTL_PASTE_TAIL'
+    raw = (pasted + '\0').encode('utf-16-le')
+    memory = kernel32.GlobalAlloc(2, len(raw))
+    assert memory
+    pointer = kernel32.GlobalLock(memory)
+    assert pointer
+    ctypes.memmove(pointer, raw, len(raw))
+    kernel32.GlobalUnlock(memory)
+    assert user32.OpenClipboard(window)
+    try:
+        assert user32.EmptyClipboard()
+        assert user32.SetClipboardData(13, memory)
+    finally:
+        user32.CloseClipboard()
+    user32.SendMessageW(terminal, 0x302, 0, 0)
+    until(b'SERIALCTL_PASTE_FIRST')
+    assert b'SERIALCTL_PASTE_TAIL' not in output, 'Incomplete clipboard tail must not execute'
+    # Remote asynchronous stdout must preserve that draft before submission.
+    c.input(cmd, b'echo SERIALCTL_DRAFT_ASYNC\r\n')
+    until(b'SERIALCTL_DRAFT_ASYNC')
+    user32.SendMessageW(terminal, 0x102, 13, 0)
+    until(b'SERIALCTL_PASTE_TAIL')
+    c.input(cmd, b'for /L %i in (1,1,100) do @echo SERIALCTL_SCROLL_%i\r\n')
+    until(b'SERIALCTL_SCROLL_100')
+    def painted(predicate, timeout=5):
+        deadline = time.monotonic() + timeout
+        while not predicate():
+            if time.monotonic() >= deadline:
+                raise AssertionError('Actual terminal paint/state did not reach expected state')
+            time.sleep(.002)
+    user32.SendMessageW(terminal, 0x20a, 120 << 16, 0)
+    painted(lambda: (user32.GetPropW(terminal, 'SerialCtl.ScrollOffset') or 0) > 1)
+    anchor = (user32.GetPropW(terminal, 'SerialCtl.ReadAnchor'), user32.GetPropW(terminal, 'SerialCtl.ReadOffset'))
+    c.input(cmd, b'echo SERIALCTL_BACKGROUND_ANCHOR\r\n')
+    until(b'SERIALCTL_BACKGROUND_ANCHOR')
+    painted(lambda: user32.GetPropW(terminal, 'SerialCtl.NewOutput') == 2)
+    assert anchor == (user32.GetPropW(terminal, 'SerialCtl.ReadAnchor'), user32.GetPropW(terminal, 'SerialCtl.ReadOffset'))
+    user32.SendMessageW(terminal, 0x102, ord('e'), 0)
+    painted(lambda: user32.GetPropW(terminal, 'SerialCtl.ScrollOffset') == 1)
+    for character in 'cho SERIALCTL_FOLLOW_ENTER':
+        user32.SendMessageW(terminal, 0x102, ord(character), 0)
+    user32.SendMessageW(terminal, 0x102, 13, 0)
+    until(b'SERIALCTL_FOLLOW_ENTER')
+    painted(lambda: user32.GetPropW(terminal, 'SerialCtl.ScrollOffset') == 1)
     user32.SetForegroundWindow(window)
     delays=[]
     for sample in range(100):
@@ -102,9 +159,11 @@ with Client('127.0.0.1') as c:
         assert user32.GetPropW(terminal,'SerialCtl.PaintSample')!=previous, 'No real WM_PAINT observation'
         delays.append(user32.GetPropW(terminal,'SerialCtl.PaintUsec')/1000)
     ordered=sorted(delays)
-    report={'cmd':cmd,'environment':platform.platform(),'network':'loopback','physical_serial_rate':'not applicable: real CMD pipes',
+    report={'cmd':cmd,'environment':platform.platform(),'network':'loopback','physical_serial_rate':'not applicable: real CMD console bridge / raw stdout pipe',
             'clients':1,'samples':delays,'P50_ms':ordered[50],'P95_ms':ordered[95],'P99_ms':ordered[99],
-            'measurement':'PostData raw output callback QPC -> actual packaged terminal WM_PAINT BitBlt completion; excludes physical monitor presentation'}
+            'measurement':'PostData raw output callback QPC -> actual packaged terminal WM_PAINT BitBlt completion; excludes physical monitor presentation',
+            'checks':['sequential GUI editing','UTF8 and GBK Chinese raw stdout','history resubmission','multiline clipboard with deferred tail',
+                      'asynchronous output preserves draft','background output preserves logical reading anchor','active typing and Enter follow latest']}
     if len(sys.argv)>3:
         pathlib.Path(sys.argv[3]).write_text(json.dumps(report,indent=2),encoding='utf-8')
     print('CMD display P50=%.3f ms P95=%.3f ms P99=%.3f ms; 100 samples'%(ordered[50],ordered[95],ordered[99]))

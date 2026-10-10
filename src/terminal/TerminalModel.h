@@ -64,10 +64,13 @@ public:
 
     TerminalFeedResult Feed(const std::wstring& text, const std::wstring& timestamp);
     void Resize(int columns, int rows);
-    struct Anchor { std::uint64_t id = 0; size_t offset = 0; };
+    struct Anchor {
+        std::uint64_t id = 0;
+        size_t offset = 0;
+    };
     Anchor CaptureAnchor(size_t line, int column = 0) const;
-    std::pair<size_t,int> LocateAnchor(Anchor) const;
-    TerminalModel PreviewInput(const std::wstring& text, size_t cursor) const;
+    std::pair<size_t, int> LocateAnchor(Anchor) const;
+    TerminalModel PreviewInput(const std::wstring &text, size_t cursor) const;
     void Reset();
     void Clear();
     void ClearScrollback();

@@ -27,9 +27,10 @@ Probe Query(const std::wstring &host, unsigned port, const std::atomic_bool *can
                                          L" · WebSocket");
             }
     } catch (const ws::Error &e) {
-        if (!e.instance.empty()) {
+        if (!p.instance.empty() || !e.instance.empty()) {
             p.port = port;
-            p.instance = e.instance;
+            if (!e.instance.empty())
+                p.instance = e.instance;
             p.error = e.what();
         }
     } catch (const std::exception &e) {

@@ -180,9 +180,9 @@ private:
     void StopCommandSequence(bool showStatus);
     void PostData(std::uint64_t sessionId, const Bytes& data);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
-    void AppendData(std::uint64_t sessionId, const Bytes& data, UINT codePage = 0, LONGLONG arrival = 0);
+    void AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage = 0, LONGLONG arrival = 0);
     void QueueReceived(ReceivedItem);
-    void AppendInput(const ReceivedItem&);
+    void AppendInput(const ReceivedItem &);
     std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
     void SyncSftpDirectoryFromTerminal(SessionState& session);
     void AppendStatus(const std::wstring& text, bool isError);
@@ -190,7 +190,7 @@ private:
     void SaveNetworkDiagnostics();
     void ShowTerminalContextMenu(POINT screenPoint);
     UINT SelectedCodePage() const;
-    std::string EncodeTerminalText(const std::wstring&);
+    std::string EncodeTerminalText(const std::wstring &);
     std::wstring SelectedLineEnding() const;
     void SetConnectedUi(bool connected);
     void RefreshConnectionList();

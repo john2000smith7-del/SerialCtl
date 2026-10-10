@@ -3,7 +3,7 @@
 import base64
 import queue
 import sys
-from serialctl_ws import Client, discover
+from serialctl_ws import Client, CapacityError, discover
 from serialctl_api import main
 
 
@@ -11,6 +11,8 @@ def list_ports(ip, port=None, timeout=1.5):
     found = discover(ip, port, timeout)
     if len(found) != 1:
         raise ValueError('Select instance/port explicitly: ' + str(found))
+    if found[0].get('error') == 'CLIENT_LIMIT':
+        raise CapacityError(found[0]['instance'])
     return [r for r in found[0]['resources'] if r['kind'] == 'serial']
 
 

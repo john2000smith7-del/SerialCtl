@@ -201,6 +201,7 @@ int main() {
             Expect(refused, "client 129 explicitly refused at capacity");
             std::uint16_t port = 0;
             std::vector<std::wstring> names;
+            std::wstring error;
             Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr,
                                                          static_cast<std::uint16_t>(capacity.server.Port())) &&
                        error.find(L"CLIENT_LIMIT") != std::wstring::npos,

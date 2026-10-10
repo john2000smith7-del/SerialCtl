@@ -53,7 +53,8 @@ TerminalLine TerminalModel::BlankLine() const {
 TerminalModel::Screen TerminalModel::BlankScreen() const {
     Screen screen;
     screen.lines.reserve(static_cast<size_t>(rows_));
-    for (int row = 0; row < rows_; ++row) screen.lines.push_back(BlankLine());
+    for (int row = 0; row < rows_; ++row)
+        screen.lines.push_back(BlankLine());
     screen.scrollBottom = rows_ - 1;
     return screen;
 }
@@ -204,14 +205,14 @@ void TerminalModel::PutCharacter(
     const int width = IsWideCharacter(character) ? 2 : 1;
     if (screen.wrapPending || screen.cursorColumn + width > columns_) {
         if (autoWrap_) {
-            auto& previous = screen.lines[static_cast<size_t>(screen.cursorRow)];
+            auto &previous = screen.lines[static_cast<size_t>(screen.cursorRow)];
             previous.wrapped = true;
             const auto id = previous.logicalId;
             const auto offset = previous.logicalOffset + previous.used;
             screen.cursorColumn = 0;
             screen.wrapPending = false;
             LineFeed(result);
-            auto& continuation = screen.lines[static_cast<size_t>(screen.cursorRow)];
+            auto &continuation = screen.lines[static_cast<size_t>(screen.cursorRow)];
             continuation.logicalId = id;
             continuation.logicalOffset = offset;
         } else {
@@ -221,7 +222,8 @@ void TerminalModel::PutCharacter(
     }
 
     TerminalLine& line = screen.lines[static_cast<size_t>(screen.cursorRow)];
-    if (line.logicalOffset == 0) EnsureTimestamp(line, timestamp);
+    if (line.logicalOffset == 0)
+        EnsureTimestamp(line, timestamp);
     if (IsCombiningCharacter(character) && screen.cursorColumn > 0) {
         // Win32 GDI does not provide a stable cell for combining marks. Keeping the
         // base character avoids shifting every cell that follows it.
@@ -348,7 +350,8 @@ void TerminalModel::EraseLine(int mode) {
     else if (mode == 1) last = screen.cursorColumn;
     for (int column = first; column <= last; ++column)
         line.cells[static_cast<size_t>(column)] = TerminalCell{};
-    if (mode == 0) line.used = std::min(line.used, static_cast<size_t>(first));
+    if (mode == 0)
+        line.used = std::min(line.used, static_cast<size_t>(first));
     if (mode == 2) {
         line.used = 0;
         line.wrapped = false;
@@ -563,7 +566,8 @@ void TerminalModel::ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& resul
     default:
         break;
     }
-    if (finalCharacter != L'm') screen.wrapPending = false;
+    if (finalCharacter != L'm')
+        screen.wrapPending = false;
 }
 
 void TerminalModel::SetGraphicsRendition(const std::vector<int>& parameters) {
@@ -676,81 +680,164 @@ void TerminalModel::ResizeScreen(Screen& screen, bool preserveHistory, int oldCo
     if (!preserveHistory) {
         // Alternate screen is a VT grid, never a log to reflow.
         screen.lines.resize(static_cast<size_t>(rows_), BlankLine());
-        for (auto& line : screen.lines) { line.cells.resize(static_cast<size_t>(columns_)); line.used = std::min(line.used, line.cells.size()); }
-        screen.cursorRow = std::clamp(screen.cursorRow,0,rows_-1);
-        screen.cursorColumn = std::clamp(screen.cursorColumn,0,columns_-1);
-        screen.savedRow = std::clamp(screen.savedRow,0,rows_-1);
-        screen.savedColumn = std::clamp(screen.savedColumn,0,columns_-1);
-        screen.scrollTop=0;screen.scrollBottom=rows_-1;screen.wrapPending=false;return;
+        for (auto &line : screen.lines) {
+            line.cells.resize(static_cast<size_t>(columns_));
+            line.used = std::min(line.used, line.cells.size());
+        }
+        screen.cursorRow = std::clamp(screen.cursorRow, 0, rows_ - 1);
+        screen.cursorColumn = std::clamp(screen.cursorColumn, 0, columns_ - 1);
+        screen.savedRow = std::clamp(screen.savedRow, 0, rows_ - 1);
+        screen.savedColumn = std::clamp(screen.savedColumn, 0, columns_ - 1);
+        screen.scrollTop = 0;
+        screen.scrollBottom = rows_ - 1;
+        screen.wrapPending = false;
+        return;
     }
     std::vector<TerminalLine> old(history_.begin(), history_.end());
     size_t meaningful = static_cast<size_t>(screen.cursorRow + 1);
-    for (size_t i=0;i<screen.lines.size();++i) if(screen.lines[i].used || screen.lines[i].hardBreak || screen.lines[i].wrapped || !screen.lines[i].timestamp.empty()) meaningful=i+1;
-    meaningful=std::max(meaningful,static_cast<size_t>(screen.cursorRow+1));
-    old.insert(old.end(),screen.lines.begin(),screen.lines.begin()+std::min(meaningful,screen.lines.size()));
-    size_t cursorOld=history_.size()+static_cast<size_t>(screen.cursorRow);
-    size_t savedOld=history_.size()+static_cast<size_t>(screen.savedRow);
-    const int cursorPosition=screen.cursorColumn+(screen.wrapPending?1:0);
-    struct Group { std::vector<TerminalCell> cells; std::wstring stamp; bool hard=false; std::uint64_t id=0; size_t base=0; };
-    std::vector<Group> groups;size_t cursorGroup=0,cursorOffset=0,savedGroup=0,savedOffset=0;
-    for(size_t i=0;i<old.size();++i){auto& line=old[i];if(i==0||!old[i-1].wrapped)groups.push_back({{},line.timestamp,line.hardBreak,line.logicalId,line.logicalOffset});
-        auto& g=groups.back();if(i==cursorOld){cursorGroup=groups.size()-1;cursorOffset=g.cells.size()+static_cast<size_t>(cursorPosition);}
-        if(i==savedOld){savedGroup=groups.size()-1;savedOffset=g.cells.size()+static_cast<size_t>(screen.savedColumn);}
-        size_t count=std::min(line.used,line.cells.size());
-        if(i==cursorOld)count=std::max(count,std::min(line.cells.size(),static_cast<size_t>(cursorPosition)));
+    for (size_t i = 0; i < screen.lines.size(); ++i)
+        if (screen.lines[i].used || screen.lines[i].hardBreak || screen.lines[i].wrapped ||
+            !screen.lines[i].timestamp.empty())
+            meaningful = i + 1;
+    meaningful = std::max(meaningful, static_cast<size_t>(screen.cursorRow + 1));
+    old.insert(old.end(), screen.lines.begin(), screen.lines.begin() + std::min(meaningful, screen.lines.size()));
+    size_t cursorOld = history_.size() + static_cast<size_t>(screen.cursorRow);
+    size_t savedOld = history_.size() + static_cast<size_t>(screen.savedRow);
+    const int cursorPosition = screen.cursorColumn + (screen.wrapPending ? 1 : 0);
+    struct Group {
+        std::vector<TerminalCell> cells;
+        std::wstring stamp;
+        bool hard = false;
+        std::uint64_t id = 0;
+        size_t base = 0;
+    };
+    std::vector<Group> groups;
+    size_t cursorGroup = 0, cursorOffset = 0, savedGroup = 0, savedOffset = 0;
+    for (size_t i = 0; i < old.size(); ++i) {
+        auto &line = old[i];
+        if (i == 0 || !old[i - 1].wrapped)
+            groups.push_back({{}, line.timestamp, line.hardBreak, line.logicalId, line.logicalOffset});
+        auto &g = groups.back();
+        if (i == cursorOld) {
+            cursorGroup = groups.size() - 1;
+            cursorOffset = g.cells.size() + static_cast<size_t>(cursorPosition);
+        }
+        if (i == savedOld) {
+            savedGroup = groups.size() - 1;
+            savedOffset = g.cells.size() + static_cast<size_t>(screen.savedColumn);
+        }
+        size_t count = std::min(line.used, line.cells.size());
+        if (i == cursorOld)
+            count = std::max(count, std::min(line.cells.size(), static_cast<size_t>(cursorPosition)));
         // Attributes and explicit spaces are data; unused grid padding is not.
-        g.cells.insert(g.cells.end(),line.cells.begin(),line.cells.begin()+count);g.hard=line.hardBreak;
+        g.cells.insert(g.cells.end(), line.cells.begin(), line.cells.begin() + count);
+        g.hard = line.hardBreak;
     }
-    std::vector<TerminalLine> lines;size_t cursorAbsolute=0,savedAbsolute=0;int cursorColumn=0,savedColumn=0;bool pending=false;
-    for(size_t gi=0;gi<groups.size();++gi){auto& g=groups[gi];size_t at=0;bool first=true;
-        do {size_t take=std::min(static_cast<size_t>(columns_),g.cells.size()-at);
-            if(take&&at+take<g.cells.size()&&g.cells[at+take].continuation)--take;
-            if(take==0&&at<g.cells.size())take=std::min<size_t>(2,g.cells.size()-at);
-            auto line=BlankLine();line.logicalId=g.id;line.logicalOffset=g.base+at;line.timestamp=first?g.stamp:L"";line.used=take;
-            if(line.cells.size()<take)line.cells.resize(take);
-            std::copy_n(g.cells.begin()+at,take,line.cells.begin());line.wrapped=at+take<g.cells.size();line.hardBreak=!line.wrapped&&g.hard;
-            auto map=[&](size_t offset,size_t& row,int& col,bool cursor){if(offset>=at&&(offset<at+take||!line.wrapped)) {row=lines.size();size_t local=offset-at;col=static_cast<int>(std::min(local,static_cast<size_t>(columns_-1)));if(cursor)pending=local>=static_cast<size_t>(columns_)&&autoWrap_;} };
-            if(gi==cursorGroup)map(cursorOffset,cursorAbsolute,cursorColumn,true);if(gi==savedGroup)map(savedOffset,savedAbsolute,savedColumn,false);
-            lines.push_back(std::move(line));at+=take;first=false;
-        }while(at<g.cells.size());
+    std::vector<TerminalLine> lines;
+    size_t cursorAbsolute = 0, savedAbsolute = 0;
+    int cursorColumn = 0, savedColumn = 0;
+    bool pending = false;
+    for (size_t gi = 0; gi < groups.size(); ++gi) {
+        auto &g = groups[gi];
+        size_t at = 0;
+        bool first = true;
+        do {
+            size_t take = std::min(static_cast<size_t>(columns_), g.cells.size() - at);
+            if (take && at + take < g.cells.size() && g.cells[at + take].continuation)
+                --take;
+            if (take == 0 && at < g.cells.size())
+                take = std::min<size_t>(2, g.cells.size() - at);
+            auto line = BlankLine();
+            line.logicalId = g.id;
+            line.logicalOffset = g.base + at;
+            line.timestamp = first ? g.stamp : L"";
+            line.used = take;
+            if (line.cells.size() < take)
+                line.cells.resize(take);
+            std::copy_n(g.cells.begin() + at, take, line.cells.begin());
+            line.wrapped = at + take < g.cells.size();
+            line.hardBreak = !line.wrapped && g.hard;
+            auto map = [&](size_t offset, size_t &row, int &col, bool cursor) {
+                if (offset >= at && (offset < at + take || !line.wrapped)) {
+                    row = lines.size();
+                    size_t local = offset - at;
+                    col = static_cast<int>(std::min(local, static_cast<size_t>(columns_ - 1)));
+                    if (cursor)
+                        pending = local >= static_cast<size_t>(columns_) && autoWrap_;
+                }
+            };
+            if (gi == cursorGroup)
+                map(cursorOffset, cursorAbsolute, cursorColumn, true);
+            if (gi == savedGroup)
+                map(savedOffset, savedAbsolute, savedColumn, false);
+            lines.push_back(std::move(line));
+            at += take;
+            first = false;
+        } while (at < g.cells.size());
     }
-    if(lines.empty())lines.push_back(BlankLine());
-    const size_t start=lines.size()>static_cast<size_t>(rows_)?lines.size()-static_cast<size_t>(rows_):0;
-    history_.assign(lines.begin(),lines.begin()+start);while(history_.size()>maximumScrollback_)history_.pop_front();
-    screen.lines.assign(lines.begin()+start,lines.end());while(screen.lines.size()<static_cast<size_t>(rows_))screen.lines.push_back(BlankLine());
-    screen.cursorRow=static_cast<int>(cursorAbsolute>=start?cursorAbsolute-start:0);screen.cursorColumn=cursorColumn;
-    screen.savedRow=static_cast<int>(savedAbsolute>=start?savedAbsolute-start:0);screen.savedColumn=savedColumn;
-    screen.cursorRow=std::clamp(screen.cursorRow,0,rows_-1);screen.savedRow=std::clamp(screen.savedRow,0,rows_-1);
-    screen.scrollTop=0;screen.scrollBottom=rows_-1;screen.wrapPending=pending;resizeHistoryLines_=0;
+    if (lines.empty())
+        lines.push_back(BlankLine());
+    const size_t start = lines.size() > static_cast<size_t>(rows_) ? lines.size() - static_cast<size_t>(rows_) : 0;
+    history_.assign(lines.begin(), lines.begin() + start);
+    while (history_.size() > maximumScrollback_)
+        history_.pop_front();
+    screen.lines.assign(lines.begin() + start, lines.end());
+    while (screen.lines.size() < static_cast<size_t>(rows_))
+        screen.lines.push_back(BlankLine());
+    screen.cursorRow = static_cast<int>(cursorAbsolute >= start ? cursorAbsolute - start : 0);
+    screen.cursorColumn = cursorColumn;
+    screen.savedRow = static_cast<int>(savedAbsolute >= start ? savedAbsolute - start : 0);
+    screen.savedColumn = savedColumn;
+    screen.cursorRow = std::clamp(screen.cursorRow, 0, rows_ - 1);
+    screen.savedRow = std::clamp(screen.savedRow, 0, rows_ - 1);
+    screen.scrollTop = 0;
+    screen.scrollBottom = rows_ - 1;
+    screen.wrapPending = pending;
+    resizeHistoryLines_ = 0;
     (void)oldColumns;
 }
 
-TerminalModel::Anchor TerminalModel::CaptureAnchor(size_t line,int column) const {
-    const auto& value=DisplayLine(line);return {value.logicalId,value.logicalOffset+static_cast<size_t>(std::max(0,column))};
+TerminalModel::Anchor TerminalModel::CaptureAnchor(size_t line, int column) const {
+    const auto &value = DisplayLine(line);
+    return {value.logicalId, value.logicalOffset + static_cast<size_t>(std::max(0, column))};
 }
-std::pair<size_t,int> TerminalModel::LocateAnchor(Anchor anchor) const {
-    size_t best=0;int col=0;
-    for(size_t i=0;i<DisplayLineCount();++i){const auto& line=DisplayLine(i);if(line.logicalId==anchor.id&&anchor.offset>=line.logicalOffset){best=i;col=static_cast<int>(std::min(anchor.offset-line.logicalOffset,line.cells.size()-1));if(anchor.offset<line.logicalOffset+line.used)break;}}
-    return {best,col};
+std::pair<size_t, int> TerminalModel::LocateAnchor(Anchor anchor) const {
+    size_t best = 0;
+    int col = 0;
+    for (size_t i = 0; i < DisplayLineCount(); ++i) {
+        const auto &line = DisplayLine(i);
+        if (line.logicalId == anchor.id && anchor.offset >= line.logicalOffset) {
+            best = i;
+            col = static_cast<int>(std::min(anchor.offset - line.logicalOffset, line.cells.size() - 1));
+            if (anchor.offset < line.logicalOffset + line.used)
+                break;
+        }
+    }
+    return {best, col};
 }
-TerminalModel TerminalModel::PreviewInput(const std::wstring& text, size_t cursor) const {
-    TerminalModel model(columns_,rows_); model.primary_=primary_; model.attributes_=attributes_; model.nextLogicalId_=nextLogicalId_;
+TerminalModel TerminalModel::PreviewInput(const std::wstring &text, size_t cursor) const {
+    TerminalModel model(columns_, rows_);
+    model.primary_ = primary_;
+    model.attributes_ = attributes_;
+    model.nextLogicalId_ = nextLogicalId_;
     // Copy only the live grid. The temporary draft may wrap into temporary history.
     cursor = std::min(cursor, text.size());
-    model.Feed(text.substr(0,cursor),L"");
+    model.Feed(text.substr(0, cursor), L"");
     const bool pending = model.primary_.wrapPending;
     auto anchor = model.CaptureAnchor(model.CursorDisplayLine(), model.CursorColumn());
-    model.Feed(text.substr(cursor),L"");
+    model.Feed(text.substr(cursor), L"");
     auto caret = model.LocateAnchor(anchor);
     // Home/Left in a draft longer than the screen must reveal the caret, rather
     // than restoring a stale grid row after suffix output scrolls it away.
     size_t start = std::min(model.HistorySize(), caret.first);
     std::vector<TerminalLine> view;
-    for (size_t i=0;i<static_cast<size_t>(rows_);++i)
-        view.push_back(start+i < model.DisplayLineCount() ? model.DisplayLine(start+i) : model.BlankLine());
-    model.history_.clear(); model.primary_.lines=std::move(view);
-    model.primary_.cursorRow=static_cast<int>(caret.first-start);model.primary_.cursorColumn=caret.second;
-    model.primary_.wrapPending=pending;
+    for (size_t i = 0; i < static_cast<size_t>(rows_); ++i)
+        view.push_back(start + i < model.DisplayLineCount() ? model.DisplayLine(start + i) : model.BlankLine());
+    model.history_.clear();
+    model.primary_.lines = std::move(view);
+    model.primary_.cursorRow = static_cast<int>(caret.first - start);
+    model.primary_.cursorColumn = caret.second;
+    model.primary_.wrapPending = pending;
     return model;
 }
 
