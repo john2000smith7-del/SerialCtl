@@ -460,7 +460,8 @@ void PowerPane::Refresh() {
             ++it;
     }
     action_ = pendingActions_.empty() ? std::string() : pendingActions_.front();
-    if (connected && (finished || !wasConnected)) {
+    if (connected && (finished || !wasConnected ||
+                      (action_.empty() && state_.value("mode", std::string("independent")) != Mode()))) {
         auto mode = state_.value("mode", std::string("independent"));
         int index = mode == "parallel" ? 1 : mode == "series" ? 2 : mode == "tracking" ? 3 : 0;
         bool changed = index != draftMode_;
@@ -1574,8 +1575,8 @@ Json ParsePowerSteps(const std::wstring &value) {
         if (row.fail())
             throw std::runtime_error("步骤格式不正确");
         row >> std::ws;
-        if (!row.eof() || !std::isfinite(v) || !std::isfinite(a) || !std::isfinite(seconds) || v < 0 || v > 30 ||
-            a < 0 || a > 6 || seconds < 0.1 || seconds > 604800 || (on != 0 && on != 1) || steps.size() >= 1000)
+        if (!row.eof() || !std::isfinite(v) || !std::isfinite(a) || !std::isfinite(seconds) || v < 0 || v > 60 ||
+            a < 0 || a > 12 || seconds < 0.1 || seconds > 604800 || (on != 0 && on != 1) || steps.size() >= 1000)
             throw std::runtime_error("步骤数值超出范围");
         steps.push_back({{"voltage", v},
                          {"current", a},

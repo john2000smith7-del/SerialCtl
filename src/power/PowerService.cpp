@@ -432,14 +432,26 @@ Json PowerService::Submit(const Json &command) {
             ValidateChannels(command);
             Require(command.at("steps").is_array() && !command["steps"].empty() && command["steps"].size() <= 1000,
                     "Invalid sequence");
+            const auto mode = State().value("mode", std::string("independent"));
+            bool one = std::find(command["channels"].begin(), command["channels"].end(), Json(1)) !=
+                       command["channels"].end(),
+                 two = std::find(command["channels"].begin(), command["channels"].end(), Json(2)) !=
+                       command["channels"].end();
+            if (mode != "independent")
+                Require(one == two, "Select the full sequence channel group");
             for (const auto &step : command["steps"]) {
                 Require(step.at("durationMs").is_number_integer() && step["durationMs"] >= 100 &&
                             step["durationMs"] <= 604800000 && step.at("enabled").is_boolean(),
                         "Invalid sequence timing/output");
                 for (auto c : command["channels"]) {
                     double v = step.at("voltage"), a = step.at("current");
-                    Require(std::isfinite(v) && std::isfinite(a) && v >= 0 && a >= 0 && v <= (c == 3 ? 5 : 30) &&
-                                a <= (c == 3 ? 3 : 6),
+                    Require(std::isfinite(v) && std::isfinite(a) && v >= 0 && a >= 0 &&
+                                v <= (c == 3             ? 5
+                                      : mode == "series" ? 60
+                                                         : 30) &&
+                                a <= (c == 3               ? 3
+                                      : mode == "parallel" ? 12
+                                                           : 6),
                             "Sequence parameter outside range");
                 }
             }
@@ -564,6 +576,8 @@ void PowerService::Select(int channel) {
     Require(Number("INST:NSEL?") == channel, "Channel selection readback differs");
 }
 void PowerService::Outputs(const Json &channels, bool enabled, Json &result) {
+    if (enabled)
+        ReadMode();
     auto mode = State().value("mode", std::string("independent"));
     if (mode == "series" || mode == "parallel" || mode == "tracking") {
         bool one = std::find(channels.begin(), channels.end(), Json(1)) != channels.end();
@@ -881,6 +895,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
     }
 }
 void PowerService::Poll() {
+    ReadMode();
     Json channels = State()["channels"];
     for (int i = 0; i < 3; ++i) {
         Select(i + 1);
@@ -1303,8 +1318,19 @@ void PowerService::AdvanceTask() {
         }
         auto step = task_["steps"][index];
         Outputs(owned_, false, result);
-        SetParameters(
-            Json::array({Json{{"channels", owned_}, {"voltage", step["voltage"]}, {"current", step["current"]}}}));
+        Json settings = Json::array();
+        const auto mode = State().value("mode", std::string("independent"));
+        bool grouped = mode != "independent" && std::find(owned_.begin(), owned_.end(), Json(1)) != owned_.end();
+        if (grouped)
+            settings.push_back(
+                {{"channels", Json::array({1, 2})}, {"voltage", step["voltage"]}, {"current", step["current"]}});
+        for (auto ch : owned_) {
+            if (grouped && ch != 3)
+                continue;
+            settings.push_back(
+                {{"channels", Json::array({ch})}, {"voltage", step["voltage"]}, {"current", step["current"]}});
+        }
+        SetParameters(settings);
         Outputs(owned_, step["enabled"], result);
         task_["index"] = index + 1;
         task_["completed"] = index + 1;

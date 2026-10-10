@@ -110,7 +110,7 @@ int main() {
            "query timeout does not claim connection");
     PowerService interrupted;
     auto ready = Wait(interrupted,
-                      interrupted.Submit({{"type", "connect"}, {"backend", "simulation"}, {"testFailAfterReads", 27}}));
+                      interrupted.Submit({{"type", "connect"}, {"backend", "simulation"}, {"testFailAfterReads", 33}}));
     Expect(ready["state"] == "completed", "fault injection leaves initial readback intact");
     auto partial = Wait(interrupted,
                         interrupted.Submit({{"type", "output"}, {"channels", Json::array({1, 2})}, {"enabled", true}}));
@@ -244,6 +244,21 @@ int main() {
     Expect(
         extended.Submit({{"type", "diagnostic"}, {"operation", "scpi"}, {"line", "*IDN?\nOUTP ON"}}).contains("error"),
         "SCPI debug rejects multiple instructions");
+    Wait(extended, extended.Submit({{"type", "mode"}, {"mode", "parallel"}}));
+    auto combinedSequence = Wait(
+        extended,
+        extended.Submit(
+            {{"type", "sequence"},
+             {"channels", Json::array({1, 2, 3})},
+             {"steps", Json::array({Json{{"voltage", 2}, {"current", 2}, {"durationMs", 100}, {"enabled", true}}})}}));
+    Expect(combinedSequence["state"] == "completed", "combined group and CH3 sequence accepted");
+    for (int i = 0; i < 100 && extended.State()["task"].value("running", false); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    Expect(extended.State()["connected"] == true && extended.State()["channels"][0]["setCurrent"] == 1 &&
+               extended.State()["channels"][1]["setCurrent"] == 1 && extended.State()["channels"][2]["setCurrent"] == 2,
+           "sequence partitions combined total and independent CH3 parameters");
+    Expect(!extended.State()["task"].value("running", false) && extended.State()["channels"][2]["output"] == false,
+           "combined sequence completion powers off entire owned scope");
     Expect(!extended.State()["records"].empty(), "bounded action history includes local operations");
     return failures ? 1 : 0;
 }
