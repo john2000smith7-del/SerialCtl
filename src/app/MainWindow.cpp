@@ -3626,6 +3626,9 @@ void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data) {
 }
 
 void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError) {
+    if (closing_) return;
+    const auto utf8=WideToMultiByte(text,CP_UTF8);
+    apiServer_.Publish("session-"+std::to_string(sessionId),Bytes(utf8.begin(),utf8.end()),"connection",isError?"error":"status");
     auto* status = new StatusMessage{sessionId, text, isError};
     if (!PostMessageW(window_, MessageStatus, 0, reinterpret_cast<LPARAM>(status))) delete status;
 }

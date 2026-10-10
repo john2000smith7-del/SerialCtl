@@ -173,7 +173,7 @@ bool SerialShareService::SelectClient(const std::shared_ptr<Client>& client, con
     // map lock, so a concurrent COM close cannot miss a half-established client.
     std::lock_guard<std::mutex> lock(channelsMutex_);
     auto found = name.empty() ? (channels_.size() == 1 ? channels_.begin() : channels_.end()) : channels_.find(NormalizeSerial(name));
-    if (found == channels_.end() || !found->second->active) return false;
+    if (found == channels_.end() || !found->second->active || !found->second->device.IsOpen()) return false;
     client->channel = found->second;
     client->protocol = protocol;
     client->ready = true;
@@ -187,7 +187,7 @@ void SerialShareService::Unregister(const std::shared_ptr<SerialShareChannel>& c
 }
 std::string SerialShareService::ListReply() {
     std::vector<std::shared_ptr<SerialShareChannel>> channels;
-    { std::lock_guard<std::mutex> lock(channelsMutex_); for (const auto& entry : channels_) if (entry.second->active) channels.push_back(entry.second); }
+    { std::lock_guard<std::mutex> lock(channelsMutex_); for (const auto& entry : channels_) if (entry.second->active && entry.second->device.IsOpen()) channels.push_back(entry.second); }
     std::vector<std::shared_ptr<Client>> clients;
     { std::lock_guard<std::mutex> lock(clientsMutex_); clients = clients_; }
     std::string reply = "SERIALCTL/1 PORTS\n";
