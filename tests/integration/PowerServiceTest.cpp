@@ -82,6 +82,45 @@ int main()
     auto stop = Wait(power, power.Submit({{"type", "stop"}}));
     Expect(stop["state"] == "completed" && power.State()["channels"][1]["output"] == false,
            "stop disables owned output");
+    auto protect = Wait(power, power.Submit({{"type", "protection"},
+                                             {"channels", Json::array({1})},
+                                             {"enabled", true},
+                                             {"voltageLimit", 5.0},
+                                             {"currentLimit", 2.0}}));
+    Expect(protect["state"] == "completed" &&
+               power.State()["channels"][0]["protection"]["voltageLimit"] == 5.0,
+           "protection hardware readback");
+    Wait(power,
+         power.Submit({{"type", "output"}, {"channels", Json::array({1})}, {"enabled", true}}));
+    for (int i = 0; i < 100 && power.State()["channels"][0]["output"] == true; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    Expect(power.State()["channels"][0]["output"] == false && power.State().contains("error"),
+           "overvoltage sampling shuts down channel");
+    Expect(power.State()["channels"][2]["output"] == true,
+           "protection leaves unselected output alone");
+    Expect(power
+               .Submit({{"type", "protection"},
+                        {"channels", Json::array({1, 3})},
+                        {"enabled", true},
+                        {"voltageLimit", 10.0},
+                        {"currentLimit", 1.0}})
+               .contains("error"),
+           "mixed-channel protection validation is atomic");
+    Wait(power, power.Submit({{"type", "task"},
+                              {"channels", Json::array({2, 3})},
+                              {"onMs", 10000},
+                              {"offMs", 10000},
+                              {"count", 10}}));
+    Wait(power,
+         power.Submit({{"type", "output"}, {"channels", Json::array({2})}, {"enabled", false}}));
+    Expect(!power.State()["task"].value("running", false) &&
+               power.State()["ownedChannels"] == Json::array({2, 3}),
+           "manual off cancels future on and retains cleanup ownership");
+    Wait(power, power.Submit({{"type", "stop"}}));
+    Expect(power.State()["channels"][2]["output"] == false,
+           "stop handles channels retained after manual off");
+    const auto csv = power.State().value("csvPath", std::string());
+    Expect(!csv.empty(), "measurement CSV created");
     power.Shutdown();
     Expect(power.State()["connected"] == false && power.State()["channels"][0]["output"].is_null(),
            "disconnected state is unknown");

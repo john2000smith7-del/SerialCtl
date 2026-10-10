@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Verified version, e.g. V1.0.2'
+        description: 'Verified version, e.g. V1.0.3'
         required: true
         type: string
       archive_sha256:
@@ -11,11 +11,16 @@ on:
         required: true
         type: string
       source_commit:
-        description: 'Full commit SHA containing the verified archive'
+        description: 'Full commit SHA verified by the Windows build'
+        required: true
+        type: string
+      build_run_id:
+        description: Successful Windows build run on main
         required: true
         type: string
 permissions:
   contents: write
+  actions: read
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -27,12 +32,20 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_SHA256: ${{ inputs.archive_sha256 }}
           RELEASE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_BUILD_RUN: ${{ inputs.build_run_id }}
         run: |
           [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_BUILD_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_BUILD_RUN" > /tmp/serialctl-build-run.json
+          jq -e --arg sha "$RELEASE_COMMIT" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .name == "Windows Win7 release build"' /tmp/serialctl-build-run.json
+          git fetch origin "$RELEASE_COMMIT"
           git checkout --detach "$RELEASE_COMMIT"
+          [[ "$(cat VERSION)" == "$RELEASE_VERSION" ]]
+          mkdir -p bin
+          gh run download "$RELEASE_BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-Win7-portable --dir bin
           RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
           printf '%s  %s\n' "$RELEASE_SHA256" "bin/$RELEASE_ARCHIVE" | sha256sum --check
           printf '%s  %s\n' "$RELEASE_SHA256" "$RELEASE_ARCHIVE" > "$RELEASE_ARCHIVE.sha256"
-          gh release create "v${RELEASE_VERSION#V}" "bin/$RELEASE_ARCHIVE" "$RELEASE_ARCHIVE.sha256" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --title "SerialCtl $RELEASE_VERSION — Windows 7 SP1" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+          gh release create "v${RELEASE_VERSION#V}" "bin/$RELEASE_ARCHIVE" "$RELEASE_ARCHIVE.sha256" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"

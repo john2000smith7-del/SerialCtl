@@ -1,4 +1,7 @@
 #pragma once
+#include <commctrl.h>
+#include <string>
+#include <vector>
 #include <windows.h>
 namespace serialctl
 {
@@ -25,5 +28,96 @@ inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius)
     SelectObject(dc, oldPen);
     DeleteObject(brush);
     DeleteObject(pen);
+}
+struct UiFieldStyle
+{
+    bool *dark;
+    HFONT font;
+    int dpi;
+};
+inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id,
+                                    DWORD_PTR reference)
+{
+    auto *style = reinterpret_cast<UiFieldStyle *>(reference);
+    wchar_t cls[32]{};
+    GetClassNameW(h, cls, 32);
+    bool edit = _wcsicmp(cls, L"EDIT") == 0;
+    auto d = [style](int n) { return MulDiv(n, style->dpi, 96); };
+    auto colors = UiTheme(*style->dark);
+    if (edit && message == WM_NCCALCSIZE)
+    {
+        LRESULT result = DefSubclassProc(h, message, w, l);
+        RECT *rect =
+            w ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(l)->rgrc[0] : reinterpret_cast<RECT *>(l);
+        InflateRect(rect, -d(8), -d(4));
+        return result;
+    }
+    if ((edit && message == WM_NCPAINT) || (!edit && message == WM_PAINT))
+    {
+        PAINTSTRUCT ps{};
+        HDC dc = edit ? GetWindowDC(h) : BeginPaint(h, &ps);
+        RECT rect{};
+        if (edit)
+        {
+            GetWindowRect(h, &rect);
+            OffsetRect(&rect, -rect.left, -rect.top);
+            ExcludeClipRect(dc, d(8), d(4), rect.right - d(8), rect.bottom - d(4));
+        }
+        else
+            GetClientRect(h, &rect);
+        UiBox(dc, rect, colors.field, GetFocus() == h ? colors.accent : colors.border, d(8));
+        if (!edit)
+        {
+            int selected = static_cast<int>(SendMessageW(h, CB_GETCURSEL, 0, 0));
+            std::wstring text;
+            if (selected >= 0)
+            {
+                int length = static_cast<int>(SendMessageW(h, CB_GETLBTEXTLEN, selected, 0));
+                if (length >= 0 && length < 1024)
+                {
+                    std::vector<wchar_t> buffer(length + 1);
+                    SendMessageW(h, CB_GETLBTEXT, selected,
+                                 reinterpret_cast<LPARAM>(buffer.data()));
+                    text.assign(buffer.data());
+                }
+            }
+            auto old = SelectObject(dc, style->font);
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, IsWindowEnabled(h) ? colors.text : colors.muted);
+            RECT label = rect;
+            label.left += d(8);
+            label.right -= d(28);
+            DrawTextW(dc, text.c_str(), -1, &label, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+            SelectObject(dc, old);
+            HPEN pen = CreatePen(PS_SOLID, d(2), colors.muted);
+            old = SelectObject(dc, pen);
+            int x = rect.right - d(14), y = rect.bottom / 2;
+            MoveToEx(dc, x - d(4), y - d(2), nullptr);
+            LineTo(dc, x, y + d(2));
+            LineTo(dc, x + d(4), y - d(2));
+            SelectObject(dc, old);
+            DeleteObject(pen);
+        }
+        if (edit)
+            ReleaseDC(h, dc);
+        else
+            EndPaint(h, &ps);
+        return 0;
+    }
+    LRESULT result = DefSubclassProc(h, message, w, l);
+    if (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE)
+        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
+    if (message == WM_NCDESTROY)
+        RemoveWindowSubclass(h, UiFieldProc, id);
+    return result;
+}
+inline void UiStyleField(HWND control, UiFieldStyle *style)
+{
+    SetWindowLongPtrW(control, GWL_STYLE, GetWindowLongPtrW(control, GWL_STYLE) & ~WS_BORDER);
+    SetWindowLongPtrW(control, GWL_EXSTYLE,
+                      GetWindowLongPtrW(control, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
+    SetWindowSubclass(control, UiFieldProc, 71, reinterpret_cast<DWORD_PTR>(style));
+    SetWindowPos(control, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 } // namespace serialctl

@@ -27,6 +27,7 @@ class PowerService
     void Run();
     void Execute(const std::string &id, const Json &command);
     void Poll();
+    void Select(int channel);
     void Outputs(const Json &channels, bool enabled, Json &result);
     void StopTask();
     void Disconnect();
@@ -40,7 +41,7 @@ class PowerService
     Json state_, task_;
     Json owned_ = Json::array();
     std::unique_ptr<Transport> transport_;
-    SessionLogger log_;
+    SessionLogger log_, measurements_;
     std::thread thread_;
     bool stopping_ = false;
     std::uint64_t next_ = 1;

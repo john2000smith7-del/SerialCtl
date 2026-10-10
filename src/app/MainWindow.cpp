@@ -193,6 +193,8 @@ void ScaleUiMetrics(HWND window) {
     Ui::SftpTableRowHeight=Ui::Scale(Ui::SftpTableRowHeight);
     Ui::SftpTransferRowHeight=Ui::Scale(Ui::SftpTransferRowHeight);
     Ui::SftpTransferDrawerHeight=Ui::Scale(Ui::SftpTransferDrawerHeight);
+    Ui::TerminalFontMinimumHeight=Ui::Scale(Ui::TerminalFontMinimumHeight);
+    Ui::TerminalFontMaximumHeight=Ui::Scale(Ui::TerminalFontMaximumHeight);
 }
 
 struct MainLayoutMetrics {
@@ -1793,7 +1795,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         UpdateWindow(window_);
         return 0;
     case WM_SETCURSOR:
-        if (!rightPanelCollapsed_ && LOWORD(lParam) == HTCLIENT) {
+        if (!(rightPanelCollapsed_ || rightPanelAutoCollapsed_) && LOWORD(lParam) == HTCLIENT) {
             POINT point{};
             GetCursorPos(&point);
             ScreenToClient(window_, &point);
@@ -1904,7 +1906,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             measure->itemHeight = measure->itemData == 0 ? 9 : 32;
             return TRUE;
         }
-        measure->itemHeight = measure->CtlID == IdCommandList ? 66 :
+        measure->itemHeight = measure->CtlID == IdCommandList ? Ui::Scale(66) :
             (measure->CtlID == IdSftpList ? Ui::SftpTableRowHeight :
             (measure->CtlID == IdSftpTransferList ? Ui::SftpTransferRowHeight : 58));
         return TRUE;
@@ -2314,9 +2316,9 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(sftpPath_, rightInnerLeft, rightListTop,
         sftpContentWidth, Ui::CompactHeight, TRUE);
     const int sftpHeaderTop = rightListTop + Ui::CompactHeight + Ui::Space;
-    const bool showModifiedColumn = sftpContentWidth >= 300;
+    const bool showModifiedColumn = sftpContentWidth - Ui::OverlayScrollLaneWidth >= Ui::Scale(300);
     int nameWidth, sizeWidth, modifiedWidth;
-    SftpColumnWidths(sftpContentWidth, nameWidth, sizeWidth, modifiedWidth);
+    SftpColumnWidths(sftpContentWidth - Ui::OverlayScrollLaneWidth, nameWidth, sizeWidth, modifiedWidth);
     MoveWindow(sftpNameHeader_, rightInnerLeft, sftpHeaderTop,
         nameWidth, Ui::CompactHeight, TRUE);
     MoveWindow(sftpSizeHeader_, rightInnerLeft + nameWidth, sftpHeaderTop,
@@ -2775,8 +2777,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
     } else if (item.CtlID == IdSftpList && item.itemID < sftpEntries_.size()) {
         const SftpEntry& entry = sftpEntries_[item.itemID];
         OverlayScrollMetrics scrollMetrics;
-        const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
-            Ui::OverlayScrollLaneWidth : 0;
+        const int rightInset = Ui::OverlayScrollLaneWidth;
         RECT row{rect.left, rect.top, rect.right - rightInset, rect.bottom};
         HBRUSH rowBrush = CreateSolidBrush(selected ? colors.accentSoft : colors.panel);
         FillRect(dc, &row, rowBrush);
@@ -3731,7 +3732,7 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     SetWindowTextW(status_, text.c_str());
     if (status_) {
         RECT client{}; GetClientRect(window_, &client);
-        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,rightPanelCollapsed_);
+        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,(rightPanelCollapsed_ || rightPanelAutoCollapsed_));
         HDC dc=GetDC(status_); auto old=SelectObject(dc,smallFont_);
         RECT measured{0,0,layout.leftWidth-Ui::Gap-Ui::PanelPadding*2,0};
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
@@ -4131,7 +4132,7 @@ void MainWindow::ScrollTerminalToBottom() {
 void MainWindow::ZoomTerminalFont(int steps) {
     if (steps == 0 || !terminal_) return;
     const int nextHeight = std::max(Ui::TerminalFontMinimumHeight,
-        std::min(Ui::TerminalFontMaximumHeight, terminalFontHeight_ + steps));
+        std::min(Ui::TerminalFontMaximumHeight, terminalFontHeight_ + Ui::Scale(steps)));
     if (nextHeight == terminalFontHeight_) return;
     HFONT nextFont = CreateFontW(-nextHeight, 0, 0, 0, FW_NORMAL,
         FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS,
@@ -4479,8 +4480,10 @@ void MainWindow::SetSftpSort(SftpSortColumn column) {
 
 void MainWindow::EditSftpPath() {
     if (!activeSession_ || selectedMode_ != 0 || sftpBusy_) return;
+    const auto sessionId = activeSession_->id;
     std::wstring path;
     if (PromptSftpValue(L"打开 SFTP 路径", L"远端目录（可粘贴 pwd 输出）", sftpDirectory_, SftpInputPurpose::Path, path)) {
+        if (!activeSession_ || activeSession_->id != sessionId) return;
         if (path == L"~") path = activeSession_->sftpHomeDirectory;
         else if (path.rfind(L"~/", 0) == 0) path = JoinSftpRemotePath(activeSession_->sftpHomeDirectory, path.substr(2));
         if (path.empty() || path.front() != L'/') { AppendStatus(L"请输入绝对路径或 ~/ 路径", true); return; }
@@ -4491,8 +4494,9 @@ void MainWindow::EditSftpPath() {
 }
 void MainWindow::QueryTerminalDirectory(bool installHook) {
     if (!activeSession_ || selectedMode_ != 0 || runningCommandIndex_ >= 0) return;
+    const auto sessionId = activeSession_->id;
     const wchar_t* prompt = installHook ? L"请确认终端已回到空闲 Bash/Zsh 提示符。将为当前 Shell 安装目录通知，不修改远端配置文件。继续？" : L"请确认终端已回到空闲 Shell 提示符。将在此终端执行 pwd 并更新 SFTP 路径。继续？";
-    if (MessageBoxW(window_, prompt, L"获取终端目录", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return;
+    if (MessageBoxW(window_, prompt, L"获取终端目录", MB_OKCANCEL | MB_ICONQUESTION) != IDOK || !activeSession_ || activeSession_->id != sessionId) return;
     // Runs in the original interactive shell: a separate SSH process would report the wrong directory.
     std::wstring command = LR"shell(__serialctl_cwd() { printf '\033]7;file://localhost%s\007' "$(pwd -P | sed 's/%/%25/g')"; }; )shell";
     if (installHook) command += LR"shell(if [ -n "$BASH_VERSION" ]; then case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in 'declare -a '*) [[ " ${PROMPT_COMMAND[*]} " == *' __serialctl_cwd '* ]] || PROMPT_COMMAND+=(__serialctl_cwd);; *) case ";${PROMPT_COMMAND-};" in *';__serialctl_cwd;'*) ;; *) PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }__serialctl_cwd";; esac;; esac; elif [ -n "$ZSH_VERSION" ]; then (( ${precmd_functions[(Ie)__serialctl_cwd]} )) || precmd_functions+=(__serialctl_cwd); else printf 'Shell unsupported: use manual path\n'; fi; )shell";
@@ -4502,9 +4506,9 @@ void MainWindow::QueryTerminalDirectory(bool installHook) {
     SendBytesToActive(Bytes(bytes.begin(), bytes.end()), false);
 }
 void MainWindow::SftpColumnWidths(int width, int& name, int& size, int& modified) const {
-    modified = width >= 300 ? 104 : 0;
-    const int remaining = std::max(128, width - modified);
-    name = std::clamp(sftpNameWidth_, 80, remaining - 48);
+    modified = width >= Ui::Scale(300) ? Ui::Scale(104) : 0;
+    const int remaining = std::max(Ui::Scale(128), width - modified);
+    name = std::clamp(sftpNameWidth_, Ui::Scale(80), remaining - Ui::Scale(48));
     size = remaining - name;
 }
 LRESULT CALLBACK MainWindow::SftpHeaderSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {
@@ -4524,7 +4528,7 @@ LRESULT CALLBACK MainWindow::SftpHeaderSubclassProc(HWND window, UINT message, W
         GetWindowRect(self->sftpNameHeader_, &header);
         MapWindowPoints(HWND_DESKTOP, self->window_, reinterpret_cast<POINT*>(&list), 2);
         MapWindowPoints(HWND_DESKTOP, self->window_, reinterpret_cast<POINT*>(&header), 2);
-        int name, size, modified; self->SftpColumnWidths(list.right - list.left, name, size, modified);
+        int name, size, modified; self->SftpColumnWidths(list.right - list.left - Ui::OverlayScrollLaneWidth, name, size, modified);
         HDWP batch = BeginDeferWindowPos(3);
         batch = DeferWindowPos(batch, self->sftpNameHeader_, nullptr, list.left, header.top, name, Ui::CompactHeight, SWP_NOZORDER | SWP_NOACTIVATE);
         batch = DeferWindowPos(batch, self->sftpSizeHeader_, nullptr, list.left + name, header.top, size, Ui::CompactHeight, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -4750,6 +4754,8 @@ void MainWindow::HandleSftpDrop(HDROP drop) {
 
 void MainWindow::UploadSftp() {
     if (sftpBusy_ || !activeSession_) return;
+    const auto sessionId = activeSession_->id;
+    const auto destination = sftpDirectory_;
     std::vector<wchar_t> paths(32768, L'\0');
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
@@ -4759,16 +4765,16 @@ void MainWindow::UploadSftp() {
     dialog.nMaxFile = static_cast<DWORD>(paths.size());
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
         OFN_ALLOWMULTISELECT | OFN_EXPLORER;
-    if (!GetOpenFileNameW(&dialog)) return;
+    if (!GetOpenFileNameW(&dialog) || !activeSession_ || activeSession_->id != sessionId) return;
     const std::wstring first = paths.data();
     const wchar_t* next = paths.data() + first.size() + 1;
     if (*next == L'\0') {
-        StartSftpUpload(first);
+        StartSftpUpload(first, destination);
         return;
     }
     while (*next) {
         const std::wstring name = next;
-        StartSftpUpload(JoinLocalPath(first, name));
+        StartSftpUpload(JoinLocalPath(first, name), destination);
         next += name.size() + 1;
     }
 }
@@ -5731,10 +5737,12 @@ void MainWindow::ImportCommands() {
     if (!GetOpenFileNameW(&dialog)) return;
     RememberCommandDirectory(path);
     std::wstring error;
+    auto previousCommands = commands_;
     if (!LoadCommandsFromFile(path, error)) { AppendStatus(error, true); return; }
     if (commandsFileProtected_) {
-        const std::wstring backup = DefaultCommandsPath() + L".unreadable.bak";
+        const std::wstring backup = DefaultCommandsPath() + L".unreadable-" + std::to_wstring(GetTickCount64()) + L".bak";
         if (!CopyFileW(DefaultCommandsPath().c_str(), backup.c_str(), TRUE)) {
+            commands_ = std::move(previousCommands);
             AppendStatus(L"无法备份原命令文件，尚未允许覆盖。", true); return;
         }
         commandsFileProtected_ = false;
@@ -6104,7 +6112,7 @@ Json MainWindow::ExecuteApiRequest(const std::string& method,const std::string& 
  if(path==powerPrefix&&method=="GET")return powerService_.State();
  if(path.rfind(powerPrefix+"/",0)==0&&method=="POST"){
   Json command=body;std::string type=path.substr(powerPrefix.size()+1);if(type=="channels/output")type="output";if(type=="channels/parameters")type="parameters";
-  if(type!="connect"&&type!="disconnect"&&type!="output"&&type!="parameters"&&type!="task"&&type!="stop")return {{"error","Unknown endpoint"}};
+  if(type!="connect"&&type!="disconnect"&&type!="output"&&type!="parameters"&&type!="protection"&&type!="task"&&type!="stop")return {{"error","Unknown endpoint"}};
   command["type"]=type;return powerService_.Submit(command);
  }
  const std::string prefix="/api/v1/sessions/";
@@ -6133,19 +6141,27 @@ INT_PTR CALLBACK MainWindow::ApiDialogProc(HWND h,UINT message,WPARAM w,LPARAM l
  auto* data=reinterpret_cast<ApiDialogData*>(GetWindowLongPtrW(h,DWLP_USER));
  if(message==WM_INITDIALOG){data=reinterpret_cast<ApiDialogData*>(l);SetWindowLongPtrW(h,DWLP_USER,reinterpret_cast<LONG_PTR>(data));SetWindowTextW(h,L"AI API");HDC dc=GetDC(h);int dpi=GetDeviceCaps(dc,LOGPIXELSX);ReleaseDC(h,dc);auto d=[dpi](int x){return MulDiv(x,dpi,96);};SetWindowPos(h,nullptr,0,0,d(520),d(524),SWP_NOMOVE|SWP_NOZORDER);
   auto add=[&](const wchar_t* cls,const wchar_t* text,int id,int x,int y,int width,int height,DWORD style=0){auto c=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|style,d(x),d(y),d(width),d(height),h,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);SendMessageW(c,WM_SETFONT,reinterpret_cast<WPARAM>(data->owner->uiFont_),TRUE);return c;};
-  add(L"STATIC",L"授权资源",-1,16,12,472,28);data->list=add(L"LISTBOX",L"",200,16,44,472,144,LBS_MULTIPLESEL|LBS_NOINTEGRALHEIGHT|WS_VSCROLL|WS_TABSTOP);
+  add(L"STATIC",L"授权资源",-1,16,12,472,28);data->list=add(L"LISTBOX",L"",200,16,44,472,144,LBS_MULTIPLESEL|LBS_NOINTEGRALHEIGHT|WS_TABSTOP);
   for(const auto& resource:data->resources){std::string name=resource["name"];std::wstring text=MultiByteToWide(reinterpret_cast<const std::uint8_t*>(name.data()),name.size(),CP_UTF8);SendMessageW(data->list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(text.c_str()));}
   add(L"BUTTON",L"读取数据",201,16,200,128,28,BS_AUTOCHECKBOX|WS_TABSTOP);SendDlgItemMessageW(h,201,BM_SETCHECK,BST_CHECKED,0);add(L"BUTTON",L"终端输入",202,160,200,144,28,BS_AUTOCHECKBOX|WS_TABSTOP);add(L"BUTTON",L"加电 / 掉电",203,320,200,160,28,BS_AUTOCHECKBOX|WS_TABSTOP);
-  add(L"BUTTON",L"电压电流设置",204,16,236,144,28,BS_AUTOCHECKBOX|WS_TABSTOP);add(L"BUTTON",L"循环测试",205,176,236,128,28,BS_AUTOCHECKBOX|WS_TABSTOP);add(L"BUTTON",L"电源连接 / 断开",206,320,236,168,28,BS_AUTOCHECKBOX|WS_TABSTOP);
+  add(L"BUTTON",L"参数 / 保护",204,16,236,144,28,BS_AUTOCHECKBOX|WS_TABSTOP);add(L"BUTTON",L"循环测试",205,176,236,128,28,BS_AUTOCHECKBOX|WS_TABSTOP);add(L"BUTTON",L"电源连接 / 断开",206,320,236,168,28,BS_AUTOCHECKBOX|WS_TABSTOP);
   for(int i=0;i<3;++i){add(L"BUTTON",(L"CH"+std::to_wstring(i+1)).c_str(),210+i,16+i*96,276,80,28,BS_AUTOCHECKBOX|WS_TABSTOP);SendDlgItemMessageW(h,210+i,BM_SETCHECK,BST_CHECKED,0);}
   add(L"BUTTON",L"兼容串口 TCP（无密钥）",240,304,276,184,28,BS_AUTOCHECKBOX|WS_TABSTOP);SendDlgItemMessageW(h,240,BM_SETCHECK,SerialShareService::LegacyEnabled()?BST_CHECKED:BST_UNCHECKED,0);
   data->info=add(L"EDIT",L"",220,16,320,472,60,ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL);
-  add(L"BUTTON",L"启用 / 更新",230,16,400,112,36,WS_TABSTOP);add(L"BUTTON",L"关闭 API",231,144,400,96,36,WS_TABSTOP);add(L"BUTTON",L"复制连接信息",232,256,400,128,36,WS_TABSTOP);add(L"BUTTON",L"完成",IDCANCEL,392,448,96,36,WS_TABSTOP);
+  add(L"BUTTON",L"启用 / 更新",230,16,400,112,36,WS_TABSTOP|BS_OWNERDRAW);add(L"BUTTON",L"关闭 API",231,144,400,96,36,WS_TABSTOP|BS_OWNERDRAW);add(L"BUTTON",L"复制连接信息",232,256,400,128,36,WS_TABSTOP|BS_OWNERDRAW);add(L"BUTTON",L"完成",IDCANCEL,392,448,96,36,WS_TABSTOP|BS_OWNERDRAW);
+  ApplyDarkTitleBar(h,data->owner->darkMode_);
+  for(HWND child=GetWindow(h,GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT)) {
+   wchar_t cls[32]{};GetClassNameW(child,cls,32);
+   if(_wcsicmp(cls,L"EDIT")==0){PrepareDialogEditField(h,child,data->owner);SetWindowSubclass(child,DialogControlSubclassProc,1,reinterpret_cast<DWORD_PTR>(data->owner));}
+   else if(_wcsicmp(cls,L"LISTBOX")==0)SetWindowSubclass(child,OverlayListSubclassProc,2,reinterpret_cast<DWORD_PTR>(data->owner));
+   else if(_wcsicmp(cls,L"BUTTON")==0)SetWindowSubclass(child,ButtonSubclassProc,1,reinterpret_cast<DWORD_PTR>(data->owner));
+  }
   RECT owner{},rect{};GetWindowRect(data->owner->window_,&owner);GetWindowRect(h,&rect);SetWindowPos(h,nullptr,owner.left+(owner.right-owner.left-(rect.right-rect.left))/2,owner.top+(owner.bottom-owner.top-(rect.bottom-rect.top))/2,0,0,SWP_NOSIZE|SWP_NOZORDER);
   SendMessageW(h,WM_COMMAND,233,0);return TRUE;
  }
  if(!data)return FALSE;auto* self=data->owner;
- if(message==WM_CTLCOLORDLG||message==WM_CTLCOLORSTATIC||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX){auto colors=Colors(self->darkMode_);SetTextColor(reinterpret_cast<HDC>(w),colors.text);SetBkColor(reinterpret_cast<HDC>(w),colors.panel);return reinterpret_cast<INT_PTR>(self->panelBrush_);}
+ if(message==WM_DRAWITEM){self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT*>(l));return TRUE;}
+ if(message==WM_CTLCOLORDLG||message==WM_CTLCOLORSTATIC||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX){auto colors=Colors(self->darkMode_);SetTextColor(reinterpret_cast<HDC>(w),colors.text);SetBkColor(reinterpret_cast<HDC>(w),message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX?colors.terminal:colors.panel);return reinterpret_cast<INT_PTR>(message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX?self->terminalBrush_:self->panelBrush_);}
  if(message==WM_COMMAND){int id=LOWORD(w);if(id==IDCANCEL){EndDialog(h,IDCANCEL);return TRUE;}
   if(id==240){if(self->pendingSession_){SetWindowTextW(data->info,L"请等待串口连接完成后切换兼容服务");return TRUE;}std::wstring error;if(!SerialShareService::SetLegacyEnabled(SendDlgItemMessageW(h,240,BM_GETCHECK,0,0)==BST_CHECKED,error))SetWindowTextW(data->info,error.c_str());return TRUE;}
   if(id==230){std::map<std::string,ApiGrant> grants;unsigned rights=0,channels=0;for(int i=0;i<6;++i)if(SendDlgItemMessageW(h,201+i,BM_GETCHECK,0,0)==BST_CHECKED)rights|=1u<<i;for(int i=0;i<3;++i)if(SendDlgItemMessageW(h,210+i,BM_GETCHECK,0,0)==BST_CHECKED)channels|=1u<<i;

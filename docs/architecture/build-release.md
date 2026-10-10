@@ -9,7 +9,7 @@ check → clean build → test → PE compatibility check → package → extrac
 ## 目录职责
 
 - `build/`：CMake cache、对象、测试程序、依赖临时解包和发布 staging，可随时删除。
-- `bin/`：只保存最新且完成重新解压验证的正式压缩包。
+- `bin/`：本地只保存最新且完成重新解压验证的正式压缩包；压缩包不进入 Git，完整驱动使其超过 GitHub 单文件限制。远端二进制保存于 Actions artifact 和 Releases。
 - `third_party/putty/prebuilt/`：生产运行时输入，不是中间产物。
 - `third_party/yy-thunks/*.nupkg`：固定依赖输入；CMake 只在 `build/` 下临时解包。
 
@@ -36,3 +36,5 @@ check → clean build → test → PE compatibility check → package → extrac
 ## 云端构建
 
 `.github/workflows/windows-build.yml` 在 windows-2022 运行同一 release.ps1 流程，再启动解压后的 x64 程序进行 UI 冒烟检查并上传便携包。实际 Win7 验收按 docs/testing 执行。
+
+发布工作流使用成功的 main 分支 Windows 构建 run ID、完整源码 SHA 和压缩包 SHA-256，从 Actions 下载已经验证的包再发布，不重新编译，不要求大压缩包进入 Git。发布标签 V1.0.3 对应 v1.0.3，保留历史发布。

@@ -162,6 +162,7 @@ $manifest = [ordered]@{
         runtime = 'static-msvc-mt'
         pe_subsystem_version = '6.01'
     }
+    optional_driver = [ordered]@{ name = "NI-VISA Runtime"; version = "18.0"; source_url = $driverManifest.url; source_archive_sha256 = $driverManifest.sha256 }
     payloads = $payloadRecords
     dependencies = @($dependencyManifest.dependencies | ForEach-Object {
         [ordered]@{ name = $_.name; version = $_.version }

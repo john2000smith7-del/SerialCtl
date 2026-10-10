@@ -176,6 +176,11 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(session_logger_test tests/integration/SessionLoggerTest.cpp src/logging/SessionLogger.cpp)
+    serialctl_configure_native_target(session_logger_test CONSOLE)
+    target_link_libraries(session_logger_test PRIVATE shell32)
+    add_test(NAME session_logger COMMAND session_logger_test)
+    set_tests_properties(session_logger PROPERTIES TIMEOUT 30)
     add_executable(power_service_test tests/integration/PowerServiceTest.cpp src/power/PowerService.cpp src/logging/SessionLogger.cpp)
     serialctl_configure_native_target(power_service_test CONSOLE)
     target_link_libraries(power_service_test PRIVATE shell32 ws2_32)

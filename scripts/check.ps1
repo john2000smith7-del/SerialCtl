@@ -159,7 +159,8 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     }
 
     $testPrograms = @{
-        'power_service_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'SHELL32.dll')
+        'power_service_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
+        'session_logger_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
         'cmd_connection_test.exe' = @('KERNEL32.dll')
         'api_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'shared_serial_protocol_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')

@@ -25,3 +25,5 @@ GET `/power-supplies/power-1` 查询状态；GET 同路径下 `/usb-resources` �
 空通道、越界、未授权通道在写入前拒绝。requestId 在当前实例保留的最近 256 个动作范围内去重，同 ID 不同参数拒绝；过期动作不能作为重试保证，重启后旧 ID/Token 无效。操作未知时先查询实际状态，避免重放加电。资源 ID 属于当前实例，不能跨实例或跨重启缓存使用。
 
 当前传输为带 Token 的 HTTP/WS，适用于可信局域网或 VPN。跨不可信网络需通过 VPN/TLS 网关，不直接暴露公网。Win7 本地 CMD 使用普通用户权限和管道，不是 ConPTY，不支持全部全屏程序或可靠 Ctrl+C；关闭会话结束进程树，断开订阅保留会话。
+
+`POST /api/v1/power-supplies/power-1/channels/protection` 使用参数权限，JSON 为 `{"channels":[1],"enabled":true,"voltageLimit":12,"currentLimit":2}`。电压保护写入设备 OVP 并回读，电流上限为软件采样保护。命令返回 action，需按 action ID 查询完成或失败。

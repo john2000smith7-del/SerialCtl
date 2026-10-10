@@ -329,7 +329,9 @@ void ApiServer::Discover()
                    sizeof(timeout));
         std::string command;
         char c = 0;
-        while (command.size() < 128 && recv(socket, &c, 1, 0) == 1 && c != '\n')
+        auto deadline = GetTickCount64() + 1500;
+        while (running_ && GetTickCount64() < deadline && command.size() < 128 &&
+               recv(socket, &c, 1, 0) == 1 && c != '\n')
             command += c;
         const auto reply = command == "SERIALCTL/3 DISCOVER" ? ApiDiscoveryReply()
                                                              : std::string("ERR NO_SERIAL\n");
@@ -364,10 +366,10 @@ bool ApiServer::Allowed(const std::string &method, const std::string &path, cons
         else if (parts.size() > 4)
         {
             std::string action = parts.back();
-            right = action == "output"                     ? 4
-                    : action == "parameters"               ? 8
-                    : action == "task" || action == "stop" ? 16
-                                                           : 32;
+            right = action == "output"                                 ? 4
+                    : action == "parameters" || action == "protection" ? 8
+                    : action == "task" || action == "stop"             ? 16
+                                                                       : 32;
         }
         else
             return false;

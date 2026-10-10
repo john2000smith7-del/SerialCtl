@@ -100,9 +100,21 @@ struct PowerService::Transport
     HANDLE serial = INVALID_HANDLE_VALUE;
     bool simulated = false;
     int failAfter = -1;
-    Json simulation = Json::array({Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}},
-                                   Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}},
-                                   Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}}});
+    Json simulation = Json::array({Json{{"voltage", 0.0},
+                                        {"current", 0.0},
+                                        {"output", false},
+                                        {"ovp", 30.0},
+                                        {"ovpEnabled", false}},
+                                   Json{{"voltage", 0.0},
+                                        {"current", 0.0},
+                                        {"output", false},
+                                        {"ovp", 30.0},
+                                        {"ovpEnabled", false}},
+                                   Json{{"voltage", 0.0},
+                                        {"current", 0.0},
+                                        {"output", false},
+                                        {"ovp", 5.5},
+                                        {"ovpEnabled", false}}});
     int selected = 0;
     ~Transport()
     {
@@ -123,6 +135,10 @@ struct PowerService::Transport
                 simulation[selected]["voltage"] = std::stod(command.substr(5));
             else if (command.rfind("CURR ", 0) == 0)
                 simulation[selected]["current"] = std::stod(command.substr(5));
+            else if (command.rfind("VOLT:PROT:STAT ", 0) == 0)
+                simulation[selected]["ovpEnabled"] = command.substr(15) == "ON";
+            else if (command.rfind("VOLT:PROT ", 0) == 0)
+                simulation[selected]["ovp"] = std::stod(command.substr(10));
             else if (command.rfind("CHAN:OUTP ", 0) == 0)
                 simulation[selected]["output"] = command.substr(10) == "ON";
             return;
@@ -158,6 +174,14 @@ struct PowerService::Transport
             if (command == "CHAN:OUTP?")
                 return simulation[selected]["output"].get<bool>() ? "1" : "0";
             const bool enabled = simulation[selected]["output"].get<bool>();
+            if (command == "VOLT:PROT? MAX")
+                return selected == 2 ? "5.5" : "33";
+            if (command == "VOLT:PROT?")
+                return Decimal(simulation[selected]["ovp"].get<double>());
+            if (command == "VOLT:PROT:STAT?")
+                return simulation[selected]["ovpEnabled"].get<bool>() ? "1" : "0";
+            if (command == "VOLT:PROT:TRIP?")
+                return "0";
             if (command == "VOLT?")
                 return Decimal(simulation[selected]["voltage"].get<double>());
             if (command == "CURR?")
@@ -175,18 +199,20 @@ struct PowerService::Transport
         {
             unsigned char buffer[256]{};
             DWORD count = 0;
+            bool endOfTransfer = false;
             if (device)
             {
                 Vi got = 0;
-                Require(visa.read(device, buffer, sizeof(buffer), &got) >= 0,
-                        "USB query timeout or read failure");
+                Vs status = visa.read(device, buffer, sizeof(buffer), &got);
+                Require(status >= 0, "USB query timeout or read failure");
                 count = got;
+                endOfTransfer = status != 0x3FFF0006 && count > 0;
             }
             else
                 Require(ReadFile(serial, buffer, sizeof(buffer), &count, nullptr) != FALSE,
                         "Serial read failed");
             result.append(reinterpret_cast<char *>(buffer), count);
-            if (result.find('\n') != std::string::npos || (device && count > 0))
+            if (result.find('\n') != std::string::npos || (device && endOfTransfer))
             {
                 while (!result.empty() && (result.back() == '\r' || result.back() == '\n'))
                     result.pop_back();
@@ -262,9 +288,10 @@ Json PowerService::Submit(const Json &command)
     {
         const std::string type = command.at("type").get<std::string>();
         Require(type == "connect" || type == "disconnect" || type == "output" ||
-                    type == "parameters" || type == "task" || type == "stop",
+                    type == "parameters" || type == "protection" || type == "task" ||
+                    type == "stop",
                 "Unknown power action");
-        if (type == "output" || type == "parameters" || type == "task")
+        if (type == "output" || type == "parameters" || type == "protection" || type == "task")
         {
             auto channels = ValidateChannels(command);
             if (type == "output")
@@ -280,6 +307,18 @@ Json PowerService::Submit(const Json &command)
                                 v <= (n == 3 ? 5 : 30) && a <= (n == 3 ? 3 : 6),
                             "Voltage or current outside channel range");
                 }
+            if (type == "protection")
+            {
+                Require(command.at("enabled").is_boolean(), "Invalid protection state");
+                for (const auto &c : channels)
+                {
+                    int n = c.get<int>();
+                    double v = command.at("voltageLimit"), a = command.at("currentLimit");
+                    Require(std::isfinite(v) && std::isfinite(a) && v > 0 && a > 0 &&
+                                v <= (n == 3 ? 5 : 30) && a <= (n == 3 ? 3 : 6),
+                            "Invalid protection thresholds");
+                }
+            }
             if (type == "task")
             {
                 Require(command.at("onMs").is_number_unsigned() ||
@@ -373,6 +412,11 @@ double PowerService::Number(const std::string &command)
     Require(input.eof(), "Unexpected SCPI response");
     return number;
 }
+void PowerService::Select(int channel)
+{
+    Command("INST:NSEL " + std::to_string(channel));
+    Require(Number("INST:NSEL?") == channel, "Channel selection readback differs");
+}
 void PowerService::Outputs(const Json &channels, bool enabled, Json &result)
 {
     result = Json::array();
@@ -381,10 +425,21 @@ void PowerService::Outputs(const Json &channels, bool enabled, Json &result)
     {
         int channel = c.get<int>();
         Json item = {{"channel", channel}, {"state", "skipped"}};
-        if (!failed)
+        if (!failed || !enabled)
             try
             {
-                Command("INST:NSEL " + std::to_string(channel));
+                if (failed)
+                {
+                    Command("INST:NSEL " + std::to_string(channel));
+                    Command("CHAN:OUTP OFF");
+                    item["state"] = "unknown";
+                    item["error"] = "OFF written without confirmation after communication failure";
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    state_["channels"][channel - 1]["output"] = nullptr;
+                    result.push_back(item);
+                    continue;
+                }
+                Select(channel);
                 Command(enabled ? "CHAN:OUTP ON" : "CHAN:OUTP OFF");
                 bool confirmed = Number("CHAN:OUTP?") != 0;
                 Require(confirmed == enabled, "Output readback differs");
@@ -446,8 +501,13 @@ void PowerService::Disconnect()
     }
     transport_.reset();
     log_.Stop();
+    measurements_.Stop();
     std::lock_guard<std::mutex> lock(mutex_);
     state_["connected"] = false;
+    state_["task"]["running"] = false;
+    task_ = Json();
+    owned_ = Json::array();
+    state_["ownedChannels"] = owned_;
     for (auto &channel : state_["channels"])
     {
         channel["output"] = nullptr;
@@ -459,6 +519,7 @@ void PowerService::Disconnect()
 void PowerService::Execute(const std::string &id, const Json &command)
 {
     Json action;
+    bool communication = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         actions_[id]["state"] = "running";
@@ -496,7 +557,7 @@ void PowerService::Execute(const std::string &id, const Json &command)
                     reinterpret_cast<const std::uint8_t *>(
                         command.at("port").get_ref<const std::string &>().data()),
                     command.at("port").get_ref<const std::string &>().size(), CP_UTF8);
-                Require(port.rfind(L"COM", 0) == 0 && port.size() <= 12 &&
+                Require(port.rfind(L"COM", 0) == 0 && port.size() > 3 && port.size() <= 12 &&
                             port.find_first_not_of(L"0123456789", 3) == std::wstring::npos,
                         "Invalid COM name");
                 transport->serial =
@@ -507,9 +568,9 @@ void PowerService::Execute(const std::string &id, const Json &command)
                 dcb.DCBlength = sizeof(dcb);
                 Require(GetCommState(transport->serial, &dcb) != FALSE, "Cannot read COM settings");
                 dcb.BaudRate = command.value("baud", 9600);
-                dcb.ByteSize = command.value("dataBits", 8);
-                dcb.Parity = command.value("parity", 0);
-                dcb.StopBits = command.value("stopBits", 0);
+                dcb.ByteSize = static_cast<BYTE>(command.value("dataBits", 8));
+                dcb.Parity = static_cast<BYTE>(command.value("parity", 0));
+                dcb.StopBits = static_cast<BYTE>(command.value("stopBits", 0));
                 dcb.fBinary = TRUE;
                 dcb.fParity = dcb.Parity != NOPARITY;
                 dcb.fOutxCtsFlow = FALSE;
@@ -529,8 +590,17 @@ void PowerService::Execute(const std::string &id, const Json &command)
             std::string identity = transport->Query("*IDN?");
             Require(identity.find("IT6332A") != std::string::npos, "Instrument is not IT6332A");
             transport_ = std::move(transport);
+            Select(1);
+            Require(Number("OUTP:TRAC?") == 0 && Number("OUTP:SER?") == 0 &&
+                        Number("OUTP:PAR?") == 0,
+                    "Disable tracking/series/parallel mode on the instrument before independent "
+                    "control");
             std::wstring error;
             log_.Start(L"IT6332A", error);
+            std::wstring csvError;
+            measurements_.Start(L"IT6332A", csvError, true);
+            const std::string header = "timestamp,channel,voltage_V,current_A,power_W,output\r\n";
+            measurements_.WriteRaw(Bytes(header.begin(), header.end()));
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 state_["connected"] = true;
@@ -538,6 +608,9 @@ void PowerService::Execute(const std::string &id, const Json &command)
                 state_["backend"] = backend;
                 state_["simulation"] = backend == "simulation";
                 state_.erase("error");
+                state_["csvPath"] = WideToMultiByte(measurements_.Path(), CP_UTF8);
+                if (!csvError.empty())
+                    state_["logError"] = WideToMultiByte(csvError, CP_UTF8);
                 state_["logPath"] = WideToMultiByte(log_.Path(), CP_UTF8);
                 if (!error.empty())
                     state_["logError"] = WideToMultiByte(error, CP_UTF8);
@@ -557,17 +630,19 @@ void PowerService::Execute(const std::string &id, const Json &command)
                 std::lock_guard<std::mutex> lock(mutex_);
                 state_["task"]["running"] = false;
             }
+            communication = true;
             Outputs(command["channels"], command["enabled"], action["channels"]);
         }
         else if (type == "parameters")
         {
             Require(task_.is_null() || task_.empty(),
                     "Stop the running task before changing parameters");
+            communication = true;
             Json result = Json::array();
             for (const auto &c : command["channels"])
             {
                 int channel = c.get<int>();
-                Command("INST:NSEL " + std::to_string(channel));
+                Select(channel);
                 Command("VOLT " + Decimal(command["voltage"]));
                 Command("CURR " + Decimal(command["current"]));
                 double v = Number("VOLT?"), a = Number("CURR?");
@@ -578,6 +653,35 @@ void PowerService::Execute(const std::string &id, const Json &command)
             }
             action["channels"] = result;
             Poll();
+        }
+        else if (type == "protection")
+        {
+            Require(task_.is_null() || task_.empty(), "Stop the task before changing protection");
+            communication = true;
+            // Preflight every hardware limit before changing any selected channel.
+            for (const auto &c : command["channels"])
+            {
+                Select(c.get<int>());
+                Require(command["voltageLimit"].get<double>() <= Number("VOLT:PROT? MAX"),
+                        "OVP threshold exceeds instrument range");
+            }
+            for (const auto &c : command["channels"])
+            {
+                int channel = c.get<int>();
+                Select(channel);
+                Command("VOLT:PROT " + Decimal(command["voltageLimit"]));
+                Command(command["enabled"].get<bool>() ? "VOLT:PROT:STAT ON"
+                                                       : "VOLT:PROT:STAT OFF");
+                Require(std::abs(Number("VOLT:PROT?") - command["voltageLimit"].get<double>()) <
+                                0.02 &&
+                            (Number("VOLT:PROT:STAT?") != 0) == command["enabled"].get<bool>(),
+                        "Protection readback differs");
+                std::lock_guard<std::mutex> lock(mutex_);
+                state_["channels"][channel - 1]["protection"] = {
+                    {"enabled", command["enabled"]},
+                    {"voltageLimit", command["voltageLimit"]},
+                    {"currentLimit", command["currentLimit"]}};
+            }
         }
         else if (type == "task")
         {
@@ -600,6 +704,14 @@ void PowerService::Execute(const std::string &id, const Json &command)
     }
     catch (const std::exception &e)
     {
+        if (command.value("type", std::string()) == "connect" || communication)
+        {
+            Disconnect();
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto &job : queue_)
+                actions_[job.first]["state"] = "canceled";
+            queue_.clear();
+        }
         action["state"] = "failed";
         action["error"] = e.what();
         std::lock_guard<std::mutex> lock(mutex_);
@@ -618,7 +730,7 @@ void PowerService::Poll()
     Json channels = State()["channels"];
     for (int i = 0; i < 3; ++i)
     {
-        Command("INST:NSEL " + std::to_string(i + 1));
+        Select(i + 1);
         auto &c = channels[i];
         c["setVoltage"] = Number("VOLT?");
         c["setCurrent"] = Number("CURR?");
@@ -631,10 +743,37 @@ void PowerService::Poll()
                           Decimal(c["voltage"]) + "," + Decimal(c["current"]) + "," +
                           Decimal(c["power"]) + "," + (c["output"].get<bool>() ? "ON" : "OFF") +
                           "\r\n";
-        log_.WriteRaw(Bytes(csv.begin(), csv.end()));
+        measurements_.WriteRaw(Bytes(csv.begin(), csv.end()));
+        c["ovpTripped"] = Number("VOLT:PROT:TRIP?") != 0;
+        if (c["ovpTripped"].get<bool>() || c["output"].get<bool>())
+        {
+            bool fault = c["ovpTripped"].get<bool>();
+            if (c.contains("protection") && c["protection"].value("enabled", false))
+            {
+                fault =
+                    fault ||
+                    c["voltage"].get<double>() > c["protection"]["voltageLimit"].get<double>() ||
+                    c["current"].get<double>() > c["protection"]["currentLimit"].get<double>();
+            }
+            if (fault)
+            {
+                StopTask();
+                task_ = Json();
+                Json off;
+                Outputs(Json::array({i + 1}), false, off);
+                c["output"] = false;
+                std::lock_guard<std::mutex> lock(mutex_);
+                state_["task"]["running"] = false;
+                state_["error"] = "Channel protection triggered; output disabled";
+                state_["channels"][i] = c;
+                return;
+            }
+        }
     }
     std::lock_guard<std::mutex> lock(mutex_);
     state_["channels"] = channels;
+    if (!measurements_.Error().empty())
+        state_["logError"] = WideToMultiByte(measurements_.Error(), CP_UTF8);
     if (!log_.Error().empty())
         state_["logError"] = WideToMultiByte(log_.Error(), CP_UTF8);
 }

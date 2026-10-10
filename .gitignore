@@ -1,14 +1,12 @@
 # Generated build state
 /build/
 
-# Only verified release archives belong in the root bin directory
+# Verified large bundles are local outputs and GitHub Release assets
 /bin/*
-!/bin/*.zip
 
 # Legacy and accidental nested build outputs
 **/bin/
 !/bin/
-!/bin/*.zip
 **/obj/
 .vs/
 

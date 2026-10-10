@@ -1,6 +1,7 @@
 #include "PowerPane.h"
 #include "UiStyle.h"
 #include "Win32Helpers.h"
+#include <cmath>
 #include <commctrl.h>
 #include <locale>
 #include <shellapi.h>
@@ -11,7 +12,8 @@ namespace serialctl
 {
 namespace
 {
-constexpr int Connect = 10, Disconnect = 11, On = 12, Off = 13, Start = 40, Stop = 41, Save = 42;
+constexpr int Connect = 10, Disconnect = 11, On = 12, Off = 13, Start = 40, Stop = 41, Save = 42,
+              Protection = 43;
 std::wstring Wide(const std::string &s)
 {
     return MultiByteToWide(reinterpret_cast<const std::uint8_t *>(s.data()), s.size(), CP_UTF8);
@@ -33,6 +35,8 @@ double Parse(const std::wstring &text)
     if (in.fail())
         throw std::runtime_error("请输入有效数值");
     in >> std::ws;
+    if (!std::isfinite(n) || std::abs(n) > 1e9)
+        throw std::runtime_error("数值超出范围");
     if (!in.eof())
         throw std::runtime_error("请输入有效数值");
     return n;
@@ -62,6 +66,8 @@ bool PowerPane::Create(HWND parent, HFONT font, bool dark, PowerService *service
     HDC dc = GetDC(parent);
     dpi_ = GetDeviceCaps(dc, LOGPIXELSX);
     ReleaseDC(parent, dc);
+    fieldStyle_.font = font;
+    fieldStyle_.dpi = dpi_;
     WNDCLASSW wc{};
     wc.lpfnWndProc = Proc;
     wc.hInstance = GetModuleHandleW(nullptr);
@@ -79,6 +85,8 @@ HWND PowerPane::Child(const wchar_t *type, const wchar_t *text, int id, DWORD st
                              window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
                              GetModuleHandleW(nullptr), nullptr);
     SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE);
+    if (_wcsicmp(type, L"EDIT") == 0)
+        UiStyleField(h, &fieldStyle_);
     return h;
 }
 std::wstring PowerPane::Text(HWND h)
@@ -123,7 +131,9 @@ void PowerPane::Action(int id)
 {
     try
     {
-        if (id == Connect)
+        if (id == Protection)
+            ShowProtection();
+        else if (id == Connect)
             ShowConnection();
         else if (id == Disconnect)
             Submit({{"type", "disconnect"}});
@@ -138,11 +148,16 @@ void PowerPane::Action(int id)
                     {"current", Parse(Text(current_[i]))}});
         }
         else if (id == Start)
+        {
+            double count = Parse(Text(count_));
+            if (std::floor(count) != count)
+                throw std::runtime_error("循环次数必须为整数");
             Submit({{"type", "task"},
                     {"channels", Selection()},
                     {"onMs", static_cast<long long>(Parse(Text(onTime_)) * 1000)},
                     {"offMs", static_cast<long long>(Parse(Text(offTime_)) * 1000)},
-                    {"count", static_cast<long long>(Parse(Text(count_)))}});
+                    {"count", static_cast<long long>(count)}});
+        }
         else if (id == Stop)
             Submit({{"type", "stop"}});
         else if (id == Save)
@@ -216,6 +231,7 @@ void PowerPane::Refresh()
     EnableWindow(buttons_[1], connected);
     EnableWindow(buttons_[2], connected && selected);
     EnableWindow(buttons_[3], connected && selected);
+    EnableWindow(protectionButton_, connected && selected && !running);
     EnableWindow(start_, connected && selected && !running);
     EnableWindow(stop_, connected && (running || (state_.contains("ownedChannels") &&
                                                   !state_["ownedChannels"].empty())));
@@ -246,17 +262,18 @@ void PowerPane::Layout()
     };
     for (int i = 0; i < 4; ++i)
         move(buttons_[i], d(8) + (w - d(24)) * i / 4, d(40), (w - d(24)) / 4 - d(8), d(32), TRUE);
-    int card = d(88);
+    move(protectionButton_, w - d(72), 0, d(64), d(28), TRUE);
+    int card = d(96);
     for (int i = 0; i < 3; ++i)
     {
         int y = d(88) + i * (card + d(8));
         move(check_[i], d(16), y + d(8), d(72), d(28), TRUE);
         int field = std::max(d(48), (w - d(148)) / 2);
-        move(voltage_[i], d(16), y + d(46), field, d(28), TRUE);
-        move(current_[i], d(16) + field + d(8), y + d(46), field, d(28), TRUE);
-        move(apply_[i], w - d(72), y + d(46), d(56), d(28), TRUE);
+        move(voltage_[i], d(16), y + d(56), field, d(28), TRUE);
+        move(current_[i], d(16) + field + d(8), y + d(56), field, d(28), TRUE);
+        move(apply_[i], w - d(72), y + d(56), d(56), d(28), TRUE);
     }
-    int task = d(384);
+    int task = d(408);
     int field = (w - d(40)) / 3;
     for (int i = 0; i < 3; ++i)
         move(i == 0   ? onTime_
@@ -293,8 +310,8 @@ void PowerPane::Paint(HDC dc)
     text(title, {d(8), 0, r.right - d(8), d(32)}, c.text);
     for (int i = 0; i < 3; ++i)
     {
-        int y = d(88 + i * 96);
-        RECT card{0, y, r.right, y + d(88)};
+        int y = d(88 + i * 104);
+        RECT card{0, y, r.right, y + d(96)};
         UiBox(dc, card, c.raised, c.border, d(12));
         if (!state_.contains("channels"))
             continue;
@@ -305,13 +322,13 @@ void PowerPane::Paint(HDC dc)
         text(Value(channel["voltage"], L" V") + L"    " + Value(channel["current"], L" A") +
                  L"    " + Value(channel["power"], L" W"),
              {d(88), y + d(8), r.right - d(8), y + d(32)}, c.text);
-        text(L"电压 (V)", {d(16), y + d(32), r.right / 2, y + d(46)}, c.muted);
-        text(L"电流 (A)", {r.right / 2 - d(30), y + d(32), r.right - d(72), y + d(46)}, c.muted);
-        text(status, {r.right - d(104), y + d(32), r.right - d(8), y + d(46)},
+        text(L"电压 (V)", {d(16), y + d(34), r.right / 2, y + d(54)}, c.muted);
+        text(L"电流 (A)", {r.right / 2 - d(30), y + d(34), r.right - d(72), y + d(54)}, c.muted);
+        text(status, {r.right - d(104), y + d(34), r.right - d(8), y + d(54)},
              channel["output"].is_null() ? c.muted : c.accent,
              DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
     }
-    int y = d(384), field = (r.right - d(40)) / 3;
+    int y = d(408), field = (r.right - d(40)) / 3;
     for (int i = 0; i < 3; ++i)
         text(i == 0   ? L"加电时长 (秒)"
              : i == 1 ? L"掉电时长 (秒)"
@@ -324,10 +341,10 @@ void PowerPane::Paint(HDC dc)
             : L"";
     if (state_.contains("logError"))
         status = Wide(state_["logError"]);
-    text(status, {d(8), d(480), r.right - d(8), r.bottom}, c.danger, DT_LEFT | DT_WORDBREAK);
+    text(status, {d(8), d(512), r.right - d(8), d(576)}, c.danger, DT_LEFT | DT_WORDBREAK);
     SetViewportOrgEx(dc, 0, 0, nullptr);
     r.right += d(16);
-    int total = d(536), height = r.bottom;
+    int total = d(576), height = r.bottom;
     if (total > height)
     {
         int thumb = std::max(d(32), height * height / total);
@@ -341,7 +358,7 @@ void PowerPane::Scroll(int position)
     RECT r{};
     GetClientRect(window_, &r);
     scroll_ =
-        std::clamp(position, 0, std::max(0, MulDiv(536, dpi_, 96) - static_cast<int>(r.bottom)));
+        std::clamp(position, 0, std::max(0, MulDiv(576, dpi_, 96) - static_cast<int>(r.bottom)));
     Layout();
     InvalidateRect(window_, nullptr, FALSE);
 }
@@ -370,6 +387,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
             self->current_[i] = self->Child(L"EDIT", L"0", 60 + i, ES_AUTOHSCROLL);
             self->apply_[i] = self->Child(L"BUTTON", L"设置", 30 + i, BS_OWNERDRAW);
         }
+        self->protectionButton_ = self->Child(L"BUTTON", L"保护", Protection, BS_OWNERDRAW);
         self->onTime_ = self->Child(L"EDIT", L"5", 70, ES_AUTOHSCROLL);
         self->offTime_ = self->Child(L"EDIT", L"5", 71, ES_AUTOHSCROLL);
         self->count_ = self->Child(L"EDIT", L"10", 72, ES_NUMBER);
@@ -392,12 +410,12 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
         RECT r{};
         GetClientRect(h, &r);
         if (GET_X_LPARAM(l) >= r.right - MulDiv(16, self->dpi_, 96) &&
-            MulDiv(536, self->dpi_, 96) > r.bottom)
+            MulDiv(576, self->dpi_, 96) > r.bottom)
         {
             self->scrolling_ = true;
             SetCapture(h);
             self->Scroll(GET_Y_LPARAM(l) *
-                         std::max(0, MulDiv(536, self->dpi_, 96) - static_cast<int>(r.bottom)) /
+                         std::max(0, MulDiv(576, self->dpi_, 96) - static_cast<int>(r.bottom)) /
                          std::max(1, static_cast<int>(r.bottom)));
             return 0;
         }
@@ -407,7 +425,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
         RECT r{};
         GetClientRect(h, &r);
         self->Scroll(GET_Y_LPARAM(l) *
-                     std::max(0, MulDiv(536, self->dpi_, 96) - static_cast<int>(r.bottom)) /
+                     std::max(0, MulDiv(576, self->dpi_, 96) - static_cast<int>(r.bottom)) /
                      std::max(1, static_cast<int>(r.bottom)));
         return 0;
     }
@@ -455,8 +473,8 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
     {
         auto c = UiTheme(self->dark_);
         SetTextColor(reinterpret_cast<HDC>(w), c.text);
-        SetBkColor(reinterpret_cast<HDC>(w), c.raised);
-        return reinterpret_cast<LRESULT>(self->fieldBrush_);
+        SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : c.raised);
+        return reinterpret_cast<LRESULT>(m == WM_CTLCOLOREDIT ? self->brush_ : self->fieldBrush_);
     }
     if (m == WM_DRAWITEM)
     {
@@ -513,6 +531,8 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
                                 d(height), h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
                                 GetModuleHandleW(nullptr), nullptr);
             SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(data->font), TRUE);
+            if (_wcsicmp(cls, L"EDIT") == 0 || _wcsicmp(cls, L"COMBOBOX") == 0)
+                UiStyleField(c, &data->pane->fieldStyle_);
             return c;
         };
         add(L"STATIC", L"连接方式", -1, 16, 12, 200);
@@ -524,7 +544,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
         data->resource =
             add(L"COMBOBOX", L"", 101, 16, 108, 376, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
         data->port = add(L"EDIT", L"COM1", 102, 16, 108, 376, WS_TABSTOP | ES_AUTOHSCROLL);
-        add(L"BUTTON", L"刷新", 103, 400, 108, 88, WS_TABSTOP);
+        add(L"BUTTON", L"刷新", 103, 400, 108, 88, WS_TABSTOP | BS_OWNERDRAW);
         add(L"STATIC", L"波特率", 110, 16, 156, 104);
         add(L"STATIC", L"数据位", 111, 136, 156, 104);
         add(L"STATIC", L"校验", 112, 256, 156, 104);
@@ -541,9 +561,10 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
             SendMessageW(data->stop, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
         SendMessageW(data->stop, CB_SETCURSEL, 0, 0);
         data->error = add(L"STATIC", L"", 108, 16, 236, 472, 0, 64);
-        data->driver = add(L"BUTTON", L"安装 USB 驱动", 109, 16, 308, 144, WS_TABSTOP);
-        add(L"BUTTON", L"取消", IDCANCEL, 280, 364, 96, WS_TABSTOP, 36);
-        add(L"BUTTON", L"连接", IDOK, 392, 364, 96, WS_TABSTOP | BS_DEFPUSHBUTTON, 36);
+        data->driver =
+            add(L"BUTTON", L"安装 USB 驱动", 109, 16, 308, 144, WS_TABSTOP | BS_OWNERDRAW);
+        add(L"BUTTON", L"取消", IDCANCEL, 280, 364, 96, WS_TABSTOP | BS_OWNERDRAW, 36);
+        add(L"BUTTON", L"连接", IDOK, 392, 364, 96, WS_TABSTOP | BS_OWNERDRAW, 36);
         RECT owner{}, rect{};
         GetWindowRect(GetParent(h), &owner);
         GetWindowRect(h, &rect);
@@ -556,7 +577,10 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
     }
     if (!data)
         return FALSE;
-    if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT)
+    if (m == WM_DRAWITEM)
+        return Proc(data->pane->window_, m, w, l);
+    if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT ||
+        m == WM_CTLCOLORLISTBOX || m == WM_CTLCOLORBTN)
     {
         auto c = UiTheme(data->dark);
         SetTextColor(reinterpret_cast<HDC>(w), c.text);
@@ -656,6 +680,125 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
             catch (const std::exception &e)
             {
                 SetWindowTextW(data->error, Wide(e.what()).c_str());
+            }
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+} // namespace serialctl
+
+namespace serialctl
+{
+void PowerPane::ShowProtection()
+{
+    struct Template
+    {
+        DLGTEMPLATE dialog;
+        WORD menu = 0, cls = 0, title = 0;
+    } t{};
+    t.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
+    t.dialog.cx = 238;
+    t.dialog.cy = 156;
+    DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT),
+                            ProtectionProc, reinterpret_cast<LPARAM>(this));
+}
+INT_PTR CALLBACK PowerPane::ProtectionProc(HWND dialog, UINT message, WPARAM w, LPARAM l)
+{
+    auto *self = reinterpret_cast<PowerPane *>(GetWindowLongPtrW(dialog, DWLP_USER));
+    if (message == WM_INITDIALOG)
+    {
+        self = reinterpret_cast<PowerPane *>(l);
+        SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(self));
+        SetWindowTextW(dialog, L"通道异常保护");
+        auto d = [self](int x) { return MulDiv(x, self->dpi_, 96); };
+        SetWindowPos(dialog, nullptr, 0, 0, d(432), d(298), SWP_NOMOVE | SWP_NOZORDER);
+        auto add = [&](const wchar_t *cls, const wchar_t *text, int id, int x, int y, int width,
+                       int height, DWORD style = 0) {
+            HWND h = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, d(x), d(y),
+                                     d(width), d(height), dialog,
+                                     reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
+                                     GetModuleHandleW(nullptr), nullptr);
+            SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), TRUE);
+            if (_wcsicmp(cls, L"EDIT") == 0)
+                UiStyleField(h, &self->fieldStyle_);
+            return h;
+        };
+        double maxV = 30, maxA = 6;
+        for (const auto &c : self->Selection())
+        {
+            if (c == 3)
+            {
+                maxV = 5;
+                maxA = 3;
+            }
+        }
+        auto selected = self->Selection();
+        if (!selected.empty())
+        {
+            auto c = self->state_["channels"][selected[0].get<int>() - 1];
+            if (c.contains("protection"))
+            {
+                maxV = c["protection"]["voltageLimit"];
+                maxA = c["protection"]["currentLimit"];
+            }
+        }
+        add(L"BUTTON", L"启用保护", 90, 16, 16, 168, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
+        SendDlgItemMessageW(dialog, 90, BM_SETCHECK, BST_CHECKED, 0);
+        add(L"STATIC", L"电压上限 (V)", -1, 16, 60, 184, 28);
+        add(L"STATIC", L"电流上限 (A)", -1, 224, 60, 184, 28);
+        add(L"EDIT", Value(maxV).c_str(), 91, 16, 92, 184, 28, ES_AUTOHSCROLL | WS_TABSTOP);
+        add(L"EDIT", Value(maxA).c_str(), 92, 224, 92, 184, 28, ES_AUTOHSCROLL | WS_TABSTOP);
+        add(L"STATIC", L"", 93, 16, 132, 392, 52);
+        add(L"BUTTON", L"取消", IDCANCEL, 208, 200, 96, 36, WS_TABSTOP | BS_OWNERDRAW);
+        add(L"BUTTON", L"保存", IDOK, 312, 200, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
+        RECT owner{}, rect{};
+        GetWindowRect(GetParent(dialog), &owner);
+        GetWindowRect(dialog, &rect);
+        SetWindowPos(dialog, nullptr,
+                     owner.left + (owner.right - owner.left - (rect.right - rect.left)) / 2,
+                     owner.top + (owner.bottom - owner.top - (rect.bottom - rect.top)) / 2, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER);
+        return TRUE;
+    }
+    if (!self)
+        return FALSE;
+    if (message == WM_DRAWITEM)
+        return Proc(self->window_, message, w, l);
+    if (message == WM_CTLCOLORDLG || message == WM_CTLCOLORSTATIC || message == WM_CTLCOLOREDIT ||
+        message == WM_CTLCOLORBTN)
+    {
+        auto colors = UiTheme(self->dark_);
+        SetTextColor(reinterpret_cast<HDC>(w), colors.text);
+        SetBkColor(reinterpret_cast<HDC>(w), colors.field);
+        return reinterpret_cast<INT_PTR>(self->brush_);
+    }
+    if (message == WM_COMMAND)
+    {
+        if (LOWORD(w) == IDCANCEL)
+        {
+            EndDialog(dialog, IDCANCEL);
+            return TRUE;
+        }
+        if (LOWORD(w) == IDOK)
+        {
+            try
+            {
+                Json command = {
+                    {"type", "protection"},
+                    {"channels", self->Selection()},
+                    {"voltageLimit", Parse(self->Text(GetDlgItem(dialog, 91)))},
+                    {"currentLimit", Parse(self->Text(GetDlgItem(dialog, 92)))},
+                    {"enabled", SendDlgItemMessageW(dialog, 90, BM_GETCHECK, 0, 0) == BST_CHECKED}};
+                Json result = self->service_->Submit(command);
+                if (result.contains("error"))
+                    throw std::runtime_error(result["error"].get<std::string>());
+                self->action_ = result["id"];
+                EndDialog(dialog, IDOK);
+            }
+            catch (const std::exception &e)
+            {
+                SetDlgItemTextW(dialog, 93, Wide(e.what()).c_str());
             }
             return TRUE;
         }

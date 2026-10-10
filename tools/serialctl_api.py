@@ -102,6 +102,8 @@ class Client:
         return self.request("/sessions/%s/events?after=%d" % (resource, after))
 
     def output(self, channels, enabled, request_id=None):
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled must be bool")
         return self.request("/power-supplies/power-1/channels/output",
                             {"channels": list(channels), "enabled": bool(enabled),
                              "requestId": request_id or uuid.uuid4().hex})
