@@ -98,8 +98,7 @@ void SerialDevice::Close() {
         readThread_.join();
     }
     std::lock_guard<std::mutex> writer(writeMutex_);
-    HANDLE handle = handle_;
-    handle_ = INVALID_HANDLE_VALUE;
+    HANDLE handle = handle_.exchange(INVALID_HANDLE_VALUE);
     if (handle != INVALID_HANDLE_VALUE) {
         CloseHandle(handle);
     }

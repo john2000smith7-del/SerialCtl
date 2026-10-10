@@ -13,6 +13,13 @@ int main() {
     std::mutex mutex;
     std::condition_variable ready;
     std::wstring error;
+    auto fail = [&](int code) {
+        std::lock_guard<std::mutex> lock(mutex);
+        std::cerr << "CMD failed stage=" << code << " connected=" << cmd.IsConnected()
+                  << " inputCP=" << cmd.InputCodePage() << " outputCP=" << cmd.OutputCodePage()
+                  << " error=" << WideToMultiByte(error, CP_UTF8) << " output=" << output << std::endl;
+        return code;
+    };
     if (!cmd.Start(
             [&](const Bytes &bytes) {
                 std::lock_guard<std::mutex> lock(mutex);
@@ -21,16 +28,18 @@ int main() {
             },
             [](const auto &, bool) {}, error)) {
         std::wcerr << error;
-        return 1;
+        return fail(1);
     }
     std::string command = "set SERIALCTL_TEST=retained\r\necho SERIALCTL_BEGIN-%SERIALCTL_TEST%\r\n";
     if (!cmd.Send(Bytes(command.begin(), command.end()), error))
-        return 2;
+        return fail(2);
     {
         std::unique_lock<std::mutex> lock(mutex);
         if (!ready.wait_for(lock, std::chrono::seconds(4),
-                            [&] { return output.find("SERIALCTL_BEGIN-retained") != std::string::npos; }))
-            return 3;
+                            [&] { return output.find("SERIALCTL_BEGIN-retained") != std::string::npos; })) {
+            lock.unlock();
+            return fail(3);
+        }
     }
     CmdLineEditor editor;
     for (wchar_t ch : std::wstring(L"echX SERIALCTL_KEY_EDITED"))
@@ -48,12 +57,14 @@ int main() {
     auto edited = editor.Text() + L"\r\n";
     auto encoded = WideToMultiByte(edited, GetOEMCP());
     if (!cmd.Send(SessionService::CmdBatch(Bytes(encoded.begin(), encoded.end())), error))
-        return 6;
+        return fail(6);
     {
         std::unique_lock<std::mutex> lock(mutex);
         if (!ready.wait_for(lock, std::chrono::seconds(4),
-                            [&] { return output.find("SERIALCTL_KEY_EDITED") != std::string::npos; }))
-            return 7;
+                            [&] { return output.find("SERIALCTL_KEY_EDITED") != std::string::npos; })) {
+            lock.unlock();
+            return fail(7);
+        }
     }
     for (auto invalid : {Bytes{'n', 'o'}, Bytes{'e', 'c', 'h', 'o', 0, 13, 10}, Bytes{3, 13, 10}, Bytes(8200, 'x')}) {
         bool rejected = false;
@@ -63,21 +74,23 @@ int main() {
             rejected = true;
         }
         if (!rejected)
-            return 8;
+            return fail(8);
     }
     cmd.OverrideTextCodePage(936);
     if (cmd.InputCodePage() != 936 || cmd.OutputCodePage() != 936 || std::string(cmd.CodePageSource()) != "manual")
-        return 12;
+        return fail(12);
     cmd.OverrideTextCodePage(0);
     if (std::string(cmd.CodePageSource()) == "manual")
-        return 13;
+        return fail(13);
     command = "echo SERIALCTL_SECOND-%SERIALCTL_TEST%\r\n";
     cmd.Send(Bytes(command.begin(), command.end()), error);
     {
         std::unique_lock<std::mutex> lock(mutex);
         if (!ready.wait_for(lock, std::chrono::seconds(4),
-                            [&] { return output.find("SERIALCTL_SECOND-retained") != std::string::npos; }))
-            return 4;
+                            [&] { return output.find("SERIALCTL_SECOND-retained") != std::string::npos; })) {
+            lock.unlock();
+            return fail(4);
+        }
     }
     // Cancellation of a pipe writer must terminate the real CMD process tree.
     std::string blocked = "echo SERIALCTL_BLOCK_BEGIN\r\nping -n 100 127.0.0.1 >nul\r\n";
@@ -85,8 +98,10 @@ int main() {
     {
         std::unique_lock<std::mutex> lock(mutex);
         if (!ready.wait_for(lock, std::chrono::seconds(4),
-                            [&] { return output.find("SERIALCTL_BLOCK_BEGIN") != std::string::npos; }))
-            return 10;
+                            [&] { return output.find("SERIALCTL_BLOCK_BEGIN") != std::string::npos; })) {
+            lock.unlock();
+            return fail(10);
+        }
     }
     Bytes queued;
     auto line = "rem " + std::string(500, 'x') + "\r\n";
@@ -100,22 +115,22 @@ int main() {
         }
     }
     if (!bounded)
-        return 11;
+        return fail(11);
     auto stopStarted = GetTickCount64();
     cmd.Stop();
     if (GetTickCount64() - stopStarted > 5000)
-        return 9;
+        return fail(9);
     if (cmd.IsConnected())
-        return 5;
+        return fail(5);
     if (!cmd.Start([&](const Bytes &) {}, [](const auto &, bool) {}, error))
-        return 14;
+        return fail(14);
     if (!cmd.Send(Bytes{'e', 'x', 'i', 't', 13, 10}, error))
-        return 15;
+        return fail(15);
     auto exited = GetTickCount64() + 4000;
     while (cmd.IsConnected() && GetTickCount64() < exited)
         Sleep(1);
     if (cmd.IsConnected())
-        return 16;
+        return fail(16);
     cmd.Stop();
     std::cout << "CMD session retains state and shuts down\n";
     return 0;

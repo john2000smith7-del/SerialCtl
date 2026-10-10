@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'tools'))
-from serialctl_ws import Client, ProtocolError, discover
+from serialctl_ws import Client, ProtocolError, CapacityError, discover
 from serialctl_client import SerialStream
 
 fixture = subprocess.Popen([sys.argv[1], '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
@@ -52,7 +52,36 @@ try:
         pass
     else:
         raise AssertionError('Gone target remained writable')
-    print('Python / production C++: binary 0-255, 64 KiB, multi-COM, two clients, scope, target loss PASS')
+    capacity = subprocess.Popen([sys.argv[1], '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    held = []
+    try:
+        full_port = int(capacity.stdout.readline())
+        for _ in range(128):
+            held.append(Client('127.0.0.1', port=full_port))
+        full_instance = held[0].instance
+        candidates = discover('127.0.0.1')
+        assert any(x['instance'] == full_instance and x['error'] == 'CLIENT_LIMIT' for x in candidates
+                   if x['port'] == full_port)
+        for kwargs in ({'port': full_port}, {'instance': full_instance}):
+            try:
+                Client('127.0.0.1', **kwargs)
+            except CapacityError:
+                pass
+            else:
+                raise AssertionError('Full instance was not diagnosed')
+        try:
+            Client('127.0.0.1')
+        except ValueError as error:
+            assert 'AMBIGUOUS' in str(error)
+        else:
+            raise AssertionError('Busy instance vanished from ambiguity check')
+    finally:
+        for client in held:
+            client.close()
+        capacity.stdin.write('quit\n')
+        capacity.stdin.flush()
+        capacity.wait(timeout=10)
+    print('Python / production C++: binary 0-255, 64 KiB, multi-COM, two clients, scope, target loss, 128 capacity and ambiguity PASS')
 finally:
     for client in clients:
         client.close()

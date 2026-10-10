@@ -1,4 +1,5 @@
 #include "GatewayFixture.h"
+#include "SharedSerialConnection.h"
 using namespace test;
 int stage = 0;
 int main() {
@@ -198,6 +199,12 @@ int main() {
                 refused = std::string(e.what()).find("CLIENT_LIMIT") != std::string::npos;
             }
             Expect(refused, "client 129 explicitly refused at capacity");
+            std::uint16_t port = 0;
+            std::vector<std::wstring> names;
+            Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr,
+                                                         static_cast<std::uint16_t>(capacity.server.Port())) &&
+                       error.find(L"CLIENT_LIMIT") != std::wstring::npos,
+                   "native discovery preserves explicit capacity refusal");
             held.clear();
             std::cerr << "stage=" << ++stage << " capacity clients cleared" << std::endl;
         }

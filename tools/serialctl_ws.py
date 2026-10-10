@@ -21,6 +21,12 @@ class ProtocolError(RuntimeError):
     pass
 
 
+class CapacityError(ProtocolError):
+    def __init__(self, instance):
+        self.instance = instance
+        super().__init__('CLIENT_LIMIT: instance ' + instance + ' reached 128 connections')
+
+
 class Wire:
     def __init__(self, sock, timeout=3):
         self.socket, self.buffer = sock, bytearray()
@@ -47,6 +53,10 @@ class Wire:
                 raise ProtocolError('Duplicate handshake header')
             fields[name] = value.strip()
         accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
+        if (lines[0].startswith('HTTP/1.1 503 ') and
+                fields.get('sec-websocket-protocol') == 'serialctl.v1' and
+                fields.get('x-serialctl-instance')):
+            raise CapacityError(fields['x-serialctl-instance'])
         if (lines[0] != 'HTTP/1.1 101 Switching Protocols' or
                 fields.get('sec-websocket-accept') != accept or
                 fields.get('sec-websocket-protocol') != 'serialctl.v1' or
@@ -162,6 +172,9 @@ def _probe(ip, port, timeout):
         with Client(ip, port=port, timeout=timeout) as client:
             return {'ip': ip, 'port': port, 'instance': client.instance,
                     'resources': client.resources()['resources']}
+    except CapacityError as error:
+        return {'ip': ip, 'port': port, 'instance': error.instance,
+                'resources': [], 'error': 'CLIENT_LIMIT'}
     except (OSError, ValueError, RuntimeError, KeyError):
         return None
 
@@ -182,6 +195,8 @@ class Client:
                 found = [item for item in found if item['instance'] == instance]
             if len(found) != 1:
                 raise ValueError('INSTANCE_AMBIGUOUS_OR_NOT_FOUND: select --instance or --port: ' + json.dumps(found))
+            if found[0].get('error') == 'CLIENT_LIMIT':
+                raise CapacityError(found[0]['instance'])
             port, instance = found[0]['port'], found[0]['instance']
         self.ip, self.port = ip, int(port)
         self.pending, self.events, self.cursors = {}, {}, {}

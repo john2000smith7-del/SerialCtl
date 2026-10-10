@@ -7,6 +7,7 @@ namespace {
 struct Probe {
     unsigned port = 0;
     std::string instance;
+    std::string error;
     std::vector<std::wstring> names, descriptions;
 };
 Probe Query(const std::wstring &host, unsigned port, const std::atomic_bool *cancel = nullptr) {
@@ -25,7 +26,15 @@ Probe Query(const std::wstring &host, unsigned port, const std::atomic_bool *can
                 p.descriptions.push_back(name + L" · " + std::to_wstring(r.value("baudRate", 115200)) +
                                          L" · WebSocket");
             }
-    } catch (...) {
+    } catch (const ws::Error &e) {
+        if (!e.instance.empty()) {
+            p.port = port;
+            p.instance = e.instance;
+            p.error = e.what();
+        }
+    } catch (const std::exception &e) {
+        if (!p.instance.empty())
+            p.error = e.what();
     }
     return p;
 }
@@ -39,6 +48,10 @@ bool SharedSerialConnection::Discover(const std::wstring &host, std::uint16_t po
                                       std::wstring &error, std::vector<std::wstring> *descriptions) {
     auto p = Query(host, port);
     Result(p, names, descriptions);
+    if (!p.error.empty()) {
+        error = MultiByteToWide(reinterpret_cast<const std::uint8_t *>(p.error.data()), p.error.size(), CP_UTF8);
+        return false;
+    }
     if (p.instance.empty()) {
         error = L"对端要求升级为 SerialCtl WebSocket serialctl.v1，或服务不可达";
         return false;
@@ -79,6 +92,11 @@ bool SharedSerialConnection::DiscoverAuto(const std::wstring &host, std::uint16_
         return false;
     }
     port = static_cast<std::uint16_t>(found[0].port);
+    if (!found[0].error.empty()) {
+        const auto &reason = found[0].error;
+        error = MultiByteToWide(reinterpret_cast<const std::uint8_t *>(reason.data()), reason.size(), CP_UTF8);
+        return false;
+    }
     if (instance)
         *instance = found[0].instance;
     Result(found[0], names, descriptions);

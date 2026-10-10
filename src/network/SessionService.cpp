@@ -37,6 +37,12 @@ SessionService::Json SessionService::Resources() {
     for (auto &p : entries_) {
         auto r = p.second->resource;
         r["connected"] = p.second->transport->IsConnected();
+        if (p.second->transport->InputCodePage()) {
+            r["inputCodePage"] = p.second->transport->InputCodePage();
+            r["outputCodePage"] = p.second->transport->OutputCodePage();
+            r["codePage"] = r["outputCodePage"];
+            r["codePageSource"] = p.second->transport->CodePageSource();
+        }
         r["operations"] = {"session.get", "input", "subscribe", "unsubscribe", "events"};
         out.push_back(r);
     }
@@ -51,6 +57,7 @@ SessionService::Json SessionService::State(const std::string &id) {
     if (e->transport->InputCodePage()) {
         r["inputCodePage"] = e->transport->InputCodePage();
         r["outputCodePage"] = e->transport->OutputCodePage();
+        r["codePage"] = r["outputCodePage"];
         r["codePageSource"] = e->transport->CodePageSource();
     }
     return r;

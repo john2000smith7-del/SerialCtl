@@ -384,8 +384,9 @@ Bytes UpgradeClient(SOCKET s, const std::wstring &host, unsigned port) {
         throw Error(1006, "HANDSHAKE_SEND_FAILED");
     Bytes tail;
     auto h = ReadHeader(s, tail);
-    if (h.first.rfind("HTTP/1.1 503", 0) == 0)
-        throw Error(1013, "CLIENT_LIMIT");
+    if (h.first.rfind("HTTP/1.1 503", 0) == 0 && h.fields["sec-websocket-protocol"] == Protocol &&
+        !h.fields["x-serialctl-instance"].empty())
+        throw Error(1013, "CLIENT_LIMIT", h.fields["x-serialctl-instance"]);
     if (h.first != "HTTP/1.1 101 Switching Protocols" || Lower(h.fields["upgrade"]) != "websocket" ||
         !Token(h.fields["connection"], "upgrade") || h.fields["sec-websocket-accept"] != AcceptKey(key) ||
         h.fields["sec-websocket-protocol"] != Protocol)

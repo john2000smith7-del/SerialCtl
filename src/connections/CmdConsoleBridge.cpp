@@ -79,6 +79,14 @@ int RunCmdConsoleBridge() {
     const auto input = GetStdHandle(STD_INPUT_HANDLE), output = GetStdHandle(STD_OUTPUT_HANDLE);
     if (GetFileType(input) != FILE_TYPE_PIPE || GetFileType(output) != FILE_TYPE_PIPE)
         return 2;
+    // A WINDOWS-subsystem executable is not guaranteed to attach to the console
+    // requested by CreateProcess. Allocate only in this private helper mode,
+    // retaining the IPC handles saved above (AllocConsole changes std handles).
+    if (!GetConsoleWindow() && !AllocConsole()) {
+        Report(output, "SerialCtl CMD console allocation failed\r\n");
+        return 3;
+    }
+    ShowWindow(GetConsoleWindow(), SW_HIDE);
     // The parent created a hidden, private Win7 console. Avoid inheriting its IPC
     // input in CMD: that would retain the pipe and reintroduce byte-wise decoding.
     SetHandleInformation(input, HANDLE_FLAG_INHERIT, 0);

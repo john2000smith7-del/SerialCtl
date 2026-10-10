@@ -2,13 +2,16 @@
 #include "Connection.h"
 #include <map>
 #include <stdexcept>
+#include <utility>
 namespace serialctl::ws {
 inline constexpr size_t MaxMessage = 128 * 1024;
 inline constexpr const char *Protocol = "serialctl.v1";
 inline constexpr const char *Path = "/serialctl";
 struct Error : std::runtime_error {
     unsigned code;
-    Error(unsigned c, const char *text) : std::runtime_error(text), code(c) {}
+    std::string instance;
+    Error(unsigned c, const char *text, std::string serverInstance = {})
+        : std::runtime_error(text), code(c), instance(std::move(serverInstance)) {}
 };
 std::string Base64(const Bytes &);
 Bytes Unbase64(const std::string &);

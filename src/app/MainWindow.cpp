@@ -1748,8 +1748,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         RefreshConnectionList();
         ApplyTheme();
         sessionService_.ObserveInput([this](const std::string& id, const Bytes& bytes, const std::string& source) {
-            apiServer_.Publish(id, bytes, source.c_str(), "input");
             const auto state = sessionService_.State(id);
+            apiServer_.Publish(id, bytes, source.c_str(), "input", state.value("inputCodePage", UINT(0)));
             QueueReceived({std::stoull(id.substr(8)), bytes, state.value("inputCodePage", UINT(0)), source, 0});
         });
         { std::wstring error;
@@ -3682,7 +3682,7 @@ void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data) {
     LARGE_INTEGER arrival{}; if(measurePaint_) QueryPerformanceCounter(&arrival);
     const auto state=sessionService_.State("session-"+std::to_string(sessionId));
     const UINT codePage=state.value("outputCodePage", UINT(0));
-    apiServer_.Publish("session-" + std::to_string(sessionId), data);
+    apiServer_.Publish("session-" + std::to_string(sessionId), data, "device", "output", codePage);
     QueueReceived({sessionId, data, codePage, {}, arrival.QuadPart});
 }
 void MainWindow::QueueReceived(ReceivedItem item) {

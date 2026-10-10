@@ -33,8 +33,8 @@ class ApiServer {
     std::string Instance() const {
         return instance_;
     }
-    void Publish(const std::string &resource, const Bytes &, const char *source = "device",
-                 const char *kind = "output");
+    void Publish(const std::string &resource, const Bytes &, const char *source = "device", const char *kind = "output",
+                 unsigned codePage = 0);
     Json Events(const std::string &, std::uint64_t after);
     Json Diagnostics();
 

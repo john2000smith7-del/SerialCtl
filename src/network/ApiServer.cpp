@@ -189,7 +189,9 @@ void ApiServer::Accept() {
             ws::SocketOptions(s, 1500);
             if (!c) {
                 const std::string reply =
-                    "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 12\r\n\r\nCLIENT_LIMIT";
+                    "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nSec-WebSocket-Protocol: serialctl.v1\r\n"
+                    "X-SerialCtl-Instance: " +
+                    instance_ + "\r\nContent-Length: 12\r\n\r\nCLIENT_LIMIT";
                 ws::SendAll(s, reply.data(), reply.size());
                 ws::FinishSend(s);
                 closesocket(s);
@@ -523,7 +525,8 @@ void ApiServer::CacheResponse(const std::shared_ptr<ClientState> &c, const std::
     }
 }
 
-void ApiServer::Publish(const std::string &target, const Bytes &data, const char *source, const char *kind) {
+void ApiServer::Publish(const std::string &target, const Bytes &data, const char *source, const char *kind,
+                        unsigned codePage) {
     if (data.empty())
         return;
     std::lock_guard<std::mutex> l(mutex_);
@@ -535,6 +538,8 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
         Json event = {{"type", "event"},    {"version", 1},        {"instance", instance_},
                       {"resource", target}, {"seq", ++h.seq},      {"kind", kind},
                       {"source", source},   {"data", Encode64(b)}, {"tick", GetTickCount64()}};
+        if (codePage)
+            event["codePage"] = codePage;
         auto serialized = event.dump();
         Bytes payload(serialized.begin(), serialized.end());
         auto bytes = payload.size();
