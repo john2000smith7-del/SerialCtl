@@ -62,6 +62,8 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     bool edit = _wcsicmp(cls, L"EDIT") == 0;
     auto d = [style](int n) { return MulDiv(n, style->dpi, 96); };
     auto colors = UiTheme(*style->dark);
+    if (!edit && message == WM_NCCALCSIZE)
+        return 0;
     if (edit && message == WM_NCCALCSIZE) {
         LRESULT result = DefSubclassProc(h, message, w, l);
         RECT *rect = w ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(l)->rgrc[0] : reinterpret_cast<RECT *>(l);

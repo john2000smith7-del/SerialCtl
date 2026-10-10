@@ -711,6 +711,7 @@ void PowerPane::Layout() {
     move(Control(81), w - d(312), d(52), d(104), d(36));
     SendMessageW(Control(80), CB_SETITEMHEIGHT, -1, d(30));
     move(Control(80), d(72), d(52), d(160), d(180));
+    SendMessageW(Control(80), CB_SETITEMHEIGHT, -1, d(30));
     for (int i = 0; i < 3; ++i) {
         bool hidden = group && i == 1;
         int index = group && i == 2 ? 1 : i;
@@ -1178,14 +1179,14 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         EndPaint(h, &ps);
         return 0;
     }
-    if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLORBTN || m == WM_CTLCOLOREDIT) {
+    if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLORBTN || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORLISTBOX) {
         auto c = UiTheme(self->dark_);
         SetTextColor(reinterpret_cast<HDC>(w), c.text);
         int id = GetDlgCtrlID(reinterpret_cast<HWND>(l));
         wchar_t cls[24]{};
         GetClassNameW(reinterpret_cast<HWND>(l), cls, 24);
         bool edit = _wcsicmp(cls, L"EDIT") == 0;
-        if (edit) {
+        if (edit || m == WM_CTLCOLORLISTBOX) {
             SetTextColor(reinterpret_cast<HDC>(w), IsWindowEnabled(reinterpret_cast<HWND>(l)) ? c.text : c.muted);
             SetBkColor(reinterpret_cast<HDC>(w), c.field);
             return reinterpret_cast<LRESULT>(self->brush_);

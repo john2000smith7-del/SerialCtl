@@ -259,6 +259,7 @@ foreach ($architecture in @('x64')) {
             $powerWidth=$powerBounds.Right
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,10,($powerWidth-200),0,96,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,11,($powerWidth-96),0,96,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,80,72,52,160,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,81,($powerWidth-312),52,104,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,12,($powerWidth-200),52,96,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,13,($powerWidth-96),52,96,36)
