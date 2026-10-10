@@ -701,13 +701,14 @@ void PowerPane::Layout() {
     for (int i = 0; i < 3; ++i) {
         bool hidden = group && i == 1;
         int index = group && i == 2 ? 1 : i;
-        int x = (i % cardColumns_) * (cardWidth_ + d(12)),
-            y = cardTop_ + (index / cardColumns_) * (cardHeight_ + d(12)), cw = cardWidth_;
+        int column = i % cardColumns_;
+        int x = column * (w + d(12)) / cardColumns_, y = cardTop_ + (index / cardColumns_) * (cardHeight_ + d(12)),
+            cw = (column + 1) * (w + d(12)) / cardColumns_ - x - d(12);
         if (group && cardColumns_ == 3) {
             if (i == 0)
-                cw = cardWidth_ * 2 + d(12);
+                cw = 2 * (w + d(12)) / 3 - d(12);
             if (i == 2)
-                x = 2 * (cardWidth_ + d(12));
+                x = 2 * (w + d(12)) / 3;
         }
         SetWindowTextW(check_[i], group && i == 0 ? L"CH1＋CH2" : (L"CH" + std::to_wstring(i + 1)).c_str());
         move(check_[i], x + d(16), y + d(12), d(group && i == 0 ? 140 : 72), d(28));
@@ -720,10 +721,10 @@ void PowerPane::Layout() {
             ShowWindow(current_[i], SW_HIDE);
         }
     }
-    const int widths[] = {92, 92, 112, 144};
+    const int widths[] = {92, 92, 92, 104};
     int x = 0;
     for (int i = 0; i < 4; ++i) {
-        move(Control(90 + i), x + 1, taskTop_ + 1, d(widths[i]) - 1, d(30));
+        move(Control(90 + i), x + d(2), taskTop_ + d(2), d(widths[i]), d(28));
         x += d(widths[i]);
     }
     for (auto item : controls_)
@@ -746,14 +747,14 @@ void PowerPane::DetailsLayout(int width, int top) {
     };
     const int w = MulDiv(width, 96, dpi_);
     if (tab_ == 0) {
-        move(103, w - 280, 0, 72);
-        move(100, w - 200, 0, 96);
-        move(101, w - 96, 0, 96);
+        move(103, w - 248, 0, 72);
+        move(100, w - 168, 0, 78);
+        move(101, w - 82, 0, 82);
     }
     if (tab_ == 1) {
         int x = 0;
         for (int i = 0; i < 5; ++i) {
-            int size = i == 3 || i == 4 ? 100 : 80;
+            int size = i == 3 || i == 4 ? 65 : 52;
             move(110 + i, x, 0, size);
             x += size + 12;
         }
@@ -761,16 +762,16 @@ void PowerPane::DetailsLayout(int width, int top) {
         const int ids[5][3] = {{70, 71, 72}, {120, 121, 122}, {123, 0, 0}, {124, 125, 0}, {126, 127, 128}};
         for (int i = 0; i < 3; ++i)
             if (ids[automation_][i])
-                move(ids[automation_][i], i * (field + 12), 64, automation_ == 2 ? w : field);
-        const int wide = (w - 176) / 2;
-        move(Start, 0, 108, wide, 36);
-        move(Stop, wide + 8, 108, wide, 36);
-        move(Save, w - 168, 108, 80, 36);
-        move(44, w - 80, 108, 80, 36);
+                move(ids[automation_][i], i * (field + 12), 71, automation_ == 2 ? w : field);
+        const int wide = (w - 184) / 2;
+        move(Start, 0, 115, wide, 36);
+        move(Stop, wide + 8, 115, wide, 36);
+        move(Save, w - 168, 115, 80, 36);
+        move(44, w - 80, 115, 80, 36);
         SetWindowTextW(start_, automation_ == 3 ? L"应用定时器" : automation_ == 4 ? L"应用并触发" : L"开始测试");
     }
     if (tab_ == 1 && automation_ == 3)
-        move(133, w - 80, 64, 80);
+        move(133, w - 80, 71, 80);
     if (tab_ == 1 && automation_ == 4) {
         for (int i = 0; i < 4; ++i)
             move(134 + i, i * 112, 156, 104);
@@ -781,13 +782,13 @@ void PowerPane::DetailsLayout(int width, int top) {
             move(190 + i, 0, i * 36, 104, 32);
         const int x = 132, cw = w - x, half = (cw - 12) / 2;
         if (settings_ == 0) {
-            move(200, x + 40, 0, 96);
-            move(201, w - 152, 0, 152);
+            move(200, x + 38, 0, 96);
+            move(201, w - 100, 0, 100);
             for (int i = 0; i < 4; ++i)
-                move(202 + i, x + (i % 2) * (half + 12), 68 + (i / 2) * 64, half);
-            move(206, w - 256, 172, 80);
-            move(207, w - 168, 172, 80);
-            move(208, w - 80, 172, 80);
+                move(202 + i, x + (i % 2) * (half + 12), 67 + (i / 2) * 67, half);
+            move(206, w - 256, 174, 80);
+            move(207, w - 168, 174, 80);
+            move(208, w - 80, 174, 80);
         }
         if (settings_ == 1) {
             move(210, x + 100, 12, cw - 100);
@@ -856,13 +857,14 @@ void PowerPane::Paint(HDC dc) {
         if (group && i == 1)
             continue;
         int index = group && i == 2 ? 1 : i;
-        int x = (i % cardColumns_) * (cardWidth_ + d(12)),
-            y = cardTop_ + (index / cardColumns_) * (cardHeight_ + d(12)), cw = cardWidth_;
+        int column = i % cardColumns_;
+        int x = column * (width + d(12)) / cardColumns_, y = cardTop_ + (index / cardColumns_) * (cardHeight_ + d(12)),
+            cw = (column + 1) * (width + d(12)) / cardColumns_ - x - d(12);
         if (group && cardColumns_ == 3) {
             if (i == 0)
-                cw = 2 * cardWidth_ + d(12);
+                cw = 2 * (width + d(12)) / 3 - d(12);
             if (i == 2)
-                x = 2 * (cardWidth_ + d(12));
+                x = 2 * (width + d(12)) / 3;
         }
         bool checked = SendMessageW(check_[i], BM_GETCHECK, 0, 0) == BST_CHECKED;
         UiBox(dc, {x, y, x + cw, y + cardHeight_}, c.surface, checked ? c.text : c.border, d(12));
@@ -905,14 +907,14 @@ void PowerPane::Paint(HDC dc) {
         text(combined && draftMode_ == 1 ? L"总电流限值 (A)" : L"电流限值 (A)",
              {x + d(16), y + d(172), x + d(combined ? 116 : 92), y + d(200)}, c.muted);
     }
-    UiBox(dc, {0, taskTop_, d(440), taskTop_ + d(32)}, c.raised, c.border, d(10));
+    UiBox(dc, {0, taskTop_, d(384), taskTop_ + d(32)}, c.raised, c.border, d(10));
     std::wstring selected = L"已选";
     auto selection = Selection();
     for (auto ch : selection)
         selected += L" CH" + std::to_wstring(ch.get<int>());
     if (selection.empty())
         selected = L"未选择通道";
-    text(selected, {d(452), taskTop_, width, taskTop_ + d(32)}, c.muted, nullptr,
+    text(selected, {d(396), taskTop_, width, taskTop_ + d(32)}, c.muted, nullptr,
          DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
     PaintDetails(dc, width, detailsTop_);
     SetViewportOrgEx(dc, 0, 0, nullptr);
@@ -936,13 +938,13 @@ void PowerPane::PaintDetails(HDC dc, int width, int top) {
     };
     if (tab_ == 0) {
         text(L"实时趋势", 0, 0, 160);
-        text(L"采样", w - 320, 0, 36);
+        text(L"采样", w - 284, 0, 36);
         int pw = (w - 12) / 2;
         for (int metric = 0; metric < 2; ++metric) {
             int x = metric * (pw + 12);
             RECT box{d(x), top + d(40), d(x + pw), top + d(188)};
             UiBox(dc, box, c.surface, c.border, d(12));
-            text(metric ? L"电流 (A)" : L"电压 (V)", x + 12, 48, pw - 24);
+            text(metric ? L"电流 (A)" : L"电压 (V)", x + 12, 52, pw - 24);
             int left = d(x + 12), right = d(x + pw - 12), bottom = top + d(170), plotTop = top + d(80);
             HPEN grid = CreatePen(PS_SOLID, 1, c.border);
             auto old = SelectObject(dc, grid);
@@ -996,7 +998,7 @@ void PowerPane::PaintDetails(HDC dc, int width, int top) {
                                               {L"触发延时 (秒)", L"电压步进 (V)", L"电流步进 (A)"}};
         int field = (w - 24) / 3;
         for (int i = 0; i < 3; ++i)
-            text(labels[automation_][i], i * (field + 12), 40, field, 20);
+            text(labels[automation_][i], i * (field + 12), 44, field, 20);
         if (automation_ == 2)
             text(std::to_wstring(steps_.size()) + L" 个步骤", w - 160, 40, 160, 20);
         if (automation_ == 3) {
@@ -1009,7 +1011,7 @@ void PowerPane::PaintDetails(HDC dc, int width, int top) {
             task.value("running", false) ? L"运行中 · " + std::to_wstring(task.value("completed", 0)) : L"未运行";
         if (state_.contains("error"))
             status = Wide(state_["error"]);
-        text(status, 0, automation_ == 4 ? 200 : 156, w, 28, state_.contains("error") ? c.danger : c.muted);
+        text(status, 0, automation_ == 4 ? 200 : 163, w, 28, state_.contains("error") ? c.danger : c.muted);
     }
     if (tab_ == 2) {
         int x = 132, cw = w - x, half = (cw - 12) / 2;
@@ -1024,7 +1026,7 @@ void PowerPane::PaintDetails(HDC dc, int width, int top) {
             const wchar_t *labels[] = {L"电压设置上限 (V)", L"设备过压阈值 (V)", L"软件电压阈值 (V)",
                                        L"软件电流阈值 (A)"};
             for (int i = 0; i < 4; ++i)
-                text(labels[i], x + (i % 2) * (half + 12), 40 + (i / 2) * 64, half, 20);
+                text(labels[i], x + (i % 2) * (half + 12), 40 + (i / 2) * 67, half, 20);
             int ch = static_cast<int>(SendMessageW(Control(200), CB_GETCURSEL, 0, 0));
             auto p = state_["channels"][std::clamp(ch, 0, 2)].value("deviceProtection", Json::object());
             text(p.contains("tripped") ? (p["tripped"].get<bool>() ? L"保护状态 已触发" : L"保护状态 正常")

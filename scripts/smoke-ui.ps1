@@ -96,6 +96,11 @@ public static class SerialCtlUiSmoke {
         }, IntPtr.Zero);
         if (failure != null) throw new Exception(failure);
     }
+    public static void AssertPowerBounds(IntPtr pane, int id, int x, int y, int width, int height) {
+        RECT rect; GetWindowRect(GetDlgItem(pane,id),out rect); MapWindowPoints(IntPtr.Zero,pane,ref rect,2);
+        if(Math.Abs(rect.Left-x)>2 || Math.Abs(rect.Top-y)>2 || Math.Abs(rect.Right-rect.Left-width)>2 || Math.Abs(rect.Bottom-rect.Top-height)>2)
+            throw new Exception("Power geometry mismatch id="+id+" actual="+rect.Left+","+rect.Top+","+(rect.Right-rect.Left)+","+(rect.Bottom-rect.Top)+" expected="+x+","+y+","+width+","+height);
+    }
     public static IntPtr Dialog(uint processId, string title) {
         IntPtr found = IntPtr.Zero;
         EnumWindows(delegate(IntPtr window, IntPtr ignored) {
@@ -249,11 +254,23 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($powerPane,21),[ref]$ch2)|Out-Null
             [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($powerPane,22),[ref]$ch3)|Out-Null
             if ($ch1.Top -ne $ch2.Top -or $ch2.Top -ne $ch3.Top -or $ch1.Right -ge $ch2.Left -or $ch2.Right -ge $ch3.Left) { throw 'Power channel cards are not three distinct columns.' }
+            $powerBounds=New-Object SerialCtlUiSmoke+RECT
+            [SerialCtlUiSmoke]::GetClientRect($powerPane,[ref]$powerBounds)|Out-Null
+            $powerWidth=$powerBounds.Right
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,10,($powerWidth-200),0,96,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,11,($powerWidth-96),0,96,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,81,($powerWidth-312),52,104,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,12,($powerWidth-200),52,96,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,13,($powerWidth-96),52,96,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,90,2,338,92,28)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,103,($powerWidth-248),384,72,28)
             # The approved views are captured from the real EXE with no hardware or fake measurements.
             foreach ($tab in @(91,92,93)) {
                 [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]$tab,[IntPtr]::Zero)|Out-Null
                 Start-Sleep -Milliseconds 200
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-tab-$tab"
+                if($tab -eq 91) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,40,0,499,[int](($powerWidth-184)/2),36) }
+                if($tab -eq 92) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,202,132,451,[int](($powerWidth-144)/2),28) }
             }
             [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]92,[IntPtr]::Zero)|Out-Null
             foreach ($category in @(191,192,193)) {
