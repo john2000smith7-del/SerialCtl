@@ -355,6 +355,14 @@ foreach ($architecture in @('x64')) {
     try {
         if (-not $application.WaitForInputIdle(10000)) { throw 'UI mock application did not become idle.' }
         $application.Refresh()
+        # Input-idle may arrive before .NET observes the new top-level HWND.
+        for ($attempt=0; $attempt -lt 50 -and -not $application.HasExited -and $application.MainWindowHandle -eq 0; $attempt++) {
+            Start-Sleep -Milliseconds 100
+            $application.Refresh()
+        }
+        if ($application.HasExited -or $application.MainWindowHandle -eq 0) {
+            throw 'UI mock application did not create a main window.'
+        }
         foreach ($theme in @('light','dark')) {
             if ($theme -eq 'dark') {
                 [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]104, [IntPtr]::Zero) | Out-Null

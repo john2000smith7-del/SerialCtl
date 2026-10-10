@@ -2569,7 +2569,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
                 pressed ? colors.accentSoft : (hovered ? colors.accentSoft : colors.panelAlt),
                 focused ? colors.accent : colors.border);
             DrawChevronHorizontal(dc, rect, enabled ? colors.text : colors.muted,
-                rightPanelCollapsed_ || rightPanelAutoCollapsed_);
+                powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_);
             return;
         }
         if (id == IdDisconnect) {
