@@ -7,6 +7,8 @@
 #include "TerminalModel.h"
 #include "PowerPane.h"
 #include "ApiServer.h"
+#include "SessionService.h"
+#include "CmdLineEditor.h"
 #include "ToolbarIcons.h"
 #include <future>
 
@@ -72,7 +74,7 @@ private:
         std::uint64_t id = 0;
         int mode = -1;
         std::wstring name;
-        std::unique_ptr<IConnection> connection;
+        std::shared_ptr<IConnection> connection;
         std::unique_ptr<SessionLogger> logger;
         TerminalModel terminal;
         int terminalScrollOffset = 0;
@@ -82,6 +84,8 @@ private:
         int lineEndingIndex = 0;
         UINT codePage = CP_UTF8;
         Bytes pendingDecodeBytes;
+        CmdLineEditor cmdEditor;
+        bool rawTrace = false;
         std::wstring host;
         std::wstring username;
         std::wstring password;
@@ -142,6 +146,7 @@ private:
     void ConnectFromDialog();
     void CompleteConnection(bool success, const std::wstring& error);
     void Disconnect();
+    void DisconnectAll();
     void SwitchSession(size_t index);
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
@@ -262,6 +267,7 @@ private:
 
     std::vector<HWND> toolbarButtons_;
     ApiServer apiServer_;
+    SessionService sessionService_;
     PowerService powerService_;
     PowerPane powerPane_;
     bool powerVisible_ = false;
@@ -272,6 +278,9 @@ private:
     HWND disconnectButton_ = nullptr;
     HWND connectionHeader_ = nullptr;
     HWND connectionList_ = nullptr;
+    HWND disconnectAllButton_ = nullptr;
+    bool windowResizing_ = false;
+    bool disconnectAllPending_ = false;
     HWND terminal_ = nullptr;
     HWND status_ = nullptr;
     HWND statusTip_ = nullptr;

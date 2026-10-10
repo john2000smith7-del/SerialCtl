@@ -7,7 +7,6 @@
 #include "QueuedConnection.h"
 #include "CmdConnection.h"
 #include "SerialConnection.h"
-#include "SerialShareConnection.h"
 #include "SharedSerialConnection.h"
 #include "TcpConnection.h"
 #include "Win32Helpers.h"
@@ -43,6 +42,7 @@ constexpr UINT MessageConnection = WM_APP + 5;
 constexpr UINT MessageHostKey = WM_APP + 6;
 constexpr UINT MessageDiscovery = WM_APP + 7;
 constexpr UINT MessageApi = WM_APP + 8;
+constexpr UINT MessageInputAccepted = WM_APP + 10;
 constexpr UINT_PTR DiscoveryTimerId = 4003;
 constexpr int IdSharedAdvancedPort = 9010;
 constexpr int IdSharedAutoPort = 9011;
@@ -87,7 +87,7 @@ enum ControlId {
     IdSftpTransferList,
     IdSftpClearTransfers,
     IdSaveCommands,
-    IdCmd = 300, IdPower
+    IdCmd = 300, IdPower, IdDisconnectAll
 };
 
 enum TerminalMenuId {
@@ -100,7 +100,7 @@ enum TerminalMenuId {
     IdMenuPaste,
     IdMenuEncodingUtf8 = 2201,
     IdMenuEncodingGbk,
-    IdMenuEncodingGb2312
+    IdMenuEncodingGb2312, IdMenuRawTrace
 };
 
 enum LineEndingMenuId {
@@ -239,6 +239,7 @@ bool PointInRect(const RECT& rect, POINT point) {
 
 struct DiscoveryMessage { HWND dialog; unsigned generation; std::uint16_t port = 0; std::vector<std::wstring> names; std::wstring error; bool success = false; };
 
+struct InputAcceptedMessage { std::string id, source; Bytes bytes; };
 struct ApiMessage { std::string method,path; Json body; std::promise<Json> result; std::atomic_int state{0}; };
 using ApiRequestMessage = std::shared_ptr<ApiMessage>;
 
@@ -469,7 +470,7 @@ void CenterOnOwner(HWND window, HWND owner) {
         x = std::max(workLeft, std::min(x, workRight - width));
         y = std::max(workTop, std::min(y, workBottom - height));
     }
-    SetWindowPos(window, HWND_TOP, x, y, width, height, SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(window, nullptr, x, y, width, height, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
 }
 
 void DrawChevronDown(HDC dc, const RECT& rect, COLORREF color) {
@@ -538,14 +539,7 @@ void DrawSftpEntryIcon(HDC dc, const RECT& rect, COLORREF color, bool directory,
 }
 
 void DrawPlusIcon(HDC dc, const RECT& rect, COLORREF color) {
-    HPEN pen = CreatePen(PS_SOLID, 2, color);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
-    const int cx = rect.left + 18;
-    const int cy = (rect.top + rect.bottom) / 2;
-    MoveToEx(dc, cx - 4, cy, nullptr); LineTo(dc, cx + 5, cy);
-    MoveToEx(dc, cx, cy - 4, nullptr); LineTo(dc, cx, cy + 5);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
+    UiPlus(dc,rect,color,Ui::Scale(96));
 }
 
 void DrawEditIcon(HDC dc, const RECT& rect, COLORREF color) {
@@ -1734,8 +1728,25 @@ bool MainWindow::PreTranslate(MSG& message) {
 LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case PowerStateChanged:
+        if(disconnectAllPending_ && !powerService_.State().value("connected",false)){disconnectAllPending_=false;powerPageOpened_=false;powerVisible_=false;RECT r{};GetClientRect(window_,&r);LayoutControls(r.right,r.bottom);}
         RefreshConnectionList();
         return 0;
+    case MessageInputAccepted: {
+        std::unique_ptr<InputAcceptedMessage> m(reinterpret_cast<InputAcceptedMessage*>(lParam));
+        if (m->id.rfind("session-", 0) != 0) return 0;
+        SessionState* session = FindSession(std::stoull(m->id.substr(8)));
+        if (!session) return 0;
+        if (session->rawTrace && session->logger) session->logger->WriteStatus(L"TX Base64 " + MultiByteToWide(reinterpret_cast<const std::uint8_t*>(Encode64(m->bytes).data()), Encode64(m->bytes).size(), CP_UTF8));
+        auto text = MultiByteToWide(m->bytes.data(), m->bytes.size(), session->codePage);
+        if (session->mode == 4) {
+            auto result = session->terminal.Feed(text, timestampEnabled_ ? CurrentTerminalTimestamp() : L"");
+            if (session->logger) session->logger->WriteText(result.logText);
+            if (session->terminalScrollOffset > 0) { session->terminalScrollOffset += static_cast<int>(result.scrollbackAdded); session->terminalHasNewOutput = true; }
+            if (session == activeSession_) InvalidateRect(terminal_, nullptr, FALSE);
+        }
+        if (session->logger) session->logger->WriteStatus(L"输入来源 " + MultiByteToWide(reinterpret_cast<const std::uint8_t*>(m->source.data()), m->source.size(), CP_UTF8) + L" · " + std::to_wstring(m->bytes.size()) + L" 字节");
+        return 0;
+    }
     case MessageApi: {
         std::unique_ptr<ApiRequestMessage> pointer(reinterpret_cast<ApiRequestMessage*>(lParam));
         auto request=*pointer; int expected=0;
@@ -1752,12 +1763,19 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         RefreshCommandList();
         RefreshConnectionList();
         ApplyTheme();
+        sessionService_.ObserveInput([this](const std::string& id, const Bytes& bytes, const std::string& source) {
+            apiServer_.Publish(id, bytes, source.c_str(), "input");
+            auto* message = new InputAcceptedMessage{id, source, bytes};
+            if (!PostMessageW(window_, MessageInputAccepted, 0, reinterpret_cast<LPARAM>(message))) delete message;
+        });
         { std::wstring error;
           if (!apiServer_.Start([this](const auto& method, const auto& path, const auto& body) {
                   return ApiRequest(method, path, body);
               }, error)) AppendStatus(error, true);
         }
         return 0;
+    case WM_ENTERSIZEMOVE: windowResizing_=true; return 0;
+    case WM_EXITSIZEMOVE: windowResizing_=false; UpdateTerminalDimensions(); return 0;
     case WM_SIZE:
         if (wParam == SIZE_MINIMIZED) return 0;
         KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
@@ -1813,11 +1831,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (rightPanelDragging_ && GetCapture() == window_) {
             RECT client{};
             GetClientRect(window_, &client);
-            rightPanelWidth_ = std::max(Ui::MinRightWidth,
+            const int newWidth = std::max(Ui::MinRightWidth,
                 std::min(Ui::MaxRightWidth,
                     static_cast<int>(client.right) - GET_X_LPARAM(lParam)));
-            LayoutControls(client.right, client.bottom);
-            InvalidateRect(window_, nullptr, TRUE);
+            if (newWidth != rightPanelWidth_) { rightPanelWidth_=newWidth; LayoutControls(client.right, client.bottom); InvalidateRect(window_, nullptr, FALSE); }
             return 0;
         }
         break;
@@ -1825,12 +1842,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (rightPanelDragging_) {
             rightPanelDragging_ = false;
             if (GetCapture() == window_) ReleaseCapture();
+            UpdateTerminalDimensions();
             SaveUiState();
             return 0;
         }
         break;
     case WM_CAPTURECHANGED:
         rightPanelDragging_ = false;
+        UpdateTerminalDimensions();
         break;
     case WM_TIMER:
         if(wParam==SideAnimationTimerId) {
@@ -1923,6 +1942,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             }
             else if (id == IdTheme) { darkMode_ = !darkMode_; ApplyTheme(); }
             else if (id == IdDisconnect) Disconnect();
+            else if (id == IdDisconnectAll) DisconnectAll();
             else if (id == IdSaveCommands) SaveCommands();
             else if (id == IdImport) ImportCommands();
             else if (id == IdExport) ExportCommands();
@@ -2095,6 +2115,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
         {
             MSG pending{};
+            while (PeekMessageW(&pending, window_, MessageInputAccepted, MessageInputAccepted, PM_REMOVE)) delete reinterpret_cast<InputAcceptedMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageApi, MessageApi, PM_REMOVE)) delete reinterpret_cast<ApiRequestMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageDiscovery, MessageDiscovery, PM_REMOVE)) delete reinterpret_cast<DiscoveryMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageConnection, MessageConnection, PM_REMOVE))
@@ -2162,8 +2183,10 @@ void MainWindow::CreateControls() {
 
     connectionHeader_ = CreateChild(L"STATIC", L"连接", SS_LEFT, -1);
     SendMessageW(connectionHeader_, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont_), TRUE);
+    disconnectAllButton_=CreateChild(L"BUTTON", L"全部断开", BS_OWNERDRAW, IdDisconnectAll);
     connectionList_ = CreateChild(L"LISTBOX", L"", LBS_OWNERDRAWFIXED | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, IdConnectionList);
 
+    SetWindowSubclass(connectionList_, OverlayListSubclassProc, 2, reinterpret_cast<DWORD_PTR>(this));
     terminal_ = CreateChild(L"STATIC", L"终端", SS_NOTIFY | WS_TABSTOP, IdTerminal);
     SendMessageW(terminal_, WM_SETFONT, reinterpret_cast<WPARAM>(terminalFont_), TRUE);
     SetWindowSubclass(terminal_, TerminalSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
@@ -2230,17 +2253,18 @@ void MainWindow::CreateControls() {
 }
 
 void MainWindow::LayoutControls(int width, int height) {
+    UiLayoutBatch batch;
     if (width <= 0 || height <= 0) return;
     rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth + Ui::MinCenterWidth + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
     int x = Ui::Space * 2;
     const int buttonWidths[] = {89, 88, 98, 118, 92, 88};
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
-        MoveWindow(toolbarButtons_[index], x, toolbarButtonTop,
+        batch.Move(toolbarButtons_[index], x, toolbarButtonTop,
             Ui::Scale(buttonWidths[index]), Ui::StandardHeight, TRUE);
         x += Ui::Scale(buttonWidths[index] + 4);
     }
-    MoveWindow(themeButton_, width - Ui::Space * 2 - Ui::StandardHeight,
+    batch.Move(themeButton_, width - Ui::Space * 2 - Ui::StandardHeight,
         (Ui::ToolbarHeight - Ui::StandardHeight) / 2,
         Ui::StandardHeight, Ui::StandardHeight, TRUE);
 
@@ -2256,23 +2280,24 @@ void MainWindow::LayoutControls(int width, int height) {
     const int leftListTop = headerTop + Ui::StandardHeight + 4;
     const int rightListTop = headerTop + Ui::StandardHeight + 4;
 
-    MoveWindow(connectionHeader_, leftInnerLeft, headerTop + 4,
+    batch.Move(connectionHeader_, leftInnerLeft, headerTop + 4,
         leftInnerRight - leftInnerLeft - Ui::Scale(64), Ui::Scale(24), TRUE);
-    MoveWindow(disconnectButton_, leftInnerRight - Ui::Scale(56), headerTop,
+    batch.Move(disconnectButton_, leftInnerRight - Ui::Scale(56), headerTop,
         Ui::Scale(56), Ui::CompactHeight, TRUE);
-    MoveWindow(connectionList_, leftInnerLeft, leftListTop, leftInnerRight - leftInnerLeft,
-        std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space : 0)), TRUE);
+    batch.Move(connectionList_, leftInnerLeft, leftListTop, leftInnerRight - leftInnerLeft,
+        std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding - Ui::CompactHeight - Ui::Space - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space : 0)), TRUE);
 
-    MoveWindow(terminal_, layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
+    batch.Move(disconnectAllButton_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - Ui::CompactHeight, leftInnerRight-leftInnerLeft, Ui::CompactHeight, FALSE);
+    batch.Move(terminal_, layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
         layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
         centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
 
-    MoveWindow(powerPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
+    batch.Move(powerPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
         layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
         centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
-    ShowWindow(terminal_, powerVisible_ ? SW_HIDE : SW_SHOW);
-    ShowWindow(powerPane_.Handle(), powerVisible_ ? SW_SHOW : SW_HIDE);
-    ShowWindow(disconnectButton_,activeSession_&&!powerVisible_?SW_SHOW:SW_HIDE);
+    batch.Show(terminal_, powerVisible_ ? SW_HIDE : SW_SHOW);
+    batch.Show(powerPane_.Handle(), powerVisible_ ? SW_SHOW : SW_HIDE);
+    batch.Show(disconnectButton_,activeSession_&&!powerVisible_?SW_SHOW:SW_HIDE);
     EnableWindow(rightPanelToggleButton_,!powerVisible_);
     const int rightLeft = layout.rightLeft;
     const int rightInnerLeft = rightLeft + Ui::PanelPadding;
@@ -2283,83 +2308,84 @@ void MainWindow::LayoutControls(int width, int height) {
     const int toggleLeft = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)
         ? rightLeft + (layout.rightWidth - Ui::Gap - Ui::IconButtonSize) / 2
         : actualRightInnerRight - Ui::IconButtonSize;
-    MoveWindow(rightPanelToggleButton_, toggleLeft, headerTop + 2,
+    batch.Move(rightPanelToggleButton_, toggleLeft, headerTop + 2,
         Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
-    MoveWindow(commandHeader_, rightInnerLeft + 2, headerTop + 2,
+    batch.Move(commandHeader_, rightInnerLeft + 2, headerTop + 2,
         Ui::SegmentWidth, Ui::SegmentHeight, TRUE);
-    MoveWindow(sftpTabButton_, rightInnerLeft + 2 + Ui::SegmentWidth, headerTop + 2,
+    batch.Move(sftpTabButton_, rightInnerLeft + 2 + Ui::SegmentWidth, headerTop + 2,
         Ui::SegmentWidth, Ui::SegmentHeight, TRUE);
     const int addCommandRight = rightInnerRight - Ui::IconButtonSize - Ui::Space;
     const int addCommandLeftLimit = rightInnerLeft + 4 + Ui::SegmentWidth * 2 + Ui::Space;
     const int addCommandWidth = std::max(Ui::IconButtonSize,
-        std::min(104, addCommandRight - addCommandLeftLimit));
-    SetWindowTextW(addCommandButton_, addCommandWidth >= 80 ? L"添加命令" : L"");
-    MoveWindow(addCommandButton_, addCommandRight - addCommandWidth, headerTop + 2,
+        std::min(Ui::Scale(104), addCommandRight - addCommandLeftLimit));
+    SetWindowTextW(addCommandButton_, addCommandWidth >= Ui::Scale(80) ? L"添加命令" : L"");
+    batch.Move(addCommandButton_, addCommandRight - addCommandWidth, headerTop + 2,
         addCommandWidth, Ui::SegmentHeight, TRUE);
     const int footerTop = sideCardBottom - Ui::PanelPadding - Ui::CompactHeight;
     const int listBottom = footerTop - Ui::Gap;
-    MoveWindow(commandList_, rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
+    batch.Move(commandList_, rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
         std::max(20, listBottom - rightListTop), TRUE);
     const int commandWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 3) / 4;
     int commandX = rightInnerLeft;
     for (HWND button : {importButton_, exportButton_, deleteCommandButton_, saveCommandsButton_}) {
-        MoveWindow(button, commandX, footerTop, commandWidth, Ui::CompactHeight, TRUE);
+        batch.Move(button, commandX, footerTop, commandWidth, Ui::CompactHeight, TRUE);
         commandX += commandWidth + Ui::Space;
     }
     const int sftpContentWidth = std::max(1, rightInnerRight - rightInnerLeft);
-    MoveWindow(sftpPath_, rightInnerLeft, rightListTop,
+    batch.Move(sftpPath_, rightInnerLeft, rightListTop,
         sftpContentWidth, Ui::CompactHeight, TRUE);
     const int sftpHeaderTop = rightListTop + Ui::CompactHeight + Ui::Space;
     const bool showModifiedColumn = sftpContentWidth - Ui::OverlayScrollLaneWidth >= Ui::Scale(300);
     int nameWidth, sizeWidth, modifiedWidth;
     SftpColumnWidths(sftpContentWidth - Ui::OverlayScrollLaneWidth, nameWidth, sizeWidth, modifiedWidth);
-    MoveWindow(sftpNameHeader_, rightInnerLeft, sftpHeaderTop,
+    batch.Move(sftpNameHeader_, rightInnerLeft, sftpHeaderTop,
         nameWidth, Ui::CompactHeight, TRUE);
-    MoveWindow(sftpSizeHeader_, rightInnerLeft + nameWidth, sftpHeaderTop,
+    batch.Move(sftpSizeHeader_, rightInnerLeft + nameWidth, sftpHeaderTop,
         sizeWidth, Ui::CompactHeight, TRUE);
-    MoveWindow(sftpModifiedHeader_, rightInnerLeft + nameWidth + sizeWidth,
+    batch.Move(sftpModifiedHeader_, rightInnerLeft + nameWidth + sizeWidth,
         sftpHeaderTop, modifiedWidth, Ui::CompactHeight, TRUE);
-    ShowWindow(sftpModifiedHeader_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && sftpPanelVisible_ &&
+    batch.Show(sftpModifiedHeader_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && sftpPanelVisible_ &&
         showModifiedColumn ? SW_SHOW : SW_HIDE);
     const int sftpListTop = sftpHeaderTop + Ui::CompactHeight;
     const int transferListHeight = sftpTransferExpanded_ ? Ui::SftpTransferDrawerHeight : 0;
     const int transferHeaderTop = footerTop - Ui::Gap - Ui::CompactHeight -
         (sftpTransferExpanded_ ? Ui::Gap + transferListHeight : 0);
     const int sftpListBottom = transferHeaderTop - Ui::Gap;
-    MoveWindow(sftpList_, rightInnerLeft, sftpListTop, sftpContentWidth,
+    batch.Move(sftpList_, rightInnerLeft, sftpListTop, sftpContentWidth,
         std::max(Ui::SftpTableRowHeight, sftpListBottom - sftpListTop), TRUE);
     const int clearWidth = 64;
-    MoveWindow(sftpTransferToggleButton_, rightInnerLeft, transferHeaderTop,
+    batch.Move(sftpTransferToggleButton_, rightInnerLeft, transferHeaderTop,
         std::max(80, sftpContentWidth - clearWidth - Ui::Space), Ui::CompactHeight, TRUE);
-    MoveWindow(sftpClearTransfersButton_, rightInnerRight - clearWidth, transferHeaderTop,
+    batch.Move(sftpClearTransfersButton_, rightInnerRight - clearWidth, transferHeaderTop,
         clearWidth, Ui::CompactHeight, TRUE);
-    MoveWindow(sftpTransferList_, rightInnerLeft,
+    batch.Move(sftpTransferList_, rightInnerLeft,
         transferHeaderTop + Ui::CompactHeight + Ui::Gap, sftpContentWidth,
         transferListHeight, TRUE);
-    ShowWindow(sftpTransferList_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && sftpPanelVisible_ &&
+    batch.Show(sftpTransferList_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && sftpPanelVisible_ &&
         sftpTransferExpanded_ ? SW_SHOW : SW_HIDE);
     const int sftpWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 3) / 4;
-    MoveWindow(sftpUpButton_, rightInnerLeft, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
-    MoveWindow(sftpRefreshButton_, rightInnerLeft + sftpWidth + Ui::Space, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
-    MoveWindow(sftpUploadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 2, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
-    MoveWindow(sftpDownloadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 3, footerTop,
+    batch.Move(sftpUpButton_, rightInnerLeft, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
+    batch.Move(sftpRefreshButton_, rightInnerLeft + sftpWidth + Ui::Space, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
+    batch.Move(sftpUploadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 2, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
+    batch.Move(sftpDownloadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 3, footerTop,
         rightInnerRight - (rightInnerLeft + (sftpWidth + Ui::Space) * 3), Ui::CompactHeight, TRUE);
 
-    MoveWindow(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - statusHeight_,
+    batch.Move(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - statusHeight_,
         leftInnerRight - leftInnerLeft, statusHeight_, TRUE);
-    ShowWindow(rightPanelToggleButton_, SW_SHOW);
+    batch.Show(rightPanelToggleButton_, SW_SHOW);
     if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) {
         for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
                  addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
                  sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,
                  sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_, sftpUploadButton_,
                  sftpDownloadButton_})
-            ShowWindow(control, SW_HIDE);
+            batch.Show(control, SW_HIDE);
     } else {
-        ShowWindow(commandHeader_, SW_SHOW);
-        ShowWindow(sftpTabButton_, SW_SHOW);
+        batch.Show(commandHeader_, SW_SHOW);
+        batch.Show(sftpTabButton_, SW_SHOW);
         ShowSftpPanel(sftpPanelVisible_);
     }
+    batch.Commit();
     UpdateTerminalDimensions();
 }
 
@@ -2583,12 +2609,12 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
                 powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_);
             return;
         }
-        if (id == IdDisconnect) {
+        if (id == IdDisconnect || id == IdDisconnectAll) {
             const COLORREF fill = enabled ? colors.panelAlt : colors.panel;
             DrawRoundedBox(dc, rect, Ui::Radius,
                 pressed ? colors.accentSoft : (hovered && enabled ? colors.accentSoft : fill),
                 focused ? colors.accent : colors.border);
-            DrawTextSimple(dc, L"断开", rect, enabled ? colors.danger : colors.muted,
+            DrawTextSimple(dc, id==IdDisconnect?L"断开":L"全部断开", rect, enabled ? colors.danger : colors.muted,
                 smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
         }
@@ -2651,7 +2677,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
             DrawRoundedBox(dc, rect, Ui::Radius,
                 pressed ? colors.accentSoft : (hovered ? colors.accentSoft : colors.panel),
                 focused ? colors.accent : colors.panel);
-            DrawPlusIcon(dc, rect, colors.accent);
+            RECT icon=rect;auto label=ControlText(item.hwndItem);if(!label.empty())icon.right=icon.left+Ui::Scale(32);
+            DrawPlusIcon(dc, icon, colors.accent);
             RECT textRect = rect;
             textRect.left += 28;
             textRect.right -= 8;
@@ -3041,10 +3068,12 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                 InvalidateRect(GetDlgItem(dialog, IDC_DIALOG_ERROR), nullptr, TRUE);
                 return TRUE;
             }
+            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
             EndDialog(dialog, IDOK);
             return TRUE;
         }
         if (LOWORD(wParam) == IDCANCEL) {
+            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
             EndDialog(dialog, IDCANCEL);
             return TRUE;
         }
@@ -3275,7 +3304,7 @@ void MainWindow::ConnectFromDialog() {
             });
         sessionName = pendingUsername_ + L"@" + pendingHost_;
     } else if (pendingMode_ == 1) {
-        connection = std::make_unique<SerialShareConnection>(pendingSerial_, DefaultSharePort);
+        connection = std::make_unique<SerialConnection>(pendingSerial_);
         sessionName = pendingSerial_.portName + L" 本地串口";
     } else if (pendingMode_ == 2) {
         connection = std::make_unique<TcpConnection>(pendingHost_, pendingPort_, true);
@@ -3301,7 +3330,14 @@ void MainWindow::ConnectFromDialog() {
     session->logger = std::make_unique<SessionLogger>();
     const std::uint64_t sessionId = session->id;
 
-    session->connection = std::make_unique<QueuedConnection>(std::move(connection));
+    session->connection = std::make_shared<QueuedConnection>(std::move(connection));
+    if (session->mode == 1 || session->mode == 4) {
+        Json resource={{"id", "session-"+std::to_string(session->id)}, {"name", WideToMultiByte(session->name,CP_UTF8)},
+            {"kind",session->mode==1?"serial":"cmd"},{"codePage",session->codePage}};
+        if (session->mode == 1) { resource["com"]=WideToMultiByte(pendingSerial_.portName,CP_UTF8); resource["baudRate"]=pendingSerial_.baudRate; }
+        sessionService_.Register(resource, session->connection);
+        apiServer_.SetSessions(sessionService_.Ids());
+    }
     pendingSession_ = std::move(session);
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
@@ -3334,6 +3370,8 @@ void MainWindow::ConnectFromDialog() {
                 result.release();
         });
     } catch (...) {
+        sessionService_.Unregister("session-"+std::to_string(sessionId));
+        apiServer_.SetSessions(sessionService_.Ids());
         pendingSession_.reset();
         AppendStatus(L"无法启动连接工作线程。", true);
     }
@@ -3343,13 +3381,15 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     if (connectionThread_.joinable()) connectionThread_.join();
     if (!pendingSession_) return;
     if (!success || closing_ || connectionCancel_.load()) {
+        sessionService_.Unregister("session-"+std::to_string(pendingSession_->id));
+        apiServer_.SetSessions(sessionService_.Ids());
         pendingSession_.reset();
         pendingConnectionData_.clear();
         pendingConnectionBytes_ = 0;
         if (!closing_) AppendStatus(error.empty() ? L"连接已取消。" : error, true);
         return;
     }
-    if (pendingSession_->mode == 1) pendingSession_->port = static_cast<SerialShareConnection*>(static_cast<QueuedConnection*>(pendingSession_->connection.get())->Transport())->SharedPort();
+    if (pendingSession_->mode == 1) pendingSession_->port = static_cast<std::uint16_t>(apiServer_.Port());
     const std::uint64_t id = pendingSession_->id;
     sessions_.push_back(std::move(pendingSession_));
     RefreshConnectionList();
@@ -3358,8 +3398,8 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
     if (activeSession_->mode == 1) {
-        AppendStatus(activeSession_->port ? L"已连接：" + activeSession_->name + L" · 共享 TCP " + std::to_wstring(activeSession_->port) :
-            L"本地串口已连接；7000–7015 均不可用，TCP 共享未启用", activeSession_->port == 0);
+        AppendStatus(activeSession_->port ? L"已连接：" + activeSession_->name + L" · WebSocket " + std::to_wstring(activeSession_->port) :
+            L"本地串口已连接；7000–7015 均不可用，网络服务未启用", activeSession_->port == 0);
     } else AppendStatus(L"已连接：" + activeSession_->name, false);
     SetFocus(terminal_);
 }
@@ -3384,6 +3424,8 @@ void MainWindow::Disconnect() {
         [this](const std::unique_ptr<SessionState>& item) { return item.get() == activeSession_; });
     if (found == sessions_.end()) return;
     const size_t index = static_cast<size_t>(found - sessions_.begin());
+    sessionService_.Unregister("session-"+std::to_string((*found)->id));
+    apiServer_.SetSessions(sessionService_.Ids());
     (*found)->connection->Stop();
     (*found)->logger->Stop();
     sessions_.erase(found);
@@ -3403,6 +3445,20 @@ void MainWindow::Disconnect() {
         SetConnectedUi(false);
     }
     AppendStatus(L"已断开", false);
+}
+
+void MainWindow::DisconnectAll() {
+    StopCommandSequence(false);connectionCancel_=true;
+    if(pendingSession_)pendingSession_->connection->CancelStart();
+    sftpOperationCancel_=true;sftpTransferCancel_=true;
+    while(!sessions_.empty()){activeSession_=sessions_.back().get();connection_=activeSession_->connection.get();logger_=activeSession_->logger.get();Disconnect();}
+    if(powerService_.State().value("connected",false)){
+        auto action=powerService_.Submit({{"type","disconnect"},{"source","local"}});
+        if(action.contains("error")){AppendStatus(L"电源断开请求失败；输出状态未知",true);return;}
+        disconnectAllPending_=true;
+    }else {powerPageOpened_=false;powerVisible_=false;}
+    RefreshConnectionList();RECT r{};GetClientRect(window_,&r);LayoutControls(r.right,r.bottom);
+    AppendStatus(disconnectAllPending_?L"会话已断开；电源任务收尾与掉电确认处理中":L"全部连接已断开并清空",false);
 }
 
 MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
@@ -3454,12 +3510,13 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
         AppendStatus(L"请先建立连接。", true);
         return false;
     }
+    ScrollTerminalToBottom();
     std::wstring error;
-    if (!connection_->Send(data, error)) {
-        AppendStatus(error, true);
-        return false;
-    }
-    apiServer_.Publish("session-" + std::to_string(activeSession_->id), data, "gui", "input");
+    if (activeSession_->mode == 1 || activeSession_->mode == 4) {
+        auto result=sessionService_.Input("session-"+std::to_string(activeSession_->id), data, "gui");
+        if (result.contains("error")) { auto text=result["error"].dump(); AppendStatus(MultiByteToWide(reinterpret_cast<const std::uint8_t*>(text.data()),text.size(),CP_UTF8),true);return false; }
+    } else if (!connection_->Send(data, error)) { AppendStatus(error,true);return false; }
+    if (activeSession_->mode == 4) localEcho=false;
     if (localEcho && !echoedText.empty()) {
         const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
         const TerminalFeedResult result = activeSession_->terminal.Feed(echoedText, timestamp);
@@ -3476,11 +3533,25 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
 void MainWindow::SendTerminalCharacter(wchar_t character) {
     if (runningCommandIndex_ >= 0) return;
     if (!activeSession_ || !connection_ || !connection_->IsConnected()) return;
+    ScrollTerminalToBottom();
+    if (selectedMode_ == 4) {
+        auto& editor=activeSession_->cmdEditor;
+        if (character == L'\r') {
+            auto text=editor.Text()+L"\r\n";
+            auto encoded=WideToMultiByte(text,SelectedCodePage());
+            if(SendBytesToActive(Bytes(encoded.begin(),encoded.end()),false))editor.Submitted();
+        } else if (character == L'\b') editor.Edit(CmdLineEditor::Key::Backspace);
+        else if (character == 3) { AppendStatus(L"CMD 管道模式不支持 Ctrl+C；可使用全部断开终止进程树",true); }
+        else if (character >= 32 || character == L'\t') {
+            if(!editor.Insert(std::wstring(1,character)))AppendStatus(L"CMD 输入超过 8191 字符",true);
+        }
+        InvalidateRect(terminal_,nullptr,FALSE);return;
+    }
     std::wstring text;
     if (character == L'\r') text = selectedMode_ == 0 ? L"\r" : SelectedLineEnding();
     else if (character == L'\b' && selectedMode_ == 0) text.assign(1, static_cast<wchar_t>(0x7f));
     else text.assign(1, character);
-    const std::string encoded = WideToMultiByte(text, SelectedCodePage());
+    const std::string encoded = WideToMultiByte(text, selectedMode_==4&&connection_&&connection_->InputCodePage()?connection_->InputCodePage():SelectedCodePage());
     if (encoded.empty() && character != 0) return;
     SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text);
 }
@@ -3488,6 +3559,15 @@ void MainWindow::SendTerminalCharacter(wchar_t character) {
 void MainWindow::SendTerminalKey(WPARAM key, bool shift, bool control, bool alt) {
     if (runningCommandIndex_ >= 0) return;
     if (!activeSession_) return;
+    ScrollTerminalToBottom();
+    if (selectedMode_ == 4) {
+        using Key=CmdLineEditor::Key;
+        switch(key){case VK_LEFT:activeSession_->cmdEditor.Edit(Key::Left);break;case VK_RIGHT:activeSession_->cmdEditor.Edit(Key::Right);break;
+        case VK_HOME:activeSession_->cmdEditor.Edit(Key::Home);break;case VK_END:activeSession_->cmdEditor.Edit(Key::End);break;
+        case VK_DELETE:activeSession_->cmdEditor.Edit(Key::Delete);break;case VK_UP:activeSession_->cmdEditor.Edit(Key::Up);break;case VK_DOWN:activeSession_->cmdEditor.Edit(Key::Down);break;
+        case VK_ESCAPE:activeSession_->cmdEditor.Clear();break;default:AppendStatus(L"CMD 本地行编辑不支持该控制键",true);break;}
+        InvalidateRect(terminal_,nullptr,FALSE);return;
+    }
     std::string sequence;
     const int modifier = 1 + (shift ? 1 : 0) + (alt ? 2 : 0) + (control ? 4 : 0);
     const bool modified = modifier != 1;
@@ -3536,7 +3616,7 @@ void MainWindow::SendCommand(size_t index) {
     const CommandItem& command = commands_[index];
     if (command.commands.size() == 1) {
         const std::wstring text = command.commands.front() + SelectedLineEnding();
-        const std::string encoded = WideToMultiByte(text, SelectedCodePage());
+        const std::string encoded = WideToMultiByte(text, selectedMode_==4&&connection_&&connection_->InputCodePage()?connection_->InputCodePage():SelectedCodePage());
         if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text))
             AppendStatus(L"已发送命令：" + command.commands.front(), false);
         return;
@@ -3626,6 +3706,8 @@ void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, b
 void MainWindow::AppendData(std::uint64_t sessionId, const Bytes& data) {
     SessionState* session = FindSession(sessionId);
     if (!session) return;
+    if(session->rawTrace&&session->logger){auto raw=Encode64(data);session->logger->WriteStatus(L"RX Base64 "+MultiByteToWide(reinterpret_cast<const std::uint8_t*>(raw.data()),raw.size(),CP_UTF8));}
+    if(session->mode==4 && session->connection->OutputCodePage()){session->codePage=session->connection->OutputCodePage();if(session==activeSession_)selectedCodePage_=session->codePage;}
     const std::wstring decoded = DecodeTerminalData(*session, data);
     const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
     const bool wasAlternateScreen = session->terminal.AlternateScreen();
@@ -3808,6 +3890,7 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     static const wchar_t encodingGb2312Label[] = L"编码 · GB2312";
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuLocalEcho, localEchoLabel);
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuTimestamp, timestampLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (activeSession_&&activeSession_->rawTrace?MF_CHECKED:0), IdMenuRawTrace, L"记录 RX/TX 原始字节（Base64）");
     AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuEncodingUtf8, encodingUtf8Label);
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuEncodingGbk, encodingGbkLabel);
@@ -3834,6 +3917,7 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     InvalidateRect(window_, nullptr, FALSE);
 
     switch (command) {
+    case IdMenuRawTrace: if(activeSession_)activeSession_->rawTrace=!activeSession_->rawTrace;break;
     case IdMenuPaste: PasteToTerminal(); break;
     case IdMenuEndingCr: case IdMenuEndingLf: case IdMenuEndingCrLf: case IdMenuEndingNone:
         if (selectedMode_ != 0) { lineEndingIndex_ = static_cast<int>(command - IdMenuEndingCr); if (activeSession_) activeSession_->lineEndingIndex = lineEndingIndex_; }
@@ -3906,6 +3990,13 @@ void MainWindow::PasteToTerminal() {
     CloseClipboard();
     if (pasted.empty()) return;
 
+    if(selectedMode_==4){
+        ScrollTerminalToBottom();auto& editor=activeSession_->cmdEditor;
+        auto draft=editor.Text();draft.insert(editor.Cursor(),pasted);auto end=draft.find_last_of(L"\r\n");
+        if(end==std::wstring::npos){if(!editor.Insert(pasted))AppendStatus(L"CMD 输入过长",true);}
+        else {auto submitted=draft.substr(0,end+1);auto encoded=WideToMultiByte(submitted,SelectedCodePage());if(SendBytesToActive(Bytes(encoded.begin(),encoded.end()),false)){editor.Clear();if(!editor.Insert(draft.substr(end+1)))AppendStatus(L"CMD 尾行过长",true);}}
+        ClearTerminalSelection();InvalidateRect(terminal_,nullptr,FALSE);return;
+    }
     std::wstring transmitted = pasted;
     if (activeSession_->terminal.BracketedPaste())
         transmitted = std::wstring(1, 0x1b) + L"[200~" + pasted +
@@ -3919,7 +4010,7 @@ void MainWindow::PasteToTerminal() {
 }
 
 void MainWindow::UpdateTerminalDimensions() {
-    if (!terminal_ || !terminalFont_ || rightPanelAnimating_) return;
+    if (!terminal_ || !terminalFont_ || rightPanelAnimating_ || rightPanelDragging_ || windowResizing_) return;
     RECT client{};
     GetClientRect(terminal_, &client);
     HDC dc = GetDC(terminal_);
@@ -3941,8 +4032,16 @@ void MainWindow::UpdateTerminalDimensions() {
     const int oldColumns = terminalVisibleColumns_, oldRows = terminalVisibleRows_;
     terminalVisibleColumns_ = std::max(20, contentWidth / terminalCellWidth_);
     terminalVisibleRows_ = std::max(2, contentHeight / terminalLineHeight_);
+    if(oldColumns==terminalVisibleColumns_ && oldRows==terminalVisibleRows_) return;
     for (const auto& session : sessions_) {
+        auto& model=session->terminal;
+        const size_t oldTop=model.DisplayLineCount()>static_cast<size_t>(oldRows+session->terminalScrollOffset)?model.DisplayLineCount()-static_cast<size_t>(oldRows+session->terminalScrollOffset):0;
+        auto readAnchor=model.CaptureAnchor(oldTop);
+        auto selectionAnchor=model.CaptureAnchor(terminalSelectionAnchorLine_,terminalSelectionAnchorColumn_);
+        auto selectionFocus=model.CaptureAnchor(terminalSelectionFocusLine_,terminalSelectionFocusColumn_);
         session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
+        if(session->terminalScrollOffset>0){auto line=model.LocateAnchor(readAnchor).first;session->terminalScrollOffset=std::max(0,static_cast<int>(model.DisplayLineCount()-std::min(line,model.DisplayLineCount()))-terminalVisibleRows_);}
+        if(session.get()==activeSession_ && terminalSelectionActive_){auto a=model.LocateAnchor(selectionAnchor),b=model.LocateAnchor(selectionFocus);terminalSelectionAnchorLine_=a.first;terminalSelectionAnchorColumn_=a.second;terminalSelectionFocusLine_=b.first;terminalSelectionFocusColumn_=b.second;}
         if (session->connection && (oldColumns != terminalVisibleColumns_ || oldRows != terminalVisibleRows_))
             session->connection->ResizeTerminal(terminalVisibleColumns_, terminalVisibleRows_);
         const int maximum = std::max(0,
@@ -3970,11 +4069,15 @@ void MainWindow::PaintTerminal(HDC dc) {
 
     if (activeSession_) {
         const TerminalModel& model = activeSession_->terminal;
+        std::unique_ptr<TerminalModel> preview;
+        if(activeSession_->mode==4 && !activeSession_->cmdEditor.Text().empty() && activeSession_->terminalScrollOffset==0)
+            preview=std::make_unique<TerminalModel>(model.PreviewInput(activeSession_->cmdEditor.Text(),activeSession_->cmdEditor.Cursor()));
+        auto displayLine=[&](size_t i)->const TerminalLine&{return preview&&i>=model.HistorySize()?preview->DisplayLine(i-model.HistorySize()):model.DisplayLine(i);};
         const bool showTimestamps = timestampEnabled_ && !model.AlternateScreen();
         const int padding = 8;
         const int timestampWidth = showTimestamps ? 112 : 0;
         const int textLeft = padding + timestampWidth;
-        const size_t totalLines = model.DisplayLineCount();
+        const size_t totalLines = (preview?model.HistorySize()+preview->DisplayLineCount():model.DisplayLineCount());
         const size_t totalColumns = model.MaximumDisplayColumns();
         const int maximumHorizontalOffset = std::max(0,
             static_cast<int>(totalColumns) - terminalVisibleColumns_);
@@ -4006,7 +4109,7 @@ void MainWindow::PaintTerminal(HDC dc) {
         for (int viewRow = 0; viewRow < terminalVisibleRows_; ++viewRow) {
             const size_t lineIndex = topLine + static_cast<size_t>(viewRow);
             if (lineIndex >= totalLines) break;
-            const TerminalLine& line = model.DisplayLine(lineIndex);
+            const TerminalLine& line = displayLine(lineIndex);
             const int y = padding + viewRow * terminalLineHeight_;
             if (showTimestamps && !line.timestamp.empty()) {
                 RECT timestampRect{padding, y, textLeft - 12, y + terminalLineHeight_};
@@ -4066,8 +4169,8 @@ void MainWindow::PaintTerminal(HDC dc) {
 
         if (GetFocus() == terminal_ && model.CursorVisible() &&
             activeSession_->terminalScrollOffset == 0) {
-            const size_t cursorLine = model.CursorDisplayLine();
-            const int cursorColumn = model.CursorColumn() - horizontalOffset;
+            const size_t cursorLine = preview?model.HistorySize()+preview->CursorDisplayLine():model.CursorDisplayLine();
+            const int cursorColumn = (preview?preview->CursorColumn():model.CursorColumn()) - horizontalOffset;
             if (cursorLine >= topLine &&
                 cursorLine < topLine + static_cast<size_t>(terminalVisibleRows_) &&
                 cursorColumn >= 0 && cursorColumn < terminalVisibleColumns_) {
@@ -4302,19 +4405,26 @@ void MainWindow::RefreshConnectionList() {
     for (const auto& session : sessions_)
         if (session->mode == 1 || session->mode == 4)
             apiSessions.push_back("session-" + std::to_string(session->id));
-    apiServer_.SetSessions(apiSessions);
+    apiServer_.SetSessions(sessionService_.Ids());
     size_t selectedIndex = 0;
     if (activeSession_) {
         const auto selected = std::find_if(sessions_.begin(), sessions_.end(),
             [this](const std::unique_ptr<SessionState>& item) { return item.get() == activeSession_; });
         if (selected != sessions_.end()) selectedIndex = static_cast<size_t>(selected - sessions_.begin());
     }
-    SendMessageW(connectionList_, LB_RESETCONTENT, 0, 0);
-    for (const auto& session : sessions_)
-        SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(session->name.c_str()));
-    if(powerPageOpened_)SendMessageW(connectionList_,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"IT6332A"));
+    const LRESULT top=SendMessageW(connectionList_,LB_GETTOPINDEX,0,0);
+    std::wstring topName;
+    if(top>=0 && top<SendMessageW(connectionList_,LB_GETCOUNT,0,0)){auto len=SendMessageW(connectionList_,LB_GETTEXTLEN,top,0);if(len>=0){std::vector<wchar_t> text(static_cast<size_t>(len)+1);SendMessageW(connectionList_,LB_GETTEXT,top,reinterpret_cast<LPARAM>(text.data()));topName=text.data();}}
+    bool same=SendMessageW(connectionList_,LB_GETCOUNT,0,0)==static_cast<LRESULT>(sessions_.size()+(powerPageOpened_?1:0));
+    if(same)for(size_t i=0;i<sessions_.size();++i){auto len=SendMessageW(connectionList_,LB_GETTEXTLEN,i,0);std::vector<wchar_t> text(static_cast<size_t>(std::max<LRESULT>(len,0))+1);SendMessageW(connectionList_,LB_GETTEXT,i,reinterpret_cast<LPARAM>(text.data()));if(sessions_[i]->name!=text.data()){same=false;break;}}
+    if(!same){SendMessageW(connectionList_,WM_SETREDRAW,FALSE,0);SendMessageW(connectionList_,LB_RESETCONTENT,0,0);
+        for(const auto& session:sessions_)SendMessageW(connectionList_,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(session->name.c_str()));
+        if(powerPageOpened_)SendMessageW(connectionList_,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"IT6332A"));
+        auto anchor=topName.empty()?LB_ERR:SendMessageW(connectionList_,LB_FINDSTRINGEXACT,-1,reinterpret_cast<LPARAM>(topName.c_str()));
+        SendMessageW(connectionList_,LB_SETTOPINDEX,anchor==LB_ERR?top:anchor,0);SendMessageW(connectionList_,WM_SETREDRAW,TRUE,0);
+    }
     if(powerVisible_)selectedIndex=sessions_.size();
-    if (!sessions_.empty() || powerPageOpened_) SendMessageW(connectionList_, LB_SETCURSEL, selectedIndex, 0);
+    if (!sessions_.empty() || powerPageOpened_) { auto keepTop=SendMessageW(connectionList_,LB_GETTOPINDEX,0,0);SendMessageW(connectionList_, LB_SETCURSEL, selectedIndex, 0);SendMessageW(connectionList_,LB_SETTOPINDEX,keepTop,0); }
     InvalidateRect(connectionList_, nullptr, TRUE);
 }
 
@@ -5247,7 +5357,7 @@ void MainWindow::EnterSelectedSftpDirectoryInTerminal() {
     if ((!entry.directory && !entry.symlink) || !entry.pathSafe) return;
     const std::wstring path = JoinSftpRemotePath(sftpDirectory_, entry.name);
     const std::wstring text = L"cd -- " + QuoteShellArgument(path) + SelectedLineEnding();
-    const std::string encoded = WideToMultiByte(text, SelectedCodePage());
+    const std::string encoded = WideToMultiByte(text, selectedMode_==4&&connection_&&connection_->InputCodePage()?connection_->InputCodePage():SelectedCodePage());
     const Bytes bytes(encoded.begin(), encoded.end());
     if (SendBytesToActive(bytes, false))
         AppendStatus(L"已在终端进入该目录", false);
@@ -5517,10 +5627,12 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                 return TRUE;
             }
             self->pendingSftpInputValue_ = value;
+            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
             EndDialog(dialog, IDOK);
             return TRUE;
         }
         if (id == IDCANCEL) {
+            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
             EndDialog(dialog, IDCANCEL);
             return TRUE;
         }
@@ -6043,10 +6155,12 @@ INT_PTR CALLBACK MainWindow::CommandDialogProc(HWND dialog, UINT message, WPARAM
             self->pendingCommand_.intervalMs = intervalMs;
             if (self->pendingCommand_.name.empty())
                 self->pendingCommand_.name = self->pendingCommand_.commands.front();
+            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
             EndDialog(dialog, IDOK);
             return TRUE;
         }
         if (id == IDCANCEL) {
+            if(GetForegroundWindow()==dialog)SetPropW(self->window_,L"SerialCtlRestoreModalOwner",reinterpret_cast<HANDLE>(1));
             EndDialog(dialog, IDCANCEL);
             return TRUE;
         }
@@ -6072,6 +6186,7 @@ void MainWindow::AddCommand() {
         SendMessageW(commandList_, LB_SETCURSEL, commands_.size() - 1, 0);
         UpdateCommandActions();
     }
+    if(RemovePropW(window_,L"SerialCtlRestoreModalOwner")){SetActiveWindow(window_);if(GetForegroundWindow()!=window_)SetForegroundWindow(window_);SetFocus(commandList_);}
     RedrawWindow(window_, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
@@ -6089,6 +6204,7 @@ void MainWindow::EditCommand(size_t index) {
         UpdateCommandActions();
     }
     editingCommandIndex_ = -1;
+    if(RemovePropW(window_,L"SerialCtlRestoreModalOwner")){SetActiveWindow(window_);if(GetForegroundWindow()!=window_)SetForegroundWindow(window_);SetFocus(commandList_);}
     RedrawWindow(window_, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
@@ -6117,52 +6233,28 @@ void MainWindow::SetControlText(HWND control, const std::wstring& text) {
 
 namespace serialctl {
 Json MainWindow::ApiResources() {
- Json resources=Json::array();
- for(const auto& session:sessions_) {
-  if(session->mode!=1&&session->mode!=4)continue;
-  Json resource={{"id","session-"+std::to_string(session->id)},{"name",WideToMultiByte(session->name,CP_UTF8)},{"kind",session->mode==0?"ssh":session->mode==1?"serial":session->mode==4?"cmd":"terminal"},{"connected",session->connection->IsConnected()},{"port",session->port}};
-  if(session->mode==1){auto end=session->name.find(L' ');resource["com"]=WideToMultiByte(session->name.substr(0,end),CP_UTF8);}
-  resources.push_back(resource);
- }
- resources.push_back({{"id","power-1"},{"name","IT6332A"},{"kind","power"},{"connected",powerService_.State()["connected"]}});
- return {{"resources",resources}};
+    auto resources=sessionService_.Resources();
+    resources.push_back({{"id","power-1"},{"name","IT6332A"},{"kind","power"},{"connected",powerService_.State()["connected"]},{"operations",{"power.get","power.output"}}});
+    return {{"resources",resources}};
 }
-Json MainWindow::ApiRequest(const std::string& method,const std::string& path,const Json& body) {
- auto request=std::make_shared<ApiMessage>();request->method=method;request->path=path;request->body=body;auto future=request->result.get_future();
- auto* pointer=new ApiRequestMessage(request);
- if(!PostMessageW(window_,MessageApi,0,reinterpret_cast<LPARAM>(pointer))){delete pointer;return {{"error","Application closing"}};}
- if(future.wait_for(std::chrono::seconds(2))!=std::future_status::ready){int expected=0;if(request->state.compare_exchange_strong(expected,2))return {{"error","UI busy; request canceled"}};future.wait();}
- return future.get();
+Json MainWindow::ApiRequest(const std::string& op,const std::string& resource,const Json& params) {
+    if(closing_)return {{"error",{{"code","APPLICATION_CLOSING"},{"message","Application closing"}}}};
+    if(op=="resources")return ApiResources();
+    if(op=="session.get")return sessionService_.State(resource);
+    if(op=="input")return sessionService_.Input(resource,Decode64(params.at("data").get<std::string>()),params.value("source","network"));
+    auto request=std::make_shared<ApiMessage>();request->method=op;request->path=resource;request->body=params;auto future=request->result.get_future();
+    auto* pointer=new ApiRequestMessage(request);
+    if(!PostMessageW(window_,MessageApi,0,reinterpret_cast<LPARAM>(pointer))){delete pointer;return {{"error",{{"code","APPLICATION_CLOSING"}}}};}
+    if(future.wait_for(std::chrono::seconds(2))!=std::future_status::ready){int expected=0;if(request->state.compare_exchange_strong(expected,2))return {{"error",{{"code","UI_BUSY_CANCELED"},{"message","Not executed"}}}};future.wait();}
+    return future.get();
 }
-Json MainWindow::ExecuteApiRequest(const std::string& method,const std::string& path,const Json& body) {
- if(closing_)return {{"error","Application closing"}};
- if(path=="/api/v1/resources"&&method=="GET")return ApiResources();
- const std::string powerPrefix="/api/v1/power-supplies/power-1";
- if(path.rfind("/api/v1/actions/",0)==0&&method=="GET")return powerService_.Action(path.substr(16));
- if(path==powerPrefix&&method=="GET"){
-  auto state=powerService_.State();state["selectedChannels"]=powerPane_.SelectedChannels();return state;
- }
- if(path==powerPrefix+"/channels/output"&&method=="POST"){
-  if(!body.contains("enabled")||!body["enabled"].is_boolean())return {{"error","enabled must be boolean"}};
-  for(auto it=body.begin();it!=body.end();++it)if(it.key()!="enabled"&&it.key()!="requestId")return {{"error","Only output buttons are available"},{"httpStatus",403}};
-  Json command=body;command["type"]="output";command["source"]="api";command["channels"]=powerPane_.SelectedChannels();return powerService_.Submit(command);
- }
- const std::string prefix="/api/v1/sessions/";
- if(path.rfind(prefix,0)==0){auto rest=path.substr(prefix.size());auto slash=rest.find('/');std::string id=rest.substr(0,slash);
-  if(id.rfind("session-",0)!=0)return {{"error","Invalid session ID"}};auto idText=id.substr(8);if(idText.empty()||idText.find_first_not_of("0123456789")!=std::string::npos)return {{"error","Invalid session ID"}};
-  SessionState* session=FindSession(std::stoull(idText));if(!session|| (session->mode!=1&&session->mode!=4))return {{"error","Session no longer exists"}};
-  if(method=="GET"&&slash==std::string::npos)return {{"id",id},{"connected",session->connection->IsConnected()},{"codePage",session->codePage},{"lineEnding",session->lineEndingIndex}};
-  if(method=="POST"&&rest.substr(slash+1)=="input"){
-   Bytes bytes=Decode64(body.at("data").get<std::string>());if(bytes.empty()||bytes.size()>65536)return {{"error","Input must contain 1..65536 bytes"}};
-   std::wstring error;if(!session->connection->Send(bytes,error))return {{"error",WideToMultiByte(error,CP_UTF8)}};
-   apiServer_.Publish(id,bytes,"ai","input");
-   if(session->mode==4){ // Pipe-based CMD does not echo input; display it and keep the device output stream clean.
-    auto text=MultiByteToWide(bytes.data(),bytes.size(),session->codePage);session->terminal.Feed(text,CurrentTerminalTimestamp());if(session==activeSession_)InvalidateRect(terminal_,nullptr,FALSE);
-   }
-   if(session->logger)session->logger->WriteStatus(L"AI 输入："+MultiByteToWide(bytes.data(),bytes.size(),session->codePage));
-   AppendStatus(L"AI → "+session->name,false);return {{"accepted",bytes.size()}};
-  }
- }
- return {{"error","Endpoint not found"},{"httpStatus",404}};
+Json MainWindow::ExecuteApiRequest(const std::string& op,const std::string& resource,const Json& params) {
+    if(closing_)return {{"error",{{"code","APPLICATION_CLOSING"}}}};
+    if(op=="action.get")return powerService_.Action(params.at("id"));
+    if(op=="power.get"&&resource=="power-1"){auto state=powerService_.State();state["selectedChannels"]=powerPane_.SelectedChannels();return state;}
+    if(op=="power.output"&&resource=="power-1"){
+        Json command=params;command["type"]="output";command["source"]="network";command["channels"]=powerPane_.SelectedChannels();return powerService_.Submit(command);
+    }
+    return {{"error",{{"code","OPERATION_DENIED"}}}};
 }
 } // namespace serialctl

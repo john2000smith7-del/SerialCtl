@@ -34,6 +34,9 @@ class QueuedConnection final : public IConnection
     {
         return connected_ && inner_->IsConnected();
     }
+    unsigned InputCodePage() const override { return inner_->InputCodePage(); }
+    unsigned OutputCodePage() const override { return inner_->OutputCodePage(); }
+    bool SendObserved(const Bytes&, std::wstring&, std::function<void()> accepted);
     void ResizeTerminal(int c, int r) override
     {
         inner_->ResizeTerminal(c, r);

@@ -90,6 +90,7 @@ $copyMap = [ordered]@{
     "docs/package/RELEASE-NOTES-$($version.Display).md" = 'RELEASE-NOTES.md'
     'tools/serialctl_client.py' = 'serialctl_client.py'
     'tools/serialctl_api.py' = 'serialctl_api.py'
+    'tools/serialctl_ws.py' = 'serialctl_ws.py'
     'docs/package/AI-API.md' = 'AI-API.md'
     'docs/package/POWER.md' = 'POWER.md'
     'third_party/json/LICENSE' = 'JSON-LICENSE.txt'

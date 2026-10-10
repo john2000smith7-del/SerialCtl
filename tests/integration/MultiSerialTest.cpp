@@ -1,109 +1,15 @@
-#include "SerialShareConnection.h"
+#include "GatewayFixture.h"
 #include "SharedSerialConnection.h"
-#include <atomic>
-#include <chrono>
-#include <iostream>
-#include <thread>
-#include <stdexcept>
-
-namespace serialctl {
-SerialDevice::~SerialDevice() { Close(); }
-bool SerialDevice::Open(const SerialSettings&, DataCallback data, StatusCallback status, std::wstring&) {
-    handle_ = reinterpret_cast<HANDLE>(1); onData_ = std::move(data); onStatus_ = std::move(status); return true;
-}
-void SerialDevice::Close() { handle_ = INVALID_HANDLE_VALUE; onData_ = {}; onStatus_ = {}; }
-bool SerialDevice::IsOpen() const { return handle_ != INVALID_HANDLE_VALUE; }
-bool SerialDevice::Write(const Bytes& bytes, std::wstring&) { if (onData_) onData_(bytes); return true; }
-}
-void Expect(bool value, const char* text) { if (!value) throw std::runtime_error(text); }
-SOCKET Reserve(unsigned port) {
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); BOOL exclusive = TRUE;
-    setsockopt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<char*>(&exclusive), sizeof(exclusive));
-    sockaddr_in addr{}; addr.sin_family = AF_INET; addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); addr.sin_port = htons(static_cast<u_short>(port));
-    if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 || listen(sock, 8) != 0) { closesocket(sock); return INVALID_SOCKET; }
-    return sock;
-}
-SOCKET Connect(unsigned port) {
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    sockaddr_in addr{}; addr.sin_family = AF_INET; addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); addr.sin_port = htons(static_cast<u_short>(port));
-    Expect(connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0, "test client connect");
-    DWORD timeout = 1500; setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout), sizeof(timeout));
-    return sock;
-}
-std::string ReplyLine(SOCKET socket) {
-    std::string line; char c;
-    while (line.size() < 4096 && recv(socket, &c, 1, 0) == 1) { line += c; if (c == '\n') break; }
-    return line;
-}
-int ServeFixture() {
-    serialctl::SerialSettings a,b; a.portName=L"COM3"; b.portName=L"COM5";
-    serialctl::SerialShareConnection first(a,0), second(b,0); std::wstring error;
-    if (!first.Start({}, {}, error) || !second.Start({}, {}, error)) return 2;
-    std::cout << first.SharedPort() << std::endl;
-    std::string command;
-    while (std::getline(std::cin,command)) {
-        if (command=="close COM3") { first.Stop(); std::cout << "closed COM3" << std::endl; }
-        else if (command=="quit") break;
-    }
-    second.Stop(); first.Stop(); return 0;
-}
-int main(int argc, char**) {
-    WSADATA wsa{}; WSAStartup(MAKEWORD(2,2), &wsa);
-    if (argc > 1) { int result=ServeFixture(); WSACleanup(); return result; }
-    int result = 0;
-    try {
-        unsigned base = 18000;
-        SOCKET occupied = INVALID_SOCKET;
-        for (; base < 20000; base += 16) { occupied = Reserve(base); if (occupied != INVALID_SOCKET) break; }
-        Expect(occupied != INVALID_SOCKET, "reserve preferred port");
-        serialctl::SerialSettings a, b; a.portName = L"COM3"; b.portName = L"COM5";
-        serialctl::SerialShareConnection com3(a, static_cast<std::uint16_t>(base)), com5(b, static_cast<std::uint16_t>(base));
-        std::atomic<size_t> received3{0}, received5{0}, remote3{0}, remote5{0}, remote5b{0}; std::wstring error;
-        Expect(com3.Start([&](const serialctl::Bytes& bytes) { received3 += bytes.size(); }, {}, error), "open COM3");
-        Expect(com5.Start([&](const serialctl::Bytes& bytes) { received5 += bytes.size(); }, {}, error), "open COM5");
-        Expect(com3.SharedPort() > base && com3.SharedPort() < base + 16 && com3.SharedPort() == com5.SharedPort(), "fallback and one service");
-        std::vector<std::wstring> names;
-        Expect(serialctl::SharedSerialConnection::Discover(L"127.0.0.1", com3.SharedPort(), names, error), "discover list");
-        Expect(names.size() == 2 && names[0] == L"COM3" && names[1] == L"COM5", "named ports listed");
-        std::vector<std::wstring> descriptions;
-        names.clear(); Expect(serialctl::SharedSerialConnection::Discover(L"127.0.0.1", com3.SharedPort(), names, error, &descriptions), "metadata query");
-        Expect(descriptions.size()==2 && descriptions[1].find(L"115200") != std::wstring::npos, "metadata retains COM parameters");
-        SOCKET raw = Connect(com3.SharedPort()); send(raw, "x", 1, 0);
-        Expect(ReplyLine(raw) == "SERIALCTL/2 ERR SELECT_REQUIRED\n", "ambiguous raw TCP rejected"); closesocket(raw);
-        Expect(received3 == 0 && received5 == 0, "ambiguous raw data never enters a COM");
-        SOCKET legacy = Connect(com3.SharedPort());
-        const std::string open = "SERIALCTL/1 OPEN COM3\nlegacy";
-        send(legacy, open.data(), static_cast<int>(open.size()), 0);
-        Expect(ReplyLine(legacy) == "SERIALCTL/1 OK\n", "V1 named OPEN remains compatible");
-        char echoed[6]{}; size_t count=0;
-        while (count<sizeof(echoed)) { int read=recv(legacy, echoed+count, static_cast<int>(sizeof(echoed)-count),0); Expect(read>0,"V1 binary tail received"); count += static_cast<size_t>(read); }
-        Expect(std::string(echoed,6)=="legacy" && received3==6, "coalesced OPEN data retained");
-        shutdown(legacy, SD_BOTH); closesocket(legacy); received3=0;
-        serialctl::SharedSerialConnection first(L"127.0.0.1", com3.SharedPort(), L"COM3"), second(L"127.0.0.1", com5.SharedPort(), L"COM5"), third(L"127.0.0.1", com5.SharedPort(), L"com5");
-        Expect(first.Start([&](const serialctl::Bytes& bytes) { remote3 += bytes.size(); }, {}, error), "remote COM3");
-        Expect(second.Start([&](const serialctl::Bytes& bytes) { remote5 += bytes.size(); }, {}, error), "remote COM5");
-        Expect(third.Start([&](const serialctl::Bytes& bytes) { remote5b += bytes.size(); }, {}, error), "second writable client");
-        serialctl::Bytes data{0,1,255,10,13};
-        Expect(second.Send(data, error), "write COM5");
-        for (int i=0;i<100 && remote5b < data.size(); ++i) Sleep(10);
-        Expect(received5 == data.size() && received3 == 0 && remote3 == 0 && remote5 == data.size() && remote5b == data.size(), "binary streams isolated and broadcast within COM5");
-        Expect(third.Send(data,error), "all clients may write");
-        for (int i=0;i<100 && received5 < data.size()*2; ++i) Sleep(10);
-        Expect(received5 == data.size()*2, "no writer lease");
-        com3.Stop(); first.Stop();
-        Expect(second.Send(data,error), "COM5 remains usable after COM3 closes");
-        for (int i=0;i<100 && received5 < data.size()*3; ++i) Sleep(10);
-        Expect(received5 == data.size()*3, "closing another COM preserves stream");
-        names.clear(); Expect(serialctl::SharedSerialConnection::Discover(L"127.0.0.1", com5.SharedPort(), names, error) && names.size()==1 && names[0]==L"COM5", "discovery updates after close");
-        second.Stop(); third.Stop(); com5.Stop(); closesocket(occupied);
-        // If every fallback is unavailable, serial open must still succeed locally.
-        std::vector<SOCKET> held;
-        for (unsigned p=base+32; p<base+48; ++p) { SOCKET socket=Reserve(p); Expect(socket != INVALID_SOCKET,"reserve full fallback range"); held.push_back(socket); }
-        serialctl::SerialShareConnection local(a, static_cast<std::uint16_t>(base+32));
-        Expect(local.Start({}, {}, error) && local.IsConnected() && local.SharedPort()==0, "local survives unavailable sharing ports");
-        Expect(local.Send(data,error), "local write without gateway"); local.Stop();
-        for (SOCKET socket:held) closesocket(socket);
-        std::cout << "Multi-COM isolation, discovery, port fallback, all-writer and local-only tests passed\n";
-    } catch (const std::exception& error) { std::cerr << error.what() << '\n'; result = 1; }
-    WSACleanup(); return result;
-}
+using namespace test;
+int main(int argc,char**){Wsa wsa;try{Fixture f(argc>1?7000:18100,argc>1?7015:18115);
+    if(argc>1){std::cout<<f.server.Port()<<std::endl;std::string line;while(std::getline(std::cin,line)){if(line=="close COM3"){f.Remove3();std::cout<<"closed COM3"<<std::endl;}else if(line=="quit")break;}return 0;}
+    GatewayClient a,b,other;for(auto c:{&a,&b,&other})c->Connect(L"127.0.0.1",f.server.Port());a.Request("subscribe","session-3",{{"after",0}});b.Request("subscribe","session-3",{{"after",0}});other.Request("subscribe","session-5",{{"after",0}});
+    std::atomic<size_t> desktopBytes{0};SharedSerialConnection desktop(L"127.0.0.1",static_cast<std::uint16_t>(f.server.Port()),L"COM3");std::wstring error;Expect(desktop.Start([&](const Bytes& bytes){desktopBytes+=bytes.size();},[](const auto&,bool){},error),"desktop alongside two AI clients");
+    Bytes data{0,255,13,10,42};a.SendRequest("input","session-3",{{"data",Encode64(data)}});b.SendRequest("input","session-3",{{"data",Encode64(data)}});desktop.Send(data,error);Wait([&]{return f.rx3->received==15&&desktopBytes==15;});
+    auto drain=[&](GatewayClient& c,size_t bytes){Bytes output;while(output.size()<bytes){auto event=c.Receive();if(event.value("kind","")=="output"){auto chunk=Decode64(event["data"]);output.insert(output.end(),chunk.begin(),chunk.end());}}return output;};Bytes triple=data;triple.insert(triple.end(),data.begin(),data.end());triple.insert(triple.end(),data.begin(),data.end());Expect(drain(a,15)==triple&&drain(b,15)==triple,"two AI clients same-COM receive and write");Expect(f.rx5->received==0,"COM3 ingress isolated from COM5");
+    other.SendRequest("input","session-5",{{"data",Encode64(data)}});Expect(drain(other,5)==data,"COM5 separate stream");f.Remove3();other.SendRequest("input","session-5",{{"data",Encode64(data)}});Expect(drain(other,5)==data,"closing COM3 does not affect COM5");desktop.Stop();
+    auto occupied=Reserve(18200);Expect(occupied!=INVALID_SOCKET,"reserve default test port");{Fixture fallback(18200,18215);Expect(fallback.server.Port()>18200,"occupied default falls back within range");}closesocket(occupied);
+    std::vector<SOCKET> held;for(unsigned p=18300;p<=18315;++p){auto s=Reserve(p);Expect(s!=INVALID_SOCKET,"reserve whole range");held.push_back(s);}ApiServer unavailable;Expect(!unavailable.Start({},error,18300,18315),"whole range unavailable");Expect(f.com5->IsConnected(),"local transport remains open without another server");for(auto s:held)closesocket(s);
+    {Fixture second(18400,18415);std::uint16_t port=0;std::vector<std::wstring> names;Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1",port,names,error,nullptr,0),"no server in default range reports missing");}
+    std::cout<<"Two AI plus desktop, multi-COM isolation, target removal, fallback and local survival passed\n";
+}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}return 0;}

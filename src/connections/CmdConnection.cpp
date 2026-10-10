@@ -4,6 +4,7 @@
 #include <array>
 namespace serialctl
 {
+namespace { std::mutex consoleQueryMutex; }
 bool CmdConnection::Start(DataCallback data, StatusCallback status, std::wstring &error)
 {
     Stop();
@@ -33,14 +34,18 @@ bool CmdConnection::Start(DataCallback data, StatusCallback status, std::wstring
     std::wstring exe = std::wstring(system) + L"\\cmd.exe";
     std::wstring command = L"\"" + exe + L"\" /D /Q /K";
     PROCESS_INFORMATION pi{};
+    startup.StartupInfo()->dwFlags |= STARTF_USESHOWWINDOW;
+    startup.StartupInfo()->wShowWindow = SW_HIDE;
     if (!CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, TRUE,
-                        EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr,
+                        EXTENDED_STARTUPINFO_PRESENT | CREATE_NEW_CONSOLE | CREATE_SUSPENDED, nullptr,
                         nullptr, startup.StartupInfo(), &pi))
     {
         error = Win32ErrorMessage();
         return fail();
     }
     process_ = pi.hProcess;
+    processId_ = pi.dwProcessId;
+    inputCodePage_=outputCodePage_=GetOEMCP();
     job_ = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit{};
     limit.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -114,6 +119,17 @@ bool CmdConnection::Send(const Bytes &bytes, std::wstring &error)
     }
     return true;
 }
+void CmdConnection::ReadCodePages() {
+    std::lock_guard<std::mutex> lock(consoleQueryMutex);
+    // Query the real hidden Win7 console after chcp. Never detach an existing
+    // caller console; users launching from a console can select encoding manually.
+    if (GetConsoleWindow() || !processId_ || !AttachConsole(processId_)) return;
+    auto in=GetConsoleCP(),out=GetConsoleOutputCP();
+    FreeConsole();
+    if(in)inputCodePage_=in;
+    if(out)outputCodePage_=out;
+}
+
 void CmdConnection::Read()
 {
     std::array<std::uint8_t, 16384> buffer{};
@@ -123,6 +139,7 @@ void CmdConnection::Read()
         if (!ReadFile(output_, buffer.data(), static_cast<DWORD>(buffer.size()), &count, nullptr) ||
             !count)
             break;
+        ReadCodePages();
         if (data_)
             data_(Bytes(buffer.begin(), buffer.begin() + count));
     }

@@ -30,7 +30,8 @@ void QueuedConnection::Stop()
     inner_->Stop();
     status_ = {};
 }
-bool QueuedConnection::Send(const Bytes &data, std::wstring &error)
+bool QueuedConnection::Send(const Bytes &data, std::wstring &error) { return SendObserved(data,error,{}); }
+bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std::function<void()> accepted)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (stopping_ || !IsConnected())
@@ -45,6 +46,7 @@ bool QueuedConnection::Send(const Bytes &data, std::wstring &error)
     }
     if (!data.empty())
     {
+        if (accepted) accepted();
         queue_.push_back(data);
         queued_ += data.size();
         wake_.notify_one();

@@ -2,22 +2,22 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-当前正式版本：`V1.0.5`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
+本轮候选版本：`V1.0.6`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
 
 ## 主要功能
 
 - Windows 7 SP1、Windows 10、Windows 11，仅提供 x64 程序。
-- 本地串口终端；串口打开后可通过 TCP `7000–7015` 中可用端口在可信内网共享。
-- 发现并连接其他 SerialCtl 已打开的串口，共用服务支持最多 128 个客户端同时读写，慢客户端会被隔离断开。
+- 本地串口终端；串口打开后可通过 WebSocket `7000–7015` 中可用端口在可信内网共享。
+- 发现并连接其他 SerialCtl 已打开的串口，同一 WebSocket 会话服务容量上限为 128 个客户端（不等于性能测定），慢客户端会被隔离断开。
 - Telnet 和 SSH；SSH 使用随包提供的定制 PuTTY `plink.exe`。
 - SSH 会话的 SFTP 文件浏览、排序、多选、上传、下载、取消、重试和文件管理。
 - 多会话切换，每个会话独立保存终端、滚动、编码、日志和 SFTP 状态。
-- 单元格式 VT/xterm 终端，支持 ANSI 16/256/RGB 色彩、备用屏幕、宽字符、bracketed paste 和 20,000 行回滚。
+- 主屏幕逻辑行重排与 CMD 本地行编辑；VT/xterm 终端，支持 ANSI 16/256/RGB 色彩、备用屏幕、宽字符、bracketed paste 和 20,000 行回滚。
 - UTF-8、GBK、GB2312 编码，以及独立时间戳栏、选择、复制、粘贴、滚动和字体缩放。
 - 常用命令、最多 10 步的命令宏、执行进度、停止及 TXT 导入导出。
 - 默认浅色主题，支持深色切换；统一黑白顶部栏，桌面图标保持原样。
 - IT6332A 电源管理、USB/RS232 连接、三通道独立控制、串并联、跟踪、自动化及监测。
-- 本地 CMD 与自动启动的固定范围 AI 接口；支持 Linux 客户端与原始字节 WebSocket。
+- 本地 CMD 与自动启动的固定范围 AI 接口；支持 Linux 客户端与二进制安全的 WebSocket v1。
 - 发布包包含 Win7 NI-VISA 18.0 Runtime 完整离线安装文件。
 
 ## 使用
@@ -114,7 +114,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 发布流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中只保留：
 
 ```text
-SerialCtl-V1.0.5-Win7-x64.zip
+SerialCtl-V1.0.6-Win7-x64.zip
 ```
 
 压缩包根目录直接包含 x64 的 `serialctl.exe`、`plink.exe` 和 `psftp.exe`，解压后保持三者位于同一目录。
@@ -140,4 +140,6 @@ SerialCtl-V1.0.5-Win7-x64.zip
 
 推送 main 或手动运行 Actions 的 `Windows Win7 release build` 会构建并验证 x64。正式程序包可在仓库 Releases 下载；Actions 的 `SerialCtl-Win7-portable` 为构建产物（保留 30 天）。CI 使用 Windows Server 2022，不替代真实 Win7 SP1 与硬件验收。
 
-V1.0.5 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
+V1.0.6 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
+
+统一协议和客户端说明见 [WEBSOCKET-PROTOCOL.md](docs/architecture/WEBSOCKET-PROTOCOL.md)，本轮状态见 [V1.0.6-ACCEPTANCE.md](docs/testing/V1.0.6-ACCEPTANCE.md)。

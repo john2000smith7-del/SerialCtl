@@ -5,6 +5,7 @@
 #include <deque>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace serialctl {
 
@@ -42,6 +43,10 @@ struct TerminalLine {
     std::vector<TerminalCell> cells;
     std::wstring timestamp;
     bool wrapped = false;
+    bool hardBreak = false;
+    size_t used = 0;
+    std::uint64_t logicalId = 0;
+    size_t logicalOffset = 0;
 };
 
 struct TerminalFeedResult {
@@ -59,6 +64,10 @@ public:
 
     TerminalFeedResult Feed(const std::wstring& text, const std::wstring& timestamp);
     void Resize(int columns, int rows);
+    struct Anchor { std::uint64_t id = 0; size_t offset = 0; };
+    Anchor CaptureAnchor(size_t line, int column = 0) const;
+    std::pair<size_t,int> LocateAnchor(Anchor) const;
+    TerminalModel PreviewInput(const std::wstring& text, size_t cursor) const;
     void Reset();
     void Clear();
     void ClearScrollback();
@@ -137,6 +146,7 @@ private:
     static bool IsCombiningCharacter(wchar_t character);
     wchar_t MapSpecialGraphics(wchar_t character) const;
 
+    mutable std::uint64_t nextLogicalId_ = 1;
     int columns_ = 80;
     int rows_ = 24;
     size_t maximumScrollback_ = 20000;

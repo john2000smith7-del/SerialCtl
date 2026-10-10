@@ -1,23 +1,24 @@
-# SerialCtl V1.0.5
+# SerialCtl V1.0.6
 
-适用：Windows 7 SP1 x64、Windows 10 x64、Windows 11。程序使用原生 C++17/Win32、静态运行库与 YY-Thunks；不需要安装 .NET 或 Python。
+Win7 SP1 x64 原生便携程序。解压后 serialctl.exe、固定 plink.exe 与 psftp.exe 保持同目录；Windows 主程序不需要 Python、.NET 或另外安装 VC Runtime。NI-VISA 18 完整离线驱动保持 drivers 目录，仅电源 USB 访问需要相应驱动。
 
-解压整个发布压缩包后，直接双击主目录的 `serialctl.exe`。同目录的 `plink.exe`、`psftp.exe` 是 SSH/SFTP 必需工具，请保留。不要在压缩包预览中直接运行。
+软件启动自动提供单一 WebSocket v1 服务（TCP 7000–7015）。用户先在 GUI 打开 COM 或 CMD。远程串口填写 IP、明确 COM，通过相同服务发现和连接。多个实例需要指定端口；不猜测第一个串口，不再支持 telnet/IP:7000 串口透传或旧 HTTP REST。
 
-- 本地串口可同时打开多个 COM。每个连接有独立终端、编码、换行设置与日志，可在左侧切换。
-- 所有已打开串口共用一个 TCP 服务，默认 7000，占用时自动尝试 7001–7015。全部不可用时本地串口仍可使用，状态栏显示共享失败。
-- “远程串口”仅输入 IP，自动发现已打开的 COM，选择后连接。特殊情况可右键“刷新”指定服务端口或恢复自动发现。防火墙需允许应用入站或 TCP 7000–7015；发现不通过 UDP 广播。
-- 在终端直接输入，Enter 发送。右键有粘贴及 Enter 的 CR/LF/CRLF/无设置；SSH Enter 固定为 CR，SSH 命令按钮使用 LF。粘贴保留原文本，不自动追加换行；支持 bracketed paste 的终端会启用对应保护。
-- 命令按钮可拖动排序；添加、编辑、删除、导入与调整顺序后点击“保存*”。未保存退出可选择保存、放弃或取消。导出是备份当前草稿，与本地保存独立。
-- SFTP 默认跟随终端。支持 OSC 7 路径通知，常见 user@host:/path 提示符作为回退。右键菜单可从当前空闲 Shell 获取目录或为当前 Bash/Zsh 启用目录通知（不修改远端配置文件）。请勿在程序运行或命令输入一半时触发这些操作。
-- SFTP 路径双击、文件列表 Ctrl+L 或右键“输入路径”可粘贴 `pwd` 的绝对路径；手动浏览暂停跟随，右键可重新启用。拖动“名称”列右边界调整文件名宽度，自动保存在当前用户设置。
-- Linux AI 工具见同目录 `AI-SERIAL.md` 和 `serialctl_client.py`；Python 仅供 Linux 客户端使用，Windows 主程序不依赖它。
+Linux Python 3 标准库客户端：serialctl_client.py、serialctl_api.py 是同一个 serialctl_ws.py 核心的入口，必须放在同一目录。
 
-配置、命令草稿保存后的文件和日志位于当前用户 `%LOCALAPPDATA%\SerialCtl`；压缩包不含个人配置、密码或日志。共享保留所有客户端可读写，不增加互斥；每个 TCP 连接只绑定一个 COM。
+```sh
+python3 serialctl_client.py 192.168.6.86 list
+python3 serialctl_client.py 192.168.6.86 send COM8 'uname -a' --ending CRLF
+python3 serialctl_client.py 192.168.6.86 watch COM8
+python3 serialctl_api.py 192.168.6.86 power
+python3 serialctl_api.py 192.168.6.86 on
+python3 serialctl_api.py 192.168.6.86 off
+```
 
-兼容性验证：GitHub Windows 构建、自动化测试、x64 PE 架构、子系统 6.01、静态运行库导入检查、包解压及校验、深浅主题 UI 检查。未进行真实 Windows 7 SP1、物理串口及现场 SSH/SFTP 验收，详见 `WIN7-HARDWARE-TEST.md`。
+只有 IP 和 COM 即可发现并选择；歧义时用 `--port 7001` 或 `--instance <返回值>` 明确实例。发送返回 queued，不能等同于命令执行成功；持续 watch 无轮询。电源操作只作用于本机当前勾选通道，无远程参数、SCPI 或任务接口。更多示例见 AI-SERIAL.md 和 AI-API.md。
 
-- 新增电源与本地 CMD。电源使用见 `POWER.md`；自动网络接口和 Linux 操作见 `AI-API.md`。本地 CMD 默认 OEM 编码，适合普通命令和脚本。
-- 本次发布 V1.0.5，沿用递增编号并保留历史发布。
+CMD 支持本地左右移动、Backspace/Delete/Home/End、历史、中文、复制粘贴和多行提交。网络必须发送完整行，按 session.get 查询的代码页编码。管道模式不支持 Ctrl+C 和全屏交互，全部断开会关闭 CMD 进程树。后台输出不强制回到底部，主动键入/执行命令回到实时位置。
 
-默认浅色主题，顶部栏图标统一为黑白，选中项采用浅灰底。电源页面自动收起命令/SFTP 栏，切回终端恢复原来的侧栏状态。电源与串口/CMD 使用独立资源。网络接口随程序启动，自动开放已连接的串口及 CMD；电源仅开放页面当前勾选通道的加电/掉电。无需逐项授权或复制密钥。
+连接页底部“全部断开”取消连接建立、SFTP/命令任务并释放本地设备；电源断开在后台处理，任务拥有的通道尝试掉电并确认，断线时输出状态不能保证。终端右键可启用 RX/TX Base64 字节核对；未启用时保留常规文本日志。真实空行有时间戳，屏幕填充没有。
+
+本包的 Win7 与真实串口/IT6332A 验收状态必须查看相应交付记录；Windows 2022 CI 不代替现场。8 小时现场运行、Win7 焦点和实际电源均需人工验收。

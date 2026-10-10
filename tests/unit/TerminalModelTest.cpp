@@ -1,4 +1,5 @@
 #include "TerminalModel.h"
+#include "CmdLineEditor.h"
 
 #include <iostream>
 #include <string>
@@ -42,8 +43,8 @@ void TestScrollback() {
     ExpectLine(model, 3, L"four", "newest line remains on the screen");
 
     model.Resize(40, 5);
-    Expect(model.DisplayLine(0).cells.size() == 20,
-        "resizing wider keeps historical lines at their original safe width");
+    Expect(model.DisplayLine(0).cells.size() == 40,
+        "resizing wider reflows history using the new grid");
     Expect(model.MaximumDisplayColumns() == 40,
         "maximum display width includes the resized live screen");
 }
@@ -52,10 +53,9 @@ void TestResizePreservesWideHistory() {
     serialctl::TerminalModel model(40, 3, 10);
     model.Feed(L"012345678901234567890123456789\r\nsecond\r\nthird\r\nfourth", L"");
     model.Resize(12, 3);
-    Expect(model.DisplayLine(0).cells.size() == 40,
-        "shrinking the terminal preserves wide scrollback for horizontal review");
-    Expect(model.LineText(0) == L"012345678901234567890123456789",
-        "shrinking does not truncate historical output");
+    Expect(model.PlainText(false) == L"012345678901234567890123456789\r\nsecond\r\nthird\r\nfourth", "shrinking reflows history without modifying hard breaks");
+    model.Resize(40,3);
+    ExpectLine(model,0,L"012345678901234567890123456789", "growing restores complete historical output");
 }
 
 void TestAlternateScreen() {
@@ -131,6 +131,49 @@ void TestUntrustedParameters() {
     }
 }
 
+void TestLogicalReflowAndBlanks() {
+    serialctl::TerminalModel model(20,5);
+    auto result=model.Feed(std::wstring(60,L'x'),L"T");
+    Expect(result.logText==L"[T] "+std::wstring(60,L'x'),"soft wrapping never enters logs");
+    model.Resize(80,5);ExpectLine(model,0,std::wstring(60,L'x'),"20-to-80 joins three automatic wraps");
+    Expect(model.CursorColumn()==60,"cursor follows its logical offset after widen");
+    for(int i=0;i<20;++i){model.Resize(8,5);model.Resize(80,5);}
+    Expect(model.PlainText(false)==std::wstring(60,L'x'),"repeated shrink and grow never truncates active output");
+    serialctl::TerminalModel exact(20,5);exact.Feed(L"0123456789ABCDEFGHIJ",L"T");exact.Resize(8,5);exact.Resize(20,5);
+    ExpectLine(exact,0,L"0123456789ABCDEFGHIJ","full active line survives narrow grid");exact.Feed(L"Z",L"T");
+    ExpectLine(exact,1,L"Z","wrap-pending cursor remains on next output cell");
+    serialctl::TerminalModel hard(20,5);auto log=hard.Feed(L"a\r\n\r\nb",L"T");hard.Resize(80,10);
+    ExpectLine(hard,0,L"a","hard line preserved");ExpectLine(hard,1,L"","received blank line preserved");ExpectLine(hard,2,L"b","hard lines never joined");
+    Expect(hard.DisplayLine(1).timestamp==L"T"&&hard.DisplayLine(1).hardBreak,"true blank has timestamp and hard-break identity");
+    Expect(hard.DisplayLine(3).timestamp.empty()&&!hard.DisplayLine(3).hardBreak,"screen padding is not received output");
+    Expect(log.logText==L"[T] a\n[T] \n[T] b","log uses identical timestamp policy for a true empty line");
+    serialctl::TerminalModel chinese(9,4);chinese.Feed(L"\x1b[31mAB中文中文Z\x1b[0m\r\nnext",L"T");
+    const auto before=chinese.PlainText(false);auto anchor=chinese.CaptureAnchor(1,2);
+    for(int width:{5,30,7,40})chinese.Resize(width,6);
+    Expect(chinese.PlainText(false)==before,"CJK content and hard breaks survive all widths");
+    Expect(chinese.DisplayLine(0).cells[2].attributes.foreground.index==1,"SGR attributes survive reflow");
+    auto location=chinese.LocateAnchor(anchor);Expect(chinese.CaptureAnchor(location.first,location.second).id==anchor.id,"logical reading/selection anchor survives reflow");
+    serialctl::TerminalModel alternate(20,4);alternate.Feed(L"primary",L"T");alternate.Feed(L"\x1b[?1049hTOP\x1b[3;1Hstatus",L"");alternate.Resize(8,4);
+    ExpectLine(alternate,2,L"status","alternate grid retains positioned VT rows");alternate.Resize(40,4);alternate.Feed(L"\x1b[?1049l",L"");ExpectLine(alternate,0,L"primary","primary survives alternate resize");
+    serialctl::TerminalModel continuous(20,5);std::wstring expected;
+    for(int i=0;i<100;++i){continuous.Feed(L"中a",L"T");expected+=L"中a";continuous.Resize(i%2?8:50,5);}
+    continuous.Resize(400,5);Expect(continuous.PlainText(false)==expected,"output interleaved with reflow stays intact");
+}
+void TestCmdEditor() {
+    serialctl::CmdLineEditor editor;
+    for(wchar_t c:std::wstring(L"echo abXd"))editor.Insert(std::wstring(1,c));
+    using Key=serialctl::CmdLineEditor::Key;
+    editor.Edit(Key::Left);editor.Edit(Key::Backspace);editor.Insert(L"c");
+    Expect(editor.Text()==L"echo abcd","CMD Backspace erases the edited draft");
+    editor.Edit(Key::Home);editor.Edit(Key::Right);editor.Edit(Key::Delete);editor.Insert(L"c");
+    Expect(editor.Text()==L"echo abcd","CMD Delete and insertion edit at caret");
+    editor.Edit(Key::End);editor.Insert(L"中文");auto submitted=editor.Text();editor.Submitted();editor.Edit(Key::Up);Expect(editor.Text()==submitted,"CMD history recalls complete Unicode line");
+    editor.Edit(Key::Down);Expect(editor.Text().empty(),"history Down restores draft");
+    serialctl::TerminalModel output(20,5);output.Feed(L">",L"T");editor.Insert(L"中文abc");
+    auto preview=output.PreviewInput(editor.Text(),editor.Cursor());ExpectLine(preview,0,L">中文abc","local preview includes Unicode draft");
+    output.Feed(L"async\r\n>",L"T");Expect(editor.Text()==L"中文abc","asynchronous output cannot corrupt draft");Expect(output.PlainText(false).find(L"abc")==std::wstring::npos,"unsubmitted draft never contaminates output or logs");
+}
+
 } // namespace
 
 int main() {
@@ -152,6 +195,8 @@ int main() {
     cursorResize.Resize(40,2); cursorResize.Resize(40,4);
     Expect(cursorResize.HistorySize()==0,"idle grow restores rows moved by shrink");
     ExpectLine(cursorResize,3,L"four","cursor row survives shrink then grow");
+    TestLogicalReflowAndBlanks();
+    TestCmdEditor();
     TestUntrustedParameters();
     TestCarriageReturnAndHistoryRecall();
     TestScrollback();

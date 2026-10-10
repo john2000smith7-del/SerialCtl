@@ -51,6 +51,10 @@ bool SerialDevice::Open(
     dcb.Parity = settings.parity;
     dcb.StopBits = settings.stopBits;
     dcb.fBinary = TRUE;
+    dcb.fNull = FALSE;
+    dcb.fErrorChar = FALSE;
+    dcb.fAbortOnError = FALSE;
+    dcb.fDsrSensitivity = FALSE;
     dcb.fParity = settings.parity != NOPARITY;
     dcb.fOutxCtsFlow = settings.flowControl == 1;
     dcb.fRtsControl = settings.flowControl == 1 ? RTS_CONTROL_HANDSHAKE : RTS_CONTROL_DISABLE;
@@ -144,6 +148,15 @@ void SerialDevice::ReadLoop() {
             if (!stopping_ && onStatus_)
                     onStatus_(L"读取串口队列失败：" + Win32ErrorMessage(), true);
                 return;
+            }
+            if(errors && onStatus_) {
+                std::wstring message=L"串口驱动错误：";
+                if(errors&CE_FRAME)message+=L" framing";
+                if(errors&CE_RXPARITY)message+=L" parity";
+                if(errors&CE_OVERRUN)message+=L" overrun";
+                if(errors&CE_RXOVER)message+=L" rx-buffer-overflow";
+                if(errors&CE_BREAK)message+=L" break";
+                onStatus_(message+L" · flags="+std::to_wstring(errors),true);
             }
             if (status.cbInQue == 0) break;
             DWORD extra = 0;

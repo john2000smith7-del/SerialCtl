@@ -1,31 +1,20 @@
-# Linux AI 访问共享串口
+# AI 串口接入（SerialCtl WebSocket v1）
 
-Windows 上先用 SerialCtl 打开 COM3、COM5 等串口。Linux 只需 IP 和 COM 名称，无须知道实际 TCP 端口。工具会验证 SerialCtl 协议并探测 TCP 7000–7015；只列出已经打开共享的串口，不会擅自打开未使用的硬件。
+先在来源 GUI 打开 COM。服务自动监听 7000–7015；传入 IP 与 COM，不要使用 telnet，不用猜第一个 COM。serialctl_client.py 与 serialctl_ws.py、serialctl_api.py 同目录，Python 3 无额外依赖。
 
-把 `serialctl_client.py` 放到 Linux 工作目录（Python 3，无第三方依赖）：
-
-```bash
-python3 serialctl_client.py list 192.168.1.10
-python3 serialctl_client.py stream 192.168.1.10 COM5
+```sh
+python3 serialctl_client.py 192.168.6.86 list
+python3 serialctl_client.py 192.168.6.86 send COM8 'uname -a' --encoding utf-8 --ending CRLF
+python3 serialctl_client.py 192.168.6.86 watch COM8
 ```
-
-`list` 输出 JSON：实际服务端口，以及 COM 名称、波特率、数据位、Win32 parity/stop_bits 枚举、流控、客户端数和状态。旧版本服务没有元数据时对应值为 null。
 
 ```python
-from serialctl_client import list_ports, open_serial
-
-ip = "192.168.1.10"
-print(list_ports(ip))
-with open_serial(ip, "COM5", timeout=5) as com5:
-    com5.send(b"help\r")  # 调用方明确决定换行符，工具不转换二进制内容
-    print(com5.recv())   # bytes；空 bytes 表示关闭；超时抛出 socket.timeout
-
-# 多串口可同时保持连接，每个对象各自独立，不会混入另一个 COM 的数据。
-with open_serial(ip, "COM3") as com3, open_serial(ip, "COM5") as com5:
-    com3.send(b"status\r")
-    com5.send(b"help\r")
+from serialctl_client import SerialStream
+with SerialStream('192.168.6.86', 'COM8') as port:
+    port.sendall(b'\x00\xff\r\n')  # 不过滤合法字节；queued 不等于设备已执行
+    data = port.recv(4096)
 ```
 
-所有客户端均可读写，暂无互斥。串口关闭时其客户端断开，其他 COM 不受影响。CLI stream 将 stdin 原始字节发送到串口，stdout 输出串口原始数据；stdin 结束时连接关闭。交互式 Linux 终端输入可能自带 LF，请按设备要求转换。非默认自定义服务可传 `--port` 或 Python `port=`；一个 SerialCtl 实例共用一个服务，默认探测选最低已响应端口。
+同一 COM 多客户端接收与输入，无独占写租约；每批次原子入队，多步任务仍须自行协调。多个实例报告歧义，用 --port/--instance 明确选择。同一协议适用于远程桌面客户端、AI、串口与 CMD；SSH/SFTP 没有开放。
 
-协议兼容说明：安全查询使用 `SERIALCTL/1 LIST\n`，回复以 `SERIALCTL/1 PORTS\n` 开头，逐行 COM，`.\n` 结束。新版本在其后附 `SERIALCTL_INFO\t3\n` 和八列 TSV（name/baudrate/data_bits/parity/stop_bits/flow_control/clients/state），然后关闭查询连接。旧客户端忽略扩展。命名连接使用 `SERIALCTL/2 OPEN COM5\n`，成功回复 `SERIALCTL/2 OK WRITE\n`。之后 D 数据帧或 C 控制帧使用 1 字节类型 + 4 字节大端长度 + 内容，单帧上限 1 MiB。新版不使用写入租约。单 COM 时仍兼容原始 TCP；多 COM 时原始连接被拒绝，必须先选择 COM。
+实时输出 subscribe 后事件唤醒，无 HTTP 轮询。服务满队列终止慢客户端，重连须用最后 seq；HISTORY_GAP 不得伪装为完整输出。串口未打开、目标消失、实例错误、协议错误、CLIENT_LIMIT 等分别报错。旧 SERIALCTL/1/2/3 与 REST 不再兼容，必须升级同包客户端。

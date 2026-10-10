@@ -114,6 +114,12 @@ public static class SerialCtlUiSmoke {
     }
 }
 '@
+function Capture-Desktop([string]$Name) {
+    $screen = New-Object Drawing.Bitmap(1920,1080)
+    $graphics = [Drawing.Graphics]::FromImage($screen)
+    try { $graphics.CopyFromScreen(0,0,0,0,[Drawing.Size]::new(1920,1080)); $screen.Save((Join-Path $OutputDirectory ($Name+'.png')),[Drawing.Imaging.ImageFormat]::Png) }
+    finally { $graphics.Dispose(); $screen.Dispose() }
+}
 function Wait-Dialog([int]$ProcessId, [string]$Title) {
     for ($attempt = 0; $attempt -lt 150; $attempt++) {
         $dialog = [SerialCtlUiSmoke]::Dialog([uint32]$ProcessId, $Title)
@@ -303,48 +309,39 @@ foreach ($architecture in @('x64')) {
             Start-Sleep -Milliseconds 150
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,980,620,$true)|Out-Null
             Start-Sleep -Milliseconds 150
+            foreach($frame in 0..15){[SerialCtlUiSmoke]::Send($powerPane,0x111,[IntPtr](90+($frame%4)),[IntPtr]0)|Out-Null;Start-Sleep -Milliseconds 16;Capture-Desktop "$architecture-$theme-power-tab-frame-$frame"}
             Capture-Window $application.MainWindowHandle "$architecture-$theme-power-minimum"
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,1180,760,$true)|Out-Null
             [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]90,[IntPtr]::Zero)|Out-Null
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x111,[IntPtr]300,[IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 700
             Capture-Window $application.MainWindowHandle "$architecture-$theme-cmd"
-            if ([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,302) -ne [IntPtr]::Zero) { throw 'Obsolete API toolbar entry exists.' }
+            if ([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,303) -ne [IntPtr]::Zero) { throw 'Obsolete API toolbar entry exists.' }
             # The exact packaged GUI starts its fixed-scope service automatically.
-            $found = @((& python (Join-Path $native 'serialctl_api.py') 127.0.0.1 discover | ConvertFrom-Json))
-            if ($found.Count -ne 1) { throw 'Automatic API discovery failed.' }
-            $script:apiBase = 'http://127.0.0.1:' + $found[0].port + '/api/v1'
-            function Request-TestApi([string]$Path,$Body=$null) {
-                if ($null -eq $Body) { return Invoke-RestMethod -Uri ($apiBase+$Path) -TimeoutSec 10 }
-                return Invoke-RestMethod -Uri ($apiBase+$Path) -Method Post -ContentType 'application/json' -Body ($Body|ConvertTo-Json -Compress) -TimeoutSec 10
+            & python (Join-Path (Get-SerialCtlRepositoryRoot) 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64()
+            if ($LASTEXITCODE -ne 0) { throw 'Unified gateway / real GUI CMD key editing failed.' }
+            & python (Join-Path $native 'serialctl_api.py') 127.0.0.1 send 'session-1' 'for /l %i in (1,1,1000) do @echo SERIALCTL_DYNAMIC_%i' | Out-Null
+            $mainClient=New-Object SerialCtlUiSmoke+RECT
+            [SerialCtlUiSmoke]::GetClientRect($application.MainWindowHandle,[ref]$mainClient)|Out-Null
+            $toggleRect=New-Object SerialCtlUiSmoke+RECT
+            [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,125),[ref]$toggleRect)|Out-Null
+            [SerialCtlUiSmoke]::MapWindowPoints([IntPtr]::Zero,$application.MainWindowHandle,[ref]$toggleRect,2)|Out-Null
+            $splitX=$toggleRect.Left-300
+            [SerialCtlUiSmoke]::Send($application.MainWindowHandle,0x201,[IntPtr]1,[IntPtr](($splitX -band 65535) -bor (300 -shl 16)))|Out-Null
+            foreach($frame in 0..11){
+                $x=$splitX + ($frame%6)*18
+                [SerialCtlUiSmoke]::Send($application.MainWindowHandle,0x200,[IntPtr]1,[IntPtr](($x -band 65535) -bor (300 -shl 16)))|Out-Null
+                Start-Sleep -Milliseconds 16
+                Capture-Desktop "$architecture-$theme-drag-frame-$frame"
             }
-            function Assert-TestApiDenied([string]$Path,$Body=@{}) {
-                $denied=$false
-                try { Request-TestApi $Path $Body | Out-Null }
-                catch { if ($_.Exception.Response.StatusCode.value__ -eq 403) { $denied=$true } else { throw } }
-                if (-not $denied) { throw ('Unexpected API capability: '+$Path) }
+            [SerialCtlUiSmoke]::Send($application.MainWindowHandle,0x202,[IntPtr]0,[IntPtr]0)|Out-Null
+            foreach($frame in 0..9){
+                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x111,[IntPtr]125,[IntPtr]0)|Out-Null
+                Start-Sleep -Milliseconds 45
+                Capture-Desktop "$architecture-$theme-animation-frame-$frame"
             }
-            $resources = (Request-TestApi '/resources').resources
-            $cmdResource = @($resources | Where-Object { $_.kind -eq 'cmd' -and $_.connected })[-1].id
-            if (-not $cmdResource) { throw 'New CMD session not automatically available.' }
-            $powerState = Request-TestApi '/power-supplies/power-1'
-            if ($powerState.connected -or $powerState.selectedChannels.Count -ne 1 -or $powerState.selectedChannels[0] -ne 1) { throw 'Unexpected actual power connection/selection state.' }
-            foreach ($endpoint in @('connect','disconnect','channels/parameters','channels/protection','task','stop')) {
-                Assert-TestApiDenied ('/power-supplies/power-1/'+$endpoint)
-            }
-            Assert-TestApiDenied '/power-supplies/power-1/channels/output' @{channels=@(2);enabled=$true}
-            $command = [Text.Encoding]::ASCII.GetBytes("echo SERIALCTL_REMOTE_VISIBLE`r`n")
-            Request-TestApi ('/sessions/'+$cmdResource+'/input') @{ data=[Convert]::ToBase64String($command) } | Out-Null
-            $received = ''
-            for ($attempt=0;$attempt -lt 50;$attempt++) {
-                $events = Request-TestApi ('/sessions/'+$cmdResource+'/events?after=0')
-                $received = (@($events.events | Where-Object { $_.type -eq 'output' } | ForEach-Object {
-                    [Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($_.data))
-                }) -join '')
-                if ($received.Contains('SERIALCTL_REMOTE_VISIBLE')) { break }
-                Start-Sleep -Milliseconds 100
-            }
-            if (-not $received.Contains('SERIALCTL_REMOTE_VISIBLE')) { throw 'GUI API CMD stream lost command output.' }
+            Start-Sleep -Milliseconds 250
+            if([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112)) -eq $false){[SerialCtlUiSmoke]::Send($application.MainWindowHandle,0x111,[IntPtr]125,[IntPtr]0)|Out-Null;Start-Sleep -Milliseconds 250}
             Capture-Window $application.MainWindowHandle "$architecture-$theme-api-cmd-visible"
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle,$false)
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null

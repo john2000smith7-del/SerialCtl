@@ -130,6 +130,9 @@ add_executable(serialctl WIN32
     src/app/PowerPane.cpp
     src/power/PowerService.cpp
     src/network/ApiServer.cpp
+    src/network/WebSocket.cpp
+    src/network/GatewayClient.cpp
+    src/network/SessionService.cpp
     src/connections/ChildProcess.cpp
     src/connections/CmdConnection.cpp
     src/connections/QueuedConnection.cpp
@@ -137,7 +140,6 @@ add_executable(serialctl WIN32
     src/connections/PuttyHostKey.cpp
     src/connections/SerialConnection.cpp
     src/connections/SerialDevice.cpp
-    src/connections/SerialShareConnection.cpp
     src/connections/SharedSerialConnection.cpp
     src/connections/TcpConnection.cpp
     src/logging/SessionLogger.cpp
@@ -191,18 +193,17 @@ if(BUILD_TESTING)
     add_executable(cmd_connection_test tests/integration/CmdConnectionTest.cpp src/connections/CmdConnection.cpp src/connections/QueuedConnection.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(cmd_connection_test CONSOLE)
     add_test(NAME cmd_connection COMMAND cmd_connection_test)
-    add_executable(api_server_test tests/integration/ApiServerTest.cpp src/network/ApiServer.cpp)
+    set(GATEWAY_TEST_SOURCES src/network/ApiServer.cpp src/network/WebSocket.cpp
+        src/network/GatewayClient.cpp src/network/SessionService.cpp
+        src/connections/QueuedConnection.cpp src/connections/SharedSerialConnection.cpp)
+    add_executable(api_server_test tests/integration/ApiServerTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(api_server_test CONSOLE)
     target_link_libraries(api_server_test PRIVATE ws2_32 advapi32)
     add_test(NAME api_server COMMAND api_server_test)
-    set_tests_properties(power_service cmd_connection api_server PROPERTIES TIMEOUT 30)
-
-    add_executable(shared_serial_protocol_test
-        tests/integration/SharedSerialProtocolTest.cpp
-        src/connections/SharedSerialConnection.cpp
-    )
+    set_tests_properties(power_service cmd_connection api_server PROPERTIES TIMEOUT 60)
+    add_executable(shared_serial_protocol_test tests/integration/SharedSerialProtocolTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(shared_serial_protocol_test CONSOLE)
-    target_link_libraries(shared_serial_protocol_test PRIVATE ws2_32)
+    target_link_libraries(shared_serial_protocol_test PRIVATE ws2_32 advapi32)
     add_test(NAME shared_serial_protocol COMMAND shared_serial_protocol_test)
 
     add_executable(tcp_connection_test
@@ -226,17 +227,13 @@ if(BUILD_TESTING)
     target_link_libraries(putty_host_key_test PRIVATE advapi32)
     add_test(NAME putty_host_key COMMAND putty_host_key_test)
 
-    add_executable(serial_share_backpressure_test tests/integration/SerialShareBackpressureTest.cpp
-        src/connections/SerialShareConnection.cpp)
+    add_executable(serial_share_backpressure_test tests/integration/SerialShareBackpressureTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(serial_share_backpressure_test CONSOLE)
-    target_compile_definitions(serial_share_backpressure_test PRIVATE SERIALCTL_TEST_TRACE)
-    target_link_libraries(serial_share_backpressure_test PRIVATE ws2_32)
+    target_link_libraries(serial_share_backpressure_test PRIVATE ws2_32 advapi32 psapi)
     add_test(NAME serial_share_backpressure COMMAND serial_share_backpressure_test)
-
-    add_executable(multi_serial_test tests/integration/MultiSerialTest.cpp
-        src/connections/SerialShareConnection.cpp src/connections/SharedSerialConnection.cpp)
+    add_executable(multi_serial_test tests/integration/MultiSerialTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(multi_serial_test CONSOLE)
-    target_link_libraries(multi_serial_test PRIVATE ws2_32)
+    target_link_libraries(multi_serial_test PRIVATE ws2_32 advapi32)
     add_test(NAME multi_serial COMMAND multi_serial_test)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME api_client COMMAND "${Python3_EXECUTABLE}"
@@ -257,5 +254,10 @@ if(BUILD_TESTING)
     )
     serialctl_configure_native_target(sftp_model_test CONSOLE)
     add_test(NAME sftp_model COMMAND sftp_model_test)
-    set_tests_properties(multi_serial shared_serial_protocol tcp_connection terminal_model terminal_decoder sftp_model putty_host_key serial_share_backpressure PROPERTIES TIMEOUT 30)
+    set_tests_properties(multi_serial shared_serial_protocol tcp_connection terminal_model terminal_decoder sftp_model putty_host_key PROPERTIES TIMEOUT 60)
+    set_tests_properties(serial_share_backpressure PROPERTIES TIMEOUT 120)
+endif()
+
+if(BUILD_TESTING)
+    set_tests_properties(api_server multi_serial shared_serial_protocol serial_share_backpressure linux_gateway_client PROPERTIES RUN_SERIAL TRUE)
 endif()

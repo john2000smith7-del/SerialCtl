@@ -23,6 +23,8 @@ public:
     virtual void Stop() = 0;
     virtual bool Send(const Bytes& data, std::wstring& error) = 0;
     virtual bool IsConnected() const = 0;
+    virtual unsigned InputCodePage() const { return 0; }
+    virtual unsigned OutputCodePage() const { return 0; }
     virtual void ResizeTerminal(int columns, int rows) {
         (void)columns;
         (void)rows;
