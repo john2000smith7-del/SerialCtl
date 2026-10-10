@@ -94,8 +94,12 @@ private:
         UINT codePage = CP_UTF8;
         TerminalDecoder decoder;
         CmdLineEditor cmdEditor;
+        bool cmdInteractionWarning = false;
         bool rawTrace = false;
-        LONGLONG pendingPaintArrival = 0;
+        // Opt-in test telemetry tags actual stdout, never the local input echo.
+        std::wstring paintProbeText;
+        INT_PTR paintProbe = 0;
+        LONGLONG pendingProbeArrival = 0;
         std::wstring host;
         std::wstring username;
         std::wstring password;

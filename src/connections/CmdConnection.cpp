@@ -1,6 +1,7 @@
 #include "CmdConnection.h"
 #include "ChildProcess.h"
 #include "Win32Helpers.h"
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <stdexcept>
@@ -100,6 +101,8 @@ Bytes CmdConnection::PrepareInput(const Bytes &bytes) {
     static_assert(sizeof(wchar_t) == 2, "Win32 UTF-16 console bridge");
     if (bytes.empty())
         return {};
+    if (bytes.size() > 65536 || (bytes.back() != 13 && bytes.back() != 10))
+        throw std::runtime_error("CMD_SUBMIT_REQUIRED");
     const auto page = InputCodePage();
     auto flags = (page == CP_UTF8 || page == 936 || page == 20936) ? MB_ERR_INVALID_CHARS : 0;
     int size = MultiByteToWideChar(page, flags, reinterpret_cast<const char *>(bytes.data()),
@@ -110,6 +113,9 @@ Bytes CmdConnection::PrepareInput(const Bytes &bytes) {
     if (MultiByteToWideChar(page, flags, reinterpret_cast<const char *>(bytes.data()), static_cast<int>(bytes.size()),
                             text.data(), size) != size)
         throw std::runtime_error("CMD_ENCODING_INVALID");
+    if (std::any_of(text.begin(), text.end(),
+                    [](wchar_t c) { return (c < 32 && c != L'\r' && c != L'\n' && c != L'\t') || c == 127; }))
+        throw std::runtime_error("CMD_INTERACTIVE_CONTROL_UNSUPPORTED");
     const std::uint32_t payload = static_cast<std::uint32_t>(text.size() * sizeof(wchar_t));
     Bytes packet(sizeof(payload) + payload);
     std::memcpy(packet.data(), &payload, sizeof(payload));

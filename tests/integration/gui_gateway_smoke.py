@@ -151,6 +151,12 @@ with Client('127.0.0.1') as c:
     user32.SendMessageW(terminal, 0x102, 13, 0)
     until(b'SERIALCTL_FOLLOW_ENTER')
     painted(lambda: user32.GetPropW(terminal, 'SerialCtl.ScrollOffset') == 1)
+    c.input(cmd, b'powershell -NoProfile -Command "[Console]::Write([char]27+\'[6n\');[Console]::WriteLine(\'SERIALCTL_DSR_EMITTED\')"\r\n')
+    until(b'SERIALCTL_DSR_EMITTED')
+    painted(lambda: user32.GetPropW(terminal, 'SerialCtl.CmdInteractionBlocked') == 2)
+    c.input(cmd, b'echo SERIALCTL_AFTER_UNSUPPORTED_QUERY\r\n')
+    until(b'SERIALCTL_AFTER_UNSUPPORTED_QUERY')
+    assert c.request('session.get', cmd)['connected'] is True
     user32.SetForegroundWindow(window)
     delays=[]
     for sample in range(100):
@@ -159,16 +165,18 @@ with Client('127.0.0.1') as c:
         c.input(cmd,b'echo '+marker+b'\r\n')
         until(marker)
         deadline=time.monotonic()+5
-        while user32.GetPropW(terminal,'SerialCtl.PaintSample')==previous and time.monotonic()<deadline:
+        while user32.GetPropW(terminal,'SerialCtl.PaintProbe')!=sample+1 and time.monotonic()<deadline:
             time.sleep(.001)
+        assert user32.GetPropW(terminal,'SerialCtl.PaintProbe')==sample+1, 'Actual stdout marker was not painted'
         assert user32.GetPropW(terminal,'SerialCtl.PaintSample')!=previous, 'No real WM_PAINT observation'
         delays.append(user32.GetPropW(terminal,'SerialCtl.PaintUsec')/1000)
     ordered=sorted(delays)
     report={'cmd':cmd,'environment':platform.platform(),'network':'loopback','physical_serial_rate':'not applicable: real CMD console bridge / raw stdout pipe',
             'clients':1,'samples':delays,'P50_ms':ordered[50],'P95_ms':ordered[95],'P99_ms':ordered[99],
-            'measurement':'PostData raw output callback QPC -> actual packaged terminal WM_PAINT BitBlt completion; excludes physical monitor presentation',
+            'measurement':'PostData callback QPC for the stdout chunk completing a unique marker -> first actual terminal BitBlt containing that marker; excludes earlier fragment time and physical monitor presentation',
             'checks':['sequential GUI editing','UTF8 and GBK Chinese raw stdout','history resubmission','multiline clipboard with deferred tail',
-                      'asynchronous output preserves draft','background output preserves logical reading anchor','active typing and Enter follow latest']}
+                      'asynchronous output preserves draft','background output preserves logical reading anchor','active typing and Enter follow latest',
+                      'unsupported CMD terminal query is reported without injecting control bytes or terminating CMD']}
     if len(sys.argv)>3:
         pathlib.Path(sys.argv[3]).write_text(json.dumps(report,indent=2),encoding='utf-8')
     print('CMD display P50=%.3f ms P95=%.3f ms P99=%.3f ms; 100 samples'%(ordered[50],ordered[95],ordered[99]))

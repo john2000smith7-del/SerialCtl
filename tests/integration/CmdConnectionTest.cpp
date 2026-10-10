@@ -85,6 +85,8 @@ int main() {
     cmd.OverrideTextCodePage(65001);
     if (cmd.SendObserved(Bytes{0xff, 13, 10}, error, [&] { observedInvalid = true; }) || observedInvalid)
         return fail(18);
+    if (cmd.SendObserved(Bytes{0x1b, '[', '6', 'n', 13, 10}, error, [&] { observedInvalid = true; }) || observedInvalid)
+        return fail(19);
     cmd.OverrideTextCodePage(0);
     if (std::string(cmd.CodePageSource()) == "manual")
         return fail(13);

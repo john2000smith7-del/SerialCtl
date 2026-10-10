@@ -3587,7 +3587,9 @@ void MainWindow::SwitchSession(size_t index) {
     ClearTerminalSelection();
     UpdateTerminalDimensions();
     InvalidateRect(terminal_, nullptr, TRUE);
+    const auto listTop = SendMessageW(connectionList_, LB_GETTOPINDEX, 0, 0);
     SendMessageW(connectionList_, LB_SETCURSEL, index, 0);
+    SendMessageW(connectionList_, LB_SETTOPINDEX, listTop, 0);
     SetConnectedUi(connection_ && connection_->IsConnected());
     if (selectedMode_ == 0 && SftpClient::IsAvailable()) {
         ShowSftpPanel(true);
@@ -3908,16 +3910,41 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
         if (session == activeSession_)
             selectedCodePage_ = codePage;
     }
-    if (arrival && !session->pendingPaintArrival)
-        session->pendingPaintArrival = arrival;
     const std::wstring decoded = DecodeTerminalData(*session, data);
+    if (measurePaint_ && arrival) {
+        session->paintProbeText += decoded;
+        static const std::wstring prefix = L"SERIALCTL_PAINT_";
+        const auto marker = session->paintProbeText.rfind(prefix);
+        if (marker != std::wstring::npos && marker + prefix.size() + 3 <= session->paintProbeText.size()) {
+            const auto digits = session->paintProbeText.substr(marker + prefix.size(), 3);
+            if (std::all_of(digits.begin(), digits.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; })) {
+                const auto probe = static_cast<INT_PTR>(std::stoi(digits) + 1);
+                if (probe != session->paintProbe) {
+                    session->paintProbe = probe;
+                    session->pendingProbeArrival = arrival;
+                }
+            }
+        }
+        if (session->paintProbeText.size() > 96)
+            session->paintProbeText.erase(0, session->paintProbeText.size() - 96);
+    }
     const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
     const bool wasAlternateScreen = session->terminal.AlternateScreen();
     const TerminalFeedResult result = session->terminal.Feed(decoded, timestamp);
     if (session->logger && !result.logText.empty()) session->logger->WriteText(result.logText);
     if (!result.response.empty() && session->connection && session->connection->IsConnected()) {
-        std::wstring ignored;
-        session->connection->Send(Bytes(result.response.begin(), result.response.end()), ignored);
+        if (session->mode == 4) {
+            if (!session->cmdInteractionWarning) {
+                session->cmdInteractionWarning = true;
+                PostStatus(sessionId, L"CMD 行提交模式不支持全屏终端查询；未向控制台发送控制序列", true);
+            }
+        } else if (session->mode == 1) {
+            sessionService_.Input("session-" + std::to_string(sessionId),
+                                  Bytes(result.response.begin(), result.response.end()), "terminal-response");
+        } else {
+            std::wstring ignored;
+            session->connection->Send(Bytes(result.response.begin(), result.response.end()), ignored);
+        }
     }
     if (result.titleChanged) session->terminalTitle = result.title;
     if (!result.workingDirectory.empty()) { session->terminalDirectory = result.workingDirectory; session->terminalDirectoryFromOsc = true; }
@@ -4357,6 +4384,8 @@ void MainWindow::PaintTerminal(HDC dc) {
                      reinterpret_cast<HANDLE>(static_cast<INT_PTR>(anchor.offset) + 1));
             SetPropW(terminal_, L"SerialCtl.NewOutput",
                      reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->terminalHasNewOutput) + 1));
+            SetPropW(terminal_, L"SerialCtl.CmdInteractionBlocked",
+                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->cmdInteractionWarning) + 1));
         }
 
         size_t selectionStartLine = terminalSelectionAnchorLine_;
@@ -4478,15 +4507,16 @@ void MainWindow::PaintTerminal(HDC dc) {
     }
 
     BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
-    if (measurePaint_ && activeSession_ && activeSession_->pendingPaintArrival) {
+    if (measurePaint_ && activeSession_ && activeSession_->pendingProbeArrival) {
         LARGE_INTEGER now{}, frequency{};
         QueryPerformanceCounter(&now);
         QueryPerformanceFrequency(&frequency);
         auto microseconds =
-            static_cast<INT_PTR>((now.QuadPart - activeSession_->pendingPaintArrival) * 1000000 / frequency.QuadPart);
+            static_cast<INT_PTR>((now.QuadPart - activeSession_->pendingProbeArrival) * 1000000 / frequency.QuadPart);
         SetPropW(terminal_, L"SerialCtl.PaintUsec", reinterpret_cast<HANDLE>(std::max<INT_PTR>(1, microseconds)));
         SetPropW(terminal_, L"SerialCtl.PaintSample", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(++paintSample_)));
-        activeSession_->pendingPaintArrival = 0;
+        SetPropW(terminal_, L"SerialCtl.PaintProbe", reinterpret_cast<HANDLE>(activeSession_->paintProbe));
+        activeSession_->pendingProbeArrival = 0;
     }
     SelectObject(buffer, oldBitmap);
     DeleteObject(bitmap);

@@ -67,20 +67,24 @@ def wait(predicate,timeout=10):
 with Client('127.0.0.1') as c:
     count=lambda:len([r for r in c.resources()['resources'] if r['kind']=='cmd' and r['connected']])
     baseline=count()
+    listing=u.GetDlgItem(window,106)
+    baseline_rows=u.SendMessageW(listing,0x18b,0,0)
     for index in range(32):
         assert u.PostMessageW(window,0x111,300,0)
         wait(lambda:count()==baseline+index+1)
+        wait(lambda:u.SendMessageW(listing,0x18b,0,0)==baseline_rows+index+1)
     # IsConnected means the native bridge transport is established; its real CMD
     # is created asynchronously. Keep the exact process assertion after readiness.
     wait(lambda:sum(name.lower()=='cmd.exe' for name in children().values())==baseline+32)
     live=children()
     assert sum(name.lower()=='cmd.exe' for name in live.values())==baseline+32,live
-    listing=u.GetDlgItem(window,106)
     u.SendMessageW(listing,0x197,12,0) # LB_SETTOPINDEX
     top=u.SendMessageW(listing,0x18e,0,0)
     assert top==12,top
     assert u.PostMessageW(window,0x111,300,0)
     wait(lambda:count()==baseline+33)
+    wait(lambda:u.SendMessageW(listing,0x18b,0,0)==baseline_rows+33)
+    wait(lambda:sum(name.lower()=='cmd.exe' for name in children().values())==baseline+33)
     assert u.SendMessageW(listing,0x18e,0,0)==top,'top resource ID must survive a rebuilt list with duplicate CMD names'
     live=children()
     known_processes={p:creation(p) for p in live}
