@@ -57,6 +57,14 @@ bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsi
         error = std::to_wstring(first) + L"–" + std::to_wstring(last) + L" 端口均不可用；本地会话仍可使用";
         return false;
     }
+    acceptEvent_ = WSACreateEvent();
+    stopEvent_ = WSACreateEvent();
+    if (acceptEvent_ == WSA_INVALID_EVENT || stopEvent_ == WSA_INVALID_EVENT ||
+        WSAEventSelect(listen_, acceptEvent_, FD_ACCEPT | FD_CLOSE) != 0) {
+        error = L"无法建立网络监听事件";
+        Stop();
+        return false;
+    }
     handler_ = std::move(handler);
     running_ = true;
     accept_ = std::thread(&ApiServer::Accept, this);
@@ -64,20 +72,28 @@ bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsi
 }
 void ApiServer::Stop() {
     running_ = false;
-    auto s = listen_.exchange(INVALID_SOCKET);
-    if (s != INVALID_SOCKET) {
-        shutdown(s, SD_BOTH);
-        closesocket(s);
-    }
+    if (stopEvent_ != WSA_INVALID_EVENT)
+        WSASetEvent(stopEvent_);
     if (accept_.joinable())
         accept_.join();
+    auto s = listen_.exchange(INVALID_SOCKET);
+    if (s != INVALID_SOCKET)
+        closesocket(s);
+    for (auto *event : {&acceptEvent_, &stopEvent_})
+        if (*event != WSA_INVALID_EVENT) {
+            WSACloseEvent(*event);
+            *event = WSA_INVALID_EVENT;
+        }
     std::vector<std::shared_ptr<ClientState>> clients;
     {
         std::lock_guard<std::mutex> l(mutex_);
         clients.swap(clients_);
     }
-    for (auto &c : clients)
+    for (auto &c : clients) {
         Close(c, 1001, "SERVER_STOPPING");
+        if (c->reader.joinable())
+            CancelSynchronousIo(reinterpret_cast<HANDLE>(c->reader.native_handle()));
+    }
     for (auto &c : clients)
         if (c->reader.joinable())
             c->reader.join();
@@ -105,43 +121,60 @@ Json ApiServer::Diagnostics() {
     return diagnostics_;
 }
 void ApiServer::Accept() {
+    WSAEVENT waits[] = {stopEvent_, acceptEvent_};
     while (running_) {
-        sockaddr_in a{};
-        int size = sizeof(a);
-        SOCKET s = accept(listen_, reinterpret_cast<sockaddr *>(&a), &size);
-        if (s == INVALID_SOCKET)
+        auto signaled = WSAWaitForMultipleEvents(2, waits, FALSE, WSA_INFINITE, FALSE);
+        if (!running_ || signaled != WSA_WAIT_EVENT_0 + 1)
             break;
-        std::vector<std::shared_ptr<ClientState>> retired;
-        std::shared_ptr<ClientState> c;
-        {
-            std::lock_guard<std::mutex> l(mutex_);
-            for (auto it = clients_.begin(); it != clients_.end();)
-                if ((*it)->finished) {
-                    retired.push_back(*it);
-                    it = clients_.erase(it);
-                } else
-                    ++it;
-            if (clients_.size() < MaxClients) {
-                c = std::make_shared<ClientState>();
-                c->socket = s;
-                c->id = nextClient_++;
-                char peer[INET_ADDRSTRLEN]{};
-                inet_ntop(AF_INET, &a.sin_addr, peer, sizeof(peer));
-                c->peer = std::string(peer) + ":" + std::to_string(ntohs(a.sin_port));
-                clients_.push_back(c);
+        WSANETWORKEVENTS events{};
+        if (WSAEnumNetworkEvents(listen_, acceptEvent_, &events) != 0 || (events.lNetworkEvents & FD_CLOSE))
+            break;
+        for (;;) {
+            sockaddr_in a{};
+            int size = sizeof(a);
+            SOCKET s = accept(listen_, reinterpret_cast<sockaddr *>(&a), &size);
+            if (s == INVALID_SOCKET)
+                break;
+            if (!running_) {
+                closesocket(s);
+                break;
             }
+            // Accepted sockets inherit nonblocking/event properties from the listener.
+            WSAEventSelect(s, nullptr, 0);
+            u_long blocking = 0;
+            ioctlsocket(s, FIONBIO, &blocking);
+            std::vector<std::shared_ptr<ClientState>> retired;
+            std::shared_ptr<ClientState> c;
+            {
+                std::lock_guard<std::mutex> l(mutex_);
+                for (auto it = clients_.begin(); it != clients_.end();)
+                    if ((*it)->finished) {
+                        retired.push_back(*it);
+                        it = clients_.erase(it);
+                    } else
+                        ++it;
+                if (clients_.size() < MaxClients) {
+                    c = std::make_shared<ClientState>();
+                    c->socket = s;
+                    c->id = nextClient_++;
+                    char peer[INET_ADDRSTRLEN]{};
+                    inet_ntop(AF_INET, &a.sin_addr, peer, sizeof(peer));
+                    c->peer = std::string(peer) + ":" + std::to_string(ntohs(a.sin_port));
+                    clients_.push_back(c);
+                }
+            }
+            for (auto &old : retired)
+                old->reader.join();
+            ws::SocketOptions(s, 1500);
+            if (!c) {
+                const std::string reply =
+                    "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 12\r\n\r\nCLIENT_LIMIT";
+                ws::SendAll(s, reply.data(), reply.size());
+                closesocket(s);
+                continue;
+            }
+            c->reader = std::thread(&ApiServer::Client, this, c);
         }
-        for (auto &old : retired)
-            old->reader.join();
-        ws::SocketOptions(s, 1500);
-        if (!c) {
-            const std::string reply =
-                "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 12\r\n\r\nCLIENT_LIMIT";
-            ws::SendAll(s, reply.data(), reply.size());
-            closesocket(s);
-            continue;
-        }
-        c->reader = std::thread(&ApiServer::Client, this, c);
     }
 }
 void ApiServer::Queue(const std::shared_ptr<ClientState> &c, const Json &j) {

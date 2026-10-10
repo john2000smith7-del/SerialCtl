@@ -101,7 +101,21 @@ int main() {
         f.Remove3();
         Expect(request("session.get", "session-3")["ok"] == false, "target disappearance");
         std::cerr << "stage=" << ++stage << " stopping first server" << std::endl;
+        std::mutex stopMutex;
+        std::condition_variable stopSignal;
+        bool stopComplete = false;
+        std::thread watchdog([&] {
+            std::unique_lock<std::mutex> lock(stopMutex);
+            if (!stopSignal.wait_for(lock, std::chrono::seconds(5), [&] { return stopComplete; }))
+                std::cerr << "Stop watchdog diagnostics=" << f.server.Diagnostics().dump() << std::endl;
+        });
         f.server.Stop();
+        {
+            std::lock_guard<std::mutex> lock(stopMutex);
+            stopComplete = true;
+            stopSignal.notify_one();
+        }
+        watchdog.join();
         std::cerr << "stage=" << ++stage << " first server stopped" << std::endl;
         {
             std::cerr << "stage=" << ++stage << " capacity fixture" << std::endl;

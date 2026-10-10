@@ -82,6 +82,7 @@ class ApiServer {
     std::string instance_;
     Handler handler_;
     std::thread accept_;
+    WSAEVENT acceptEvent_ = WSA_INVALID_EVENT, stopEvent_ = WSA_INVALID_EVENT;
 };
 inline std::string Encode64(const Bytes &bytes) {
     return ws::Base64(bytes);
