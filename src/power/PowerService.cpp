@@ -791,6 +791,8 @@ void PowerService::Execute(const std::string &id, const Json &command) {
         else if (type == "stop")
             StopTask();
         else if (type == "output") {
+            if (command["enabled"].get<bool>())
+                Require(task_.is_null() || task_.empty(), "Stop the running task before manual output ON");
             if (!command["enabled"].get<bool>()) {
                 task_ = Json();
                 std::lock_guard<std::mutex> lock(mutex_);

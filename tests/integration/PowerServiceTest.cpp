@@ -66,6 +66,12 @@ int main() {
     Wait(power,
          power.Submit(
              {{"type", "task"}, {"channels", Json::array({2})}, {"onMs", 5000}, {"offMs", 5000}, {"count", 10}}));
+    auto conflict =
+        Wait(power,
+             power.Submit({{"type", "output"}, {"channels", Json::array({2})}, {"enabled", true}, {"source", "api"}}));
+    Expect(conflict["state"] == "failed" && power.State()["connected"] == true &&
+               power.State()["task"].value("running", false),
+           "remote manual ON cannot override an active local task");
     auto stop = Wait(power, power.Submit({{"type", "stop"}}));
     Expect(stop["state"] == "completed" && power.State()["channels"][1]["output"] == false,
            "stop disables owned output");

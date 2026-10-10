@@ -483,6 +483,12 @@ void PowerPane::Refresh() {
                 SetWindowTextW(current_[i], Value(a).c_str());
             }
         }
+        if (changed && index != 0) {
+            bool selected = SendMessageW(check_[0], BM_GETCHECK, 0, 0) == BST_CHECKED ||
+                            SendMessageW(check_[1], BM_GETCHECK, 0, 0) == BST_CHECKED;
+            for (int i = 0; i < 2; ++i)
+                SendMessageW(check_[i], BM_SETCHECK, selected ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
         if (changed)
             Layout();
         if (deviceSettingsChanged || !wasConnected)
