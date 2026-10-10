@@ -46,6 +46,7 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr window, int id);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="GetPropW")] public static extern IntPtr GetProp(IntPtr window, string name);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SetText(IntPtr window, uint message, IntPtr wParam, string text);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr ReadText(IntPtr window, uint message, IntPtr wParam, StringBuilder text);
     public static void Fill(IntPtr dialog, int id, string text) {
@@ -186,7 +187,18 @@ public static class FakePlink {
             Console.WriteLine("Remote directory is /home/test\nListing directory /home/test\n-rw-r--r-- 1 test test 12 Jan 01 2026 test.txt");
             return 0;
         }
-        foreach (string arg in args) if (arg == "-hostkey") { while (Console.ReadLine() != null) {} return 0; }
+        foreach (string arg in args) if (arg == "-hostkey") {
+            var producer = new System.Threading.Thread(() => {
+                for (int i=0;;i++) {
+                    Console.WriteLine("SERIALCTL_PAINT_" + (i%1000).ToString("D3") + " controlled SSH output during SFTP layout");
+                    System.Threading.Thread.Sleep(10);
+                }
+            });
+            producer.IsBackground = true;
+            producer.Start();
+            while (Console.ReadLine() != null) {}
+            return 0;
+        }
         Console.WriteLine("The host key is not cached for this server\nkey fingerprint is:\nssh-ed25519 255 SHA256:ui-smoke-test");
         return 1;
     }
@@ -520,12 +532,18 @@ foreach ($architecture in @('x64')) {
             $originalWidth = $bounds.Right
             $headerScreen=New-Object SerialCtlUiSmoke+RECT
             [SerialCtlUiSmoke]::GetWindowRect($header,[ref]$headerScreen)|Out-Null
+            $terminal = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 107)
+            $beforePaint = [SerialCtlUiSmoke]::GetProp($terminal, 'SerialCtl.PaintSample').ToInt64()
+            if ($beforePaint -le 0) {throw 'Controlled SSH stdout was not actually painted before SFTP drag.'}
             [SerialCtlUiSmoke]::SetForegroundWindow($application.MainWindowHandle)|Out-Null
             [SerialCtlUiSmoke]::SetCursorPos(($headerScreen.Right-2),($headerScreen.Top+16))|Out-Null
             [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
             foreach($frame in 1..10){[SerialCtlUiSmoke]::SetCursorPos(($headerScreen.Right-2-$frame*3),($headerScreen.Top+16))|Out-Null;Start-Sleep -Milliseconds 16;Capture-Desktop "$architecture-$theme-sftp-column-frame-$frame"}
+            $afterPaint = [SerialCtlUiSmoke]::GetProp($terminal, 'SerialCtl.PaintSample').ToInt64()
             [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
             Start-Sleep -Milliseconds 300
+            if ($afterPaint -le $beforePaint) {throw 'SFTP column drag did not overlap actual sustained stdout painting.'}
+            [ordered]@{beforePaint=$beforePaint;afterPaint=$afterPaint;capture='CopyFromScreen, actual mouse, 10 intermediate frames';source='Isolated mock SSH stdout every 10ms, production terminal/SFTP controls; no real server test'} | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory "$architecture-$theme-sftp-sustained.json") -Encoding UTF8
             [SerialCtlUiSmoke]::GetClientRect($header, [ref]$bounds) | Out-Null
             if ($bounds.Right -ge $originalWidth) { throw 'SFTP name column did not resize.' }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
