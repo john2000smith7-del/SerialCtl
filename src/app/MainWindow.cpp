@@ -1520,7 +1520,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             SendMessageW(window, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&itemRect));
             const int cardRight = itemRect.right - (GetOverlayScrollMetrics(window, scrollMetrics) ?
                 Ui::OverlayScrollLaneWidth : 0);
-            RECT card{itemRect.left, itemRect.top + 4, cardRight, itemRect.bottom - 4};
+            RECT card{itemRect.left, itemRect.top + Ui::Scale(4), cardRight, itemRect.bottom - Ui::Scale(4)};
             const CommandActionRects actions = GetCommandActionRects(card);
             SendMessageW(window, LB_SETCURSEL, index, 0);
             self->UpdateCommandActions();
@@ -1561,7 +1561,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             SendMessageW(window, LB_GETITEMRECT, LOWORD(hit), reinterpret_cast<LPARAM>(&itemRect));
             const int cardRight = itemRect.right - (GetOverlayScrollMetrics(window, metrics) ?
                 Ui::OverlayScrollLaneWidth : 0);
-            RECT card{itemRect.left, itemRect.top + 4, cardRight, itemRect.bottom - 4};
+            RECT card{itemRect.left, itemRect.top + Ui::Scale(4), cardRight, itemRect.bottom - Ui::Scale(4)};
             const CommandActionRects actions = GetCommandActionRects(card);
             if (PointInRect(actions.run, point)) { hoverIndex = LOWORD(hit); hoverAction = 1; }
             else if (PointInRect(actions.edit, point)) { hoverIndex = LOWORD(hit); hoverAction = 2; }
@@ -1907,12 +1907,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             if (label) GetTextExtentPoint32W(dc, label, static_cast<int>(wcslen(label)), &extent);
             SelectObject(dc, old); ReleaseDC(window_, dc);
             measure->itemWidth = std::max(208L, extent.cx + 60);
-            measure->itemHeight = measure->itemData == 0 ? 9 : 32;
+            measure->itemHeight = measure->itemData == 0 ? Ui::Scale(9) : Ui::Scale(32);
             return TRUE;
         }
         measure->itemHeight = measure->CtlID == IdCommandList ? Ui::Scale(66) :
             (measure->CtlID == IdSftpList ? Ui::SftpTableRowHeight :
-            (measure->CtlID == IdSftpTransferList ? Ui::SftpTransferRowHeight : 58));
+            (measure->CtlID == IdSftpTransferList ? Ui::SftpTransferRowHeight : Ui::Scale(58)));
         return TRUE;
     }
     case WM_CONTEXTMENU:
@@ -2698,17 +2698,17 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         const SessionState* session = valid ? sessions_[item.itemID].get() : nullptr;
         const bool connected = session && session->connection && session->connection->IsConnected();
         const bool active = session == activeSession_;
-        RECT card{rect.left, rect.top + 4, rect.right, rect.bottom - 4};
+        RECT card{rect.left, rect.top + Ui::Scale(4), rect.right, rect.bottom - Ui::Scale(4)};
         DrawRoundedBox(dc, card, Ui::CardRadius, active ? colors.accentSoft : colors.panelAlt,
             active ? colors.accent : colors.panelAlt);
         HBRUSH dot = CreateSolidBrush(connected ? colors.accent : colors.muted);
-        RECT dotRect{card.left + 14, card.top + 17, card.left + 22, card.top + 25};
+        RECT dotRect{card.left + Ui::Scale(14), card.top + Ui::Scale(17), card.left + Ui::Scale(22), card.top + Ui::Scale(25)};
         HBRUSH oldDot = reinterpret_cast<HBRUSH>(SelectObject(dc, dot));
         Ellipse(dc, dotRect.left, dotRect.top, dotRect.right, dotRect.bottom);
         SelectObject(dc, oldDot);
         DeleteObject(dot);
-        RECT title{card.left + 32, card.top + 6, card.right - 8, card.top + 27};
-        RECT subtitle{card.left + 32, card.top + 27, card.right - 8, card.bottom - 4};
+        RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(6), card.right - Ui::Scale(8), card.top + Ui::Scale(27)};
+        RECT subtitle{card.left + Ui::Scale(32), card.top + Ui::Scale(27), card.right - Ui::Scale(8), card.bottom - Ui::Scale(4)};
         DrawTextSimple(dc, session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         std::wstring state = connected ? L"● 已连接" : L"○ 已断开";
         COLORREF stateColor = colors.muted;
@@ -2726,22 +2726,22 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
-        RECT card{rect.left, rect.top + 4, rect.right - rightInset, rect.bottom - 4};
+        RECT card{rect.left, rect.top + Ui::Scale(4), rect.right - rightInset, rect.bottom - Ui::Scale(4)};
         DrawRoundedBox(dc, card, Ui::CardRadius, selected ? colors.accentSoft : colors.panelAlt,
             selected ? colors.accent : colors.panelAlt);
         for (int row = 0; row < 3; ++row) {
             for (int col = 0; col < 2; ++col) {
                 HBRUSH dotBrush = CreateSolidBrush(colors.muted);
                 HBRUSH oldDotBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, dotBrush));
-                Ellipse(dc, card.left + 12 + col * 5, card.top + 20 + row * 5,
-                    card.left + 14 + col * 5, card.top + 22 + row * 5);
+                Ellipse(dc, card.left + Ui::Scale(12) + col * Ui::Scale(5), card.top + Ui::Scale(20) + row * Ui::Scale(5),
+                    card.left + Ui::Scale(14) + col * Ui::Scale(5), card.top + Ui::Scale(22) + row * Ui::Scale(5));
                 SelectObject(dc, oldDotBrush);
                 DeleteObject(dotBrush);
             }
         }
         const CommandActionRects actions = GetCommandActionRects(card);
-        RECT title{card.left + 32, card.top + 9, actions.run.left - Ui::Space, card.top + 30};
-        RECT value{card.left + 32, card.top + 31, actions.run.left - Ui::Space, card.bottom - 6};
+        RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(9), actions.run.left - Ui::Space, card.top + Ui::Scale(30)};
+        RECT value{card.left + Ui::Scale(32), card.top + Ui::Scale(31), actions.run.left - Ui::Space, card.bottom - Ui::Scale(6)};
         DrawTextSimple(dc, command.name, title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         const bool macro = command.commands.size() > 1;
         const std::wstring summary = macro ?
@@ -3006,7 +3006,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         return TRUE;
     }
     if (message == WM_MEASUREITEM) {
-        reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = 24;
+        reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = Ui::Scale(24);
         return TRUE;
     }
     if (message == WM_CONTEXTMENU && self->pendingMode_ == 3 && reinterpret_cast<HWND>(wParam) == GetDlgItem(dialog, IDC_SERIAL_REFRESH)) {
