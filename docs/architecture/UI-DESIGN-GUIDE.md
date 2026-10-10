@@ -86,7 +86,6 @@ Light theme:
 - The title-bar application icon follows the active theme: dark artwork in dark mode and the matching light artwork in light mode.
 - Left connection list, center terminal, and right command collection are separate rounded surfaces; avoid strong full-height divider lines.
 - The side columns scale within shared minimum and maximum widths. The terminal receives remaining space; maximizing the window must not leave both side panels visually undersized.
-- Left and right side cards extend to the common 12 px bottom margin. Only the center terminal card ends above the composer.
 - Do not add a separate title card above the terminal. The left connection list owns session identity and disconnect actions; the center column is reserved for terminal content.
 - Shared serial sessions are directly writable by every connected client; the connection heading keeps only the disconnect action.
 - Terminal utility settings belong in the terminal right-click menu: local echo, millisecond timestamps, save log, clear, copy, and select all.
@@ -98,10 +97,6 @@ Light theme:
 - New output must not force the view to the bottom while the user is reviewing history. Show the compact accent `新输出` action inside the terminal until the user returns to the live view.
 - Alternate-screen applications such as `vi`, `vim`, `top`, and `less` use the full terminal surface without the timestamp gutter or primary scrollback. Entering or leaving the alternate screen recalculates and reports the available PTY size; leaving it restores the primary screen and its scroll position.
 - Terminal selection is cell-based: drag selects a range, double-click selects a word, `Ctrl+Shift+C` copies, and `Ctrl+Shift+V` pastes. Bracketed paste is honored when requested by the remote application.
-- The bottom input, line-ending selector, and send button form one unified composer. Do not draw separate outer boxes around the input.
-- The composer outer edge aligns with the center terminal card outer edge; its contents use their own internal padding.
-- The visible terminal frame, composer frame, and their child controls must use the same layout boundary. The vertical gap between terminal and composer is the same 12 px used between the three main columns.
-- The line-ending selector remains usable before a connection is opened and exposes labeled `CR`, `LF`, `CRLF`, and `None` choices in one menu.
 - Command cards use the same card radius and vertical rhythm as connection cards.
 - Every command card has matching 28 px Run and Edit icon actions separated by 8 px. Run is disabled when the session is not writable; double-click remains a shortcut for Run.
 - Multi-command macros keep the standard command-card size. While a macro runs, its Run action becomes Stop and draws a determinate progress ring inside the same 28 px bounds; other structural command actions remain disabled until the macro completes or stops.
@@ -137,6 +132,8 @@ Light theme:
 - Hover, pressed, focus, checked, and disabled states checked.
 - x64 builds pass Windows 7 compatibility checks.
 
-## V1.1 interaction policy
+## Current interaction policy
 
 Command drag, add, edit, delete and import update an unsaved draft. A compact secondary Save button uses the same footer grid as Import/Export/Delete. Closing a dirty draft offers Save/Discard/Cancel. SFTP column boundaries use the resize cursor and persisted widths. Path double-click / Ctrl+L and the context menu open the shared input dialog. Manual browsing pauses terminal follow. IP discovery runs asynchronously after a 500 ms debounce; only already-open COMs are listed.
+
+Power and local CMD share the center card. Power uses three checked channel rows, one ON/OFF action pair, separate connect/disconnect, concise status and task fields. No decorative helper paragraphs. System DPI scales fonts and metrics, narrow work areas may collapse the side panel. Power content scrolls when needed.

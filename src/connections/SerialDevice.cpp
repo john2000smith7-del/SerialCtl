@@ -84,12 +84,13 @@ bool SerialDevice::Open(
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
     stopping_ = false;
+    connected_ = true;
     readThread_ = std::thread(&SerialDevice::ReadLoop, this);
     return true;
 }
 
 void SerialDevice::Close() {
-    stopping_ = true;
+    stopping_ = true; connected_ = false;
     if (readThread_.joinable()) {
         readThread_.join();
     }
@@ -120,7 +121,7 @@ bool SerialDevice::Write(const Bytes& data, std::wstring& error) {
 }
 
 bool SerialDevice::IsOpen() const {
-    return handle_ != INVALID_HANDLE_VALUE;
+    return connected_ && handle_ != INVALID_HANDLE_VALUE;
 }
 
 void SerialDevice::ReadLoop() {
@@ -128,6 +129,7 @@ void SerialDevice::ReadLoop() {
     while (!stopping_) {
         DWORD read = 0;
         if (!ReadFile(handle_, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr)) {
+            connected_ = false;
             if (!stopping_ && onStatus_) {
                 onStatus_(L"读取串口失败：" + Win32ErrorMessage(), true);
             }
@@ -138,7 +140,8 @@ void SerialDevice::ReadLoop() {
             DWORD errors = 0;
             COMSTAT status{};
             if (!ClearCommError(handle_, &errors, &status)) {
-                if (!stopping_ && onStatus_)
+                connected_ = false;
+            if (!stopping_ && onStatus_)
                     onStatus_(L"读取串口队列失败：" + Win32ErrorMessage(), true);
                 return;
             }
@@ -147,7 +150,8 @@ void SerialDevice::ReadLoop() {
             const DWORD capacity = static_cast<DWORD>(buffer.size()) - total;
             const DWORD requested = std::min(status.cbInQue, capacity);
             if (!ReadFile(handle_, buffer.data() + total, requested, &extra, nullptr)) {
-                if (!stopping_ && onStatus_)
+                connected_ = false;
+            if (!stopping_ && onStatus_)
                     onStatus_(L"读取串口失败：" + Win32ErrorMessage(), true);
                 return;
             }

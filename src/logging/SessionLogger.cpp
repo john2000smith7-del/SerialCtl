@@ -40,6 +40,8 @@ bool SessionLogger::Start(const std::wstring& mode, std::wstring& error) {
         error = L"无法创建日志：" + Win32ErrorMessage();
         return false;
     }
+    stopping_ = false; failure_.clear();
+    worker_ = std::thread(&SessionLogger::Run, this);
     WriteStatus(L"SerialCtl 会话开始，模式：" + mode);
     return true;
 }
@@ -73,12 +75,14 @@ void SessionLogger::WriteStatus(const std::wstring& text) {
 }
 
 bool SessionLogger::SaveCopy(const std::wstring& destination, std::wstring& error) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
+    wake_.wait(lock, [this] { return queue_.empty() && !writing_; });
+    if (!failure_.empty()) { error = failure_; return false; }
     if (path_.empty()) {
         error = L"当前没有可保存的会话日志。";
         return false;
     }
-    if (file_ != INVALID_HANDLE_VALUE) FlushFileBuffers(file_);
+    if (file_ != INVALID_HANDLE_VALUE && !FlushFileBuffers(file_)) { failure_ = error = L"日志刷新失败：" + Win32ErrorMessage(); return false; }
     if (!CopyFileW(path_.c_str(), destination.c_str(), FALSE)) {
         error = L"无法保存日志：" + Win32ErrorMessage();
         return false;
@@ -86,17 +90,41 @@ bool SessionLogger::SaveCopy(const std::wstring& destination, std::wstring& erro
     return true;
 }
 
+std::wstring SessionLogger::Error() { std::lock_guard<std::mutex> lock(mutex_); return failure_; }
+
 void SessionLogger::Stop() {
+    { std::lock_guard<std::mutex> lock(mutex_); stopping_ = true; wake_.notify_all(); }
+    if (worker_.joinable()) worker_.join();
     std::lock_guard<std::mutex> lock(mutex_);
     if (file_ != INVALID_HANDLE_VALUE) {
-        CloseHandle(file_);
-        file_ = INVALID_HANDLE_VALUE;
+        if (!FlushFileBuffers(file_) && failure_.empty()) failure_ = L"日志刷新失败：" + Win32ErrorMessage();
+        CloseHandle(file_); file_ = INVALID_HANDLE_VALUE;
     }
 }
 
+// Called with mutex held. Producers never wait for the disk.
 void SessionLogger::WriteBytes(const void* data, DWORD size) {
-    DWORD written = 0;
-    WriteFile(file_, data, size, &written, nullptr);
+    if (stopping_ || !failure_.empty() || !size) return;
+    if (queued_ + size > 8 * 1024 * 1024) { failure_ = L"日志磁盘处理过慢，日志队列已满。"; return; }
+    const auto* bytes = static_cast<const std::uint8_t*>(data);
+    queue_.emplace_back(bytes, bytes + size); queued_ += size; wake_.notify_one();
 }
-
+void SessionLogger::Run() {
+    for (;;) {
+        Bytes bytes;
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            wake_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+            if (queue_.empty()) break;
+            bytes = std::move(queue_.front()); queue_.pop_front(); queued_ -= bytes.size(); writing_ = true;
+        }
+        size_t offset = 0; std::wstring failure;
+        while (offset < bytes.size()) {
+            DWORD written = 0;
+            if (!WriteFile(file_, bytes.data() + offset, static_cast<DWORD>(bytes.size() - offset), &written, nullptr) || written == 0) { failure = L"日志写入失败：" + Win32ErrorMessage(); break; }
+            offset += written;
+        }
+        { std::lock_guard<std::mutex> lock(mutex_); writing_ = false; if (!failure.empty()) { failure_ = failure; queue_.clear(); queued_ = 0; } wake_.notify_all(); }
+    }
+}
 } // namespace serialctl

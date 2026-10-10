@@ -25,6 +25,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+        if (mainWindow.PreTranslate(message)) continue;
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }

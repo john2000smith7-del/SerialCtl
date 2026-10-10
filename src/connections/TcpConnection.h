@@ -32,6 +32,7 @@ private:
     std::uint16_t port_;
     bool telnet_;
     std::atomic<SOCKET> socket_{INVALID_SOCKET};
+    std::atomic_bool connected_{false};
     std::atomic_bool cancelStarting_{false};
     std::atomic<bool> stopping_{false};
     std::thread readThread_;

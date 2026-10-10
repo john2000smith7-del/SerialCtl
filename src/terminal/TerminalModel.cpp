@@ -103,6 +103,7 @@ void TerminalModel::HandleOsc(TerminalFeedResult& result) {
 }
 
 TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstring& timestamp) {
+    if (!text.empty()) resizeHistoryLines_ = 0;
     TerminalFeedResult result;
     for (const wchar_t character : text) {
         switch (parserState_) {
@@ -655,16 +656,30 @@ void TerminalModel::Resize(int columns, int rows) {
 void TerminalModel::ResizeScreen(Screen& screen, bool preserveHistory, int oldColumns, int oldRows) {
     (void)oldColumns;
     if (rows_ < oldRows) {
-        const int remove = oldRows - rows_;
+        int remove = oldRows - rows_;
+        // Discard unused bottom rows before moving any meaningful row into history.
+        while (remove > 0 && static_cast<int>(screen.lines.size()) - 1 > screen.cursorRow) {
+            const TerminalLine& last = screen.lines.back();
+            const bool blank = last.timestamp.empty() && !last.wrapped && std::all_of(last.cells.begin(), last.cells.end(), [](const TerminalCell& cell) { return cell.character == L' ' || cell.character == 0; });
+            if (!blank) break;
+            screen.lines.pop_back(); --remove;
+        }
         for (int index = 0; index < remove && !screen.lines.empty(); ++index) {
             if (preserveHistory) {
-                history_.push_back(screen.lines.front());
+                history_.push_back(screen.lines.front()); ++resizeHistoryLines_;
                 if (history_.size() > maximumScrollback_) history_.pop_front();
             }
             screen.lines.erase(screen.lines.begin());
         }
         screen.cursorRow = std::max(0, screen.cursorRow - remove);
     } else {
+        if (preserveHistory) {
+            int restore = rows_ - oldRows;
+            while (restore-- > 0 && !history_.empty() && resizeHistoryLines_ > 0) {
+                screen.lines.insert(screen.lines.begin(), std::move(history_.back()));
+                history_.pop_back(); --resizeHistoryLines_; ++screen.cursorRow;
+            }
+        }
         while (static_cast<int>(screen.lines.size()) < rows_) screen.lines.push_back(BlankLine());
     }
     while (static_cast<int>(screen.lines.size()) > rows_) screen.lines.pop_back();
@@ -679,7 +694,7 @@ void TerminalModel::ResizeScreen(Screen& screen, bool preserveHistory, int oldCo
 }
 
 void TerminalModel::Reset() {
-    history_.clear();
+    history_.clear(); resizeHistoryLines_ = 0;
     primary_ = BlankScreen();
     alternate_ = BlankScreen();
     alternateScreen_ = false;
@@ -712,7 +727,7 @@ void TerminalModel::Clear() {
 }
 
 void TerminalModel::ClearScrollback() {
-    history_.clear();
+    history_.clear(); resizeHistoryLines_ = 0;
 }
 
 size_t TerminalModel::HistorySize() const {

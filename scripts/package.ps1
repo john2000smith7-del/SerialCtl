@@ -89,6 +89,10 @@ $copyMap = [ordered]@{
     'docs/package/README.md' = 'README.md'
     "docs/package/RELEASE-NOTES-$($version.Display).md" = 'RELEASE-NOTES.md'
     'tools/serialctl_client.py' = 'serialctl_client.py'
+    'tools/serialctl_api.py' = 'serialctl_api.py'
+    'docs/package/AI-API.md' = 'AI-API.md'
+    'docs/package/POWER.md' = 'POWER.md'
+    'third_party/json/LICENSE' = 'JSON-LICENSE.txt'
     'docs/package/AI-SERIAL.md' = 'AI-SERIAL.md'
     'VERSION' = 'VERSION'
     'THIRD-PARTY-NOTICES.md' = 'THIRD-PARTY-NOTICES.md'
@@ -108,6 +112,11 @@ foreach ($sourceRelative in $copyMap.Keys) {
     Copy-SerialCtlPackageFile -Source (Join-Path $repositoryRoot $sourceRelative) `
         -Destination (Join-Path $bundleRoot ($destinationRelative.Replace('/', '\')))
 }
+
+$driverRoot = Join-Path $bundleRoot 'drivers/ni-visa18'
+& (Join-Path $PSScriptRoot 'stage-visa-driver.ps1') -Destination $driverRoot
+$driverManifest = Get-Content (Join-Path $repositoryRoot 'third_party/ni-visa/files.json') -Raw | ConvertFrom-Json
+$driverPaths = @($driverManifest.files | ForEach-Object { 'drivers/ni-visa18/' + $_.path })
 
 $sourceState = Get-SerialCtlSourceState -RepositoryRoot $repositoryRoot
 $payloadRecords = @()
@@ -167,7 +176,7 @@ $manifestPath = Join-Path $bundleRoot 'MANIFEST.json'
 $manifestJson = $manifest | ConvertTo-Json -Depth 10
 Write-SerialCtlUtf8NoBom -Path $manifestPath -Content ($manifestJson + "`r`n")
 
-$expectedBeforeChecksums = @($runtimeRelativePaths) + @($copyMap.Values | ForEach-Object { [string]$_ }) + @('MANIFEST.json')
+$expectedBeforeChecksums = @($runtimeRelativePaths) + @($copyMap.Values | ForEach-Object { [string]$_ }) + @('MANIFEST.json') + @($driverPaths)
 Assert-PackageFileSet -Root $bundleRoot -Expected $expectedBeforeChecksums
 
 $checksumLines = @(Get-ChildItem -LiteralPath $bundleRoot -Recurse -File | Sort-Object FullName | ForEach-Object {

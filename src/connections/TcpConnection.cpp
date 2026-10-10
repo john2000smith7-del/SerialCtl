@@ -27,7 +27,9 @@ bool TcpConnection::Start(DataCallback onData, StatusCallback onStatus, std::wst
 
     BOOL noDelay = TRUE;
     setsockopt(connected, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&noDelay), sizeof(noDelay));
-    socket_ = connected;
+    DWORD timeout = 2000;
+    setsockopt(connected, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+    socket_ = connected; connected_ = true;
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
     stopping_ = false;
@@ -41,7 +43,7 @@ bool TcpConnection::Start(DataCallback onData, StatusCallback onStatus, std::wst
 }
 
 void TcpConnection::Stop() {
-    stopping_ = true;
+    stopping_ = true; connected_ = false;
     SOCKET socket = socket_.exchange(INVALID_SOCKET);
     if (socket != INVALID_SOCKET) {
         shutdown(socket, SD_BOTH);
@@ -79,7 +81,7 @@ bool TcpConnection::SendWire(const Bytes& data, std::wstring& error) {
         const int sent = send(
             socket_, reinterpret_cast<const char*>(data.data() + offset),
             static_cast<int>(data.size() - offset), 0);
-        if (sent == SOCKET_ERROR) {
+        if (sent <= 0) {
             error = L"网络发送失败：" + SocketErrorMessage(WSAGetLastError());
             return false;
         }
@@ -89,7 +91,7 @@ bool TcpConnection::SendWire(const Bytes& data, std::wstring& error) {
 }
 
 bool TcpConnection::IsConnected() const {
-    return socket_ != INVALID_SOCKET;
+    return connected_ && socket_ != INVALID_SOCKET;
 }
 
 void TcpConnection::ResizeTerminal(int columns, int rows) {
@@ -124,6 +126,7 @@ void TcpConnection::ReadLoop() {
     while (!stopping_) {
         const int read = recv(socket_, reinterpret_cast<char*>(buffer.data()), static_cast<int>(buffer.size()), 0);
         if (read <= 0) {
+            connected_ = false;
             if (!stopping_ && onStatus_) {
                 onStatus_(read == 0 ? L"远端已关闭连接" : L"网络读取失败：" + SocketErrorMessage(WSAGetLastError()), true);
             }

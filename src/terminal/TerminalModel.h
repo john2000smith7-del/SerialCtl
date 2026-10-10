@@ -141,6 +141,7 @@ private:
     int rows_ = 24;
     size_t maximumScrollback_ = 20000;
     std::deque<TerminalLine> history_;
+    size_t resizeHistoryLines_ = 0;
     Screen primary_;
     Screen alternate_;
     bool alternateScreen_ = false;

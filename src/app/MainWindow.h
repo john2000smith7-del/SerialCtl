@@ -5,10 +5,16 @@
 #include "SftpClient.h"
 #include "SftpModel.h"
 #include "TerminalModel.h"
+#include "PowerPane.h"
+#include "ApiServer.h"
+#include <future>
 
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <map>
+#include <set>
+#include <mutex>
 #include <shellapi.h>
 #include <string>
 #include <thread>
@@ -30,6 +36,7 @@ struct CommandItem {
 class MainWindow {
 public:
     bool Create(HINSTANCE instance, int showCommand);
+    bool PreTranslate(MSG& message);
     HWND Handle() const { return window_; }
 
 private:
@@ -118,6 +125,11 @@ private:
     static void PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
 
+    void ShowApiDialog();
+    static INT_PTR CALLBACK ApiDialogProc(HWND,UINT,WPARAM,LPARAM);
+    Json ApiResources();
+    Json ApiRequest(const std::string&,const std::string&,const Json&);
+    Json ExecuteApiRequest(const std::string&,const std::string&,const Json&);
     void CreateControls();
     void LayoutControls(int width, int height);
     void PaintWindow(HDC dc);
@@ -250,6 +262,11 @@ private:
     bool timestampEnabled_ = true;
 
     std::vector<HWND> toolbarButtons_;
+    ApiServer apiServer_;
+    PowerService powerService_;
+    PowerPane powerPane_;
+    bool powerVisible_ = false;
+    HWND cmdButton_ = nullptr, powerButton_ = nullptr, apiButton_ = nullptr;
     HWND themeButton_ = nullptr;
     HWND disconnectButton_ = nullptr;
     HWND connectionHeader_ = nullptr;
@@ -262,6 +279,7 @@ private:
     HWND commandList_ = nullptr;
     HWND saveCommandsButton_ = nullptr;
     bool commandsDirty_ = false;
+    bool commandsFileProtected_ = false;
     HWND importButton_ = nullptr;
     HWND exportButton_ = nullptr;
     HWND addCommandButton_ = nullptr;
@@ -319,6 +337,7 @@ private:
     std::wstring commandDirectory_;
     int rightPanelWidth_ = 360;
     bool rightPanelCollapsed_ = false;
+    bool rightPanelAutoCollapsed_ = false;
     bool rightPanelDragging_ = false;
     bool sftpPanelVisible_ = false;
     bool sftpBusy_ = false;
@@ -351,6 +370,11 @@ private:
     std::vector<Bytes> pendingConnectionData_;
     size_t pendingConnectionBytes_ = 0;
     bool closing_ = false;
+    std::mutex receivedMutex_;
+    std::map<std::uint64_t, Bytes> received_;
+    std::set<std::uint64_t> receiveOverflow_;
+    bool receivePosted_ = false;
+    std::set<std::uint64_t> loggerErrorsShown_;
 
     std::thread discoveryThread_;
     std::atomic_bool discoveryCancel_{false};

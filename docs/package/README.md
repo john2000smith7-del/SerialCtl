@@ -1,4 +1,4 @@
-# SerialCtl V1.1.0
+# SerialCtl V1.0.3
 
 适用：Windows 7 SP1 x64、Windows 10 x64、Windows 11。程序使用原生 C++17/Win32、静态运行库与 YY-Thunks；不需要安装 .NET 或 Python。
 
@@ -13,6 +13,9 @@
 - SFTP 路径双击、文件列表 Ctrl+L 或右键“输入路径”可粘贴 `pwd` 的绝对路径；手动浏览暂停跟随，右键可重新启用。拖动“名称”列右边界调整文件名宽度，自动保存在当前用户设置。
 - Linux AI 工具见同目录 `AI-SERIAL.md` 和 `serialctl_client.py`；Python 仅供 Linux 客户端使用，Windows 主程序不依赖它。
 
-配置、命令草稿保存后的文件和日志位于当前用户 `%APPDATA%\SerialCtl`；压缩包不含个人配置、密码或日志。共享保留所有客户端可读写，不增加互斥；每个 TCP 连接只绑定一个 COM。
+配置、命令草稿保存后的文件和日志位于当前用户 `%LOCALAPPDATA%\SerialCtl`；压缩包不含个人配置、密码或日志。共享保留所有客户端可读写，不增加互斥；每个 TCP 连接只绑定一个 COM。
 
 兼容性验证：GitHub Windows 构建、自动化测试、x64 PE 架构、子系统 6.01、静态运行库导入检查、包解压及校验、深浅主题 UI 检查。未进行真实 Windows 7 SP1、物理串口及现场 SSH/SFTP 验收，详见 `WIN7-HARDWARE-TEST.md`。
+
+- 新增电源与本地 CMD。电源使用见 `POWER.md`；API 授权和 Linux 操作见 `AI-API.md`。本地 CMD 默认 OEM 编码，适合普通命令和脚本。
+- 本次发布 V1.0.3，沿用递增编号并保留历史发布。

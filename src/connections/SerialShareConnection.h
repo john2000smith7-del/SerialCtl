@@ -36,7 +36,9 @@ public:
     bool Register(const std::shared_ptr<SerialShareChannel>& channel);
     void Unregister(const std::shared_ptr<SerialShareChannel>& channel);
     void Broadcast(const std::shared_ptr<SerialShareChannel>& channel, const Bytes& data);
-    std::uint16_t Port() const { return listenPort_; }
+    std::uint16_t Port() const { return listener_ != INVALID_SOCKET ? listenPort_ : 0; }
+    static bool SetLegacyEnabled(bool enabled, std::wstring& error);
+    static bool LegacyEnabled();
     static std::shared_ptr<SerialShareService> Acquire(std::uint16_t port, std::wstring& error);
 private:
     enum class ClientProtocol { Raw, Version1, Version2 };

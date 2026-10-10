@@ -142,6 +142,16 @@ int main() {
     Expect(osc.Feed(L"\x1b]7;file://host/%00\a", L"").workingDirectory.empty(), "invalid path control rejected");
     Expect(osc.Feed(L"\x1b]7;file://host/%C0%AF\a", L"").workingDirectory.empty(), "overlong UTF8 rejected");
     Expect(osc.Feed(std::wstring(L"\x1b]7;file://host/") + std::wstring(1200, L'a') + L"\a", L"").workingDirectory.empty(), "overlong OSC7 ignored rather than truncated");
+    serialctl::TerminalModel resizing(40, 24);
+    resizing.Feed(L"only data", L"10:00:00.000");
+    for (int i=0;i<50;++i) { resizing.Resize(40, 5); resizing.Resize(40, 24); }
+    Expect(resizing.HistorySize()==0, "unused bottom rows never become empty history");
+    ExpectLine(resizing,0,L"only data","resizing idle terminal preserves output position");
+    serialctl::TerminalModel cursorResize(40,4);
+    cursorResize.Feed(L"one\r\ntwo\r\nthree\r\nfour", L"10:00:00.000");
+    cursorResize.Resize(40,2); cursorResize.Resize(40,4);
+    Expect(cursorResize.HistorySize()==0,"idle grow restores rows moved by shrink");
+    ExpectLine(cursorResize,3,L"four","cursor row survives shrink then grow");
     TestUntrustedParameters();
     TestCarriageReturnAndHistoryRecall();
     TestScrollback();

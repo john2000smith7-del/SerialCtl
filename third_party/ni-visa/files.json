@@ -1,0 +1,1482 @@
+{
+  "version": "18.0",
+  "url": "https://download.ni.com/support/softlib/visa/NI-VISA/18.0/Windows/NIVISA1800runtime.zip",
+  "sha256": "e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517",
+  "files": [
+    {
+      "path": "nidist.id",
+      "sha256": "4c72f45976d56d98db317e223b79fd0c72b1cee38cd991e4cb346a6342a6dbf4",
+      "size": 365
+    },
+    {
+      "path": "patents.txt",
+      "sha256": "f9fdae3a198b90567c2284ec4592d43940e1162cfea753ef429447982fa71724",
+      "size": 23978
+    },
+    {
+      "path": "setup.exe",
+      "sha256": "5431bb8d232800a607ee9c3e86493652d69973a871ef64f7ea5ece41e8eda328",
+      "size": 1479176
+    },
+    {
+      "path": "setup.ini",
+      "sha256": "5f2c2dfd2a6b20f85211bb36e93f6cd2fbabcf10adf3d8454391f2930fafe6fe",
+      "size": 22271
+    },
+    {
+      "path": "spec.ini",
+      "sha256": "a7016d897dc556c956b25693163766aa1ad381aaf3634c732097f4a6a2ba1546",
+      "size": 2452
+    },
+    {
+      "path": "license/Apache 2.0 License - English.pdf",
+      "sha256": "7d2a77e1dbe972d136a53678d22f827ec9da9ea74dbd2d0cc5d73bd55e3b94f2",
+      "size": 98790
+    },
+    {
+      "path": "license/Boost 1.0 License - English.pdf",
+      "sha256": "13123f821958d716b3bfaf292c8e0462938d120b98a5e6ec9100957293b63786",
+      "size": 27407
+    },
+    {
+      "path": "license/BSD 3-clause License - English.rtf",
+      "sha256": "32f6267db4ff01854cf3f26ae2a54bb39eebdd11c8a4198d7b331362f48d6c56",
+      "size": 1798
+    },
+    {
+      "path": "license/Code Project Open License - English.rtf",
+      "sha256": "df3e13d9ade05f739514b828b88b5439001a44f9c535a396b23f82c44a50c91a",
+      "size": 14824
+    },
+    {
+      "path": "license/GNU Lesser General Public License 2.1 - English.rtf",
+      "sha256": "5ca96feb42495f6fbbbdcca28e0902c4b4287f5e2cd8c0defdfac36e142ce6f5",
+      "size": 31344
+    },
+    {
+      "path": "license/IVI Foundation Inc License Agreement - English.rtf",
+      "sha256": "23c3d86b4339cb467a7b6634eefa4d190d0458774e04471b0424d0e73bc86de8",
+      "size": 7765
+    },
+    {
+      "path": "license/MD5 Message Digest Algorithm License - English.rtf",
+      "sha256": "6199f4ed7141843a22f5aaace5750cab502fa2873a4a079fc6a48d148e330dda",
+      "size": 34180
+    },
+    {
+      "path": "license/Microsoft Limited Public License MSDN - English.rtf",
+      "sha256": "4d601970542bc0acbee4355d9c74cb3ec91f61a5853f7c5ae5335b34fc14f28d",
+      "size": 3411
+    },
+    {
+      "path": "license/Microsoft Platform SDK Server 2003 SP1 License - English.rtf",
+      "sha256": "a42385973f5c9fa5e8fde1a80a97dea3b38001c607f5d0791052d2676141ba63",
+      "size": 93314
+    },
+    {
+      "path": "license/Microsoft Platform SDK Server 2008 License - English.rtf",
+      "sha256": "0b4e37fb262a429fd31de1181669d4fa37ce394c17d9d7256d2de0ce03ac00cf",
+      "size": 83739
+    },
+    {
+      "path": "license/Microsoft Visual C++ 2015 Runtime Libraries - English.rtf",
+      "sha256": "9bf01f85c74a89aefd6864226fc7c9dd8a7a67e8e1f35bf9bf383d6c5e7d8d8d",
+      "size": 59714
+    },
+    {
+      "path": "license/Microsoft Windows Driver Kit License - English.rtf",
+      "sha256": "7c7dacd2ba334f47411ae633f84449399d9ec62ce4d663866ca1ec8ecee3a326",
+      "size": 152502
+    },
+    {
+      "path": "license/MIT 1.0 License - English.rtf",
+      "sha256": "9b9c9289e1c91a48f85badb5f6fb174e95b41d717e1eb67760169e3695a371c3",
+      "size": 1331
+    },
+    {
+      "path": "license/MIT-X License.rtf",
+      "sha256": "ae5fe8c186d7483cbeda6cfa884ce0d7b63de000c5d5c49b9ca7a2987bc189a2",
+      "size": 1424
+    },
+    {
+      "path": "license/Mozilla Public License 2.0.rtf",
+      "sha256": "dd5646b9e21b3168c22a9067d08e92e010d6d57cfbb021916089074ed8437b7b",
+      "size": 17698
+    },
+    {
+      "path": "license/NI Released License Agreement - English.rtf",
+      "sha256": "fc1ad89e7efbff97f393f2b60ce0e2e8853e203ec07d909f14ce9f837f177936",
+      "size": 92487
+    },
+    {
+      "path": "license/NI Released License Agreement - French.rtf",
+      "sha256": "62b134794c3213e25268b14eef31148c0a6cb270cebfde5a3d81d62f60eb85c2",
+      "size": 116224
+    },
+    {
+      "path": "license/NI Released License Agreement - German.rtf",
+      "sha256": "0cc2f1de72c73d5d619be7cff2e636b7102469697b606828b2b5b5249ee283b1",
+      "size": 106098
+    },
+    {
+      "path": "license/NI Released License Agreement - Italian.rtf",
+      "sha256": "63332bc9c14d4ba11e02db3a5be85fe16b3847de3758884abd9d58c3b1ccb00b",
+      "size": 103615
+    },
+    {
+      "path": "license/NI Released License Agreement - Japanese.rtf",
+      "sha256": "9c1cc859ac54b913a348ca8ca239e36f9249c9ee89cc6234c3db4102f6cdeebe",
+      "size": 332846
+    },
+    {
+      "path": "license/NI Released License Agreement - Korean.rtf",
+      "sha256": "d751ddd3dcdf174aa88cb2da3b5552bd8765cee73e0607beedf99c4d68b8180d",
+      "size": 306452
+    },
+    {
+      "path": "license/NI Released License Agreement - Simplified Chinese.rtf",
+      "sha256": "d98c239da69426849aa285f4748605d3635cde736881ff2f510e3ab43a106ef0",
+      "size": 181589
+    },
+    {
+      "path": "license/NI Released License Agreement - Spanish.rtf",
+      "sha256": "f5813312c766a1008ab56ed1f3243259aec4d2ed791d6537c0b926f4dadb0de0",
+      "size": 105210
+    },
+    {
+      "path": "license/NICTA 1.0 License - English.pdf",
+      "sha256": "ba738915098cfa10329f8170bdf71db42663485a99d08f77dac8daf41055bd44",
+      "size": 46916
+    },
+    {
+      "path": "license/OPC Classic COM License - English.pdf",
+      "sha256": "9f4398b7790b34a02f1003b37d4f0060dddca466a28a78dcb8f05e4f596ec851",
+      "size": 41075
+    },
+    {
+      "path": "license/OpenSSL 1.0 License - English.pdf",
+      "sha256": "8e947fd039fc5e6767a62e40e9a2422715e99a9c39f14e1d9aeb563b07988a34",
+      "size": 9174
+    },
+    {
+      "path": "license/STLPort 1.0 License - English.pdf",
+      "sha256": "83d01505073061569ba215203149712b84cdacb73900c6d05318e57d625d9e1e",
+      "size": 56417
+    },
+    {
+      "path": "license/UPX 1.0 license - English.pdf",
+      "sha256": "223fe509bf459d78272a07655e45e1f6019e33d89e200544fbcbe6074764bca7",
+      "size": 29255
+    },
+    {
+      "path": "license/wxWindows 3.1 License - English.pdf",
+      "sha256": "5830ebfb7de7d79b62030fde2816b83ccb1bd0a90d11ff89b4835e694e5b55ff",
+      "size": 29324
+    },
+    {
+      "path": "Products/EULADepot/EULADep2.cab",
+      "sha256": "c9c18dac4f6c350b93a0a2203e89cb05d33fbb6712fddf934cbfa946b737a6f7",
+      "size": 1001
+    },
+    {
+      "path": "Products/EULADepot/EULADepot2.msi",
+      "sha256": "052d289d2d15899eead800cac044659d17af8e18d7d00b1dfde5b934d65b17bc",
+      "size": 2445312
+    },
+    {
+      "path": "Products/EULADepot/EULADepot2_mft.cab",
+      "sha256": "aa812d32df26d1b4b763c945a817ef2d41cf5d0d9dd34b972fbf217dd388fe4d",
+      "size": 2305
+    },
+    {
+      "path": "Products/EULADepot/NIYouLas.bin",
+      "sha256": "3dbccf0c499ba55e2982eb10221f04bc9c7861bffcd86adf0e684dfe815e0c2f",
+      "size": 8934483
+    },
+    {
+      "path": "Products/MDF/MDF/MDFSuppo.cab",
+      "sha256": "d73c4f268f9a0c5a3890e92d00202b6aea73882d54011c0d0196cd5fc44afc8e",
+      "size": 7483555
+    },
+    {
+      "path": "Products/MDF/MDF/MDFSupport.msi",
+      "sha256": "17000bf47882542c9251b54f98e8a8c85bb25e4809f9a82013d71a14c759a2f7",
+      "size": 1134592
+    },
+    {
+      "path": "Products/MDF/MDF/MDFSupport_mft.cab",
+      "sha256": "71d1bb747940e504e7b9ddadc0ca4b54d5db595c785434117ba62f6fcce4744e",
+      "size": 2473
+    },
+    {
+      "path": "Products/mDNS_Responder/mDNSResponder.msi",
+      "sha256": "d7e1f6321b0e131dfb7c8ba85d5204d6b08482d23fc53a5b7802e2cc8f305a5b",
+      "size": 1206272
+    },
+    {
+      "path": "Products/mDNS_Responder/mDNSResponder_W64.msi",
+      "sha256": "5384754d1326127f67b2116ff7c41d966e7fd1c985883aa0e178ff433873298b",
+      "size": 1171456
+    },
+    {
+      "path": "Products/MetaUninstaller/MU/MetaUninstaller.msi",
+      "sha256": "d96a84f7e729bc223728306ce73bfa60d9e8aab2f9835281a343f4341b9c0b81",
+      "size": 1581056
+    },
+    {
+      "path": "Products/MetaUninstaller/MU/MetaUninstaller_mft.cab",
+      "sha256": "0eaf2d243ef0aa1d7cbe68b6e51c75baf8cef8e356e0132636af90037ea25b28",
+      "size": 3005
+    },
+    {
+      "path": "Products/MetaUninstaller/MU/MetaUnst.cab",
+      "sha256": "b1155ef624d0a54c2a05a108446dab4cec95f0d3f8135e32c9700ec48651a324",
+      "size": 1395329
+    },
+    {
+      "path": "Products/MSIProperties/MetaUtils/media.cab",
+      "sha256": "a32e0a83001d2c5d41649063217923dac167809cab50ec5784078e41c9ec0f0f",
+      "size": 36
+    },
+    {
+      "path": "Products/MSIProperties/MetaUtils/media64.cab",
+      "sha256": "9a21c80753b1339c2e5c6c477c2e17c49857ba0384853f06bd9f0ad3566492c5",
+      "size": 519240
+    },
+    {
+      "path": "Products/MSIProperties/MetaUtils/MSIProperties.msi",
+      "sha256": "3bc5ccf71a39038be6b4cf35d827e143391061da13fdb7db1029997557e19305",
+      "size": 1097728
+    },
+    {
+      "path": "Products/MSIProperties/MetaUtils/MSIProperties64.msi",
+      "sha256": "7e5be7245c6e20d3d8a094d0a06d425242c67a61fc453d23d7295084ba0a09bd",
+      "size": 1097728
+    },
+    {
+      "path": "Products/MSIProperties/MetaUtils/MSIProperties_mft.cab",
+      "sha256": "3666e8c59cf9f692be1447fbd163bb3a89c0fa35584eaf53e67e0660fa8711cb",
+      "size": 1976
+    },
+    {
+      "path": "Products/MStudioCommonRuntimev400/MSCRT400.cab",
+      "sha256": "2fcec3eaa9f7697f55587c596c144164d95d3f0a41582bfcdb2d5af72bb83a32",
+      "size": 2049828
+    },
+    {
+      "path": "Products/MStudioCommonRuntimev400/MStudioCommonRuntime.v400.msi",
+      "sha256": "4411eb6ce17318fcab80112e64fbdc12536dc6d0a19bd1ff727140c2d6e16bf4",
+      "size": 1110016
+    },
+    {
+      "path": "Products/MStudioCommonRuntimev400/MStudioCommonRuntime.v400_mft.cab",
+      "sha256": "34506d98f941df5183b3a7e990ee9791281a7faa72c5c9f10080e7f7433faabc",
+      "size": 2922
+    },
+    {
+      "path": "Products/MStudioVisaNSRuntimev400/MStudioVISARuntime.v400.msi",
+      "sha256": "773bd20e9cfa13188c364e323710928c0b8d28fb781e509e5bc74cee2ab21b91",
+      "size": 1118208
+    },
+    {
+      "path": "Products/MStudioVisaNSRuntimev400/MStudioVISARuntime.v400_mft.cab",
+      "sha256": "56897692b6e468ddf3ba5bdb42948561ff00dfed16ad997d42a4d06797f8d5f8",
+      "size": 2802
+    },
+    {
+      "path": "Products/MStudioVisaNSRuntimev400/MSVIS400.cab",
+      "sha256": "d75f4d23dbd666457e8e212863a6bd0c1f946d782655e24ecf12a657ea992987",
+      "size": 60810
+    },
+    {
+      "path": "Products/MStudioVisaNSRuntimev450/MStudioVISARuntime.v450.msi",
+      "sha256": "11b35b92d882bc6b71745c2a91efc77be81cbc312e93a0469479b69516ec9e44",
+      "size": 1118208
+    },
+    {
+      "path": "Products/MStudioVisaNSRuntimev450/MStudioVISARuntime.v450_mft.cab",
+      "sha256": "503253a6aab7653e48834e88cf5210bf2bf6f986e86b7401b443df2580dc676b",
+      "size": 2804
+    },
+    {
+      "path": "Products/MStudioVisaNSRuntimev450/MSVIS450.cab",
+      "sha256": "77f9eec9e9d649d79b7ea0416b5a5d104208c413af74fe2fbb84897d71b76e85",
+      "size": 60546
+    },
+    {
+      "path": "Products/MXS/mxs.msi",
+      "sha256": "6b1efa8edf172f93817ef27783f0299772e790bcd7d56ff5aa9e4b5255eff1c4",
+      "size": 1413120
+    },
+    {
+      "path": "Products/MXS/mxs1.cab",
+      "sha256": "c5e710f20c53818ba481b5d2b9e18e758d0b3753954199ee7ab7377fc9b749fa",
+      "size": 6393525
+    },
+    {
+      "path": "Products/MXS/mxs64.msi",
+      "sha256": "fe3d752ea08f7138ab7668cf4a4a07d7101338703b3ab95662c2051ebe8bab8f",
+      "size": 1444352
+    },
+    {
+      "path": "Products/MXS/mxs_mft.cab",
+      "sha256": "eef365f42929cba55edfed4972177ed46df8af621fef6095524e27c8f63a600a",
+      "size": 3661
+    },
+    {
+      "path": "Products/NI-APAL_Error_Files/apalerri.msi",
+      "sha256": "abd2a2ea4b02df09ac5757660789c3f621ba79a59d3f5d7f82d0bb501a2c0a86",
+      "size": 1388544
+    },
+    {
+      "path": "Products/NI-APAL_Error_Files/apalerri64.msi",
+      "sha256": "3506a43ea881fb68eb31cf89018dec04af4f4537d08e2aa8f99f2d9bdc2e9514",
+      "size": 1384448
+    },
+    {
+      "path": "Products/NI-DIM/dimSetup.msi",
+      "sha256": "b791384b7409f9ae44a9b232268a36efb381a82467dee36e863027f92d07d6d5",
+      "size": 1425408
+    },
+    {
+      "path": "Products/NI-DIM/dimSetup64.msi",
+      "sha256": "928f0fe49e31afa77e97feeaac3be3420cc23fc7a4bd75f395d5d3be1fd39b1a",
+      "size": 1425408
+    },
+    {
+      "path": "Products/NI-DIM/dimSetup_mft.cab",
+      "sha256": "77f8d9a6ac558e9eede35950bbdcbd99ac8cce31175a22b1b2797b2a7daf0cca",
+      "size": 3036
+    },
+    {
+      "path": "Products/NI-DIM/nidimi32.cab",
+      "sha256": "126d6b87e09a228998c69fb664f1a4a6a606840ba7a97296e1430d9d2a867d7d",
+      "size": 322020
+    },
+    {
+      "path": "Products/NI-DIM/nidimi64.cab",
+      "sha256": "5341f3c97671545009f3586394db02810cd6a358234ea36bd44aacf88481a7e8",
+      "size": 482422
+    },
+    {
+      "path": "Products/NI-ORB/niorb.cab",
+      "sha256": "441e5a5a4a5abdcfe4b8d6239f8a2986cd7f28de436264a2f10f508426f02be2",
+      "size": 100099
+    },
+    {
+      "path": "Products/NI-ORB/niorb64.cab",
+      "sha256": "2e6df02c6de605c274d39fa5dc007b60d648db2cd061d46f75e7a62d25d7caa5",
+      "size": 170721
+    },
+    {
+      "path": "Products/NI-ORB/niorbi.msi",
+      "sha256": "172a3c7bd096ef9627619c5c18e29c321214f8cd5d99a1ba22c4644aa0208817",
+      "size": 1695744
+    },
+    {
+      "path": "Products/NI-ORB/niorbi64.msi",
+      "sha256": "a7d570c76945e2002fae2e6e8d96581baac64659c93524eef34d9061a1ed4475",
+      "size": 1691648
+    },
+    {
+      "path": "Products/NI-ORB/niorbi_mft.cab",
+      "sha256": "ac87257d6b5100ccac4753fe7f3659ece81d4ef8df98a267a7fc51889010ab18",
+      "size": 2634
+    },
+    {
+      "path": "Products/NI-PAL/nipal.cab",
+      "sha256": "5a5fe7601a0f9185bd5279403945e7e53c143f108371e99961b2adcb5708174c",
+      "size": 682321
+    },
+    {
+      "path": "Products/NI-PAL/nipal64.cab",
+      "sha256": "e919a2e1884acfc9ef5d958698c47a4a3141e1abda02e5448457e9c5cf8649a4",
+      "size": 869762
+    },
+    {
+      "path": "Products/NI-PAL/palSetup.msi",
+      "sha256": "b98676f97ef2eadbe1e7cd62563b8d1fa362dbcbfbfb5e131ad78909349b5667",
+      "size": 1171456
+    },
+    {
+      "path": "Products/NI-PAL/palSetup64.msi",
+      "sha256": "61b6474f70b0320eef577ad6d70aa2272a0087f87bcd2289a47a70ecbc01ad88",
+      "size": 1105920
+    },
+    {
+      "path": "Products/NI-PAL/palSetup64_chs.mst",
+      "sha256": "1bf2f8a7d712c3f6aa4fa5184e3c2d6c9910ccbd35c46a41e65b26228eeae30f",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup64_deu.mst",
+      "sha256": "8f84b00a1d8a9f6cf523118befd127e8870c88d5effa1676cc4ffef0afe5c82d",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup64_fra.mst",
+      "sha256": "28cb3effec0cbaf497dd3803a5e2bfbf212c7ee8ec2760ceabbca171fae52318",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup64_jpn.mst",
+      "sha256": "29df0e59d82cc450ba40d786becf1bc0abde826f2b775b7702aa8dcc8eb76e8a",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup64_kor.mst",
+      "sha256": "4c1c4afac6c8ad39568a717ea6615dcd9dbb50b729c37fe79141f0c1a6679a28",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup_chs.mst",
+      "sha256": "447afd472bea5bc8787edabec353f2e4c9b29e5fb258cf32a4b7626e4458d50a",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup_deu.mst",
+      "sha256": "629758d5a6a9cfb63410827ccfcfff43fc8b6bc294a7f95e84568d8c97a46993",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup_fra.mst",
+      "sha256": "e2b65b05b39b518545f1b2d99f9e2f0e0d4211069e1f48d1a96ec73bbcfa63c5",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup_jpn.mst",
+      "sha256": "034a1d57cb0276577b1bca2b2bc365480972e61f8939df6437eeba3d27950ebb",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup_kor.mst",
+      "sha256": "afc26731758336ca036a0739dbf5b6ae164d774e08643435fbc313ab2adf8514",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-PAL/palSetup_mft.cab",
+      "sha256": "99141826ecf716704a8dcedb5f683dd15177146e87e3e1b6ac0955ab7b41e6d0",
+      "size": 3263
+    },
+    {
+      "path": "Products/NI-PAL_Error_Files/palerr.cab",
+      "sha256": "ac1ac1016e347de34bcd5973c07b66feb8ed90b662faf4d2d6abaf218d63d018",
+      "size": 45511
+    },
+    {
+      "path": "Products/NI-PAL_Error_Files/palerr64.cab",
+      "sha256": "1980c60074ee1bbe96554a1b90e7aa85d0a03e75450d152759c4fa3ab337260a",
+      "size": 45535
+    },
+    {
+      "path": "Products/NI-PAL_Error_Files/palerri.msi",
+      "sha256": "413c6a364466b8e67b06b02dbec52c51e992e3d45db72db5c3e431ef56c11cb8",
+      "size": 1101824
+    },
+    {
+      "path": "Products/NI-PAL_Error_Files/palerri64.msi",
+      "sha256": "a2e1fef8d61758e16853f79ceeacc55b05700eba59b203e87c983dd6164c9cf3",
+      "size": 1101824
+    },
+    {
+      "path": "Products/NI-PAL_Error_Files/palerri_mft.cab",
+      "sha256": "cd31659445307b46e85bf101f9dd95b081345914199e7aac8e76473bde47a0fc",
+      "size": 2571
+    },
+    {
+      "path": "Products/NI-QPXI/niqpxi32.cab",
+      "sha256": "b434316c342ce07a89c495afd400a764d4309a92c7434e9fc8eb444f5d7653a0",
+      "size": 114810
+    },
+    {
+      "path": "Products/NI-QPXI/niqpxi32.msi",
+      "sha256": "564d2945c636a32347e308d32b830d29d9b21077c06d7101ffbe20e5132f796d",
+      "size": 1372160
+    },
+    {
+      "path": "Products/NI-QPXI/niqpxi32_mft.cab",
+      "sha256": "9b651103dc55913846d74e1c552b2731282fa084cc12ecfe1379e64b4ade13d2",
+      "size": 2631
+    },
+    {
+      "path": "Products/NI-QPXI/niqpxi64.cab",
+      "sha256": "f163b884954c39d81cfe866d775c35b415a1846ba941ddbe0cbf81d77724103a",
+      "size": 144620
+    },
+    {
+      "path": "Products/NI-QPXI/niqpxi64.msi",
+      "sha256": "dcfc1bb0d72b7291a7120939912e22254c3af2b1cabfe9df961aa6c890b8f252",
+      "size": 1368064
+    },
+    {
+      "path": "Products/NI-ROCO_Error_Files/niroco32.cab",
+      "sha256": "22fc2b2e07f9ccaa8093c379ff2786b781bc28ec3213cded532a1bf1db5683f8",
+      "size": 24016
+    },
+    {
+      "path": "Products/NI-ROCO_Error_Files/niroco64.cab",
+      "sha256": "cb0df33366b41d57a5f5d71ebeb98c7283658a190283fb3ff6f29923bf543bc2",
+      "size": 24016
+    },
+    {
+      "path": "Products/NI-ROCO_Error_Files/nirocoerri32.msi",
+      "sha256": "4a3b8e6dd0991eb38592061d22940f9737c99bd504a8776a9ef0095a5490fbc7",
+      "size": 1105920
+    },
+    {
+      "path": "Products/NI-ROCO_Error_Files/nirocoerri32_mft.cab",
+      "sha256": "5a2148bb40ab0c8fc9cfa9c8ca9ae53d44d08448843c8785b8103397514166fe",
+      "size": 2633
+    },
+    {
+      "path": "Products/NI-ROCO_Error_Files/nirocoerri64.msi",
+      "sha256": "e2cda41bde51cf74e91569a4a49d695f338379f6f8b7836dcb70da45ad77cbc3",
+      "size": 1101824
+    },
+    {
+      "path": "Products/NI-RPC/rpcSetup.msi",
+      "sha256": "7fad2dd584201cb8cfd2dc3b81e2628a335891d8d1157c4cfb87ad89322bd821",
+      "size": 1448448
+    },
+    {
+      "path": "Products/NI-RPC/rpcSetup64.msi",
+      "sha256": "59190aa2cbad44d2951aafeeab5e9bd447f634ea6c38d91fe3e4a14efdd60777",
+      "size": 1513472
+    },
+    {
+      "path": "Products/NI-RPC_RT/rpcSetupLVRT.msi",
+      "sha256": "426b5883637315582bd9701da1abfdd002809ea9c0011486e798f310c6e40505",
+      "size": 1504768
+    },
+    {
+      "path": "Products/NI-VISA_DotNet_Runtime/NIVISADN.cab",
+      "sha256": "ebfc26f754af67079fcea3e54920340f038703de1385597177968ba84df1bcf9",
+      "size": 53843
+    },
+    {
+      "path": "Products/NI-VISA_DotNet_Runtime/NIVISADotNetRuntime.msi",
+      "sha256": "a0433b32ccf80535d65edff0a1a0d6827b429e7b36af625ec659210c1803682d",
+      "size": 1126400
+    },
+    {
+      "path": "Products/NI-VISA_DotNet_Runtime/NIVISADotNetRuntime_chs.mst",
+      "sha256": "7c84bdb09503040da62224990fe5f0369cc21209f7d1070f0e48e1f8b3cc57ea",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_DotNet_Runtime/NIVISADotNetRuntime_deu.mst",
+      "sha256": "e7899a5381178a2b4b66d2445b2e919bc6ee0e72a0ba05d2243195c21d95873e",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_DotNet_Runtime/NIVISADotNetRuntime_fra.mst",
+      "sha256": "3044e1028698954958ff2c13aac1731d3a989183fd16790dcedef8aa0377258f",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_DotNet_Runtime/NIVISADotNetRuntime_jpn.mst",
+      "sha256": "9447dd8844734d5fabad46c0e1515c60118db528974b87fed44ee8f7ec62d92e",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_DotNet_Runtime/NIVISADotNetRuntime_kor.mst",
+      "sha256": "3e5f38ab8e108ed522065ef80e30c7d04196f663f9b90916a664e754e4979c51",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_DotNet_Runtime/NIVISADotNetRuntime_mft.cab",
+      "sha256": "ea712ce2ecaa182dda48203a0d320de5ba9fab93f5256b1eb7de25deb99eb574",
+      "size": 3184
+    },
+    {
+      "path": "Products/NI-VISA_Errors/NIVISAErrors.msi",
+      "sha256": "eb834ee2afdae184e37be1f583246f33e5169da147301e13dd00cefc4e0d8043",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_Errors/NIVISAErrors64.msi",
+      "sha256": "3c4e8c71086306d11b48bdf3b9e253edaeef3e29eded71970d39a76c6352e566",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_Errors/NIVISAErrors_mft.cab",
+      "sha256": "4b45463090691628523aa05a83b0dd6c7f6fda8d1654277598a80547000c4bff",
+      "size": 2316
+    },
+    {
+      "path": "Products/NI-VISA_Errors/vsaerr.cab",
+      "sha256": "1ac72bdb4915f42f7f27bb00323ba036dd18c579a04ab3d7716b92b0cf0efa21",
+      "size": 37912
+    },
+    {
+      "path": "Products/NI-VISA_Errors/vsaerr64.cab",
+      "sha256": "ca7a238b55ec694d14a0e2c969314a771fe9445df2c887501bfaaa97a33faa7c",
+      "size": 37954
+    },
+    {
+      "path": "Products/NI-VISA_Headers/NIVISAHeaders.msi",
+      "sha256": "1b99e06461effd2f612f7ddfa46ddd39b07cddd493f22fb25c22545af970e257",
+      "size": 1118208
+    },
+    {
+      "path": "Products/NI-VISA_Headers/NIVISAHeaders64.msi",
+      "sha256": "97dfa8fbc0948a722e6f858a87d7397c9aae663a1e3fe7f9d839bb2ad846edb4",
+      "size": 1114112
+    },
+    {
+      "path": "Products/NI-VISA_Headers/NIVISAHeaders_mft.cab",
+      "sha256": "4bc49cf7db44b4eb6b8cb577709f21828d7ad98be0a3c3b56945314aa873e87a",
+      "size": 2433
+    },
+    {
+      "path": "Products/NI-VISA_Headers/visahd64.cab",
+      "sha256": "3550726d45478be65f2e30f93c2ae277cd3e17baace8240871abf2d57c67dbfa",
+      "size": 12097
+    },
+    {
+      "path": "Products/NI-VISA_Headers/visahdrs.cab",
+      "sha256": "ddea18b17d8bf50f3d61542d5f1956d07cfc250028ebfd275ad35686a8c771b2",
+      "size": 17566
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET/NIVISAENETPassport.msi",
+      "sha256": "f5016d7890f008fb73a8b56a745c20a7e4295d48e582fb7da114cadbdaa0296f",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET/NIVISAENETPassport64.msi",
+      "sha256": "9d0f7ef2146c4ad3640680f1f5ac9a3ee599d0556eb6958bcb830b90627aaf4f",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET/NIVISAENETPassport_mft.cab",
+      "sha256": "72eefef565d44700a2ab771e537c777c4be5ae1d92daaab45f514f3b739a2dfa",
+      "size": 2495
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET/vsaenet.cab",
+      "sha256": "28093eff2bbd465efc634cac5af969b62e713a3b7fccc6eb668cfcf6a13fc990",
+      "size": 227042
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET/vsenet64.cab",
+      "sha256": "64e4712fafe8ce6ed17ea14e39eb426d8cb54cedb83998328a2fddee5d869750",
+      "size": 128963
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET_Serial/NIVISAENETASRLPassport.msi",
+      "sha256": "deae93153f558e366655a5181c4535ca8528ff42ccbb5751726d1a185883ffd2",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET_Serial/NIVISAENETASRLPassport64.msi",
+      "sha256": "c2578e62c3434918534890ce44d3c7dc491e5a5ed0c059dd7477a8f4eead230e",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET_Serial/NIVISAENETASRLPassport_mft.cab",
+      "sha256": "ca4a1ab24b14c3734e7315dbc72da03add6efea26b5777c6bdcf09b4da1b2f30",
+      "size": 2283
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET_Serial/vsaenas.cab",
+      "sha256": "3aced490e3d30620b9d32bad9fb70c27857571484fcbcf565fb79a02ca34610e",
+      "size": 36193
+    },
+    {
+      "path": "Products/NI-VISA_Passport_ENET_Serial/vsenas64.cab",
+      "sha256": "8f2d07d15a14a8b44b4824661cc761b38f53b90b741d7e3835a4e65861a869f7",
+      "size": 41095
+    },
+    {
+      "path": "Products/NI-VISA_Passport_GPIB/NIVISAGPIBPassport.msi",
+      "sha256": "411ecde6a3809d370cb4dffd020663cffd4f69876a427c33056e7e53e7c621d1",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_GPIB/NIVISAGPIBPassport64.msi",
+      "sha256": "77134b96d43b5b67a6a645e5ac6c8f808891cf013aeb904b8d7b16cfcc8855aa",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_Passport_GPIB/NIVISAGPIBPassport_mft.cab",
+      "sha256": "4eb7be8a336d40a4134285639e625e9f56b6b74e21219d89d5bf8fa7e30ae9a5",
+      "size": 2230
+    },
+    {
+      "path": "Products/NI-VISA_Passport_GPIB/vsagpib.cab",
+      "sha256": "f9a6887de711bc0164f229ee0d691c8ed081e61bfb430512d0001223d9742eeb",
+      "size": 83412
+    },
+    {
+      "path": "Products/NI-VISA_Passport_GPIB/vsgpib64.cab",
+      "sha256": "2e5876c9abbfe2cc3b032cb53ef6d0b58af40f59cda83fd6b6018d978e853ee5",
+      "size": 106366
+    },
+    {
+      "path": "Products/NI-VISA_Passport_PXI/NIVISAPXIPassport.msi",
+      "sha256": "b7481dfc176046a7b3bfc5168cf31a1a22b6866c9690e426491cb7446b7a433c",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_PXI/NIVISAPXIPassport64.msi",
+      "sha256": "3710ea9897ed89f034c18a67a81c8f104870ab2d0f65522a7e05d442d71450aa",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_PXI/NIVISAPXIPassport_mft.cab",
+      "sha256": "84f7354c3e6603c1e734b86813c221356c9bf25ff786ed2753143564bb01ec23",
+      "size": 2777
+    },
+    {
+      "path": "Products/NI-VISA_Passport_PXI/vsapxi.cab",
+      "sha256": "3ebf1db47b31b5bd436cf94e3b1bda0f992358f89b6cc55f44b51f02b4337a98",
+      "size": 280967
+    },
+    {
+      "path": "Products/NI-VISA_Passport_PXI/vspxi64.cab",
+      "sha256": "7f05018f8782918a29e6004f2d2782adc99325a7053485c3551a0a7a13aed1e4",
+      "size": 290773
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Remote/NIVISARemotePassport.msi",
+      "sha256": "d378c6ab72b8604ee058c2daabd285f1372ff2ebda75ef5cc6634cdecf356bca",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Remote/NIVISARemotePassport64.msi",
+      "sha256": "9e1fadfe13402f0383d46ffb5012fd722356f553cd1fb1dc70644cbb6cf2c3fd",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Remote/NIVISARemotePassport_mft.cab",
+      "sha256": "3ea5492eb8275b901fd41cb9e3c2ad664eea445e9f1a42b1150f41e0dc48eafe",
+      "size": 3908
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Remote/vsarem.cab",
+      "sha256": "3fda5f0764bbf390b63b95e88e4939b24cdf58edf43b521290555a8e3ee1deb9",
+      "size": 42203
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Remote/vsrem64.cab",
+      "sha256": "f69cf8c2e200f4b35d8db1143456a4172d494c3e15b5aa31e7dc2977ee221097",
+      "size": 49274
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Serial/NIVISASerialPassport.msi",
+      "sha256": "83110a1f4d0460f44b192d9fbd52477e8cd8af5fe05ac91c79b881a6c628df49",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Serial/NIVISASerialPassport64.msi",
+      "sha256": "ff8266fa1182f14db411ddb0338f752fc85bec4c9f45274e9341c8f47eb2b3af",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Serial/NIVISASerialPassport_mft.cab",
+      "sha256": "1106daef979388e4344140f251a21f4e1f9dc7ca570cbf4c6f0a2ca2a160386d",
+      "size": 2206
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Serial/vsaser.cab",
+      "sha256": "00a1a706f553c8ef0ef1945e3fba5b110a5147f3ba26f4ef61cde8db0d8b5065",
+      "size": 57563
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Serial/vsaser64.cab",
+      "sha256": "6a519ba99b8ffa4e3976ac3e6f1bc1f65abf9c7191c57ccb8b75c6a448a2bebc",
+      "size": 68959
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Tulip/NIVISATulipPassport.msi",
+      "sha256": "af7bfb5105fdc87b4ce37cb0f803ab328185d51346e3c1ebc01f0455e6b6b918",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Tulip/NIVISATulipPassport_mft.cab",
+      "sha256": "41a9a6768e0bd661ddb3d1e85ce4f54afcf68c138311078d04b353dd1619d926",
+      "size": 1997
+    },
+    {
+      "path": "Products/NI-VISA_Passport_Tulip/vsatulip.cab",
+      "sha256": "43f3ead5ffcdbca970fb8f262266868deead76ca8015e4c483e77914c55b8ab4",
+      "size": 44060
+    },
+    {
+      "path": "Products/NI-VISA_Passport_USB/NIVISAUSBPassport.msi",
+      "sha256": "6330890f0749496be79d333cb561db6f8dcfe7c9aba3d1eafc36fcf6576c9563",
+      "size": 937984
+    },
+    {
+      "path": "Products/NI-VISA_Passport_USB/NIVISAUSBPassport64.msi",
+      "sha256": "664709375b9c6ab8570a4cd8910670fc9243680cf641011e480b0cd06daa44f0",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_Passport_USB/NIVISAUSBPassport_mft.cab",
+      "sha256": "5a106f671257051815abeee588253fe36287796c6224e466b9c9b80c2d1e7ac6",
+      "size": 2209
+    },
+    {
+      "path": "Products/NI-VISA_Passport_USB/vsausb.cab",
+      "sha256": "4a0ff5fac375eb4b6e8edc08457ef49e9f16a62c983f375438a20e2a61acd862",
+      "size": 47399
+    },
+    {
+      "path": "Products/NI-VISA_Passport_USB/vsusb64.cab",
+      "sha256": "e5821b96d5d0d4f8cbcd3ae530aca2794faf5ab1f6e8c9aaf9fcee76a9a46f5f",
+      "size": 61741
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/NIVISAruntime.msi",
+      "sha256": "f19b7b6985d1c9377d5a6931fdf5a5fbb559b811f316bb963aa0acae763a5934",
+      "size": 1363968
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/NIVISAruntime64.msi",
+      "sha256": "251c02a529084665104c6bc24c13780d91624a22102479ef6ae2fe215f872b09",
+      "size": 1134592
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/NIVISAruntime_chs.mst",
+      "sha256": "402df783be6bf32b7afeac3a44556d6fb666e7e79da0d0909ed71b7d13da6ea7",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/NIVISAruntime_deu.mst",
+      "sha256": "5d3bbcd91b7e68344432c56689db8883d435671da64d123368afcdb8e4f7bfe2",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/NIVISAruntime_fra.mst",
+      "sha256": "de3468f816c80925c3f43e94dc22b01544e109968de16e1716b75af5a2af0622",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/NIVISAruntime_jpn.mst",
+      "sha256": "3efd431bc2e5cdc3bef952f1ddbeb03197f50462107506298a7ecc2ccea824f6",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/NIVISAruntime_kor.mst",
+      "sha256": "2f16e6f2f02c207c27f65874cbe5196bdb37c71f652cf96f6e50f6b2875a35f4",
+      "size": 20480
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/NIVISAruntime_mft.cab",
+      "sha256": "624ffd18a78f58dd1b31232103b5f66dc31abc40474273964c38990ae85c28bb",
+      "size": 6934
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/VSARUN32.cab",
+      "sha256": "7a95fcb70f9ed77af186e25d2573adc11e82133947e6f02fede006ae33795406",
+      "size": 275660
+    },
+    {
+      "path": "Products/NI-VISA_Runtime/VSARUN64.cab",
+      "sha256": "f9eb3c38ab2db134fd041be4bc6586389231069e84fa18e062ef866a80be414d",
+      "size": 287650
+    },
+    {
+      "path": "Products/NI-VISA_SysAPI/NIVISASysAPI.msi",
+      "sha256": "fe6f51863babec86785460474163bd0b3c0172dc503427924824309dcc7e2a93",
+      "size": 946176
+    },
+    {
+      "path": "Products/NI-VISA_SysAPI/NIVISASysAPI64.msi",
+      "sha256": "10a7e90f75c0c4dd8738116d4c550fa7e5630c0f28dab96d0dca024ad06692b7",
+      "size": 933888
+    },
+    {
+      "path": "Products/NI-VISA_SysAPI/NIVISASysAPI_mft.cab",
+      "sha256": "3bc366b8b69dd2baad30cdc23a446094937c22dd54e915344cbfdb1e5febc592",
+      "size": 2476
+    },
+    {
+      "path": "Products/NI-VISA_SysAPI/VSASYS32.cab",
+      "sha256": "e0f7cfb945a6f95cf0f6b4b2eb1b6803daf6215bdadab4d81a73e5d47bd3f48b",
+      "size": 701549
+    },
+    {
+      "path": "Products/NI-VISA_SysAPI/VSASYS64.cab",
+      "sha256": "438a05a734d5dd6e75d9254821288bb55760b1c044ae57b7d2532f652e7128c4",
+      "size": 208248
+    },
+    {
+      "path": "Products/NIER_Interface/NIER_Interface.msi",
+      "sha256": "d1ecfedfc42f269f5cdce1e4a14883b8b7fa8ca035c7f016526ab83627ecf7e3",
+      "size": 1576960
+    },
+    {
+      "path": "Products/NIER_Interface/NIER_Interface64.msi",
+      "sha256": "14e359411088eef3c5713eb89d39735581c64747f8cd90c218f259236bd18ec4",
+      "size": 1622016
+    },
+    {
+      "path": "Products/NIServiceLocator/svcloc/nisvcloc.msi",
+      "sha256": "33b8f21d2e94ab8d0aeade49cfed95521c16735318b3d9666a14d285ca73e9b9",
+      "size": 1634304
+    },
+    {
+      "path": "Products/NIServiceLocator/svcloc/nisvcloc_mft.cab",
+      "sha256": "7a6654fc098dc6b242312826b139713ad01287c5ddb249797e3841a097a32233",
+      "size": 3249
+    },
+    {
+      "path": "Products/NIServiceLocator/svcloc/svcloc.cab",
+      "sha256": "156c75a4a67d8941a1cba9464020725b2c0a3688eeed7f48d94e341a5ef4af2c",
+      "size": 127119
+    },
+    {
+      "path": "Products/NIServiceLocator/svcloc/svcloc_chs.mst",
+      "sha256": "d6e2f12510cfcff46ca441f7beba55992a8863d11e54806fe5f7c396811fc14d",
+      "size": 229376
+    },
+    {
+      "path": "Products/NIServiceLocator/svcloc/svcloc_deu.mst",
+      "sha256": "3c90eb7508caea47aed5d52849f38482417c48534f46e85f95ca56a849b44532",
+      "size": 159744
+    },
+    {
+      "path": "Products/NIServiceLocator/svcloc/svcloc_fra.mst",
+      "sha256": "e865b1ac2462b1070c4bf294928e203d1788ba028e26c6e0a84bb4ea01442873",
+      "size": 172032
+    },
+    {
+      "path": "Products/NIServiceLocator/svcloc/svcloc_jpn.mst",
+      "sha256": "14ef873d7eb99739d194fa489d18eb715e8cdef7657beb38c56a7a50b291b5bc",
+      "size": 385024
+    },
+    {
+      "path": "Products/NIServiceLocator/svcloc/svcloc_kor.mst",
+      "sha256": "d38f9220fded29d299d059398173f520b22ba2cf86224e6101511478154f79d2",
+      "size": 360448
+    },
+    {
+      "path": "Products/NISysAPI_Framework/NISys00.cab",
+      "sha256": "b5163d195fd95b8a20944f7bbfc8bbeec0d4f4ce13daeea4500087f632bb4fd4",
+      "size": 787489
+    },
+    {
+      "path": "Products/NISysAPI_Framework/NISys01.cab",
+      "sha256": "150e7eb9ed5cf6a4131200d739a5446345e52cb4b6127ead37b6d222d7542fef",
+      "size": 639440
+    },
+    {
+      "path": "Products/NISysAPI_Framework/nisysapi_x64.msi",
+      "sha256": "aa08f4d92660a2c989c1dfb421d1f9dc0bc9d10fd44b55b72027bc5309e62d76",
+      "size": 1101824
+    },
+    {
+      "path": "Products/NISysAPI_Framework/nisysapi_x86.msi",
+      "sha256": "20a941c364aba1dca67a85dca0734337e1a73bc00a401a4b40338f199932cf3e",
+      "size": 1122304
+    },
+    {
+      "path": "Products/NISysAPI_Framework/nisysapi_x86_mft.cab",
+      "sha256": "f773e9f7ceab7d2d64524ca3089ee9464430fa3c97aef728b6855b7fc8cb7ff1",
+      "size": 3152
+    },
+    {
+      "path": "Products/NI_Certificates/signing.msi",
+      "sha256": "11eed5cd2936d2d8d7661244f7526b22f4c685d8c288376b18d79b3f5f1540c2",
+      "size": 1122304
+    },
+    {
+      "path": "Products/NI_Certificates/signing_mft.cab",
+      "sha256": "15439fc5f41dc3cb871e7e4c031ea0d82bdc9db431fad32b5752e2e1a3a80068",
+      "size": 1791
+    },
+    {
+      "path": "Products/NI_Curl/nicurl.cab",
+      "sha256": "d932852f8222e61bc08721ee236b6cd5640f98042a1a0ff871adfe557994e745",
+      "size": 971764
+    },
+    {
+      "path": "Products/NI_Curl/nicurl.msi",
+      "sha256": "9e85c88240fdf7f89edb65a1cfa3dbf6c0df8d8bdbb81418c511f22abcc1bf9f",
+      "size": 1105920
+    },
+    {
+      "path": "Products/NI_Curl/nicurl64.cab",
+      "sha256": "3a67ce2bae58f33d26121568ccdb78b935753402951d8ecbc00ae585cfa57d47",
+      "size": 326290
+    },
+    {
+      "path": "Products/NI_Curl/nicurl64.msi",
+      "sha256": "3c4da95dc4c139c84f0f00100b6a3ded41da233e33feb090e58677c8485aa1a5",
+      "size": 1101824
+    },
+    {
+      "path": "Products/NI_Curl/nicurl_mft.cab",
+      "sha256": "948fab73627a81eb7af5a85175bd518ded95b39e2cb692aed37005d6e33385c1",
+      "size": 3512
+    },
+    {
+      "path": "Products/NI_PXI_Platform_Framework_Error_Files/nipxipferr32.msi",
+      "sha256": "863ea3831e973074db12792875f6dbd58db3845fbccd9b7fd6869d47916025e2",
+      "size": 1089536
+    },
+    {
+      "path": "Products/NI_PXI_Platform_Framework_Error_Files/nipxipferr32_mft.cab",
+      "sha256": "80ced34f1c878f999406c85480946f0a40ecd48fad1827ffcac96ecd5caf2654",
+      "size": 2162
+    },
+    {
+      "path": "Products/NI_PXI_Platform_Framework_Error_Files/nipxipferr64.msi",
+      "sha256": "c064d833f4b61eb36c56e83276903f4a36886b6cf02e5887beee3508bd1ac160",
+      "size": 1089536
+    },
+    {
+      "path": "Products/NI_PXI_Platform_Framework_Error_Files/pxierr.cab",
+      "sha256": "d4601bbf207d698310b88e765c5e38c4c16a89a71f10d55f8ecdbb2d26e08232",
+      "size": 25004
+    },
+    {
+      "path": "Products/NI_PXI_Platform_Framework_Error_Files/pxierr64.cab",
+      "sha256": "e064fc63ec8e0f9eae11d9678d44a759677ac24c55d561f6d47a0adadcb156b7",
+      "size": 25004
+    },
+    {
+      "path": "Products/NI_SSL_Support/ni_ssl.msi",
+      "sha256": "3c5ddbff3c399eb5ecce069bfc267160fc2fd698dc00b09ef0668ba331a892c9",
+      "size": 1105920
+    },
+    {
+      "path": "Products/NI_SSL_Support/ni_ssl64.msi",
+      "sha256": "a2a1459cf3de45f5741da506ab2e10a7161e1641493272d160133ac09459613e",
+      "size": 1101824
+    },
+    {
+      "path": "Products/NI_SSL_Support/ni_ssl_mft.cab",
+      "sha256": "3aa4c1dac8b6c7901af651197e47bbea4a0a49c31658c58ee227caa93cf58d7e",
+      "size": 3147
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl.cab",
+      "sha256": "e1d276ed141f4e713fa7a20d2ef7adbeefe74e506a7ba331815786d57a695ea0",
+      "size": 972297
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl64.cab",
+      "sha256": "b278d1ca2ae95ca25bd946cd47432f948ba5ee938e4939be6b1f9b2d6e2f328f",
+      "size": 1111211
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl64_chs.mst",
+      "sha256": "4a2386989da2fa2e467fae5fbdf2f79cb656aa7e8bbca66e56b4ffe48ba476eb",
+      "size": 229376
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl64_deu.mst",
+      "sha256": "36739e00fcc3e849df59eb5e7a6edb05a4d2391456a9af54f170052ea78c71ff",
+      "size": 163840
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl64_fra.mst",
+      "sha256": "59b2ece279cecc3c6a08257a37a0356df8fdbbe4567db948564feac8d6dc4f6a",
+      "size": 172032
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl64_jpn.mst",
+      "sha256": "cab0188c6fef7cb823a9e310b9ef2404cf5c30862f7f67b2aa550fb6821fca44",
+      "size": 385024
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl64_kor.mst",
+      "sha256": "6411487c4a515de4c2e033957dd7da700ab0efd8ed2d2f757ff7566abac16918",
+      "size": 360448
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl_chs.mst",
+      "sha256": "2dc53510a0d46978d973e8aa8107a79fa84f89130b10e26a2d43a9cb9a09de48",
+      "size": 229376
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl_deu.mst",
+      "sha256": "e18c6ce7fddf2f3ca379a5d49a5f4461e3299f51f83f7f939eafd7d1156f45e4",
+      "size": 163840
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl_fra.mst",
+      "sha256": "58b8b82b9036407c18655b87d2d2fe77cce6bfa5c96617fef61b0cb95fab25c5",
+      "size": 172032
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl_jpn.mst",
+      "sha256": "ad6ab8a519ef1a82025d45178ce6bf08b1f8e2c5b5e7a13fce7a2413c00eab66",
+      "size": 385024
+    },
+    {
+      "path": "Products/NI_SSL_Support/ssl_kor.mst",
+      "sha256": "e90b4fdc05a4360dde94559788bffe3afe0d91b9c7950d522b8bd5ae4235d31e",
+      "size": 360448
+    },
+    {
+      "path": "Products/Portable_Configuration/Portable_Configuration.msi",
+      "sha256": "382b1a35b5d166d73f2cc421098b4b1a39e135904d16d2b7f1a593a5e8897dbf",
+      "size": 972800
+    },
+    {
+      "path": "Products/Portable_Configuration/Portable_Configuration1.cab",
+      "sha256": "b8e4a6930e94616a50fe35a51ac7642cbd949dec63db6bfa3c0d248a872d4cee",
+      "size": 1117038
+    },
+    {
+      "path": "Products/Portable_Configuration/Portable_Configuration64.msi",
+      "sha256": "2363f6dd4d5a729bdc483e7d517f32b1b15315f16a46c386a8bb5dc0a9f75064",
+      "size": 1030144
+    },
+    {
+      "path": "Products/Portable_Configuration/Portable_Configuration_mft.cab",
+      "sha256": "dc16fa2426882d5a3a09812f788df287d9af7fa496edd56dbf19d8d17f3c6840",
+      "size": 3790
+    },
+    {
+      "path": "Products/SecurityUpdate_KB67L8LCQW_KillBit/KillBit.msi",
+      "sha256": "ce3aa996cd9e26253cd2cc3b423398f62c531ff4cc6f105fa8aaff3bd9c4863c",
+      "size": 1466368
+    },
+    {
+      "path": "Products/SecurityUpdate_KB67L8LCQW_KillBit/KillBit64.msi",
+      "sha256": "bd2c37bb9f6b8a760d6b6b25e6e78ceb4f901e225f8726aeceefcf1ed0c87b49",
+      "size": 1368064
+    },
+    {
+      "path": "Products/SecurityUpdate_KB67L8LCQW_KillBit/KillBit_mft.cab",
+      "sha256": "3da206a89d37c198e4d4105b2dcaeccd158d803dc047e85805fba2ff680a703b",
+      "size": 2360
+    },
+    {
+      "path": "Products/SecurityUpdate_KB67L8LCQW_KillBit/Secur00.cab",
+      "sha256": "a32e0a83001d2c5d41649063217923dac167809cab50ec5784078e41c9ec0f0f",
+      "size": 36
+    },
+    {
+      "path": "Products/SecurityUpdate_KB67L8LCQW_KillBit/Secur01.cab",
+      "sha256": "a32e0a83001d2c5d41649063217923dac167809cab50ec5784078e41c9ec0f0f",
+      "size": 36
+    },
+    {
+      "path": "Products/VC2008MSMs/VC2008RTEx64.msi",
+      "sha256": "30866ee5688250655196b2533ce35114100e9764e46794c83a8c68e32e00370b",
+      "size": 1437696
+    },
+    {
+      "path": "Products/VC2008MSMs/VC2008RTEx86.msi",
+      "sha256": "d0a41ae5bdd5747a04b917307c42f1e9921e815beb14a0bb52329bf4ad5405fa",
+      "size": 1445888
+    },
+    {
+      "path": "Products/VC2008MSMs/VC2008RTEx86_mft.cab",
+      "sha256": "38b4526f69bfe916ba563bd6a670473a73b028bba5b482db6824ac152c2b6df8",
+      "size": 2467
+    },
+    {
+      "path": "Products/VC2008MSMs/x64.cab",
+      "sha256": "e70575f6666e8e4e5c0c021a12d3c18f62a142a74bfe9dc02a5e4fb4504531d1",
+      "size": 4372076
+    },
+    {
+      "path": "Products/VC2008MSMs/x86.cab",
+      "sha256": "3baece26754fd8342d5595d11c27a76e094277b08ebeba2b3aa5c7cc88d527e0",
+      "size": 3783383
+    },
+    {
+      "path": "Products/VC2015_Runtime/SystemRequirementsError.exe",
+      "sha256": "6cfe54c42af5bd3de2c8ac6b1aebf7c609addbae2a0b51391fa6dedff652f798",
+      "size": 59384
+    },
+    {
+      "path": "Products/VC2015_Runtime/VC2015-32Wrapper.msi",
+      "sha256": "dd375910772a27a4522622115b934df22fb0bec77e22acb051971344096fdd7a",
+      "size": 528384
+    },
+    {
+      "path": "Products/VC2015_Runtime/VC2015-64Wrapper.msi",
+      "sha256": "bcc25b222dc1a405b2fed36a69c92c96155d76e9416c1f963b18418e227e4e62",
+      "size": 528384
+    },
+    {
+      "path": "Products/VC2015_Runtime/VC2015Core.msi",
+      "sha256": "1fb7584ec8002604f8409a1553defad1cc77e2974972ede2d965328cfa96ce16",
+      "size": 1372160
+    },
+    {
+      "path": "Products/VC2015_Runtime/VCRunTimeInstaller.exe",
+      "sha256": "ad86aebd47a6be13376f3c104c07efabd97f8dfd83fac39f462c1d06658cd88e",
+      "size": 183784
+    },
+    {
+      "path": "Products/VC2015_Runtime/vc_redist.x64.exe",
+      "sha256": "dd479820f34498c706bd61c4e7bdafc18a739e397762d7e16d7ad0b9a4cbd79f",
+      "size": 14990824
+    },
+    {
+      "path": "Products/VC2015_Runtime/vc_redist.x86.exe",
+      "sha256": "ea92c3f93bc063d6da084faa854c131e37f1f2cb585cd1e62a3df9e03eacadff",
+      "size": 14157672
+    },
+    {
+      "path": "Products/VC2015_Runtime/Windows6.1-KB3118401-x64.msu",
+      "sha256": "145623e0b85037b90e1ef5c45aee1aaa4120c4d12a388d94c48cfbb083e914e4",
+      "size": 1047061
+    },
+    {
+      "path": "Products/VC2015_Runtime/Windows6.1-KB3118401-x86.msu",
+      "sha256": "46af0fb4eb4452b03790887950add4590f0754657760940f6daefdf7eee1003f",
+      "size": 639386
+    },
+    {
+      "path": "Products/VC2015_Runtime/Windows8.1-KB3118401-x64.msu",
+      "sha256": "0e44ad74aa341909865dc6a72b2bcb80564fcd0df7e1e388be81a7e04868c98f",
+      "size": 1015961
+    },
+    {
+      "path": "Products/VC2015_Runtime/Windows8.1-KB3118401-x86.msu",
+      "sha256": "35a00b48795dcc17d4bfd9aac4d8a31c52b08dcf0aa5bd63e1a92a40ffcef5d1",
+      "size": 607985
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/vinet32.cab",
+      "sha256": "9e8fce8b134aac070209f25b2196c8b1f0434cc7ea6a754f8631ea6526a4c31e",
+      "size": 126747
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/vinet64.cab",
+      "sha256": "ccb3d91055e2d4dfed458aba72d409608655b1504bce6774e1484cb98568ed15",
+      "size": 127071
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/vinetcor.cab",
+      "sha256": "a32e0a83001d2c5d41649063217923dac167809cab50ec5784078e41c9ec0f0f",
+      "size": 36
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/VisaNetSharedComponents32.msi",
+      "sha256": "333159ab8cb388f5d08b377a9d200e4921b6d59b9c56f0b1c65cb4831b79abff",
+      "size": 344064
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/VisaNetSharedComponents64.msi",
+      "sha256": "bb80fcdb8644374033344e2c4201550c28f7c0eb698eb3a04ce4ca49d6fa741a",
+      "size": 344064
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/VisaNetSharedComponentsInstaller.exe",
+      "sha256": "58259b7faa520af79caa4fc92082625dcc764e93f8287caf2a2a2c4408131a30",
+      "size": 115240
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/VisaNetSharedComponentsWrapper32.msi",
+      "sha256": "6f6870969bc79a89e30b568f1963adb8e8ac22889e0eafd33a4b68855b3691c0",
+      "size": 1085440
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/VisaNetSharedComponentsWrapper64.msi",
+      "sha256": "217ac09312d928b122b6c9801a3eb9985d6c31cfbc4187abdcdf4eaf1072e530",
+      "size": 1085440
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/VisaNetSharedComponentsWrapperCore.msi",
+      "sha256": "814f0229841c53e8f2812eff729f06314286a001a91bf9cef3dadd1ec09a8575",
+      "size": 913408
+    },
+    {
+      "path": "Products/VISA_NET_Shared_Components/VisaNetSharedComponentsWrapperCore_mft.cab",
+      "sha256": "2ff80d692d53cd894d1ea7617c1aef2979f743e056e839a14f058a97b7ba1f15",
+      "size": 2768
+    },
+    {
+      "path": "Products/VISA_Shared_Components/visasc32.cab",
+      "sha256": "c92de856c1126f4a210836346fd61cd9441c6a59612a7d18d7c3da4ac54f9d49",
+      "size": 959072
+    },
+    {
+      "path": "Products/VISA_Shared_Components/visasc64.cab",
+      "sha256": "5fbff943699b4ca1cc311d82e786534c20747776e49d6fb9f348f07b6c6c9bae",
+      "size": 2220807
+    },
+    {
+      "path": "Products/VISA_Shared_Components/VisaSharedComponents32.msi",
+      "sha256": "dfb5169930f1f5d5c11ad002ad313d63128a9729e8df3fec99eb54f984894745",
+      "size": 1077248
+    },
+    {
+      "path": "Products/VISA_Shared_Components/VisaSharedComponents64.msi",
+      "sha256": "bd56c22c71067fed2628e3f10dc8984d84d125274de16afdc7e26ae6adc1aad6",
+      "size": 1597440
+    },
+    {
+      "path": "Products/VISA_Shared_Components/VisaSharedComponentsInstaller.exe",
+      "sha256": "1b8225a87a99c7cf8426d2b9889c5a4807f265a7feb5f465f936ed34c696f57a",
+      "size": 115240
+    },
+    {
+      "path": "Products/VISA_Shared_Components/VisaSharedComponentsWrapper32.msi",
+      "sha256": "ebebfb15bca2eb654c1de29868b99d80a01d8f0b2ddc43d703fb75dd230a6e98",
+      "size": 1110016
+    },
+    {
+      "path": "Products/VISA_Shared_Components/VisaSharedComponentsWrapper64.msi",
+      "sha256": "04c65e90345793eb221661ea3d8432588b31d32a0e77594b672efa6d1af3ab3b",
+      "size": 1110016
+    },
+    {
+      "path": "Products/VISA_Shared_Components/VisaSharedComponentsWrapperCore.msi",
+      "sha256": "c30bdeed3346fd522269b85f082e60edbc7fe260b5c7baa2ce559407283b8e40",
+      "size": 933888
+    },
+    {
+      "path": "Products/VISA_Shared_Components/VisaSharedComponentsWrapperCore_mft.cab",
+      "sha256": "dde4da9ea4b64db78157494d4124b69ddde18c6136b95c2604ee44cec1e0fa72",
+      "size": 2752
+    },
+    {
+      "path": "Products/VISA_Shared_Components/visccor.cab",
+      "sha256": "a32e0a83001d2c5d41649063217923dac167809cab50ec5784078e41c9ec0f0f",
+      "size": 36
+    },
+    {
+      "path": "Products/XercesDelayLoad27/nixerces27_win32.msi",
+      "sha256": "438b84309d93a6b8bc9ef21a7c3b03c29d3abab2b9d54d9684ddec0c1e0d2f36",
+      "size": 1372160
+    },
+    {
+      "path": "Products/XercesDelayLoad27/nixerces27_win32_mft.cab",
+      "sha256": "e7b0b1e5bbd43178eb917ecc0ffd8ca9c3e7e1ee925f265695808e1d93616c9e",
+      "size": 2836
+    },
+    {
+      "path": "Products/XercesDelayLoad27/nixerces27_win64.msi",
+      "sha256": "3dd80bbbd1e695561d93f29543e5b08ade3a058c986b233b8946dd46d95bfa9e",
+      "size": 1372160
+    },
+    {
+      "path": "Products/XercesDelayLoad27/Xerce00.cab",
+      "sha256": "082d15a9fdc7b399e43be30d06536f746efd3c4a0b9ba61411342baa9d8360f0",
+      "size": 857445
+    },
+    {
+      "path": "Products/XercesDelayLoad27/Xerce01.cab",
+      "sha256": "b804e07aa03c51201bdd52469b1296d5ebaf0949baf427313441c75a8535c1e0",
+      "size": 680138
+    },
+    {
+      "path": "SupportFiles/dist_md5_1.xml",
+      "sha256": "d30d32d8ff4a666e9297177c41270816a1bd9eb1b5d62c0d9008d6463cbf0d52",
+      "size": 34852
+    },
+    {
+      "path": "SupportFiles/merged.cab",
+      "sha256": "385300039955895b38e13b7e8e4949a99a88d474dfdfc6fa3942c8c6278a9afd",
+      "size": 569516
+    },
+    {
+      "path": "SupportFiles/merged_chs.mst",
+      "sha256": "4bc9250d97016d7f670a86bd73cbb7ec0c9c6b88f77c40bd6f0be17278a8a8c7",
+      "size": 32768
+    },
+    {
+      "path": "SupportFiles/merged_cht.mst",
+      "sha256": "6385f40e4b88dcdc404125baf34c5a7aecab52f500591c268209eb9635ba4de8",
+      "size": 32768
+    },
+    {
+      "path": "SupportFiles/merged_deu.mst",
+      "sha256": "f3c7235829568c283c285670c027ea46feec80035a188c82663fbfecd02a1511",
+      "size": 45056
+    },
+    {
+      "path": "SupportFiles/merged_fra.mst",
+      "sha256": "2f5f243f386a540bc791c4f639c3fc7a6f2c9d2550da93a9afd07a4f014a6bff",
+      "size": 45056
+    },
+    {
+      "path": "SupportFiles/merged_jpn.mst",
+      "sha256": "1c54f678c880411b59bb5ebf781d804206a72974786fc380dd555dd127bafc38",
+      "size": 53248
+    },
+    {
+      "path": "SupportFiles/merged_kor.mst",
+      "sha256": "9da4301a39630ddb957c58b15b89839d2e7876d1b555143d2a7fa176c33a908b",
+      "size": 36864
+    },
+    {
+      "path": "SupportFiles/MIFSystemUtility.dll",
+      "sha256": "19075ad4fead58c9f46def9bcd6235b4f0a2cfaeffc21bff5f153136c67e5921",
+      "size": 159184
+    },
+    {
+      "path": "SupportFiles/niPie.exe",
+      "sha256": "d9e225b131f78df6ba99673bda1a69a534df8ca09c7593d6f6a7326a7468c187",
+      "size": 73664
+    },
+    {
+      "path": "SupportFiles/niresjpn.cab",
+      "sha256": "8dc7c287672e8d916826fb4894f09dfbfee5618308ab659575488134c1965c1b",
+      "size": 60391
+    },
+    {
+      "path": "SupportFiles/nistdtrans0007.mst",
+      "sha256": "9c745ccaffdd6437d24323f6d0cce4672bd25597590cebde79664df6fdf039ce",
+      "size": 45056
+    },
+    {
+      "path": "SupportFiles/nistdtrans0012.mst",
+      "sha256": "94bf873c5a2af8b0d0f476c4a4f61ac808ed2cc1ccf7433798aa70df9e5074a3",
+      "size": 45056
+    },
+    {
+      "path": "SupportFiles/nistdtrans0017.mst",
+      "sha256": "d73a76fec5af1a8046300e4a48558a74893b9f5d0c0fb2e67bdb6ef65c4d1b70",
+      "size": 40960
+    },
+    {
+      "path": "SupportFiles/nistdtrans0018.mst",
+      "sha256": "d39b4a53f8020bfb80978652fd1fa4c7e568a4b0f0aaf96c7a1051dfb001d29f",
+      "size": 36864
+    },
+    {
+      "path": "SupportFiles/nistdtrans2052.mst",
+      "sha256": "cad37f714a7c32478b5bd238e57a0605f62cf269fd2c44a537ddb375afbf83b1",
+      "size": 32768
+    },
+    {
+      "path": "SupportFiles/nistdtransbase.mst",
+      "sha256": "a91250c7b523717f713abcb3dbf0bd38ab77f7d57abf03a827eaf28997b379c9",
+      "size": 20480
+    },
+    {
+      "path": "SupportFiles/notify.dll",
+      "sha256": "c2da6dea6d02f933125aa86c4c52ed9c254e0571840cfb6f78a956361ee75e59",
+      "size": 462328
+    },
+    {
+      "path": "SupportFiles/notifyupdates.dll",
+      "sha256": "c2b3171d63f54a1f9d6fc4035df676840bc2219a2229cf1304414caa406b72fa",
+      "size": 1292792
+    },
+    {
+      "path": "SupportFiles/updateInfo.xml",
+      "sha256": "ed7050b8cda7fbb47663fb35a611f76fec36ef0320dfaab1db2153903e553b41",
+      "size": 34936
+    },
+    {
+      "path": "SupportFiles/VisaInstallerEngResDll.cab",
+      "sha256": "95ad28e599eaeb39145f4ae337f5ee42bfcd5dbc05b85dae8da0dea8309fd027",
+      "size": 54313
+    },
+    {
+      "path": "SupportFiles/VisaInstallerJpnResDll.cab",
+      "sha256": "a5f252a01128da9b6a3181e0fe1dd33d2c540e737bd9c8bcd24a072f6272ac2a",
+      "size": 54685
+    },
+    {
+      "path": "SupportFiles/WindowsInstaller-KB893803-v2-x86.exe",
+      "sha256": "69b61b2c00323cea3686315617d0f452e205dae10c47e02cbe1ea96fea38f582",
+      "size": 2585872
+    }
+  ]
+}

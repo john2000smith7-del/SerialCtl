@@ -1,4 +1,5 @@
 #include "SerialShareConnection.h"
+#include "../network/DiscoveryInfo.h"
 #include "Win32Helpers.h"
 
 #include <algorithm>
@@ -70,18 +71,26 @@ std::wstring NormalizeSerial(std::wstring name) {
     return name;
 }
 }
+namespace { std::mutex sharedServiceMutex; std::weak_ptr<SerialShareService> sharedService; std::atomic_bool legacyEnabled{true}; }
+bool SerialShareService::LegacyEnabled() { return legacyEnabled; }
+bool SerialShareService::SetLegacyEnabled(bool enabled,std::wstring& error) {
+    legacyEnabled=enabled;std::shared_ptr<SerialShareService> service;
+    {std::lock_guard<std::mutex> lock(sharedServiceMutex);service=sharedService.lock();}
+    if(!service)return true;
+    if(!enabled) {service->Stop();return true;}
+    return service->Start(error);
+}
 std::shared_ptr<SerialShareService> SerialShareService::Acquire(std::uint16_t port, std::wstring& error) {
-    static std::mutex mutex;
-    static std::weak_ptr<SerialShareService> current;
-    std::lock_guard<std::mutex> lock(mutex);
-    if (auto service = current.lock()) return service;
+    std::lock_guard<std::mutex> lock(sharedServiceMutex);
+    if (auto service = sharedService.lock()) return service;
     auto service = std::make_shared<SerialShareService>(port);
-    if (!service->Start(error)) return {};
-    current = service;
+    if (legacyEnabled && !service->Start(error)) return {};
+    sharedService = service;
     return service;
 }
 
 bool SerialShareService::Start(std::wstring& error) {
+    if(listener_ != INVALID_SOCKET)return true;
     const unsigned preferred = listenPort_;
     for (unsigned port = preferred; port <= 65535 && port < preferred + 16; ++port) {
         SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -276,15 +285,19 @@ void SerialShareService::ClientLoop(const std::shared_ptr<Client>& client) {
         if (first.find('\n') != std::string::npos) break;
         const std::string protocolV1 = "SERIALCTL/1 ";
         const std::string protocolV2 = "SERIALCTL/2 ";
+        const std::string protocolV3 = "SERIALCTL/3 ";
+        const bool matchesV3 = protocolV3.compare(0, std::min(first.size(), protocolV3.size()), first, 0, std::min(first.size(), protocolV3.size())) == 0;
         const bool matchesV1 = protocolV1.compare(0, std::min(first.size(), protocolV1.size()),
             first, 0, std::min(first.size(), protocolV1.size())) == 0;
         const bool matchesV2 = protocolV2.compare(0, std::min(first.size(), protocolV2.size()),
             first, 0, std::min(first.size(), protocolV2.size())) == 0;
-        if (!matchesV1 && !matchesV2) break;
+        if (!matchesV1 && !matchesV2 && !matchesV3) break;
     }
     const size_t lineEnd = first.find('\n');
     const std::string line = lineEnd == std::string::npos ? first : first.substr(0, lineEnd + 1);
-    if (line == "SERIALCTL/1 LIST\n") {
+    if (line == "SERIALCTL/3 DISCOVER\n") {
+        const auto reply=ApiDiscoveryReply(); SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(reply.data()), reply.size());
+    } else if (line == "SERIALCTL/1 LIST\n") {
         const auto reply = ListReply();
         SendAll(client->socket, reinterpret_cast<const std::uint8_t*>(reply.data()), reply.size());
     } else if (first.rfind("SERIALCTL/2 OPEN ", 0) == 0 || first.rfind("SERIALCTL/1 OPEN ", 0) == 0) {

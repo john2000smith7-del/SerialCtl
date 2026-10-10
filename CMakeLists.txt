@@ -94,6 +94,9 @@ set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/platform"
     "${SERIALCTL_SOURCE_DIR}/sftp"
     "${SERIALCTL_SOURCE_DIR}/terminal"
+    "${SERIALCTL_SOURCE_DIR}/power"
+    "${SERIALCTL_SOURCE_DIR}/network"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json"
 )
 
 function(serialctl_configure_native_target TARGET_NAME SUBSYSTEM_KIND)
@@ -121,7 +124,12 @@ endfunction()
 add_executable(serialctl WIN32
     src/app/App.cpp
     src/app/MainWindow.cpp
+    src/app/PowerPane.cpp
+    src/power/PowerService.cpp
+    src/network/ApiServer.cpp
     src/connections/ChildProcess.cpp
+    src/connections/CmdConnection.cpp
+    src/connections/QueuedConnection.cpp
     src/connections/PlinkConnection.cpp
     src/connections/PuttyHostKey.cpp
     src/connections/SerialConnection.cpp
@@ -168,6 +176,19 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(power_service_test tests/integration/PowerServiceTest.cpp src/power/PowerService.cpp src/logging/SessionLogger.cpp)
+    serialctl_configure_native_target(power_service_test CONSOLE)
+    target_link_libraries(power_service_test PRIVATE shell32 ws2_32)
+    add_test(NAME power_service COMMAND power_service_test)
+    add_executable(cmd_connection_test tests/integration/CmdConnectionTest.cpp src/connections/CmdConnection.cpp src/connections/QueuedConnection.cpp src/connections/ChildProcess.cpp)
+    serialctl_configure_native_target(cmd_connection_test CONSOLE)
+    add_test(NAME cmd_connection COMMAND cmd_connection_test)
+    add_executable(api_server_test tests/integration/ApiServerTest.cpp src/network/ApiServer.cpp)
+    serialctl_configure_native_target(api_server_test CONSOLE)
+    target_link_libraries(api_server_test PRIVATE ws2_32 advapi32)
+    add_test(NAME api_server COMMAND api_server_test)
+    set_tests_properties(power_service cmd_connection api_server PROPERTIES TIMEOUT 30)
+
     add_executable(shared_serial_protocol_test
         tests/integration/SharedSerialProtocolTest.cpp
         src/connections/SharedSerialConnection.cpp
