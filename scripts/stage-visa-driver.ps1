@@ -2,9 +2,11 @@
 param([Parameter(Mandatory=$true)][string]$Destination)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 $root=Split-Path $PSScriptRoot -Parent
 $manifest=Get-Content (Join-Path $root 'third_party/ni-visa/files.json') -Raw | ConvertFrom-Json
 $archive=Join-Path ([IO.Path]::GetTempPath()) 'SerialCtl-NIVISA1800runtime.zip'
+if ($env:SERIALCTL_VISA_CACHE) { $archive = $env:SERIALCTL_VISA_CACHE }
 if (-not (Test-Path $archive) -or (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.sha256) {
     Invoke-WebRequest -Uri $manifest.url -OutFile $archive -UseBasicParsing
 }

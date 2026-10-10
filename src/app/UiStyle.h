@@ -65,6 +65,9 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         }
         else
             GetClientRect(h, &rect);
+        HBRUSH outside = CreateSolidBrush(colors.raised);
+        FillRect(dc, &rect, outside);
+        DeleteObject(outside);
         UiBox(dc, rect, colors.field, GetFocus() == h ? colors.accent : colors.border, d(8));
         if (!edit)
         {

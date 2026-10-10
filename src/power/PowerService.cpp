@@ -1,6 +1,7 @@
 #include "PowerService.h"
 #include "Win32Helpers.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <locale>
 #include <set>
@@ -588,7 +589,16 @@ void PowerService::Execute(const std::string &id, const Json &command)
             else
                 throw std::runtime_error("Unknown connection backend");
             std::string identity = transport->Query("*IDN?");
-            Require(identity.find("IT6332A") != std::string::npos, "Instrument is not IT6332A");
+            auto comma = identity.find(',');
+            auto nextComma =
+                comma == std::string::npos ? std::string::npos : identity.find(',', comma + 1);
+            std::string model = comma == std::string::npos
+                                    ? std::string()
+                                    : identity.substr(comma + 1, nextComma - comma - 1);
+            model.erase(std::remove_if(model.begin(), model.end(),
+                                       [](unsigned char c) { return std::isspace(c) != 0; }),
+                        model.end());
+            Require(model == "IT6332A", "Instrument is not IT6332A");
             transport_ = std::move(transport);
             Select(1);
             Require(Number("OUTP:TRAC?") == 0 && Number("OUTP:SER?") == 0 &&

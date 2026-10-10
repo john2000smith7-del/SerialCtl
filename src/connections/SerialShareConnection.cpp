@@ -144,7 +144,8 @@ bool SerialShareConnection::Start(DataCallback onData, StatusCallback onStatus, 
     channel_ = channel;
     service_ = service;
     if (onStatus) {
-        if (service) onStatus(L"正在共享 " + settings_.portName + L"，TCP 端口 " + std::to_wstring(service->Port()) + L" · 各串口独立 · 均可读写", false);
+        if (service && service->Port()) onStatus(L"正在共享 " + settings_.portName + L"，TCP 端口 " + std::to_wstring(service->Port()) + L" · 各串口独立 · 均可读写", false);
+        else if (service) onStatus(L"串口本地连接成功，兼容 TCP 服务已关闭", false);
         else onStatus(shareError, true);
     }
     return true;

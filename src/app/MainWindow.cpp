@@ -1864,8 +1864,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_TIMER:
         if (wParam == StatusTimerId) {
             KillTimer(window_, StatusTimerId);
-            SetWindowTextW(status_, L"");
-            ShowWindow(status_, SW_HIDE);
+            AppendStatus(L"", false);
             return 0;
         }
         if (wParam == CommandTimerId) {
@@ -2187,6 +2186,14 @@ void MainWindow::CreateControls() {
     status_ = CreateChild(L"STATIC", L"", SS_LEFT, IdStatus);
     SendMessageW(status_, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), TRUE);
     ShowWindow(status_, SW_HIDE);
+    statusTip_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, window_, nullptr, instance_, nullptr);
+    TOOLINFOW statusTool{sizeof(statusTool)};
+    statusTool.uFlags = TTF_SUBCLASS | TTF_IDISHWND;
+    statusTool.hwnd = window_; statusTool.uId = reinterpret_cast<UINT_PTR>(status_);
+    statusTool.lpszText = const_cast<wchar_t*>(L"");
+    SendMessageW(statusTip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&statusTool));
+    SendMessageW(statusTip_, TTM_SETMAXTIPWIDTH, 0, Ui::Scale(400));
 
     commandHeader_ = CreateChild(L"BUTTON", L"命令", BS_OWNERDRAW, IdCommandTab);
     sftpTabButton_ = CreateChild(L"BUTTON", L"SFTP", BS_OWNERDRAW, IdSftpTab);
@@ -2269,7 +2276,7 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(disconnectButton_, leftInnerRight - Ui::Scale(56), headerTop,
         Ui::Scale(56), Ui::CompactHeight, TRUE);
     MoveWindow(connectionList_, leftInnerLeft, leftListTop, leftInnerRight - leftInnerLeft,
-        std::max(20, sideCardBottom - Ui::PanelPadding - leftListTop), TRUE);
+        std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space : 0)), TRUE);
 
     MoveWindow(terminal_, layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
         layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
@@ -2351,8 +2358,8 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(sftpDownloadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 3, footerTop,
         rightInnerRight - (rightInnerLeft + (sftpWidth + Ui::Space) * 3), Ui::CompactHeight, TRUE);
 
-    MoveWindow(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - 20,
-        leftInnerRight - leftInnerLeft, 20, TRUE);
+    MoveWindow(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - statusHeight_,
+        leftInnerRight - leftInnerLeft, statusHeight_, TRUE);
     ShowWindow(rightPanelToggleButton_, SW_SHOW);
     if (rightPanelCollapsed_ || rightPanelAutoCollapsed_) {
         for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
@@ -3729,6 +3736,10 @@ void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
 
 void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     statusIsError_ = isError;
+    statusText_ = text;
+    TOOLINFOW tool{sizeof(tool)};tool.hwnd=window_;tool.uId=reinterpret_cast<UINT_PTR>(status_);
+    tool.lpszText=const_cast<wchar_t*>(statusText_.c_str());
+    SendMessageW(statusTip_,TTM_UPDATETIPTEXTW,0,reinterpret_cast<LPARAM>(&tool));
     SetWindowTextW(status_, text.c_str());
     if (status_) {
         RECT client{}; GetClientRect(window_, &client);
@@ -3737,15 +3748,19 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
         RECT measured{0,0,layout.leftWidth-Ui::Gap-Ui::PanelPadding*2,0};
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
         SelectObject(dc,old);ReleaseDC(status_,dc);
-        int height=std::clamp(static_cast<int>(measured.bottom),20,120);
+        int height = text.empty() ? 0 : std::clamp(static_cast<int>(measured.bottom),Ui::Scale(20),Ui::Scale(120));
+        statusHeight_ = height;
         MoveWindow(status_,Ui::Gap+Ui::PanelPadding,client.bottom-Ui::Gap-Ui::PanelPadding-height,
             measured.right,height,TRUE);
+        RECT list{};GetWindowRect(connectionList_,&list);MapWindowPoints(HWND_DESKTOP,window_,reinterpret_cast<POINT*>(&list),2);
+        MoveWindow(connectionList_,list.left,list.top,list.right-list.left,
+            std::max(Ui::Scale(20),static_cast<int>(client.bottom)-Ui::Gap-Ui::PanelPadding-static_cast<int>(list.top)-(height?height+Ui::Space:0)),TRUE);
     }
     ShowWindow(status_, text.empty() ? SW_HIDE : SW_SHOW);
     InvalidateRect(status_, nullptr, TRUE);
     KillTimer(window_, StatusTimerId);
-    if (!text.empty()) SetTimer(window_, StatusTimerId, 3500, nullptr);
-    if (logger_) logger_->WriteStatus(text);
+    if (!text.empty() && !isError) SetTimer(window_, StatusTimerId, 3500, nullptr);
+    if (logger_ && !text.empty()) logger_->WriteStatus(text);
 }
 
 void MainWindow::SaveCurrentLog() {
@@ -6111,7 +6126,7 @@ Json MainWindow::ExecuteApiRequest(const std::string& method,const std::string& 
  if(path.rfind("/api/v1/actions/",0)==0&&method=="GET")return powerService_.Action(path.substr(16));
  if(path==powerPrefix&&method=="GET")return powerService_.State();
  if(path.rfind(powerPrefix+"/",0)==0&&method=="POST"){
-  Json command=body;std::string type=path.substr(powerPrefix.size()+1);if(type=="channels/output")type="output";if(type=="channels/parameters")type="parameters";
+  Json command=body;std::string type=path.substr(powerPrefix.size()+1);if(type=="channels/output")type="output";if(type=="channels/parameters")type="parameters";if(type=="channels/protection")type="protection";
   if(type!="connect"&&type!="disconnect"&&type!="output"&&type!="parameters"&&type!="protection"&&type!="task"&&type!="stop")return {{"error","Unknown endpoint"}};
   command["type"]=type;return powerService_.Submit(command);
  }
@@ -6139,7 +6154,7 @@ void MainWindow::ShowApiDialog(){
 }
 INT_PTR CALLBACK MainWindow::ApiDialogProc(HWND h,UINT message,WPARAM w,LPARAM l){
  auto* data=reinterpret_cast<ApiDialogData*>(GetWindowLongPtrW(h,DWLP_USER));
- if(message==WM_INITDIALOG){data=reinterpret_cast<ApiDialogData*>(l);SetWindowLongPtrW(h,DWLP_USER,reinterpret_cast<LONG_PTR>(data));SetWindowTextW(h,L"AI API");HDC dc=GetDC(h);int dpi=GetDeviceCaps(dc,LOGPIXELSX);ReleaseDC(h,dc);auto d=[dpi](int x){return MulDiv(x,dpi,96);};SetWindowPos(h,nullptr,0,0,d(520),d(524),SWP_NOMOVE|SWP_NOZORDER);
+ if(message==WM_INITDIALOG){data=reinterpret_cast<ApiDialogData*>(l);SetWindowLongPtrW(h,DWLP_USER,reinterpret_cast<LONG_PTR>(data));SetWindowTextW(h,L"AI API");HDC dc=GetDC(h);int dpi=GetDeviceCaps(dc,LOGPIXELSX);ReleaseDC(h,dc);auto d=[dpi](int x){return MulDiv(x,dpi,96);};SetWindowPos(h,nullptr,0,0,d(520),d(548),SWP_NOMOVE|SWP_NOZORDER);
   auto add=[&](const wchar_t* cls,const wchar_t* text,int id,int x,int y,int width,int height,DWORD style=0){auto c=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|style,d(x),d(y),d(width),d(height),h,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);SendMessageW(c,WM_SETFONT,reinterpret_cast<WPARAM>(data->owner->uiFont_),TRUE);return c;};
   add(L"STATIC",L"授权资源",-1,16,12,472,28);data->list=add(L"LISTBOX",L"",200,16,44,472,144,LBS_MULTIPLESEL|LBS_NOINTEGRALHEIGHT|WS_TABSTOP);
   for(const auto& resource:data->resources){std::string name=resource["name"];std::wstring text=MultiByteToWide(reinterpret_cast<const std::uint8_t*>(name.data()),name.size(),CP_UTF8);SendMessageW(data->list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(text.c_str()));}
@@ -6163,7 +6178,9 @@ INT_PTR CALLBACK MainWindow::ApiDialogProc(HWND h,UINT message,WPARAM w,LPARAM l
  if(message==WM_DRAWITEM){self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT*>(l));return TRUE;}
  if(message==WM_CTLCOLORDLG||message==WM_CTLCOLORSTATIC||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX){auto colors=Colors(self->darkMode_);SetTextColor(reinterpret_cast<HDC>(w),colors.text);SetBkColor(reinterpret_cast<HDC>(w),message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX?colors.terminal:colors.panel);return reinterpret_cast<INT_PTR>(message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX?self->terminalBrush_:self->panelBrush_);}
  if(message==WM_COMMAND){int id=LOWORD(w);if(id==IDCANCEL){EndDialog(h,IDCANCEL);return TRUE;}
-  if(id==240){if(self->pendingSession_){SetWindowTextW(data->info,L"请等待串口连接完成后切换兼容服务");return TRUE;}std::wstring error;if(!SerialShareService::SetLegacyEnabled(SendDlgItemMessageW(h,240,BM_GETCHECK,0,0)==BST_CHECKED,error))SetWindowTextW(data->info,error.c_str());return TRUE;}
+  if(id==240){if(self->pendingSession_){SetWindowTextW(data->info,L"请等待串口连接完成后切换兼容服务");return TRUE;}std::wstring error;if(!SerialShareService::SetLegacyEnabled(SendDlgItemMessageW(h,240,BM_GETCHECK,0,0)==BST_CHECKED,error))SetWindowTextW(data->info,error.c_str());
+   for(auto& session:self->sessions_)if(session->mode==1){auto* queue=dynamic_cast<QueuedConnection*>(session->connection.get());auto* serial=queue?dynamic_cast<SerialShareConnection*>(queue->Transport()):nullptr;if(serial)session->port=serial->SharedPort();}
+   InvalidateRect(self->connectionList_,nullptr,FALSE);return TRUE;}
   if(id==230){std::map<std::string,ApiGrant> grants;unsigned rights=0,channels=0;for(int i=0;i<6;++i)if(SendDlgItemMessageW(h,201+i,BM_GETCHECK,0,0)==BST_CHECKED)rights|=1u<<i;for(int i=0;i<3;++i)if(SendDlgItemMessageW(h,210+i,BM_GETCHECK,0,0)==BST_CHECKED)channels|=1u<<i;
    for(size_t i=0;i<data->resources.size();++i)if(SendMessageW(data->list,LB_GETSEL,i,0)>0)grants[data->resources[i]["id"]]={rights,channels};
    if(grants.empty()||!(rights&1)){SetWindowTextW(data->info,L"请选择资源并授权读取数据");return TRUE;}

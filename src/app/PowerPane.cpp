@@ -442,6 +442,12 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
     }
     if (m == WM_TIMER)
     {
+        HWND focus = GetFocus();
+        if (focus && IsChild(h,focus) && IsWindowVisible(h)) {
+            RECT field{},view{};GetWindowRect(focus,&field);MapWindowPoints(HWND_DESKTOP,h,reinterpret_cast<POINT*>(&field),2);GetClientRect(h,&view);
+            if(field.top<0)self->Scroll(self->scroll_+field.top);
+            else if(field.bottom>view.bottom)self->Scroll(self->scroll_+field.bottom-view.bottom);
+        }
         self->Refresh();
         return 0;
     }
@@ -481,9 +487,14 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
         auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
         auto c = UiTheme(self->dark_);
         bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start;
+        HBRUSH outside = CreateSolidBrush(c.field);
+        FillRect(item.hDC, &item.rcItem, outside);
+        DeleteObject(outside);
         UiBox(item.hDC, item.rcItem,
-              primary && !(item.itemState & ODS_DISABLED) ? c.accent : c.raised,
-              (item.itemState & ODS_FOCUS) ? c.accent : c.border, MulDiv(10, self->dpi_, 96));
+              (item.itemState & ODS_SELECTED)               ? c.border
+              : primary && !(item.itemState & ODS_DISABLED) ? c.accent
+                                                            : c.raised,
+              (item.itemState & ODS_FOCUS) ? c.accent : c.border, MulDiv(8, self->dpi_, 96));
         SetBkMode(item.hDC, TRANSPARENT);
         SetTextColor(item.hDC, (item.itemState & ODS_DISABLED)           ? c.muted
                                : item.CtlID == Off || item.CtlID == Stop ? c.danger
@@ -543,7 +554,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
         add(L"STATIC", L"设备 / COM 口", -1, 16, 80, 200);
         data->resource =
             add(L"COMBOBOX", L"", 101, 16, 108, 376, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
-        data->port = add(L"EDIT", L"COM1", 102, 16, 108, 376, WS_TABSTOP | ES_AUTOHSCROLL);
+        data->port = add(L"COMBOBOX", L"", 102, 16, 108, 376, WS_TABSTOP | CBS_DROPDOWNLIST, 200);
         add(L"BUTTON", L"刷新", 103, 400, 108, 88, WS_TABSTOP | BS_OWNERDRAW);
         add(L"STATIC", L"波特率", 110, 16, 156, 104);
         add(L"STATIC", L"数据位", 111, 136, 156, 104);
@@ -611,7 +622,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
                 ShowWindow(GetDlgItem(h, i), kind == 1 ? SW_SHOW : SW_HIDE);
             ShowWindow(data->resource, kind == 0 ? SW_SHOW : SW_HIDE);
             ShowWindow(data->port, kind == 1 ? SW_SHOW : SW_HIDE);
-            ShowWindow(GetDlgItem(h, 103), kind == 0 ? SW_SHOW : SW_HIDE);
+            ShowWindow(GetDlgItem(h, 103), kind != 2 ? SW_SHOW : SW_HIDE);
             ShowWindow(data->driver, kind == 0 ? SW_SHOW : SW_HIDE);
             if (kind == 0)
             {
@@ -631,7 +642,30 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
                                                 : L"");
             }
             else
+            {
+                if (kind == 1)
+                {
+                    auto previous = data->pane->Text(data->port);
+                    SendMessageW(data->port, CB_RESETCONTENT, 0, 0);
+                    wchar_t target[1024]{};
+                    for (int index = 1; index <= 256; ++index)
+                    {
+                        std::wstring name = L"COM" + std::to_wstring(index);
+                        if (QueryDosDeviceW(name.c_str(), target, 1024))
+                            SendMessageW(data->port, CB_ADDSTRING, 0,
+                                         reinterpret_cast<LPARAM>(name.c_str()));
+                    }
+                    if (previous.empty())
+                        SendMessageW(data->port, CB_SETCURSEL, 0, 0);
+                    else
+                    {
+                        auto index = SendMessageW(data->port, CB_FINDSTRINGEXACT, -1,
+                                                  reinterpret_cast<LPARAM>(previous.c_str()));
+                        SendMessageW(data->port, CB_SETCURSEL, index == CB_ERR ? 0 : index, 0);
+                    }
+                }
                 SetWindowTextW(data->error, kind == 2 ? L"模拟设备不连接实际电源。" : L"");
+            }
             return TRUE;
         }
         if (id == 109)

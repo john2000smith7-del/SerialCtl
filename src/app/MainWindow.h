@@ -273,6 +273,9 @@ private:
     HWND connectionList_ = nullptr;
     HWND terminal_ = nullptr;
     HWND status_ = nullptr;
+    HWND statusTip_ = nullptr;
+    std::wstring statusText_;
+    int statusHeight_ = 0;
     HWND commandHeader_ = nullptr;
     HWND sftpTabButton_ = nullptr;
     HWND rightPanelToggleButton_ = nullptr;
@@ -369,7 +372,7 @@ private:
     std::unique_ptr<SessionState> pendingSession_;
     std::vector<Bytes> pendingConnectionData_;
     size_t pendingConnectionBytes_ = 0;
-    bool closing_ = false;
+    std::atomic<bool> closing_{false};
     std::mutex receivedMutex_;
     std::map<std::uint64_t, Bytes> received_;
     std::set<std::uint64_t> receiveOverflow_;

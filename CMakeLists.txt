@@ -236,6 +236,9 @@ if(BUILD_TESTING)
     target_link_libraries(multi_serial_test PRIVATE ws2_32)
     add_test(NAME multi_serial COMMAND multi_serial_test)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME api_client COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/test_api_client.py")
+    set_tests_properties(api_client PROPERTIES TIMEOUT 30)
     add_test(NAME linux_gateway_client COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/test_gateway_client.py"
         "$<TARGET_FILE:multi_serial_test>")
