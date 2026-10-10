@@ -49,6 +49,6 @@ class PowerPane
          save_ = nullptr;
     HBRUSH brush_ = nullptr, fieldBrush_ = nullptr;
     std::string action_;
-    Json state_;
+    Json state_ = Json::object();
 };
 } // namespace serialctl

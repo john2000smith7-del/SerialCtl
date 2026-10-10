@@ -9,8 +9,6 @@ jobs:
   build:
     runs-on: windows-2022
     timeout-minutes: 30
-    env:
-      SERIALCTL_VISA_CACHE: ${{ runner.temp }}/SerialCtl-NIVISA1800runtime.zip
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,6 +19,8 @@ jobs:
           path: ${{ runner.temp }}/SerialCtl-NIVISA1800runtime.zip
           key: visa18-e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517
       - name: Build, test and verify x64 Win7 portable bundle
+        env:
+          SERIALCTL_VISA_CACHE: ${{ runner.temp }}/SerialCtl-NIVISA1800runtime.zip
         shell: powershell
         run: ./scripts/release.ps1
       - name: Launch packaged applications and capture UI
