@@ -1,29 +1,38 @@
-# AI API
+# 自动网络接口
 
-点击“AI API”，选择允许访问的资源及读取、终端输入、电源输出、参数、任务、连接权限和允许的电源通道，再启用。更新授权会生成新密钥并关闭旧网络连接；关闭 API 不关闭本地终端或电源。新打开的会话需重新授权。端口默认 7080，占用时尝试 7081–7095。
+V1.0.4 起，网络服务随 SerialCtl 启动，无需打开授权窗口、勾选权限或复制密钥。接口范围固定：查询已打开的串口、CMD、电源及其状态；读写已打开串口和 CMD；按本地当前勾选通道操作电源加电/掉电。SSH、Telnet、远程串口会话不加入新接口；旧串口 TCP 与 serialctl_client.py 继续兼容。
 
-现有 `serialctl_client.py` 和旧 TCP COM 协议保留。API 窗口中的“兼容串口 TCP（无密钥）”可独立关闭，关闭后旧客户端会断开；本地串口继续工作。新 API 的 Token 不保护仍启用的旧 TCP。CMD、电源及 SSH 只经授权 API 提供。
+电源参数、保护、连接/断开、任务创建/开始/停止仅在本机操作。AI 可用脚本循环调用加电/掉电，不使用软件内置循环任务接口。API 不允许传入 channels；要改变操作通道，先在本机电源页勾选。
 
-远程 Linux 安装 Python 3，无需第三方模块：
+Linux 安装 Python 3，使用随包标准库客户端：
 
 ```bash
-export SERIALCTL_TOKEN='从本地 API 窗口复制的密钥'
 python3 serialctl_api.py 192.168.1.10 discover
 python3 serialctl_api.py 192.168.1.10 list
 python3 serialctl_api.py 192.168.1.10 send COM5 'help' --encoding gbk --ending CR
 python3 serialctl_api.py 192.168.1.10 watch COM5
-python3 serialctl_api.py 192.168.1.10 on 1 2
-python3 serialctl_api.py 192.168.1.10 off 1 2
+python3 serialctl_api.py 192.168.1.10 power
+python3 serialctl_api.py 192.168.1.10 on
+python3 serialctl_api.py 192.168.1.10 off
 ```
 
-发现使用只读 `SERIALCTL/3 DISCOVER`，扫描 7000–7015，合并同一实例。仅电源/CMD也可发现。多实例或重名时要求使用 `--port`/`--instance` 或资源 ID，不自动选最低端口。HTTP 只发送到返回的 API 端口，避免被旧单串口入口当成设备数据。未经授权不自动退回旧匿名写入。
+客户端仅需 IP。发现通过只读 SERIALCTL/3 DISCOVER 扫描 7000–7015，取得 HTTP 端口，默认 7080，占用时尝试 7081–7095。多实例或同名资源时指定 --instance、--port 或资源 ID。不要向旧串口原始 TCP 入口发送 HTTP。退出程序停止服务；断开本地串口/CMD 后，该资源不再提供收发。
 
-API 路径均从 `/api/v1` 开始，带 `Authorization: Bearer <token>`。GET `/resources` 只显示授权资源；GET `/sessions/{id}` 查询终端编码/换行；POST `/sessions/{id}/input` 使用 `{"data":"base64原始字节"}`；GET `/sessions/{id}/events?after=0` 轮询字节和输入来源事件，返回 cursor，历史已过期时 gap=true。WebSocket `/sessions/{id}/stream` 输出 binary 原始字节及 text 审计/确认，输入用 masked binary。单次输入最大 64 KiB。网络操作在本地会话显示状态，CMD 输入也显示在终端，日志保留 AI 来源；串口原始数据不添加 AI 前缀。
+接口路径从 /api/v1 开始，无需 Authorization：
 
-GET `/power-supplies/power-1` 查询状态；GET 同路径下 `/usb-resources` 枚举 USB；POST `/connect`、`/disconnect`、`/channels/output`、`/channels/parameters`、`/task`、`/stop` 提交动作。输出请求 `{"channels":[1,2],"enabled":true,"requestId":"唯一ID"}`；参数使用 channels、voltage、current；任务使用 channels、onMs、offMs、count。GET `/actions/{id}` 查询执行结果。返回 queued 表示已排队，completed 表示已完成回读。动作按通道返回 confirmed、unknown、skipped；批量顺序执行，不保证原子或同时变化。
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | /resources | 查询本实例资源及固定 operations |
+| GET | /sessions/{id} | 查询串口/CMD 的连接、编码和换行 |
+| POST | /sessions/{id}/input | 发送 {"data":"base64原始字节"}，单次 1–65536 字节 |
+| GET | /sessions/{id}/events?after=0 | 获取输出、输入来源和状态事件，返回 cursor；过期时 gap=true |
+| WebSocket | /sessions/{id}/stream | binary 输出原始字节，text 提供输入审计/确认；输入使用 masked binary |
+| GET | /power-supplies/power-1 | 连接、测量及 selectedChannels 状态 |
+| POST | /power-supplies/power-1/channels/output | {"enabled":true,"requestId":"唯一ID"} 加电；false 掉电 |
+| GET | /actions/{id} | 查询电源按钮动作的排队、完成、失败与回读结果 |
 
-空通道、越界、未授权通道在写入前拒绝。requestId 在当前实例保留的最近 256 个动作范围内去重，同 ID 不同参数拒绝；过期动作不能作为重试保证，重启后旧 ID/Token 无效。操作未知时先查询实际状态，避免重放加电。资源 ID 属于当前实例，不能跨实例或跨重启缓存使用。
+本地和 AI 的 CMD 操作共享同一个进程，输入与结果在 GUI 中可见。串口流保留原始字节，日志和事件标记来源。电源输出返回 queued 时尚未完成，按 action ID 查询 completed/failed，不把排队当作已加电。
 
-当前传输为带 Token 的 HTTP/WS，适用于可信局域网或 VPN。跨不可信网络需通过 VPN/TLS 网关，不直接暴露公网。Win7 本地 CMD 使用普通用户权限和管道，不是 ConPTY，不支持全部全屏程序或可靠 Ctrl+C；关闭会话结束进程树，断开订阅保留会话。
+requestId 在当前实例最近 256 个动作内去重。同 ID 不同参数（包括重试时本地勾选通道变化）会拒绝，重启后旧 ID 无效。状态不明时先查询，避免重放加电。新客户端与 V1.0.3 的 Token/通道请求格式不同，使用本次压缩包里的 serialctl_api.py。
 
-`POST /api/v1/power-supplies/power-1/channels/protection` 使用参数权限，JSON 为 `{"channels":[1],"enabled":true,"voltageLimit":12,"currentLimit":2}`。电压保护写入设备 OVP 并回读，电流上限为软件采样保护。命令返回 action，需按 action ID 查询完成或失败。
+无需认证的接口用于受控局域网；不要直接映射到公网。是否允许入站由 Windows 防火墙决定。Win7 CMD 为普通用户权限的管道控制台，适合命令和脚本，不支持完整全屏控制台交互或可靠 Ctrl+C。

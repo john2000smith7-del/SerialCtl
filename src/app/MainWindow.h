@@ -7,6 +7,7 @@
 #include "TerminalModel.h"
 #include "PowerPane.h"
 #include "ApiServer.h"
+#include "ToolbarIcons.h"
 #include <future>
 
 #include <atomic>
@@ -125,8 +126,6 @@ private:
     static void PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
 
-    void ShowApiDialog();
-    static INT_PTR CALLBACK ApiDialogProc(HWND,UINT,WPARAM,LPARAM);
     Json ApiResources();
     Json ApiRequest(const std::string&,const std::string&,const Json&);
     Json ExecuteApiRequest(const std::string&,const std::string&,const Json&);
@@ -254,7 +253,7 @@ private:
     HBRUSH windowBrush_ = nullptr;
     HBRUSH panelBrush_ = nullptr;
     HBRUSH terminalBrush_ = nullptr;
-    bool darkMode_ = true;
+    bool darkMode_ = false;
     int selectedMode_ = -1;
     int lineEndingIndex_ = 0;
     UINT selectedCodePage_ = CP_UTF8;
@@ -266,7 +265,9 @@ private:
     PowerService powerService_;
     PowerPane powerPane_;
     bool powerVisible_ = false;
-    HWND cmdButton_ = nullptr, powerButton_ = nullptr, apiButton_ = nullptr;
+    bool powerPageOpened_ = false;
+    HWND cmdButton_ = nullptr, powerButton_ = nullptr;
+    ToolbarIcons toolbarIcons_;
     HWND themeButton_ = nullptr;
     HWND disconnectButton_ = nullptr;
     HWND connectionHeader_ = nullptr;

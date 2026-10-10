@@ -3,8 +3,18 @@
 #include <commctrl.h>
 #include <winsock2.h>
 #include <windows.h>
+#include <objidl.h>
+#include <propidl.h>
+#include <gdiplus.h>
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+    struct GraphicsSession {
+        ULONG_PTR token = 0;
+        ~GraphicsSession() { if (token) Gdiplus::GdiplusShutdown(token); }
+    } graphics;
+    Gdiplus::GdiplusStartupInput graphicsInput;
+    if (Gdiplus::GdiplusStartup(&graphics.token, &graphicsInput, nullptr) != Gdiplus::Ok)
+        return 1;
     INITCOMMONCONTROLSEX controls{};
     controls.dwSize = sizeof(controls);
     controls.dwICC = ICC_STANDARD_CLASSES;

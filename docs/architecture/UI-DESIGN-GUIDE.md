@@ -60,7 +60,7 @@ Light theme:
 - Text button: transparent surface and accent text.
 - Danger button: secondary surface with danger text; use a filled danger button only for irreversible actions.
 - Icon button: square, same radius as other buttons, centered 16-18 px icon.
-- Interface icons are drawn from the shared 2 px line-icon family. Do not use Unicode glyphs for theme, arrows, plus, refresh, or other interface symbols.
+- Top navigation icons use the approved monochrome solid silhouette family with rounded negative-space details. Editable SVG masters produce transparent 4x PNG atlases, embedded as resources and rendered with Win7 GDI+ high-quality scaling. Do not use raw GDI primitive drawing for navigation icons. The power glyph is a plain circular switch symbol. Desktop icon artwork is unchanged. Other utility icons may retain their shared line family. Do not use Unicode glyphs for theme, arrows, plus, refresh, or other interface symbols.
 - Dialog actions placed beside a field use a compact text label, the same height as the field, and at least 32 dialog units of width. Do not use a lone oversized glyph when the action can be named clearly.
 - Field-adjacent actions must copy the reference field's final runtime pixel bounds after Windows applies its font and DPI metrics; equal resource values alone are not sufficient.
 - Disabled controls retain their shape but use muted content and a low-contrast border.
@@ -82,6 +82,7 @@ Light theme:
 - Connection methods form one evenly spaced segmented toolbar.
 - The connection-method track uses the standard 12 px horizontal inset and 16 px vertical inset. Keep the 72 px toolbar height so the track does not visually merge with the title bar or the content divider.
 - Segmented controls use one raised-surface outer track and an inset selected pill. Adjacent segments do not create separate competing borders.
+- The top navigation uses six items (SSH, serial, Telnet, remote serial, CMD, power), 24 px icon bounds, consistent 40 px text inset and one shared track; no API item. Default theme is light. Selected navigation inverts black/white; it does not use the content accent color.
 - The segmented toolbar has exactly one rounded background track. Do not add a second frame or overlay above the segment buttons; selected and hover pills are drawn inside the single track.
 - The title-bar application icon follows the active theme: dark artwork in dark mode and the matching light artwork in light mode.
 - Left connection list, center terminal, and right command collection are separate rounded surfaces; avoid strong full-height divider lines.
@@ -121,7 +122,7 @@ Light theme:
 - Helper text sits directly above the footer and uses the secondary-text token.
 - Do not show generic helper copy in connection dialogs. Reserve the inline message row for validation errors only.
 - Connection dialogs and command dialogs must use the same control styling and footer geometry.
-- The command dialog starts with one full-width instruction field. Added instruction rows use the compact grid with a same-height named Delete action; the shared interval field appears only when more than one instruction exists.
+- The command dialog retains its 238-DLU width and single-column arrangement at every step count, starting with one full-width instruction field. Added instruction rows use the compact grid with a same-height named Delete action; the shared interval field appears only when more than one instruction exists.
 
 ## Review checklist
 
@@ -136,4 +137,4 @@ Light theme:
 
 Command drag, add, edit, delete and import update an unsaved draft. A compact secondary Save button uses the same footer grid as Import/Export/Delete. Closing a dirty draft offers Save/Discard/Cancel. SFTP column boundaries use the resize cursor and persisted widths. Path double-click / Ctrl+L and the context menu open the shared input dialog. Manual browsing pauses terminal follow. IP discovery runs asynchronously after a 500 ms debounce; only already-open COMs are listed.
 
-Power and local CMD share the center card. Power uses three checked channel rows, one ON/OFF action pair, separate connect/disconnect, concise status and task fields. No decorative helper paragraphs. System DPI scales fonts and metrics, narrow work areas may collapse the side panel. Power content scrolls when needed.
+Power and local CMD share the center card. Power uses three checked channel cards (three columns at 600 px or wider; stacked below this width), one ON/OFF action pair, separate connect/disconnect, concise status and task fields. The command/SFTP panel collapses automatically while power is selected, without changing the saved terminal-panel preference. No decorative helper paragraphs. System DPI scales fonts and metrics, narrow work areas may collapse the side panel. Power content scrolls when needed.

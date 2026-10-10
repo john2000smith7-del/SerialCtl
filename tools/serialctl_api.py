@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""SerialCtl authenticated API client. Legacy serialctl_client.py stays compatible."""
+"""SerialCtl automatic local-network API client. Legacy serialctl_client.py stays compatible."""
 import argparse
 import base64
 import concurrent.futures
 import json
-import os
 import socket
 import sys
 import time
@@ -49,11 +48,8 @@ def discover(ip, timeout=0.7):
 
 
 class Client:
-    def __init__(self, ip, token=None, port=None, instance=None, timeout=5):
+    def __init__(self, ip, port=None, instance=None, timeout=5):
         self.ip = ip
-        self.token = token or os.environ.get("SERIALCTL_TOKEN", "")
-        if not self.token:
-            raise ValueError("Set SERIALCTL_TOKEN to the key copied from AI API")
         if port is None:
             found = discover(ip)
             if instance:
@@ -63,11 +59,11 @@ class Client:
             port = found[0]["port"]
         self.port, self.timeout = int(port), timeout
         self.base = "http://%s:%d/api/v1" % (ip, self.port)
-        # Direct device-LAN connection; no ambient HTTP proxy or credential redirect.
+        # Direct device-LAN connection; no ambient HTTP proxy or redirect.
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
     def request(self, path, body=None):
-        headers = {"Authorization": "Bearer " + self.token}
+        headers = {}
         payload = None
         if body is not None:
             payload = json.dumps(body, allow_nan=False).encode("utf-8")
@@ -101,11 +97,11 @@ class Client:
     def events(self, resource, after=0):
         return self.request("/sessions/%s/events?after=%d" % (resource, after))
 
-    def output(self, channels, enabled, request_id=None):
+    def output(self, enabled, request_id=None):
         if not isinstance(enabled, bool):
             raise ValueError("enabled must be bool")
         return self.request("/power-supplies/power-1/channels/output",
-                            {"channels": list(channels), "enabled": bool(enabled),
+                            {"enabled": enabled,
                              "requestId": request_id or uuid.uuid4().hex})
 
     def wait_action(self, action, timeout=30):
@@ -135,8 +131,7 @@ def main():
     sub.add_parser("list")
     sub.add_parser("power")
     for name in ("on", "off"):
-        command = sub.add_parser(name)
-        command.add_argument("channels", nargs="+", type=int, choices=(1, 2, 3))
+        sub.add_parser(name)
     send = sub.add_parser("send")
     send.add_argument("resource")
     send.add_argument("text")
@@ -155,7 +150,7 @@ def main():
     elif args.command == "power":
         result = client.request("/power-supplies/power-1")
     elif args.command in ("on", "off"):
-        result = client.wait_action(client.output(args.channels, args.command == "on"))
+        result = client.wait_action(client.output(args.command == "on"))
     elif args.command == "send":
         ending = {"CR": "\r", "LF": "\n", "CRLF": "\r\n", "None": ""}[args.ending]
         result = client.input(client.resource(args.resource), (args.text + ending).encode(args.encoding))

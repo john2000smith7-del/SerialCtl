@@ -99,13 +99,7 @@ std::string Lower(std::string s)
         c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
     return s;
 }
-bool EqualToken(const std::string &a, const std::string &b)
-{
-    unsigned diff = static_cast<unsigned>(a.size() ^ b.size());
-    for (size_t i = 0; i < b.size(); ++i)
-        diff |= static_cast<unsigned>((i < a.size() ? a[i] : 0) ^ b[i]);
-    return diff == 0;
-}
+
 bool Frame(SOCKET socket, unsigned opcode, const Bytes &bytes)
 {
     Bytes frame{static_cast<std::uint8_t>(0x80 | opcode)};
@@ -189,23 +183,22 @@ ApiServer::~ApiServer()
 {
     Stop();
 }
-std::string ApiServer::Token() const
+void ApiServer::SetSessions(const std::vector<std::string> &sessions)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    return token_;
+    sessions_ = std::set<std::string>(sessions.begin(), sessions.end());
 }
-bool ApiServer::Start(Handler handler, std::map<std::string, ApiGrant> grants, std::wstring &error)
+bool ApiServer::Start(Handler handler, std::wstring &error)
 {
     Stop();
     try
     {
-        token_ = Random();
         if (instance_.empty())
             instance_ = Random().substr(0, 32);
     }
     catch (...)
     {
-        error = L"无法生成 API 密钥";
+        error = L"无法初始化网络接口";
         return false;
     }
     unsigned port = 0;
@@ -217,7 +210,6 @@ bool ApiServer::Start(Handler handler, std::map<std::string, ApiGrant> grants, s
     }
     port_ = port;
     handler_ = std::move(handler);
-    grants_ = std::move(grants);
     running_ = true;
     {
         std::lock_guard<std::mutex> lock(discoveryInfoMutex);
@@ -269,8 +261,7 @@ void ApiServer::Stop()
     finished_.clear();
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        token_.clear();
-        grants_.clear();
+        sessions_.clear();
         handler_ = {};
         events_.clear();
     }
@@ -345,91 +336,62 @@ bool ApiServer::Allowed(const std::string &method, const std::string &path, cons
     auto parts = Segments(path);
     if (parts.size() < 3 || parts[0] != "api" || parts[1] != "v1")
         return false;
-    if (method == "GET" && parts[2] == "resources")
+    if (method == "GET" && path == "/api/v1/resources")
+        return true;
+    if (method == "GET" && parts.size() == 4 && parts[2] == "actions")
         return true;
     if (parts.size() < 4)
         return false;
+    if (parts[2] == "power-supplies" && parts[3] == "power-1")
+    {
+        if (method == "GET")
+            return parts.size() == 4;
+        if (method != "POST" || parts.size() != 6 || parts[4] != "channels" || parts[5] != "output")
+            return false;
+        // Network clients press the same two buttons as the operator. They cannot
+        // replace the locally selected channels or alter any device configuration.
+        if (!body.contains("enabled") || !body["enabled"].is_boolean())
+            return false;
+        for (auto it = body.begin(); it != body.end(); ++it)
+            if (it.key() != "enabled" && it.key() != "requestId")
+                return false;
+        return !body.contains("requestId") || body["requestId"].is_string();
+    }
+    if (parts[2] != "sessions")
+        return false;
     std::lock_guard<std::mutex> lock(mutex_);
-    std::string id = parts[3];
-    if (parts[2] == "actions")
-    {
-        auto grant = grants_.find("power-1");
-        return method == "GET" && grant != grants_.end() && (grant->second.rights & 1);
-    }
-    auto it = grants_.find(id);
-    if (it == grants_.end())
+    if (!sessions_.count(parts[3]))
         return false;
-    unsigned right = 1;
-    if (method != "GET")
-    {
-        if (parts[2] == "sessions")
-            right = 2;
-        else if (parts.size() > 4)
-        {
-            std::string action = parts.back();
-            right = action == "output"                                 ? 4
-                    : action == "parameters" || action == "protection" ? 8
-                    : action == "task" || action == "stop"             ? 16
-                                                                       : 32;
-        }
-        else
-            return false;
-    }
-    if (!(it->second.rights & right))
-        return false;
-    if (right == 16 && !(it->second.rights & 4))
-        return false;
-    if (body.contains("channels"))
-    {
-        if (!body["channels"].is_array() || body["channels"].empty())
-            return false;
-        for (const auto &c : body["channels"])
-        {
-            if (!c.is_number_integer() || c < 1 || c > 3)
-                return false;
-            int n = c.get<int>();
-            if (n < 1 || n > 3 || !(it->second.channels & (1u << (n - 1))))
-                return false;
-        }
-    }
-    return true;
+    if (method == "GET")
+        return parts.size() == 4 ||
+               (parts.size() == 5 && (parts[4] == "events" || parts[4] == "stream"));
+    return method == "POST" && parts.size() == 5 && parts[4] == "input";
 }
 Json ApiServer::Call(const std::string &method, const std::string &path, const Json &body)
 {
     if (!Allowed(method, path, body))
-        return {{"error", "Resource or operation not authorized"}, {"httpStatus", 403}};
+        return {{"error", "Operation unavailable"}, {"httpStatus", 403}};
     if (method == "GET" && path.find("/events") != std::string::npos)
     {
         auto parts = Segments(path);
         return Events(parts[3], body.value("after", std::uint64_t(0)));
     }
-    if (method == "POST" && (path == "/api/v1/power-supplies/power-1/stop" ||
-                             path == "/api/v1/power-supplies/power-1/disconnect"))
-    {
-        auto state = handler_("GET", "/api/v1/power-supplies/power-1", Json::object());
-        if (state.contains("ownedChannels") && !state["ownedChannels"].empty())
-        {
-            Json check = {{"channels", state["ownedChannels"]}, {"enabled", false}};
-            if (!Allowed("POST", "/api/v1/power-supplies/power-1/channels/output", check))
-                return {{"error", "Task owns channels outside this grant"}, {"httpStatus", 403}};
-        }
-    }
     auto response = handler_(method, path, body);
     if (path == "/api/v1/resources" && response.contains("resources"))
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        Json allowed = Json::array();
+        Json available = Json::array();
         for (auto resource : response["resources"])
         {
-            auto found = grants_.find(resource["id"].get<std::string>());
-            if (found != grants_.end())
+            auto id = resource["id"].get<std::string>();
+            if (id == "power-1" || sessions_.count(id))
             {
-                resource["rights"] = found->second.rights;
-                resource["channelsMask"] = found->second.channels;
-                allowed.push_back(resource);
+                resource["operations"] = id == "power-1" ? Json::array({"read", "output"})
+                                                         : Json::array({"read", "input"});
+                available.push_back(resource);
             }
         }
-        response["resources"] = allowed;
+        response["resources"] = available;
         response["instance"] = instance_;
     }
     return response;
@@ -477,14 +439,7 @@ void ApiServer::Client(SOCKET socket)
         }
         Json response;
         unsigned status = 200;
-        bool authenticated = EqualToken(headers["authorization"], "Bearer " + Token());
         Json body = Json::object();
-        if (!authenticated)
-        {
-            status = 401;
-            response = {{"error", "Bearer token required"}};
-        }
-        else
         {
             if (headers.count("transfer-encoding"))
                 throw std::runtime_error("Chunked requests unsupported");
@@ -565,8 +520,7 @@ void ApiServer::Publish(const std::string &resource, const Bytes &bytes, const c
     if (!running_ || bytes.empty())
         return;
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = grants_.find(resource);
-    if (it == grants_.end() || !(it->second.rights & 1))
+    if (!sessions_.count(resource))
         return;
     for (size_t offset = 0; offset < bytes.size(); offset += 16384)
     {
@@ -621,6 +575,8 @@ void ApiServer::Websocket(SOCKET socket, const std::string &resource, const std:
     std::uint64_t cursor = Events(resource, 0)["cursor"];
     while (running_)
     {
+        if (!Allowed("GET", "/api/v1/sessions/" + resource + "/stream", Json::object()))
+            break;
         auto events = Events(resource, cursor);
         if (events["gap"].get<bool>())
         {

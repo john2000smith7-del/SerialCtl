@@ -45,6 +45,8 @@ file(MAKE_DIRECTORY "${SERIALCTL_GENERATED_DIR}")
 file(TO_CMAKE_PATH "${SERIALCTL_GENERATED_DIR}/app.manifest" SERIALCTL_MANIFEST_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/serialctl.ico" SERIALCTL_ICON_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/serialctl-light.ico" SERIALCTL_LIGHT_ICON_PATH)
+file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-black.png" SERIALCTL_TOOLBAR_BLACK_PATH)
+file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-white.png" SERIALCTL_TOOLBAR_WHITE_PATH)
 set(SERIALCTL_FILE_VERSION_COMMA
     "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
 set(SERIALCTL_FILE_VERSION_DOTTED
@@ -124,6 +126,7 @@ endfunction()
 add_executable(serialctl WIN32
     src/app/App.cpp
     src/app/MainWindow.cpp
+    src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
     src/power/PowerService.cpp
     src/network/ApiServer.cpp
@@ -151,7 +154,7 @@ if(MSVC)
     # resources and to ensure the Win7 compatibility declarations stay authoritative.
     target_link_options(serialctl PRIVATE /MANIFEST:NO)
 endif()
-target_link_libraries(serialctl PRIVATE ws2_32 comctl32 comdlg32 shell32 ole32 advapi32)
+target_link_libraries(serialctl PRIVATE ws2_32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus)
 
 foreach(PUTTY_PROGRAM IN ITEMS plink.exe psftp.exe)
     if(NOT EXISTS "${PUTTY_ARCH_DIR}/${PUTTY_PROGRAM}")

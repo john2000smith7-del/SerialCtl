@@ -5,6 +5,7 @@
 #include <functional>
 namespace serialctl
 {
+inline constexpr UINT PowerStateChanged = WM_APP + 9;
 class PowerPane
 {
   public:
@@ -16,6 +17,7 @@ class PowerPane
     }
     void Theme(bool dark);
     void ShowConnection();
+    Json SelectedChannels() { return Selection(); }
 
   private:
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
@@ -35,11 +37,13 @@ class PowerPane
     void SaveTask();
     std::wstring TaskPath();
     HWND window_ = nullptr;
-    HFONT font_ = nullptr;
+    HFONT font_ = nullptr, titleFont_ = nullptr, valueFont_ = nullptr;
     bool dark_ = true;
     int dpi_ = 96;
     UiFieldStyle fieldStyle_{&dark_, nullptr, 96};
     int scroll_ = 0;
+    int contentHeight_ = 0;
+    int cardTop_ = 0, cardWidth_ = 0, cardHeight_ = 0, cardColumns_ = 1, taskTop_ = 0;
     bool scrolling_ = false;
     PowerService *service_ = nullptr;
     std::array<HWND, 3> check_{}, voltage_{}, current_{}, apply_{};
@@ -47,7 +51,7 @@ class PowerPane
     HWND protectionButton_ = nullptr;
     HWND onTime_ = nullptr, offTime_ = nullptr, count_ = nullptr, start_ = nullptr, stop_ = nullptr,
          save_ = nullptr;
-    HBRUSH brush_ = nullptr, fieldBrush_ = nullptr;
+    HBRUSH brush_ = nullptr, fieldBrush_ = nullptr, surfaceBrush_ = nullptr;
     std::string action_;
     Json state_ = Json::object();
 };

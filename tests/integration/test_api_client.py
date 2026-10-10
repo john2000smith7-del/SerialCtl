@@ -28,10 +28,6 @@ class Peer(BaseHTTPRequestHandler):
     def reply(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         Peer.requests.append((self.path, self.headers.get("Authorization"), json.loads(body) if body else None))
-        if self.headers.get("Authorization") != "Bearer test-key":
-            self.send_response(401)
-            self.end_headers()
-            return
         result = {"resources": [{"id": "session-5", "name": "COM5", "com": "COM5", "kind": "serial"}]}
         if self.path.endswith("/input"):
             result = {"accepted": len(base64.b64decode(json.loads(body)["data"]))}
@@ -65,7 +61,7 @@ class ClientTests(unittest.TestCase):
         cls.peer.server_close()
 
     def client(self):
-        return api.Client("127.0.0.1", token="test-key", port=self.peer.server_port)
+        return api.Client("127.0.0.1", port=self.peer.server_port)
 
     def test_com_name_resolves_to_selected_resource(self):
         self.assertEqual(self.client().resource("COM5"), "session-5")
@@ -75,35 +71,35 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(self.client().input("session-5", raw)["accepted"], len(raw))
         path, auth, body = Peer.requests[-1]
         self.assertEqual(path, "/api/v1/sessions/session-5/input")
-        self.assertEqual(auth, "Bearer test-key")
+        self.assertIsNone(auth)
         self.assertEqual(base64.b64decode(body["data"]), raw)
 
-    def test_output_keeps_explicit_channels_and_request_id(self):
+    def test_output_only_presses_button_and_keeps_request_id(self):
         client = self.client()
-        action = client.output([1, 3], False, "retry-1")
-        self.assertEqual(Peer.requests[-1][2], {"channels": [1, 3], "enabled": False, "requestId": "retry-1"})
+        action = client.output(False, "retry-1")
+        self.assertEqual(Peer.requests[-1][2], {"enabled": False, "requestId": "retry-1"})
         self.assertEqual(client.wait_action(action)["state"], "completed")
 
     def test_non_boolean_output_rejected_before_network(self):
         before = len(Peer.requests)
         with self.assertRaises(ValueError):
-            self.client().output([1], "false")
+            self.client().output("false")
         self.assertEqual(len(Peer.requests), before)
 
-    def test_no_anonymous_fallback(self):
-        with patch.dict(api.os.environ, {}, clear=True):
-            with self.assertRaises(ValueError):
-                api.Client("127.0.0.1", port=self.peer.server_port)
+    def test_no_token_or_authorization_ui_required(self):
+        client = api.Client("127.0.0.1", port=self.peer.server_port)
+        self.assertEqual(client.resource("COM5"), "session-5")
+        self.assertIsNone(Peer.requests[-1][1])
 
-    def test_redirect_does_not_forward_credentials(self):
+    def test_redirect_is_refused(self):
         with self.assertRaises(RuntimeError):
             self.client().request("/redirect")
 
     def test_ambiguous_instance_requires_selection(self):
         with patch.object(api, "discover", return_value=[{"instance": "one", "port": 7080}, {"instance": "two", "port": 7081}]):
             with self.assertRaises(ValueError):
-                api.Client("127.0.0.1", token="test-key")
-            self.assertEqual(api.Client("127.0.0.1", token="test-key", instance="two").port, 7081)
+                api.Client("127.0.0.1", )
+            self.assertEqual(api.Client("127.0.0.1", instance="two").port, 7081)
 
 
 if __name__ == "__main__":

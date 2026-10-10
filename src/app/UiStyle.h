@@ -35,6 +35,14 @@ struct UiFieldStyle
     HFONT font;
     int dpi;
 };
+inline void UiResizeDialog(HWND dialog, int dpi, int width, int height)
+{
+    RECT bounds{0, 0, MulDiv(width, dpi, 96), MulDiv(height, dpi, 96)};
+    AdjustWindowRectEx(&bounds, static_cast<DWORD>(GetWindowLongPtrW(dialog, GWL_STYLE)), FALSE,
+                       static_cast<DWORD>(GetWindowLongPtrW(dialog, GWL_EXSTYLE)));
+    SetWindowPos(dialog, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
 inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id,
                                      DWORD_PTR)
 {

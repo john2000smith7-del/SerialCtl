@@ -37,4 +37,4 @@ check → clean build → test → PE compatibility check → package → extrac
 
 `.github/workflows/windows-build.yml` 在 windows-2022 运行同一 release.ps1 流程，再启动解压后的 x64 程序进行 UI 冒烟检查并上传便携包。实际 Win7 验收按 docs/testing 执行。
 
-发布工作流使用成功的 main 分支 Windows 构建 run ID、完整源码 SHA 和压缩包 SHA-256，从 Actions 下载已经验证的包再发布，不重新编译，不要求大压缩包进入 Git。发布标签 V1.0.3 对应 v1.0.3，保留历史发布。
+发布工作流使用成功的 main 分支 Windows 构建 run ID、完整源码 SHA 和压缩包 SHA-256，从 Actions 下载已经验证的包再发布，不重新编译，不要求大压缩包进入 Git。发布标签 V1.0.4 对应 v1.0.4，保留历史发布。

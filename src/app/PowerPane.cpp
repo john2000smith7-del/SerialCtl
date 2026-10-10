@@ -53,10 +53,16 @@ struct ConnectionDialog
 } // namespace
 PowerPane::~PowerPane()
 {
+    if (titleFont_)
+        DeleteObject(titleFont_);
+    if (valueFont_)
+        DeleteObject(valueFont_);
     if (brush_)
         DeleteObject(brush_);
     if (fieldBrush_)
         DeleteObject(fieldBrush_);
+    if (surfaceBrush_)
+        DeleteObject(surfaceBrush_);
 }
 bool PowerPane::Create(HWND parent, HFONT font, bool dark, PowerService *service)
 {
@@ -66,6 +72,13 @@ bool PowerPane::Create(HWND parent, HFONT font, bool dark, PowerService *service
     HDC dc = GetDC(parent);
     dpi_ = GetDeviceCaps(dc, LOGPIXELSX);
     ReleaseDC(parent, dc);
+    LOGFONTW face{};
+    GetObjectW(font, sizeof(face), &face);
+    face.lfWeight = FW_SEMIBOLD;
+    face.lfHeight = MulDiv(-18, dpi_, 96);
+    titleFont_ = CreateFontIndirectW(&face);
+    face.lfHeight = MulDiv(-20, dpi_, 96);
+    valueFont_ = CreateFontIndirectW(&face);
     fieldStyle_.font = font;
     fieldStyle_.dpi = dpi_;
     WNDCLASSW wc{};
@@ -106,9 +119,12 @@ void PowerPane::Theme(bool dark)
         DeleteObject(brush_);
     if (fieldBrush_)
         DeleteObject(fieldBrush_);
+    if (surfaceBrush_)
+        DeleteObject(surfaceBrush_);
     auto c = UiTheme(dark);
     brush_ = CreateSolidBrush(c.field);
     fieldBrush_ = CreateSolidBrush(c.raised);
+    surfaceBrush_ = CreateSolidBrush(c.surface);
     if (window_)
         RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
@@ -227,6 +243,8 @@ void PowerPane::Refresh()
             SetWindowTextW(current_[i], Value(state_["channels"][i]["setCurrent"]).c_str());
         }
     }
+    if (wasConnected != state_.value("connected", false))
+        PostMessageW(GetParent(window_), PowerStateChanged, 0, 0);
     bool connected = state_.value("connected", false),
          running = state_["task"].value("running", false);
     bool selected = !Selection().empty();
@@ -259,35 +277,42 @@ void PowerPane::Layout()
     RECT r{};
     GetClientRect(window_, &r);
     auto d = [this](int x) { return MulDiv(x, dpi_, 96); };
-    int w = r.right - d(16);
-    auto move = [&](HWND h, int x, int y, int width, int height, BOOL repaint) {
-        MoveWindow(h, x, y - scroll_, width, height, repaint);
+    const int w = r.right - d(16);
+    auto move = [&](HWND h, int x, int y, int width, int height) {
+        MoveWindow(h, x, y - scroll_, width, height, TRUE);
     };
-    for (int i = 0; i < 4; ++i)
-        move(buttons_[i], d(8) + (w - d(24)) * i / 4, d(40), (w - d(24)) / 4 - d(8), d(32), TRUE);
-    move(protectionButton_, w - d(72), 0, d(64), d(28), TRUE);
-    int card = d(96);
+    move(buttons_[0], w - d(200), 0, d(96), d(36));
+    move(buttons_[1], w - d(96), 0, d(96), d(36));
+    move(buttons_[2], w - d(272), d(48), d(96), d(36));
+    move(buttons_[3], w - d(168), d(48), d(96), d(36));
+    move(protectionButton_, w - d(64), d(48), d(64), d(36));
+    cardColumns_ = w >= d(600) ? 3 : 1;
+    cardWidth_ = (w - d(12) * (cardColumns_ - 1)) / cardColumns_;
+    cardTop_ = d(100);
+    cardHeight_ = d(252);
     for (int i = 0; i < 3; ++i)
     {
-        int y = d(88) + i * (card + d(8));
-        move(check_[i], d(16), y + d(8), d(72), d(28), TRUE);
-        int field = std::max(d(48), (w - d(148)) / 2);
-        move(voltage_[i], d(16), y + d(56), field, d(28), TRUE);
-        move(current_[i], d(16) + field + d(8), y + d(56), field, d(28), TRUE);
-        move(apply_[i], w - d(72), y + d(56), d(56), d(28), TRUE);
+        int x = (i % cardColumns_) * (cardWidth_ + d(12));
+        int y = cardTop_ + (i / cardColumns_) * (cardHeight_ + d(12));
+        move(check_[i], x + d(16), y + d(12), d(72), d(28));
+        move(voltage_[i], x + d(96), y + d(148), cardWidth_ - d(112), d(28));
+        move(current_[i], x + d(96), y + d(184), cardWidth_ - d(112), d(28));
+        move(apply_[i], x + d(16), y + d(220), cardWidth_ - d(32), d(28));
     }
-    int task = d(408);
-    int field = (w - d(40)) / 3;
+    taskTop_ = cardTop_ + ((3 + cardColumns_ - 1) / cardColumns_) * (cardHeight_ + d(12)) + d(12);
+    int field = (w - d(16)) / 3;
     for (int i = 0; i < 3; ++i)
+    {
         move(i == 0   ? onTime_
              : i == 1 ? offTime_
                       : count_,
-             d(8) + i * (field + d(8)), task + d(24), field, d(28), TRUE);
-    for (int i = 0; i < 3; ++i)
+             i * (field + d(8)), taskTop_ + d(44), field, d(28));
         move(i == 0   ? start_
              : i == 1 ? stop_
                       : save_,
-             d(8) + i * (field + d(8)), task + d(60), field, d(32), TRUE);
+             i * (field + d(8)), taskTop_ + d(84), field, d(36));
+    }
+    contentHeight_ = taskTop_ + d(172);
 }
 void PowerPane::Paint(HDC dc)
 {
@@ -296,62 +321,83 @@ void PowerPane::Paint(HDC dc)
     auto c = UiTheme(dark_);
     FillRect(dc, &r, brush_);
     SetViewportOrgEx(dc, 0, -scroll_, nullptr);
-    r.right -= MulDiv(16, dpi_, 96);
     auto d = [this](int x) { return MulDiv(x, dpi_, 96); };
-    auto text = [&](std::wstring label, RECT rect, COLORREF color,
-                    UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
+    const int width = r.right - d(16);
+    auto text = [&](const std::wstring &label, RECT rect, COLORREF color,
+                    UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
+                    HFONT font = nullptr) {
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, color);
-        auto old = SelectObject(dc, font_);
+        auto old = SelectObject(dc, font ? font : font_);
         DrawTextW(dc, label.c_str(), -1, &rect, flags);
         SelectObject(dc, old);
     };
-    std::wstring title = L"IT6332A";
-    title += state_.value("simulation", false)  ? L" · 模拟"
-             : state_.value("connected", false) ? L" · 已连接"
-                                                : L" · 未连接";
-    text(title, {d(8), 0, r.right - d(8), d(32)}, c.text);
+    text(L"IT6332A", {0, 0, width - d(216), d(36)}, c.text, DT_LEFT | DT_VCENTER | DT_SINGLELINE,
+         titleFont_);
+    std::wstring selected = L"已选";
+    for (const auto &channel : Selection())
+        selected += L" CH" + std::to_wstring(channel.get<int>());
+    if (Selection().empty())
+        selected = L"未选择通道";
+    text(selected, {0, d(48), width - d(288), d(84)}, c.text);
     for (int i = 0; i < 3; ++i)
     {
-        int y = d(88 + i * 104);
-        RECT card{0, y, r.right, y + d(96)};
-        UiBox(dc, card, c.raised, c.border, d(12));
+        int x = (i % cardColumns_) * (cardWidth_ + d(12));
+        int y = cardTop_ + (i / cardColumns_) * (cardHeight_ + d(12));
+        RECT card{x, y, x + cardWidth_, y + cardHeight_};
+        bool checked = SendMessageW(check_[i], BM_GETCHECK, 0, 0) == BST_CHECKED;
+        UiBox(dc, card, c.surface, checked ? c.text : c.border, d(12));
         if (!state_.contains("channels"))
             continue;
         auto channel = state_["channels"][i];
         std::wstring status = channel["output"].is_boolean()
-                                  ? (channel["output"].get<bool>() ? L"输出开启" : L"输出关闭")
-                                  : L"状态未知";
-        text(Value(channel["voltage"], L" V") + L"    " + Value(channel["current"], L" A") +
-                 L"    " + Value(channel["power"], L" W"),
-             {d(88), y + d(8), r.right - d(8), y + d(32)}, c.text);
-        text(L"电压 (V)", {d(16), y + d(34), r.right / 2, y + d(54)}, c.muted);
-        text(L"电流 (A)", {r.right / 2 - d(30), y + d(34), r.right - d(72), y + d(54)}, c.muted);
-        text(status, {r.right - d(104), y + d(34), r.right - d(8), y + d(54)},
-             channel["output"].is_null() ? c.muted : c.accent,
+                                  ? (channel["output"].get<bool>() ? L"已加电" : L"已掉电")
+                                  : L"未连接";
+        text(status, {x + d(88), y + d(12), x + cardWidth_ - d(16), y + d(40)}, c.muted,
              DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+        int half = (cardWidth_ - d(32)) / 2;
+        text(L"电压 (V)", {x + d(16), y + d(56), x + d(16) + half, y + d(76)}, c.muted);
+        text(L"电流 (A)", {x + d(16) + half, y + d(56), x + cardWidth_ - d(16), y + d(76)},
+             c.muted);
+        text(Value(channel["voltage"]), {x + d(16), y + d(80), x + d(16) + half, y + d(112)},
+             c.text, DT_LEFT | DT_VCENTER | DT_SINGLELINE, valueFont_);
+        text(Value(channel["current"]),
+             {x + d(16) + half, y + d(80), x + cardWidth_ - d(16), y + d(112)}, c.text,
+             DT_LEFT | DT_VCENTER | DT_SINGLELINE, valueFont_);
+        text(L"功率 " + Value(channel["power"], L" W"),
+             {x + d(16), y + d(116), x + cardWidth_ - d(16), y + d(140)}, c.muted);
+        text(L"电压 (V)", {x + d(16), y + d(148), x + d(88), y + d(176)}, c.muted);
+        text(L"电流 (A)", {x + d(16), y + d(184), x + d(88), y + d(212)}, c.muted);
     }
-    int y = d(408), field = (r.right - d(40)) / 3;
+    const auto task = state_.value("task", Json::object());
+    const bool running = task.value("running", false);
+    std::wstring taskTitle = L"循环测试";
+    if (running)
+        taskTitle += L" · " + std::to_wstring(task.value("completed", 0)) + L" / " +
+                     std::to_wstring(task.value("count", 0));
+    text(taskTitle, {0, taskTop_, width, taskTop_ + d(24)}, c.text);
+    int field = (width - d(16)) / 3;
     for (int i = 0; i < 3; ++i)
         text(i == 0   ? L"加电时长 (秒)"
              : i == 1 ? L"掉电时长 (秒)"
                       : L"循环次数",
-             {d(8) + i * (field + d(8)), y, d(8) + i * (field + d(8)) + field, y + d(24)}, c.muted);
-    std::wstring status =
-        state_.contains("error") ? Wide(state_["error"])
-        : state_["task"].value("running", false)
-            ? L"测试运行中 · 已完成 " + std::to_wstring(state_["task"].value("completed", 0))
-            : L"";
+             {i * (field + d(8)), taskTop_ + d(24), i * (field + d(8)) + field, taskTop_ + d(44)},
+             c.muted);
+    std::wstring status = state_.contains("error")           ? Wide(state_["error"])
+                          : state_.value("connected", false) ? L"已连接"
+                                                             : L"未连接";
     if (state_.contains("logError"))
         status = Wide(state_["logError"]);
-    text(status, {d(8), d(512), r.right - d(8), d(576)}, c.danger, DT_LEFT | DT_WORDBREAK);
+    text(status, {0, taskTop_ + d(128), width, taskTop_ + d(168)},
+         state_.contains("error") || state_.contains("logError") ? c.danger : c.muted,
+         DT_LEFT | DT_WORDBREAK);
     SetViewportOrgEx(dc, 0, 0, nullptr);
-    r.right += d(16);
-    int total = d(576), height = r.bottom;
-    if (total > height)
+    if (contentHeight_ > r.bottom)
     {
-        int thumb = std::max(d(32), height * height / total);
-        int top = scroll_ * (height - thumb) / std::max(1, total - height);
+        int thumb =
+            std::max(d(32), static_cast<int>(r.bottom * r.bottom) / std::max(1, contentHeight_));
+        int top =
+            scroll_ * (r.bottom - thumb) / std::max(1, contentHeight_ - static_cast<int>(r.bottom));
         RECT bar{r.right - d(8), top, r.right - d(3), top + thumb};
         UiBox(dc, bar, c.border, c.border, d(3));
     }
@@ -360,8 +406,8 @@ void PowerPane::Scroll(int position)
 {
     RECT r{};
     GetClientRect(window_, &r);
-    scroll_ =
-        std::clamp(position, 0, std::max(0, MulDiv(576, dpi_, 96) - static_cast<int>(r.bottom)));
+    Layout();
+    scroll_ = std::clamp(position, 0, std::max(0, contentHeight_ - static_cast<int>(r.bottom)));
     Layout();
     InvalidateRect(window_, nullptr, FALSE);
 }
@@ -388,7 +434,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
                                           20 + i, BS_AUTOCHECKBOX);
             self->voltage_[i] = self->Child(L"EDIT", L"0", 50 + i, ES_AUTOHSCROLL);
             self->current_[i] = self->Child(L"EDIT", L"0", 60 + i, ES_AUTOHSCROLL);
-            self->apply_[i] = self->Child(L"BUTTON", L"设置", 30 + i, BS_OWNERDRAW);
+            self->apply_[i] = self->Child(L"BUTTON", L"应用参数", 30 + i, BS_OWNERDRAW);
         }
         self->protectionButton_ = self->Child(L"BUTTON", L"保护", Protection, BS_OWNERDRAW);
         self->onTime_ = self->Child(L"EDIT", L"5", 70, ES_AUTOHSCROLL);
@@ -413,12 +459,12 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
         RECT r{};
         GetClientRect(h, &r);
         if (GET_X_LPARAM(l) >= r.right - MulDiv(16, self->dpi_, 96) &&
-            MulDiv(576, self->dpi_, 96) > r.bottom)
+            self->contentHeight_ > r.bottom)
         {
             self->scrolling_ = true;
             SetCapture(h);
             self->Scroll(GET_Y_LPARAM(l) *
-                         std::max(0, MulDiv(576, self->dpi_, 96) - static_cast<int>(r.bottom)) /
+                         std::max(0, self->contentHeight_ - static_cast<int>(r.bottom)) /
                          std::max(1, static_cast<int>(r.bottom)));
             return 0;
         }
@@ -428,7 +474,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
         RECT r{};
         GetClientRect(h, &r);
         self->Scroll(GET_Y_LPARAM(l) *
-                     std::max(0, MulDiv(576, self->dpi_, 96) - static_cast<int>(r.bottom)) /
+                     std::max(0, self->contentHeight_ - static_cast<int>(r.bottom)) /
                      std::max(1, static_cast<int>(r.bottom)));
         return 0;
     }
@@ -488,8 +534,14 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
     {
         auto c = UiTheme(self->dark_);
         SetTextColor(reinterpret_cast<HDC>(w), c.text);
-        SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : c.raised);
-        return reinterpret_cast<LRESULT>(m == WM_CTLCOLOREDIT ? self->brush_ : self->fieldBrush_);
+        int id = GetDlgCtrlID(reinterpret_cast<HWND>(l));
+        bool channel = id >= 20 && id <= 22;
+        SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field
+                                             : channel            ? c.surface
+                                                                  : c.raised);
+        return reinterpret_cast<LRESULT>(m == WM_CTLCOLOREDIT ? self->brush_
+                                         : channel            ? self->surfaceBrush_
+                                                              : self->fieldBrush_);
     }
     if (m == WM_DRAWITEM)
     {
@@ -497,14 +549,15 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
         auto c = UiTheme(self->dark_);
         bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start;
         HBRUSH outside =
-            CreateSolidBrush(item.CtlID >= 30 && item.CtlID <= 32 ? c.raised : c.field);
+            CreateSolidBrush(item.CtlID >= 30 && item.CtlID <= 32 ? c.surface : c.field);
         FillRect(item.hDC, &item.rcItem, outside);
         DeleteObject(outside);
         UiBox(item.hDC, item.rcItem,
               (item.itemState & ODS_SELECTED)               ? c.border
               : primary && !(item.itemState & ODS_DISABLED) ? c.accent
               : GetPropW(item.hwndItem, L"SerialCtl.PowerHover") && !(item.itemState & ODS_DISABLED)
-                  ? c.surface : c.raised,
+                  ? c.surface
+                  : c.raised,
               (item.itemState & ODS_FOCUS) ? c.accent : c.border, MulDiv(10, self->dpi_, 96));
         SetBkMode(item.hDC, TRANSPARENT);
         SetTextColor(item.hDC, (item.itemState & ODS_DISABLED)           ? c.muted
@@ -530,7 +583,7 @@ void PowerPane::ShowConnection()
     };
     Template t{};
     t.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
-    t.dialog.cx = 270;
+    t.dialog.cx = 238;
     t.dialog.cy = 240;
     DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT),
                             ConnectProc, reinterpret_cast<LPARAM>(&data));
@@ -545,7 +598,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
         SetWindowTextW(h, L"连接电源");
         int dpi = data->pane->dpi_;
         auto d = [dpi](int v) { return MulDiv(v, dpi, 96); };
-        SetWindowPos(h, nullptr, 0, 0, d(520), d(450), SWP_NOMOVE | SWP_NOZORDER);
+        UiResizeDialog(h, dpi, 436, 400);
         auto add = [&](const wchar_t *cls, const wchar_t *text, int id, int x, int y, int width,
                        DWORD style = 0, int height = 28) {
             auto c =
@@ -560,31 +613,30 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
             return c;
         };
         add(L"STATIC", L"连接方式", -1, 16, 12, 200);
-        data->kind = add(L"COMBOBOX", L"", 100, 16, 40, 472, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
-        for (auto text : {L"USB", L"RS232", L"模拟设备"})
+        data->kind = add(L"COMBOBOX", L"", 100, 16, 40, 404, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
+        for (auto text : {L"USB", L"RS232"})
             SendMessageW(data->kind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
         SendMessageW(data->kind, CB_SETCURSEL, 0, 0);
         add(L"STATIC", L"设备 / COM 口", -1, 16, 80, 200);
         data->resource =
-            add(L"COMBOBOX", L"", 101, 16, 108, 376, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
-        data->port = add(L"COMBOBOX", L"", 102, 16, 108, 376, WS_TABSTOP | CBS_DROPDOWNLIST, 200);
-        add(L"BUTTON", L"刷新", 103, 400, 108, 88, WS_TABSTOP | BS_OWNERDRAW);
-        add(L"STATIC", L"波特率", 110, 16, 156, 104);
-        add(L"STATIC", L"数据位", 111, 136, 156, 104);
-        add(L"STATIC", L"校验", 112, 256, 156, 104);
-        add(L"STATIC", L"停止位", 113, 376, 156, 104);
-        data->baud = add(L"EDIT", L"9600", 104, 16, 184, 104, ES_NUMBER | WS_TABSTOP);
-        data->bits = add(L"EDIT", L"8", 105, 136, 184, 104, ES_NUMBER | WS_TABSTOP);
-        data->parity =
-            add(L"COMBOBOX", L"", 106, 256, 184, 104, CBS_DROPDOWNLIST | WS_TABSTOP, 120);
+            add(L"COMBOBOX", L"", 101, 16, 108, 300, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
+        data->port = add(L"COMBOBOX", L"", 102, 16, 108, 300, WS_TABSTOP | CBS_DROPDOWNLIST, 200);
+        add(L"BUTTON", L"刷新", 103, 328, 108, 88, WS_TABSTOP | BS_OWNERDRAW);
+        add(L"STATIC", L"波特率", 110, 16, 156, 92);
+        add(L"STATIC", L"数据位", 111, 120, 156, 92);
+        add(L"STATIC", L"校验", 112, 224, 156, 92);
+        add(L"STATIC", L"停止位", 113, 328, 156, 92);
+        data->baud = add(L"EDIT", L"9600", 104, 16, 184, 92, ES_NUMBER | WS_TABSTOP);
+        data->bits = add(L"EDIT", L"8", 105, 120, 184, 92, ES_NUMBER | WS_TABSTOP);
+        data->parity = add(L"COMBOBOX", L"", 106, 224, 184, 92, CBS_DROPDOWNLIST | WS_TABSTOP, 120);
         for (auto text : {L"无", L"奇", L"偶"})
             SendMessageW(data->parity, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
         SendMessageW(data->parity, CB_SETCURSEL, 0, 0);
-        data->stop = add(L"COMBOBOX", L"", 107, 376, 184, 104, CBS_DROPDOWNLIST | WS_TABSTOP, 100);
+        data->stop = add(L"COMBOBOX", L"", 107, 328, 184, 92, CBS_DROPDOWNLIST | WS_TABSTOP, 100);
         for (auto text : {L"1", L"2"})
             SendMessageW(data->stop, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
         SendMessageW(data->stop, CB_SETCURSEL, 0, 0);
-        data->error = add(L"STATIC", L"", 108, 16, 236, 472, 0, 64);
+        data->error = add(L"STATIC", L"", 108, 16, 236, 404, 0, 64);
         data->driver =
             add(L"BUTTON", L"安装 USB 驱动", 109, 16, 308, 144, WS_TABSTOP | BS_OWNERDRAW);
         add(L"BUTTON", L"取消", IDCANCEL, 280, 364, 96, WS_TABSTOP | BS_OWNERDRAW, 36);
@@ -618,29 +670,21 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
         if (id == 100 || id == 103)
         {
             auto d = [data](int x) { return MulDiv(x, data->pane->dpi_, 96); };
-            int footer = kind == 1 ? 292 : kind == 0 ? 264 : 144;
-            MoveWindow(GetDlgItem(h, IDCANCEL), d(280), d(footer), d(96), d(36), TRUE);
-            MoveWindow(GetDlgItem(h, IDOK), d(392), d(footer), d(96), d(36), TRUE);
-            MoveWindow(data->error, d(16),
-                       d(kind == 1   ? 236
-                         : kind == 0 ? 156
-                                     : 80),
-                       d(472),
-                       d(kind == 2   ? 48
-                         : kind == 1 ? 40
-                                     : 64),
-                       TRUE);
+            const bool driverNeeded = kind == 0 && !PowerService::VisaAvailable();
+            int footer = kind == 1 ? 268 : driverNeeded ? 264 : 200;
+            MoveWindow(GetDlgItem(h, IDCANCEL), d(216), d(footer), d(96), d(36), TRUE);
+            MoveWindow(GetDlgItem(h, IDOK), d(324), d(footer), d(96), d(36), TRUE);
+            MoveWindow(data->error, d(16), d(kind == 1 ? 224 : 156), d(404), d(32), TRUE);
             MoveWindow(data->driver, d(16), d(kind == 1 ? 308 : 220), d(144), d(28), TRUE);
-            SetWindowPos(h, nullptr, 0, 0, d(520), d(footer + 86),
-                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            UiResizeDialog(h, data->pane->dpi_, 436, footer + 52);
             for (int i = 104; i <= 107; ++i)
                 ShowWindow(GetDlgItem(h, i), kind == 1 ? SW_SHOW : SW_HIDE);
             for (int i = 110; i <= 113; ++i)
                 ShowWindow(GetDlgItem(h, i), kind == 1 ? SW_SHOW : SW_HIDE);
             ShowWindow(data->resource, kind == 0 ? SW_SHOW : SW_HIDE);
             ShowWindow(data->port, kind == 1 ? SW_SHOW : SW_HIDE);
-            ShowWindow(GetDlgItem(h, 103), kind != 2 ? SW_SHOW : SW_HIDE);
-            ShowWindow(data->driver, kind == 0 ? SW_SHOW : SW_HIDE);
+            ShowWindow(GetDlgItem(h, 103), SW_SHOW);
+            ShowWindow(data->driver, driverNeeded ? SW_SHOW : SW_HIDE);
             if (kind == 0)
             {
                 SendMessageW(data->resource, CB_RESETCONTENT, 0, 0);
@@ -681,7 +725,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
                         SendMessageW(data->port, CB_SETCURSEL, index == CB_ERR ? 0 : index, 0);
                     }
                 }
-                SetWindowTextW(data->error, kind == 2 ? L"模拟设备不连接实际电源。" : L"");
+                SetWindowTextW(data->error, L"");
             }
             return TRUE;
         }
@@ -712,10 +756,9 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
         {
             try
             {
-                Json command = {{"type", "connect"},
-                                {"backend", kind == 0   ? "usb"
-                                            : kind == 1 ? "serial"
-                                                        : "simulation"}};
+                if (kind != 0 && kind != 1)
+                    throw std::runtime_error("请选择 USB 或 RS232");
+                Json command = {{"type", "connect"}, {"backend", kind == 0 ? "usb" : "serial"}};
                 if (kind == 0)
                 {
                     auto index = SendMessageW(data->resource, CB_GETCURSEL, 0, 0);
@@ -769,7 +812,7 @@ INT_PTR CALLBACK PowerPane::ProtectionProc(HWND dialog, UINT message, WPARAM w, 
         SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(self));
         SetWindowTextW(dialog, L"通道异常保护");
         auto d = [self](int x) { return MulDiv(x, self->dpi_, 96); };
-        SetWindowPos(dialog, nullptr, 0, 0, d(432), d(298), SWP_NOMOVE | SWP_NOZORDER);
+        UiResizeDialog(dialog, self->dpi_, 424, 252);
         auto add = [&](const wchar_t *cls, const wchar_t *text, int id, int x, int y, int width,
                        int height, DWORD style = 0) {
             HWND h = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, d(x), d(y),

@@ -86,7 +86,7 @@ enum ControlId {
     IdSftpTransferList,
     IdSftpClearTransfers,
     IdSaveCommands,
-    IdCmd = 300, IdPower, IdApi
+    IdCmd = 300, IdPower
 };
 
 enum TerminalMenuId {
@@ -142,7 +142,7 @@ int OverlayScrollLaneWidth = 16;
 int OverlayScrollThumbWidth = 5;
 int Section = 16;
 int ToolbarHeight = 72;
-int ToolbarGroupWidth = 594;
+int ToolbarGroupWidth = 610;
 int StandardHeight = 36;
 int CompactHeight = 32;
 int SegmentHeight = 32;
@@ -240,7 +240,6 @@ struct DiscoveryMessage { HWND dialog; unsigned generation; std::uint16_t port =
 
 struct ApiMessage { std::string method,path; Json body; std::promise<Json> result; std::atomic_int state{0}; };
 using ApiRequestMessage = std::shared_ptr<ApiMessage>;
-struct ApiDialogData { MainWindow* owner; Json resources; HWND list,info; };
 
 struct ConnectionMessage {
     bool success = false;
@@ -472,20 +471,6 @@ void CenterOnOwner(HWND window, HWND owner) {
     SetWindowPos(window, HWND_TOP, x, y, width, height, SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
-void DrawToolbarIcon(HDC dc, int id, RECT rect, COLORREF color) {
-    const int x = rect.left + 16, y = (rect.top + rect.bottom) / 2;
-    LOGBRUSH brush{BS_SOLID,color,0};
-    HPEN pen = ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_ROUND | PS_JOIN_ROUND, 2, &brush, 0, nullptr);
-    auto oldPen=SelectObject(dc,pen),oldBrush=SelectObject(dc,GetStockObject(NULL_BRUSH));
-    auto line=[&](int a,int b,int c,int d){MoveToEx(dc,x+a,y+b,nullptr);LineTo(dc,x+c,y+d);};
-    if(id==IdSsh||id==IdCmd){RoundRect(dc,x-9,y-7,x+10,y+8,4,4);line(-5,-3,-1,0);line(-1,0,-5,3);line(2,3,6,3);if(id==IdSsh){RoundRect(dc,x+3,y-9,x+10,y-3,2,2);Arc(dc,x+4,y-12,x+9,y-5,x+4,y-8,x+9,y-8);}}
-    else if(id==IdSerial){RoundRect(dc,x-8,y-6,x+9,y+6,4,4);for(int i=-4;i<=4;i+=4){line(i,-9,i,-6);line(i,6,i,9);}for(int i=-4;i<=4;i+=4)Ellipse(dc,x+i-1,y-1,x+i+1,y+1);}
-    else if(id==IdShareSerial||id==IdApi){line(0,-5,0,1);line(-6,5,0,1);line(0,1,6,5);for(auto p:{POINT{0,-7},POINT{-7,7},POINT{7,7}})Ellipse(dc,x+p.x-3,y+p.y-3,x+p.x+3,y+p.y+3);}
-    else if(id==IdTelnet){Ellipse(dc,x-9,y-9,x+10,y+10);Ellipse(dc,x-4,y-9,x+5,y+10);line(-8,0,9,0);}
-    else if(id==IdPower){RoundRect(dc,x-9,y-8,x+10,y+9,4,4);line(-5,-4,4,-4);for(int i=-5;i<=5;i+=5)Ellipse(dc,x+i-1,y+2,x+i+2,y+5);}
-    SelectObject(dc,oldPen);SelectObject(dc,oldBrush);DeleteObject(pen);
-}
-
 void DrawChevronDown(HDC dc, const RECT& rect, COLORREF color) {
     HPEN pen = CreatePen(PS_SOLID, 2, color);
     HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
@@ -545,35 +530,6 @@ void DrawSftpEntryIcon(HDC dc, const RECT& rect, COLORREF color, bool directory,
         MoveToEx(dc, cx - 3, cy + 2, nullptr); LineTo(dc, cx + 4, cy + 2);
         MoveToEx(dc, cx + 1, cy - 1, nullptr); LineTo(dc, cx + 4, cy + 2);
         LineTo(dc, cx + 1, cy + 5);
-    }
-    SelectObject(dc, oldBrush);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
-}
-
-void DrawThemeIcon(HDC dc, const RECT& rect, bool darkMode, COLORREF color) {
-    HPEN pen = CreatePen(PS_SOLID, 2, color);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
-    HBRUSH oldBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, GetStockObject(NULL_BRUSH)));
-    const int cx = (rect.left + rect.right) / 2;
-    const int cy = (rect.top + rect.bottom) / 2;
-    if (darkMode) {
-        Ellipse(dc, cx - 4, cy - 4, cx + 5, cy + 5);
-        const POINT rays[][2] = {
-            {{cx, cy - 9}, {cx, cy - 7}}, {{cx, cy + 7}, {cx, cy + 9}},
-            {{cx - 9, cy}, {cx - 7, cy}}, {{cx + 7, cy}, {cx + 9, cy}},
-            {{cx - 6, cy - 6}, {cx - 5, cy - 5}}, {{cx + 5, cy + 5}, {cx + 6, cy + 6}},
-            {{cx + 5, cy - 5}, {cx + 6, cy - 6}}, {{cx - 6, cy + 6}, {cx - 5, cy + 5}}};
-        for (const auto& ray : rays) {
-            MoveToEx(dc, ray[0].x, ray[0].y, nullptr);
-            LineTo(dc, ray[1].x, ray[1].y);
-        }
-    } else {
-        POINT moon[] = {
-            {cx + 3, cy - 8},
-            {cx - 7, cy - 7}, {cx - 8, cy + 6}, {cx + 3, cy + 8},
-            {cx - 1, cy + 4}, {cx - 1, cy - 4}, {cx + 3, cy - 8}};
-        PolyBezier(dc, moon, static_cast<DWORD>(std::size(moon)));
     }
     SelectObject(dc, oldBrush);
     SelectObject(dc, oldPen);
@@ -1776,6 +1732,9 @@ bool MainWindow::PreTranslate(MSG& message) {
 
 LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
+    case PowerStateChanged:
+        RefreshConnectionList();
+        return 0;
     case MessageApi: {
         std::unique_ptr<ApiRequestMessage> pointer(reinterpret_cast<ApiRequestMessage*>(lParam));
         auto request=*pointer; int expected=0;
@@ -1792,6 +1751,11 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         RefreshCommandList();
         RefreshConnectionList();
         ApplyTheme();
+        { std::wstring error;
+          if (!apiServer_.Start([this](const auto& method, const auto& path, const auto& body) {
+                  return ApiRequest(method, path, body);
+              }, error)) AppendStatus(error, true);
+        }
         return 0;
     case WM_SIZE:
         if (wParam == SIZE_MINIMIZED) return 0;
@@ -1800,14 +1764,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         UpdateWindow(window_);
         return 0;
     case WM_SETCURSOR:
-        if (!(rightPanelCollapsed_ || rightPanelAutoCollapsed_) && LOWORD(lParam) == HTCLIENT) {
+        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) && LOWORD(lParam) == HTCLIENT) {
             POINT point{};
             GetCursorPos(&point);
             ScreenToClient(window_, &point);
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
                 return TRUE;
@@ -1815,12 +1779,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_LBUTTONDOWN:
-        if (!(rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
+        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
             const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelDragging_ = true;
                 SetCapture(window_);
@@ -1829,12 +1793,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_LBUTTONDBLCLK:
-        if (!(rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
+        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
             const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelWidth_ = 360;
                 LayoutControls(client.right, client.bottom);
@@ -1928,19 +1892,18 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_COMMAND:
-        if (LOWORD(wParam) == IdApi && HIWORD(wParam) == BN_CLICKED) { ShowApiDialog(); return 0; }
         if (LOWORD(wParam) == IdCmd && HIWORD(wParam) == BN_CLICKED) {
             if (pendingSession_) { AppendStatus(L"请等待当前连接完成", true); return 0; }
             if (connectionThread_.joinable()) connectionThread_.join();
             pendingMode_ = 4; powerVisible_ = false; ConnectFromDialog(); return 0;
         }
         if (LOWORD(wParam) == IdPower && HIWORD(wParam) == BN_CLICKED) {
-            powerVisible_ = true; RECT r{}; GetClientRect(window_, &r); LayoutControls(r.right, r.bottom); return 0;
+            powerVisible_ = true; powerPageOpened_ = true; RefreshConnectionList(); RECT r{}; GetClientRect(window_, &r); LayoutControls(r.right, r.bottom); InvalidateRect(window_, nullptr, TRUE); for(HWND button:toolbarButtons_)InvalidateRect(button,nullptr,TRUE); return 0;
         } {
         const int id = LOWORD(wParam);
         const int notification = HIWORD(wParam);
         if (notification == BN_CLICKED) {
-            if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdApi) {
+            if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower) {
                 OpenConnectionDialog(id - IdSsh);
             }
             else if (id == IdTheme) { darkMode_ = !darkMode_; ApplyTheme(); }
@@ -1981,7 +1944,11 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         if (id == IdConnectionList && notification == LBN_SELCHANGE) {
             const LRESULT selected = SendMessageW(connectionList_, LB_GETCURSEL, 0, 0);
-            if (selected != LB_ERR) SwitchSession(static_cast<size_t>(selected));
+            if (selected != LB_ERR) {
+                if(static_cast<size_t>(selected)==sessions_.size()&&powerPageOpened_)
+                    PostMessageW(window_,WM_COMMAND,IdPower,0);
+                else SwitchSession(static_cast<size_t>(selected));
+            }
             return 0;
         }
         if (id == IdSftpList && notification == LBN_DBLCLK) {
@@ -2168,14 +2135,13 @@ void MainWindow::CreateControls() {
     terminalFont_ = CreateFontW(-terminalFontHeight_, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH, L"Consolas");
 
-    const wchar_t* toolbarText[] = {L"SSH", L"串口", L"Telnet", L"共享串口"};
+    const wchar_t* toolbarText[] = {L"SSH", L"串口", L"Telnet", L"远程串口"};
     for (int index = 0; index < 4; ++index) {
         toolbarButtons_.push_back(CreateChild(L"BUTTON", toolbarText[index], BS_OWNERDRAW, IdSsh + index));
     }
     cmdButton_ = CreateChild(L"BUTTON", L"CMD", BS_OWNERDRAW, IdCmd);
     powerButton_ = CreateChild(L"BUTTON", L"电源", BS_OWNERDRAW, IdPower);
-    apiButton_ = CreateChild(L"BUTTON", L"AI API", BS_OWNERDRAW, IdApi);
-    toolbarButtons_.push_back(cmdButton_); toolbarButtons_.push_back(powerButton_); toolbarButtons_.push_back(apiButton_);
+    toolbarButtons_.push_back(cmdButton_); toolbarButtons_.push_back(powerButton_);
     themeButton_ = CreateChild(L"BUTTON", L"浅色", BS_OWNERDRAW, IdTheme);
     disconnectButton_ = CreateChild(L"BUTTON", L"断开", BS_OWNERDRAW, IdDisconnect);
 
@@ -2254,7 +2220,7 @@ void MainWindow::LayoutControls(int width, int height) {
     const int toolbarFrameTop = Ui::Section;
     const int toolbarButtonTop = toolbarFrameTop + 4;
     int x = Ui::Gap + 4;
-    const int buttonWidths[] = {68, 76, 80, 106, 78, 84, 98};
+    const int buttonWidths[] = {92, 92, 102, 132, 92, 92};
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
         MoveWindow(toolbarButtons_[index], x, toolbarButtonTop,
             Ui::Scale(buttonWidths[index]), Ui::SegmentHeight, TRUE);
@@ -2266,7 +2232,7 @@ void MainWindow::LayoutControls(int width, int height) {
 
     const int contentTop = Ui::ToolbarHeight;
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        width, height, rightPanelWidth_, (rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+        width, height, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
     const int cardTop = contentTop + Ui::Gap;
     const int centerCardBottom = layout.contentBottom;
     const int sideCardBottom = height - Ui::Gap;
@@ -2292,13 +2258,15 @@ void MainWindow::LayoutControls(int width, int height) {
         centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
     ShowWindow(terminal_, powerVisible_ ? SW_HIDE : SW_SHOW);
     ShowWindow(powerPane_.Handle(), powerVisible_ ? SW_SHOW : SW_HIDE);
+    ShowWindow(disconnectButton_,activeSession_&&!powerVisible_?SW_SHOW:SW_HIDE);
+    EnableWindow(rightPanelToggleButton_,!powerVisible_);
     const int rightLeft = layout.rightLeft;
     const int rightInnerLeft = rightLeft + Ui::PanelPadding;
     const int actualRightInnerRight = width - Ui::Gap - Ui::PanelPadding;
-    const int rightInnerRight = (rightPanelCollapsed_ || rightPanelAutoCollapsed_)
+    const int rightInnerRight = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)
         ? rightInnerLeft + Ui::MinRightWidth - Ui::PanelPadding * 2
         : actualRightInnerRight;
-    const int toggleLeft = (rightPanelCollapsed_ || rightPanelAutoCollapsed_)
+    const int toggleLeft = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)
         ? rightLeft + (layout.rightWidth - Ui::Gap - Ui::IconButtonSize) / 2
         : actualRightInnerRight - Ui::IconButtonSize;
     MoveWindow(rightPanelToggleButton_, toggleLeft, headerTop + 2,
@@ -2337,7 +2305,7 @@ void MainWindow::LayoutControls(int width, int height) {
         sizeWidth, Ui::CompactHeight, TRUE);
     MoveWindow(sftpModifiedHeader_, rightInnerLeft + nameWidth + sizeWidth,
         sftpHeaderTop, modifiedWidth, Ui::CompactHeight, TRUE);
-    ShowWindow(sftpModifiedHeader_, !(rightPanelCollapsed_ || rightPanelAutoCollapsed_) && sftpPanelVisible_ &&
+    ShowWindow(sftpModifiedHeader_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) && sftpPanelVisible_ &&
         showModifiedColumn ? SW_SHOW : SW_HIDE);
     const int sftpListTop = sftpHeaderTop + Ui::CompactHeight;
     const int transferListHeight = sftpTransferExpanded_ ? Ui::SftpTransferDrawerHeight : 0;
@@ -2354,7 +2322,7 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(sftpTransferList_, rightInnerLeft,
         transferHeaderTop + Ui::CompactHeight + Ui::Gap, sftpContentWidth,
         transferListHeight, TRUE);
-    ShowWindow(sftpTransferList_, !(rightPanelCollapsed_ || rightPanelAutoCollapsed_) && sftpPanelVisible_ &&
+    ShowWindow(sftpTransferList_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) && sftpPanelVisible_ &&
         sftpTransferExpanded_ ? SW_SHOW : SW_HIDE);
     const int sftpWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 3) / 4;
     MoveWindow(sftpUpButton_, rightInnerLeft, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
@@ -2366,7 +2334,7 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - statusHeight_,
         leftInnerRight - leftInnerLeft, statusHeight_, TRUE);
     ShowWindow(rightPanelToggleButton_, SW_SHOW);
-    if (rightPanelCollapsed_ || rightPanelAutoCollapsed_) {
+    if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) {
         for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
                  addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
                  sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,
@@ -2390,10 +2358,10 @@ void MainWindow::PaintWindow(HDC dc) {
     FillRect(dc, &toolbar, panelBrush_);
     RECT connectionMethodFrame{Ui::Gap, Ui::Section,
         Ui::Gap + Ui::ToolbarGroupWidth + 4, Ui::ToolbarHeight - Ui::Section};
-    DrawRoundedBox(dc, connectionMethodFrame, Ui::Radius, colors.panelAlt, colors.border);
+    DrawRoundedBox(dc, connectionMethodFrame, Ui::Radius, colors.panel, darkMode_ ? RGB(255,255,255) : RGB(0,0,0));
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        client.right, client.bottom, rightPanelWidth_, (rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+        client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
     RECT leftCard{Ui::Gap, Ui::ToolbarHeight + Ui::Gap, layout.leftWidth, client.bottom - Ui::Gap};
     RECT terminalFrame{layout.centerLeft, Ui::ToolbarHeight + Ui::Gap,
         layout.centerRight, layout.contentBottom};
@@ -2402,7 +2370,7 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, colors.terminal, colors.border);
     DrawRoundedBox(dc, rightCard, Ui::CardRadius, colors.panel, colors.border);
-    if (!(rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
+    if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
         RECT segmentFrame{layout.rightLeft + Ui::PanelPadding, Ui::ToolbarHeight + Ui::Gap + Ui::PanelPadding,
             layout.rightLeft + Ui::PanelPadding + 4 + Ui::SegmentWidth * 2,
             Ui::ToolbarHeight + Ui::Gap + Ui::PanelPadding + Ui::StandardHeight};
@@ -2565,20 +2533,26 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         const bool focused = (item.itemState & ODS_FOCUS) != 0;
         COLORREF outside = colors.panel;
         if (id == IdCommandTab || id == IdSftpTab) outside = colors.panelAlt;
-        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdApi) outside = colors.panelAlt;
+        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower) outside = colors.panel;
         HBRUSH outsideBrush = CreateSolidBrush(outside);
         FillRect(dc, &rect, outsideBrush);
         DeleteObject(outsideBrush);
-        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdApi) {
-            const bool active = id == IdPower ? powerVisible_ : id == IdCmd ? (!powerVisible_ && selectedMode_ == 4) : id == IdApi ? apiServer_.Running() : (!powerVisible_ && id - IdSsh == selectedMode_);
-            const COLORREF fill = active ? colors.panel :
-                (hovered ? colors.accentSoft : colors.panelAlt);
-            DrawRoundedBox(dc, rect, Ui::Radius, pressed ? colors.accentSoft : fill,
-                focused ? colors.accent : (active ? colors.border : fill));
-            DrawToolbarIcon(dc, id, rect, active ? colors.accent : colors.muted);
+        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower) {
+            const bool active = id == IdPower ? powerVisible_ :
+                (!powerVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
+            const bool inverse = active != darkMode_;
+            const COLORREF ink = inverse ? RGB(255,255,255) : RGB(0,0,0);
+            const COLORREF fill = active ? (darkMode_ ? RGB(255,255,255) : RGB(0,0,0)) : colors.panel;
+            DrawRoundedBox(dc, rect, Ui::Radius, fill,
+                (hovered || focused || pressed) ? (darkMode_ ? RGB(255,255,255) : RGB(0,0,0)) : fill);
+            const ToolbarIcon icon = id == IdCmd ? ToolbarIcon::Cmd : id == IdPower ? ToolbarIcon::Power :
+                static_cast<ToolbarIcon>(id - IdSsh);
+            const int size = Ui::Scale(24), top = (rect.top+rect.bottom-size)/2;
+            RECT iconRect{rect.left+Ui::Space, top, rect.left+Ui::Space+size, top+size};
+            toolbarIcons_.Draw(dc, icon, iconRect, inverse);
             RECT textRect = rect;
-            textRect.left += 34;
-            DrawTextSimple(dc, ControlText(item.hwndItem), textRect, active ? colors.text : colors.muted,
+            textRect.left += Ui::Scale(40);
+            DrawTextSimple(dc, ControlText(item.hwndItem), textRect, ink,
                 uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
             return;
         }
@@ -2586,7 +2560,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
             DrawRoundedBox(dc, rect, Ui::Radius,
                 pressed ? colors.accentSoft : (hovered ? colors.panelAlt : colors.panel),
                 focused ? colors.accent : colors.border);
-            DrawThemeIcon(dc, rect, darkMode_, colors.text);
+            RECT iconRect=rect; InflateRect(&iconRect,-Ui::Scale(6),-Ui::Scale(6));
+            toolbarIcons_.Draw(dc,darkMode_?ToolbarIcon::Sun:ToolbarIcon::Moon,iconRect,darkMode_);
             return;
         }
         if (id == IdRightPanelToggle) {
@@ -2696,8 +2671,10 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
     if (item.CtlID == IdConnectionList) {
         const bool valid = item.itemID < sessions_.size();
         const SessionState* session = valid ? sessions_[item.itemID].get() : nullptr;
-        const bool connected = session && session->connection && session->connection->IsConnected();
-        const bool active = session == activeSession_;
+        const bool power=item.itemID==sessions_.size()&&powerPageOpened_;
+        const bool connected=power?powerService_.State().value("connected",false):
+            session&&session->connection&&session->connection->IsConnected();
+        const bool active=power?powerVisible_:!powerVisible_&&session==activeSession_;
         RECT card{rect.left, rect.top + Ui::Scale(4), rect.right, rect.bottom - Ui::Scale(4)};
         DrawRoundedBox(dc, card, Ui::CardRadius, active ? colors.accentSoft : colors.panelAlt,
             active ? colors.accent : colors.panelAlt);
@@ -2709,7 +2686,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         DeleteObject(dot);
         RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(6), card.right - Ui::Scale(8), card.top + Ui::Scale(27)};
         RECT subtitle{card.left + Ui::Scale(32), card.top + Ui::Scale(27), card.right - Ui::Scale(8), card.bottom - Ui::Scale(4)};
-        DrawTextSimple(dc, session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, power ? L"IT6332A" : session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         std::wstring state = connected ? L"● 已连接" : L"○ 已断开";
         COLORREF stateColor = colors.muted;
         if (connected) {
@@ -3455,6 +3432,8 @@ void MainWindow::SwitchSession(size_t index) {
         ShowSftpPanel(false);
     }
     RefreshConnectionList();
+    RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
+    InvalidateRect(window_, nullptr, TRUE);
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
     SetFocus(terminal_);
 }
@@ -3751,7 +3730,7 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     SetWindowTextW(status_, text.c_str());
     if (status_) {
         RECT client{}; GetClientRect(window_, &client);
-        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,(rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
         HDC dc=GetDC(status_); auto old=SelectObject(dc,smallFont_);
         RECT measured{0,0,layout.leftWidth-Ui::Gap-Ui::PanelPadding*2,0};
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
@@ -4292,7 +4271,7 @@ std::wstring MainWindow::SelectedLineEnding() const {
 }
 
 void MainWindow::SetConnectedUi(bool connected) {
-    ShowWindow(disconnectButton_, activeSession_ ? SW_SHOW : SW_HIDE);
+    ShowWindow(disconnectButton_, activeSession_ && !powerVisible_ ? SW_SHOW : SW_HIDE);
     EnableWindow(disconnectButton_, activeSession_ != nullptr);
 
     EnableWindow(sftpTabButton_, connected && selectedMode_ == 0 && SftpClient::IsAvailable());
@@ -4308,6 +4287,11 @@ void MainWindow::SetConnectedUi(bool connected) {
 }
 
 void MainWindow::RefreshConnectionList() {
+    std::vector<std::string> apiSessions;
+    for (const auto& session : sessions_)
+        if (session->mode == 1 || session->mode == 4)
+            apiSessions.push_back("session-" + std::to_string(session->id));
+    apiServer_.SetSessions(apiSessions);
     size_t selectedIndex = 0;
     if (activeSession_) {
         const auto selected = std::find_if(sessions_.begin(), sessions_.end(),
@@ -4317,7 +4301,9 @@ void MainWindow::RefreshConnectionList() {
     SendMessageW(connectionList_, LB_RESETCONTENT, 0, 0);
     for (const auto& session : sessions_)
         SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(session->name.c_str()));
-    if (!sessions_.empty()) SendMessageW(connectionList_, LB_SETCURSEL, selectedIndex, 0);
+    if(powerPageOpened_)SendMessageW(connectionList_,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"IT6332A"));
+    if(powerVisible_)selectedIndex=sessions_.size();
+    if (!sessions_.empty() || powerPageOpened_) SendMessageW(connectionList_, LB_SETCURSEL, selectedIndex, 0);
     InvalidateRect(connectionList_, nullptr, TRUE);
 }
 
@@ -4366,7 +4352,7 @@ void MainWindow::SetRightPanelCollapsed(bool collapsed) {
 void MainWindow::ShowSftpPanel(bool show) {
     if (show && (!connection_ || selectedMode_ != 0 || !SftpClient::IsAvailable())) show = false;
     sftpPanelVisible_ = show;
-    if (rightPanelCollapsed_ || rightPanelAutoCollapsed_) {
+    if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) {
         for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
                  addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
                  sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,
@@ -5841,7 +5827,7 @@ void MainWindow::ResetCommandDialogSteps(HWND dialog, const std::vector<std::wst
 }
 
 void MainWindow::LayoutCommandDialog(HWND dialog) {
-    const int DialogWidth = commandDialogStepEdits_.size() > 5 ? 460 : 238;
+    constexpr int DialogWidth = 238;
     constexpr int Margin = 12;
     constexpr int StepTop = 58;
     constexpr int StepStride = 18;
@@ -5853,8 +5839,8 @@ void MainWindow::LayoutCommandDialog(HWND dialog) {
 
     MoveDialogItemDlu(dialog, IDC_COMMAND_NAME, Margin, 22, DialogWidth - Margin * 2, 14);
     for (int index = 0; index < stepCount; ++index) {
-        const int y = StepTop + (index % 5) * StepStride;
-        const int columnLeft = index / 5 * 222;
+        const int y = StepTop + index * StepStride;
+        const int columnLeft = 0;
         MoveDialogItemDlu(dialog, GetDlgCtrlID(commandDialogStepEdits_[static_cast<size_t>(index)]),
             Margin + columnLeft, y, macro ? FieldWidth : 214, 14);
         MoveDialogItemDlu(dialog, GetDlgCtrlID(commandDialogRemoveButtons_[static_cast<size_t>(index)]),
@@ -5875,7 +5861,7 @@ void MainWindow::LayoutCommandDialog(HWND dialog) {
         }
     }
 
-    const int addY = StepTop + std::min(stepCount, 5) * StepStride;
+    const int addY = StepTop + stepCount * StepStride;
     MoveDialogItemDlu(dialog, IDC_COMMAND_ADD_STEP, Margin, addY, 72, 14);
     const int intervalLabelY = addY + 22;
     const int intervalFieldY = intervalLabelY + 12;
@@ -6112,6 +6098,7 @@ namespace serialctl {
 Json MainWindow::ApiResources() {
  Json resources=Json::array();
  for(const auto& session:sessions_) {
+  if(session->mode!=1&&session->mode!=4)continue;
   Json resource={{"id","session-"+std::to_string(session->id)},{"name",WideToMultiByte(session->name,CP_UTF8)},{"kind",session->mode==0?"ssh":session->mode==1?"serial":session->mode==4?"cmd":"terminal"},{"connected",session->connection->IsConnected()},{"port",session->port}};
   if(session->mode==1){auto end=session->name.find(L' ');resource["com"]=WideToMultiByte(session->name.substr(0,end),CP_UTF8);}
   resources.push_back(resource);
@@ -6120,7 +6107,6 @@ Json MainWindow::ApiResources() {
  return {{"resources",resources}};
 }
 Json MainWindow::ApiRequest(const std::string& method,const std::string& path,const Json& body) {
- if(path=="/api/v1/power-supplies/power-1/usb-resources"&&method=="GET")return {{"resources",PowerService::UsbResources()},{"visaAvailable",PowerService::VisaAvailable()}};
  auto request=std::make_shared<ApiMessage>();request->method=method;request->path=path;request->body=body;auto future=request->result.get_future();
  auto* pointer=new ApiRequestMessage(request);
  if(!PostMessageW(window_,MessageApi,0,reinterpret_cast<LPARAM>(pointer))){delete pointer;return {{"error","Application closing"}};}
@@ -6132,16 +6118,18 @@ Json MainWindow::ExecuteApiRequest(const std::string& method,const std::string& 
  if(path=="/api/v1/resources"&&method=="GET")return ApiResources();
  const std::string powerPrefix="/api/v1/power-supplies/power-1";
  if(path.rfind("/api/v1/actions/",0)==0&&method=="GET")return powerService_.Action(path.substr(16));
- if(path==powerPrefix&&method=="GET")return powerService_.State();
- if(path.rfind(powerPrefix+"/",0)==0&&method=="POST"){
-  Json command=body;std::string type=path.substr(powerPrefix.size()+1);if(type=="channels/output")type="output";if(type=="channels/parameters")type="parameters";if(type=="channels/protection")type="protection";
-  if(type!="connect"&&type!="disconnect"&&type!="output"&&type!="parameters"&&type!="protection"&&type!="task"&&type!="stop")return {{"error","Unknown endpoint"}};
-  command["type"]=type;command["source"]="api";return powerService_.Submit(command);
+ if(path==powerPrefix&&method=="GET"){
+  auto state=powerService_.State();state["selectedChannels"]=powerPane_.SelectedChannels();return state;
+ }
+ if(path==powerPrefix+"/channels/output"&&method=="POST"){
+  if(!body.contains("enabled")||!body["enabled"].is_boolean())return {{"error","enabled must be boolean"}};
+  for(auto it=body.begin();it!=body.end();++it)if(it.key()!="enabled"&&it.key()!="requestId")return {{"error","Only output buttons are available"},{"httpStatus",403}};
+  Json command=body;command["type"]="output";command["source"]="api";command["channels"]=powerPane_.SelectedChannels();return powerService_.Submit(command);
  }
  const std::string prefix="/api/v1/sessions/";
  if(path.rfind(prefix,0)==0){auto rest=path.substr(prefix.size());auto slash=rest.find('/');std::string id=rest.substr(0,slash);
   if(id.rfind("session-",0)!=0)return {{"error","Invalid session ID"}};auto idText=id.substr(8);if(idText.empty()||idText.find_first_not_of("0123456789")!=std::string::npos)return {{"error","Invalid session ID"}};
-  SessionState* session=FindSession(std::stoull(idText));if(!session)return {{"error","Session no longer exists"}};
+  SessionState* session=FindSession(std::stoull(idText));if(!session|| (session->mode!=1&&session->mode!=4))return {{"error","Session no longer exists"}};
   if(method=="GET"&&slash==std::string::npos)return {{"id",id},{"connected",session->connection->IsConnected()},{"codePage",session->codePage},{"lineEnding",session->lineEndingIndex}};
   if(method=="POST"&&rest.substr(slash+1)=="input"){
    Bytes bytes=Decode64(body.at("data").get<std::string>());if(bytes.empty()||bytes.size()>65536)return {{"error","Input must contain 1..65536 bytes"}};
@@ -6156,47 +6144,4 @@ Json MainWindow::ExecuteApiRequest(const std::string& method,const std::string& 
  }
  return {{"error","Endpoint not found"},{"httpStatus",404}};
 }
-void MainWindow::ShowApiDialog(){
- ApiDialogData data{this,ApiResources()["resources"],nullptr,nullptr};struct Template{DLGTEMPLATE dialog;WORD menu=0,cls=0,title=0;};Template t{};t.dialog.style=WS_POPUP|WS_CAPTION|WS_SYSMENU|DS_MODALFRAME;t.dialog.cx=270;t.dialog.cy=240;
- DialogBoxIndirectParamW(instance_,&t.dialog,window_,ApiDialogProc,reinterpret_cast<LPARAM>(&data));
-}
-INT_PTR CALLBACK MainWindow::ApiDialogProc(HWND h,UINT message,WPARAM w,LPARAM l){
- auto* data=reinterpret_cast<ApiDialogData*>(GetWindowLongPtrW(h,DWLP_USER));
- if(message==WM_INITDIALOG){data=reinterpret_cast<ApiDialogData*>(l);SetWindowLongPtrW(h,DWLP_USER,reinterpret_cast<LONG_PTR>(data));SetWindowTextW(h,L"AI API");HDC dc=GetDC(h);int dpi=GetDeviceCaps(dc,LOGPIXELSX);ReleaseDC(h,dc);auto d=[dpi](int x){return MulDiv(x,dpi,96);};SetWindowPos(h,nullptr,0,0,d(520),d(548),SWP_NOMOVE|SWP_NOZORDER);
-  auto add=[&](const wchar_t* cls,const wchar_t* text,int id,int x,int y,int width,int height,DWORD style=0){auto c=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|style,d(x),d(y),d(width),d(height),h,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);SendMessageW(c,WM_SETFONT,reinterpret_cast<WPARAM>(data->owner->uiFont_),TRUE);return c;};
-  add(L"STATIC",L"授权资源",-1,16,12,472,28);data->list=add(L"LISTBOX",L"",200,16,44,472,144,LBS_MULTIPLESEL|LBS_NOINTEGRALHEIGHT|WS_TABSTOP);
-  for(const auto& resource:data->resources){std::string name=resource["name"];std::wstring text=MultiByteToWide(reinterpret_cast<const std::uint8_t*>(name.data()),name.size(),CP_UTF8);SendMessageW(data->list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(text.c_str()));}
-  add(L"BUTTON",L"读取数据",201,16,200,128,28,BS_AUTOCHECKBOX|WS_TABSTOP);SendDlgItemMessageW(h,201,BM_SETCHECK,BST_CHECKED,0);add(L"BUTTON",L"终端输入",202,160,200,144,28,BS_AUTOCHECKBOX|WS_TABSTOP);add(L"BUTTON",L"加电 / 掉电",203,320,200,160,28,BS_AUTOCHECKBOX|WS_TABSTOP);
-  add(L"BUTTON",L"参数 / 保护",204,16,236,144,28,BS_AUTOCHECKBOX|WS_TABSTOP);add(L"BUTTON",L"循环测试",205,176,236,128,28,BS_AUTOCHECKBOX|WS_TABSTOP);add(L"BUTTON",L"电源连接 / 断开",206,320,236,168,28,BS_AUTOCHECKBOX|WS_TABSTOP);
-  for(int i=0;i<3;++i){add(L"BUTTON",(L"CH"+std::to_wstring(i+1)).c_str(),210+i,16+i*96,276,80,28,BS_AUTOCHECKBOX|WS_TABSTOP);SendDlgItemMessageW(h,210+i,BM_SETCHECK,BST_CHECKED,0);}
-  add(L"BUTTON",L"兼容串口 TCP（无密钥）",240,304,276,184,28,BS_AUTOCHECKBOX|WS_TABSTOP);SendDlgItemMessageW(h,240,BM_SETCHECK,SerialShareService::LegacyEnabled()?BST_CHECKED:BST_UNCHECKED,0);
-  data->info=add(L"EDIT",L"",220,16,320,472,60,ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL);
-  add(L"BUTTON",L"启用 / 更新",230,16,400,112,36,WS_TABSTOP|BS_OWNERDRAW);add(L"BUTTON",L"关闭 API",231,144,400,96,36,WS_TABSTOP|BS_OWNERDRAW);add(L"BUTTON",L"复制连接信息",232,256,400,128,36,WS_TABSTOP|BS_OWNERDRAW);add(L"BUTTON",L"完成",IDCANCEL,392,448,96,36,WS_TABSTOP|BS_OWNERDRAW);
-  ApplyDarkTitleBar(h,data->owner->darkMode_);
-  for(HWND child=GetWindow(h,GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT)) {
-   wchar_t cls[32]{};GetClassNameW(child,cls,32);
-   if(_wcsicmp(cls,L"EDIT")==0){PrepareDialogEditField(h,child,data->owner);SetWindowSubclass(child,DialogControlSubclassProc,1,reinterpret_cast<DWORD_PTR>(data->owner));}
-   else if(_wcsicmp(cls,L"LISTBOX")==0)SetWindowSubclass(child,OverlayListSubclassProc,2,reinterpret_cast<DWORD_PTR>(data->owner));
-   else if(_wcsicmp(cls,L"BUTTON")==0)SetWindowSubclass(child,ButtonSubclassProc,1,reinterpret_cast<DWORD_PTR>(data->owner));
-  }
-  RECT owner{},rect{};GetWindowRect(data->owner->window_,&owner);GetWindowRect(h,&rect);SetWindowPos(h,nullptr,owner.left+(owner.right-owner.left-(rect.right-rect.left))/2,owner.top+(owner.bottom-owner.top-(rect.bottom-rect.top))/2,0,0,SWP_NOSIZE|SWP_NOZORDER);
-  SendMessageW(h,WM_COMMAND,233,0);return TRUE;
- }
- if(!data)return FALSE;auto* self=data->owner;
- if(message==WM_DRAWITEM){self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT*>(l));return TRUE;}
- if(message==WM_CTLCOLORDLG||message==WM_CTLCOLORSTATIC||message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX){auto colors=Colors(self->darkMode_);SetTextColor(reinterpret_cast<HDC>(w),colors.text);SetBkColor(reinterpret_cast<HDC>(w),message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX?colors.terminal:colors.panel);return reinterpret_cast<INT_PTR>(message==WM_CTLCOLOREDIT||message==WM_CTLCOLORLISTBOX?self->terminalBrush_:self->panelBrush_);}
- if(message==WM_COMMAND){int id=LOWORD(w);if(id==IDCANCEL){EndDialog(h,IDCANCEL);return TRUE;}
-  if(id==240){if(self->pendingSession_){SetWindowTextW(data->info,L"请等待串口连接完成后切换兼容服务");return TRUE;}std::wstring error;if(!SerialShareService::SetLegacyEnabled(SendDlgItemMessageW(h,240,BM_GETCHECK,0,0)==BST_CHECKED,error))SetWindowTextW(data->info,error.c_str());
-   for(auto& session:self->sessions_)if(session->mode==1){auto* queue=dynamic_cast<QueuedConnection*>(session->connection.get());auto* serial=queue?dynamic_cast<SerialShareConnection*>(queue->Transport()):nullptr;if(serial)session->port=serial->SharedPort();}
-   InvalidateRect(self->connectionList_,nullptr,FALSE);return TRUE;}
-  if(id==230){std::map<std::string,ApiGrant> grants;unsigned rights=0,channels=0;for(int i=0;i<6;++i)if(SendDlgItemMessageW(h,201+i,BM_GETCHECK,0,0)==BST_CHECKED)rights|=1u<<i;for(int i=0;i<3;++i)if(SendDlgItemMessageW(h,210+i,BM_GETCHECK,0,0)==BST_CHECKED)channels|=1u<<i;
-   for(size_t i=0;i<data->resources.size();++i)if(SendMessageW(data->list,LB_GETSEL,i,0)>0)grants[data->resources[i]["id"]]={rights,channels};
-   if(grants.empty()||!(rights&1)){SetWindowTextW(data->info,L"请选择资源并授权读取数据");return TRUE;}
-   std::wstring error;if(!self->apiServer_.Start([self](const auto& method,const auto& path,const auto& body){return self->ApiRequest(method,path,body);},grants,error)){SetWindowTextW(data->info,error.c_str());return TRUE;}
-  }else if(id==231)self->apiServer_.Stop();
-  if(id==230||id==231||id==233){std::wstring info=self->apiServer_.Running()?L"端口："+std::to_wstring(self->apiServer_.Port())+L"\r\nToken："+MultiByteToWide(reinterpret_cast<const std::uint8_t*>(self->apiServer_.Token().data()),self->apiServer_.Token().size(),CP_UTF8):L"API 已关闭";SetWindowTextW(data->info,info.c_str());return TRUE;}
-  if(id==232&&self->apiServer_.Running()){std::wstring info=L"API_PORT="+std::to_wstring(self->apiServer_.Port())+L"\r\nTOKEN="+MultiByteToWide(reinterpret_cast<const std::uint8_t*>(self->apiServer_.Token().data()),self->apiServer_.Token().size(),CP_UTF8);SetClipboardText(h,info);return TRUE;}
- }
- return FALSE;
-}
-}
+} // namespace serialctl

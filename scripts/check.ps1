@@ -133,6 +133,7 @@ $serialCtlDlls = @(
     'COMCTL32.dll',
     'COMDLG32.dll',
     'GDI32.dll',
+    'gdiplus.dll',
     'KERNEL32.dll',
     'ole32.dll',
     'SHELL32.dll',

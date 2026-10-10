@@ -2,7 +2,7 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-当前正式版本：`V1.0.3`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
+当前正式版本：`V1.0.4`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
 
 ## 主要功能
 
@@ -15,9 +15,9 @@ SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具�
 - 单元格式 VT/xterm 终端，支持 ANSI 16/256/RGB 色彩、备用屏幕、宽字符、bracketed paste 和 20,000 行回滚。
 - UTF-8、GBK、GB2312 编码，以及独立时间戳栏、选择、复制、粘贴、滚动和字体缩放。
 - 常用命令、最多 10 步的命令宏、执行进度、停止及 TXT 导入导出。
-- 深色与浅色主题。
-- IT6332A 电源管理、USB/RS232/模拟连接、定时循环和监测。
-- 本地 CMD 与按资源授权的 AI API；支持 Linux 客户端与原始字节 WebSocket。
+- 默认浅色主题，支持深色切换；统一黑白顶部栏，桌面图标保持原样。
+- IT6332A 电源管理、USB/RS232 连接、定时循环和监测。
+- 本地 CMD 与自动启动的固定范围 AI 接口；支持 Linux 客户端与原始字节 WebSocket。
 - 发布包包含 Win7 NI-VISA 18.0 Runtime 完整离线安装文件。
 
 ## 使用
@@ -33,7 +33,7 @@ SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具�
 
 ### 连接其他电脑的串口
 
-1. 点击“共享串口”。
+1. 点击“远程串口”。
 2. 输入来源电脑的 IP，自动发现共享端口。
 3. 自动查询，也可手动刷新远端串口列表。
 4. 选择串口并连接。
@@ -114,7 +114,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 发布流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中只保留：
 
 ```text
-SerialCtl-V1.0.3-Win7-x64.zip
+SerialCtl-V1.0.4-Win7-x64.zip
 ```
 
 压缩包根目录直接包含 x64 的 `serialctl.exe`、`plink.exe` 和 `psftp.exe`，解压后保持三者位于同一目录。
@@ -140,4 +140,4 @@ SerialCtl-V1.0.3-Win7-x64.zip
 
 推送 main 或手动运行 Actions 的 `Windows Win7 release build` 会构建并验证 x64。正式程序包可在仓库 Releases 下载；Actions 的 `SerialCtl-Win7-portable` 为构建产物（保留 30 天）。CI 使用 Windows Server 2022，不替代真实 Win7 SP1 与硬件验收。
 
-V1.0.3 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
+V1.0.4 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
