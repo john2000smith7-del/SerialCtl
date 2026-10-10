@@ -85,6 +85,8 @@ HWND PowerPane::Child(const wchar_t *type, const wchar_t *text, int id, DWORD st
                              window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
                              GetModuleHandleW(nullptr), nullptr);
     SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE);
+    if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
+        UiStyleButton(h);
     if (_wcsicmp(type, L"EDIT") == 0)
         UiStyleField(h, &fieldStyle_);
     return h;
@@ -120,6 +122,7 @@ Json PowerPane::Selection()
 }
 void PowerPane::Submit(Json command)
 {
+    command["source"] = "local";
     Json result = service_->Submit(command);
     if (result.contains("error"))
         MessageBoxW(window_, Wide(result["error"]).c_str(), L"电源管理", MB_OK | MB_ICONWARNING);
@@ -500,7 +503,8 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
         UiBox(item.hDC, item.rcItem,
               (item.itemState & ODS_SELECTED)               ? c.border
               : primary && !(item.itemState & ODS_DISABLED) ? c.accent
-                                                            : c.raised,
+              : GetPropW(item.hwndItem, L"SerialCtl.PowerHover") && !(item.itemState & ODS_DISABLED)
+                  ? c.surface : c.raised,
               (item.itemState & ODS_FOCUS) ? c.accent : c.border, MulDiv(10, self->dpi_, 96));
         SetBkMode(item.hDC, TRANSPARENT);
         SetTextColor(item.hDC, (item.itemState & ODS_DISABLED)           ? c.muted
@@ -549,6 +553,8 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
                                 d(height), h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
                                 GetModuleHandleW(nullptr), nullptr);
             SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(data->font), TRUE);
+            if (_wcsicmp(cls, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
+                UiStyleButton(c);
             if (_wcsicmp(cls, L"EDIT") == 0 || _wcsicmp(cls, L"COMBOBOX") == 0)
                 UiStyleField(c, &data->pane->fieldStyle_);
             return c;
@@ -771,6 +777,8 @@ INT_PTR CALLBACK PowerPane::ProtectionProc(HWND dialog, UINT message, WPARAM w, 
                                      reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
                                      GetModuleHandleW(nullptr), nullptr);
             SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), TRUE);
+            if (_wcsicmp(cls, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
+                UiStyleButton(h);
             if (_wcsicmp(cls, L"EDIT") == 0)
                 UiStyleField(h, &self->fieldStyle_);
             return h;
@@ -841,6 +849,7 @@ INT_PTR CALLBACK PowerPane::ProtectionProc(HWND dialog, UINT message, WPARAM w, 
                     {"voltageLimit", Parse(self->Text(GetDlgItem(dialog, 91)))},
                     {"currentLimit", Parse(self->Text(GetDlgItem(dialog, 92)))},
                     {"enabled", SendDlgItemMessageW(dialog, 90, BM_GETCHECK, 0, 0) == BST_CHECKED}};
+                command["source"] = "local";
                 Json result = self->service_->Submit(command);
                 if (result.contains("error"))
                     throw std::runtime_error(result["error"].get<std::string>());

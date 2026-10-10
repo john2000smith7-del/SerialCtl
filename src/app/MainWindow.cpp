@@ -6133,7 +6133,7 @@ Json MainWindow::ExecuteApiRequest(const std::string& method,const std::string& 
  if(path.rfind(powerPrefix+"/",0)==0&&method=="POST"){
   Json command=body;std::string type=path.substr(powerPrefix.size()+1);if(type=="channels/output")type="output";if(type=="channels/parameters")type="parameters";if(type=="channels/protection")type="protection";
   if(type!="connect"&&type!="disconnect"&&type!="output"&&type!="parameters"&&type!="protection"&&type!="task"&&type!="stop")return {{"error","Unknown endpoint"}};
-  command["type"]=type;return powerService_.Submit(command);
+  command["type"]=type;command["source"]="api";return powerService_.Submit(command);
  }
  const std::string prefix="/api/v1/sessions/";
  if(path.rfind(prefix,0)==0){auto rest=path.substr(prefix.size());auto slash=rest.find('/');std::string id=rest.substr(0,slash);

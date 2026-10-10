@@ -35,6 +35,32 @@ struct UiFieldStyle
     HFONT font;
     int dpi;
 };
+inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id,
+                                     DWORD_PTR)
+{
+    if (message == WM_MOUSEMOVE && !GetPropW(h, L"SerialCtl.PowerHover"))
+    {
+        SetPropW(h, L"SerialCtl.PowerHover", reinterpret_cast<HANDLE>(1));
+        TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, h, 0};
+        TrackMouseEvent(&track);
+        InvalidateRect(h, nullptr, FALSE);
+    }
+    if (message == WM_MOUSELEAVE)
+    {
+        RemovePropW(h, L"SerialCtl.PowerHover");
+        InvalidateRect(h, nullptr, FALSE);
+    }
+    if (message == WM_NCDESTROY)
+    {
+        RemovePropW(h, L"SerialCtl.PowerHover");
+        RemoveWindowSubclass(h, UiButtonProc, id);
+    }
+    return DefSubclassProc(h, message, w, l);
+}
+inline void UiStyleButton(HWND h)
+{
+    SetWindowSubclass(h, UiButtonProc, 81, 0);
+}
 inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id,
                                     DWORD_PTR reference)
 {

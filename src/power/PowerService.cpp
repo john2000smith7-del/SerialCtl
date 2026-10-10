@@ -546,6 +546,7 @@ void PowerService::Disconnect()
         channel["voltage"] = nullptr;
         channel["current"] = nullptr;
         channel["power"] = nullptr;
+        channel.erase("protection");
     }
 }
 void PowerService::Execute(const std::string &id, const Json &command)
@@ -649,6 +650,7 @@ void PowerService::Execute(const std::string &id, const Json &command)
                 state_["backend"] = backend;
                 state_["simulation"] = backend == "simulation";
                 state_.erase("error");
+                state_.erase("logError");
                 state_["csvPath"] = WideToMultiByte(measurements_.Path(), CP_UTF8);
                 if (!csvError.empty())
                     state_["logError"] = WideToMultiByte(csvError, CP_UTF8);
@@ -745,6 +747,13 @@ void PowerService::Execute(const std::string &id, const Json &command)
     }
     catch (const std::exception &e)
     {
+        action["state"] = "failed";
+        action["error"] = e.what();
+        action["timestamp"] = Timestamp();
+        auto failureRecord = action.dump();
+        log_.WriteStatus(
+            MultiByteToWide(reinterpret_cast<const std::uint8_t *>(failureRecord.data()),
+                            failureRecord.size(), CP_UTF8));
         if (command.value("type", std::string()) == "connect" || communication)
         {
             Disconnect();
@@ -798,6 +807,8 @@ void PowerService::Poll()
             }
             if (fault)
             {
+                log_.WriteStatus(L"通道 " + std::to_wstring(i + 1) +
+                                 L" 保护触发，停止测试并请求掉电");
                 StopTask();
                 task_ = Json();
                 Json off;
@@ -873,6 +884,8 @@ void PowerService::Run()
         catch (const std::exception &e)
         {
             std::string error = e.what();
+            log_.WriteStatus(MultiByteToWide(reinterpret_cast<const std::uint8_t *>(error.data()),
+                                             error.size(), CP_UTF8));
             Disconnect();
             std::lock_guard<std::mutex> lock(mutex_);
             state_["error"] = error;
