@@ -75,11 +75,18 @@ int main(int argc, char **) {
         for (auto s : held)
             closesocket(s);
         {
-            Fixture second(18400, 18415);
+            Fixture firstInstance(7000, 7015), secondInstance(7000, 7015);
             std::uint16_t port = 0;
             std::vector<std::wstring> names;
             Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr, 0),
-                   "no server in default range reports missing");
+                   "multiple instances must report ambiguity");
+            Expect(error.find(L"多个") != std::wstring::npos, "ambiguity is distinguishable from no opened COM");
+            Expect(SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr,
+                                                        static_cast<std::uint16_t>(secondInstance.server.Port())),
+                   "explicit port selects instance");
+            std::atomic_bool cancel{true};
+            Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, &cancel),
+                   "discovery cancel");
         }
         std::cout << "Two AI plus desktop, multi-COM isolation, target removal, fallback and local survival passed\n";
     } catch (const std::exception &e) {

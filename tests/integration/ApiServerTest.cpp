@@ -1,6 +1,6 @@
 #include "GatewayFixture.h"
 using namespace test;
-int stage=0;
+int stage = 0;
 int main() {
     Wsa wsa;
     try {
@@ -54,7 +54,8 @@ int main() {
             Expect(f.rx5->bytes == Bytes({255, 244, 255, 0, 13, 10}), "legal FF F4 FF never filtered");
         }
         auto illegal = [&](const Bytes &frame, unsigned expected) {
-            std::cerr << "illegal-stage=" << ++stage << " expected=" << expected << " frame=" << Encode64(frame) << std::endl;
+            std::cerr << "illegal-stage=" << ++stage << " expected=" << expected << " frame=" << Encode64(frame)
+                      << std::endl;
             Peer bad(f.server.Port());
             ws::SendAll(bad.socket, frame.data(), frame.size());
             auto close = bad.stream->Receive();
@@ -100,6 +101,25 @@ int main() {
         f.Remove3();
         Expect(request("session.get", "session-3")["ok"] == false, "target disappearance");
         f.server.Stop();
+        {
+            Fixture capacity(18900, 18915);
+            std::vector<std::unique_ptr<GatewayClient>> held;
+            for (size_t i = 0; i < ApiServer::MaxClients; ++i) {
+                auto client = std::make_unique<GatewayClient>();
+                client->Connect(L"127.0.0.1", capacity.server.Port());
+                held.push_back(std::move(client));
+            }
+            Expect(held.size() == 128, "128 simultaneous connections retained");
+            bool refused = false;
+            try {
+                GatewayClient extra;
+                extra.Connect(L"127.0.0.1", capacity.server.Port());
+            } catch (const std::exception &) {
+                refused = true;
+            }
+            Expect(refused, "client 129 explicitly refused at capacity");
+            held.clear();
+        }
         std::cout << "Unified gateway scope, RFC6455, legacy rejection, byte integrity, replay and lifecycle passed\n";
     } catch (const std::exception &e) {
         std::cerr << "stage=" << stage << " " << e.what() << '\n';

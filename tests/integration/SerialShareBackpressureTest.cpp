@@ -7,6 +7,10 @@ int main() {
     try {
         Fixture f(18500, 18515);
         Peer slow(f.server.Port());
+        int tinyReceiveBuffer = 4096;
+        Expect(setsockopt(slow.socket, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<const char *>(&tinyReceiveBuffer),
+                          sizeof(tinyReceiveBuffer)) == 0,
+               "controlled stalled receive window");
         Expect(slow.Request("subscribe", "session-3", {{"after", 0}})["ok"] == true, "slow subscriber");
         GatewayClient healthy;
         healthy.Connect(L"127.0.0.1", f.server.Port());
@@ -18,25 +22,39 @@ int main() {
             try {
                 for (;;) {
                     auto e = healthy.Receive();
-                    if (e.value("kind", "") == "output")
-                        received += Decode64(e["data"]).size();
+                    if (e.value("kind", "") == "output") {
+                        auto payload = Decode64(e["data"]);
+                        Expect(payload.size() == 16384, "healthy packet size");
+                        for (size_t i = 0; i < payload.size(); ++i)
+                            Expect(payload[i] == std::uint8_t(i), "healthy byte equality");
+                        received += payload.size();
+                    }
                 }
             } catch (...) {
                 failure = std::current_exception();
             }
         });
         try {
-        Bytes bytes(16384);
-        for (size_t i = 0; i < bytes.size(); ++i)
-            bytes[i] = static_cast<std::uint8_t>(i);
-        for (size_t i = 1; i <= 600; ++i) {
-            f.server.Publish("session-3", bytes);
-            Wait([&] { return received >= i * bytes.size(); });
+            Bytes bytes(16384);
+            for (size_t i = 0; i < bytes.size(); ++i)
+                bytes[i] = static_cast<std::uint8_t>(i);
+            for (size_t i = 1; i <= 600; ++i) {
+                f.server.Publish("session-3", bytes);
+                Wait([&] { return received >= i * bytes.size(); });
+            }
+            Expect(received == 600 * bytes.size(),
+                   "healthy subscriber receives all bytes while other socket stops reading");
+            try {
+                Wait([&] { return f.server.Diagnostics().dump().find("SLOW_CLIENT") != std::string::npos; });
+            } catch (...) {
+                std::cerr << "diagnostics=" << f.server.Diagnostics().dump() << std::endl;
+                throw;
+            }
+        } catch (...) {
+            healthy.Cancel();
+            reader.join();
+            throw;
         }
-        Expect(received == 600 * bytes.size(),
-               "healthy subscriber receives all bytes while other socket stops reading");
-        Wait([&] { return f.server.Diagnostics().dump().find("SLOW_CLIENT") != std::string::npos; });
-        } catch(...) { healthy.Cancel();reader.join();throw; }
         healthy.Cancel();
         reader.join();
         healthy.Close();

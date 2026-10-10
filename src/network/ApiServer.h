@@ -50,6 +50,7 @@ class ApiServer {
         std::deque<ws::Stream::Message> queue;
         size_t queued = 0;
         bool closing = false;
+        bool drainOnClose = false;                              // reader has ended: bounded graceful TCP close
         std::set<std::string> subscriptions;                    // protected by server mutex
         std::map<std::string, std::pair<Json, Json>> responses; // reader only
         std::deque<std::string> responseOrder;
@@ -65,7 +66,7 @@ class ApiServer {
     void Request(const std::shared_ptr<ClientState> &, const Json &);
     void Queue(const std::shared_ptr<ClientState> &, unsigned, const Bytes &);
     void Queue(const std::shared_ptr<ClientState> &, const Json &);
-    void Close(const std::shared_ptr<ClientState> &, unsigned, const std::string &);
+    void Close(const std::shared_ptr<ClientState> &, unsigned, const std::string &, bool wakeReader = true);
     Json EventsLocked(const std::string &, std::uint64_t);
     void Trace(const std::shared_ptr<ClientState> &, const std::string &phase, const std::string &detail = "");
     mutable std::mutex mutex_;

@@ -35,4 +35,4 @@ decode → TerminalModel::Feed
 
 界面规则见 [UI-DESIGN-GUIDE.md](UI-DESIGN-GUIDE.md)，构建与交付规则见 [build-release.md](build-release.md)。
 
-V1.1.0：SerialShareConnection 为每个 COM 持有独立 SerialDevice，进程共享 SerialShareService 按 COM 路由 TCP 客户端。每个客户端独立有界发送队列，关闭一个 COM 不影响其他 COM。查询仍使用 V1 LIST，终止标记后扩展元数据；OPEN 使用 V2 二进制帧。IP 发现由后台工作线程并行探测 7000–7015，UI 只接受当前查询代次结果。SFTP OSC7 在终端模型解析，再按会话 follow 状态同步；手动导航暂停 follow。命令编辑为草稿，显式保存采用临时文件替换。
+V1.0.6：SessionService 持有现有本地串口/CMD 的同一 QueuedConnection；GUI 直接输入，WebSocket 网关按资源 ID 输入。设备工作线程调用 PostData 时立即 Publish，不等待 UI 绘制或日志写盘。每客户端独立 sender condition_variable 与有界队列，资源历史有序并显式报告缺口。远程 SerialCtl 和 Linux Python 都使用同一 serialctl.v1 入口；旧 SerialShareService 与辅助发现已移除。协议见 WEBSOCKET-PROTOCOL.md。CMD 草稿由本地 Unicode 行编辑器保存，提交后进入同一 FIFO；stdout、输入来源与原始字节记录分离。主屏幕保留逻辑行、重排软折行及锚点，备用屏幕保持 VT 网格。

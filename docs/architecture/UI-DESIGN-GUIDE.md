@@ -69,7 +69,7 @@ Light theme:
 - Dropdowns and text fields must share height, radius, padding, border, focus treatment, and background.
 - Native text fields use one shared rounded frame behind an inset borderless edit surface. The rectangular edit surface must remain inside the straight center of the rounded frame, so no dark square client corners can escape the field radius.
 - Compact dropdowns stay collapsed in the form, but their opened list must expose every fixed built-in option without scrolling; dynamic serial-port lists may scroll when necessary.
-- Application-owned command, SFTP, and combo-box lists use the shared 5 px overlay scrollbar. Hide it when all content fits; never show the classic Windows arrow-and-track scrollbar inside the custom interface.
+- Application-owned connection, command, SFTP, and combo-box lists use the shared 5 px overlay scrollbar. Hide it when all content fits; never show the classic Windows arrow-and-track scrollbar inside the custom interface.
 - Overlay scrollbars reserve a 16 px interaction lane at the right edge. Cards and rows stop before this lane, so the scrollbar never covers content or copy actions.
 - Overlay scrollbars have no permanent track. Their rounded thumb uses the standard border token so it recedes into the surrounding surface instead of becoming a bright visual divider. The entire lane alongside the thumb may start a drag, and mouse wheel, keyboard, track paging, and direct thumb dragging must work in both palettes.
 - When scrolling is required, every scrollbar redraw first restores the complete interaction lane with the owning list surface color, then draws the current thumb. When all content fits, the lane is not painted at all, so full-width card backgrounds and rounded corners remain intact. Content-count changes request a background erase to remove any former thumb.
@@ -94,7 +94,7 @@ Light theme:
 - Terminal timestamps occupy a separate gutter and never become part of terminal cells, selection, command history, or data sent back to the remote session.
 - The terminal uses a cell-based VT renderer with a 20,000-line primary-screen scrollback buffer. Mouse wheel, overlay-thumb dragging, Shift+PageUp/PageDown, Shift+Home, and Shift+End navigate history without moving the remote cursor.
 - `Ctrl+mouse wheel` changes only the terminal font size, within the shared terminal typography range. A size change immediately recalculates the cell grid and updates the remote PTY.
-- Preserved lines wider than the current grid use a bottom overlay scrollbar following the same 16 px interaction-lane and 5 px thumb tokens as the vertical scrollbar. Horizontal wheel and `Shift+mouse wheel` move the same viewport; no permanent track or new color is introduced.
+- Primary-screen logical lines reflow to the current grid; hard line breaks, cell attributes, wide characters, cursor and reading/selection anchors are preserved. The existing bottom overlay scrollbar remains available for preserved VT grid content where needed.
 - New output must not force the view to the bottom while the user is reviewing history. Show the compact accent `新输出` action inside the terminal until the user returns to the live view.
 - Alternate-screen applications such as `vi`, `vim`, `top`, and `less` use the full terminal surface without the timestamp gutter or primary scrollback. Entering or leaving the alternate screen recalculates and reports the available PTY size; leaving it restores the primary screen and its scroll position.
 - Terminal selection is cell-based: drag selects a range, double-click selects a word, `Ctrl+Shift+C` copies, and `Ctrl+Shift+V` pastes. Bracketed paste is honored when requested by the remote application.
@@ -149,3 +149,5 @@ Power and local CMD share the center card. Power uses three checked channel card
 - Sidebar collapse/expand lasts 200 ms with cubic easing. Input and output continue; update terminal cells/PTY once at the end. Hide sidebar actions during animation so their minimum layout cannot overlap the center. Direct splitter dragging has no animation.
 
 - Trend grids use the existing border token at 50% opacity over the surface. Native WM_PRINT rendering must match normal field/combobox painting; disabled edit clients retain the same field fill and muted text.
+
+The left connection card keeps the existing per-session Disconnect action and one compact danger-text “全部断开” footer action. It stops real transports, CMD process trees, SFTP transfers and power-task ownership before removing entries. No remote disconnect permission is implied. CMD drafts render within the terminal; no composer is added.

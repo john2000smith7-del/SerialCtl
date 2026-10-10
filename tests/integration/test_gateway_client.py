@@ -52,7 +52,7 @@ try:
         pass
     else:
         raise AssertionError('Gone target remained writable')
-    print('Python ↔ production C++: binary 0–255, 64 KiB, multi-COM, two clients, scope, target loss PASS')
+    print('Python / production C++: binary 0-255, 64 KiB, multi-COM, two clients, scope, target loss PASS')
 finally:
     for client in clients:
         client.close()
