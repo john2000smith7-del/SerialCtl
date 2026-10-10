@@ -160,6 +160,20 @@ void TestLogicalReflowAndBlanks() {
     continuous.Resize(400,5);Expect(continuous.PlainText(false)==expected,"output interleaved with reflow stays intact");
 }
 void TestHardLineAnchorsAndEditingReflow() {
+    for (bool csi : {false, true}) {
+        serialctl::TerminalModel saved(20, 10);
+        saved.Feed(std::wstring(L"\x1b[8;4H\x1b[31m") +
+            (csi ? L"\x1b[s" : L"\x1b" L"7") + L"\x1b[1;1H\x1b[0m", L"");
+        saved.Resize(40, 10);
+        saved.Feed(csi ? L"\x1b[u" : L"\x1b" L"8", L"");
+        Expect(saved.CursorDisplayLine() == 7 && saved.CursorColumn() == 3,
+            "saved cursor in an unprinted grid row survives primary reflow");
+        Expect(saved.PlainText(false).empty() && saved.DisplayLine(7).timestamp.empty(),
+            "saved cursor padding must not become received output");
+        saved.Feed(L"X", L"T");
+        Expect(saved.DisplayLine(7).cells[3].attributes.foreground.index == 1,
+            "saved cursor restores attributes after reflow");
+    }
     serialctl::TerminalModel hard(12, 5);
     hard.Feed(L"one\r\ntwo\r\nthree", L"T");
     auto anchor = hard.CaptureAnchor(1, 1);

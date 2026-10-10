@@ -707,7 +707,8 @@ void TerminalModel::EnsureTimestamp(TerminalLine& line, const std::wstring& time
 void TerminalModel::Resize(int columns, int rows) {
     columns = std::max(1, columns);
     rows = std::max(1, rows);
-    if (columns == columns_ && rows == rows_) return;
+    if (columns == columns_ && rows == rows_)
+        return;
     const int oldColumns = columns_;
     const int oldRows = rows_;
     columns_ = columns;
@@ -735,12 +736,13 @@ void TerminalModel::ResizeScreen(Screen& screen, bool preserveHistory, int oldCo
         return;
     }
     std::vector<TerminalLine> old(history_.begin(), history_.end());
-    size_t meaningful = static_cast<size_t>(screen.cursorRow + 1);
+    const auto cursorRows = static_cast<size_t>(std::max(screen.cursorRow, screen.savedRow) + 1);
+    size_t meaningful = cursorRows;
     for (size_t i = 0; i < screen.lines.size(); ++i)
         if (screen.lines[i].used || screen.lines[i].hardBreak || screen.lines[i].wrapped ||
             !screen.lines[i].timestamp.empty())
             meaningful = i + 1;
-    meaningful = std::max(meaningful, static_cast<size_t>(screen.cursorRow + 1));
+    meaningful = std::max(meaningful, cursorRows);
     old.insert(old.end(), screen.lines.begin(), screen.lines.begin() + std::min(meaningful, screen.lines.size()));
     size_t cursorOld = history_.size() + static_cast<size_t>(screen.cursorRow);
     size_t savedOld = history_.size() + static_cast<size_t>(screen.savedRow);
