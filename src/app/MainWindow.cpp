@@ -3939,8 +3939,17 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
                 PostStatus(sessionId, L"CMD 行提交模式不支持全屏终端查询；未向控制台发送控制序列", true);
             }
         } else if (session->mode == 1) {
-            sessionService_.Input("session-" + std::to_string(sessionId),
-                                  Bytes(result.response.begin(), result.response.end()), "terminal-response");
+            const auto reply =
+                sessionService_.Input("session-" + std::to_string(sessionId),
+                                      Bytes(result.response.begin(), result.response.end()), "terminal-response");
+            if (reply.contains("error")) {
+                const auto message = reply.at("error").at("message").get<std::string>();
+                PostStatus(sessionId,
+                           L"终端协议响应发送失败：" +
+                               MultiByteToWide(reinterpret_cast<const std::uint8_t *>(message.data()), message.size(),
+                                               CP_UTF8),
+                           true);
+            }
         } else {
             std::wstring ignored;
             session->connection->Send(Bytes(result.response.begin(), result.response.end()), ignored);

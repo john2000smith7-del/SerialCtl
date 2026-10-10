@@ -182,6 +182,35 @@ void TestHardLineAnchorsAndEditingReflow() {
     deletion.Resize(20, 4);
     ExpectLine(deletion, 0, L"abc", "DCH beyond used text does not truncate preceding logical data");
 }
+void TestReflowAtScrollbackCapacity() {
+    serialctl::TerminalModel model(20, 2, 2);
+    model.Feed(L"0123456789ABCDEFGHIJ\r\nsecond\r\nthird\r\nfourth", L"T");
+    const auto before = model.PlainText(false);
+    const auto anchor = model.CaptureAnchor(0, 12);
+    for (int width : {2, 40, 3, 20}) {
+        model.Resize(width, 2);
+        Expect(model.PlainText(false) == before, "reflow at a full scrollback limit must not evict retained output");
+        const auto location = model.LocateAnchor(anchor);
+        const auto restored = model.CaptureAnchor(location.first, location.second);
+        Expect(restored.id == anchor.id && restored.offset == anchor.offset,
+               "reading and selection anchors survive capacity-bound reflow");
+    }
+    serialctl::TerminalModel hard(20, 2, 2);
+    for (int i = 0; i < 100; ++i)
+        hard.Feed(L"line\r\n", L"T");
+    Expect(hard.HistorySize() <= 2, "new hard-line output still has bounded scrollback");
+    serialctl::TerminalModel unbroken(20, 2, 2);
+    unbroken.Resize(1, 2);
+    unbroken.Feed(std::wstring(1000, L'x'), L"T");
+    Expect(unbroken.HistorySize() <= 160, "a never-ending soft-wrapped line is bounded by retained cells");
+    serialctl::TerminalModel live(20, 2, 2);
+    live.Feed(std::wstring(60, L'x'), L"T");
+    live.Resize(2, 2);
+    live.Feed(L"中Y", L"T");
+    live.Resize(80, 2);
+    Expect(live.PlainText(false) == std::wstring(60, L'x') + L"中Y",
+           "continuous output during capacity-bound reflow preserves admitted characters");
+}
 void TestCmdEditor() {
     serialctl::CmdLineEditor pasted;
     pasted.SubmittedBatch(L"echo first\r\necho 中文\n");
@@ -239,6 +268,7 @@ int main() {
     ExpectLine(cursorResize,3,L"four","cursor row survives shrink then grow");
     TestLogicalReflowAndBlanks();
     TestHardLineAnchorsAndEditingReflow();
+    TestReflowAtScrollbackCapacity();
     TestCmdEditor();
     TestUntrustedParameters();
     TestCarriageReturnAndHistoryRecall();

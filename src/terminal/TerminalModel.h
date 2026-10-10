@@ -127,6 +127,9 @@ private:
     void ReverseIndex();
     void ScrollUp(int count, TerminalFeedResult* result = nullptr);
     void ScrollDown(int count);
+    void ClearHistory();
+    void RecountHistory();
+    void TrimHistory();
     void EraseDisplay(int mode);
     void EraseLine(int mode);
     void EraseCharacters(int count);
@@ -153,6 +156,9 @@ private:
     int columns_ = 80;
     int rows_ = 24;
     size_t maximumScrollback_ = 20000;
+    size_t maximumScrollbackCells_ = 1600000;
+    size_t historyCells_ = 0;
+    size_t historyLogicalLines_ = 0;
     std::deque<TerminalLine> history_;
     size_t resizeHistoryLines_ = 0;
     Screen primary_;

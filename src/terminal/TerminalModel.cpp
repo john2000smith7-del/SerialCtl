@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <limits>
 
 namespace serialctl {
 
@@ -39,6 +40,12 @@ TerminalModel::TerminalModel(int columns, int rows, size_t maximumScrollback)
     : columns_(std::max(1, columns)),
       rows_(std::max(1, rows)),
       maximumScrollback_(std::max<size_t>(1, maximumScrollback)) {
+    // The retention budget is stable across resizes. At the default 80-column
+    // grid it holds 20,000 logical lines or 1.6 million cells, whichever fills
+    // first. A long stream without hard breaks must also remain bounded.
+    const auto budgetColumns = static_cast<size_t>(std::max(80, columns_));
+    maximumScrollbackCells_ =
+        std::min(maximumScrollback_, std::numeric_limits<size_t>::max() / budgetColumns) * budgetColumns;
     primary_ = BlankScreen();
     alternate_ = BlankScreen();
 }
@@ -305,12 +312,45 @@ void TerminalModel::ScrollUp(int count, TerminalFeedResult* result) {
     count = std::max(1, std::min(count, screen.scrollBottom - screen.scrollTop + 1));
     for (int iteration = 0; iteration < count; ++iteration) {
         if (!alternateScreen_ && screen.scrollTop == 0 && screen.scrollBottom == rows_ - 1) {
+            const auto &line = screen.lines.front();
+            historyCells_ += std::max<size_t>(1, line.used);
+            if (history_.empty() || history_.back().logicalId != line.logicalId)
+                ++historyLogicalLines_;
             history_.push_back(screen.lines.front());
-            if (history_.size() > maximumScrollback_) history_.pop_front();
+            TrimHistory();
             if (result) ++result->scrollbackAdded;
         }
         screen.lines.erase(screen.lines.begin() + screen.scrollTop);
         screen.lines.insert(screen.lines.begin() + screen.scrollBottom, BlankLine());
+    }
+}
+
+void TerminalModel::ClearHistory() {
+    history_.clear();
+    historyCells_ = 0;
+    historyLogicalLines_ = 0;
+}
+
+void TerminalModel::RecountHistory() {
+    historyCells_ = 0;
+    historyLogicalLines_ = 0;
+    std::uint64_t previous = 0;
+    for (const auto &line : history_) {
+        historyCells_ += std::max<size_t>(1, line.used);
+        if (line.logicalId != previous)
+            ++historyLogicalLines_;
+        previous = line.logicalId;
+    }
+}
+
+void TerminalModel::TrimHistory() {
+    while (!history_.empty() &&
+           (historyLogicalLines_ > maximumScrollback_ || historyCells_ > maximumScrollbackCells_)) {
+        historyCells_ -= std::max<size_t>(1, history_.front().used);
+        const auto id = history_.front().logicalId;
+        history_.pop_front();
+        if (history_.empty() || history_.front().logicalId != id)
+            --historyLogicalLines_;
     }
 }
 
@@ -327,7 +367,8 @@ void TerminalModel::EraseDisplay(int mode) {
     Screen& screen = ActiveScreen();
     if (mode == 2 || mode == 3) {
         for (TerminalLine& line : screen.lines) line = BlankLine();
-        if (mode == 3) history_.clear();
+        if (mode == 3)
+            ClearHistory();
         return;
     }
     if (mode == 0) {
@@ -779,8 +820,9 @@ void TerminalModel::ResizeScreen(Screen& screen, bool preserveHistory, int oldCo
         lines.push_back(BlankLine());
     const size_t start = lines.size() > static_cast<size_t>(rows_) ? lines.size() - static_cast<size_t>(rows_) : 0;
     history_.assign(lines.begin(), lines.begin() + start);
-    while (history_.size() > maximumScrollback_)
-        history_.pop_front();
+    // Reflow changes visual row count, not the retained device output. Only
+    // newly received output may evict old content under the stable budget.
+    RecountHistory();
     screen.lines.assign(lines.begin() + start, lines.end());
     while (screen.lines.size() < static_cast<size_t>(rows_))
         screen.lines.push_back(BlankLine());
@@ -833,7 +875,7 @@ TerminalModel TerminalModel::PreviewInput(const std::wstring &text, size_t curso
     std::vector<TerminalLine> view;
     for (size_t i = 0; i < static_cast<size_t>(rows_); ++i)
         view.push_back(start + i < model.DisplayLineCount() ? model.DisplayLine(start + i) : model.BlankLine());
-    model.history_.clear();
+    model.ClearHistory();
     model.primary_.lines = std::move(view);
     model.primary_.cursorRow = static_cast<int>(caret.first - start);
     model.primary_.cursorColumn = caret.second;
@@ -842,7 +884,8 @@ TerminalModel TerminalModel::PreviewInput(const std::wstring &text, size_t curso
 }
 
 void TerminalModel::Reset() {
-    history_.clear(); resizeHistoryLines_ = 0;
+    ClearHistory();
+    resizeHistoryLines_ = 0;
     primary_ = BlankScreen();
     alternate_ = BlankScreen();
     alternateScreen_ = false;
@@ -871,11 +914,13 @@ void TerminalModel::Clear() {
     screen.scrollTop = 0;
     screen.scrollBottom = rows_ - 1;
     screen.wrapPending = false;
-    if (!alternateScreen_) history_.clear();
+    if (!alternateScreen_)
+        ClearHistory();
 }
 
 void TerminalModel::ClearScrollback() {
-    history_.clear(); resizeHistoryLines_ = 0;
+    ClearHistory();
+    resizeHistoryLines_ = 0;
 }
 
 size_t TerminalModel::HistorySize() const {

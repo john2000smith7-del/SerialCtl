@@ -27,7 +27,7 @@ hello：`{"type":"hello","version":1,"instance":"...","maxClients":128,"maxInput
 
 每个 COM 只有一个本机驱动与内部会话 ID。完整输入批次 FIFO 原子入队，8 MiB 有界写队列；无写租约、无任务级互斥，多写入者的多步任务仍可能互相影响。input accepted 表示接收/排队，不保证执行完成。连接关闭不关闭本机设备、不取消已经入队的写入。超时/断线后执行状态未知，不自动重试可能已经执行的输入。
 
-每连接最多订阅 64 个现有 serial/CMD 会话。每资源独立单调 seq、history 最多 1024 个 event/1 MiB，总缓存 16 MiB；订阅确认先排队，历史与实时事件在同一锁下排序，握手期间输出可通过 after=0 重放。资源事件 `{"type":"event","version":1,"instance":"...","resource":"session-N","seq":1,"kind":"output|input|status|error","source":"device|gui|network:N|connection","data":"Base64","tick":...,"codePage":...}`。CMD input/output 事件额外携带当次文本代码页快照 codePage；原始 Base64 字节不变，客户端文本解码仍需跨包保持状态。session.get/resources 的 codePage 与实际 outputCodePage 一致。同一资源的顺序是网关 Publish 获取锁的顺序。不同资源不承诺共同时间线。
+每连接最多订阅 64 个现有 serial/CMD 会话。每资源独立单调 seq、history 最多 1024 个 event/1 MiB，总缓存 16 MiB；订阅确认先排队，历史与实时事件在同一锁下排序，握手期间输出可通过 after=0 重放。资源事件 `{"type":"event","version":1,"instance":"...","resource":"session-N","seq":1,"kind":"output|input|status|error","source":"device|gui|network:N|connection|terminal-response","data":"Base64","tick":...,"codePage":...}`。CMD input/output 事件额外携带当次文本代码页快照 codePage；原始 Base64 字节不变，客户端文本解码仍需跨包保持状态。session.get/resources 的 codePage 与实际 outputCodePage 一致。同一资源的顺序是网关 Publish 获取锁的顺序。不同资源不承诺共同时间线。
 
 after 小于缓存最早序号-1（包括 after=0）、大于当前 seq，返回 HISTORY_GAP；禁止悄悄跳过。重连使用客户端已收到的最后 seq，同一 instance/session，先处理 gap 再决定是否以 session.get 当前状态开始新实时订阅（cursor 通过历史/订阅响应取得）。会话删除发送 resource_gone/TARGET_GONE，并取消订阅；ID 不在同一程序生命周期重复使用。
 
@@ -38,3 +38,5 @@ CMD 是单个持久 cmd.exe /D /Q /F:OFF /K，真实隐藏 Win7 控制台输入�
 串口使用原始二进制读写，不过滤 NUL/FF；若本机显式选择 XON/XOFF 软件流控，驱动会按该配置消费 0x11/0x13 流控字符。全256字节核对时应使用无流控或硬件流控并记录设置，不能把网络替身结果当作实体驱动结果。
 
 首次桌面选择、SerialStream 和不带 --after 的 watch 会先请求缓存历史；若已淘汰，明确输出 HISTORY_GAP 提示并从查询得到的当前游标订阅。Client.subscribe(resource, last_seq) 与 watch --after N 用于重连，仍严格拒绝缺口，不能自动跳过。满载拒绝保留最长1.5秒握手关闭窗口，避免晚到GET造成Windows RST吞掉503；不执行其中的业务字节。
+
+Python 公共客户端每个订阅资源的接收队列最多128个事件；调用者停读填满队列时终止连接，并明确报告 CLIENT_RECEIVE_QUEUE_FULL，不悄悄丢数据。重新订阅仍须核对最后游标及 HISTORY_GAP。

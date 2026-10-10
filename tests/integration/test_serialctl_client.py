@@ -1,6 +1,8 @@
 """Focused core tests; production C++ interoperability is test_gateway_client.py."""
 import pathlib
 import sys
+import queue
+import threading
 import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'tools'))
@@ -11,6 +13,26 @@ import serialctl_client
 
 
 class CoreTests(unittest.TestCase):
+    def test_stopped_consumer_reports_bounded_queue_failure(self):
+        class Socket:
+            def __init__(self): self.shutdown_called = False
+            def shutdown(self, _): self.shutdown_called = True
+        class Output:
+            def receive(self): return {'type': 'event', 'resource': 'session-1'}
+        client = object.__new__(Client)
+        client.closed = False
+        client.instance = 'instance-a'
+        client.lock = threading.Lock()
+        client.pending = {}
+        client.events = {'session-1': queue.Queue(maxsize=128)}
+        client.wire = Output()
+        client.socket = Socket()
+        client._receive()
+        self.assertEqual(client.events['session-1'].qsize(), 128)
+        self.assertIsInstance(client.failure, ProtocolError)
+        self.assertIn('CLIENT_RECEIVE_QUEUE_FULL', str(client.failure))
+        self.assertTrue(client.socket.shutdown_called)
+
     def test_common_core(self):
         self.assertIs(serialctl_api.Client, serialctl_client.Client)
         self.assertIs(serialctl_api.Client, Client)

@@ -244,6 +244,8 @@ class Client:
                         # A stopped consumer must not grow client memory without bound.
                         target.put_nowait(msg)
         except (OSError, ValueError, RuntimeError, queue.Full) as error:
+            if isinstance(error, queue.Full):
+                error = ProtocolError('CLIENT_RECEIVE_QUEUE_FULL: consumer stopped reading; connection closed')
             self.failure = error
             with self.lock:
                 for target in list(self.pending.values()) + list(self.events.values()):

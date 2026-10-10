@@ -173,7 +173,7 @@ with Client('127.0.0.1') as c:
     ordered=sorted(delays)
     report={'cmd':cmd,'environment':platform.platform(),'network':'loopback','physical_serial_rate':'not applicable: real CMD console bridge / raw stdout pipe',
             'clients':1,'samples':delays,'P50_ms':ordered[50],'P95_ms':ordered[95],'P99_ms':ordered[99],
-            'measurement':'PostData callback QPC for the stdout chunk completing a unique marker -> first actual terminal BitBlt containing that marker; excludes earlier fragment time and physical monitor presentation',
+            'measurement':'First PostData callback QPC of the merged UI stdout batch completing a unique marker -> first actual terminal BitBlt containing that marker; excludes earlier batches and physical monitor presentation',
             'checks':['sequential GUI editing','UTF8 and GBK Chinese raw stdout','history resubmission','multiline clipboard with deferred tail',
                       'asynchronous output preserves draft','background output preserves logical reading anchor','active typing and Enter follow latest',
                       'unsupported CMD terminal query is reported without injecting control bytes or terminating CMD']}

@@ -169,7 +169,9 @@ $displayResult=[SerialCtlUiSmoke]::PrepareDesktop()
 Start-Sleep -Milliseconds 300
 $screenDc=[SerialCtlUiSmoke]::GetDC([IntPtr]::Zero)
 try {$dpi=[SerialCtlUiSmoke]::GetDeviceCaps($screenDc,88)} finally {[SerialCtlUiSmoke]::ReleaseDC([IntPtr]::Zero,$screenDc)|Out-Null}
-[ordered]@{system=[Environment]::OSVersion.VersionString; dpi=$dpi; width=[SerialCtlUiSmoke]::GetSystemMetrics(0);height=[SerialCtlUiSmoke]::GetSystemMetrics(1);resolution=$displayResult;capture='CopyFromScreen actual physical desktop; PrintWindow separate layout inspection';hardware='No physical UART/IT6332A; SFTP mock isolated'} | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'ui-environment.json') -Encoding UTF8
+$cpuInfo = Get-CimInstance Win32_Processor
+$computerInfo = Get-CimInstance Win32_ComputerSystem
+[ordered]@{system=[Environment]::OSVersion.VersionString; cpu=@($cpuInfo | ForEach-Object {$_.Name}); logicalProcessors=[Environment]::ProcessorCount; memoryBytes=[int64]$computerInfo.TotalPhysicalMemory; dpi=$dpi; width=[SerialCtlUiSmoke]::GetSystemMetrics(0);height=[SerialCtlUiSmoke]::GetSystemMetrics(1);resolution=$displayResult;capture='CopyFromScreen actual physical desktop; PrintWindow separate layout inspection';hardware='No physical UART/IT6332A; SFTP mock isolated'} | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'ui-environment.json') -Encoding UTF8
 $root = Get-SerialCtlRepositoryRoot
 $version = Get-SerialCtlVersion
 $extract = Join-Path $OutputDirectory 'payload'
