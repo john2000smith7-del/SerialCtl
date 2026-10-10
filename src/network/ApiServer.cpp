@@ -370,7 +370,11 @@ void ApiServer::SetSessions(const std::vector<std::string> &list) {
     for (auto &c : clients_)
         for (auto it = c->subscriptions.begin(); it != c->subscriptions.end();)
             if (!next.count(*it)) {
-                Queue(c, Json{{"type", "resource_gone"}, {"resource", *it}, {"error", {{"code", "TARGET_GONE"}}}});
+                Queue(c, Json{{"type", "resource_gone"},
+                              {"version", 1},
+                              {"instance", instance_},
+                              {"resource", *it},
+                              {"error", {{"code", "TARGET_GONE"}, {"message", "Session removed"}}}});
                 it = c->subscriptions.erase(it);
             } else
                 ++it;
@@ -472,8 +476,12 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
                 }
             } else if (op == "unsubscribe" && p.empty()) {
                 std::lock_guard<std::mutex> l(mutex_);
-                c->subscriptions.erase(target);
-                result = {{"unsubscribed", target}};
+                if (!sessions_.count(target))
+                    result = Failure("TARGET_NOT_FOUND", "Cannot unsubscribe from an absent session");
+                else {
+                    c->subscriptions.erase(target);
+                    result = {{"unsubscribed", target}};
+                }
             } else if (op == "events" && Keys(p, {"after"}) && p.contains("after") &&
                        (p["after"].is_number_unsigned() ||
                         (p["after"].is_number_integer() && p["after"].get<std::int64_t>() >= 0)))

@@ -54,6 +54,10 @@ with Client('127.0.0.1') as c:
     u.SendMessageW(listing,0x197,12,0) # LB_SETTOPINDEX
     top=u.SendMessageW(listing,0x18e,0,0)
     assert top==12,top
+    assert u.PostMessageW(window,0x111,300,0)
+    wait(lambda:count()==baseline+33)
+    assert u.SendMessageW(listing,0x18e,0,0)==top,'top resource ID must survive a rebuilt list with duplicate CMD names'
+    live=children()
     selection=u.SendMessageW(listing,0x188,0,0)
     # The production state-notification refresh path must retain both anchors.
     for _ in range(20):u.SendMessageW(window,0x8009,0,0)
@@ -73,9 +77,9 @@ with Client('127.0.0.1') as c:
     wait(lambda:u.SendMessageW(listing,0x18b,0,0)==0)
     wait(lambda:not children())
     duration=time.monotonic()-started
-    report={'created_real_cmd_sessions':baseline+32,'child_processes_before':live,'children_after':children(),
+    report={'created_real_cmd_sessions':baseline+33,'child_processes_before':live,'children_after':children(),
             'disconnect_seconds':duration,'top_anchor':top,'selection_anchor':selection,
             'checks':['stable refresh','native wheel','keyboard Home/End','real GUI all-disconnect','job child termination'],
             'hardware':'no physical serial/SFTP/power; task-owned output covered separately by PowerService controlled tests'}
     pathlib.Path(sys.argv[4]).write_text(json.dumps(report,indent=2),encoding='utf-8')
-    print('PASS: %d real CMD sessions, list anchors/wheel/keys, all-disconnect child cleanup %.3fs'%(baseline+32,duration))
+    print('PASS: %d real CMD sessions, list anchors/wheel/keys, all-disconnect child cleanup %.3fs'%(baseline+33,duration))

@@ -52,7 +52,8 @@ TerminalLine TerminalModel::BlankLine() const {
 
 TerminalModel::Screen TerminalModel::BlankScreen() const {
     Screen screen;
-    screen.lines.assign(static_cast<size_t>(rows_), BlankLine());
+    screen.lines.reserve(static_cast<size_t>(rows_));
+    for (int row = 0; row < rows_; ++row) screen.lines.push_back(BlankLine());
     screen.scrollBottom = rows_ - 1;
     return screen;
 }
@@ -366,7 +367,8 @@ void TerminalModel::InsertCharacters(int count) {
     Screen& screen = ActiveScreen();
     TerminalLine& line = screen.lines[static_cast<size_t>(screen.cursorRow)];
     count = std::max(1, std::min(count, columns_ - screen.cursorColumn));
-    line.used = std::min(static_cast<size_t>(columns_), line.used + count);
+    if (line.used > static_cast<size_t>(screen.cursorColumn))
+        line.used = std::min(static_cast<size_t>(columns_), line.used + count);
     std::move_backward(line.cells.begin() + screen.cursorColumn,
         line.cells.end() - count, line.cells.end());
     std::fill(line.cells.begin() + screen.cursorColumn,
@@ -377,7 +379,8 @@ void TerminalModel::DeleteCharacters(int count) {
     Screen& screen = ActiveScreen();
     TerminalLine& line = screen.lines[static_cast<size_t>(screen.cursorRow)];
     count = std::max(1, std::min(count, columns_ - screen.cursorColumn));
-    line.used = line.used > static_cast<size_t>(count) ? line.used - count : 0;
+    if (line.used > static_cast<size_t>(screen.cursorColumn))
+        line.used -= std::min(static_cast<size_t>(count), line.used - static_cast<size_t>(screen.cursorColumn));
     std::move(line.cells.begin() + screen.cursorColumn + count,
         line.cells.end(), line.cells.begin() + screen.cursorColumn);
     std::fill(line.cells.end() - count, line.cells.end(), TerminalCell{});
@@ -560,7 +563,7 @@ void TerminalModel::ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& resul
     default:
         break;
     }
-    screen.wrapPending = false;
+    if (finalCharacter != L'm') screen.wrapPending = false;
 }
 
 void TerminalModel::SetGraphicsRendition(const std::vector<int>& parameters) {

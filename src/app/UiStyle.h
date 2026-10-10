@@ -216,6 +216,9 @@ class UiLayoutBatch {
     void Show(HWND h, int show) {
         items_[h].show = show == SW_HIDE ? 0 : 1;
     }
+    void ComboVisibleHeight(HWND h, int height) {
+        items_[h].comboHeight = height;
+    }
     void Commit() {
         struct Move {
             HWND h;
@@ -223,17 +226,25 @@ class UiLayoutBatch {
             UINT flags;
         };
         std::vector<Move> changes;
+        std::vector<std::pair<HWND, int>> combos;
         for (auto &p : items_) {
             auto h = p.first;
             auto &v = p.second;
             if (!h)
                 continue;
+            if (v.comboHeight >= 0)
+                combos.push_back({h, v.comboHeight});
             UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE;
             bool different = false;
             if (v.move) {
                 RECT r{};
                 GetWindowRect(h, &r);
                 MapWindowPoints(HWND_DESKTOP, GetParent(h), reinterpret_cast<POINT *>(&r), 2);
+                // ComboBox window height is the closed field, while the requested
+                // layout height also reserves its dropdown. Compare position/width
+                // here and commit the visible height after the native move.
+                if (v.comboHeight >= 0)
+                    r.bottom = v.rect.bottom;
                 if (!EqualRect(&r, &v.rect)) {
                     flags &= ~(SWP_NOMOVE | SWP_NOSIZE);
                     different = true;
@@ -248,9 +259,7 @@ class UiLayoutBatch {
                 changes.push_back({h, v.rect, flags});
         }
         items_.clear();
-        if (changes.empty())
-            return;
-        HDWP batch = BeginDeferWindowPos(static_cast<int>(changes.size()));
+        HDWP batch = changes.empty() ? nullptr : BeginDeferWindowPos(static_cast<int>(changes.size()));
         for (auto &c : changes) {
             if (!batch)
                 break;
@@ -264,6 +273,16 @@ class UiLayoutBatch {
                              c.rect.bottom - c.rect.top, c.flags);
         for (auto &c : changes)
             InvalidateRect(c.h, nullptr, FALSE);
+        for (auto &combo : combos) {
+            RECT bounds{};
+            GetWindowRect(combo.first, &bounds);
+            int visible = bounds.bottom - bounds.top;
+            if (visible != combo.second) {
+                int current = static_cast<int>(SendMessageW(combo.first, CB_GETITEMHEIGHT, -1, 0));
+                SendMessageW(combo.first, CB_SETITEMHEIGHT, -1, std::max(1, current + combo.second - visible));
+                InvalidateRect(combo.first, nullptr, FALSE);
+            }
+        }
     }
     ~UiLayoutBatch() {
         Commit();
@@ -273,6 +292,7 @@ class UiLayoutBatch {
     struct Item {
         RECT rect{};
         bool move = false;
+        int comboHeight = -1;
         int show = -1;
     };
     std::map<HWND, Item> items_;

@@ -44,6 +44,7 @@ bool CmdConnection::Start(DataCallback data, StatusCallback status, std::wstring
     process_ = pi.hProcess;
     processId_ = pi.dwProcessId;
     inputCodePage_ = outputCodePage_ = GetOEMCP();
+    manualCodePage_ = knownCodePage_ = false;
     job_ = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit{};
     limit.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -109,6 +110,8 @@ bool CmdConnection::Send(const Bytes &bytes, std::wstring &error) {
 }
 void CmdConnection::ReadCodePages() {
     std::lock_guard<std::mutex> lock(consoleQueryMutex);
+    if (manualCodePage_)
+        return;
     // Query the real hidden Win7 console after chcp. Never detach an existing
     // caller console; users launching from a console can select encoding manually.
     if (GetConsoleWindow() || !processId_ || !AttachConsole(processId_))
@@ -119,6 +122,17 @@ void CmdConnection::ReadCodePages() {
         inputCodePage_ = in;
     if (out)
         outputCodePage_ = out;
+    knownCodePage_ = in != 0 && out != 0;
+}
+void CmdConnection::OverrideTextCodePage(unsigned page) {
+    {
+        std::lock_guard<std::mutex> lock(consoleQueryMutex);
+        manualCodePage_ = page != 0;
+        knownCodePage_ = false;
+        inputCodePage_ = outputCodePage_ = page ? page : GetOEMCP();
+    }
+    if (!page)
+        ReadCodePages();
 }
 
 void CmdConnection::Read() {

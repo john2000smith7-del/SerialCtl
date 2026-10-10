@@ -159,6 +159,29 @@ void TestLogicalReflowAndBlanks() {
     for(int i=0;i<100;++i){continuous.Feed(L"中a",L"T");expected+=L"中a";continuous.Resize(i%2?8:50,5);}
     continuous.Resize(400,5);Expect(continuous.PlainText(false)==expected,"output interleaved with reflow stays intact");
 }
+void TestHardLineAnchorsAndEditingReflow() {
+    serialctl::TerminalModel hard(12, 5);
+    hard.Feed(L"one\r\ntwo\r\nthree", L"T");
+    auto anchor = hard.CaptureAnchor(1, 1);
+    Expect(anchor.id != hard.CaptureAnchor(0, 1).id && anchor.id != hard.CaptureAnchor(2, 1).id,
+        "distinct hard lines have distinct reading and selection identities");
+    hard.Resize(4, 5);
+    hard.Resize(20, 5);
+    auto location = hard.LocateAnchor(anchor);
+    Expect(location.first == 1 && location.second == 1,
+        "hard-line reading anchor maps to its own line after repeated resize");
+    serialctl::TerminalModel color(4, 4);
+    color.Feed(L"abcd\x1b[31mE\x1b[0m", L"T");
+    color.Resize(20, 4);
+    ExpectLine(color, 0, L"abcdE", "SGR at full-width boundary preserves pending automatic wrap");
+    Expect(color.DisplayLine(0).cells[4].attributes.foreground.index == 1,
+        "wrapped SGR character keeps its foreground attribute");
+    serialctl::TerminalModel deletion(20, 4);
+    deletion.Feed(L"abc\x1b[10G\x1b[P\r", L"T");
+    deletion.Resize(8, 4);
+    deletion.Resize(20, 4);
+    ExpectLine(deletion, 0, L"abc", "DCH beyond used text does not truncate preceding logical data");
+}
 void TestCmdEditor() {
     serialctl::CmdLineEditor editor;
     for(wchar_t c:std::wstring(L"echo abXd"))editor.Insert(std::wstring(1,c));
@@ -205,6 +228,7 @@ int main() {
     Expect(cursorResize.HistorySize()==0,"idle grow restores rows moved by shrink");
     ExpectLine(cursorResize,3,L"four","cursor row survives shrink then grow");
     TestLogicalReflowAndBlanks();
+    TestHardLineAnchorsAndEditingReflow();
     TestCmdEditor();
     TestUntrustedParameters();
     TestCarriageReturnAndHistoryRecall();

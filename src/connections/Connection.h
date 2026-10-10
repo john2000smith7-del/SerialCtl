@@ -1,7 +1,7 @@
 #pragma once
 
-#include <winsock2.h>
 #include <windows.h>
+#include <winsock2.h>
 
 #include <cstdint>
 #include <functional>
@@ -11,20 +11,29 @@
 namespace serialctl {
 
 using Bytes = std::vector<std::uint8_t>;
-using DataCallback = std::function<void(const Bytes&)>;
-using StatusCallback = std::function<void(const std::wstring&, bool)>;
+using DataCallback = std::function<void(const Bytes &)>;
+using StatusCallback = std::function<void(const std::wstring &, bool)>;
 
 class IConnection {
-public:
+  public:
     virtual ~IConnection() = default;
-    virtual bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) = 0;
+    virtual bool Start(DataCallback onData, StatusCallback onStatus, std::wstring &error) = 0;
     // Only requests cancellation; Stop and resource cleanup stay with the owner.
     virtual void CancelStart() {}
     virtual void Stop() = 0;
-    virtual bool Send(const Bytes& data, std::wstring& error) = 0;
+    virtual bool Send(const Bytes &data, std::wstring &error) = 0;
     virtual bool IsConnected() const = 0;
-    virtual unsigned InputCodePage() const { return 0; }
-    virtual unsigned OutputCodePage() const { return 0; }
+    virtual unsigned InputCodePage() const {
+        return 0;
+    }
+    virtual unsigned OutputCodePage() const {
+        return 0;
+    }
+    virtual const char *CodePageSource() const {
+        return "none";
+    }
+    // Local terminal encoding selection; zero resumes actual-console detection.
+    virtual void OverrideTextCodePage(unsigned) {}
     virtual void ResizeTerminal(int columns, int rows) {
         (void)columns;
         (void)rows;

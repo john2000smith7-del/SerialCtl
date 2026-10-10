@@ -187,6 +187,7 @@ private:
     void SyncSftpDirectoryFromTerminal(SessionState& session);
     void AppendStatus(const std::wstring& text, bool isError);
     void SaveCurrentLog();
+    void SaveNetworkDiagnostics();
     void ShowTerminalContextMenu(POINT screenPoint);
     UINT SelectedCodePage() const;
     std::string EncodeTerminalText(const std::wstring&);
@@ -280,6 +281,7 @@ private:
 
     std::vector<HWND> toolbarButtons_;
     ApiServer apiServer_;
+    std::vector<std::uint64_t> connectionListIds_;
     SessionService sessionService_;
     PowerService powerService_;
     PowerPane powerPane_;

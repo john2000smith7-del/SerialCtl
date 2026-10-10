@@ -24,6 +24,15 @@ int main() {
         p.Send(j);
         Expect(p.Receive()["error"]["code"] == "INSTANCE_MISMATCH", "instance mismatches rejected");
         Expect(request("input", "session-2", {{"data", "QQ=="}})["ok"] == false, "forged session rejected");
+        Expect(request("unsubscribe", "session-2")["error"]["code"] == "TARGET_NOT_FOUND",
+               "forged unsubscribe target rejected");
+        for (const auto &field : {Json{{"version", 1.0}}, Json{{"resource", Json::array()}},
+                                  Json{{"params", Json::array()}}, Json{{"source", "gui"}}}) {
+            auto invalid = p.Envelope("input", "session-3", {{"data", "QQ=="}}, "invalid-" + std::to_string(++seq));
+            invalid.update(field);
+            p.Send(invalid);
+            Expect(p.Receive()["error"]["code"] == "INVALID_REQUEST", "illegal types or excess fields prevalidated");
+        }
         Expect(request("input", "session-3", {{"data", "Q!=="}})["ok"] == false,
                "invalid Base64 rejected before driver");
         Expect(request("input", "session-3", {{"data", Encode64(Bytes(65537, 1))}})["ok"] == false,
@@ -38,6 +47,9 @@ int main() {
         Expect(p.Receive() == reply, "same connection requestId returns cached response");
         Wait([&] { return f.rx3->received == 4; });
         Expect(f.rx3->received == 4, "duplicate does not execute twice");
+        duplicate["params"]["data"] = "QQ==";
+        p.Send(duplicate);
+        Expect(p.Receive()["error"]["code"] == "REQUEST_ID_CONFLICT", "conflicting requestId never reexecutes");
         // RFC fragments, control interleaving, coalesced packets and exact binary ingress.
         auto msg =
             p.Envelope("input", "session-5", {{"data", Encode64(Bytes{255, 244, 255, 0, 13, 10})}}, "fragment").dump();
@@ -94,6 +106,51 @@ int main() {
             closesocket(s);
         }
         Expect(f.rx3->received == 4 && f.rx5->received == 6, "old/control traffic never device input");
+        {
+            std::wstring error;
+            auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(f.server.Port()), error);
+            ws::SocketOptions(s, 3000);
+            const std::string header =
+                "GET /serialctl HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: "
+                "Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: serialctl.v1\r\nSec-WebSocket-Key: "
+                "dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n";
+            auto payload = p.Envelope("input", "session-5", {{"data", "AA=="}}, "coalesced-first-byte").dump();
+            Bytes packet(header.begin(), header.end());
+            packet.push_back(0x81);
+            if (payload.size() < 126)
+                packet.push_back(static_cast<std::uint8_t>(0x80 | payload.size()));
+            else {
+                packet.push_back(0xfe);
+                packet.push_back(static_cast<std::uint8_t>(payload.size() >> 8));
+                packet.push_back(static_cast<std::uint8_t>(payload.size()));
+            }
+            packet.insert(packet.end(), {1, 2, 3, 4});
+            for (size_t i = 0; i < payload.size(); ++i)
+                packet.push_back(static_cast<std::uint8_t>(payload[i] ^ (1 + i % 4)));
+            ws::SendAll(s, packet.data(), packet.size());
+            Bytes tail;
+            Expect(ws::ReadHeader(s, tail).first == "HTTP/1.1 101 Switching Protocols", "coalesced upgrade accepted");
+            ws::Stream stream(s, true, std::move(tail));
+            Expect(Json::parse(stream.Receive().data)["type"] == "hello", "hello precedes coalesced request reply");
+            Expect(Json::parse(stream.Receive().data)["ok"] == true, "first masked request retained after header");
+            Wait([&] { return f.rx5->received == 7; });
+            shutdown(s, SD_BOTH);
+            closesocket(s);
+        }
+        {
+            Peer subscription(f.server.Port());
+            auto cursor = f.server.Events("session-5", 0)["cursor"].get<std::uint64_t>();
+            Expect(subscription.Request("subscribe", "session-5", {{"after", cursor}}, "sub")["ok"] == true,
+                   "cursor subscription");
+            f.server.Publish("session-5", Bytes{'z'});
+            auto event = subscription.Receive();
+            Expect(event["seq"] == cursor + 1 && Decode64(event["data"]) == Bytes{'z'}, "ordered resource cursor");
+            Expect(subscription.Request("unsubscribe", "session-5", Json::object(), "unsub")["ok"] == true,
+                   "unsubscribe acknowledged");
+            f.server.Publish("session-5", Bytes{'y'});
+            subscription.Send(subscription.Envelope("resources", "", Json::object(), "after-unsub"));
+            Expect(subscription.Receive()["type"] == "response", "no new output queued after unsubscribe");
+        }
         for (int i = 0; i < 140; ++i) {
             GatewayClient client;
             client.Connect(L"127.0.0.1", f.server.Port());

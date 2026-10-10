@@ -726,9 +726,8 @@ void PowerPane::Layout() {
     move(buttons_[2], w - d(200), d(52), d(96), d(36));
     move(buttons_[3], w - d(96), d(52), d(96), d(36));
     move(Control(81), w - d(312), d(52), d(104), d(36));
-    SendMessageW(Control(80), CB_SETITEMHEIGHT, -1, d(30));
     move(Control(80), d(72), d(52), d(160), d(180));
-    SendMessageW(Control(80), CB_SETITEMHEIGHT, -1, d(30));
+    batch.ComboVisibleHeight(Control(80), d(36));
     for (int i = 0; i < 3; ++i) {
         bool hidden = group && i == 1;
         int index = group && i == 2 ? 1 : i;
@@ -771,7 +770,7 @@ void PowerPane::DetailsLayout(int width, int top) {
         wchar_t cls[24]{};
         GetClassNameW(control, cls, 24);
         if (_wcsicmp(cls, L"COMBOBOX") == 0) {
-            SendMessageW(control, CB_SETITEMHEIGHT, -1, d(h - 6));
+            currentLayout_->ComboVisibleHeight(control, d(h));
             h = 180;
         }
         currentLayout_->Move(control, d(x), top + d(y) - scroll_, d(w), d(h));

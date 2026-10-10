@@ -100,7 +100,7 @@ enum TerminalMenuId {
     IdMenuPaste,
     IdMenuEncodingUtf8 = 2201,
     IdMenuEncodingGbk,
-    IdMenuEncodingGb2312, IdMenuRawTrace
+    IdMenuEncodingGb2312, IdMenuRawTrace, IdMenuEncodingCmdAuto, IdMenuNetworkDiagnostics
 };
 
 enum LineEndingMenuId {
@@ -3857,6 +3857,28 @@ void MainWindow::SaveCurrentLog() {
     AppendStatus(L"日志已保存", false);
 }
 
+void MainWindow::SaveNetworkDiagnostics() {
+    wchar_t path[MAX_PATH] = L"SerialCtl-network-diagnostics.json";
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = window_;
+    dialog.lpstrFilter = L"JSON (*.json)\0*.json\0所有文件 (*.*)\0*.*\0";
+    dialog.lpstrFile = path;
+    dialog.nMaxFile = static_cast<DWORD>(std::size(path));
+    dialog.lpstrDefExt = L"json";
+    dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    if (!GetSaveFileNameW(&dialog)) return;
+    const auto text = Json{{"protocol", "serialctl.v1"}, {"instance", apiServer_.Instance()},
+                           {"port", apiServer_.Port()}, {"records", apiServer_.Diagnostics()}}.dump(2);
+    HANDLE file = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) { AppendStatus(L"无法保存网络诊断：" + Win32ErrorMessage(), true); return; }
+    DWORD written = 0;
+    bool ok = WriteFile(file, text.data(), static_cast<DWORD>(text.size()), &written, nullptr) && written == text.size();
+    const auto error = ok ? std::wstring() : Win32ErrorMessage();
+    CloseHandle(file);
+    AppendStatus(ok ? L"网络连接诊断已保存" : L"网络连接诊断写入失败：" + error, !ok);
+}
+
 void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     HMENU menu = CreatePopupMenu();
     if (!menu) return;
@@ -3880,11 +3902,13 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuTimestamp, timestampLabel);
     AppendMenuW(menu, MF_OWNERDRAW | (activeSession_&&activeSession_->rawTrace?MF_CHECKED:0), IdMenuRawTrace, L"记录 RX/TX 原始字节（Base64）");
     AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
+    AppendMenuW(menu, MF_OWNERDRAW | (!activeSession_ || activeSession_->mode != 4 ? MF_GRAYED : 0), IdMenuEncodingCmdAuto, L"编码 · CMD 实际代码页");
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuEncodingUtf8, encodingUtf8Label);
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuEncodingGbk, encodingGbkLabel);
     AppendMenuW(menu, MF_OWNERDRAW, IdMenuEncodingGb2312, encodingGb2312Label);
     AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
     AppendMenuW(menu, MF_OWNERDRAW | (!logger_ || logger_->Path().empty() ? MF_GRAYED : 0), IdMenuSaveLog, saveLabel);
+    AppendMenuW(menu, MF_OWNERDRAW, IdMenuNetworkDiagnostics, L"保存网络连接诊断…");
     AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
     AppendMenuW(menu, MF_OWNERDRAW | (!activeSession_ ? MF_GRAYED : 0), IdMenuClear, clearLabel);
     AppendMenuW(menu, MF_OWNERDRAW | (!HasTerminalSelection() ? MF_GRAYED : 0), IdMenuCopy, copyLabel);
@@ -3905,6 +3929,15 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
     InvalidateRect(window_, nullptr, FALSE);
 
     switch (command) {
+    case IdMenuNetworkDiagnostics: SaveNetworkDiagnostics(); break;
+    case IdMenuEncodingCmdAuto:
+        if (activeSession_ && activeSession_->mode == 4 && connection_) {
+            connection_->OverrideTextCodePage(0);
+            activeSession_->codePage = selectedCodePage_ = connection_->OutputCodePage();
+            activeSession_->decoder.Reset();
+            AppendStatus(L"CMD 编码已恢复自动检测；无法访问控制台时使用 OEM 并标明来源", false);
+        }
+        break;
     case IdMenuRawTrace: if(activeSession_)activeSession_->rawTrace=!activeSession_->rawTrace;break;
     case IdMenuPaste: PasteToTerminal(); break;
     case IdMenuEndingCr: case IdMenuEndingLf: case IdMenuEndingCrLf: case IdMenuEndingNone:
@@ -3926,6 +3959,7 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
         selectedCodePage_ = command == IdMenuEncodingUtf8 ? CP_UTF8 :
             (command == IdMenuEncodingGbk ? 936 : 20936);
         if (activeSession_) {
+            if (activeSession_->mode == 4 && connection_) connection_->OverrideTextCodePage(selectedCodePage_);
             activeSession_->codePage = selectedCodePage_;
             activeSession_->decoder.Reset();
         }
@@ -4419,16 +4453,29 @@ void MainWindow::RefreshConnectionList() {
         if (selected != sessions_.end()) selectedIndex = static_cast<size_t>(selected - sessions_.begin());
     }
     const LRESULT top=SendMessageW(connectionList_,LB_GETTOPINDEX,0,0);
-    std::wstring topName;
-    if(top>=0 && top<SendMessageW(connectionList_,LB_GETCOUNT,0,0)){auto len=SendMessageW(connectionList_,LB_GETTEXTLEN,top,0);if(len>=0){std::vector<wchar_t> text(static_cast<size_t>(len)+1);SendMessageW(connectionList_,LB_GETTEXT,top,reinterpret_cast<LPARAM>(text.data()));topName=text.data();}}
-    bool same=SendMessageW(connectionList_,LB_GETCOUNT,0,0)==static_cast<LRESULT>(sessions_.size()+(powerPageOpened_?1:0));
-    if(same)for(size_t i=0;i<sessions_.size();++i){auto len=SendMessageW(connectionList_,LB_GETTEXTLEN,i,0);std::vector<wchar_t> text(static_cast<size_t>(std::max<LRESULT>(len,0))+1);SendMessageW(connectionList_,LB_GETTEXT,i,reinterpret_cast<LPARAM>(text.data()));if(sessions_[i]->name!=text.data()){same=false;break;}}
-    if(!same){SendMessageW(connectionList_,WM_SETREDRAW,FALSE,0);SendMessageW(connectionList_,LB_RESETCONTENT,0,0);
-        for(const auto& session:sessions_)SendMessageW(connectionList_,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(session->name.c_str()));
-        if(powerPageOpened_)SendMessageW(connectionList_,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"IT6332A"));
-        auto anchor=topName.empty()?LB_ERR:SendMessageW(connectionList_,LB_FINDSTRINGEXACT,-1,reinterpret_cast<LPARAM>(topName.c_str()));
-        SendMessageW(connectionList_,LB_SETTOPINDEX,anchor==LB_ERR?top:anchor,0);SendMessageW(connectionList_,WM_SETREDRAW,TRUE,0);
+    const auto topId = top >= 0 && static_cast<size_t>(top) < connectionListIds_.size()
+        ? connectionListIds_[static_cast<size_t>(top)] : UINT64_MAX;
+    std::vector<std::uint64_t> ids;
+    for (const auto& session : sessions_) ids.push_back(session->id);
+    if (powerPageOpened_) ids.push_back(0);
+    bool same = ids == connectionListIds_ && SendMessageW(connectionList_, LB_GETCOUNT, 0, 0) == static_cast<LRESULT>(ids.size());
+    if (same) for (size_t i = 0; i < sessions_.size(); ++i) {
+        auto length = SendMessageW(connectionList_, LB_GETTEXTLEN, i, 0);
+        std::vector<wchar_t> text(static_cast<size_t>(std::max<LRESULT>(length, 0)) + 1);
+        SendMessageW(connectionList_, LB_GETTEXT, i, reinterpret_cast<LPARAM>(text.data()));
+        if (sessions_[i]->name != text.data()) { same = false; break; }
     }
+    if (!same) {
+        SendMessageW(connectionList_, WM_SETREDRAW, FALSE, 0);
+        SendMessageW(connectionList_, LB_RESETCONTENT, 0, 0);
+        for (const auto& session : sessions_) SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(session->name.c_str()));
+        if (powerPageOpened_) SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"IT6332A"));
+        auto found = std::find(ids.begin(), ids.end(), topId);
+        const auto anchored = found == ids.end() ? top : static_cast<LRESULT>(std::distance(ids.begin(), found));
+        SendMessageW(connectionList_, LB_SETTOPINDEX, anchored, 0);
+        SendMessageW(connectionList_, WM_SETREDRAW, TRUE, 0);
+    }
+    connectionListIds_ = std::move(ids);
     if(powerVisible_)selectedIndex=sessions_.size();
     if (!sessions_.empty() || powerPageOpened_) { auto keepTop=SendMessageW(connectionList_,LB_GETTOPINDEX,0,0);SendMessageW(connectionList_, LB_SETCURSEL, selectedIndex, 0);SendMessageW(connectionList_,LB_SETTOPINDEX,keepTop,0); }
     InvalidateRect(connectionList_, nullptr, TRUE);

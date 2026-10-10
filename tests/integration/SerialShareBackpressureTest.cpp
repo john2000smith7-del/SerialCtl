@@ -1,7 +1,36 @@
 #include "GatewayFixture.h"
 #include <fstream>
 #include <psapi.h>
+#include <tlhelp32.h>
 using namespace test;
+namespace {
+struct Metrics {
+    DWORD handles = 0, threads = 0;
+    SIZE_T working = 0, peak = 0;
+    std::uint64_t cpu = 0;
+};
+Metrics Measure() {
+    Metrics m;
+    GetProcessHandleCount(GetCurrentProcess(), &m.handles);
+    PROCESS_MEMORY_COUNTERS memory{};
+    Expect(GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory)) != FALSE, "process memory metrics");
+    m.working = memory.WorkingSetSize;
+    m.peak = memory.PeakWorkingSetSize;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    Expect(GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user) != FALSE, "process CPU metrics");
+    auto ticks = [](FILETIME t) { return (std::uint64_t(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
+    m.cpu = ticks(kernel) + ticks(user);
+    auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    Expect(snapshot != INVALID_HANDLE_VALUE, "thread snapshot");
+    THREADENTRY32 entry{};
+    entry.dwSize = sizeof(entry);
+    for (BOOL found = Thread32First(snapshot, &entry); found; found = Thread32Next(snapshot, &entry))
+        if (entry.th32OwnerProcessID == GetCurrentProcessId())
+            ++m.threads;
+    CloseHandle(snapshot);
+    return m;
+}
+} // namespace
 int main() {
     Wsa wsa;
     try {
@@ -61,7 +90,7 @@ int main() {
         Expect(f.com3->IsConnected(), "slow consumer cannot stop local driver");
         std::cout << "Slow-client bounded queue isolation: 9,830,400 healthy output bytes, no drops\n";
         // Measure forwarding from Publish entry to decoded event reception (loopback,
-        // controlled transports, 64-byte packets, 100 samples/load, no physical UART).
+        // controlled transports, 64-byte packets, 1000 samples/load, no physical UART).
         LARGE_INTEGER frequency;
         QueryPerformanceFrequency(&frequency);
         DWORD handles = 0;
@@ -72,6 +101,7 @@ int main() {
             << "environment=Windows runner loopback; physical_serial_rate=not_applicable; controlled_COMs=2; handles="
             << handles << " working_set=" << memory.WorkingSetSize << '\n';
         for (size_t count : {1u, 2u, 8u, 32u}) {
+            auto idle = Measure();
             Fixture load(18600, 18615);
             std::vector<std::unique_ptr<GatewayClient>> clients;
             for (size_t i = 0; i < count; ++i) {
@@ -81,7 +111,10 @@ int main() {
                 clients.push_back(std::move(c));
             }
             std::vector<double> delays;
-            for (int sample = 0; sample < 100; ++sample) {
+            auto active = Measure();
+            LARGE_INTEGER begin{}, finished{};
+            QueryPerformanceCounter(&begin);
+            for (int sample = 0; sample < 1000; ++sample) {
                 LARGE_INTEGER start, end;
                 QueryPerformanceCounter(&start);
                 load.server.Publish("session-5", Bytes(64, static_cast<std::uint8_t>(sample)));
@@ -101,6 +134,21 @@ int main() {
             std::cout << "forwarding clients=" << count << " P50_ms=" << percentile(.50)
                       << " P95_ms=" << percentile(.95) << " P99_ms=" << percentile(.99) << " samples=" << delays.size()
                       << '\n';
+            QueryPerformanceCounter(&finished);
+            auto end = Measure();
+            clients.clear();
+            load.server.Stop();
+            load.com3->Stop();
+            load.com5->Stop();
+            auto reclaimed = Measure();
+            std::cout << "load clients=" << count << " verified_output_bytes=" << count * 1000 * 64
+                      << " wall_ms=" << double(finished.QuadPart - begin.QuadPart) * 1000 / frequency.QuadPart
+                      << " cpu_ms=" << double(end.cpu - active.cpu) / 10000 << " working_set=" << end.working
+                      << " peak_working_set=" << end.peak << " threads_idle=" << idle.threads
+                      << " threads_active=" << active.threads << " threads_reclaimed=" << reclaimed.threads
+                      << " handles_idle=" << idle.handles << " handles_active=" << active.handles
+                      << " handles_reclaimed=" << reclaimed.handles << '\n';
+            Expect(reclaimed.threads <= idle.threads, "load service and client threads reclaimed after stop");
         }
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

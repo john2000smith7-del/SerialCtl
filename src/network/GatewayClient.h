@@ -15,8 +15,10 @@ class GatewayClient {
     void Connect(const std::wstring &, unsigned, const std::atomic_bool *cancel = nullptr, DWORD timeout = 700);
     void Close();
     void Cancel() {
-        if (readCancel_)
-            SetEvent(readCancel_);
+        std::lock_guard<std::mutex> lock(cancelMutex_);
+        auto cancel = readCancel_.load();
+        if (cancel)
+            SetEvent(cancel);
         auto s = socket_.load();
         if (s != INVALID_SOCKET)
             shutdown(s, SD_BOTH);
@@ -35,10 +37,11 @@ class GatewayClient {
 
   private:
     std::atomic<SOCKET> socket_{INVALID_SOCKET};
-    HANDLE readCancel_ = nullptr;
+    std::atomic<HANDLE> readCancel_{nullptr};
     std::unique_ptr<ws::Stream> stream_;
     nlohmann::json hello_;
     std::mutex send_;
+    std::mutex cancelMutex_; // cancellation cannot race HANDLE/socket destruction
     std::uint64_t request_ = 0;
 };
 } // namespace serialctl

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import queue
+import select
 import socket
 import struct
 import threading
@@ -54,7 +55,13 @@ class Wire:
             raise ProtocolError('Upgrade/protocol mismatch: ' + lines[0])
 
     def _read(self, size):
-        data = self.socket.recv(size)
+        while True:
+            try:
+                data = self.socket.recv(size)
+                break
+            except BlockingIOError:
+                # The live socket waits on readiness, with no periodic output poll.
+                select.select([self.socket], [], [])
         if not data:
             raise ConnectionError('Disconnected; execution may be unknown, do not resend')
         return data
@@ -80,7 +87,23 @@ class Wire:
         else:
             head += b'\xff' + struct.pack('!Q', n)
         with self.send_lock:
-            self.socket.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+            frame = head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+            if self.socket.gettimeout() != 0:
+                self.socket.sendall(frame)
+                return
+            deadline = time.monotonic() + 3
+            remaining = memoryview(frame)
+            while remaining:
+                wait = deadline - time.monotonic()
+                if wait <= 0 or not select.select([], [self.socket], [], wait)[1]:
+                    raise TimeoutError('Send timeout; execution unknown, do not resend')
+                try:
+                    sent = self.socket.send(remaining)
+                except BlockingIOError:
+                    continue
+                if not sent:
+                    raise ConnectionError('Disconnected during send; execution unknown')
+                remaining = remaining[sent:]
 
     def receive(self):
         while True:
@@ -105,9 +128,9 @@ class Wire:
             if opcode == 8:
                 if len(data) == 1:
                     raise ProtocolError('Invalid close')
-                if len(data)>=2:
-                    code=struct.unpack('!H',data[:2])[0]
-                    if code<1000 or code>=5000 or code in (1004,1005,1006,1015) or 1016<=code<3000:
+                if len(data) >= 2:
+                    code = struct.unpack('!H', data[:2])[0]
+                    if code < 1000 or code >= 5000 or code in (1004, 1005, 1006, 1015) or 1016 <= code < 3000:
                         raise ProtocolError('Invalid Close code')
                 reason = data[2:].decode('utf-8') if len(data) >= 2 else ''
                 raise ConnectionError('Server closed: ' + reason)
@@ -173,7 +196,7 @@ class Client:
             self.instance = hello['instance']
             if instance and instance != self.instance:
                 raise ProtocolError('INSTANCE_MISMATCH')
-            self.socket.settimeout(None)
+            self.socket.setblocking(False)
             self.reader = threading.Thread(target=self._receive, name='serialctl-ws', daemon=True)
             self.reader.start()
         except BaseException:
@@ -255,7 +278,7 @@ class Client:
         with self.lock:
             if resource in self.events:
                 raise ValueError('Already subscribed')
-            self.events[resource] = queue.Queue(maxsize=128)  # <= 4 MiB decoded JSON events
+            self.events[resource] = queue.Queue(maxsize=128)  # bounded events; each RFC message <= 128 KiB
         try:
             return self.request('subscribe', resource, {'after': after})
         except BaseException:
@@ -270,7 +293,7 @@ class Client:
         return result
 
     def next_event(self, resource, timeout=None):
-        target=self.events[resource]
+        target = self.events[resource]
         if target.empty() and (self.failure or self.closed):
             raise ConnectionError(str(self.failure or 'Client closed'))
         event = target.get(timeout=timeout)
@@ -304,12 +327,14 @@ class Client:
         if self.closed:
             return
         self.closed = True
-        self.failure=self.failure or ConnectionError('Client closed; queued input execution may be unknown')
-        if hasattr(self,'lock'):
+        self.failure = self.failure or ConnectionError('Client closed; queued input execution may be unknown')
+        if hasattr(self, 'lock'):
             with self.lock:
-                for target in list(self.pending.values())+list(self.events.values()):
-                    try:target.put_nowait(self.failure)
-                    except queue.Full:pass
+                for target in list(self.pending.values()) + list(self.events.values()):
+                    try:
+                        target.put_nowait(self.failure)
+                    except queue.Full:
+                        pass
         if self.socket:
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)

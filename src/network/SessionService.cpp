@@ -51,6 +51,7 @@ SessionService::Json SessionService::State(const std::string &id) {
     if (e->transport->InputCodePage()) {
         r["inputCodePage"] = e->transport->InputCodePage();
         r["outputCodePage"] = e->transport->OutputCodePage();
+        r["codePageSource"] = e->transport->CodePageSource();
     }
     return r;
 }

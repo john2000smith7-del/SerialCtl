@@ -17,6 +17,22 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder name, int size);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder text, int size);
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool EnumDisplaySettings(string device, int mode, [In,Out] byte[] settings);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int ChangeDisplaySettings([In,Out] byte[] settings, int flags);
+    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr dc,int index);
+    public static string PrepareDesktop() {
+        var mode=new byte[220]; BitConverter.GetBytes((ushort)220).CopyTo(mode,68);
+        if(!EnumDisplaySettings(null,-1,mode)) return "Current mode unavailable";
+        foreach(var candidate in new [] {new [] {1920,1080},new [] {1280,1024}}) {
+            BitConverter.GetBytes(0x00180000u).CopyTo(mode,72);
+            BitConverter.GetBytes(candidate[0]).CopyTo(mode,172);
+            BitConverter.GetBytes(candidate[1]).CopyTo(mode,176);
+            int result=ChangeDisplaySettings(mode,0);
+            if(result==0) return "Requested "+candidate[0]+"x"+candidate[1]+" accepted";
+        }
+        return "Display driver retained current resolution";
+    }
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
@@ -121,9 +137,10 @@ public static class SerialCtlUiSmoke {
 }
 '@
 function Capture-Desktop([string]$Name) {
-    $screen = New-Object Drawing.Bitmap(1920,1080)
+    $size=[Drawing.Size]::new([SerialCtlUiSmoke]::GetSystemMetrics(0),[SerialCtlUiSmoke]::GetSystemMetrics(1))
+    $screen = New-Object Drawing.Bitmap($size.Width,$size.Height)
     $graphics = [Drawing.Graphics]::FromImage($screen)
-    try { $graphics.CopyFromScreen(0,0,0,0,[Drawing.Size]::new(1920,1080)); $screen.Save((Join-Path $OutputDirectory ($Name+'.png')),[Drawing.Imaging.ImageFormat]::Png) }
+    try { $graphics.CopyFromScreen(0,0,0,0,$size); $screen.Save((Join-Path $OutputDirectory ($Name+'.png')),[Drawing.Imaging.ImageFormat]::Png) }
     finally { $graphics.Dispose(); $screen.Dispose() }
 }
 function Wait-Dialog([int]$ProcessId, [string]$Title) {
@@ -148,6 +165,11 @@ function Capture-Window([IntPtr]$Handle, [string]$Name) {
 }
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+$displayResult=[SerialCtlUiSmoke]::PrepareDesktop()
+Start-Sleep -Milliseconds 300
+$screenDc=[SerialCtlUiSmoke]::GetDC([IntPtr]::Zero)
+try {$dpi=[SerialCtlUiSmoke]::GetDeviceCaps($screenDc,88)} finally {[SerialCtlUiSmoke]::ReleaseDC([IntPtr]::Zero,$screenDc)|Out-Null}
+[ordered]@{system=[Environment]::OSVersion.VersionString; dpi=$dpi; width=[SerialCtlUiSmoke]::GetSystemMetrics(0);height=[SerialCtlUiSmoke]::GetSystemMetrics(1);resolution=$displayResult;capture='CopyFromScreen actual physical desktop; PrintWindow separate layout inspection';hardware='No physical UART/IT6332A; SFTP mock isolated'} | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'ui-environment.json') -Encoding UTF8
 $root = Get-SerialCtlRepositoryRoot
 $version = Get-SerialCtlVersion
 $extract = Join-Path $OutputDirectory 'payload'

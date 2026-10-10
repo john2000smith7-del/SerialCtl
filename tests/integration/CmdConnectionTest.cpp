@@ -65,6 +65,12 @@ int main() {
         if (!rejected)
             return 8;
     }
+    cmd.OverrideTextCodePage(936);
+    if (cmd.InputCodePage() != 936 || cmd.OutputCodePage() != 936 || std::string(cmd.CodePageSource()) != "manual")
+        return 12;
+    cmd.OverrideTextCodePage(0);
+    if (std::string(cmd.CodePageSource()) == "manual")
+        return 13;
     command = "echo SERIALCTL_SECOND-%SERIALCTL_TEST%\r\n";
     cmd.Send(Bytes(command.begin(), command.end()), error);
     {
