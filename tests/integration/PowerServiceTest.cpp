@@ -43,6 +43,20 @@ int main()
                         {"current", 1}})
                .contains("error"),
            "CH3 voltage limit");
+    Expect(
+        power
+            .Submit(
+                {{"type", "output"}, {"channels", Json::array({4294967297ull})}, {"enabled", true}})
+            .contains("error"),
+        "oversized channel cannot truncate to CH1");
+    Expect(power
+               .Submit({{"type", "task"},
+                        {"channels", Json::array({1})},
+                        {"onMs", 100.5},
+                        {"offMs", 100},
+                        {"count", 1}})
+               .contains("error"),
+           "fractional integer timing rejected");
     auto set = Wait(power, power.Submit({{"type", "parameters"},
                                          {"channels", Json::array({1})},
                                          {"voltage", 12.0},
@@ -130,5 +144,16 @@ int main()
                      {{"type", "connect"}, {"backend", "simulation"}, {"testFailAfterReads", 0}}));
     Expect(fault["state"] == "failed" && !failure.State()["connected"].get<bool>(),
            "query timeout does not claim connection");
+    PowerService interrupted;
+    auto ready = Wait(interrupted, interrupted.Submit({{"type", "connect"},
+                                                       {"backend", "simulation"},
+                                                       {"testFailAfterReads", 27}}));
+    Expect(ready["state"] == "completed", "fault injection leaves initial readback intact");
+    auto partial = Wait(interrupted, interrupted.Submit({{"type", "output"},
+                                                         {"channels", Json::array({1, 2})},
+                                                         {"enabled", true}}));
+    Expect(partial["state"] == "failed" && partial["channels"][0].contains("shutdownAttempt") &&
+               !interrupted.State()["connected"].get<bool>(),
+           "failed energizing attempts shutdown and inhibits later writes");
     return failures ? 1 : 0;
 }

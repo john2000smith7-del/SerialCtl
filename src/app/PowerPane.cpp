@@ -443,10 +443,16 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
     if (m == WM_TIMER)
     {
         HWND focus = GetFocus();
-        if (focus && IsChild(h,focus) && IsWindowVisible(h)) {
-            RECT field{},view{};GetWindowRect(focus,&field);MapWindowPoints(HWND_DESKTOP,h,reinterpret_cast<POINT*>(&field),2);GetClientRect(h,&view);
-            if(field.top<0)self->Scroll(self->scroll_+field.top);
-            else if(field.bottom>view.bottom)self->Scroll(self->scroll_+field.bottom-view.bottom);
+        if (focus && IsChild(h, focus) && IsWindowVisible(h))
+        {
+            RECT field{}, view{};
+            GetWindowRect(focus, &field);
+            MapWindowPoints(HWND_DESKTOP, h, reinterpret_cast<POINT *>(&field), 2);
+            GetClientRect(h, &view);
+            if (field.top < 0)
+                self->Scroll(self->scroll_ + field.top);
+            else if (field.bottom > view.bottom)
+                self->Scroll(self->scroll_ + field.bottom - view.bottom);
         }
         self->Refresh();
         return 0;
@@ -487,14 +493,15 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l)
         auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
         auto c = UiTheme(self->dark_);
         bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start;
-        HBRUSH outside = CreateSolidBrush(c.field);
+        HBRUSH outside =
+            CreateSolidBrush(item.CtlID >= 30 && item.CtlID <= 32 ? c.raised : c.field);
         FillRect(item.hDC, &item.rcItem, outside);
         DeleteObject(outside);
         UiBox(item.hDC, item.rcItem,
               (item.itemState & ODS_SELECTED)               ? c.border
               : primary && !(item.itemState & ODS_DISABLED) ? c.accent
                                                             : c.raised,
-              (item.itemState & ODS_FOCUS) ? c.accent : c.border, MulDiv(8, self->dpi_, 96));
+              (item.itemState & ODS_FOCUS) ? c.accent : c.border, MulDiv(10, self->dpi_, 96));
         SetBkMode(item.hDC, TRANSPARENT);
         SetTextColor(item.hDC, (item.itemState & ODS_DISABLED)           ? c.muted
                                : item.CtlID == Off || item.CtlID == Stop ? c.danger
@@ -605,14 +612,18 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
         if (id == 100 || id == 103)
         {
             auto d = [data](int x) { return MulDiv(x, data->pane->dpi_, 96); };
-            int footer = kind == 1 ? 364 : kind == 0 ? 264 : 144;
+            int footer = kind == 1 ? 292 : kind == 0 ? 264 : 144;
             MoveWindow(GetDlgItem(h, IDCANCEL), d(280), d(footer), d(96), d(36), TRUE);
             MoveWindow(GetDlgItem(h, IDOK), d(392), d(footer), d(96), d(36), TRUE);
             MoveWindow(data->error, d(16),
                        d(kind == 1   ? 236
                          : kind == 0 ? 156
                                      : 80),
-                       d(472), d(kind == 2 ? 48 : 64), TRUE);
+                       d(472),
+                       d(kind == 2   ? 48
+                         : kind == 1 ? 40
+                                     : 64),
+                       TRUE);
             MoveWindow(data->driver, d(16), d(kind == 1 ? 308 : 220), d(144), d(28), TRUE);
             SetWindowPos(h, nullptr, 0, 0, d(520), d(footer + 86),
                          SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
@@ -677,7 +688,13 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l)
             if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES)
                 SetWindowTextW(data->error, L"发布包中的驱动文件缺失，请重新解压完整压缩包。");
             else
-                ShellExecuteW(h, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            {
+                auto result = reinterpret_cast<INT_PTR>(
+                    ShellExecuteW(h, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+                if (result <= 32)
+                    SetWindowTextW(data->error,
+                                   L"驱动安装程序未能启动，请从发布包目录手动运行 setup.exe。");
+            }
             return TRUE;
         }
         if (id == IDCANCEL)

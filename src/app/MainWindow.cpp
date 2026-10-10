@@ -1068,8 +1068,13 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
     windowClass.lpszClassName = WindowClassName;
     if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
 
+    RECT work{}; SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);
+    HDC desktop = GetDC(nullptr); int dpi=GetDeviceCaps(desktop,LOGPIXELSX);ReleaseDC(nullptr,desktop);
+    int width = std::min(MulDiv(1180,dpi,96),static_cast<int>(work.right-work.left));
+    int height = std::min(MulDiv(760,dpi,96),static_cast<int>(work.bottom-work.top));
     window_ = CreateWindowExW(0, WindowClassName, L"SerialCtl", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1180, 760, nullptr, nullptr, instance, this);
+        work.left+(work.right-work.left-width)/2,work.top+(work.bottom-work.top-height)/2,width,height,
+        nullptr,nullptr,instance,this);
     if (!window_) return false;
     ApplyDarkTitleBar(window_, darkMode_);
     ShowWindow(window_, showCommand);
@@ -3300,7 +3305,7 @@ void MainWindow::ConnectFromDialog() {
     session->mode = pendingMode_;
     if (pendingMode_ == 4) { session->codePage = GetOEMCP(); session->lineEndingIndex = 2; }
     session->lineEndingIndex = pendingMode_ == 0 ? 1 : (pendingMode_ == 4 ? 2 : 0);
-    session->name = sessionName;
+    session->name = sessionName + (pendingMode_ == 4 ? L" #" + std::to_wstring(session->id) : L"");
     session->host = pendingHost_;
     session->username = pendingUsername_;
     session->password = pendingPassword_;

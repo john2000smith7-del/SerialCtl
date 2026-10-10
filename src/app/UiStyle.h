@@ -68,7 +68,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         HBRUSH outside = CreateSolidBrush(colors.raised);
         FillRect(dc, &rect, outside);
         DeleteObject(outside);
-        UiBox(dc, rect, colors.field, GetFocus() == h ? colors.accent : colors.border, d(8));
+        UiBox(dc, rect, colors.field, GetFocus() == h ? colors.accent : colors.border, d(10));
         if (!edit)
         {
             int selected = static_cast<int>(SendMessageW(h, CB_GETCURSEL, 0, 0));
@@ -110,6 +110,15 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     LRESULT result = DefSubclassProc(h, message, w, l);
     if (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE)
         RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
+    if (message == WM_SIZE)
+    {
+        RECT bounds{};
+        GetWindowRect(h, &bounds);
+        SetWindowRgn(h,
+                     CreateRoundRectRgn(0, 0, bounds.right - bounds.left + 1,
+                                        bounds.bottom - bounds.top + 1, d(20), d(20)),
+                     TRUE);
+    }
     if (message == WM_NCDESTROY)
         RemoveWindowSubclass(h, UiFieldProc, id);
     return result;

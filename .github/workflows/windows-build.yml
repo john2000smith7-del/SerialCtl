@@ -41,5 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SerialCtl-UI-evidence
-          path: ${{ runner.temp }}/serialctl-ui
+          path: |
+            ${{ runner.temp }}/serialctl-ui/*.png
+            ${{ runner.temp }}/serialctl-ui/*.txt
           if-no-files-found: warn

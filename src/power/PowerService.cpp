@@ -77,7 +77,7 @@ Json ValidateChannels(const Json &command)
     std::set<int> unique;
     for (const auto &item : channels)
     {
-        Require(item.is_number_integer(), "Invalid channel");
+        Require(item.is_number_integer() && item >= 1 && item <= 3, "Invalid channel");
         int channel = item.get<int>();
         Require(channel >= 1 && channel <= 3 && unique.insert(channel).second,
                 "Invalid or duplicate channel");
@@ -322,14 +322,13 @@ Json PowerService::Submit(const Json &command)
             }
             if (type == "task")
             {
-                Require(command.at("onMs").is_number_unsigned() ||
-                            command.at("onMs").is_number_integer(),
-                        "Invalid timing");
-                auto on = command.at("onMs").get<long long>(),
-                     off = command.at("offMs").get<long long>(),
-                     count = command.at("count").get<long long>();
-                Require(on >= 100 && off >= 100 && on <= 604800000 && off <= 604800000 &&
-                            count >= 1 && count <= 1000000,
+                Require(command.at("onMs").is_number_integer() &&
+                            command.at("offMs").is_number_integer() &&
+                            command.at("count").is_number_integer(),
+                        "Invalid timing/count type");
+                Require(command.at("onMs") >= 100 && command.at("onMs") <= 604800000 &&
+                            command.at("offMs") >= 100 && command.at("offMs") <= 604800000 &&
+                            command.at("count") >= 1 && command.at("count") <= 1000000,
                         "Invalid task timings/count");
             }
         }
@@ -456,6 +455,19 @@ void PowerService::Outputs(const Json &channels, bool enabled, Json &result)
                 failed = true;
                 item["state"] = "unknown";
                 item["error"] = e.what();
+                if (!enabled)
+                {
+                    try
+                    {
+                        Command("INST:NSEL " + std::to_string(channel));
+                        Command("CHAN:OUTP OFF");
+                        item["shutdownAttempt"] = "written-unconfirmed";
+                    }
+                    catch (...)
+                    {
+                        item["shutdownAttempt"] = "failed";
+                    }
+                }
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     state_["channels"][channel - 1]["output"] = nullptr;
@@ -465,6 +477,25 @@ void PowerService::Outputs(const Json &channels, bool enabled, Json &result)
     }
     log_.WriteStatus(MultiByteToWide(reinterpret_cast<const std::uint8_t *>(result.dump().data()),
                                      result.dump().size(), CP_UTF8));
+    if (failed && enabled)
+    {
+        for (auto &item : result)
+        {
+            int channel = item["channel"];
+            try
+            {
+                Command("INST:NSEL " + std::to_string(channel));
+                Command("CHAN:OUTP OFF");
+                item["shutdownAttempt"] = "written-unconfirmed";
+            }
+            catch (...)
+            {
+                item["shutdownAttempt"] = "failed";
+            }
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["channels"][channel - 1]["output"] = nullptr;
+        }
+    }
     if (failed)
         throw std::runtime_error("Output operation incomplete; inspect per-channel result");
 }

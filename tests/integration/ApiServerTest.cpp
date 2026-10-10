@@ -63,6 +63,10 @@ int main()
                 "{\"channels\":[2],\"enabled\":true}")
             .find("403") == std::string::npos)
         return 5;
+    if (Request(port, token, "/api/v1/power-supplies/power-1/channels/output",
+                "{\"channels\":[4294967297],\"enabled\":true}")
+            .find("403") == std::string::npos)
+        return 22;
     if (writes != 0)
         return 6;
     for (int i = 0; i < 64; ++i)

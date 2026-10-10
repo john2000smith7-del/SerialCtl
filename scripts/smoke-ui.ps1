@@ -168,7 +168,16 @@ foreach ($architecture in @('x64')) {
     try {
         if (-not $application.WaitForInputIdle(10000)) { throw 'Packaged application did not become idle.' }
         $application.Refresh()
-        if ($application.HasExited -or $application.MainWindowHandle -eq 0) { throw 'Packaged application did not open a window.' }
+        for ($attempt=0; $attempt -lt 50 -and -not $application.HasExited -and $application.MainWindowHandle -eq 0; $attempt++) {
+            Start-Sleep -Milliseconds 100
+            $application.Refresh()
+        }
+        if ($application.HasExited -or $application.MainWindowHandle -eq 0) {
+            $diagnostic = "Packaged application startup failed; exited=$($application.HasExited)"
+            if ($application.HasExited) { $diagnostic += "; exit=$($application.ExitCode)" }
+            Set-Content -LiteralPath (Join-Path $OutputDirectory 'startup.txt') -Value $diagnostic
+            throw $diagnostic
+        }
         foreach ($theme in @('dark','light')) {
             if ($theme -eq 'light') {
                 [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]104, [IntPtr]::Zero) | Out-Null
@@ -222,6 +231,7 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($dialog,100),0x14E,[IntPtr]1,[IntPtr]0) | Out-Null
             [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]((1 -shl 16) -bor 100),[IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 200
+            [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-power-serial"
             [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($dialog,100),0x14E,[IntPtr]2,[IntPtr]0) | Out-Null
             [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]((1 -shl 16) -bor 100),[IntPtr]::Zero) | Out-Null
@@ -262,6 +272,12 @@ foreach ($architecture in @('x64')) {
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-macro"
+            for ($step=3; $step -le 10; $step++) {
+                [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]1104,[IntPtr]::Zero) | Out-Null
+                Start-Sleep -Milliseconds 70
+            }
+            [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
+            Capture-Window $dialog "$architecture-$theme-macro-ten"
             [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 200
         }

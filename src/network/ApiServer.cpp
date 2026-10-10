@@ -184,7 +184,6 @@ Bytes Decode64(const std::string &text)
 }
 ApiServer::ApiServer()
 {
-    instance_ = Random().substr(0, 32);
 }
 ApiServer::~ApiServer()
 {
@@ -201,6 +200,8 @@ bool ApiServer::Start(Handler handler, std::map<std::string, ApiGrant> grants, s
     try
     {
         token_ = Random();
+        if (instance_.empty())
+            instance_ = Random().substr(0, 32);
     }
     catch (...)
     {
@@ -384,7 +385,7 @@ bool ApiServer::Allowed(const std::string &method, const std::string &path, cons
             return false;
         for (const auto &c : body["channels"])
         {
-            if (!c.is_number_integer())
+            if (!c.is_number_integer() || c < 1 || c > 3)
                 return false;
             int n = c.get<int>();
             if (n < 1 || n > 3 || !(it->second.channels & (1u << (n - 1))))
@@ -584,8 +585,8 @@ Json ApiServer::Events(const std::string &resource, std::uint64_t after)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     Json events = Json::array();
-    bool gap =
-        !events_.empty() && after != 0 && after + 1 < events_.front()["seq"].get<std::uint64_t>();
+    bool gap = after > sequence_ || (!events_.empty() && after != 0 &&
+                                     after < events_.front()["seq"].get<std::uint64_t>() - 1);
     for (const auto &e : events_)
         if (e["resource"] == resource && e["seq"].get<std::uint64_t>() > after)
             events.push_back(e);
