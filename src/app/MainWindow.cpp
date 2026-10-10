@@ -48,6 +48,7 @@ constexpr int IdSharedAdvancedPort = 9010;
 constexpr int IdSharedAutoPort = 9011;
 constexpr UINT_PTR StatusTimerId = 4001;
 constexpr UINT_PTR CommandTimerId = 4002;
+constexpr UINT_PTR SideAnimationTimerId = 4003;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
 constexpr std::uint32_t MaximumCommandIntervalMs = 60000;
 constexpr size_t MaximumCommandSteps = 10;
@@ -207,11 +208,11 @@ struct MainLayoutMetrics {
 };
 
 MainLayoutMetrics GetMainLayoutMetrics(
-    int width, int height, int preferredRightWidth, bool rightPanelCollapsed) {
+    int width, int height, int preferredRightWidth, bool rightPanelCollapsed, int animationWidth = -1) {
     const int leftWidth = std::max(Ui::MinLeftWidth, std::min(Ui::MaxLeftWidth, width * 18 / 100));
     const int availableRight = std::max(Ui::MinRightWidth,
         width - leftWidth - Ui::Gap * 2 - Ui::MinCenterWidth);
-    const int rightWidth = rightPanelCollapsed ? Ui::CollapsedRightWidth + Ui::Gap :
+    const int rightWidth = animationWidth >= 0 ? animationWidth : rightPanelCollapsed ? Ui::CollapsedRightWidth + Ui::Gap :
         std::max(Ui::MinRightWidth, std::min({Ui::MaxRightWidth,
             availableRight, preferredRightWidth}));
     return {leftWidth, rightWidth, width - rightWidth, leftWidth + Ui::Gap,
@@ -1759,19 +1760,20 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     case WM_SIZE:
         if (wParam == SIZE_MINIMIZED) return 0;
+        KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
         LayoutControls(LOWORD(lParam), HIWORD(lParam));
         InvalidateRect(window_, nullptr, TRUE);
         UpdateWindow(window_);
         return 0;
     case WM_SETCURSOR:
-        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) && LOWORD(lParam) == HTCLIENT) {
+        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && LOWORD(lParam) == HTCLIENT) {
             POINT point{};
             GetCursorPos(&point);
             ScreenToClient(window_, &point);
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
                 return TRUE;
@@ -1779,12 +1781,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_LBUTTONDOWN:
-        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
+        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
             const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelDragging_ = true;
                 SetCapture(window_);
@@ -1793,12 +1795,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_LBUTTONDBLCLK:
-        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
+        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
             const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelWidth_ = 360;
                 LayoutControls(client.right, client.bottom);
@@ -1831,6 +1833,15 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         rightPanelDragging_ = false;
         break;
     case WM_TIMER:
+        if(wParam==SideAnimationTimerId) {
+            const double t=std::min(1.0,static_cast<double>(GetTickCount64()-rightPanelAnimationAt_)/200.0);
+            const double ease=1-(1-t)*(1-t)*(1-t);
+            rightPanelAnimatedWidth_=rightPanelAnimationFrom_+static_cast<int>((rightPanelAnimationTo_-rightPanelAnimationFrom_)*ease);
+            if(t>=1){KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;}
+            RECT rect{};GetClientRect(window_,&rect);LayoutControls(rect.right,rect.bottom);
+            if(!rightPanelAnimating_)ShowSftpPanel(sftpPanelVisible_);
+            InvalidateRect(window_,nullptr,FALSE);return 0;
+        }
         if (wParam == StatusTimerId) {
             KillTimer(window_, StatusTimerId);
             AppendStatus(L"", false);
@@ -1854,7 +1865,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_PAINT: {
         PAINTSTRUCT paint{};
         HDC dc = BeginPaint(window_, &paint);
-        PaintWindow(dc);
+        RECT rect{};GetClientRect(window_,&rect);
+        HDC memory=CreateCompatibleDC(dc);HBITMAP bitmap=CreateCompatibleBitmap(dc,std::max(1L,rect.right),std::max(1L,rect.bottom));
+        if(memory&&bitmap){auto previous=SelectObject(memory,bitmap);PaintWindow(memory);BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY);SelectObject(memory,previous);}else PaintWindow(dc);
+        if(bitmap)DeleteObject(bitmap);if(memory)DeleteDC(memory);
         EndPaint(window_, &paint);
         return 0;
     }
@@ -1898,6 +1912,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             pendingMode_ = 4; powerVisible_ = false; ConnectFromDialog(); return 0;
         }
         if (LOWORD(wParam) == IdPower && HIWORD(wParam) == BN_CLICKED) {
+            KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
             powerVisible_ = true; powerPageOpened_ = true; RefreshConnectionList(); RECT r{}; GetClientRect(window_, &r); LayoutControls(r.right, r.bottom); InvalidateRect(window_, nullptr, TRUE); for(HWND button:toolbarButtons_)InvalidateRect(button,nullptr,TRUE); return 0;
         } {
         const int id = LOWORD(wParam);
@@ -2217,14 +2232,13 @@ void MainWindow::CreateControls() {
 void MainWindow::LayoutControls(int width, int height) {
     if (width <= 0 || height <= 0) return;
     rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth + Ui::MinCenterWidth + Ui::Gap * 3;
-    const int toolbarFrameTop = Ui::Section;
-    const int toolbarButtonTop = toolbarFrameTop + 4;
-    int x = Ui::Gap + 4;
-    const int buttonWidths[] = {92, 92, 102, 132, 92, 92};
+    const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
+    int x = Ui::Gap + Ui::Space * 2;
+    const int buttonWidths[] = {84, 84, 104, 112, 88, 84};
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
         MoveWindow(toolbarButtons_[index], x, toolbarButtonTop,
-            Ui::Scale(buttonWidths[index]), Ui::SegmentHeight, TRUE);
-        x += Ui::Scale(buttonWidths[index]);
+            Ui::Scale(buttonWidths[index]), Ui::StandardHeight, TRUE);
+        x += Ui::Scale(buttonWidths[index] + 4);
     }
     MoveWindow(themeButton_, width - Ui::Gap - Ui::StandardHeight,
         (Ui::ToolbarHeight - Ui::StandardHeight) / 2,
@@ -2232,7 +2246,7 @@ void MainWindow::LayoutControls(int width, int height) {
 
     const int contentTop = Ui::ToolbarHeight;
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        width, height, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+        width, height, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
     const int cardTop = contentTop + Ui::Gap;
     const int centerCardBottom = layout.contentBottom;
     const int sideCardBottom = height - Ui::Gap;
@@ -2263,10 +2277,10 @@ void MainWindow::LayoutControls(int width, int height) {
     const int rightLeft = layout.rightLeft;
     const int rightInnerLeft = rightLeft + Ui::PanelPadding;
     const int actualRightInnerRight = width - Ui::Gap - Ui::PanelPadding;
-    const int rightInnerRight = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)
+    const int rightInnerRight = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)
         ? rightInnerLeft + Ui::MinRightWidth - Ui::PanelPadding * 2
         : actualRightInnerRight;
-    const int toggleLeft = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)
+    const int toggleLeft = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)
         ? rightLeft + (layout.rightWidth - Ui::Gap - Ui::IconButtonSize) / 2
         : actualRightInnerRight - Ui::IconButtonSize;
     MoveWindow(rightPanelToggleButton_, toggleLeft, headerTop + 2,
@@ -2305,7 +2319,7 @@ void MainWindow::LayoutControls(int width, int height) {
         sizeWidth, Ui::CompactHeight, TRUE);
     MoveWindow(sftpModifiedHeader_, rightInnerLeft + nameWidth + sizeWidth,
         sftpHeaderTop, modifiedWidth, Ui::CompactHeight, TRUE);
-    ShowWindow(sftpModifiedHeader_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) && sftpPanelVisible_ &&
+    ShowWindow(sftpModifiedHeader_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && sftpPanelVisible_ &&
         showModifiedColumn ? SW_SHOW : SW_HIDE);
     const int sftpListTop = sftpHeaderTop + Ui::CompactHeight;
     const int transferListHeight = sftpTransferExpanded_ ? Ui::SftpTransferDrawerHeight : 0;
@@ -2322,7 +2336,7 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(sftpTransferList_, rightInnerLeft,
         transferHeaderTop + Ui::CompactHeight + Ui::Gap, sftpContentWidth,
         transferListHeight, TRUE);
-    ShowWindow(sftpTransferList_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) && sftpPanelVisible_ &&
+    ShowWindow(sftpTransferList_, !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && sftpPanelVisible_ &&
         sftpTransferExpanded_ ? SW_SHOW : SW_HIDE);
     const int sftpWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 3) / 4;
     MoveWindow(sftpUpButton_, rightInnerLeft, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
@@ -2334,7 +2348,7 @@ void MainWindow::LayoutControls(int width, int height) {
     MoveWindow(status_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - statusHeight_,
         leftInnerRight - leftInnerLeft, statusHeight_, TRUE);
     ShowWindow(rightPanelToggleButton_, SW_SHOW);
-    if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) {
+    if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) {
         for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
                  addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
                  sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,
@@ -2356,12 +2370,9 @@ void MainWindow::PaintWindow(HDC dc) {
     FillRect(dc, &client, windowBrush_);
     RECT toolbar{0, 0, client.right, Ui::ToolbarHeight};
     FillRect(dc, &toolbar, panelBrush_);
-    RECT connectionMethodFrame{Ui::Gap, Ui::Section,
-        Ui::Gap + Ui::ToolbarGroupWidth + 4, Ui::ToolbarHeight - Ui::Section};
-    DrawRoundedBox(dc, connectionMethodFrame, Ui::Radius, colors.panel, darkMode_ ? RGB(255,255,255) : RGB(0,0,0));
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+        client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
     RECT leftCard{Ui::Gap, Ui::ToolbarHeight + Ui::Gap, layout.leftWidth, client.bottom - Ui::Gap};
     RECT terminalFrame{layout.centerLeft, Ui::ToolbarHeight + Ui::Gap,
         layout.centerRight, layout.contentBottom};
@@ -2370,7 +2381,7 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, colors.terminal, colors.border);
     DrawRoundedBox(dc, rightCard, Ui::CardRadius, colors.panel, colors.border);
-    if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_)) {
+    if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
         RECT segmentFrame{layout.rightLeft + Ui::PanelPadding, Ui::ToolbarHeight + Ui::Gap + Ui::PanelPadding,
             layout.rightLeft + Ui::PanelPadding + 4 + Ui::SegmentWidth * 2,
             Ui::ToolbarHeight + Ui::Gap + Ui::PanelPadding + Ui::StandardHeight};
@@ -2540,18 +2551,18 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower) {
             const bool active = id == IdPower ? powerVisible_ :
                 (!powerVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
-            const bool inverse = active != darkMode_;
-            const COLORREF ink = inverse ? RGB(255,255,255) : RGB(0,0,0);
-            const COLORREF fill = active ? (darkMode_ ? RGB(255,255,255) : RGB(0,0,0)) : colors.panel;
+            const bool inverse = darkMode_;
+            const COLORREF ink = colors.text;
+            const COLORREF fill = active || hovered ? colors.panelAlt : colors.panel;
             DrawRoundedBox(dc, rect, Ui::Radius, fill,
-                (hovered || focused || pressed) ? (darkMode_ ? RGB(255,255,255) : RGB(0,0,0)) : fill);
+                focused ? colors.border : fill);
             const ToolbarIcon icon = id == IdCmd ? ToolbarIcon::Cmd : id == IdPower ? ToolbarIcon::Power :
                 static_cast<ToolbarIcon>(id - IdSsh);
             const int size = Ui::Scale(24), top = (rect.top+rect.bottom-size)/2;
-            RECT iconRect{rect.left+Ui::Space, top, rect.left+Ui::Space+size, top+size};
+            RECT iconRect{rect.left+Ui::Scale(12), top, rect.left+Ui::Scale(12)+size, top+size};
             toolbarIcons_.Draw(dc, icon, iconRect, inverse);
             RECT textRect = rect;
-            textRect.left += Ui::Scale(40);
+            textRect.left += Ui::Scale(46);
             DrawTextSimple(dc, ControlText(item.hwndItem), textRect, ink,
                 uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
             return;
@@ -3730,7 +3741,7 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     SetWindowTextW(status_, text.c_str());
     if (status_) {
         RECT client{}; GetClientRect(window_, &client);
-        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_));
+        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_),rightPanelAnimatedWidth_);
         HDC dc=GetDC(status_); auto old=SelectObject(dc,smallFont_);
         RECT measured{0,0,layout.leftWidth-Ui::Gap-Ui::PanelPadding*2,0};
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
@@ -3908,7 +3919,7 @@ void MainWindow::PasteToTerminal() {
 }
 
 void MainWindow::UpdateTerminalDimensions() {
-    if (!terminal_ || !terminalFont_) return;
+    if (!terminal_ || !terminalFont_ || rightPanelAnimating_) return;
     RECT client{};
     GetClientRect(terminal_, &client);
     HDC dc = GetDC(terminal_);
@@ -4339,20 +4350,30 @@ void MainWindow::SaveUiState() const {
 }
 
 void MainWindow::SetRightPanelCollapsed(bool collapsed) {
-    if (rightPanelCollapsed_ == collapsed) return;
+    if (powerVisible_ || (rightPanelCollapsed_ == collapsed && !rightPanelAnimating_)) return;
+    RECT client{}; GetClientRect(window_, &client);
+    const auto before = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,
+        rightPanelCollapsed_ || rightPanelAutoCollapsed_, rightPanelAnimatedWidth_);
     rightPanelCollapsed_ = collapsed;
+    const auto after = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,
+        rightPanelCollapsed_ || rightPanelAutoCollapsed_);
     SetWindowTextW(rightPanelToggleButton_, collapsed ? L"展开侧栏" : L"折叠侧栏");
-    RECT client{};
-    GetClientRect(window_, &client);
-    LayoutControls(client.right, client.bottom);
+    rightPanelAnimationFrom_=before.rightWidth; rightPanelAnimationTo_=after.rightWidth;
+    rightPanelAnimatedWidth_=before.rightWidth; rightPanelAnimationAt_=GetTickCount64();
+    rightPanelAnimating_=before.rightWidth!=after.rightWidth;
     SaveUiState();
-    InvalidateRect(window_, nullptr, TRUE);
+    if(rightPanelAnimating_ && SetTimer(window_,SideAnimationTimerId,16,nullptr)) {
+        ShowSftpPanel(sftpPanelVisible_); return;
+    }
+    rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
+    LayoutControls(client.right,client.bottom);ShowSftpPanel(sftpPanelVisible_);
+    InvalidateRect(window_,nullptr,FALSE);
 }
 
 void MainWindow::ShowSftpPanel(bool show) {
     if (show && (!connection_ || selectedMode_ != 0 || !SftpClient::IsAvailable())) show = false;
     sftpPanelVisible_ = show;
-    if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_) {
+    if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) {
         for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
                  addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
                  sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,

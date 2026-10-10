@@ -249,11 +249,45 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($powerPane,21),[ref]$ch2)|Out-Null
             [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($powerPane,22),[ref]$ch3)|Out-Null
             if ($ch1.Top -ne $ch2.Top -or $ch2.Top -ne $ch3.Top -or $ch1.Right -ge $ch2.Left -or $ch2.Right -ge $ch3.Left) { throw 'Power channel cards are not three distinct columns.' }
-            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]43,[IntPtr]::Zero) | Out-Null
-            $dialog=Wait-Dialog $application.Id '通道异常保护'
-            Capture-Window $dialog "$architecture-$theme-power-protection"
+            # The approved views are captured from the real EXE with no hardware or fake measurements.
+            foreach ($tab in @(91,92,93)) {
+                [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]$tab,[IntPtr]::Zero)|Out-Null
+                Start-Sleep -Milliseconds 200
+                Capture-Window $application.MainWindowHandle "$architecture-$theme-power-tab-$tab"
+            }
+            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]92,[IntPtr]::Zero)|Out-Null
+            foreach ($category in @(191,192,193)) {
+                [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]$category,[IntPtr]::Zero)|Out-Null
+                Start-Sleep -Milliseconds 150
+                Capture-Window $application.MainWindowHandle "$architecture-$theme-power-settings-$category"
+            }
+            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]90,[IntPtr]::Zero)|Out-Null
+            foreach ($mode in @(1,2,3,0)) {
+                [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($powerPane,80),0x14E,[IntPtr]$mode,[IntPtr]0)|Out-Null
+                [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]((1 -shl 16) -bor 80),[IntPtr]::Zero)|Out-Null
+                Start-Sleep -Milliseconds 200
+                Capture-Window $application.MainWindowHandle "$architecture-$theme-power-mode-$mode"
+                if ($mode -eq 1 -or $mode -eq 2) {
+                    if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($powerPane,21))) { throw 'Combination rendered duplicate CH2 checkbox.' }
+                    if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($powerPane,51))) { throw 'Combination rendered duplicate CH2 parameters.' }
+                }
+            }
+            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]91,[IntPtr]::Zero)|Out-Null
+            foreach ($automation in @(111,112,113,114,110)) {
+                [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]$automation,[IntPtr]::Zero)|Out-Null
+                Start-Sleep -Milliseconds 150
+                Capture-Window $application.MainWindowHandle "$architecture-$theme-power-automation-$automation"
+            }
+            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]123,[IntPtr]::Zero)|Out-Null
+            $dialog=Wait-Dialog $application.Id '编辑电源步骤'
+            Capture-Window $dialog "$architecture-$theme-power-sequence-editor"
             [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]2,[IntPtr]::Zero)|Out-Null
-            Start-Sleep -Milliseconds 200
+            Start-Sleep -Milliseconds 150
+            [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,980,620,$true)|Out-Null
+            Start-Sleep -Milliseconds 150
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-power-minimum"
+            [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,1180,760,$true)|Out-Null
+            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]90,[IntPtr]::Zero)|Out-Null
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x111,[IntPtr]300,[IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 700
             Capture-Window $application.MainWindowHandle "$architecture-$theme-cmd"
@@ -441,5 +475,5 @@ foreach ($architecture in @('x64')) {
 Remove-Item -LiteralPath $extract -Recurse -Force
 Remove-Item -LiteralPath $mock -Force
 foreach ($architecture in @('x64')) { Remove-Item -LiteralPath (Join-Path $OutputDirectory "mock-$architecture") -Recurse -Force }
-Write-Host '[PASS] x64 startup/shutdown, light default and both themes, monochrome toolbar, power three-column layout and automatic sidebar collapse, USB/RS232-only/protection dialogs, persistent CMD, automatic fixed-scope API and real GUI CMD round-trip, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation, command drafts and Save, manual SFTP path and persisted column resize'
+Write-Host '[PASS] x64 startup/shutdown, light default and both themes, monochrome toolbar, power three-column layout and automatic sidebar collapse, USB/RS232-only connection and sequence dialogs, all power modes and categories, persistent CMD, automatic fixed-scope API and real GUI CMD round-trip, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation, command drafts and Save, manual SFTP path and persisted column resize'
 Write-Host '[NOT RUN] Actual Windows 7 hardware and field server tests'

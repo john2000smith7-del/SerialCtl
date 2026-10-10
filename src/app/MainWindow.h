@@ -343,6 +343,9 @@ private:
     bool rightPanelCollapsed_ = false;
     bool rightPanelAutoCollapsed_ = false;
     bool rightPanelDragging_ = false;
+    bool rightPanelAnimating_ = false;
+    int rightPanelAnimatedWidth_ = -1, rightPanelAnimationFrom_ = 0, rightPanelAnimationTo_ = 0;
+    ULONGLONG rightPanelAnimationAt_ = 0;
     bool sftpPanelVisible_ = false;
     bool sftpBusy_ = false;
     std::wstring sftpDirectory_ = L".";

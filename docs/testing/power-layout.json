@@ -1,0 +1,1800 @@
+{
+  "reference": "V1.0.4 actual EXE screenshot",
+  "window": {
+    "width": 1044,
+    "height": 760
+  },
+  "tokens": {
+    "fieldHeight": 28,
+    "buttonHeight": 36,
+    "tabHeight": 32,
+    "cardGap": 12,
+    "cardRadius": 12,
+    "controlRadius": 10,
+    "innerPadding": 16
+  },
+  "views": {
+    "01-常用操作.png": {
+      "pane": {
+        "x": 232,
+        "y": 131,
+        "width": 716,
+        "height": 593,
+        "top": 131,
+        "right": 948,
+        "bottom": 724,
+        "left": 232
+      },
+      "boxes": [
+        {
+          "name": "连接",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 748,
+            "y": 131,
+            "width": 96,
+            "height": 36,
+            "top": 131,
+            "right": 844,
+            "bottom": 167,
+            "left": 748
+          }
+        },
+        {
+          "name": "断开",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 852,
+            "y": 131,
+            "width": 96,
+            "height": 36,
+            "top": 131,
+            "right": 948,
+            "bottom": 167,
+            "left": 852
+          }
+        },
+        {
+          "name": "独立CH1＋CH2 并联CH1＋CH2 串联跟踪",
+          "tag": "SELECT",
+          "rect": {
+            "x": 304.015625,
+            "y": 183,
+            "width": 160,
+            "height": 36,
+            "top": 183,
+            "right": 464.015625,
+            "bottom": 219,
+            "left": 304.015625
+          }
+        },
+        {
+          "name": "应用设置",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 636,
+            "y": 183,
+            "width": 104,
+            "height": 36,
+            "top": 183,
+            "right": 740,
+            "bottom": 219,
+            "left": 636
+          }
+        },
+        {
+          "name": "加电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 748,
+            "y": 183,
+            "width": 96,
+            "height": 36,
+            "top": 183,
+            "right": 844,
+            "bottom": 219,
+            "left": 748
+          }
+        },
+        {
+          "name": "掉电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 852,
+            "y": 183,
+            "width": 96,
+            "height": 36,
+            "top": 183,
+            "right": 948,
+            "bottom": 219,
+            "left": 852
+          }
+        },
+        {
+          "name": "CH1未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 232,
+            "y": 235,
+            "width": 230.65625,
+            "height": 216,
+            "top": 235,
+            "right": 462.65625,
+            "bottom": 451,
+            "left": 232
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 249,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 262,
+            "bottom": 268.5,
+            "left": 249
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 333,
+            "y": 371,
+            "width": 112.65625,
+            "height": 28,
+            "top": 371,
+            "right": 445.65625,
+            "bottom": 399,
+            "left": 333
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 333,
+            "y": 407,
+            "width": 112.65625,
+            "height": 28,
+            "top": 407,
+            "right": 445.65625,
+            "bottom": 435,
+            "left": 333
+          }
+        },
+        {
+          "name": "CH2未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 474.65625,
+            "y": 235,
+            "width": 230.671875,
+            "height": 216,
+            "top": 235,
+            "right": 705.328125,
+            "bottom": 451,
+            "left": 474.65625
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 491.65625,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 504.65625,
+            "bottom": 268.5,
+            "left": 491.65625
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 575.65625,
+            "y": 371,
+            "width": 112.671875,
+            "height": 28,
+            "top": 371,
+            "right": 688.328125,
+            "bottom": 399,
+            "left": 575.65625
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 575.65625,
+            "y": 407,
+            "width": 112.671875,
+            "height": 28,
+            "top": 407,
+            "right": 688.328125,
+            "bottom": 435,
+            "left": 575.65625
+          }
+        },
+        {
+          "name": "CH3未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 717.328125,
+            "y": 235,
+            "width": 230.671875,
+            "height": 216,
+            "top": 235,
+            "right": 948,
+            "bottom": 451,
+            "left": 717.328125
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 734.328125,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 747.328125,
+            "bottom": 268.5,
+            "left": 734.328125
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 818.328125,
+            "y": 371,
+            "width": 112.671875,
+            "height": 28,
+            "top": 371,
+            "right": 931,
+            "bottom": 399,
+            "left": 818.328125
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 818.328125,
+            "y": 407,
+            "width": 112.671875,
+            "height": 28,
+            "top": 407,
+            "right": 931,
+            "bottom": 435,
+            "left": 818.328125
+          }
+        },
+        {
+          "name": "监测自动化设备设置日志与诊断",
+          "tag": "DIV",
+          "rect": {
+            "x": 232,
+            "y": 467,
+            "width": 384,
+            "height": 32,
+            "top": 467,
+            "right": 616,
+            "bottom": 499,
+            "left": 232
+          }
+        },
+        {
+          "name": "监测",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 234,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 326,
+            "bottom": 497,
+            "left": 234
+          }
+        },
+        {
+          "name": "自动化",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 326,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 418,
+            "bottom": 497,
+            "left": 326
+          }
+        },
+        {
+          "name": "设备设置",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 418,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 510,
+            "bottom": 497,
+            "left": 418
+          }
+        },
+        {
+          "name": "日志与诊断",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 510,
+            "y": 469,
+            "width": 104,
+            "height": 28,
+            "top": 469,
+            "right": 614,
+            "bottom": 497,
+            "left": 510
+          }
+        },
+        {
+          "name": "实时趋势采样1 秒2 秒暂停显示导出 CSV电压 (V)电流 (A)\n  循环测试定时任务步骤序列设备定时器触发与步进加电时长 (秒)掉电时长 (秒)循环次数开始测试停止并掉电保存载入未运行\n  输出与保护通道组合设备预设面板与控制\n   通道CH1CH2CH3设备过压保护电压设置上限 (V)设备过压阈值 (V)软件电压阈值 (V)软件电流阈值 (A)保护状态 —读取清除保护应用\n   组合模式独立并联串联跟踪关联通道CH1＋CH2电压跟踪比例电流跟踪比例读取应用\n   设备存储位置—本地方案—保存到设备调用设备预设保存到文件载入文件\n   控制方式—本地远程锁定面板屏幕显示蜂鸣屏幕文字清除文字读取应用\n  \n  操作记录测量 CSV导出日志时间来源操作结果设备信息错误队列状态寄存器自检SCPI 调试设备复位",
+          "tag": "DIV",
+          "rect": {
+            "x": 232,
+            "y": 515,
+            "width": 716,
+            "height": 201,
+            "top": 515,
+            "right": 948,
+            "bottom": 716,
+            "left": 232
+          }
+        },
+        {
+          "name": "1 秒2 秒",
+          "tag": "SELECT",
+          "rect": {
+            "x": 699.640625,
+            "y": 515,
+            "width": 72,
+            "height": 28,
+            "top": 515,
+            "right": 771.640625,
+            "bottom": 543,
+            "left": 699.640625
+          }
+        },
+        {
+          "name": "暂停显示",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 779.640625,
+            "y": 515,
+            "width": 78.015625,
+            "height": 28,
+            "top": 515,
+            "right": 857.65625,
+            "bottom": 543,
+            "left": 779.640625
+          }
+        },
+        {
+          "name": "导出 CSV",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 865.65625,
+            "y": 515,
+            "width": 82.34375,
+            "height": 28,
+            "top": 515,
+            "right": 948,
+            "bottom": 543,
+            "left": 865.65625
+          }
+        }
+      ],
+      "overflow": []
+    },
+    "02-并联模式.png": {
+      "pane": {
+        "x": 232,
+        "y": 131,
+        "width": 716,
+        "height": 593,
+        "top": 131,
+        "right": 948,
+        "bottom": 724,
+        "left": 232
+      },
+      "boxes": [
+        {
+          "name": "连接",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 748,
+            "y": 131,
+            "width": 96,
+            "height": 36,
+            "top": 131,
+            "right": 844,
+            "bottom": 167,
+            "left": 748
+          }
+        },
+        {
+          "name": "断开",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 852,
+            "y": 131,
+            "width": 96,
+            "height": 36,
+            "top": 131,
+            "right": 948,
+            "bottom": 167,
+            "left": 852
+          }
+        },
+        {
+          "name": "独立CH1＋CH2 并联CH1＋CH2 串联跟踪",
+          "tag": "SELECT",
+          "rect": {
+            "x": 304.015625,
+            "y": 183,
+            "width": 160,
+            "height": 36,
+            "top": 183,
+            "right": 464.015625,
+            "bottom": 219,
+            "left": 304.015625
+          }
+        },
+        {
+          "name": "应用设置",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 636,
+            "y": 183,
+            "width": 104,
+            "height": 36,
+            "top": 183,
+            "right": 740,
+            "bottom": 219,
+            "left": 636
+          }
+        },
+        {
+          "name": "加电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 748,
+            "y": 183,
+            "width": 96,
+            "height": 36,
+            "top": 183,
+            "right": 844,
+            "bottom": 219,
+            "left": 748
+          }
+        },
+        {
+          "name": "掉电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 852,
+            "y": 183,
+            "width": 96,
+            "height": 36,
+            "top": 183,
+            "right": 948,
+            "bottom": 219,
+            "left": 852
+          }
+        },
+        {
+          "name": "CH1＋CH2未连接电压 (V)—总电流 (A)—功率 —CH1 —　CH2 —设定电压 (V)总电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 232,
+            "y": 235,
+            "width": 473.328125,
+            "height": 216,
+            "top": 235,
+            "right": 705.328125,
+            "bottom": 451,
+            "left": 232
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 249,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 262,
+            "bottom": 268.5,
+            "left": 249
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 357,
+            "y": 371,
+            "width": 331.328125,
+            "height": 28,
+            "top": 371,
+            "right": 688.328125,
+            "bottom": 399,
+            "left": 357
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 357,
+            "y": 407,
+            "width": 331.328125,
+            "height": 28,
+            "top": 407,
+            "right": 688.328125,
+            "bottom": 435,
+            "left": 357
+          }
+        },
+        {
+          "name": "CH3未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 717.328125,
+            "y": 235,
+            "width": 230.671875,
+            "height": 216,
+            "top": 235,
+            "right": 948,
+            "bottom": 451,
+            "left": 717.328125
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 734.328125,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 747.328125,
+            "bottom": 268.5,
+            "left": 734.328125
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 818.328125,
+            "y": 371,
+            "width": 112.671875,
+            "height": 28,
+            "top": 371,
+            "right": 931,
+            "bottom": 399,
+            "left": 818.328125
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 818.328125,
+            "y": 407,
+            "width": 112.671875,
+            "height": 28,
+            "top": 407,
+            "right": 931,
+            "bottom": 435,
+            "left": 818.328125
+          }
+        },
+        {
+          "name": "监测自动化设备设置日志与诊断",
+          "tag": "DIV",
+          "rect": {
+            "x": 232,
+            "y": 467,
+            "width": 384,
+            "height": 32,
+            "top": 467,
+            "right": 616,
+            "bottom": 499,
+            "left": 232
+          }
+        },
+        {
+          "name": "监测",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 234,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 326,
+            "bottom": 497,
+            "left": 234
+          }
+        },
+        {
+          "name": "自动化",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 326,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 418,
+            "bottom": 497,
+            "left": 326
+          }
+        },
+        {
+          "name": "设备设置",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 418,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 510,
+            "bottom": 497,
+            "left": 418
+          }
+        },
+        {
+          "name": "日志与诊断",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 510,
+            "y": 469,
+            "width": 104,
+            "height": 28,
+            "top": 469,
+            "right": 614,
+            "bottom": 497,
+            "left": 510
+          }
+        },
+        {
+          "name": "实时趋势采样1 秒2 秒暂停显示导出 CSV电压 (V)电流 (A)\n  循环测试定时任务步骤序列设备定时器触发与步进加电时长 (秒)掉电时长 (秒)循环次数开始测试停止并掉电保存载入未运行\n  输出与保护通道组合设备预设面板与控制\n   通道CH1CH2CH3设备过压保护电压设置上限 (V)设备过压阈值 (V)软件电压阈值 (V)软件电流阈值 (A)保护状态 —读取清除保护应用\n   组合模式独立并联串联跟踪关联通道CH1＋CH2电压跟踪比例电流跟踪比例读取应用\n   设备存储位置—本地方案—保存到设备调用设备预设保存到文件载入文件\n   控制方式—本地远程锁定面板屏幕显示蜂鸣屏幕文字清除文字读取应用\n  \n  操作记录测量 CSV导出日志时间来源操作结果设备信息错误队列状态寄存器自检SCPI 调试设备复位",
+          "tag": "DIV",
+          "rect": {
+            "x": 232,
+            "y": 515,
+            "width": 716,
+            "height": 201,
+            "top": 515,
+            "right": 948,
+            "bottom": 716,
+            "left": 232
+          }
+        },
+        {
+          "name": "1 秒2 秒",
+          "tag": "SELECT",
+          "rect": {
+            "x": 699.640625,
+            "y": 515,
+            "width": 72,
+            "height": 28,
+            "top": 515,
+            "right": 771.640625,
+            "bottom": 543,
+            "left": 699.640625
+          }
+        },
+        {
+          "name": "暂停显示",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 779.640625,
+            "y": 515,
+            "width": 78.015625,
+            "height": 28,
+            "top": 515,
+            "right": 857.65625,
+            "bottom": 543,
+            "left": 779.640625
+          }
+        },
+        {
+          "name": "导出 CSV",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 865.65625,
+            "y": 515,
+            "width": 82.34375,
+            "height": 28,
+            "top": 515,
+            "right": 948,
+            "bottom": 543,
+            "left": 865.65625
+          }
+        }
+      ],
+      "overflow": []
+    },
+    "03-自动化.png": {
+      "pane": {
+        "x": 232,
+        "y": 131,
+        "width": 716,
+        "height": 593,
+        "top": 131,
+        "right": 948,
+        "bottom": 724,
+        "left": 232
+      },
+      "boxes": [
+        {
+          "name": "连接",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 748,
+            "y": 131,
+            "width": 96,
+            "height": 36,
+            "top": 131,
+            "right": 844,
+            "bottom": 167,
+            "left": 748
+          }
+        },
+        {
+          "name": "断开",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 852,
+            "y": 131,
+            "width": 96,
+            "height": 36,
+            "top": 131,
+            "right": 948,
+            "bottom": 167,
+            "left": 852
+          }
+        },
+        {
+          "name": "独立CH1＋CH2 并联CH1＋CH2 串联跟踪",
+          "tag": "SELECT",
+          "rect": {
+            "x": 304.015625,
+            "y": 183,
+            "width": 160,
+            "height": 36,
+            "top": 183,
+            "right": 464.015625,
+            "bottom": 219,
+            "left": 304.015625
+          }
+        },
+        {
+          "name": "应用设置",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 636,
+            "y": 183,
+            "width": 104,
+            "height": 36,
+            "top": 183,
+            "right": 740,
+            "bottom": 219,
+            "left": 636
+          }
+        },
+        {
+          "name": "加电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 748,
+            "y": 183,
+            "width": 96,
+            "height": 36,
+            "top": 183,
+            "right": 844,
+            "bottom": 219,
+            "left": 748
+          }
+        },
+        {
+          "name": "掉电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 852,
+            "y": 183,
+            "width": 96,
+            "height": 36,
+            "top": 183,
+            "right": 948,
+            "bottom": 219,
+            "left": 852
+          }
+        },
+        {
+          "name": "CH1未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 232,
+            "y": 235,
+            "width": 230.65625,
+            "height": 216,
+            "top": 235,
+            "right": 462.65625,
+            "bottom": 451,
+            "left": 232
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 249,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 262,
+            "bottom": 268.5,
+            "left": 249
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 333,
+            "y": 371,
+            "width": 112.65625,
+            "height": 28,
+            "top": 371,
+            "right": 445.65625,
+            "bottom": 399,
+            "left": 333
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 333,
+            "y": 407,
+            "width": 112.65625,
+            "height": 28,
+            "top": 407,
+            "right": 445.65625,
+            "bottom": 435,
+            "left": 333
+          }
+        },
+        {
+          "name": "CH2未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 474.65625,
+            "y": 235,
+            "width": 230.671875,
+            "height": 216,
+            "top": 235,
+            "right": 705.328125,
+            "bottom": 451,
+            "left": 474.65625
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 491.65625,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 504.65625,
+            "bottom": 268.5,
+            "left": 491.65625
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 575.65625,
+            "y": 371,
+            "width": 112.671875,
+            "height": 28,
+            "top": 371,
+            "right": 688.328125,
+            "bottom": 399,
+            "left": 575.65625
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 575.65625,
+            "y": 407,
+            "width": 112.671875,
+            "height": 28,
+            "top": 407,
+            "right": 688.328125,
+            "bottom": 435,
+            "left": 575.65625
+          }
+        },
+        {
+          "name": "CH3未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 717.328125,
+            "y": 235,
+            "width": 230.671875,
+            "height": 216,
+            "top": 235,
+            "right": 948,
+            "bottom": 451,
+            "left": 717.328125
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 734.328125,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 747.328125,
+            "bottom": 268.5,
+            "left": 734.328125
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 818.328125,
+            "y": 371,
+            "width": 112.671875,
+            "height": 28,
+            "top": 371,
+            "right": 931,
+            "bottom": 399,
+            "left": 818.328125
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 818.328125,
+            "y": 407,
+            "width": 112.671875,
+            "height": 28,
+            "top": 407,
+            "right": 931,
+            "bottom": 435,
+            "left": 818.328125
+          }
+        },
+        {
+          "name": "监测自动化设备设置日志与诊断",
+          "tag": "DIV",
+          "rect": {
+            "x": 232,
+            "y": 467,
+            "width": 384,
+            "height": 32,
+            "top": 467,
+            "right": 616,
+            "bottom": 499,
+            "left": 232
+          }
+        },
+        {
+          "name": "监测",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 234,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 326,
+            "bottom": 497,
+            "left": 234
+          }
+        },
+        {
+          "name": "自动化",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 326,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 418,
+            "bottom": 497,
+            "left": 326
+          }
+        },
+        {
+          "name": "设备设置",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 418,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 510,
+            "bottom": 497,
+            "left": 418
+          }
+        },
+        {
+          "name": "日志与诊断",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 510,
+            "y": 469,
+            "width": 104,
+            "height": 28,
+            "top": 469,
+            "right": 614,
+            "bottom": 497,
+            "left": 510
+          }
+        },
+        {
+          "name": "实时趋势采样1 秒2 秒暂停显示导出 CSV电压 (V)电流 (A)\n  循环测试定时任务步骤序列设备定时器触发与步进加电时长 (秒)掉电时长 (秒)循环次数开始测试停止并掉电保存载入未运行\n  输出与保护通道组合设备预设面板与控制\n   通道CH1CH2CH3设备过压保护电压设置上限 (V)设备过压阈值 (V)软件电压阈值 (V)软件电流阈值 (A)保护状态 —读取清除保护应用\n   组合模式独立并联串联跟踪关联通道CH1＋CH2电压跟踪比例电流跟踪比例读取应用\n   设备存储位置—本地方案—保存到设备调用设备预设保存到文件载入文件\n   控制方式—本地远程锁定面板屏幕显示蜂鸣屏幕文字清除文字读取应用\n  \n  操作记录测量 CSV导出日志时间来源操作结果设备信息错误队列状态寄存器自检SCPI 调试设备复位",
+          "tag": "DIV",
+          "rect": {
+            "x": 232,
+            "y": 515,
+            "width": 716,
+            "height": 201,
+            "top": 515,
+            "right": 948,
+            "bottom": 716,
+            "left": 232
+          }
+        },
+        {
+          "name": "循环测试",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 232,
+            "y": 514.5,
+            "width": 52.015625,
+            "height": 28,
+            "top": 514.5,
+            "right": 284.015625,
+            "bottom": 542.5,
+            "left": 232
+          }
+        },
+        {
+          "name": "定时任务",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 296.015625,
+            "y": 514.5,
+            "width": 52.015625,
+            "height": 28,
+            "top": 514.5,
+            "right": 348.03125,
+            "bottom": 542.5,
+            "left": 296.015625
+          }
+        },
+        {
+          "name": "步骤序列",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 360.03125,
+            "y": 514.5,
+            "width": 52.015625,
+            "height": 28,
+            "top": 514.5,
+            "right": 412.046875,
+            "bottom": 542.5,
+            "left": 360.03125
+          }
+        },
+        {
+          "name": "设备定时器",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 424.046875,
+            "y": 514.5,
+            "width": 65.015625,
+            "height": 28,
+            "top": 514.5,
+            "right": 489.0625,
+            "bottom": 542.5,
+            "left": 424.046875
+          }
+        },
+        {
+          "name": "触发与步进",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 501.0625,
+            "y": 514.5,
+            "width": 65.015625,
+            "height": 28,
+            "top": 514.5,
+            "right": 566.078125,
+            "bottom": 542.5,
+            "left": 501.0625
+          }
+        },
+        {
+          "name": "5",
+          "tag": "INPUT",
+          "rect": {
+            "x": 232,
+            "y": 586,
+            "width": 230.65625,
+            "height": 28,
+            "top": 586,
+            "right": 462.65625,
+            "bottom": 614,
+            "left": 232
+          }
+        },
+        {
+          "name": "5",
+          "tag": "INPUT",
+          "rect": {
+            "x": 474.65625,
+            "y": 586,
+            "width": 230.671875,
+            "height": 28,
+            "top": 586,
+            "right": 705.328125,
+            "bottom": 614,
+            "left": 474.65625
+          }
+        },
+        {
+          "name": "10",
+          "tag": "INPUT",
+          "rect": {
+            "x": 717.328125,
+            "y": 586,
+            "width": 230.671875,
+            "height": 28,
+            "top": 586,
+            "right": 948,
+            "bottom": 614,
+            "left": 717.328125
+          }
+        },
+        {
+          "name": "开始测试",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 232,
+            "y": 630,
+            "width": 266,
+            "height": 36,
+            "top": 630,
+            "right": 498,
+            "bottom": 666,
+            "left": 232
+          }
+        },
+        {
+          "name": "停止并掉电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 506,
+            "y": 630,
+            "width": 266,
+            "height": 36,
+            "top": 630,
+            "right": 772,
+            "bottom": 666,
+            "left": 506
+          }
+        },
+        {
+          "name": "保存",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 780,
+            "y": 630,
+            "width": 80,
+            "height": 36,
+            "top": 630,
+            "right": 860,
+            "bottom": 666,
+            "left": 780
+          }
+        },
+        {
+          "name": "载入",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 868,
+            "y": 630,
+            "width": 80,
+            "height": 36,
+            "top": 630,
+            "right": 948,
+            "bottom": 666,
+            "left": 868
+          }
+        }
+      ],
+      "overflow": []
+    },
+    "04-设备设置.png": {
+      "pane": {
+        "x": 232,
+        "y": 131,
+        "width": 716,
+        "height": 593,
+        "top": 131,
+        "right": 948,
+        "bottom": 724,
+        "left": 232
+      },
+      "boxes": [
+        {
+          "name": "连接",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 748,
+            "y": 131,
+            "width": 96,
+            "height": 36,
+            "top": 131,
+            "right": 844,
+            "bottom": 167,
+            "left": 748
+          }
+        },
+        {
+          "name": "断开",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 852,
+            "y": 131,
+            "width": 96,
+            "height": 36,
+            "top": 131,
+            "right": 948,
+            "bottom": 167,
+            "left": 852
+          }
+        },
+        {
+          "name": "独立CH1＋CH2 并联CH1＋CH2 串联跟踪",
+          "tag": "SELECT",
+          "rect": {
+            "x": 304.015625,
+            "y": 183,
+            "width": 160,
+            "height": 36,
+            "top": 183,
+            "right": 464.015625,
+            "bottom": 219,
+            "left": 304.015625
+          }
+        },
+        {
+          "name": "应用设置",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 636,
+            "y": 183,
+            "width": 104,
+            "height": 36,
+            "top": 183,
+            "right": 740,
+            "bottom": 219,
+            "left": 636
+          }
+        },
+        {
+          "name": "加电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 748,
+            "y": 183,
+            "width": 96,
+            "height": 36,
+            "top": 183,
+            "right": 844,
+            "bottom": 219,
+            "left": 748
+          }
+        },
+        {
+          "name": "掉电",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 852,
+            "y": 183,
+            "width": 96,
+            "height": 36,
+            "top": 183,
+            "right": 948,
+            "bottom": 219,
+            "left": 852
+          }
+        },
+        {
+          "name": "CH1未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 232,
+            "y": 235,
+            "width": 230.65625,
+            "height": 216,
+            "top": 235,
+            "right": 462.65625,
+            "bottom": 451,
+            "left": 232
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 249,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 262,
+            "bottom": 268.5,
+            "left": 249
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 333,
+            "y": 371,
+            "width": 112.65625,
+            "height": 28,
+            "top": 371,
+            "right": 445.65625,
+            "bottom": 399,
+            "left": 333
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 333,
+            "y": 407,
+            "width": 112.65625,
+            "height": 28,
+            "top": 407,
+            "right": 445.65625,
+            "bottom": 435,
+            "left": 333
+          }
+        },
+        {
+          "name": "CH2未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 474.65625,
+            "y": 235,
+            "width": 230.671875,
+            "height": 216,
+            "top": 235,
+            "right": 705.328125,
+            "bottom": 451,
+            "left": 474.65625
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 491.65625,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 504.65625,
+            "bottom": 268.5,
+            "left": 491.65625
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 575.65625,
+            "y": 371,
+            "width": 112.671875,
+            "height": 28,
+            "top": 371,
+            "right": 688.328125,
+            "bottom": 399,
+            "left": 575.65625
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 575.65625,
+            "y": 407,
+            "width": 112.671875,
+            "height": 28,
+            "top": 407,
+            "right": 688.328125,
+            "bottom": 435,
+            "left": 575.65625
+          }
+        },
+        {
+          "name": "CH3未连接电压 (V)—电流 (A)—功率 —设定电压 (V)电流限值 (A)",
+          "tag": "ARTICLE",
+          "rect": {
+            "x": 717.328125,
+            "y": 235,
+            "width": 230.671875,
+            "height": 216,
+            "top": 235,
+            "right": 948,
+            "bottom": 451,
+            "left": 717.328125
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 734.328125,
+            "y": 255.5,
+            "width": 13,
+            "height": 13,
+            "top": 255.5,
+            "right": 747.328125,
+            "bottom": 268.5,
+            "left": 734.328125
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 818.328125,
+            "y": 371,
+            "width": 112.671875,
+            "height": 28,
+            "top": 371,
+            "right": 931,
+            "bottom": 399,
+            "left": 818.328125
+          }
+        },
+        {
+          "name": "0",
+          "tag": "INPUT",
+          "rect": {
+            "x": 818.328125,
+            "y": 407,
+            "width": 112.671875,
+            "height": 28,
+            "top": 407,
+            "right": 931,
+            "bottom": 435,
+            "left": 818.328125
+          }
+        },
+        {
+          "name": "监测自动化设备设置日志与诊断",
+          "tag": "DIV",
+          "rect": {
+            "x": 232,
+            "y": 467,
+            "width": 384,
+            "height": 32,
+            "top": 467,
+            "right": 616,
+            "bottom": 499,
+            "left": 232
+          }
+        },
+        {
+          "name": "监测",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 234,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 326,
+            "bottom": 497,
+            "left": 234
+          }
+        },
+        {
+          "name": "自动化",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 326,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 418,
+            "bottom": 497,
+            "left": 326
+          }
+        },
+        {
+          "name": "设备设置",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 418,
+            "y": 469,
+            "width": 92,
+            "height": 28,
+            "top": 469,
+            "right": 510,
+            "bottom": 497,
+            "left": 418
+          }
+        },
+        {
+          "name": "日志与诊断",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 510,
+            "y": 469,
+            "width": 104,
+            "height": 28,
+            "top": 469,
+            "right": 614,
+            "bottom": 497,
+            "left": 510
+          }
+        },
+        {
+          "name": "实时趋势采样1 秒2 秒暂停显示导出 CSV电压 (V)电流 (A)\n  循环测试定时任务步骤序列设备定时器触发与步进加电时长 (秒)掉电时长 (秒)循环次数开始测试停止并掉电保存载入未运行\n  输出与保护通道组合设备预设面板与控制\n   通道CH1CH2CH3设备过压保护电压设置上限 (V)设备过压阈值 (V)软件电压阈值 (V)软件电流阈值 (A)保护状态 —读取清除保护应用\n   组合模式独立并联串联跟踪关联通道CH1＋CH2电压跟踪比例电流跟踪比例读取应用\n   设备存储位置—本地方案—保存到设备调用设备预设保存到文件载入文件\n   控制方式—本地远程锁定面板屏幕显示蜂鸣屏幕文字清除文字读取应用\n  \n  操作记录测量 CSV导出日志时间来源操作结果设备信息错误队列状态寄存器自检SCPI 调试设备复位",
+          "tag": "DIV",
+          "rect": {
+            "x": 232,
+            "y": 515,
+            "width": 716,
+            "height": 201,
+            "top": 515,
+            "right": 948,
+            "bottom": 716,
+            "left": 232
+          }
+        },
+        {
+          "name": "输出与保护",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 232,
+            "y": 515,
+            "width": 103,
+            "height": 32,
+            "top": 515,
+            "right": 335,
+            "bottom": 547,
+            "left": 232
+          }
+        },
+        {
+          "name": "通道组合",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 232,
+            "y": 551,
+            "width": 103,
+            "height": 32,
+            "top": 551,
+            "right": 335,
+            "bottom": 583,
+            "left": 232
+          }
+        },
+        {
+          "name": "设备预设",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 232,
+            "y": 587,
+            "width": 103,
+            "height": 32,
+            "top": 587,
+            "right": 335,
+            "bottom": 619,
+            "left": 232
+          }
+        },
+        {
+          "name": "面板与控制",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 232,
+            "y": 623,
+            "width": 103,
+            "height": 32,
+            "top": 623,
+            "right": 335,
+            "bottom": 655,
+            "left": 232
+          }
+        },
+        {
+          "name": "CH1CH2CH3",
+          "tag": "SELECT",
+          "rect": {
+            "x": 402.015625,
+            "y": 515,
+            "width": 96,
+            "height": 28,
+            "top": 515,
+            "right": 498.015625,
+            "bottom": 543,
+            "left": 402.015625
+          }
+        },
+        {
+          "name": "",
+          "tag": "INPUT",
+          "rect": {
+            "x": 847.984375,
+            "y": 522.5,
+            "width": 13,
+            "height": 13,
+            "top": 522.5,
+            "right": 860.984375,
+            "bottom": 535.5,
+            "left": 847.984375
+          }
+        },
+        {
+          "name": "—",
+          "tag": "INPUT",
+          "rect": {
+            "x": 364,
+            "y": 582,
+            "width": 286,
+            "height": 28,
+            "top": 582,
+            "right": 650,
+            "bottom": 610,
+            "left": 364
+          }
+        },
+        {
+          "name": "—",
+          "tag": "INPUT",
+          "rect": {
+            "x": 662,
+            "y": 582,
+            "width": 286,
+            "height": 28,
+            "top": 582,
+            "right": 948,
+            "bottom": 610,
+            "left": 662
+          }
+        },
+        {
+          "name": "—",
+          "tag": "INPUT",
+          "rect": {
+            "x": 364,
+            "y": 649,
+            "width": 286,
+            "height": 28,
+            "top": 649,
+            "right": 650,
+            "bottom": 677,
+            "left": 364
+          }
+        },
+        {
+          "name": "—",
+          "tag": "INPUT",
+          "rect": {
+            "x": 662,
+            "y": 649,
+            "width": 286,
+            "height": 28,
+            "top": 649,
+            "right": 948,
+            "bottom": 677,
+            "left": 662
+          }
+        },
+        {
+          "name": "读取",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 692,
+            "y": 689,
+            "width": 80,
+            "height": 28,
+            "top": 689,
+            "right": 772,
+            "bottom": 717,
+            "left": 692
+          }
+        },
+        {
+          "name": "清除保护",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 780,
+            "y": 689,
+            "width": 80,
+            "height": 28,
+            "top": 689,
+            "right": 860,
+            "bottom": 717,
+            "left": 780
+          }
+        },
+        {
+          "name": "应用",
+          "tag": "BUTTON",
+          "rect": {
+            "x": 868,
+            "y": 689,
+            "width": 80,
+            "height": 28,
+            "top": 689,
+            "right": 948,
+            "bottom": 717,
+            "left": 868
+          }
+        }
+      ],
+      "overflow": []
+    }
+  }
+}

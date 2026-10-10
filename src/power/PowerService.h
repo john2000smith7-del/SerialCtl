@@ -7,11 +7,9 @@
 #include <map>
 #include <mutex>
 #include <thread>
-namespace serialctl
-{
+namespace serialctl {
 using Json = nlohmann::json;
-class PowerService
-{
+class PowerService {
   public:
     PowerService();
     ~PowerService();
@@ -21,12 +19,19 @@ class PowerService
     static Json UsbResources();
     static bool VisaAvailable();
     void Shutdown();
+    bool ExportLog(bool csv, const std::wstring &path, std::wstring &error);
 
   private:
     struct Transport;
     void Run();
     void Execute(const std::string &id, const Json &command);
     void Poll();
+    void ReadMode();
+    void ChangeMode(const std::string &mode);
+    void SetParameters(const Json &settings);
+    void Extended(const Json &command, Json &action);
+    void AdvanceTask();
+    void CheckScpi();
     void Select(int channel);
     void Outputs(const Json &channels, bool enabled, Json &result);
     void StopTask();
@@ -46,5 +51,6 @@ class PowerService
     bool stopping_ = false;
     std::uint64_t next_ = 1;
     std::uint64_t pollAt_ = 0, taskAt_ = 0;
+    unsigned pollInterval_ = 1000;
 };
 } // namespace serialctl
