@@ -22,7 +22,7 @@ def main():
     send.add_argument('--ending', choices=('CR', 'LF', 'CRLF', 'None'), default='CRLF')
     watch = sub.add_parser('watch')
     watch.add_argument('resource')
-    watch.add_argument('--after', type=int, default=0)
+    watch.add_argument('--after', type=int)
     args = parser.parse_args()
     if args.command == 'discover':
         print(json.dumps(discover(args.ip, args.port), ensure_ascii=False, indent=2))
@@ -42,7 +42,10 @@ def main():
             result = c.input(resource, (args.text + ending).encode(encoding))
         else:
             resource = c.resource(args.resource)
-            c.subscribe(resource, args.after)
+            if args.after is None:
+                c.subscribe_new(resource)
+            else:
+                c.subscribe(resource, args.after)
             while True:
                 e = c.next_event(resource)
                 if e['kind'] == 'output':

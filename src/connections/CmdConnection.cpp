@@ -101,7 +101,7 @@ Bytes CmdConnection::PrepareInput(const Bytes &bytes) {
     if (bytes.empty())
         return {};
     const auto page = InputCodePage();
-    auto flags = page == CP_UTF8 ? MB_ERR_INVALID_CHARS : 0;
+    auto flags = (page == CP_UTF8 || page == 936 || page == 20936) ? MB_ERR_INVALID_CHARS : 0;
     int size = MultiByteToWideChar(page, flags, reinterpret_cast<const char *>(bytes.data()),
                                    static_cast<int>(bytes.size()), nullptr, 0);
     if (size <= 0 || size > 131072)

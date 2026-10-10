@@ -52,6 +52,14 @@ try:
         pass
     else:
         raise AssertionError('Gone target remained writable')
+    other.close()
+    fixture.stdin.write('overflow COM5\n')
+    fixture.stdin.flush()
+    assert fixture.stdout.readline().strip() == 'overflow COM5'
+    with SerialStream('127.0.0.1', 'COM5', port=port) as fresh:
+        assert fresh.subscription['gap'] is True
+        fresh.send(b'LIVE_AFTER_EXPLICIT_GAP')
+        assert exact(fresh, 23) == b'LIVE_AFTER_EXPLICIT_GAP'
     capacity = subprocess.Popen([sys.argv[1], '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     held = []
     try:
@@ -59,9 +67,15 @@ try:
         for _ in range(128):
             held.append(Client('127.0.0.1', port=full_port))
         full_instance = held[0].instance
+        try:
+            Client('127.0.0.1', port=full_port)
+        except CapacityError as error:
+            assert error.instance == full_instance
+        else:
+            raise AssertionError('Explicit full port was not diagnosed')
         candidates = discover('127.0.0.1')
         assert any(x['instance'] == full_instance and x['error'] == 'CLIENT_LIMIT' for x in candidates
-                   if x['port'] == full_port)
+                   if x['port'] == full_port), {'full_port':full_port,'instance':full_instance,'discovered':candidates}
         for kwargs in ({'port': full_port}, {'instance': full_instance}):
             try:
                 Client('127.0.0.1', **kwargs)

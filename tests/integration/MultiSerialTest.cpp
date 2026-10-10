@@ -14,6 +14,11 @@ int main(int argc, char **) {
                     std::cout << "closed COM3" << std::endl;
                 } else if (line == "quit")
                     break;
+                else if (line == "overflow COM5") {
+                    for (int i = 0; i < 1100; ++i)
+                        f.server.Publish("session-5", Bytes{9});
+                    std::cout << "overflow COM5" << std::endl;
+                }
             }
             return 0;
         }

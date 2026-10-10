@@ -136,7 +136,19 @@ bool SharedSerialConnection::Start(DataCallback data, StatusCallback status, std
         if (resource_.empty())
             throw std::runtime_error("TARGET_NOT_FOUND: COM must be opened locally first");
         // Register before returning: replay preserves output coalesced with handshake/subscribe.
-        client_.Request("subscribe", resource_, {{"after", 0}});
+        try {
+            client_.Request("subscribe", resource_, {{"after", 0}});
+        } catch (const std::runtime_error &e) {
+            auto failure = nlohmann::json::parse(e.what(), nullptr, false);
+            if (failure.is_discarded() || failure.value("code", "") != "HISTORY_GAP")
+                throw;
+            auto history = client_.Request("events", resource_, {{"after", 0}});
+            // This is a fresh desktop selection, not a resumed task. Explicitly
+            // report unavailable history, then atomically subscribe at this cursor.
+            if (status_)
+                status_(L"HISTORY_GAP：旧输出已超出缓存，本次从当前游标接收；不保证旧历史完整", false);
+            client_.Request("subscribe", resource_, {{"after", history.at("cursor")}});
+        }
         client_.Live();
         connected_ = true;
         reader_ = std::thread(&SharedSerialConnection::Read, this);

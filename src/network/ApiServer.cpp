@@ -193,7 +193,10 @@ void ApiServer::Accept() {
                     "X-SerialCtl-Instance: " +
                     instance_ + "\r\nContent-Length: 12\r\n\r\nCLIENT_LIMIT";
                 ws::SendAll(s, reply.data(), reply.size());
-                ws::FinishSend(s);
+                // A discovery writer can be scheduled after this early refusal.
+                // Keep the bounded handshake window so its late GET is drained,
+                // avoiding a Windows reset hiding the already-sent capacity error.
+                ws::FinishSend(s, 1500);
                 closesocket(s);
                 continue;
             }

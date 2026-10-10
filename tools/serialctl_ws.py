@@ -9,6 +9,7 @@ import queue
 import select
 import socket
 import struct
+import sys
 import threading
 import time
 import uuid
@@ -35,10 +36,17 @@ class Wire:
         sock.settimeout(timeout)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         key = base64.b64encode(os.urandom(16)).decode('ascii')
-        sock.sendall(('GET /serialctl HTTP/1.1\r\nHost: %s:%d\r\nUpgrade: websocket\r\n'
+        request = ('GET /serialctl HTTP/1.1\r\nHost: %s:%d\r\nUpgrade: websocket\r\n'
                       'Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\n'
                       'Sec-WebSocket-Protocol: serialctl.v1\r\nSec-WebSocket-Key: %s\r\n\r\n'
-                      % (*sock.getpeername()[:2], key)).encode('ascii'))
+                      % (*sock.getpeername()[:2], key)).encode('ascii')
+        send_error = None
+        try:
+            sock.sendall(request)
+        except OSError as error:
+            # A full server may already have sent 503 and half-closed before
+            # this writer runs. Read its buffered refusal rather than hiding it.
+            send_error = error
         while b'\r\n\r\n' not in self.buffer:
             self.buffer.extend(self._read(2048))
             if len(self.buffer) > 8192:
@@ -57,6 +65,8 @@ class Wire:
                 fields.get('sec-websocket-protocol') == 'serialctl.v1' and
                 fields.get('x-serialctl-instance')):
             raise CapacityError(fields['x-serialctl-instance'])
+        if send_error:
+            raise send_error
         if (lines[0] != 'HTTP/1.1 101 Switching Protocols' or
                 fields.get('sec-websocket-accept') != accept or
                 fields.get('sec-websocket-protocol') != 'serialctl.v1' or
@@ -306,6 +316,28 @@ class Client:
         with self.lock:
             self.events.pop(resource, None)
         return result
+
+    def subscribe_new(self, resource):
+        """Fresh selection: explicitly report expired history before starting live.
+
+        Resumed consumers must use subscribe(resource, last_seq), which stays strict.
+        """
+        try:
+            return self.subscribe(resource)
+        except ProtocolError as error:
+            try:
+                failure = json.loads(str(error))
+            except ValueError:
+                raise error
+            if failure.get('code') != 'HISTORY_GAP':
+                raise
+            history = self.events_since(resource, 0)
+            notice = {'code': 'HISTORY_GAP', 'resource': resource, 'cursor': history['cursor'],
+                      'message': 'Fresh live selection; older output unavailable, history is incomplete'}
+            print(json.dumps(notice), file=sys.stderr)
+            result = self.subscribe(resource, history['cursor'])
+            result['gap'] = True
+            return result
 
     def next_event(self, resource, timeout=None):
         target = self.events[resource]

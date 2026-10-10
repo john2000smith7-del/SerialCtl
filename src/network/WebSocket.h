@@ -17,7 +17,7 @@ std::string Base64(const Bytes &);
 Bytes Unbase64(const std::string &);
 std::string RandomHex(size_t bytes = 16);
 std::string AcceptKey(const std::string &);
-void FinishSend(SOCKET);
+void FinishSend(SOCKET, DWORD grace = 250);
 bool SendAll(SOCKET, const void *, size_t);
 void SocketOptions(SOCKET, DWORD receiveTimeout = 0);
 struct Header {

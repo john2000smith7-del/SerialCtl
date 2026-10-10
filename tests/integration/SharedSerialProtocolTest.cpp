@@ -43,6 +43,32 @@ int main() {
             Expect(Bytes(received.begin() + 3, received.end()) == all, "desktop output exact 0..255");
         }
         c.Stop();
+        for (int i = 0; i < 1100; ++i)
+            f.server.Publish("session-3", Bytes{9});
+        std::atomic_bool gapReported{false};
+        received.clear();
+        Expect(c.Start(
+                   [&](const Bytes &b) {
+                       std::lock_guard<std::mutex> l(lock);
+                       received.insert(received.end(), b.begin(), b.end());
+                   },
+                   [&](const std::wstring &reason, bool) {
+                       if (reason.find(L"HISTORY_GAP") != std::wstring::npos)
+                           gapReported = true;
+                   },
+                   error),
+               "new desktop selection works after expired history");
+        Expect(gapReported, "history gap must be explicitly reported before live selection");
+        Expect(c.Send(all, error), "live input after explicit history gap");
+        Wait([&] {
+            std::lock_guard<std::mutex> l(lock);
+            return received.size() == all.size();
+        });
+        {
+            std::lock_guard<std::mutex> l(lock);
+            Expect(received == all, "history gap recovery preserves new live bytes");
+        }
+        c.Stop();
         Expect(!c.IsConnected(), "cancel joins reader");
         Expect(c.Start({}, {}, error), "desktop reconnect");
         c.Stop();

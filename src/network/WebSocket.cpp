@@ -103,13 +103,13 @@ bool SendAll(SOCKET s, const void *data, size_t n) {
     }
     return true;
 }
-void FinishSend(SOCKET socket) {
+void FinishSend(SOCKET socket, DWORD grace) {
     // Windows resets TCP when closing with unread bytes. Give the already sent
     // protocol/HTTP error a bounded graceful delivery window, without executing
     // any further business input. A peer may be hostile or never acknowledge.
     shutdown(socket, SD_SEND);
-    const auto deadline = GetTickCount64() + 250;
-    DWORD timeout = 100;
+    const auto deadline = GetTickCount64() + grace;
+    DWORD timeout = grace;
     setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&timeout), sizeof(timeout));
     char discard[2048];
     size_t drained = 0;

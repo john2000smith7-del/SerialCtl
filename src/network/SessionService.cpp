@@ -79,7 +79,7 @@ Bytes SessionService::CmdBatch(const Bytes &bytes) {
             if ((b < 32 && b != 9) || b == 127)
                 throw std::runtime_error("CMD line submission does not support control keys or full-screen input");
             if (++line > 8191)
-                throw std::runtime_error("CMD line exceeds the Windows 8191-byte command limit");
+                throw std::runtime_error("CMD line exceeds the protocol 8191-byte safe submission limit");
             batch.push_back(b);
         }
     }

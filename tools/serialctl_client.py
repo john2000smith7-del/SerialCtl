@@ -24,7 +24,7 @@ class SerialStream:
         self.timeout, self.buffer = timeout, bytearray()
         try:
             self.resource = self.client.resource(com)
-            self.client.subscribe(self.resource)
+            self.subscription = self.client.subscribe_new(self.resource)
         except BaseException:
             self.close()
             raise

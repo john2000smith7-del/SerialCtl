@@ -18,3 +18,5 @@ with SerialStream('192.168.6.86', 'COM8') as port:
 同一 COM 多客户端接收与输入，无独占写租约；每批次原子入队，多步任务仍须自行协调。多个实例报告歧义，用 --port/--instance 明确选择。同一协议适用于远程桌面客户端、AI、串口与 CMD；SSH/SFTP 没有开放。
 
 实时输出 subscribe 后事件唤醒，无 HTTP 轮询。服务满队列终止慢客户端，重连须用最后 seq；HISTORY_GAP 不得伪装为完整输出。串口未打开、目标消失、实例错误、协议错误、CLIENT_LIMIT 等分别报错。旧 SERIALCTL/1/2/3 与 REST 不再兼容，必须升级同包客户端。
+
+首次 SerialStream / watch 连接遇到已淘汰历史会在 stderr 明确报告 HISTORY_GAP，然后开始实时接收；不把旧历史当作完整。重连使用 Client.subscribe(resource, last_seq) 或 watch --after N，缺口严格报错，由操作者决定是否新建实时订阅。
