@@ -42,7 +42,8 @@ jobs:
           jq -e --arg sha "$RELEASE_COMMIT" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .name == "Windows Win7 release build"' /tmp/serialctl-build-run.json
           git fetch origin "$RELEASE_COMMIT"
           git checkout --detach "$RELEASE_COMMIT"
-          [[ "$(cat VERSION)" == "$RELEASE_VERSION" ]]
+          grep -Fxq "PROJECT_VERSION=$RELEASE_VERSION" VERSION
+          grep -Fxq "CPP_VERSION=$RELEASE_VERSION" VERSION
           mkdir -p bin
           gh run download "$RELEASE_BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-Win7-portable --dir bin
           RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
