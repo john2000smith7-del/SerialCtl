@@ -28,7 +28,10 @@ jobs:
           try { ./scripts/release.ps1 } finally { Stop-Transcript }
       - name: Launch packaged applications and capture UI
         shell: powershell
-        run: ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"
+        run: |
+          python tests/integration/cmd_pipe_encoding_probe.py "$env:RUNNER_TEMP/serialctl-ui/cmd-pipe-encoding.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"
       - name: Python Linux AI client protocol tests
         shell: powershell
         run: |
@@ -50,5 +53,6 @@ jobs:
             ${{ runner.temp }}/serialctl-ui/*.png
             ${{ runner.temp }}/serialctl-ui/*.txt
             ${{ runner.temp }}/serialctl-ui/*.json
+            ${{ runner.temp }}/serialctl-ui/*.log
             ${{ runner.temp }}/serialctl-build.txt
           if-no-files-found: warn

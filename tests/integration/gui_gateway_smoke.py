@@ -36,10 +36,16 @@ with Client('127.0.0.1') as c:
             raise AssertionError('Unexpected API capability: ' + op)
     c.input(cmd, b'echo SERIALCTL_REMOTE_VISIBLE\r\n')
     output = bytearray()
+    observed=[]
     def until(marker, timeout=10):
         deadline = time.monotonic() + timeout
         while marker not in output and time.monotonic() < deadline:
-            e = c.next_event(cmd, timeout=timeout)
+            try:
+                e = c.next_event(cmd, timeout=max(.001,deadline-time.monotonic()))
+            except Exception as error:
+                raise AssertionError({'expected_base64':base64.b64encode(marker).decode(),'output_base64':base64.b64encode(output).decode(),
+                                      'state':c.request('session.get',cmd),'recent_events':observed[-12:]}) from error
+            observed.append(e)
             if e['kind'] == 'output':
                 output.extend(base64.b64decode(e['data'], validate=True))
         assert marker in output, (marker, output)

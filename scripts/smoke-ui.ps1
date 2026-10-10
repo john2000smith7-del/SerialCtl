@@ -441,6 +441,12 @@ foreach ($architecture in @('x64')) {
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         if (-not $application.WaitForExit(10000)) { throw 'Packaged application did not close normally.' }
         if ($application.ExitCode -ne 0) { throw 'Packaged application exit code was not zero.' }
+    } catch {
+        Capture-Desktop "$architecture-failure-desktop"
+        if($application.MainWindowHandle -ne [IntPtr]::Zero){Capture-Window $application.MainWindowHandle "$architecture-failure-window"}
+        $failureLogs=Join-Path $env:APPDATA 'SerialCtl/logs'
+        if(Test-Path $failureLogs){Get-ChildItem $failureLogs -Filter '*.log' | ForEach-Object {Copy-Item $_.FullName (Join-Path $OutputDirectory ('failure-'+$_.Name)) -Force}}
+        throw
     } finally { if (-not $application.HasExited) { $application.Kill() } }
     # Exercise the asynchronous first-host dialog without any real network/credentials.
     $sandbox = Join-Path $OutputDirectory "mock-$architecture"

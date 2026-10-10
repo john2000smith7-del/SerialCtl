@@ -64,11 +64,12 @@ bool SerialDevice::Open(const SerialSettings &settings, DataCallback onData, Sta
     }
 
     COMMTIMEOUTS timeouts{};
-    // Return as soon as the first byte arrives instead of holding a short burst
-    // for the former 100 ms polling window.
+    // Win7's documented first-byte mode: available bytes return immediately;
+    // an empty queue waits for one byte. The one-second value is an idle read
+    // timeout, not a packet batching delay or a measured forwarding latency.
     timeouts.ReadIntervalTimeout = MAXDWORD;
-    timeouts.ReadTotalTimeoutConstant = 10;
-    timeouts.ReadTotalTimeoutMultiplier = 0;
+    timeouts.ReadTotalTimeoutConstant = 1000;
+    timeouts.ReadTotalTimeoutMultiplier = MAXDWORD;
     timeouts.WriteTotalTimeoutConstant = 1000;
     timeouts.WriteTotalTimeoutMultiplier = 0;
     if (!SetCommTimeouts(handle, &timeouts)) {
@@ -78,7 +79,7 @@ bool SerialDevice::Open(const SerialSettings &settings, DataCallback onData, Sta
     }
 
     SetupComm(handle, 64 * 1024, 64 * 1024);
-    PurgeComm(handle, PURGE_RXCLEAR | PURGE_TXCLEAR);
+    // Do not discard bytes received during device setup/startup.
 
     handle_ = handle;
     onData_ = std::move(onData);
@@ -115,11 +116,21 @@ bool SerialDevice::Write(const Bytes &data, std::wstring &error) {
     if (data.empty()) {
         return true;
     }
-    DWORD written = 0;
-    if (!WriteFile(handle_, data.data(), static_cast<DWORD>(data.size()), &written, nullptr) ||
-        written != data.size()) {
-        error = L"串口写入失败：" + Win32ErrorMessage();
-        return false;
+    size_t offset = 0;
+    while (offset < data.size()) {
+        DWORD written = 0;
+        if (!WriteFile(handle_, data.data() + offset, static_cast<DWORD>(data.size() - offset), &written, nullptr)) {
+            error = L"串口写入失败，执行状态未知：" + Win32ErrorMessage();
+            return false;
+        }
+        if (!written) {
+            error = L"串口发送超时，执行状态未知；已发送 " + std::to_wstring(offset) + L"/" +
+                    std::to_wstring(data.size()) + L" 字节";
+            return false;
+        }
+        // A successful partial write advances this same batch. Other writers
+        // cannot interleave because the FIFO worker/write mutex owns it.
+        offset += written;
     }
     return true;
 }
