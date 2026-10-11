@@ -1,0 +1,15 @@
+COMMAND: ['g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Isrc/sftp', 'tests/unit/SftpModelTest.cpp', 'src/sftp/SftpModel.cpp', '-o', '/workspace/serialctl-audit/evidence/local-tests/sftp-model-test']
+In file included from src/sftp/SftpModel.h:3,
+                 from tests/unit/SftpModelTest.cpp:1:
+src/sftp/SftpClient.h:3:10: fatal error: windows.h: No such file or directory
+    3 | #include <windows.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+In file included from src/sftp/SftpModel.h:3,
+                 from src/sftp/SftpModel.cpp:1:
+src/sftp/SftpClient.h:3:10: fatal error: windows.h: No such file or directory
+    3 | #include <windows.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+
+EXIT: 1

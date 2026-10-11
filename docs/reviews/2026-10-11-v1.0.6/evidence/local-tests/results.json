@@ -1,0 +1,26 @@
+[
+  {
+    "test": "terminal-model",
+    "stage": "build",
+    "exit": 0,
+    "utc": "2026-10-11T03:48:13.425534+00:00"
+  },
+  {
+    "test": "terminal-model",
+    "stage": "run",
+    "exit": 0,
+    "utc": "2026-10-11T03:48:13.429250+00:00"
+  },
+  {
+    "test": "terminal-model-sanitized",
+    "stage": "build",
+    "exit": 0,
+    "utc": "2026-10-11T03:48:21.936643+00:00"
+  },
+  {
+    "test": "terminal-model-sanitized",
+    "stage": "run",
+    "exit": 0,
+    "utc": "2026-10-11T03:48:21.969852+00:00"
+  }
+]

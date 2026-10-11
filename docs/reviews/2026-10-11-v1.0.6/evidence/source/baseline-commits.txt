@@ -1,0 +1,20 @@
+5f12678e4da327f146edb5ce12eb3b3ea9c8afd0 Retain unprinted saved-cursor rows during primary terminal reflow
+aa632056da051e0d090c9eb0677e29e8c5500ed1 Require real stdout painting throughout dynamic SFTP column drag
+565770052c48175b2f3fd7912c092b5d54c51aa2 Preserve capacity-bound terminal reflow and document verified acceptance
+1a14d46fd7f1f24b1ed3f28b4c4ec5013229a769 Preserve list position on session switch and keep terminal controls out of CMD submissions
+63de43b1eb52265f89bce67b9852bc668ba22084 Keep pasted CMD commands in history and verify actual overlay drag and child lifetimes
+f1f8a2a2a46bf62ca0520eafe18629d8be8854be Report history gaps on fresh live selections, retain early capacity refusals and reject malformed CMD text
+312ea2af222814b53494006c81db740ea3062338 Verify clipboard drafts and follow behavior in real GUI, improve review readability and capacity test scope
+c82ae6ac4c0df198ab53a17b293e942936478d4d Allocate the private native console explicitly, preserve capacity diagnostics and encoding snapshots
+a9eb5410809370dbdc5aed60eb727ecdd580d703 Fix Windows SDK header order and console feeder exit, require GUI GBK round trip
+da7b0d97e63a447c7cab97cc5d3b35c2b23424f9 Use a private Win7 console input bridge to preserve Unicode in persistent CMD
+004bb78c451192f388099f533c026de1d9d53f57 Preserve startup UART bytes and diagnose redirected CMD encoding with raw GUI evidence
+3afda22bd4dd54148496e98a473606090d7f2c92 Fix deferred combo geometry, hard-line anchors, code-page override and native cancellation lifetime
+7a499cda4dabf99013a488a53888c88823e2504e Record repair evidence and verify concurrent writes, bounded CMD shutdown and actual Win7 imports
+55f62fb5d54c03aed36e283566c7c1a9bbbbc6d5 Cancel Win7 overlapped receive explicitly; bound caches and pin discovered instances
+b69c8111227b02a5918d5bcdd1b0a900e5cf6eb1 Wake listener shutdown with Win7 Winsock events and cancel blocked readers
+9ec94bea588279a6059c35a2dc0662bbb2cb6184 Validate native code-page decoding and capture real mouse/paint lifecycle evidence
+8a26574a0744606a4397e0f74065ef6ab2bfe9c7 Preserve CMD input and code-page event order; restore owned modal focus once
+8973403b4e5ff30c56fade1b9fc7f0b99210c076 Deliver protocol Close before TCP teardown and exercise bounded backpressure
+c39cc46c92fb7cbb366d6166e772df8a706910a0 Fix gateway test boundaries and make writer cancellation deterministic
+16b5bca81e6912cee5e472422d5eb993422ea6a5 Unify Win7 gateway and session input; repair terminal and UI models

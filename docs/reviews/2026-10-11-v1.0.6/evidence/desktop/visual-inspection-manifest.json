@@ -1,0 +1,203 @@
+{
+  "source_sha": "5f12678e4da327f146edb5ce12eb3b3ea9c8afd0",
+  "inspected_files": [
+    {
+      "file": "x64-light-drag-frame-5.png",
+      "sha256": "ab2826056c06c32ed39cdd5ba88c8ee8a1ecafa5613f18865f891b5437dfe3fa",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-drag-frame-5.png",
+      "sha256": "0ad1c78eadc99257baa7d85b4b8ec10fb2d3140f32d536456b2b81b3bd17a6ab",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-resize-frame-6.png",
+      "sha256": "e85eda9bb7d06323f7e706b1c90da378aa5cc5ba1eb3dda8ff46d5454b6470ca",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-resize-frame-6.png",
+      "sha256": "b63f8fd17d9ec49162b66d4cf265d0dbb62f8ef65abe20888cee26aaece84061",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-animation-frame-3.png",
+      "sha256": "fc65d6c38a8606f0d0af9a421a6ea8a39349427a526da79325dc8f31c13eacfc",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-animation-frame-3.png",
+      "sha256": "fee5a2a92162435f8c00003fca16135aff5484c89866823ebee59054e4441bf4",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-power-tab-frame-5.png",
+      "sha256": "7964554cd4fcb9ac1e5dba1295aec60e9693f1c5b3a36f020a64b0ffd0eba5f0",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-power-tab-frame-5.png",
+      "sha256": "29234759832ef02715f09dd7e558e82cd53d67b90e8623ba898d53e42ad10682",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-sftp-column-frame-5.png",
+      "sha256": "cf9795c5217241b05c18d173841a1072f762d4061d4581c11f0cec1425f4bf99",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-sftp-column-frame-5.png",
+      "sha256": "0181e13e262d9b041fcb853c96d5c64ea59372eb0c6c6dac08188040a1513bfe",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-command.png",
+      "sha256": "1858023fb87baa580e88182d55e9219eceb6df1d316ba019e91273c974859ec3",
+      "width": 433,
+      "height": 328,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-command.png",
+      "sha256": "b0d8c07b85a81e7cc5d8ef0aff79c57aa7398395c2063f2a45be419a1b7943c7",
+      "width": 433,
+      "height": 328,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-macro-ten.png",
+      "sha256": "f3c45bf342a5f86ab4e264d7f4538602f32b2b9997e150910ee26d30f6f65bbf",
+      "width": 433,
+      "height": 736,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-macro-ten.png",
+      "sha256": "d10d3955f62dc4b6e72b50fe573f87d56b8e96d0a2d1e650249e095520fe61f1",
+      "width": 433,
+      "height": 736,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-modal-foreground-before.png",
+      "sha256": "e1749e8a7683e850a37f284d13f9f60e8e1012703261e67e1fff03b49dd83a2f",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-modal-owner-after.png",
+      "sha256": "9ce443a65ea4fff8bb8a5e53910d7043e386da8b17641b89298840fd4ac6e86e",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "gui-connections-drag-1.png",
+      "sha256": "dfa58b3728d9b2ada88e19fb1fc1c35c37bb30b0e37ca1a21dcfd946d5ea62e8",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "gui-connections-drag-3.png",
+      "sha256": "bc081ac985bae566dfbd9c44475880b4fea18ac4b086a4fb083cd4b44196b987",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-drag-frame-0.png",
+      "sha256": "e38ab82d756ee0642b9bec952c14dd0d2c926cd8da49d059bd45d1692a1db706",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-drag-frame-11.png",
+      "sha256": "ebdf5eb623139dd46a1ee3c4f449428c1b558d7f37149d64b83296921aab5315",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-resize-frame-11.png",
+      "sha256": "896143924245193bdaa64441c655880e5fa2906d635ef4da899f73a938a8afa1",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-resize-frame-11.png",
+      "sha256": "72377c45b83484d8aed5127e9cc122ae36edbd112860fcbf388e4b4f33bd4aa9",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-animation-frame-9.png",
+      "sha256": "c0c5f6a643cb7952daa2b2efdc648d1c8ea81290966d72a74599f62a169b2858",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-animation-frame-9.png",
+      "sha256": "21191eabcb55f740bc92061f06949ab2d2f13d5513546ee94346b4d78b2b330a",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-animation-frame-7.png",
+      "sha256": "758ffeaddff634ff55624fc9795c4f43938998fdbe5d5be087eed7d2baacbbc2",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-animation-frame-8.png",
+      "sha256": "52412a0766349b46179620298afb5be7d897e0913595dd6748771e6d93020f3e",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-light-animation-frame-8.png",
+      "sha256": "9a497591fc5c421ca4bd5525608443c6ef8e565f602ccdcc4fe577ce738d22a0",
+      "width": 1920,
+      "height": 1080,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    },
+    {
+      "file": "x64-dark-api-cmd-visible.png",
+      "sha256": "2774ce8de6c113419c71507251724725f6ca0f1ce4f046d6f54db798e19146e5",
+      "width": 1180,
+      "height": 760,
+      "inspection": "view_image original; observations in reports/08-cross-desktop-visual.md"
+    }
+  ],
+  "count": 28,
+  "all_available_png_count": 209
+}

@@ -1,0 +1,71 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261011000411
+Username: runnervmtn0fv\runneradmin
+RunAs User: runnervmtn0fv\runneradmin
+Configuration Name: 
+Machine: runnervmtn0fv (Microsoft Windows NT 10.0.20348.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command . 'D:\a\_temp\8f09ae8c-e840-45d1-b30c-e428f8863b1c.ps1'
+Process ID: 996
+PSVersion: 5.1.20348.5622
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.20348.5622
+BuildVersion: 10.0.20348.5622
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is D:\a\_temp/serialctl-build.txt
+==> Preflight source/version/dependency checks
+[PASS] Source/version/dependency checks: V1.0.6
+[PASS] Git provenance: 5f12678e4da327f146edb5ce12eb3b3ea9c8afd0
+[PASS] Source-only checks completed
+==> Clean x64 Release build
+==> Configure x64
+
+==> Build x64 Release
+
+[PASS] SerialCtl build completed: All / Release
+==> x64 automated tests
+==> Test x64 Release
+
+[PASS] SerialCtl tests completed: All / Release
+==> PE, version, dependency, and Win7 compatibility checks
+[PASS] Source/version/dependency checks: V1.0.6
+[PASS] Git provenance: 5f12678e4da327f146edb5ce12eb3b3ea9c8afd0
+[PASS] x64 / GUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serialctl.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\plink.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\psftp.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\putty_host_key_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_model_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\power_service_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\sftp_model_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\multi_serial_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\api_server_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\cmd_connection_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\tcp_connection_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\shared_serial_protocol_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serial_share_backpressure_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\session_logger_test.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_decoder_test.exe
+[PASS] Binary compatibility checks completed: All / Release
+[NOT RUN] Windows 7 SP1 hardware/VM, serial adapter, SSH/SFTP server, and long-running field tests
+==> Explicit-allowlist package and reopen verification
+==> Install x64 runtime into package staging
+
+[PASS] Original NI-VISA 18.0 Runtime, complete offline installer and licenses
+[PASS] x64 / GUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\serialctl.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\plink.exe
+[PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\psftp.exe
+[PASS] Candidate archive was reopened and verified: D:\a\SerialCtl\SerialCtl\build\release\out\SerialCtl-V1.0.6-Win7-x64.zip
+[PASS] Candidate SHA-256: 8bd51a23508600dba47b52132dad4741ff5dea316e7170cd28b51eb6b7af873d
+D:\a\SerialCtl\SerialCtl\build\release\out\SerialCtl-V1.0.6-Win7-x64.zip
+==> Remove disposable build state after successful promotion
+[PASS] Local release ready: D:\a\SerialCtl\SerialCtl\bin\SerialCtl-V1.0.6-Win7-x64.zip
+[PASS] SHA-256: 8bd51a23508600dba47b52132dad4741ff5dea316e7170cd28b51eb6b7af873d
+[NOT RUN] Windows 7 SP1 real-machine/VM and physical serial-device acceptance
+**********************
+Windows PowerShell transcript end
+End time: 20261011000749
+**********************

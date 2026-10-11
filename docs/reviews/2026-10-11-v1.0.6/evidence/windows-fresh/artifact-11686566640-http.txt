@@ -1,0 +1,2 @@
+HTTP 302
+redirect host: productionresultssa19.blob.core.windows.net

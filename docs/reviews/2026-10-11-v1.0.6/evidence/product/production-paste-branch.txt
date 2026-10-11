@@ -1,0 +1,22 @@
+    if (selectedMode_ == 4) {
+        ScrollTerminalToBottom();
+        auto &editor = activeSession_->cmdEditor;
+        auto draft = editor.Text();
+        draft.insert(editor.Cursor(), pasted);
+        auto end = draft.find_last_of(L"\r\n");
+        if (end == std::wstring::npos) {
+            if (!editor.Insert(pasted))
+                AppendStatus(L"CMD 输入过长", true);
+        } else {
+            auto submitted = draft.substr(0, end + 1);
+            auto encoded = EncodeTerminalText(submitted);
+            if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), false)) {
+                editor.SubmittedBatch(submitted);
+                if (!editor.Insert(draft.substr(end + 1)))
+                    AppendStatus(L"CMD 尾行过长", true);
+            }
+        }
+        ClearTerminalSelection();
+        InvalidateRect(terminal_, nullptr, FALSE);
+        return;
+    }

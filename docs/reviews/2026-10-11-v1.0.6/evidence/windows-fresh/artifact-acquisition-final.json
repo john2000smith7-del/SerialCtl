@@ -1,0 +1,8 @@
+{
+  "method": "GitHub connector download_workflow_artifact then downloaded returned file reference; environment proxy was not modified",
+  "run": 38097145874,
+  "ui_artifact": 11686766435,
+  "portable_artifact": 11686566640,
+  "status": "both downloaded and SHA256 matches GitHub metadata",
+  "png_count": 209
+}

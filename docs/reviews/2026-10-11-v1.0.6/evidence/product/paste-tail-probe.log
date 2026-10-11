@@ -1,0 +1,10 @@
+method=exact production CMD paste branch with transport acceptance and GUI calls stubbed
+branch_source=src/app/MainWindow.cpp:4247-4268
+accepted_batches=1
+accepted_prefix=echo PRESERVE SAFE
+
+draft_before_chars=14
+draft_after_chars=0
+tail_requested_chars=8192
+errors=1
+confirmed_partial_submission_and_tail_loss=1

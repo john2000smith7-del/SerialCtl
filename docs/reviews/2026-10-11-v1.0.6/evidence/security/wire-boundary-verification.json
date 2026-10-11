@@ -1,0 +1,5 @@
+{
+  "method": "production Wire.receive; preloaded oversized header; no handshake/socket",
+  "declared_bytes": 131309,
+  "error": "Message too large"
+}
