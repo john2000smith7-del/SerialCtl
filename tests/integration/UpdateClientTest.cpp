@@ -357,8 +357,10 @@ struct Fixture {
     std::map<std::string, Bytes> payload;
     std::atomic<bool> cancel{false};
     Fixture() {
+        static std::atomic<unsigned long> nextFixture{0};
         root = fs::temp_directory_path() /
-            (L"serialctl-update-client-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+            (L"serialctl-update-client-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+             std::to_wstring(GetTickCount64()) + L"-" + std::to_wstring(nextFixture.fetch_add(1)));
         fs::create_directories(root);
         payload = {{"serialctl.exe", Data("native runtime test bytes")}, {"plink.exe", Data("pinned plink fixture")},
                    {"psftp.exe", Data("pinned psftp fixture")},
@@ -635,6 +637,54 @@ void RunTests() {
         Require(pendingResult.status == UpdateStatus::Cancelled &&
                 std::chrono::steady_clock::now() - cancelStart < std::chrono::seconds(1),
                 "cancel interrupts a pending body read without freeing its callback buffer early");
+    }
+    {
+        Fixture cancelledCheck;
+        Fixture successfulCheck;
+        cancelledCheck.server.Set("/update.json",
+            {Data(cancelledCheck.manifest.dump()), 200, 0, 0, false, 0, 3000});
+        successfulCheck.server.Set("/files/serialctl.exe",
+            {successfulCheck.payload.at("serialctl.exe"), 200, 0, 0, false, 0, 500});
+        const auto expectedDigest = Sha256File(successfulCheck.root / L"serialctl.exe");
+        UpdateResult firstResult, secondResult;
+        std::atomic<bool> secondFinished{false};
+        std::thread first, second;
+        // Also covers failure to create the second thread or a later assertion:
+        // every live HTTP worker is cancelled and joined before either fixture dies.
+        struct JoinWorkers {
+            Fixture& firstFixture; Fixture& secondFixture;
+            std::thread& first; std::thread& second;
+            ~JoinWorkers() {
+                firstFixture.cancel = true;
+                secondFixture.cancel = true;
+                if (first.joinable()) first.join();
+                if (second.joinable()) second.join();
+            }
+        } joined{cancelledCheck, successfulCheck, first, second};
+        first = std::thread([&] { firstResult = cancelledCheck.Run(); });
+        for (unsigned wait = 0; wait < 1000 && !cancelledCheck.server.HeadersSent(); ++wait) Sleep(2);
+        const bool firstHadHeaders = cancelledCheck.server.HeadersSent() != 0;
+        Sleep(50); // The first request is now waiting for its deliberately stalled body.
+        second = std::thread([&] {
+            secondResult = successfulCheck.Run();
+            secondFinished = true;
+        });
+        // Two metadata requests plus the four signed files; the last serialctl
+        // body is deliberately held so cancellation overlaps actual payload I/O.
+        for (unsigned wait = 0; wait < 1000 && successfulCheck.server.Requests() < 6 &&
+             !secondFinished.load(); ++wait) Sleep(2);
+        const bool overlappedPayload = successfulCheck.server.Requests() >= 6 && !secondFinished.load();
+        cancelledCheck.cancel = true;
+        first.join();
+        second.join();
+        Require(firstHadHeaders && overlappedPayload,
+                "two independent HTTP fixtures overlap a stalled body and signed payload download");
+        Require(firstResult.status == UpdateStatus::Cancelled && secondResult.status == UpdateStatus::Ready,
+                "cancelling one shared-session request does not cancel another update check");
+        Require(Sha256File(secondResult.stagingDirectory / L"files" / L"serialctl.exe") == expectedDigest &&
+                Sha256File(successfulCheck.root / L"serialctl.exe") == expectedDigest,
+                "concurrent successful update preserves staged bytes and the installed runtime");
+        successfulCheck.Cleanup(secondResult);
     }
     {
         Fixture slow;
