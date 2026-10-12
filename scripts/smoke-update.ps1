@@ -117,7 +117,7 @@ function Use-UpdateTheme([IntPtr]$Window, [string]$Name) {
     [SerialCtlUpdateUi]::Click($control)
     Wait-UpdateCondition { [SerialCtlUpdateUi]::Text($control) -ne $before } 'actual mouse theme toggle' 2000
     Save-UpdateDesktop ($Name+'-theme')
-    return [ordered]@{before=$before; after=[SerialCtlUpdateUi]::Text($control); input='physical mouse via mouse_event'}
+    return [ordered]@{before=$before; after=[SerialCtlUpdateUi]::Text($control); input='system mouse injection via mouse_event'}
 }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -145,7 +145,7 @@ $summary = [ordered]@{
     system=[Environment]::OSVersion.VersionString; source=(Get-SerialCtlSourceState).Revision
     packageSha256=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
     exeSha256=$beforeHashes['serialctl.exe']; httpOrigin="http://127.0.0.1:$($server.Port)"
-    capture='Actual desktop CopyFromScreen; physical mouse and SendInput keyboard; no PrintWindow'
+    capture='Actual desktop CopyFromScreen; system mouse injection and SendInput keyboard; no PrintWindow'
     scope='Production packaged GUI negative update integration; HTTP layer is a loopback substitute. No production signing key, successful production upgrade, Win7, real intranet server or hardware is tested here.'
     noConfigScope='No requests to controlled HTTP fixture and no updater staging for missing/empty URL. This is not a machine-wide packet capture.'
     cases=$results; result='RUNNING'

@@ -193,24 +193,42 @@ private:
     State* state_ = nullptr;
 };
 
+// Keep a fixed native pool for each transport for the process lifetime. Creating
+// a new WinHTTP session for every file/send retained a WebIO event per session
+// on the tested Server 2022 build. Connection/request handles and callback state
+// remain independent and are closed for every download, including cancellation.
+// C++ static initialization is thread safe; session options never change after
+// construction. HTTPS is separate so missing Win7 TLS support cannot disable HTTP.
+HINTERNET Session(bool secure) {
+    struct SharedSession {
+        InternetHandle handle;
+        explicit SharedSession(bool tls)
+            : handle(WinHttpOpen(L"SerialCtl updater/1", WINHTTP_ACCESS_TYPE_NO_PROXY,
+                                 WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC)) {
+            // The async wall-clock deadline bounds DNS as well as the response.
+            if (!WinHttpSetTimeouts(handle.value, 0, 2000, 2000, 2000))
+                throw std::runtime_error("Cannot set update HTTP timeouts");
+            if (tls) {
+                DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+                if (!WinHttpSetOption(handle.value, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols)))
+                    throw std::runtime_error("TLS 1.2 is unavailable on this Windows installation");
+            }
+        }
+    };
+    if (secure) {
+        static SharedSession https(true);
+        return https.handle.value;
+    }
+    static SharedSession http(false);
+    return http.handle.value;
+}
+
 // No proxy autodiscovery, automatic credentials, cookies, redirects, decompression,
 // retry or TLS validation overrides. Caller runs on its own joined worker.
 std::vector<unsigned char> Download(const Url& url, std::size_t limit, const std::atomic<bool>& cancel,
                                    const std::chrono::steady_clock::time_point deadline) {
     CheckCancelled(cancel);
-    InternetHandle session(WinHttpOpen(L"SerialCtl updater/1", WINHTTP_ACCESS_TYPE_NO_PROXY,
-                                      WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
-    // AsyncRequest bounds DNS together with the entire request via its wall-clock
-    // deadline and cancellation. Avoid WinHTTP's separate finite DNS timer,
-    // which needs an extra resolver timeout resource for every send.
-    if (!WinHttpSetTimeouts(session.value, 0, 2000, 2000, 2000))
-        throw std::runtime_error("Cannot set update HTTP timeouts");
-    if (url.secure) {
-        DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
-        if (!WinHttpSetOption(session.value, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols)))
-            throw std::runtime_error("TLS 1.2 is unavailable on this Windows installation");
-    }
-    InternetHandle connection(WinHttpConnect(session.value, url.host.c_str(), url.port, 0));
+    InternetHandle connection(WinHttpConnect(Session(url.secure), url.host.c_str(), url.port, 0));
     AsyncRequest request(connection.value, url);
     DWORD disabled = WINHTTP_DISABLE_REDIRECTS | WINHTTP_DISABLE_AUTHENTICATION | WINHTTP_DISABLE_COOKIES;
     DWORD autologon = WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH;
