@@ -10,6 +10,8 @@
 #include "SharedSerialConnection.h"
 #include "TcpConnection.h"
 #include "Win32Helpers.h"
+#include "UpdateClient.h"
+#include "UpdateInstaller.h"
 #include "resource.h"
 
 #include <commctrl.h>
@@ -42,6 +44,15 @@ constexpr UINT MessageConnection = WM_APP + 5;
 constexpr UINT MessageHostKey = WM_APP + 6;
 constexpr UINT MessageDiscovery = WM_APP + 7;
 constexpr UINT MessageApi = WM_APP + 8;
+constexpr UINT MessageUpdate = WM_APP + 20;
+
+void DiscardUpdate(update::UpdateResult& result) {
+    if (!result.stagingDirectory.empty()) {
+        std::error_code ignored;
+        std::filesystem::remove_all(result.stagingDirectory, ignored);
+        result.stagingDirectory.clear();
+    }
+}
 
 constexpr UINT_PTR DiscoveryTimerId = 4003;
 constexpr int IdSharedAdvancedPort = 9010;
@@ -1045,6 +1056,51 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
     return true;
 }
 
+MainWindow::~MainWindow() {
+    StopStartupUpdate();
+}
+
+void MainWindow::StartStartupUpdate() {
+    if (updateThread_.joinable() || closing_.load()) return;
+    std::vector<wchar_t> path(32768);
+    const DWORD size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (!size || size >= path.size()) return;
+    const std::filesystem::path executable(std::wstring(path.data(), size));
+    updateCancel_.store(false);
+    try {
+        updateThread_ = std::thread([this, executable] {
+            auto result = std::make_unique<update::UpdateResult>(
+                update::CheckAndStage(executable, SERIALCTL_APP_VERSION, updateCancel_));
+            if (!updateCancel_.load() && PostMessageW(window_, MessageUpdate, 0,
+                    reinterpret_cast<LPARAM>(result.get()))) result.release();
+            else DiscardUpdate(*result);
+        });
+    } catch (const std::exception&) {
+        AppendStatus(L"无法启动自动更新检查，继续使用当前版本。", true);
+    }
+}
+
+void MainWindow::StopStartupUpdate() {
+    updateCancel_.store(true);
+    if (updateThread_.joinable()) updateThread_.join();
+    MSG pending{};
+    while (window_ && PeekMessageW(&pending, window_, MessageUpdate, MessageUpdate, PM_REMOVE)) {
+        std::unique_ptr<update::UpdateResult> result(reinterpret_cast<update::UpdateResult*>(pending.lParam));
+        if (result) DiscardUpdate(*result);
+    }
+}
+
+bool MainWindow::CanInstallStartupUpdate() const {
+    // PowerPageOpened also excludes a queued connect/task that has not yet
+    // appeared in the service snapshot. A modal owner and mouse capture exclude
+    // edits and ongoing gestures. A busy startup defers for the entire run.
+    return !closing_.load() && !startupUpdateDeferred_ && sessions_.empty() && !pendingSession_ &&
+        !powerPageOpened_ && !powerVisible_ && !disconnectAllPending_ && !disconnectAllInProgress_ &&
+        !commandsDirty_ && runningCommandIndex_ < 0 && !sftpBusy_ && !activeSftpTransferId_ &&
+        !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ && draggingCommandIndex_ < 0 &&
+        !sftpColumnDragging_ && !GetCapture() && IsWindowEnabled(window_);
+}
+
 LRESULT CALLBACK MainWindow::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     MainWindow* self = nullptr;
     if (message == WM_NCCREATE) {
@@ -1722,6 +1778,10 @@ LRESULT CALLBACK MainWindow::SftpPathSubclassProc(HWND window, UINT message, WPA
 }
 
 bool MainWindow::PreTranslate(MSG& message) {
+    if (message.message == WM_KEYDOWN || message.message == WM_SYSKEYDOWN ||
+        message.message == WM_LBUTTONDOWN || message.message == WM_RBUTTONDOWN ||
+        message.message == WM_MBUTTONDOWN || message.message == WM_MOUSEWHEEL)
+        startupUpdateDeferred_ = true;
     if (message.hwnd != terminal_) { return message.message == WM_KEYDOWN && message.wParam == VK_TAB && IsDialogMessageW(window_, &message); }
     if (message.message != WM_KEYDOWN) return false;
     const WPARAM key = message.wParam;
@@ -1738,7 +1798,37 @@ bool MainWindow::PreTranslate(MSG& message) {
 }
 
 LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
+    // Includes direct control activation and window gestures, not just keyboard
+    // messages. Once work has begun, never surprise the user with a later restart.
+    if (message == WM_COMMAND || message == WM_ENTERSIZEMOVE) startupUpdateDeferred_ = true;
     switch (message) {
+    case MessageUpdate: {
+        std::unique_ptr<update::UpdateResult> result(reinterpret_cast<update::UpdateResult*>(lParam));
+        if (!result) return 0;
+        if (updateThread_.joinable()) updateThread_.join();
+        if (closing_.load()) { DiscardUpdate(*result); return 0; }
+        if (result->status == update::UpdateStatus::Ready) {
+            if (!CanInstallStartupUpdate()) {
+                AppendStatus(L"已发现 " + std::wstring(result->version.begin(), result->version.end()) +
+                    L" 新版；当前工作不受影响，请空闲时重新启动以更新。", false);
+                DiscardUpdate(*result);
+                return 0;
+            }
+            std::wstring error;
+            if (update::LaunchUpdateWorker(result->stagingDirectory, SERIALCTL_APP_VERSION, error)) {
+                // The ready worker now owns this stage. No UI message can start
+                // another task between the idle check and synchronous close.
+                result->stagingDirectory.clear();
+                SendMessageW(window_, WM_CLOSE, 0, 0);
+                return 0;
+            }
+            AppendStatus(L"自动更新暂未安装，继续使用当前版本：" + error, true);
+            DiscardUpdate(*result);
+        } else if (result->status == update::UpdateStatus::Failed && CanInstallStartupUpdate()) {
+            AppendStatus(result->message, true);
+        }
+        return 0;
+    }
     case PowerStateChanged:
         if (disconnectAllPending_ && !powerService_.State().value("connected", false)) {
             disconnectAllPending_ = false;
@@ -2124,6 +2214,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         discoveryCancel_ = true;
         if (discoveryThread_.joinable()) discoveryThread_.join();
         closing_ = true;
+        StopStartupUpdate();
         apiServer_.Stop();
         powerService_.Shutdown();
         connectionCancel_.store(true);

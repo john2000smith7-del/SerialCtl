@@ -40,7 +40,9 @@ struct CommandItem {
 
 class MainWindow {
 public:
+    ~MainWindow();
     bool Create(HINSTANCE instance, int showCommand);
+    void StartStartupUpdate();
     bool PreTranslate(MSG& message);
     HWND Handle() const { return window_; }
 
@@ -143,6 +145,8 @@ private:
     static INT_PTR CALLBACK SftpInputDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static void PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
+    void StopStartupUpdate();
+    bool CanInstallStartupUpdate() const;
 
     Json ApiResources();
     Json ApiRequest(const std::string&,const std::string&,const Json&);
@@ -406,6 +410,9 @@ private:
     std::vector<ReceivedItem> pendingConnectionData_;
     size_t pendingConnectionBytes_ = 0;
     std::atomic<bool> closing_{false};
+    std::thread updateThread_;
+    std::atomic<bool> updateCancel_{false};
+    bool startupUpdateDeferred_ = false;
     std::mutex receivedMutex_;
     std::deque<ReceivedItem> received_;
     std::map<std::uint64_t, size_t> receivedBytes_;

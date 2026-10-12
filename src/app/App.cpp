@@ -1,5 +1,6 @@
 #include "CmdConsoleBridge.h"
 #include "MainWindow.h"
+#include "UpdateInstaller.h"
 
 // Windows SDK GDI+ declarations require the COM/property types first.
 // clang-format off
@@ -14,6 +15,17 @@
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCommand) {
     if (std::wstring(parameters) == L"--serialctl-cmd-bridge")
         return serialctl::RunCmdConsoleBridge();
+    int updateExitCode = 0;
+    if (serialctl::update::HandleUpdateCommandLine(parameters, updateExitCode))
+        return updateExitCode;
+    serialctl::update::StartupGuard startup;
+    std::wstring startupError;
+    const auto startupAction = startup.Begin(parameters, startupError);
+    if (startupAction == serialctl::update::StartupAction::Exit) return 0;
+    if (startupAction == serialctl::update::StartupAction::Failed) {
+        MessageBoxW(nullptr, startupError.c_str(), L"SerialCtl 更新恢复", MB_OK | MB_ICONERROR);
+        return 1;
+    }
     struct GraphicsSession {
         ULONG_PTR token = 0;
         ~GraphicsSession() {
@@ -41,6 +53,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
         WSACleanup();
         return 1;
     }
+    if (!startup.Confirm(startupError)) {
+        // The worker owns rollback. Close the just-created, idle GUI normally
+        // without blocking its health timeout behind a modal error dialog.
+        SendMessageW(mainWindow.Handle(), WM_CLOSE, 0, 0);
+        WSACleanup();
+        return 1;
+    }
+    if (startup.ShouldCheckForUpdate()) mainWindow.StartStartupUpdate();
 
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {

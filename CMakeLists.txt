@@ -98,6 +98,7 @@ set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/terminal"
     "${SERIALCTL_SOURCE_DIR}/power"
     "${SERIALCTL_SOURCE_DIR}/network"
+    "${SERIALCTL_SOURCE_DIR}/update"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json"
 )
 
@@ -128,6 +129,9 @@ add_executable(serialctl WIN32
     src/app/MainWindow.cpp
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
+    src/update/UpdateClient.cpp
+    src/update/UpdateManifest.cpp
+    src/update/UpdateInstaller.cpp
     src/power/PowerService.cpp
     src/network/ApiServer.cpp
     src/network/WebSocket.cpp
@@ -151,13 +155,14 @@ add_executable(serialctl WIN32
 )
 serialctl_configure_native_target(serialctl WINDOWS)
 target_compile_definitions(serialctl PRIVATE SERIALCTL_VERSION=L"${SERIALCTL_CPP_VERSION}")
+target_compile_definitions(serialctl PRIVATE SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
 if(MSVC)
     # serialctl.rc embeds the generated, version-controlled application manifest.
     # Disable the linker-generated default manifest to avoid duplicate RT_MANIFEST
     # resources and to ensure the Win7 compatibility declarations stay authoritative.
     target_link_options(serialctl PRIVATE /MANIFEST:NO)
 endif()
-target_link_libraries(serialctl PRIVATE ws2_32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus)
+target_link_libraries(serialctl PRIVATE ws2_32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
 
 foreach(PUTTY_PROGRAM IN ITEMS plink.exe psftp.exe)
     if(NOT EXISTS "${PUTTY_ARCH_DIR}/${PUTTY_PROGRAM}")
@@ -182,6 +187,20 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(update_client_test tests/integration/UpdateClientTest.cpp
+        src/update/UpdateClient.cpp src/update/UpdateManifest.cpp)
+    serialctl_configure_native_target(update_client_test CONSOLE)
+    target_compile_definitions(update_client_test PRIVATE SERIALCTL_UPDATE_TESTING)
+    target_link_libraries(update_client_test PRIVATE winhttp advapi32 ws2_32)
+    add_test(NAME update_client COMMAND update_client_test)
+    set_tests_properties(update_client PROPERTIES TIMEOUT 90)
+    add_executable(update_installer_test tests/integration/UpdateInstallerTest.cpp
+        src/update/UpdateInstaller.cpp src/update/UpdateManifest.cpp)
+    serialctl_configure_native_target(update_installer_test CONSOLE)
+    target_compile_definitions(update_installer_test PRIVATE SERIALCTL_UPDATE_TESTING)
+    target_link_libraries(update_installer_test PRIVATE advapi32 shell32 user32)
+    add_test(NAME update_installer COMMAND update_installer_test)
+    set_tests_properties(update_installer PROPERTIES TIMEOUT 90)
     add_executable(session_logger_test tests/integration/SessionLoggerTest.cpp src/logging/SessionLogger.cpp)
     serialctl_configure_native_target(session_logger_test CONSOLE)
     target_link_libraries(session_logger_test PRIVATE shell32)

@@ -1,7 +1,7 @@
 name: Windows Win7 release build
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**", "feature/**"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,10 +32,19 @@ jobs:
           python tests/integration/cmd_pipe_encoding_probe.py "$env:RUNNER_TEMP/serialctl-ui/cmd-pipe-encoding.json"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"
+      - name: Exercise packaged update startup in real windows
+        shell: powershell
+        run: |
+          ./scripts/smoke-update.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"
       - name: Python Linux AI client protocol tests
         shell: powershell
         run: |
           python tests/integration/test_serialctl_client.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Signed update feed tool regression tests
+        shell: powershell
+        run: |
+          python tests/integration/test_new_update_feed.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload verified portable bundle
         uses: actions/upload-artifact@v4
