@@ -22,11 +22,12 @@ public:
     StartupGuard(const StartupGuard&) = delete;
     StartupGuard& operator=(const StartupGuard&) = delete;
     StartupAction Begin(const std::wstring& parameters, std::wstring& error);
-    bool Confirm(std::wstring& error);
+    bool Confirm(std::wstring& error, const std::string& runningVersion);
     bool ShouldCheckForUpdate() const { return !recovered_; }
 
 private:
     bool recovered_ = false;
+    std::string expectedVersion_;
     HANDLE instance_ = nullptr;
     HANDLE mutex_ = nullptr;
     HANDLE acknowledgment_ = nullptr;
@@ -36,7 +37,9 @@ private:
 
 // Call only after the GUI proves that there are no live connections, child
 // processes, transfers, or power tasks. Success means the verified worker has
-// acquired the lock; the caller must then exit normally. It never kills callers.
+// acquired the lock and received this caller's internal authorization; the caller
+// must then exit normally. Failure never authorizes replacement, even if an
+// unresponsive helper cannot be terminated. It never kills callers.
 bool LaunchUpdateWorker(const std::filesystem::path& stagingDirectory,
                         const std::string& currentVersion,
                         std::wstring& error);
@@ -52,6 +55,11 @@ void RecoverTransaction(const std::filesystem::path& installation);
 // the fixture stage. Production binaries do not contain this entry point.
 bool LaunchSignedTestUpdate(const std::filesystem::path& stage,
                             const std::string& currentVersion, std::wstring& error);
+// Refuses the ready helper without terminating it, exercising the late-parent-
+// exit boundary. The production build has no approval-withholding entry point.
+bool LaunchSignedTestUpdateWithoutApproval(const std::filesystem::path& stage,
+                                         const std::string& currentVersion,
+                                         std::wstring& error);
 }
 #endif
 

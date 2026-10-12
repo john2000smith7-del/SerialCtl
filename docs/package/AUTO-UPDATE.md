@@ -29,7 +29,7 @@ HTTP 更新也必须通过程序内置公钥的签名验证；只有管理员持
 
 服务器管理员需使用源码仓库的 `tools/new_update_feed.py`，从已验证的正式包生成 `update.json`、`update.json.sig` 和 `files` 目录；细节见源码的 `docs/architecture/AUTO-UPDATE.md`。Python/OpenSSL 只在管理员制作更新时使用，运行 SerialCtl 的电脑和静态网页服务器不需要安装它们。签名私钥不得放进 Git、更新网站或客户端包。
 
-遇到更新错误，先保留当前可用版本。核对 `update.ini` 完整网址、服务器文件是否齐全，以及程序目录是否可写。若文件替换被安全软件或其他程序占用，关闭占用后重新启动检查。若中断后仍无法启动，从可信渠道重新解压完整正式包到新目录，复制原 `update.ini` 后运行；用户数据通常保存在 `%LOCALAPPDATA%\SerialCtl`，不要删除该目录。保留更新目录、原始错误信息与日志供管理员分析。安装日志在程序目录 `.serialctl-update/<本次随机标识>/update.log`，备份在同一子目录的 `backup` 中；失败恢复使用 `.serialctl-update/transaction.txt`，不要在更新中删除或改写这些文件。检查/下载失败在窗口状态区显示，尚未安装时不一定存在安装日志。
+遇到更新错误，先保留当前可用版本。核对 `update.ini` 完整网址、服务器文件是否齐全，以及程序目录是否可写。若文件替换被安全软件或其他程序占用，关闭占用后重新启动检查。若中断后仍无法启动，从可信渠道重新解压完整正式包到新目录，复制原 `update.ini` 后运行；用户数据通常保存在 `%LOCALAPPDATA%\SerialCtl`，不要删除该目录。保留更新目录、原始错误信息与日志供管理员分析。安装日志在程序目录 `.serialctl-update/<本次随机标识>/update.log`，工作进程启动失败时尽可能另存 `.serialctl-update/last-install-error.log`；备份在同一子目录的 `backup` 中；失败恢复使用 `.serialctl-update/transaction.txt`，不要在更新中删除或改写这些文件。检查/下载失败在窗口状态区显示，尚未安装时不一定存在安装日志。
 
 安装或新版启动失败后，`.serialctl-update/failed-version.txt` 会阻止同一版本反复失败重启。优先请管理员发布更高版本；只有核实问题已解决并保留日志后，管理员才可在所有实例退出时移走该标记，再启动重试。不要因看见失败标记就删除备份或恢复记录。
 

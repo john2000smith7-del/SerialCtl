@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <wincrypt.h>
 #include <tlhelp32.h>
+#include <winhttp.h>
 
 #include "UpdateClient.h"
 #include "json.hpp"
@@ -314,6 +315,39 @@ struct Fixture {
     }
 };
 
+// Split session/option/request construction from HTTP I/O so a native event
+// lifetime issue cannot be mistaken for the callback state's completion event.
+void ProbeNativeHttpLifetime(const char* scenario, unsigned constructionLevel) {
+    DWORD before = 0, after = 0;
+    GetProcessHandleCount(GetCurrentProcess(), &before);
+    const auto typesBefore = SnapshotHandleTypes();
+    bool operationsOk = true;
+    for (unsigned iteration = 0; iteration < 64; ++iteration) {
+        HINTERNET session = WinHttpOpen(L"SerialCtl updater lifetime diagnostic", WINHTTP_ACCESS_TYPE_NO_PROXY,
+            WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC);
+        if (!session) { operationsOk = false; continue; }
+        if (constructionLevel >= 1 && !WinHttpSetTimeouts(session, 2000, 2000, 2000, 2000)) operationsOk = false;
+        if (constructionLevel >= 2) {
+            HINTERNET connection = WinHttpConnect(session, L"127.0.0.1", 9, 0);
+            if (!connection) operationsOk = false;
+            else {
+                HINTERNET request = WinHttpOpenRequest(connection, L"GET", L"/", nullptr,
+                    WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+                if (!request) operationsOk = false;
+                else if (!WinHttpCloseHandle(request)) operationsOk = false;
+                if (!WinHttpCloseHandle(connection)) operationsOk = false;
+            }
+        }
+        if (!WinHttpCloseHandle(session)) operationsOk = false;
+    }
+    Sleep(500);
+    GetProcessHandleCount(GetCurrentProcess(), &after);
+    PrintHandleTypeDelta(scenario, typesBefore, SnapshotHandleTypes());
+    std::cout << "[METRIC] native_lifetime_scenario=" << scenario << " cycles=64 handles_before=" << before
+              << " handles_after=" << after << " operations_ok=" << operationsOk << '\n';
+    Require(operationsOk, "native session/request lifetime diagnostic API calls succeed");
+}
+
 void RunTests() {
     Fixture fixture;
     const auto installedDigest = Sha256File(fixture.root / L"serialctl.exe");
@@ -540,7 +574,34 @@ void RunTests() {
             std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << '\n';
     }
     {
+        ProbeNativeHttpLifetime("native-open-close-only", 0);
+        ProbeNativeHttpLifetime("native-open-timeouts-close", 1);
+        ProbeNativeHttpLifetime("native-open-timeouts-request-close", 2);
         Fixture repeated;
+        repeated.Configure(repeated.server.Url("/missing.json"));
+        DWORD completedBefore = 0, completedAfter = 0;
+        GetProcessHandleCount(GetCurrentProcess(), &completedBefore);
+        const auto completedTypesBefore = SnapshotHandleTypes();
+        const auto completedLifetimeBefore = testing::GetHttpLifetimeCounts();
+        bool all404Failed = true;
+        for (unsigned iteration = 0; iteration < 64; ++iteration) {
+            const auto completedResult = repeated.Run();
+            all404Failed = all404Failed && completedResult.status == UpdateStatus::Failed;
+        }
+        Sleep(500);
+        GetProcessHandleCount(GetCurrentProcess(), &completedAfter);
+        PrintHandleTypeDelta("completed-404-requests", completedTypesBefore, SnapshotHandleTypes());
+        const auto completedLifetimeAfter = testing::GetHttpLifetimeCounts();
+        std::cout << "[METRIC] completed_404_cycles=64 handles_before=" << completedBefore
+                  << " handles_after=" << completedAfter
+                  << " states_created_before=" << completedLifetimeBefore.created
+                  << " states_created_after=" << completedLifetimeAfter.created
+                  << " states_destroyed_before=" << completedLifetimeBefore.destroyed
+                  << " states_destroyed_after=" << completedLifetimeAfter.destroyed
+                  << " closing_before=" << completedLifetimeBefore.closingCallbacks
+                  << " closing_after=" << completedLifetimeAfter.closingCallbacks << '\n';
+        Require(all404Failed, "64 completed HTTP 404 requests are rejected");
+        repeated.Configure(repeated.server.Url());
         repeated.server.Set("/update.json", {Data(repeated.manifest.dump()), 200, 0, 20});
         DWORD handlesBefore = 0, handlesAfter = 0;
         Sleep(500); // Let preceding asynchronous HANDLE_CLOSING callbacks settle.

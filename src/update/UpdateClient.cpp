@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#ifdef SERIALCTL_UPDATE_TESTING
+#include <cstdio>
+#endif
 #include <fstream>
 #include <stdexcept>
 
@@ -126,7 +129,14 @@ private:
 #endif
         }
         ~State() {
-            if (completed) CloseHandle(completed);
+            if (completed) {
+                const BOOL closed = CloseHandle(completed);
+#ifdef SERIALCTL_UPDATE_TESTING
+                if (!closed) std::fprintf(stderr, "[FAIL] HTTP state event CloseHandle Windows error %lu\n", GetLastError());
+#else
+                (void)closed;
+#endif
+            }
 #ifdef SERIALCTL_UPDATE_TESTING
             ++httpStatesDestroyed;
 #endif

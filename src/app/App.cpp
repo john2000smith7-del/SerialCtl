@@ -53,7 +53,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
         WSACleanup();
         return 1;
     }
-    if (!startup.Confirm(startupError)) {
+    if (!startup.Confirm(startupError, SERIALCTL_APP_VERSION)) {
         // The worker owns rollback. Close the just-created, idle GUI normally
         // without blocking its health timeout behind a modal error dialog.
         SendMessageW(mainWindow.Handle(), WM_CLOSE, 0, 0);

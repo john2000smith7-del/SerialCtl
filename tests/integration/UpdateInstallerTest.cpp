@@ -55,6 +55,11 @@ bool WaitFile(const fs::path& path, DWORD timeout = 15000) {
     do { if (fs::exists(path)) return true; Sleep(25); } while (GetTickCount64() - started < timeout);
     return false;
 }
+bool WaitText(const fs::path& path, const std::string& text, DWORD timeout = 15000) {
+    const ULONGLONG started = GetTickCount64();
+    do { if (Read(path).find(text) != std::string::npos) return true; Sleep(25); } while (GetTickCount64() - started < timeout);
+    return false;
+}
 struct Process {
     HANDLE process = nullptr;
     ~Process() { if (process) { if (WaitForSingleObject(process, 0) != WAIT_OBJECT_0) { TerminateProcess(process, 99); WaitForSingleObject(process, 5000); } CloseHandle(process); } }
@@ -193,25 +198,33 @@ int Child(int count, wchar_t** args, bool& handled) {
     if (HandleUpdateCommandLine(parameters, result)) return result;
     const fs::path root = Self().parent_path();
     StartupGuard guard; std::wstring error;
-    const bool normal = mode == L"--test-normal-start" || mode == L"--test-update-parent" || mode == L"--test-hold" || mode == L"--test-junction-hold";
+    const bool normal = mode == L"--test-normal-start" || mode == L"--test-update-parent" || mode == L"--test-refused-update-parent" || mode == L"--test-hold" || mode == L"--test-junction-hold";
     auto action = guard.Begin(normal ? L"" : parameters, error);
     if (action == StartupAction::Exit) return 0;
     if (action != StartupAction::Continue) { Write(root / L"child-error.txt", serialctl::WideToMultiByte(error, CP_UTF8)); return 31; }
+    std::string runningVersion = "V1.0.0";
     if (mode == L"--serialctl-update-health") {
         const auto behavior = Read(root / L"health-mode.txt");
         if (behavior == "exit") return 32;
         if (behavior == "hang") { Sleep(10000); return 33; }
+        if (behavior != "version-mismatch") runningVersion = "V9.0.0";
     }
     HWND window = CreateWindowExW(0, L"STATIC", L"SerialCtl updater integration health window", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 320, 180, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!window) return 34;
-    if (!guard.Confirm(error)) { Write(root / L"child-error.txt", serialctl::WideToMultiByte(error, CP_UTF8)); DestroyWindow(window); return 35; }
+    if (!guard.Confirm(error, runningVersion)) { Write(root / L"child-error.txt", serialctl::WideToMultiByte(error, CP_UTF8)); DestroyWindow(window); return 35; }
     DestroyWindow(window);
     if (mode == L"--test-update-parent") {
         if (count != 3 || !testing::LaunchSignedTestUpdate(fs::path(args[2]), "V1.0.0", error)) {
             Write(root / L"launch-error.txt", serialctl::WideToMultiByte(error, CP_UTF8)); return 36;
         }
         return 0; // real normal parent exit, never a forced termination
+    }
+    if (mode == L"--test-refused-update-parent") {
+        if (count != 3) return 39;
+        if (testing::LaunchSignedTestUpdateWithoutApproval(fs::path(args[2]), "V1.0.0", error)) return 40;
+        Write(root / L"launch-error.txt", serialctl::WideToMultiByte(error, CP_UTF8));
+        return 36; // The still-alive helper must not treat this exit as approval.
     }
     if (mode == L"--test-hold" || mode == L"--test-junction-hold") {
         if (mode == L"--test-junction-hold" && guard.ShouldCheckForUpdate()) return 38;
@@ -278,13 +291,15 @@ int wmain(int argc, wchar_t** argv) {
             Check(!fs::exists(f.Journal()) && Read(f.root / L"VERSION") == "PROJECT_VERSION=V9.0.0\nCPP_VERSION=V9.0.0\n" && Read(f.root / L"README.md") == "new-readme", "healthy update commits new files and finalizes journal");
             Check(Read(f.root / L"update.ini") == "private user update URL", "full worker preserves update.ini");
         }
-        for (unsigned i = 7; i <= 8; ++i) {
-            Fixture f(i); f.ExecutablePayload(key);
+        for (unsigned i = 7; i <= 9; ++i) {
+            Fixture f(i == 9 ? 14 : i); f.ExecutablePayload(key);
             const auto oldHash = Sha256File(f.root / L"serialctl.exe");
-            Write(f.root / L"health-mode.txt", i == 7 ? "exit" : "hang");
+            Write(f.root / L"health-mode.txt", i == 7 ? "exit" : i == 8 ? "hang" : "version-mismatch");
             Process parent(f.root / L"serialctl.exe", L"--test-update-parent " + serialctl::QuoteCommandLineArgument(f.stage.wstring()));
             Check(parent.Wait() == 0, "failed-health fixture parent exits normally");
-            Check(WaitFile(f.root / L"recovered.txt"), i == 7 ? "replacement early exit triggers rollback and old process restart" : "replacement health timeout terminates only own child then restarts old process");
+            Check(WaitFile(f.root / L"recovered.txt"), i == 7 ? "replacement early exit triggers rollback and old process restart" :
+                i == 8 ? "replacement health timeout terminates only own child then restarts old process" :
+                "replacement compiled-version mismatch refuses health ACK and restores original application");
             Check(Sha256File(f.root / L"serialctl.exe") == oldHash && Read(f.root / L"VERSION") == "V1.0.0\n" && Read(f.root / L"plink.exe") == "old-plink" &&
                 Read(f.root / L"psftp.exe") == "old-psftp" && !fs::exists(f.root / L"README.md"), "health failure restores all original payload bytes");
             Check(Read(f.root / L".serialctl-update" / L"failed-version.txt") == "V9.0.0\n", "failed version persists to avoid update loop");
@@ -326,6 +341,20 @@ int wmain(int argc, wchar_t** argv) {
                 Check(parent.Wait() == 36, "long-path updater detects renamed live instance launched through 8.3 alias");
                 Check(WaitForSingleObject(holder.process, 0) == WAIT_TIMEOUT && Read(f.root / L"VERSION") == "V1.0.0\n", "8.3 instance remains running without replacement");
             } else std::cout << "[SKIP] filesystem did not provide a distinct 8.3 alias; no 8.3 runtime assertion claimed\n";
+        }
+        {
+            Fixture f(13); f.ExecutablePayload(key);
+            const auto originalHash = Sha256File(f.root / L"serialctl.exe");
+            Process parent(f.root / L"serialctl.exe", L"--test-refused-update-parent " + serialctl::QuoteCommandLineArgument(f.stage.wstring()));
+            Check(parent.Wait() == 36, "ready worker remains alive after caller refuses launch without terminating helper");
+            Check(WaitText(f.stage / L"update.log", "Update caller did not authorize installation"), "unapproved real helper rejects subsequent normal parent exit");
+            Check(!fs::exists(f.Journal()) && !fs::exists(f.root / L"healthy.txt") && !fs::exists(f.root / L"recovered.txt") &&
+                Sha256File(f.root / L"serialctl.exe") == originalHash && Read(f.root / L"VERSION") == "V1.0.0\n" &&
+                Read(f.root / L"plink.exe") == "old-plink" && Read(f.root / L"psftp.exe") == "old-psftp" && !fs::exists(f.root / L"README.md"),
+                "unapproved helper never starts a transaction, changes payloads, or launches replacement processes");
+            fs::remove(f.stage / L"update.log");
+            Check(Read(f.root / L".serialctl-update" / L"last-install-error.log").find("Injected launch refusal") != std::string::npos,
+                "launch failure evidence survives deletion of disposable staged log");
         }
         std::cout << "BOUNDARY: actual Win32 file/process/health/journal operations; ephemeral test trust only; replacement application is this fixture, not SerialCtl GUI; no Win7/hardware/power-loss claim.\n";
         return 0;

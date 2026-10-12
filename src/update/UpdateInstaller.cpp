@@ -320,11 +320,29 @@ Manifest VerifiedStage(const fs::path& stage, const std::string& previousVersion
 #endif
     return VerifyStagedManifest(stage, previousVersion);
 }
-bool LaunchWorker(const fs::path& installation, const fs::path& stage, const std::string& previousVersion, bool recover, std::wstring& error, bool fixture = false) {
+void PreserveLaunchFailure(const fs::path& installation, const fs::path& stage, const std::string& message) noexcept {
+    try {
+        StageToken(installation, stage);
+        Log(stage, "LAUNCH FAILED: " + message);
+        std::string evidence;
+        try { evidence = ReadSmall(stage / L"update.log", 65536); }
+        catch (...) { evidence = "LAUNCH FAILED: " + message + "\nStaged log was unavailable.\n"; }
+        // The GUI owns stage cleanup after false. Keep its launch-failure
+        // evidence outside that disposable directory before returning.
+        WriteDurable(installation / kRootName / L"last-install-error.log", evidence);
+    } catch (...) {} // An unwritable disk cannot prevent safe refusal.
+}
+bool LaunchWorker(const fs::path& installation, const fs::path& stage, const std::string& previousVersion, bool recover, std::wstring& error, bool fixture = false
+#ifdef SERIALCTL_UPDATE_TESTING
+    , bool withholdApproval = false
+#endif
+) {
     try {
         const auto token = StageToken(installation, stage);
         Handle ready(CreateEventW(nullptr, TRUE, FALSE, EventName(token, L".ready").c_str()));
         if (!ready.value || GetLastError() == ERROR_ALREADY_EXISTS) throw std::runtime_error("Update readiness channel already exists");
+        Handle approval(CreateEventW(nullptr, TRUE, FALSE, EventName(token, L".go").c_str()));
+        if (!approval.value || GetLastError() == ERROR_ALREADY_EXISTS) throw std::runtime_error("Update authorization channel already exists");
         const auto worker = stage / L"update-worker.exe";
         SafeTree(worker, false);
         if (fs::exists(worker) && !DeleteFileW(worker.c_str())) Fail("Cannot remove old update worker");
@@ -336,17 +354,31 @@ bool LaunchWorker(const fs::path& installation, const fs::path& stage, const std
         Handle child(process.hProcess), thread(process.hThread);
         HANDLE waits[] = {ready.value, child.value};
         if (WaitForMultipleObjects(2, waits, FALSE, 15000) != WAIT_OBJECT_0) {
-            // The GUI is still alive, so this child cannot yet have modified any
-            // application files. Stop only the helper we just created before
-            // returning stage ownership to the caller for cleanup.
+            // Authorization remains unset even if terminating this child fails.
+            // A late ready signal or later normal GUI exit cannot allow it to
+            // install the update after this function has returned false.
             if (WaitForSingleObject(child.value, 0) != WAIT_OBJECT_0) {
                 if (!TerminateProcess(child.value, 72) || WaitForSingleObject(child.value, 10000) != WAIT_OBJECT_0)
                     throw std::runtime_error("Unready update helper could not be stopped; keep its staging directory");
             }
             throw std::runtime_error("Update worker did not become ready; see the staged update.log");
         }
+        if (WaitForSingleObject(child.value, 0) != WAIT_TIMEOUT)
+            throw std::runtime_error("Update worker exited before launch authorization");
+#ifdef SERIALCTL_UPDATE_TESTING
+        // Exercise an unready-launch failure whose helper cannot be terminated:
+        // intentionally keep the real child alive, with its go event unset.
+        if (withholdApproval) throw std::runtime_error("Injected launch refusal without helper termination");
+#endif
+        // No failing work may follow SetEvent: this is the internal handoff from
+        // caller-owned staging to a worker authorized to install after shutdown.
+        if (!SetEvent(approval.value)) Fail("Cannot authorize update installation");
         return true;
-    } catch (const std::exception& ex) { error = Wide(ex.what()); return false; }
+    } catch (const std::exception& ex) {
+        error = Wide(ex.what());
+        PreserveLaunchFailure(installation, stage, ex.what());
+        return false;
+    }
 }
 void RestartOriginal(const fs::path& installation) {
     PROCESS_INFORMATION process{}; StartProcess(installation / L"serialctl.exe", L"--serialctl-update-recovered", installation, process);
@@ -381,7 +413,12 @@ int Worker(const std::vector<std::wstring>& args, bool fixture = false) {
         }
         RequireNoOtherProcesses(installation, static_cast<DWORD>(pid64));
         Handle ready(OpenEventW(EVENT_MODIFY_STATE, FALSE, EventName(token, L".ready").c_str()));
+        Handle approval(OpenEventW(SYNCHRONIZE, FALSE, EventName(token, L".go").c_str()));
+        if (!approval.value) throw std::runtime_error("Update caller authorization channel disappeared");
         if (!ready.value || !SetEvent(ready.value)) throw std::runtime_error("Update caller readiness channel disappeared");
+        HANDLE authorizationWaits[] = {approval.value, parent.value};
+        if (WaitForMultipleObjects(2, authorizationWaits, FALSE, fixture ? 2500 : 15000) != WAIT_OBJECT_0)
+            throw std::runtime_error("Update caller did not authorize installation; no files changed");
         Log(stage, recovery ? "RECOVERY waiting for parent exit" : "VERIFIED waiting for parent exit");
         if (WaitForSingleObject(parent.value, kParentExitTimeout) != WAIT_OBJECT_0) throw std::runtime_error("Parent did not exit normally; installation cancelled");
         parentExited = true;
@@ -495,6 +532,7 @@ StartupAction StartupGuard::Begin(const std::wstring& parameters, std::wstring& 
             SafeTree(installation);
             Journal journal = ReadJournal(installation);
             if (journal.token != Utf8(args[3]) || journal.phase != "awaiting") throw std::runtime_error("Update health journal does not match");
+            expectedVersion_ = journal.version;
             acknowledgment_ = OpenEventW(EVENT_MODIFY_STATE, FALSE, EventName(journal.token, L".healthy").c_str());
             if (!acknowledgment_) Fail("Cannot open update health confirmation channel");
             committed_ = OpenEventW(SYNCHRONIZE, FALSE, EventName(journal.token, L".committed").c_str());
@@ -527,8 +565,15 @@ StartupAction StartupGuard::Begin(const std::wstring& parameters, std::wstring& 
         return StartupAction::Continue;
     } catch (const std::exception& ex) { error = Wide(ex.what()); return StartupAction::Failed; }
 }
-bool StartupGuard::Confirm(std::wstring& error) {
+bool StartupGuard::Confirm(std::wstring& error, const std::string& runningVersion) {
     if (acknowledgment_) {
+        // VERSION is signed deployment metadata. The replacement executable
+        // must independently report the matching compiled version, otherwise a
+        // mismatched package could commit an old binary and update repeatedly.
+        if (runningVersion != expectedVersion_) {
+            error = L"更新后程序的编译版本与签名清单不一致；程序将退出并恢复旧版本。";
+            return false;
+        }
         if (!SetEvent(acknowledgment_)) { error = L"无法确认更新后的主窗口启动成功。"; return false; }
         CloseHandle(acknowledgment_); acknowledgment_ = nullptr;
         HANDLE waits[] = {committed_, worker_};
@@ -573,6 +618,14 @@ bool LaunchSignedTestUpdate(const fs::path& stage, const std::string& currentVer
         StageToken(installation, stage);
         VerifiedStage(stage, currentVersion, true);
         return LaunchWorker(installation, stage, currentVersion, false, error, true);
+    } catch (const std::exception& ex) { error = Wide(ex.what()); return false; }
+}
+bool LaunchSignedTestUpdateWithoutApproval(const fs::path& stage, const std::string& currentVersion, std::wstring& error) {
+    try {
+        const auto installation = ModulePath().parent_path();
+        StageToken(installation, stage);
+        VerifiedStage(stage, currentVersion, true);
+        return LaunchWorker(installation, stage, currentVersion, false, error, true, true);
     } catch (const std::exception& ex) { error = Wide(ex.what()); return false; }
 }
 }
