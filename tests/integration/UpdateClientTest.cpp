@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <fstream>
 #include <functional>
@@ -44,6 +45,78 @@ DWORD ThreadCount() {
     } while (Thread32Next(snapshot, &entry));
     CloseHandle(snapshot);
     return count;
+}
+// Diagnostic only: ask the current process for object *types*, never object
+// names or other processes' handles. These APIs are loaded dynamically so the
+// production/Win7 import contract remains unchanged. Windows versions without
+// ProcessHandleInformation simply report this optional snapshot unavailable.
+using HandleTypes = std::map<std::string, unsigned long long>;
+HandleTypes SnapshotHandleTypes() {
+    using Query = LONG (NTAPI*)(HANDLE, ULONG, void*, ULONG, ULONG*);
+    const auto ntdll = GetModuleHandleW(L"ntdll.dll");
+    const auto queryProcess = reinterpret_cast<Query>(GetProcAddress(ntdll, "NtQueryInformationProcess"));
+    const auto queryObject = reinterpret_cast<Query>(GetProcAddress(ntdll, "NtQueryObject"));
+    if (!queryProcess || !queryObject) return {{"diagnostic-unavailable", 1}};
+    struct Entry {
+        HANDLE value;
+        ULONG_PTR handleCount, pointerCount;
+        ULONG grantedAccess, typeIndex, attributes, reserved;
+    };
+    struct Snapshot { ULONG_PTR count, reserved; Entry handles[1]; };
+    struct TypeName { USHORT length, maximumLength; PWSTR buffer; };
+    std::vector<unsigned char> storage(64 * 1024);
+    LONG status = -1;
+    ULONG needed = 0;
+    for (unsigned attempt = 0; attempt < 8; ++attempt) {
+        status = queryProcess(GetCurrentProcess(), 51 /* ProcessHandleInformation */,
+                              storage.data(), static_cast<ULONG>(storage.size()), &needed);
+        if (status >= 0) break;
+        const size_t next = (std::max)(storage.size() * 2, static_cast<size_t>(needed));
+        if (next > 16 * 1024 * 1024) break;
+        storage.resize(next);
+    }
+    if (status < 0) return {{"diagnostic-unavailable", 1}};
+    const auto* snapshot = reinterpret_cast<const Snapshot*>(storage.data());
+    const size_t headerBytes = offsetof(Snapshot, handles);
+    if (snapshot->count > (storage.size() - headerBytes) / sizeof(Entry))
+        return {{"diagnostic-invalid-length", 1}};
+    std::map<ULONG, std::string> names;
+    HandleTypes counts;
+    for (ULONG_PTR index = 0; index < snapshot->count; ++index) {
+        const auto& entry = snapshot->handles[index];
+        auto known = names.find(entry.typeIndex);
+        if (known == names.end()) {
+            alignas(TypeName) std::array<unsigned char, 2048> typeStorage{};
+            ULONG typeBytes = 0;
+            if (queryObject(entry.value, 2 /* ObjectTypeInformation */, typeStorage.data(),
+                            static_cast<ULONG>(typeStorage.size()), &typeBytes) < 0) continue;
+            const auto* type = reinterpret_cast<const TypeName*>(typeStorage.data());
+            const auto begin = reinterpret_cast<ULONG_PTR>(typeStorage.data());
+            const auto name = reinterpret_cast<ULONG_PTR>(type->buffer);
+            if (type->length % sizeof(wchar_t) || name < begin || name > begin + typeStorage.size() ||
+                type->length > begin + typeStorage.size() - name) continue;
+            std::string label;
+            for (size_t character = 0; character < type->length / sizeof(wchar_t); ++character) {
+                const wchar_t value = type->buffer[character];
+                label += value >= 32 && value < 127 ? static_cast<char>(value) : '?';
+            }
+            known = names.emplace(entry.typeIndex, std::move(label)).first;
+        }
+        ++counts[known->second];
+    }
+    return counts;
+}
+void PrintHandleTypeDelta(const char* scenario, const HandleTypes& before, const HandleTypes& after) {
+    HandleTypes combined = before;
+    for (const auto& entry : after) combined.emplace(entry.first, 0);
+    for (const auto& entry : combined) {
+        const auto first = before.find(entry.first), last = after.find(entry.first);
+        const auto start = first == before.end() ? 0 : first->second;
+        const auto end = last == after.end() ? 0 : last->second;
+        std::cout << "[METRIC] handle_type_scenario=" << scenario << " type=" << entry.first
+                  << " before=" << start << " after=" << end
+                  << " delta=" << static_cast<long long>(end) - static_cast<long long>(start) << '\n';
+    }
 }
 Bytes Data(const std::string& value) { return Bytes(value.begin(), value.end()); }
 void Write(const fs::path& path, const Bytes& data) {
@@ -474,6 +547,7 @@ void RunTests() {
         if (!GetProcessHandleCount(GetCurrentProcess(), &handlesBefore)) throw std::runtime_error("Cannot count handles");
         const DWORD threadsBefore = ThreadCount();
         const auto lifetimeBefore = testing::GetHttpLifetimeCounts();
+        const auto handleTypesBefore = SnapshotHandleTypes();
         bool allCancelled = true;
         long long maximumCancelMs = 0;
         for (unsigned iteration = 0; iteration < 64; ++iteration) {
@@ -493,6 +567,8 @@ void RunTests() {
         if (!GetProcessHandleCount(GetCurrentProcess(), &handlesAfter)) throw std::runtime_error("Cannot count handles");
         const DWORD threadsAfter = ThreadCount();
         const auto lifetimeAfter = testing::GetHttpLifetimeCounts();
+        const auto handleTypesAfter = SnapshotHandleTypes();
+        PrintHandleTypeDelta("new-worker-per-cycle", handleTypesBefore, handleTypesAfter);
         std::cout << "[METRIC] cancellation_cycles=64 handles_before=" << handlesBefore << " handles_after=" << handlesAfter
                   << " threads_before=" << threadsBefore << " threads_after=" << threadsAfter
                   << " maximum_cancel_ms=" << maximumCancelMs << '\n';
@@ -502,6 +578,70 @@ void RunTests() {
                   << " http_states_destroyed_after=" << lifetimeAfter.destroyed
                   << " http_closing_callbacks_before=" << lifetimeBefore.closingCallbacks
                   << " http_closing_callbacks_after=" << lifetimeAfter.closingCallbacks << '\n';
+        // Keep the failing original checks below this control, so one CI log
+        // distinguishes resources tied to each WinHTTP session from resources
+        // tied to the lifetime of a newly created calling thread.
+        std::atomic<unsigned> command{0}, completed{0};
+        std::atomic<bool> workerReady{false}, releaseWorker{false};
+        UpdateResult sameWorkerResult;
+        std::thread longLived([&] {
+            workerReady = true;
+            for (unsigned cycle = 1; cycle <= 64; ++cycle) {
+                while (command.load() < cycle) Sleep(1);
+                sameWorkerResult = repeated.Run();
+                completed = cycle;
+            }
+            while (!releaseWorker.load()) Sleep(1);
+        });
+        while (!workerReady.load()) Sleep(1);
+        DWORD sameHandlesBefore = 0, sameHandlesAfter = 0, sameHandlesAfterJoin = 0;
+        GetProcessHandleCount(GetCurrentProcess(), &sameHandlesBefore);
+        const DWORD sameThreadsBefore = ThreadCount();
+        const auto sameTypesBefore = SnapshotHandleTypes();
+        const auto sameLifetimeBefore = testing::GetHttpLifetimeCounts();
+        bool sameAllCancelled = true;
+        long long sameMaximumCancelMs = 0;
+        for (unsigned cycle = 1; cycle <= 64; ++cycle) {
+            repeated.cancel = false;
+            const auto requests = repeated.server.Requests();
+            command = cycle;
+            for (unsigned wait = 0; wait < 1000 && repeated.server.Requests() == requests; ++wait) Sleep(2);
+            const auto cancelStart = std::chrono::steady_clock::now();
+            repeated.cancel = true;
+            while (completed.load() < cycle) Sleep(1);
+            sameMaximumCancelMs = (std::max)(sameMaximumCancelMs,
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - cancelStart).count());
+            sameAllCancelled = sameAllCancelled && sameWorkerResult.status == UpdateStatus::Cancelled;
+        }
+        Sleep(500);
+        GetProcessHandleCount(GetCurrentProcess(), &sameHandlesAfter);
+        const DWORD sameThreadsAfter = ThreadCount();
+        const auto sameTypesAfter = SnapshotHandleTypes();
+        const auto sameLifetimeAfter = testing::GetHttpLifetimeCounts();
+        releaseWorker = true;
+        longLived.join();
+        Sleep(500);
+        GetProcessHandleCount(GetCurrentProcess(), &sameHandlesAfterJoin);
+        const auto sameTypesAfterJoin = SnapshotHandleTypes();
+        PrintHandleTypeDelta("same-worker-64-cycles", sameTypesBefore, sameTypesAfter);
+        PrintHandleTypeDelta("same-worker-after-join", sameTypesBefore, sameTypesAfterJoin);
+        std::cout << "[METRIC] same_worker_cancellation_cycles=64 handles_before=" << sameHandlesBefore
+                  << " handles_after=" << sameHandlesAfter << " handles_after_join=" << sameHandlesAfterJoin
+                  << " threads_before=" << sameThreadsBefore << " threads_after=" << sameThreadsAfter
+                  << " maximum_cancel_ms=" << sameMaximumCancelMs
+                  << " states_created_before=" << sameLifetimeBefore.created
+                  << " states_created_after=" << sameLifetimeAfter.created
+                  << " states_destroyed_before=" << sameLifetimeBefore.destroyed
+                  << " states_destroyed_after=" << sameLifetimeAfter.destroyed
+                  << " closing_before=" << sameLifetimeBefore.closingCallbacks
+                  << " closing_after=" << sameLifetimeAfter.closingCallbacks << '\n';
+        Require(sameLifetimeAfter.created == sameLifetimeAfter.destroyed &&
+                sameLifetimeAfter.closingCallbacks == sameLifetimeAfter.created,
+                "same worker releases every HTTP callback state and event");
+        Require(sameAllCancelled && sameMaximumCancelMs < 1000,
+                "64 cancellations on the same worker finish promptly");
+        Require(sameHandlesAfter <= sameHandlesBefore + 12 && sameThreadsAfter <= sameThreadsBefore + 4,
+                "same-worker cancellation cycles show no unbounded handle/thread growth");
         Require(lifetimeAfter.created == lifetimeAfter.destroyed &&
                 lifetimeAfter.closingCallbacks == lifetimeAfter.created,
                 "all HTTP callback states and buffers are released after HANDLE_CLOSING");
