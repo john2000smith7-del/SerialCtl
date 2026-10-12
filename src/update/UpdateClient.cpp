@@ -200,7 +200,10 @@ std::vector<unsigned char> Download(const Url& url, std::size_t limit, const std
     CheckCancelled(cancel);
     InternetHandle session(WinHttpOpen(L"SerialCtl updater/1", WINHTTP_ACCESS_TYPE_NO_PROXY,
                                       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
-    if (!WinHttpSetTimeouts(session.value, 2000, 2000, 2000, 2000))
+    // AsyncRequest bounds DNS together with the entire request via its wall-clock
+    // deadline and cancellation. Avoid WinHTTP's separate finite DNS timer,
+    // which needs an extra resolver timeout resource for every send.
+    if (!WinHttpSetTimeouts(session.value, 0, 2000, 2000, 2000))
         throw std::runtime_error("Cannot set update HTTP timeouts");
     if (url.secure) {
         DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
