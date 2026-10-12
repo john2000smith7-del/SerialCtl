@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([Parameter(Mandatory = $true)][string]$OutputDirectory)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -77,10 +77,10 @@ public static class SerialCtlUpdateUi {
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window,uint message,IntPtr w,IntPtr l);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr window,int x,int y,int w,int h,bool paint);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
-    [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window,StringBuilder text,int count);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageTimeoutW")] static extern IntPtr ReadText(IntPtr window,uint message,IntPtr w,StringBuilder text,uint flags,uint timeout,out IntPtr result);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern IntPtr SendMessageTimeout(IntPtr window,uint message,IntPtr w,IntPtr l,uint flags,uint timeout,out IntPtr result);
     [DllImport("user32.dll")] static extern uint SendInput(uint count, INPUT[] inputs,int size);
-    public static string Text(IntPtr window) { var text=new StringBuilder(4096); GetWindowText(window,text,text.Capacity); return text.ToString(); }
+    public static string Text(IntPtr window) { var text=new StringBuilder(4096); IntPtr result; if(ReadText(window,13,new IntPtr(text.Capacity),text,2,1000,out result)==IntPtr.Zero) throw new Exception("Cannot read GUI control text"); return text.ToString(); }
     public static bool Responsive(IntPtr window) { IntPtr result; return SendMessageTimeout(window,0,IntPtr.Zero,IntPtr.Zero,2,1000,out result)!=IntPtr.Zero; }
     public static void Click(IntPtr window) {
         RECT r; if(window==IntPtr.Zero || !GetWindowRect(window,out r)) throw new Exception("Missing clickable control");
