@@ -22,6 +22,12 @@ UpdateResult CheckAndStage(const std::filesystem::path& exePath,
 
 #ifdef SERIALCTL_UPDATE_TESTING
 namespace testing {
+struct HttpLifetimeCounts {
+    unsigned long long created = 0;
+    unsigned long long destroyed = 0;
+    unsigned long long closingCallbacks = 0;
+};
+HttpLifetimeCounts GetHttpLifetimeCounts();
 UpdateResult CheckAndStage(const std::filesystem::path& exePath,
                           const std::string& currentVersion,
                           const std::atomic<bool>& cancel,

@@ -473,6 +473,7 @@ void RunTests() {
         Sleep(500); // Let preceding asynchronous HANDLE_CLOSING callbacks settle.
         if (!GetProcessHandleCount(GetCurrentProcess(), &handlesBefore)) throw std::runtime_error("Cannot count handles");
         const DWORD threadsBefore = ThreadCount();
+        const auto lifetimeBefore = testing::GetHttpLifetimeCounts();
         bool allCancelled = true;
         long long maximumCancelMs = 0;
         for (unsigned iteration = 0; iteration < 64; ++iteration) {
@@ -491,9 +492,19 @@ void RunTests() {
         Sleep(500);
         if (!GetProcessHandleCount(GetCurrentProcess(), &handlesAfter)) throw std::runtime_error("Cannot count handles");
         const DWORD threadsAfter = ThreadCount();
+        const auto lifetimeAfter = testing::GetHttpLifetimeCounts();
         std::cout << "[METRIC] cancellation_cycles=64 handles_before=" << handlesBefore << " handles_after=" << handlesAfter
                   << " threads_before=" << threadsBefore << " threads_after=" << threadsAfter
                   << " maximum_cancel_ms=" << maximumCancelMs << '\n';
+        std::cout << "[METRIC] http_states_created_before=" << lifetimeBefore.created
+                  << " http_states_created_after=" << lifetimeAfter.created
+                  << " http_states_destroyed_before=" << lifetimeBefore.destroyed
+                  << " http_states_destroyed_after=" << lifetimeAfter.destroyed
+                  << " http_closing_callbacks_before=" << lifetimeBefore.closingCallbacks
+                  << " http_closing_callbacks_after=" << lifetimeAfter.closingCallbacks << '\n';
+        Require(lifetimeAfter.created == lifetimeAfter.destroyed &&
+                lifetimeAfter.closingCallbacks == lifetimeAfter.created,
+                "all HTTP callback states and buffers are released after HANDLE_CLOSING");
         Require(allCancelled && maximumCancelMs < 1000, "64 active HTTP cancellations finish promptly");
         Require(handlesAfter <= handlesBefore + 12 && threadsAfter <= threadsBefore + 4,
                 "64 cancellation cycles show no unbounded handle/thread growth (allows native pool variation)");

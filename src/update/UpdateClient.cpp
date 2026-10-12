@@ -14,6 +14,10 @@
 namespace serialctl::update {
 namespace {
 
+#ifdef SERIALCTL_UPDATE_TESTING
+std::atomic<unsigned long long> httpStatesCreated{0}, httpStatesDestroyed{0}, httpClosingCallbacks{0};
+#endif
+
 struct InternetHandle {
     HINTERNET value = nullptr;
     explicit InternetHandle(HINTERNET handle) : value(handle) {
@@ -92,7 +96,7 @@ public:
     HINTERNET Get() const { return handle_; }
     void Send(const std::atomic<bool>& cancel, std::chrono::steady_clock::time_point deadline) {
         Prepare(cancel, deadline);
-        const BOOL started = WinHttpSendRequest(handle_, L"Accept-Encoding: identity\r\nCache-Control: no-cache\r\n", -1L,
+        const BOOL started = WinHttpSendRequest(handle_, L"Accept-Encoding: identity\r\nCache-Control: no-cache\r\n", static_cast<DWORD>(-1),
             WINHTTP_NO_REQUEST_DATA, 0, 0, reinterpret_cast<DWORD_PTR>(state_));
         CheckStarted(started);
         Wait(WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE, cancel, deadline);
@@ -115,14 +119,29 @@ private:
         std::atomic<unsigned> references{2};
         std::atomic<DWORD> status{0}, error{0}, transferred{0};
         std::array<unsigned char, 64 * 1024> buffer{};
-        State() { if (!completed) throw std::runtime_error("Cannot create update HTTP completion event"); }
-        ~State() { if (completed) CloseHandle(completed); }
+        State() {
+            if (!completed) throw std::runtime_error("Cannot create update HTTP completion event");
+#ifdef SERIALCTL_UPDATE_TESTING
+            ++httpStatesCreated;
+#endif
+        }
+        ~State() {
+            if (completed) CloseHandle(completed);
+#ifdef SERIALCTL_UPDATE_TESTING
+            ++httpStatesDestroyed;
+#endif
+        }
         void Release() { if (references.fetch_sub(1) == 1) delete this; }
     };
     static void CALLBACK Callback(HINTERNET, DWORD_PTR context, DWORD status, void* information, DWORD length) {
         auto* state = reinterpret_cast<State*>(context);
         if (!state) return;
-        if (status == WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING) { state->Release(); return; }
+        if (status == WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING) {
+#ifdef SERIALCTL_UPDATE_TESTING
+            ++httpClosingCallbacks;
+#endif
+            state->Release(); return;
+        }
         if (status == WINHTTP_CALLBACK_STATUS_REQUEST_ERROR) {
             const auto* error = static_cast<const WINHTTP_ASYNC_RESULT*>(information);
             state->error = error && length >= sizeof(WINHTTP_ASYNC_RESULT) ? error->dwError : ERROR_GEN_FAILURE;
@@ -361,6 +380,9 @@ UpdateResult CheckAndStage(const std::filesystem::path& exePath, const std::stri
 
 #ifdef SERIALCTL_UPDATE_TESTING
 namespace testing {
+HttpLifetimeCounts GetHttpLifetimeCounts() {
+    return {httpStatesCreated.load(), httpStatesDestroyed.load(), httpClosingCallbacks.load()};
+}
 UpdateResult CheckAndStage(const std::filesystem::path& exePath, const std::string& currentVersion,
                           const std::atomic<bool>& cancel, const std::vector<unsigned char>& key) {
     return Run(exePath, currentVersion, cancel, &key);
