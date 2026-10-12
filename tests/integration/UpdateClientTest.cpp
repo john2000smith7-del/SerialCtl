@@ -19,6 +19,7 @@
 #include <map>
 #include <mutex>
 #include <stdexcept>
+#include <sstream>
 #include <thread>
 
 using namespace serialctl::update;
@@ -52,7 +53,7 @@ DWORD ThreadCount() {
 // production/Win7 import contract remains unchanged. Windows versions without
 // ProcessHandleInformation simply report this optional snapshot unavailable.
 using HandleTypes = std::map<std::string, unsigned long long>;
-HandleTypes SnapshotHandleTypes() {
+HandleTypes SnapshotHandleTypes(std::vector<ULONG_PTR>* eventValues = nullptr) {
     using Query = LONG (NTAPI*)(HANDLE, ULONG, void*, ULONG, ULONG*);
     const auto ntdll = GetModuleHandleW(L"ntdll.dll");
     const auto queryProcess = reinterpret_cast<Query>(GetProcAddress(ntdll, "NtQueryInformationProcess"));
@@ -104,9 +105,83 @@ HandleTypes SnapshotHandleTypes() {
             known = names.emplace(entry.typeIndex, std::move(label)).first;
         }
         ++counts[known->second];
+        if (eventValues && known->second == "Event")
+            eventValues->push_back(reinterpret_cast<ULONG_PTR>(entry.value));
     }
     return counts;
 }
+// Native handle tracing is only a diagnostic in this test executable. Keep
+// records within this process, and print module basenames/offsets, never handle
+// names, object names, process paths, user names, or other processes' records.
+bool BeginHandleTracing() {
+    using Set = LONG (NTAPI*)(HANDLE, ULONG, void*, ULONG);
+    const auto set = reinterpret_cast<Set>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtSetInformationProcess"));
+    if (!set) return false;
+    struct Enable { ULONG flags, totalSlots; } enable{0, 4096};
+    const LONG status = set(GetCurrentProcess(), 32 /* ProcessHandleTracing */, &enable, sizeof(enable));
+    std::cout << "[METRIC] native_handle_tracing_status=0x" << std::hex << static_cast<ULONG>(status) << std::dec << '\n';
+    return status >= 0;
+}
+void EndHandleTracing() {
+    using Set = LONG (NTAPI*)(HANDLE, ULONG, void*, ULONG);
+    const auto set = reinterpret_cast<Set>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtSetInformationProcess"));
+    if (set) set(GetCurrentProcess(), 32 /* ProcessHandleTracing */, nullptr, 0);
+}
+std::string TraceFrame(void* address) {
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCWSTR>(address), &module)) return "unresolved-module";
+    std::array<wchar_t, 32768> path{};
+    const DWORD length = GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
+    if (!length || length >= path.size()) return "unresolved-module";
+    size_t begin = 0;
+    for (size_t index = 0; index < length; ++index)
+        if (path[index] == L'\\' || path[index] == L'/') begin = index + 1;
+    std::string name;
+    for (size_t index = begin; index < length; ++index)
+        name += path[index] >= 32 && path[index] < 127 ? static_cast<char>(path[index]) : '?';
+    std::ostringstream line;
+    line << name << "+0x" << std::hex
+         << reinterpret_cast<ULONG_PTR>(address) - reinterpret_cast<ULONG_PTR>(module);
+    return line.str();
+}
+void PrintNewEventCreationTraces(const std::vector<ULONG_PTR>& before, const std::vector<ULONG_PTR>& after) {
+    using Query = LONG (NTAPI*)(HANDLE, ULONG, void*, ULONG, ULONG*);
+    const auto query = reinterpret_cast<Query>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationProcess"));
+    if (!query) return;
+    struct Entry { HANDLE value; HANDLE processId, threadId; ULONG type; void* stack[16]; };
+    struct Records { HANDLE value; ULONG count; Entry entries[1]; };
+    unsigned sampled = 0;
+    for (const auto value : after) {
+        if (std::find(before.begin(), before.end(), value) != before.end()) continue;
+        if (sampled++ >= 4) break;
+        std::vector<unsigned char> storage(64 * 1024);
+        auto* records = reinterpret_cast<Records*>(storage.data());
+        records->value = reinterpret_cast<HANDLE>(value);
+        ULONG needed = 0;
+        const LONG status = query(GetCurrentProcess(), 32 /* ProcessHandleTracing */, storage.data(),
+                                  static_cast<ULONG>(storage.size()), &needed);
+        if (status < 0) {
+            std::cout << "[METRIC] native_event_trace_sample=" << sampled << " status=0x"
+                      << std::hex << static_cast<ULONG>(status) << std::dec << '\n';
+            continue;
+        }
+        const size_t limit = (storage.size() - offsetof(Records, entries)) / sizeof(Entry);
+        const auto count = (std::min)(static_cast<size_t>(records->count), limit);
+        bool found = false;
+        for (size_t entry = 0; entry < count; ++entry) {
+            const auto& record = records->entries[entry];
+            if (record.value != reinterpret_cast<HANDLE>(value) || record.type != 1 /* OPEN */) continue;
+            found = true;
+            std::cout << "[METRIC] native_event_trace_sample=" << sampled << " operation=open";
+            for (unsigned frame = 0; frame < 16 && record.stack[frame]; ++frame)
+                std::cout << " frame" << frame << '=' << TraceFrame(record.stack[frame]);
+            std::cout << '\n';
+        }
+        if (!found) std::cout << "[METRIC] native_event_trace_sample=" << sampled << " open_trace_unavailable=1\n";
+    }
+}
+
 void PrintHandleTypeDelta(const char* scenario, const HandleTypes& before, const HandleTypes& after) {
     HandleTypes combined = before;
     for (const auto& entry : after) combined.emplace(entry.first, 0);
@@ -580,8 +655,10 @@ void RunTests() {
         Fixture repeated;
         repeated.Configure(repeated.server.Url("/missing.json"));
         DWORD completedBefore = 0, completedAfter = 0;
+        const bool handleTracing = BeginHandleTracing();
         GetProcessHandleCount(GetCurrentProcess(), &completedBefore);
-        const auto completedTypesBefore = SnapshotHandleTypes();
+        std::vector<ULONG_PTR> eventsBefore, eventsAfter;
+        const auto completedTypesBefore = SnapshotHandleTypes(&eventsBefore);
         const auto completedLifetimeBefore = testing::GetHttpLifetimeCounts();
         bool all404Failed = true;
         for (unsigned iteration = 0; iteration < 64; ++iteration) {
@@ -590,7 +667,12 @@ void RunTests() {
         }
         Sleep(500);
         GetProcessHandleCount(GetCurrentProcess(), &completedAfter);
-        PrintHandleTypeDelta("completed-404-requests", completedTypesBefore, SnapshotHandleTypes());
+        const auto completedTypesAfter = SnapshotHandleTypes(&eventsAfter);
+        PrintHandleTypeDelta("completed-404-requests", completedTypesBefore, completedTypesAfter);
+        if (handleTracing) {
+            PrintNewEventCreationTraces(eventsBefore, eventsAfter);
+            EndHandleTracing();
+        }
         const auto completedLifetimeAfter = testing::GetHttpLifetimeCounts();
         std::cout << "[METRIC] completed_404_cycles=64 handles_before=" << completedBefore
                   << " handles_after=" << completedAfter
