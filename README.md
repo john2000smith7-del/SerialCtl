@@ -143,6 +143,13 @@ SerialCtl-V1.0.7-Win7-x64.zip
 - 真实 Win7 驱动、长时间大流量、具体 SSH 算法及服务器 SFTP 子系统需要现场验证。
 - `legacy/csharp` 是历史 WinForms 原型，不属于生产程序或发布包。
 
+## 审核与后续修改
+
+修复代码、自动更新及审核资料已统一维护在 `main`。后续修复可从[问题与优化总追踪](https://github.com/john2000smith7-del/SerialCtl/issues/26)逐项领取；每项包含修改位置、建议和验收条件。问题已记录不代表已修复。
+
+- [V1.0.6 独立审核、交叉复审与原始证据](docs/reviews/2026-10-11-v1.0.6/README.md)
+- [V1.0.7 自动更新实际验证记录](docs/testing/results/V1.0.7-auto-update/README.md)
+
 ## GitHub 自动构建与下载
 
 推送 main、feat/*、feature/* 或手动运行 Actions 的 `Windows Win7 release build` 会构建并验证 x64。正式程序包可在仓库 Releases 下载；Actions 的 `SerialCtl-Win7-portable` 为构建产物（保留 30 天）。CI 使用 Windows Server 2022，不替代真实 Win7 SP1 与硬件验收。
