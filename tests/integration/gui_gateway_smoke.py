@@ -20,7 +20,13 @@ with Client('127.0.0.1') as c:
     resources = c.resources()['resources']
     cmd = [r for r in resources if r['kind'] == 'cmd' and r['connected']][-1]['id']
     if '--start-stream' in sys.argv:
-        c.input(cmd, b'powershell -NoProfile -Command "1..2000 | ForEach-Object {Write-Output (\'SERIALCTL_DYNAMIC_\'+$_); Start-Sleep -Milliseconds 10}"\r\n')
+        # Keep real stdout active throughout the physical window/panel drags.
+        # The known paint marker lets the read-only GUI probe verify that output
+        # reached actual terminal painting while the mouse was held down.
+        if '--long-stream' in sys.argv:
+            c.input(cmd, b'powershell -NoProfile -Command "1..12000 | ForEach-Object {Write-Output (\'SERIALCTL_PAINT_\'+($_ % 1000).ToString(\'D3\')+\' controlled CMD output during real mouse drag\'); Start-Sleep -Milliseconds 10}"\r\n')
+        else:
+            c.input(cmd, b'powershell -NoProfile -Command "1..2000 | ForEach-Object {Write-Output (\'SERIALCTL_DYNAMIC_\'+$_); Start-Sleep -Milliseconds 10}"\r\n')
         print('Started sustained real CMD child stdout on ' + cmd)
         raise SystemExit(0)
     c.subscribe(cmd)

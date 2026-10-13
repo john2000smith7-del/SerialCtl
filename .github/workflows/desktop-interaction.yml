@@ -1,0 +1,66 @@
+name: Desktop user interaction audit
+on:
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Successful Windows release build run containing the program to test
+        required: true
+        default: '38392007467'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  desktop:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify tested program source matches production on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BUILD_RUN -notmatch '^\d+$') { throw 'Expected numeric build run ID.' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.status -ne 'completed' -or $run.conclusion -ne 'success' -or $run.name -ne 'Windows Win7 release build') { throw 'Source build must have passed the complete Windows verification workflow.' }
+          git cat-file -e "$($run.head_sha)^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw 'Source build commit not present in repository.' }
+          git diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Production source or package inputs changed; select a matching successful build.' }
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/serialctl-ui" -Force | Out-Null
+          [ordered]@{ programSourceSha=$run.head_sha; testSourceSha=$env:GITHUB_SHA; buildRun=$env:BUILD_RUN; testRun=$env:GITHUB_RUN_ID; programSource='Verified portable artifact, unchanged production source'; os=[Environment]::OSVersion.VersionString; scope='Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices' } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/interaction-receipt.json" -Encoding UTF8
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: bin
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+      - name: Run actual mouse and keyboard interactions on packaged application
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem bin -Filter '*.zip' | Get-FileHash -Algorithm SHA256 | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-package-sha256.json" -Encoding UTF8
+          Start-Transcript -Path "$env:RUNNER_TEMP/serialctl-ui/desktop-interaction-transcript.txt"
+          try { ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui" -ActualMouse } finally { Stop-Transcript }
+      - name: Record exact executable and preserve desktop evidence even on failure
+        if: always()
+        shell: powershell
+        run: |
+          $files = @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Join-Path "$env:RUNNER_TEMP/serialctl-ui/payload" $_ } | Where-Object { Test-Path $_ }
+          if ($files) { $files | Get-FileHash -Algorithm SHA256 | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-executable-sha256.json" -Encoding UTF8 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-actual-desktop-interaction
+          path: |
+            ${{ runner.temp }}/serialctl-ui/*.png
+            ${{ runner.temp }}/serialctl-ui/*.json
+            ${{ runner.temp }}/serialctl-ui/*.jsonl
+            ${{ runner.temp }}/serialctl-ui/*.txt
+            ${{ runner.temp }}/serialctl-ui/*.log
+          if-no-files-found: error
+          retention-days: 30

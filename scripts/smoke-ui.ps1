@@ -1,7 +1,8 @@
 ﻿[CmdletBinding()]
-param([Parameter(Mandatory = $true)][string]$OutputDirectory)
+param([Parameter(Mandatory = $true)][string]$OutputDirectory, [switch]$ActualMouse)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$behaviorFailures = [System.Collections.Generic.List[string]]::new()
 . (Join-Path $PSScriptRoot 'common.ps1')
 Add-Type -AssemblyName System.Drawing
 $env:SERIALCTL_UI_METRICS = '1'
@@ -37,6 +38,11 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
+    [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
+    [DllImport("user32.dll")] public static extern bool IsChild(IntPtr parent, IntPtr child);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window,int command);
     [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr window);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
@@ -137,6 +143,37 @@ public static class SerialCtlUiSmoke {
     }
 }
 '@
+function Click-Control([IntPtr]$Parent, [int]$Id) {
+    if (-not $ActualMouse) {
+        # Preserve the existing fast regression mode; the separate interaction
+        # audit opts into real Windows input and never takes this branch.
+        [SerialCtlUiSmoke]::PostMessage($Parent, 0x111, [IntPtr]$Id, [IntPtr]::Zero) | Out-Null
+        return
+    }
+    $control = [SerialCtlUiSmoke]::GetDlgItem($Parent, $Id)
+    if ($control -eq [IntPtr]::Zero -or -not [SerialCtlUiSmoke]::IsWindowVisible($control) -or -not [SerialCtlUiSmoke]::IsWindowEnabled($control)) {
+        throw "No visible enabled control for real mouse click: $Id"
+    }
+    $rootWindow = [SerialCtlUiSmoke]::GetAncestor($control, 2)
+    if ([SerialCtlUiSmoke]::GetForegroundWindow() -ne $rootWindow) {
+        [SerialCtlUiSmoke]::SetForegroundWindow($rootWindow) | Out-Null
+        Start-Sleep -Milliseconds 60
+    }
+    $rect = New-Object SerialCtlUiSmoke+RECT
+    if (-not [SerialCtlUiSmoke]::GetWindowRect($control, [ref]$rect)) { throw "Missing click bounds: $Id" }
+    $point = New-Object SerialCtlUiSmoke+POINT
+    $point.X = [int](($rect.Left + $rect.Right) / 2)
+    $point.Y = [int](($rect.Top + $rect.Bottom) / 2)
+    $hit = [SerialCtlUiSmoke]::WindowFromPoint($point)
+    if ($hit -ne $control -and -not [SerialCtlUiSmoke]::IsChild($control, $hit)) { throw "Control $Id is covered; no synthetic command fallback is allowed." }
+    if (-not [SerialCtlUiSmoke]::SetCursorPos($point.X, $point.Y)) { throw 'Cannot position system mouse.' }
+    $before = [SerialCtlUiSmoke]::GetForegroundWindow().ToInt64()
+    [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 25
+    [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+    [ordered]@{ utc=[DateTime]::UtcNow.ToString('o'); parent=$Parent.ToInt64(); control=$control.ToInt64(); id=$Id; x=$point.X; y=$point.Y; foregroundBefore=$before; input='system mouse_event down/up; target hit tested; behavior is not WM_COMMAND' } |
+        ConvertTo-Json -Compress | Add-Content (Join-Path $OutputDirectory 'actual-clicks.jsonl') -Encoding UTF8
+}
 function Capture-Desktop([string]$Name) {
     $size=[Drawing.Size]::new([SerialCtlUiSmoke]::GetSystemMetrics(0),[SerialCtlUiSmoke]::GetSystemMetrics(1))
     $screen = New-Object Drawing.Bitmap($size.Width,$size.Height)
@@ -233,39 +270,39 @@ foreach ($architecture in @('x64')) {
         }
         foreach ($theme in @('light','dark')) {
             if ($theme -eq 'dark') {
-                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]104, [IntPtr]::Zero) | Out-Null
+                Click-Control $application.MainWindowHandle 104
                 Start-Sleep -Milliseconds 300
             }
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle, 0, 0, 980, 620, $true) | Out-Null
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
             Capture-Window $application.MainWindowHandle "$architecture-packaged-$theme"
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
+            Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $true)
             Capture-Window $application.MainWindowHandle "$architecture-$theme-collapsed"
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
+            Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 200
             foreach ($mode in 0..3) {
-                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr](100+$mode), [IntPtr]::Zero) | Out-Null
+                Click-Control $application.MainWindowHandle (100+$mode)
                 $dialog = Wait-Dialog $application.Id $titles[$mode]
                 Start-Sleep -Milliseconds 300
                 [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
                 Capture-Window $dialog "$architecture-$theme-connection-$mode"
                 if ($mode -eq 3) {
-                    [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]9010, [IntPtr]::Zero) | Out-Null
+                    Click-Control $dialog 9010
                     $portDialog = Wait-Dialog $application.Id '高级共享端口'
                     [SerialCtlUiSmoke]::Fill($portDialog, 1402, '7000')
                     [SerialCtlUiSmoke]::AssertLabels($portDialog, $expectedUiFace)
                     Capture-Window $portDialog "$architecture-$theme-shared-port"
-                    [SerialCtlUiSmoke]::PostMessage($portDialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+                    Click-Control $portDialog 2
                     Start-Sleep -Milliseconds 200
                 }
-                [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+                Click-Control $dialog 2
                 Start-Sleep -Milliseconds 200
             }
             # New power pane occupies the central terminal area. It keeps independent connection/output actions.
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]301, [IntPtr]::Zero) | Out-Null
+            Click-Control $application.MainWindowHandle 301
             Start-Sleep -Milliseconds 250
             $script:powerPane = [IntPtr]::Zero
             [SerialCtlUiSmoke]::EnumChildWindows($application.MainWindowHandle, {
@@ -277,7 +314,7 @@ foreach ($architecture in @('x64')) {
             },[IntPtr]::Zero) | Out-Null
             if ($powerPane -eq [IntPtr]::Zero -or -not [SerialCtlUiSmoke]::IsWindowVisible($powerPane)) { throw 'Power pane missing.' }
             Capture-Window $application.MainWindowHandle "$architecture-$theme-power-disconnected"
-            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]10,[IntPtr]::Zero) | Out-Null
+            Click-Control $powerPane 10
             $dialog = Wait-Dialog $application.Id '连接电源'
             Start-Sleep -Milliseconds 200
             Capture-Window $dialog "$architecture-$theme-power-usb"
@@ -288,7 +325,7 @@ foreach ($architecture in @('x64')) {
             Capture-Window $dialog "$architecture-$theme-power-serial"
             $methodCount = [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($dialog,100),0x146,[IntPtr]0,[IntPtr]0).ToInt32()
             if ($methodCount -ne 2) { throw 'Power connection must expose only USB and RS232.' }
-            [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]2,[IntPtr]::Zero) | Out-Null
+            Click-Control $dialog 2
             Start-Sleep -Milliseconds 250
             if ([SerialCtlUiSmoke]::IsIconic($application.MainWindowHandle)) { throw 'Main window minimized after power modal.' }
             foreach ($control in @(112,118,119,115)) {
@@ -315,19 +352,19 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,103,($powerWidth-248),384,72,28)
             # The approved views are captured from the real EXE with no hardware or fake measurements.
             foreach ($tab in @(91,92,93)) {
-                [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]$tab,[IntPtr]::Zero)|Out-Null
+                Click-Control $powerPane $tab
                 Start-Sleep -Milliseconds 200
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-tab-$tab"
                 if($tab -eq 91) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,40,0,499,[int](($powerWidth-184)/2),36) }
                 if($tab -eq 92) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,202,132,451,[int](($powerWidth-144)/2),28) }
             }
-            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]92,[IntPtr]::Zero)|Out-Null
+            Click-Control $powerPane 92
             foreach ($category in @(191,192,193)) {
-                [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]$category,[IntPtr]::Zero)|Out-Null
+                Click-Control $powerPane $category
                 Start-Sleep -Milliseconds 150
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-settings-$category"
             }
-            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]90,[IntPtr]::Zero)|Out-Null
+            Click-Control $powerPane 90
             foreach ($mode in @(1,2,3,0)) {
                 [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($powerPane,80),0x14E,[IntPtr]$mode,[IntPtr]0)|Out-Null
                 [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]((1 -shl 16) -bor 80),[IntPtr]::Zero)|Out-Null
@@ -338,32 +375,42 @@ foreach ($architecture in @('x64')) {
                     if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($powerPane,51))) { throw 'Combination rendered duplicate CH2 parameters.' }
                 }
             }
-            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]91,[IntPtr]::Zero)|Out-Null
+            Click-Control $powerPane 91
             foreach ($automation in @(111,112,113,114,110)) {
-                [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]$automation,[IntPtr]::Zero)|Out-Null
+                Click-Control $powerPane $automation
                 Start-Sleep -Milliseconds 150
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-automation-$automation"
             }
-            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]123,[IntPtr]::Zero)|Out-Null
+            # The editor is visible only on the Steps category. A WM_COMMAND
+            # could previously invoke it while hidden on the Cycle category.
+            Click-Control $powerPane 112
+            Start-Sleep -Milliseconds 100
+            Click-Control $powerPane 123
             $dialog=Wait-Dialog $application.Id '编辑电源步骤'
             Capture-Window $dialog "$architecture-$theme-power-sequence-editor"
-            [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]2,[IntPtr]::Zero)|Out-Null
+            Click-Control $dialog 2
             Start-Sleep -Milliseconds 150
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,980,620,$true)|Out-Null
             Start-Sleep -Milliseconds 150
-            foreach($frame in 0..15){[SerialCtlUiSmoke]::Send($powerPane,0x111,[IntPtr](90+($frame%4)),[IntPtr]0)|Out-Null;Start-Sleep -Milliseconds 16;Capture-Desktop "$architecture-$theme-power-tab-frame-$frame"}
+            foreach($frame in 0..15){Click-Control $powerPane (90+($frame%4));Start-Sleep -Milliseconds 16;Capture-Desktop "$architecture-$theme-power-tab-frame-$frame"}
             Capture-Window $application.MainWindowHandle "$architecture-$theme-power-minimum"
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,1180,760,$true)|Out-Null
-            [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]90,[IntPtr]::Zero)|Out-Null
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x111,[IntPtr]300,[IntPtr]::Zero) | Out-Null
+            Click-Control $powerPane 90
+            Click-Control $application.MainWindowHandle 300
             Start-Sleep -Milliseconds 700
             Capture-Window $application.MainWindowHandle "$architecture-$theme-cmd"
             if ([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,303) -ne [IntPtr]::Zero) { throw 'Obsolete API toolbar entry exists.' }
             # The exact packaged GUI starts its fixed-scope service automatically.
             & python (Join-Path (Get-SerialCtlRepositoryRoot) 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() (Join-Path $OutputDirectory ("$architecture-$theme-display.json"))
             if ($LASTEXITCODE -ne 0) { throw 'Unified gateway / real GUI CMD key editing failed.' }
-            & python (Join-Path $root 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() --start-stream
+            $streamOptions = @('--start-stream')
+            if ($ActualMouse) { $streamOptions += '--long-stream' }
+            & python (Join-Path $root 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() @streamOptions
             if ($LASTEXITCODE -ne 0) { throw 'Sustained CMD producer did not start.' }
+            if ($ActualMouse) {
+                & python (Join-Path $root 'tests/integration/desktop_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --mode desktop
+                if ($LASTEXITCODE -ne 0) { throw 'Actual desktop mouse move/resize/panel test failed.' }
+            }
             [SerialCtlUiSmoke]::SetForegroundWindow($application.MainWindowHandle)|Out-Null
             $commandRect=New-Object SerialCtlUiSmoke+RECT
             [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112),[ref]$commandRect)|Out-Null
@@ -381,12 +428,12 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112),[ref]$afterDrag)|Out-Null
             if($afterDrag.Left -eq $commandRect.Left){throw 'Actual mouse did not drag sidebar splitter.'}
             foreach($frame in 0..9){
-                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x111,[IntPtr]125,[IntPtr]0)|Out-Null
+                Click-Control $application.MainWindowHandle 125
                 Start-Sleep -Milliseconds 45
                 Capture-Desktop "$architecture-$theme-animation-frame-$frame"
             }
             Start-Sleep -Milliseconds 250
-            if([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112)) -eq $false){[SerialCtlUiSmoke]::Send($application.MainWindowHandle,0x111,[IntPtr]125,[IntPtr]0)|Out-Null;Start-Sleep -Milliseconds 250}
+            if([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112)) -eq $false){Click-Control $application.MainWindowHandle 125;Start-Sleep -Milliseconds 250}
             foreach($frame in 0..11){[SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,(980+($frame%6)*40),(620+($frame%6)*20),$true)|Out-Null;Start-Sleep -Milliseconds 16;Capture-Desktop "$architecture-$theme-resize-frame-$frame"}
             [SerialCtlUiSmoke]::ShowWindow($application.MainWindowHandle,3)|Out-Null
             Start-Sleep -Milliseconds 100;Capture-Desktop "$architecture-$theme-maximized"
@@ -394,28 +441,28 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,1180,760,$true)|Out-Null
             Capture-Window $application.MainWindowHandle "$architecture-$theme-api-cmd-visible"
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle,$false)
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null
+            Click-Control $application.MainWindowHandle 115
             $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-command"
-            [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1104, [IntPtr]::Zero) | Out-Null
+            Click-Control $dialog 1104
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-macro"
             for ($step=3; $step -le 10; $step++) {
-                [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]1104,[IntPtr]::Zero) | Out-Null
+                Click-Control $dialog 1104
                 Start-Sleep -Milliseconds 70
             }
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-macro-ten"
-            [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+            Click-Control $dialog 2
             Start-Sleep -Milliseconds 200
         }
         # Draft edits and reorder must not touch commands.txt until explicit Save.
         $commandsFile = Join-Path $settingsDirectory 'commands.txt'
         $before = (Get-FileHash $commandsFile -Algorithm SHA256).Hash
-        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null
+        Click-Control $application.MainWindowHandle 115
         $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
         [SerialCtlUiSmoke]::Fill($dialog, 1101, 'UI draft command')
         [SerialCtlUiSmoke]::Fill($dialog, 1102, 'echo ui-draft')
@@ -426,7 +473,7 @@ foreach ($architecture in @('x64')) {
             Start-Sleep -Milliseconds 100
             if([SerialCtlUiSmoke]::GetForegroundWindow() -ne $dialog){throw 'Cannot establish foreground modal test condition.'}
             Capture-Desktop "$architecture-modal-foreground-before"
-            [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]1,[IntPtr]::Zero)|Out-Null
+            Click-Control $dialog 1
             Start-Sleep -Milliseconds 100
             if([SerialCtlUiSmoke]::GetForegroundWindow() -ne $application.MainWindowHandle){throw 'Modal dismissal did not retain owner foreground.'}
             Capture-Desktop "$architecture-modal-owner-after"
@@ -441,16 +488,18 @@ foreach ($architecture in @('x64')) {
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         $confirm = Wait-Dialog $application.Id $null
         Capture-Window $confirm "$architecture-unsaved-close"
-        [SerialCtlUiSmoke]::PostMessage($confirm, 0x111, [IntPtr]2, [IntPtr]::Zero) | Out-Null
+        Click-Control $confirm 2
         Start-Sleep -Milliseconds 200
         $application.Refresh()
         if ($application.HasExited) { throw 'Cancel did not preserve draft window.' }
-        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]132, [IntPtr]::Zero) | Out-Null
+        Click-Control $application.MainWindowHandle 132
         Start-Sleep -Milliseconds 300
         if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -eq $before) { throw 'Explicit Save did not persist draft.' }
         if (-not (Get-Content $commandsFile -Raw).Contains('echo ui-draft')) { throw 'Saved command missing.' }
-        & python (Join-Path $root 'tests/integration/gui_disconnect_smoke.py') $native $application.MainWindowHandle.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')
-        if($LASTEXITCODE -ne 0){throw 'GUI connection list / all-disconnect process cleanup failed.'}
+        $lifecycleScript = if ($ActualMouse) { 'tests/integration/gui_user_lifecycle.py' } else { 'tests/integration/gui_disconnect_smoke.py' }
+        & python (Join-Path $root $lifecycleScript) $native $application.MainWindowHandle.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')
+        if ($ActualMouse -and $LASTEXITCODE -eq 2) { $behaviorFailures.Add('Real connection list Home/End behavior failed; see gui-lifecycle.json. Remaining cases continue.') }
+        elseif ($LASTEXITCODE -ne 0) { throw 'GUI connection list / all-disconnect process cleanup failed.' }
         Capture-Desktop "$architecture-all-disconnected"
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         if (-not $application.WaitForExit(10000)) { throw 'Packaged application did not close normally.' }
@@ -483,10 +532,10 @@ foreach ($architecture in @('x64')) {
         }
         foreach ($theme in @('light','dark')) {
             if ($theme -eq 'dark') {
-                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]104, [IntPtr]::Zero) | Out-Null
+                Click-Control $application.MainWindowHandle 104
                 Start-Sleep -Milliseconds 200
             }
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]100, [IntPtr]::Zero) | Out-Null
+            Click-Control $application.MainWindowHandle 100
             $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFNTSCDov57mjqU=')))
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::Fill($dialog, 1014, $testHost)
@@ -494,26 +543,26 @@ foreach ($architecture in @('x64')) {
             Start-Sleep -Milliseconds 200
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Capture-Window $dialog "$architecture-$theme-ssh-dialog"
-            [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+            Click-Control $dialog 1
             Start-Sleep -Milliseconds 300
             $confirmation = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('56Gu6K6kIFNTSCDkuLvmnLrouqvku70=')))
             Start-Sleep -Milliseconds 300
             Capture-Window $confirmation "$architecture-$theme-host-key"
             $answer = if ($theme -eq 'light') { 7 } else { 6 }
-            [SerialCtlUiSmoke]::PostMessage($confirmation, 0x111, [IntPtr]$answer, [IntPtr]::Zero) | Out-Null
+            Click-Control $confirmation $answer
             Start-Sleep -Milliseconds 1000
             $result = [IntPtr]::Zero
             if ([SerialCtlUiSmoke]::SendMessageTimeout($application.MainWindowHandle, 0, [IntPtr]::Zero,
                     [IntPtr]::Zero, 2, 2000, [ref]$result) -eq [IntPtr]::Zero) { throw 'Main window became unresponsive.' }
         }
-        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x111,[IntPtr]104,[IntPtr]::Zero)|Out-Null
+        Click-Control $application.MainWindowHandle 104
         Start-Sleep -Milliseconds 200
         foreach ($theme in @('light','dark')) {
             if ($theme -eq 'dark') {
-                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]104, [IntPtr]::Zero) | Out-Null
+                Click-Control $application.MainWindowHandle 104
                 Start-Sleep -Milliseconds 200
             }
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]118, [IntPtr]::Zero) | Out-Null
+            Click-Control $application.MainWindowHandle 118
             Start-Sleep -Milliseconds 1000
             if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 119))) { throw 'SFTP panel did not open.' }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
@@ -524,7 +573,7 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::Fill($pathDialog, 1402, '/tmp/a path')
             [SerialCtlUiSmoke]::AssertLabels($pathDialog, $expectedUiFace)
             Capture-Window $pathDialog "$architecture-$theme-sftp-path"
-            [SerialCtlUiSmoke]::PostMessage($pathDialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+            Click-Control $pathDialog 1
             Start-Sleep -Milliseconds 500
             $header = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 126)
             $bounds = New-Object SerialCtlUiSmoke+RECT
@@ -548,13 +597,17 @@ foreach ($architecture in @('x64')) {
             if ($bounds.Right -ge $originalWidth) { throw 'SFTP name column did not resize.' }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
             Capture-Window $application.MainWindowHandle "$architecture-$theme-sftp-resized"
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
+            if ($ActualMouse) {
+                & python (Join-Path $root 'tests/integration/desktop_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --mode sftp
+                if ($LASTEXITCODE -ne 0) { throw 'Actual SFTP column/panel mouse test failed.' }
+            }
+            Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $true)
             Capture-Window $application.MainWindowHandle "$architecture-$theme-sftp-collapsed"
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]125, [IntPtr]::Zero) | Out-Null
+            Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 200
-            [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]117, [IntPtr]::Zero) | Out-Null
+            Click-Control $application.MainWindowHandle 117
             Start-Sleep -Milliseconds 200
         }
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
@@ -571,3 +624,5 @@ Remove-Item -LiteralPath $mock -Force
 foreach ($architecture in @('x64')) { Remove-Item -LiteralPath (Join-Path $OutputDirectory "mock-$architecture") -Recurse -Force }
 Write-Host '[PASS] x64 startup/shutdown, light default and both themes, monochrome toolbar, power three-column layout and automatic sidebar collapse, USB/RS232-only connection and sequence dialogs, all power modes and categories, persistent CMD, automatic fixed-scope API and real GUI CMD round-trip, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation, command drafts and Save, manual SFTP path and persisted column resize'
 Write-Host '[NOT RUN] Actual Windows 7 hardware and field server tests'
+
+if ($behaviorFailures.Count -gt 0) { throw ($behaviorFailures -join "`n") }
