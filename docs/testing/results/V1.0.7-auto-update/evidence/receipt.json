@@ -1,0 +1,14 @@
+{
+  "source_sha": "2dbc8a3e797a04cf63901f5c7ccbb73da46c9923",
+  "workflow_run": 38315844534,
+  "package_sha256": "72dc0926074b5968f5dd2f7fcd5b5e16e9c26e1d7dd2ca0627e1f072a7826f7d",
+  "exe_sha256": "c6cfdcb844d4c4eccc117b3384264e0ed651f61089a32fac0b2c863ec9b4b183",
+  "feed_tool": {
+    "result": "passed",
+    "version": "V1.0.7",
+    "files": 23,
+    "bytes": 4181165,
+    "manifest_sha256": "cf6ac09772a81de97195675b4ce04c5282aa30c1c8d6b8fa46b4b88f362c2e3d",
+    "boundary": "Linux administrator-side packaging/signing/verification of actual CI package; no Windows successful upgrade claimed; private key excluded from repository and feed"
+  }
+}

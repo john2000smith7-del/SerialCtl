@@ -1,0 +1,5 @@
+﻿2026-10-12T22:24:29.1911016Z GET /a/update.json HTTP/1.1
+2026-10-12T22:24:29.9255507Z GET /b/update.json HTTP/1.1
+2026-10-12T22:24:29.9255507Z GET /b/update.json.sig HTTP/1.1
+2026-10-12T22:24:30.4099338Z GET /slowheaders/update.json HTTP/1.1
+2026-10-12T22:24:30.9100952Z GET /slowbody/update.json HTTP/1.1
