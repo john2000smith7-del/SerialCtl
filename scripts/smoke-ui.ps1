@@ -38,6 +38,7 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
     [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
@@ -214,6 +215,11 @@ $root = Get-SerialCtlRepositoryRoot
 $version = Get-SerialCtlVersion
 $extract = Join-Path $OutputDirectory 'payload'
 Expand-Archive -LiteralPath (Join-Path $root ('bin/' + (Get-SerialCtlArchiveName))) -DestinationPath $extract -Force
+if ($ActualMouse) {
+    # Record the exact untouched program before any fixture or final cleanup.
+    @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Get-FileHash (Join-Path $extract $_) -Algorithm SHA256 } |
+        Select-Object Path,Hash | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'program-executable-sha256.json') -Encoding UTF8
+}
 # This mock is confined to UI evidence and is never placed in the release archive.
 $mock = Join-Path $OutputDirectory 'mock-plink.exe'
 Add-Type -OutputAssembly $mock -OutputType ConsoleApplication -TypeDefinition @'
@@ -290,7 +296,26 @@ foreach ($architecture in @('x64')) {
                 [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
                 Capture-Window $dialog "$architecture-$theme-connection-$mode"
                 if ($mode -eq 3) {
-                    Click-Control $dialog 9010
+                    if ($ActualMouse) {
+                        # 9010 is a context-menu command, not a child button.
+                        # Open its real user entry on the Refresh button.
+                        $refresh = [SerialCtlUiSmoke]::GetDlgItem($dialog,1024)
+                        $refreshRect = New-Object SerialCtlUiSmoke+RECT
+                        if (-not [SerialCtlUiSmoke]::GetWindowRect($refresh,[ref]$refreshRect)) { throw 'Missing remote refresh control.' }
+                        [SerialCtlUiSmoke]::SetCursorPos([int](($refreshRect.Left+$refreshRect.Right)/2),[int](($refreshRect.Top+$refreshRect.Bottom)/2)) | Out-Null
+                        [SerialCtlUiSmoke]::mouse_event(8,0,0,0,[UIntPtr]::Zero)
+                        Start-Sleep -Milliseconds 25
+                        [SerialCtlUiSmoke]::mouse_event(16,0,0,0,[UIntPtr]::Zero)
+                        Start-Sleep -Milliseconds 100
+                        Capture-Desktop "$architecture-$theme-shared-port-menu"
+                        foreach ($key in @(36,13)) {
+                            [SerialCtlUiSmoke]::keybd_event([byte]$key,0,0,[UIntPtr]::Zero)
+                            Start-Sleep -Milliseconds 20
+                            [SerialCtlUiSmoke]::keybd_event([byte]$key,0,2,[UIntPtr]::Zero)
+                            Start-Sleep -Milliseconds 40
+                        }
+                        [ordered]@{utc=[DateTime]::UtcNow.ToString('o');id=1024;action='right click Refresh then physical Home/Enter';targetCommand=9010} | ConvertTo-Json -Compress | Add-Content (Join-Path $OutputDirectory 'actual-clicks.jsonl') -Encoding UTF8
+                    } else { Click-Control $dialog 9010 }
                     $portDialog = Wait-Dialog $application.Id '高级共享端口'
                     [SerialCtlUiSmoke]::Fill($portDialog, 1402, '7000')
                     [SerialCtlUiSmoke]::AssertLabels($portDialog, $expectedUiFace)
@@ -622,7 +647,6 @@ foreach ($architecture in @('x64')) {
 Remove-Item -LiteralPath $extract -Recurse -Force
 Remove-Item -LiteralPath $mock -Force
 foreach ($architecture in @('x64')) { Remove-Item -LiteralPath (Join-Path $OutputDirectory "mock-$architecture") -Recurse -Force }
-Write-Host '[PASS] x64 startup/shutdown, light default and both themes, monochrome toolbar, power three-column layout and automatic sidebar collapse, USB/RS232-only connection and sequence dialogs, all power modes and categories, persistent CMD, automatic fixed-scope API and real GUI CMD round-trip, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation, command drafts and Save, manual SFTP path and persisted column resize'
-Write-Host '[NOT RUN] Actual Windows 7 hardware and field server tests'
-
 if ($behaviorFailures.Count -gt 0) { throw ($behaviorFailures -join "`n") }
+Write-Host '[PASS] Executed assertions for packaged startup/shutdown, theme/dialog layout, controlled CMD, panel geometry, drafts, and isolated SFTP UI. See per-case JSON for input method and scope.'
+Write-Host '[NOT RUN] Actual Windows 7 hardware and field server tests'
