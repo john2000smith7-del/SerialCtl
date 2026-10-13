@@ -1,16 +1,37 @@
+#include "CmdConsoleBridge.h"
 #include "MainWindow.h"
+#include "UpdateInstaller.h"
 
-#include <commctrl.h>
+// Windows SDK GDI+ declarations require the COM/property types first.
+// clang-format off
 #include <winsock2.h>
 #include <windows.h>
+#include <commctrl.h>
 #include <objidl.h>
 #include <propidl.h>
 #include <gdiplus.h>
+// clang-format on
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCommand) {
+    if (std::wstring(parameters) == L"--serialctl-cmd-bridge")
+        return serialctl::RunCmdConsoleBridge();
+    int updateExitCode = 0;
+    if (serialctl::update::HandleUpdateCommandLine(parameters, updateExitCode))
+        return updateExitCode;
+    serialctl::update::StartupGuard startup;
+    std::wstring startupError;
+    const auto startupAction = startup.Begin(parameters, startupError);
+    if (startupAction == serialctl::update::StartupAction::Exit) return 0;
+    if (startupAction == serialctl::update::StartupAction::Failed) {
+        MessageBoxW(nullptr, startupError.c_str(), L"SerialCtl 更新恢复", MB_OK | MB_ICONERROR);
+        return 1;
+    }
     struct GraphicsSession {
         ULONG_PTR token = 0;
-        ~GraphicsSession() { if (token) Gdiplus::GdiplusShutdown(token); }
+        ~GraphicsSession() {
+            if (token)
+                Gdiplus::GdiplusShutdown(token);
+        }
     } graphics;
     Gdiplus::GdiplusStartupInput graphicsInput;
     if (Gdiplus::GdiplusStartup(&graphics.token, &graphicsInput, nullptr) != Gdiplus::Ok)
@@ -32,10 +53,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         WSACleanup();
         return 1;
     }
+    if (!startup.Confirm(startupError, SERIALCTL_APP_VERSION)) {
+        // The worker owns rollback. Close the just-created, idle GUI normally
+        // without blocking its health timeout behind a modal error dialog.
+        SendMessageW(mainWindow.Handle(), WM_CLOSE, 0, 0);
+        WSACleanup();
+        return 1;
+    }
+    if (startup.ShouldCheckForUpdate()) mainWindow.StartStartupUpdate();
 
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (mainWindow.PreTranslate(message)) continue;
+        if (mainWindow.PreTranslate(message))
+            continue;
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }

@@ -98,6 +98,7 @@ set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/terminal"
     "${SERIALCTL_SOURCE_DIR}/power"
     "${SERIALCTL_SOURCE_DIR}/network"
+    "${SERIALCTL_SOURCE_DIR}/update"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json"
 )
 
@@ -128,16 +129,22 @@ add_executable(serialctl WIN32
     src/app/MainWindow.cpp
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
+    src/update/UpdateClient.cpp
+    src/update/UpdateManifest.cpp
+    src/update/UpdateInstaller.cpp
     src/power/PowerService.cpp
     src/network/ApiServer.cpp
+    src/network/WebSocket.cpp
+    src/network/GatewayClient.cpp
+    src/network/SessionService.cpp
     src/connections/ChildProcess.cpp
     src/connections/CmdConnection.cpp
+    src/connections/CmdConsoleBridge.cpp
     src/connections/QueuedConnection.cpp
     src/connections/PlinkConnection.cpp
     src/connections/PuttyHostKey.cpp
     src/connections/SerialConnection.cpp
     src/connections/SerialDevice.cpp
-    src/connections/SerialShareConnection.cpp
     src/connections/SharedSerialConnection.cpp
     src/connections/TcpConnection.cpp
     src/logging/SessionLogger.cpp
@@ -148,13 +155,14 @@ add_executable(serialctl WIN32
 )
 serialctl_configure_native_target(serialctl WINDOWS)
 target_compile_definitions(serialctl PRIVATE SERIALCTL_VERSION=L"${SERIALCTL_CPP_VERSION}")
+target_compile_definitions(serialctl PRIVATE SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
 if(MSVC)
     # serialctl.rc embeds the generated, version-controlled application manifest.
     # Disable the linker-generated default manifest to avoid duplicate RT_MANIFEST
     # resources and to ensure the Win7 compatibility declarations stay authoritative.
     target_link_options(serialctl PRIVATE /MANIFEST:NO)
 endif()
-target_link_libraries(serialctl PRIVATE ws2_32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus)
+target_link_libraries(serialctl PRIVATE ws2_32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
 
 foreach(PUTTY_PROGRAM IN ITEMS plink.exe psftp.exe)
     if(NOT EXISTS "${PUTTY_ARCH_DIR}/${PUTTY_PROGRAM}")
@@ -179,6 +187,20 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(update_client_test tests/integration/UpdateClientTest.cpp
+        src/update/UpdateClient.cpp src/update/UpdateManifest.cpp)
+    serialctl_configure_native_target(update_client_test CONSOLE)
+    target_compile_definitions(update_client_test PRIVATE SERIALCTL_UPDATE_TESTING)
+    target_link_libraries(update_client_test PRIVATE winhttp advapi32 ws2_32)
+    add_test(NAME update_client COMMAND update_client_test)
+    set_tests_properties(update_client PROPERTIES TIMEOUT 90)
+    add_executable(update_installer_test tests/integration/UpdateInstallerTest.cpp
+        src/update/UpdateInstaller.cpp src/update/UpdateManifest.cpp)
+    serialctl_configure_native_target(update_installer_test CONSOLE)
+    target_compile_definitions(update_installer_test PRIVATE SERIALCTL_UPDATE_TESTING)
+    target_link_libraries(update_installer_test PRIVATE advapi32 shell32 user32)
+    add_test(NAME update_installer COMMAND update_installer_test)
+    set_tests_properties(update_installer PROPERTIES TIMEOUT 90)
     add_executable(session_logger_test tests/integration/SessionLoggerTest.cpp src/logging/SessionLogger.cpp)
     serialctl_configure_native_target(session_logger_test CONSOLE)
     target_link_libraries(session_logger_test PRIVATE shell32)
@@ -188,21 +210,21 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(power_service_test CONSOLE)
     target_link_libraries(power_service_test PRIVATE shell32 ws2_32)
     add_test(NAME power_service COMMAND power_service_test)
-    add_executable(cmd_connection_test tests/integration/CmdConnectionTest.cpp src/connections/CmdConnection.cpp src/connections/QueuedConnection.cpp src/connections/ChildProcess.cpp)
+    add_executable(cmd_connection_test tests/integration/CmdConnectionTest.cpp src/connections/CmdConnection.cpp src/connections/QueuedConnection.cpp src/connections/ChildProcess.cpp src/network/SessionService.cpp)
     serialctl_configure_native_target(cmd_connection_test CONSOLE)
+    add_dependencies(cmd_connection_test serialctl)
     add_test(NAME cmd_connection COMMAND cmd_connection_test)
-    add_executable(api_server_test tests/integration/ApiServerTest.cpp src/network/ApiServer.cpp)
+    set(GATEWAY_TEST_SOURCES src/network/ApiServer.cpp src/network/WebSocket.cpp
+        src/network/GatewayClient.cpp src/network/SessionService.cpp
+        src/connections/QueuedConnection.cpp src/connections/SharedSerialConnection.cpp)
+    add_executable(api_server_test tests/integration/ApiServerTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(api_server_test CONSOLE)
     target_link_libraries(api_server_test PRIVATE ws2_32 advapi32)
     add_test(NAME api_server COMMAND api_server_test)
-    set_tests_properties(power_service cmd_connection api_server PROPERTIES TIMEOUT 30)
-
-    add_executable(shared_serial_protocol_test
-        tests/integration/SharedSerialProtocolTest.cpp
-        src/connections/SharedSerialConnection.cpp
-    )
+    set_tests_properties(power_service cmd_connection api_server PROPERTIES TIMEOUT 60)
+    add_executable(shared_serial_protocol_test tests/integration/SharedSerialProtocolTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(shared_serial_protocol_test CONSOLE)
-    target_link_libraries(shared_serial_protocol_test PRIVATE ws2_32)
+    target_link_libraries(shared_serial_protocol_test PRIVATE ws2_32 advapi32)
     add_test(NAME shared_serial_protocol COMMAND shared_serial_protocol_test)
 
     add_executable(tcp_connection_test
@@ -226,17 +248,13 @@ if(BUILD_TESTING)
     target_link_libraries(putty_host_key_test PRIVATE advapi32)
     add_test(NAME putty_host_key COMMAND putty_host_key_test)
 
-    add_executable(serial_share_backpressure_test tests/integration/SerialShareBackpressureTest.cpp
-        src/connections/SerialShareConnection.cpp)
+    add_executable(serial_share_backpressure_test tests/integration/SerialShareBackpressureTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(serial_share_backpressure_test CONSOLE)
-    target_compile_definitions(serial_share_backpressure_test PRIVATE SERIALCTL_TEST_TRACE)
-    target_link_libraries(serial_share_backpressure_test PRIVATE ws2_32)
+    target_link_libraries(serial_share_backpressure_test PRIVATE ws2_32 advapi32 psapi)
     add_test(NAME serial_share_backpressure COMMAND serial_share_backpressure_test)
-
-    add_executable(multi_serial_test tests/integration/MultiSerialTest.cpp
-        src/connections/SerialShareConnection.cpp src/connections/SharedSerialConnection.cpp)
+    add_executable(multi_serial_test tests/integration/MultiSerialTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(multi_serial_test CONSOLE)
-    target_link_libraries(multi_serial_test PRIVATE ws2_32)
+    target_link_libraries(multi_serial_test PRIVATE ws2_32 advapi32)
     add_test(NAME multi_serial COMMAND multi_serial_test)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME api_client COMMAND "${Python3_EXECUTABLE}"
@@ -257,5 +275,10 @@ if(BUILD_TESTING)
     )
     serialctl_configure_native_target(sftp_model_test CONSOLE)
     add_test(NAME sftp_model COMMAND sftp_model_test)
-    set_tests_properties(multi_serial shared_serial_protocol tcp_connection terminal_model terminal_decoder sftp_model putty_host_key serial_share_backpressure PROPERTIES TIMEOUT 30)
+    set_tests_properties(multi_serial shared_serial_protocol tcp_connection terminal_model terminal_decoder sftp_model putty_host_key PROPERTIES TIMEOUT 60)
+    set_tests_properties(serial_share_backpressure PROPERTIES TIMEOUT 120)
+endif()
+
+if(BUILD_TESTING)
+    set_tests_properties(api_server multi_serial shared_serial_protocol serial_share_backpressure linux_gateway_client PROPERTIES RUN_SERIAL TRUE)
 endif()

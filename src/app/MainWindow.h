@@ -5,10 +5,14 @@
 #include "SftpClient.h"
 #include "SftpModel.h"
 #include "TerminalModel.h"
+#include "TerminalDecoder.h"
 #include "PowerPane.h"
 #include "ApiServer.h"
+#include "SessionService.h"
+#include "CmdLineEditor.h"
 #include "ToolbarIcons.h"
 #include <future>
+#include <deque>
 
 #include <atomic>
 #include <cstdint>
@@ -36,7 +40,9 @@ struct CommandItem {
 
 class MainWindow {
 public:
+    ~MainWindow();
     bool Create(HINSTANCE instance, int showCommand);
+    void StartStartupUpdate();
     bool PreTranslate(MSG& message);
     HWND Handle() const { return window_; }
 
@@ -68,11 +74,18 @@ private:
         std::wstring path;
     };
 
+    struct ReceivedItem {
+        std::uint64_t sessionId = 0;
+        Bytes data;
+        UINT codePage = 0;
+        std::string source; // empty for output, nonempty for accepted input
+        LONGLONG arrival = 0;
+    };
     struct SessionState {
         std::uint64_t id = 0;
         int mode = -1;
         std::wstring name;
-        std::unique_ptr<IConnection> connection;
+        std::shared_ptr<IConnection> connection;
         std::unique_ptr<SessionLogger> logger;
         TerminalModel terminal;
         int terminalScrollOffset = 0;
@@ -81,7 +94,14 @@ private:
         std::wstring terminalTitle;
         int lineEndingIndex = 0;
         UINT codePage = CP_UTF8;
-        Bytes pendingDecodeBytes;
+        TerminalDecoder decoder;
+        CmdLineEditor cmdEditor;
+        bool cmdInteractionWarning = false;
+        bool rawTrace = false;
+        // Opt-in test telemetry tags actual stdout, never the local input echo.
+        std::wstring paintProbeText;
+        INT_PTR paintProbe = 0;
+        LONGLONG pendingProbeArrival = 0;
         std::wstring host;
         std::wstring username;
         std::wstring password;
@@ -125,6 +145,8 @@ private:
     static INT_PTR CALLBACK SftpInputDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static void PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
+    void StopStartupUpdate();
+    bool CanInstallStartupUpdate() const;
 
     Json ApiResources();
     Json ApiRequest(const std::string&,const std::string&,const Json&);
@@ -142,6 +164,7 @@ private:
     void ConnectFromDialog();
     void CompleteConnection(bool success, const std::wstring& error);
     void Disconnect();
+    void DisconnectAll();
     void SwitchSession(size_t index);
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
@@ -165,13 +188,17 @@ private:
     void StopCommandSequence(bool showStatus);
     void PostData(std::uint64_t sessionId, const Bytes& data);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
-    void AppendData(std::uint64_t sessionId, const Bytes& data);
+    void AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage = 0, LONGLONG arrival = 0);
+    void QueueReceived(ReceivedItem);
+    void AppendInput(const ReceivedItem &);
     std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
     void SyncSftpDirectoryFromTerminal(SessionState& session);
     void AppendStatus(const std::wstring& text, bool isError);
     void SaveCurrentLog();
+    void SaveNetworkDiagnostics();
     void ShowTerminalContextMenu(POINT screenPoint);
     UINT SelectedCodePage() const;
+    std::string EncodeTerminalText(const std::wstring &);
     std::wstring SelectedLineEnding() const;
     void SetConnectedUi(bool connected);
     void RefreshConnectionList();
@@ -262,6 +289,8 @@ private:
 
     std::vector<HWND> toolbarButtons_;
     ApiServer apiServer_;
+    std::vector<std::uint64_t> connectionListIds_;
+    SessionService sessionService_;
     PowerService powerService_;
     PowerPane powerPane_;
     bool powerVisible_ = false;
@@ -272,6 +301,10 @@ private:
     HWND disconnectButton_ = nullptr;
     HWND connectionHeader_ = nullptr;
     HWND connectionList_ = nullptr;
+    HWND disconnectAllButton_ = nullptr;
+    bool windowResizing_ = false;
+    bool disconnectAllPending_ = false;
+    bool disconnectAllInProgress_ = false;
     HWND terminal_ = nullptr;
     HWND status_ = nullptr;
     HWND statusTip_ = nullptr;
@@ -374,11 +407,17 @@ private:
     std::thread connectionThread_;
     std::atomic_bool connectionCancel_{false};
     std::unique_ptr<SessionState> pendingSession_;
-    std::vector<Bytes> pendingConnectionData_;
+    std::vector<ReceivedItem> pendingConnectionData_;
     size_t pendingConnectionBytes_ = 0;
     std::atomic<bool> closing_{false};
+    std::thread updateThread_;
+    std::atomic<bool> updateCancel_{false};
+    bool startupUpdateDeferred_ = false;
     std::mutex receivedMutex_;
-    std::map<std::uint64_t, Bytes> received_;
+    std::deque<ReceivedItem> received_;
+    std::map<std::uint64_t, size_t> receivedBytes_;
+    bool measurePaint_ = false;
+    std::uint64_t paintSample_ = 0;
     std::set<std::uint64_t> receiveOverflow_;
     bool receivePosted_ = false;
     std::set<std::uint64_t> loggerErrorsShown_;
@@ -396,6 +435,7 @@ private:
     std::wstring pendingPassword_;
     std::uint16_t pendingPort_ = 0;
     std::wstring pendingRemoteSerial_;
+    std::string pendingRemoteInstance_;
     CommandItem pendingCommand_;
     std::wstring pendingSftpInputTitle_;
     std::wstring pendingSftpInputLabel_;

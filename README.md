@@ -2,23 +2,24 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-当前正式版本：`V1.0.5`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
+本轮候选版本：`V1.0.7`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
 
 ## 主要功能
 
 - Windows 7 SP1、Windows 10、Windows 11，仅提供 x64 程序。
-- 本地串口终端；串口打开后可通过 TCP `7000–7015` 中可用端口在可信内网共享。
-- 发现并连接其他 SerialCtl 已打开的串口，共用服务支持最多 128 个客户端同时读写，慢客户端会被隔离断开。
+- 本地串口终端；串口打开后可通过 WebSocket `7000–7015` 中可用端口在可信内网共享。
+- 发现并连接其他 SerialCtl 已打开的串口，同一 WebSocket 会话服务容量上限为 128 个客户端（不等于性能测定），慢客户端会被隔离断开。
 - Telnet 和 SSH；SSH 使用随包提供的定制 PuTTY `plink.exe`。
 - SSH 会话的 SFTP 文件浏览、排序、多选、上传、下载、取消、重试和文件管理。
 - 多会话切换，每个会话独立保存终端、滚动、编码、日志和 SFTP 状态。
-- 单元格式 VT/xterm 终端，支持 ANSI 16/256/RGB 色彩、备用屏幕、宽字符、bracketed paste 和 20,000 行回滚。
+- 主屏幕逻辑行重排与 CMD 本地行编辑；VT/xterm 终端，支持 ANSI 16/256/RGB 色彩、备用屏幕、宽字符、bracketed paste 和 20,000 行回滚。
 - UTF-8、GBK、GB2312 编码，以及独立时间戳栏、选择、复制、粘贴、滚动和字体缩放。
 - 常用命令、最多 10 步的命令宏、执行进度、停止及 TXT 导入导出。
 - 默认浅色主题，支持深色切换；统一黑白顶部栏，桌面图标保持原样。
 - IT6332A 电源管理、USB/RS232 连接、三通道独立控制、串并联、跟踪、自动化及监测。
-- 本地 CMD 与自动启动的固定范围 AI 接口；支持 Linux 客户端与原始字节 WebSocket。
+- 本地 CMD 与自动启动的固定范围 AI 接口；支持 Linux 客户端与二进制安全的 WebSocket v1。
 - 发布包包含 Win7 NI-VISA 18.0 Runtime 完整离线安装文件。
+- 可配置内网自动更新：每次启动后台检查，签名验证后在空闲时更新；保留配置、命令、日志与驱动。
 
 ## 使用
 
@@ -26,7 +27,7 @@ SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具�
 
 1. 点击顶部“串口”。
 2. 选择 COM 口、波特率和流控。
-3. 点击“连接”。串口打开后同时监听配置的共享端口，默认 `7000`。
+3. 点击“连接”。程序启动即提供统一服务，自动选择 `7000–7015` 可用端口；每个已打开串口注册为明确的会话。
 4. 根据现场安全策略配置 Windows 防火墙。
 
 共享串口没有认证、加密或写入互斥，只适合操作者可控的可信内网。多个客户端同时写入时，需要自行避免命令交叉。
@@ -55,6 +56,12 @@ SSH 登录成功后，右侧 `SFTP` 页会自动读取目录。路径面包屑�
 ```
 
 常用命令默认写入 `%LOCALAPPDATA%\SerialCtl\commands.txt`。文件格式示例位于 `docs/package/常用命令示例.txt`。
+
+## 内网自动更新
+
+编辑 `serialctl.exe` 旁的 `update.ini`，在 `[update]` 下填写 `url=完整的 update.json 网址`。默认留空，确定服务器 `172.16.2.188` 的实际发布目录后填写；后续地址变化只改这个文件。程序每次启动读取配置，服务器不可达时继续使用当前版本。正在使用的设备和任务不会为更新而被强制断开。
+
+HTTP 更新以程序内置 RSA 公钥验证签名，服务器仅需托管静态文件。首次部署 V1.0.7 需正常解压安装；旧版本没有更新器，不能自动跳到本版本。用户步骤见 [AUTO-UPDATE.md](docs/package/AUTO-UPDATE.md)，管理员签名和部署见 [架构说明](docs/architecture/AUTO-UPDATE.md)。
 
 ## 工程结构
 
@@ -114,7 +121,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 发布流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中只保留：
 
 ```text
-SerialCtl-V1.0.5-Win7-x64.zip
+SerialCtl-V1.0.7-Win7-x64.zip
 ```
 
 压缩包根目录直接包含 x64 的 `serialctl.exe`、`plink.exe` 和 `psftp.exe`，解压后保持三者位于同一目录。
@@ -138,6 +145,8 @@ SerialCtl-V1.0.5-Win7-x64.zip
 
 ## GitHub 自动构建与下载
 
-推送 main 或手动运行 Actions 的 `Windows Win7 release build` 会构建并验证 x64。正式程序包可在仓库 Releases 下载；Actions 的 `SerialCtl-Win7-portable` 为构建产物（保留 30 天）。CI 使用 Windows Server 2022，不替代真实 Win7 SP1 与硬件验收。
+推送 main、feat/*、feature/* 或手动运行 Actions 的 `Windows Win7 release build` 会构建并验证 x64。正式程序包可在仓库 Releases 下载；Actions 的 `SerialCtl-Win7-portable` 为构建产物（保留 30 天）。CI 使用 Windows Server 2022，不替代真实 Win7 SP1 与硬件验收。
 
-V1.0.5 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
+V1.0.7 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
+
+统一协议和客户端说明见 [WEBSOCKET-PROTOCOL.md](docs/architecture/WEBSOCKET-PROTOCOL.md)，本轮状态见 [V1.0.6-ACCEPTANCE.md](docs/testing/V1.0.6-ACCEPTANCE.md)。

@@ -22,7 +22,7 @@ private:
     void ReadLoop();
 
     std::atomic_bool connected_{false};
-    HANDLE handle_ = INVALID_HANDLE_VALUE;
+    std::atomic<HANDLE> handle_{INVALID_HANDLE_VALUE};
     std::atomic<bool> stopping_{false};
     std::thread readThread_;
     std::mutex writeMutex_;

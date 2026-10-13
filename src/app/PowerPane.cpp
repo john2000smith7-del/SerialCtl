@@ -190,27 +190,40 @@ void PowerPane::SaveTask() {
         MessageBoxW(window_, L"任务保存失败", L"电源管理", MB_OK | MB_ICONERROR);
 }
 void PowerPane::Action(int id) {
+    refreshRequired_=true;
     try {
         if (id == 80) {
             SelectMode();
             return;
         }
         if (id >= 90 && id <= 93) {
+            if(tab_ == id-90)return;
+            const int old=tab_+90;
             tab_ = id - 90;
             scroll_ = 0;
             Layout();
+            InvalidateRect(Control(old),nullptr,FALSE);
+            InvalidateRect(Control(id),nullptr,FALSE);
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
         if (id >= 110 && id <= 114) {
+            if(automation_ == id-110)return;
+            const int old=automation_+110;
             automation_ = id - 110;
             Layout();
+            InvalidateRect(Control(old),nullptr,FALSE);
+            InvalidateRect(Control(id),nullptr,FALSE);
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
         if (id >= 190 && id <= 193) {
+            if(settings_ == id-190)return;
+            const int old=settings_+190;
             settings_ = id - 190;
             Layout();
+            InvalidateRect(Control(old),nullptr,FALSE);
+            InvalidateRect(Control(id),nullptr,FALSE);
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
@@ -426,7 +439,10 @@ void PowerPane::Refresh() {
     if (!service_)
         return;
     bool wasConnected = state_.value("connected", false);
-    state_ = service_->State();
+    auto nextState=service_->State();
+    if(nextState==state_ && pendingActions_.empty() && !refreshRequired_)return;
+    state_=std::move(nextState);
+    refreshRequired_=false;
     bool connected = state_.value("connected", false), running = state_["task"].value("running", false);
     if (wasConnected != connected) {
         PostMessageW(GetParent(window_), PowerStateChanged, 0, 0);
@@ -479,8 +495,8 @@ void PowerPane::Refresh() {
                     if (index == 1 && a.is_number() && second["setCurrent"].is_number())
                         a = a.get<double>() + second["setCurrent"].get<double>();
                 }
-                SetWindowTextW(voltage_[i], Value(v).c_str());
-                SetWindowTextW(current_[i], Value(a).c_str());
+                if(GetFocus()!=voltage_[i])SetWindowTextW(voltage_[i], Value(v).c_str());
+                if(GetFocus()!=current_[i])SetWindowTextW(current_[i], Value(a).c_str());
             }
         }
         if (changed && index != 0) {
@@ -685,6 +701,7 @@ void PowerPane::SelectMode() {
     Refresh();
 }
 void PowerPane::Layout() {
+    UiLayoutBatch batch;currentLayout_=&batch;
     RECT r{};
     GetClientRect(window_, &r);
     auto d = [this](int v) { return MulDiv(v, dpi_, 96); };
@@ -701,17 +718,16 @@ void PowerPane::Layout() {
         w -= d(16);
     cardWidth_ = (w - d(12) * (cardColumns_ - 1)) / cardColumns_;
     auto move = [&](HWND h, int x, int y, int width, int height) {
-        MoveWindow(h, x, y - scroll_, width, height, TRUE);
-        ShowWindow(h, SW_SHOW);
+        batch.Move(h, x, y - scroll_, width, height);
+        batch.Show(h, SW_SHOW);
     };
     move(buttons_[0], w - d(200), 0, d(96), d(36));
     move(buttons_[1], w - d(96), 0, d(96), d(36));
     move(buttons_[2], w - d(200), d(52), d(96), d(36));
     move(buttons_[3], w - d(96), d(52), d(96), d(36));
     move(Control(81), w - d(312), d(52), d(104), d(36));
-    SendMessageW(Control(80), CB_SETITEMHEIGHT, -1, d(30));
     move(Control(80), d(72), d(52), d(160), d(180));
-    SendMessageW(Control(80), CB_SETITEMHEIGHT, -1, d(30));
+    batch.ComboVisibleHeight(Control(80), d(36));
     for (int i = 0; i < 3; ++i) {
         bool hidden = group && i == 1;
         int index = group && i == 2 ? 1 : i;
@@ -730,9 +746,9 @@ void PowerPane::Layout() {
         move(voltage_[i], x + label, y + d(136), cw - label - d(16), d(28));
         move(current_[i], x + label, y + d(172), cw - label - d(16), d(28));
         if (hidden) {
-            ShowWindow(check_[i], SW_HIDE);
-            ShowWindow(voltage_[i], SW_HIDE);
-            ShowWindow(current_[i], SW_HIDE);
+            batch.Show(check_[i], SW_HIDE);
+            batch.Show(voltage_[i], SW_HIDE);
+            batch.Show(current_[i], SW_HIDE);
         }
     }
     const int widths[] = {92, 92, 92, 104};
@@ -743,8 +759,9 @@ void PowerPane::Layout() {
     }
     for (auto item : controls_)
         if (item.first >= 100 || (item.first >= 40 && item.first <= 44) || (item.first >= 70 && item.first <= 72))
-            ShowWindow(item.second, SW_HIDE);
+            batch.Show(item.second, SW_HIDE);
     DetailsLayout(w, detailsTop_);
+    currentLayout_=nullptr;batch.Commit();
 }
 void PowerPane::DetailsLayout(int width, int top) {
     auto d = [this](int v) { return MulDiv(v, dpi_, 96); };
@@ -753,11 +770,11 @@ void PowerPane::DetailsLayout(int width, int top) {
         wchar_t cls[24]{};
         GetClassNameW(control, cls, 24);
         if (_wcsicmp(cls, L"COMBOBOX") == 0) {
-            SendMessageW(control, CB_SETITEMHEIGHT, -1, d(h - 6));
+            currentLayout_->ComboVisibleHeight(control, d(h));
             h = 180;
         }
-        MoveWindow(control, d(x), top + d(y) - scroll_, d(w), d(h), TRUE);
-        ShowWindow(control, SW_SHOW);
+        currentLayout_->Move(control, d(x), top + d(y) - scroll_, d(w), d(h));
+        currentLayout_->Show(control, SW_SHOW);
     };
     const int w = MulDiv(width, 96, dpi_);
     if (tab_ == 0) {
@@ -1263,7 +1280,7 @@ void PowerPane::ShowConnection() {
     t.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
     t.dialog.cx = 238;
     t.dialog.cy = 240;
-    DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), ConnectProc,
+    UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), ConnectProc,
                             reinterpret_cast<LPARAM>(&data));
 }
 INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -1403,7 +1420,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         if (id == IDCANCEL) {
-            EndDialog(h, IDCANCEL);
+            UiEndOwnedDialog(h, IDCANCEL);
             return TRUE;
         }
         if (id == IDOK) {
@@ -1425,7 +1442,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     command["stopBits"] = SendMessageW(data->stop, CB_GETCURSEL, 0, 0) == 1 ? 2 : 0;
                 }
                 data->pane->Submit(command);
-                EndDialog(h, IDOK);
+                UiEndOwnedDialog(h, IDOK);
             } catch (const std::exception &e) {
                 SetWindowTextW(data->error, Wide(e.what()).c_str());
             }
@@ -1615,7 +1632,7 @@ void PowerPane::EditSequence() {
     t.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
     t.dialog.cx = 238;
     t.dialog.cy = 190;
-    if (DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
+    if (UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
                                 reinterpret_cast<LPARAM>(&data)) != IDOK)
         return;
     steps_ = ParsePowerSteps(data.value);
@@ -1629,7 +1646,7 @@ void PowerPane::ShowScpi() {
     t.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
     t.dialog.cx = 238;
     t.dialog.cy = 90;
-    if (DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
+    if (UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), TextProc,
                                 reinterpret_cast<LPARAM>(&data)) == IDOK)
         Submit({{"type", "diagnostic"}, {"operation", "scpi"}, {"line", WideToMultiByte(data.value, CP_UTF8)}});
 }
@@ -1685,16 +1702,16 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     MessageBoxW(h, Wide(e.what()).c_str(), L"编辑电源步骤", MB_OK | MB_ICONWARNING);
                     return TRUE;
                 }
-            EndDialog(h, IDOK);
+            UiEndOwnedDialog(h, IDOK);
             return TRUE;
         }
         if (LOWORD(w) == IDCANCEL) {
-            EndDialog(h, IDCANCEL);
+            UiEndOwnedDialog(h, IDCANCEL);
             return TRUE;
         }
     }
     if (m == WM_CLOSE) {
-        EndDialog(h, IDCANCEL);
+        UiEndOwnedDialog(h, IDCANCEL);
         return TRUE;
     }
     if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT) {

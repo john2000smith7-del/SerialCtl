@@ -85,12 +85,25 @@ foreach ($architecture in @('x64')) {
     }
 }
 
+# Always check the template even when release.ps1 already ran check.ps1.
+$updateTemplateLines = @(Get-Content -LiteralPath (Join-Path $repositoryRoot 'docs/package/update.ini') -Encoding UTF8 |
+    ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith(';') })
+if (($updateTemplateLines -join "`n") -cne "[update]`nurl=") {
+    throw 'Refusing to package a configured update.ini; only the blank URL template is permitted'
+}
+
 $copyMap = [ordered]@{
     'docs/package/README.md' = 'README.md'
+    'docs/package/AUTO-UPDATE.md' = 'AUTO-UPDATE.md'
+    'docs/package/update.ini' = 'update.ini'
+    'docs/testing/AUTO-UPDATE-ACCEPTANCE.md' = 'AUTO-UPDATE-ACCEPTANCE.md'
     "docs/package/RELEASE-NOTES-$($version.Display).md" = 'RELEASE-NOTES.md'
     'tools/serialctl_client.py' = 'serialctl_client.py'
     'tools/serialctl_api.py' = 'serialctl_api.py'
+    'tools/serialctl_ws.py' = 'serialctl_ws.py'
     'docs/package/AI-API.md' = 'AI-API.md'
+    'docs/architecture/WEBSOCKET-PROTOCOL.md' = 'WEBSOCKET-PROTOCOL.md'
+    'docs/testing/V1.0.6-ACCEPTANCE.md' = 'V1.0.6-ACCEPTANCE.md'
     'docs/package/POWER.md' = 'POWER.md'
     'third_party/json/LICENSE' = 'JSON-LICENSE.txt'
     'docs/package/AI-SERIAL.md' = 'AI-SERIAL.md'
@@ -161,6 +174,14 @@ $manifest = [ordered]@{
         configuration = $Configuration
         runtime = 'static-msvc-mt'
         pe_subsystem_version = '6.01'
+    }
+    auto_update = [ordered]@{
+        configuration = 'update.ini beside serialctl.exe; blank URL disables checks'
+        transport = 'Win7 WinHTTP HTTP/HTTPS; no redirects; relative same-origin files'
+        trust = 'embedded RSA-2048 public key; detached SHA-256 PKCS1 signature; per-file SHA-256'
+        install = 'idle startup only; reject other same-directory instances; backup and attempt rollback on failure'
+        preserved = @('update.ini', 'user configuration', 'commands', 'logs', 'NI-VISA driver')
+        signing_key = 'never included in package or HTTP server'
     }
     optional_driver = [ordered]@{ name = "NI-VISA Runtime"; version = "18.0"; source_url = $driverManifest.url; source_archive_sha256 = $driverManifest.sha256 }
     payloads = $payloadRecords
@@ -265,7 +286,7 @@ foreach ($relativePath in $checksumActual) {
     }
 }
 
-$serialCtlDlls = @('ADVAPI32.dll', 'COMCTL32.dll', 'COMDLG32.dll', 'GDI32.dll', 'gdiplus.dll', 'KERNEL32.dll', 'ole32.dll', 'SHELL32.dll', 'USER32.dll', 'WS2_32.dll')
+$serialCtlDlls = @('ADVAPI32.dll', 'COMCTL32.dll', 'COMDLG32.dll', 'GDI32.dll', 'gdiplus.dll', 'KERNEL32.dll', 'ole32.dll', 'SHELL32.dll', 'USER32.dll', 'WINHTTP.dll', 'WS2_32.dll')
 $puttyDlls = @('ADVAPI32.dll', 'KERNEL32.dll', 'USER32.dll')
 foreach ($architecture in @('x64')) {
     $runtimeRoot = Join-Path $verifiedBundleRoot "."

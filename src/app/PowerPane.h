@@ -64,6 +64,8 @@ class PowerPane {
     bool scrolling_ = false;
     int tab_ = 0, automation_ = 0, settings_ = 0, draftMode_ = 0, independentSelection_ = 1;
     int detailsTop_ = 0;
+    UiLayoutBatch* currentLayout_ = nullptr;
+    bool refreshRequired_ = true;
     bool paused_ = false, populated_ = false, reporting_ = false;
     std::string sampleStamp_;
     std::deque<Json> history_;

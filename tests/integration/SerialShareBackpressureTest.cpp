@@ -1,72 +1,158 @@
-#include "SerialShareConnection.h"
-#include <atomic>
-#include <chrono>
-#include <condition_variable>
-#include <iostream>
-#include <mutex>
-#include <thread>
-
-// A deterministic in-memory serial device replaces hardware only in this test.
-// The production broadcaster, sockets, queues and lifecycle are linked unchanged.
-namespace serialctl {
-SerialDevice::~SerialDevice() { Close(); }
-bool SerialDevice::Open(const SerialSettings&, DataCallback data, StatusCallback status, std::wstring&) {
-    handle_ = reinterpret_cast<HANDLE>(1);
-    onData_ = std::move(data); onStatus_ = std::move(status); return true;
+#include "GatewayFixture.h"
+#include <fstream>
+#include <psapi.h>
+#include <tlhelp32.h>
+using namespace test;
+namespace {
+struct Metrics {
+    DWORD handles = 0, threads = 0;
+    SIZE_T working = 0, peak = 0;
+    std::uint64_t cpu = 0;
+};
+Metrics Measure() {
+    Metrics m;
+    GetProcessHandleCount(GetCurrentProcess(), &m.handles);
+    PROCESS_MEMORY_COUNTERS memory{};
+    Expect(GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory)) != FALSE, "process memory metrics");
+    m.working = memory.WorkingSetSize;
+    m.peak = memory.PeakWorkingSetSize;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    Expect(GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user) != FALSE, "process CPU metrics");
+    auto ticks = [](FILETIME t) { return (std::uint64_t(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
+    m.cpu = ticks(kernel) + ticks(user);
+    auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    Expect(snapshot != INVALID_HANDLE_VALUE, "thread snapshot");
+    THREADENTRY32 entry{};
+    entry.dwSize = sizeof(entry);
+    for (BOOL found = Thread32First(snapshot, &entry); found; found = Thread32Next(snapshot, &entry))
+        if (entry.th32OwnerProcessID == GetCurrentProcessId())
+            ++m.threads;
+    CloseHandle(snapshot);
+    return m;
 }
-void SerialDevice::Close() { handle_ = INVALID_HANDLE_VALUE; onData_ = {}; onStatus_ = {}; }
-bool SerialDevice::IsOpen() const { return handle_ != INVALID_HANDLE_VALUE; }
-bool SerialDevice::Write(const Bytes& data, std::wstring&) { if (onData_) onData_(data); return true; }
-}
-
-SOCKET Connect(std::uint16_t port, bool slow) {
-    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (slow) { int small = 1024; setsockopt(s, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char*>(&small), sizeof(small)); }
-    sockaddr_in address{}; address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK); address.sin_port = htons(port);
-    if (connect(s, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) { closesocket(s); return INVALID_SOCKET; }
-    send(s, "x", 1, 0); // raw protocol; no receive timeout required for handshake
-    return s;
-}
+} // namespace
 int main() {
-    WSADATA wsa{}; if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return 1;
-    SOCKET probe = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    sockaddr_in address{}; address.sin_family = AF_INET; address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    bind(probe, reinterpret_cast<sockaddr*>(&address), sizeof(address));
-    int length = sizeof(address); getsockname(probe, reinterpret_cast<sockaddr*>(&address), &length);
-    const auto port = ntohs(address.sin_port); closesocket(probe);
-    std::mutex mutex; std::condition_variable ready; int connections = 0;
-    serialctl::SerialSettings settings; settings.portName = L"TEST";
-    serialctl::SerialShareConnection service(settings, port);
-    std::wstring error;
-    if (!service.Start([](const serialctl::Bytes&) {}, [&](const std::wstring& status, bool) {
-            if (status.find(L"远程客户端已连接") != std::wstring::npos) {
-                std::lock_guard<std::mutex> lock(mutex); ++connections; ready.notify_all();
+    Wsa wsa;
+    try {
+        Fixture f(18500, 18515);
+        Peer slow(f.server.Port());
+        int tinyReceiveBuffer = 4096;
+        Expect(setsockopt(slow.socket, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<const char *>(&tinyReceiveBuffer),
+                          sizeof(tinyReceiveBuffer)) == 0,
+               "controlled stalled receive window");
+        Expect(slow.Request("subscribe", "session-3", {{"after", 0}})["ok"] == true, "slow subscriber");
+        GatewayClient healthy;
+        healthy.Connect(L"127.0.0.1", f.server.Port());
+        healthy.Request("subscribe", "session-3", {{"after", 0}});
+        healthy.Live();
+        std::atomic<size_t> received{0};
+        std::exception_ptr failure;
+        std::thread reader([&] {
+            try {
+                for (;;) {
+                    auto e = healthy.Receive();
+                    if (e.value("kind", "") == "output") {
+                        auto payload = Decode64(e["data"]);
+                        Expect(payload.size() == 16384, "healthy packet size");
+                        for (size_t i = 0; i < payload.size(); ++i)
+                            Expect(payload[i] == std::uint8_t(i), "healthy byte equality");
+                        received += payload.size();
+                    }
+                }
+            } catch (...) {
+                failure = std::current_exception();
             }
-        }, error)) return 2;
-    SOCKET slow = Connect(port, true), fast = Connect(port, false);
-    if (slow == INVALID_SOCKET || fast == INVALID_SOCKET) { service.Stop(); return 3; }
-    std::atomic<size_t> received{0};
-    std::thread reader([&] { char data[32768]; int count;
-        while ((count = recv(fast, data, sizeof(data), 0)) > 0) received += static_cast<size_t>(count);
-    });
-    bool initialized;
-    { std::unique_lock<std::mutex> lock(mutex); initialized = ready.wait_for(lock, std::chrono::seconds(3), [&] { return connections == 2; }); }
-    std::cerr << "Clients initialized: " << initialized << '\n';
-    constexpr int ChunkCount = 128;
-    serialctl::Bytes chunk(65536, 'a');
-    const auto started = std::chrono::steady_clock::now();
-    if (initialized) for (int i = 0; i < ChunkCount; ++i) { service.Send(chunk, error); Sleep(2); }
-    const auto duration = std::chrono::steady_clock::now() - started;
-    std::cerr << "Flood duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << " ms\n";
-    std::cerr << "Serial input completed; received " << received.load() << " bytes\n";
-    for (int i = 0; i < 100 && received < chunk.size() * ChunkCount; ++i) Sleep(20);
-    std::cerr << "Stopping shared service\n";
-    service.Stop();
-    std::cerr << "Shared service stopped\n";
-    shutdown(fast, SD_BOTH); reader.join(); closesocket(fast); closesocket(slow);
-    WSACleanup();
-    if (!initialized || duration > std::chrono::seconds(5) || received < chunk.size() * ChunkCount) return 4;
-    std::cout << "Slow-client isolation and shutdown tests passed\n";
+        });
+        try {
+            Bytes bytes(16384);
+            for (size_t i = 0; i < bytes.size(); ++i)
+                bytes[i] = static_cast<std::uint8_t>(i);
+            for (size_t i = 1; i <= 600; ++i) {
+                f.server.Publish("session-3", bytes);
+                Wait([&] { return received >= i * bytes.size(); });
+            }
+            Expect(received == 600 * bytes.size(),
+                   "healthy subscriber receives all bytes while other socket stops reading");
+            try {
+                Wait([&] { return f.server.Diagnostics().dump().find("SLOW_CLIENT") != std::string::npos; });
+            } catch (...) {
+                std::cerr << "diagnostics=" << f.server.Diagnostics().dump() << std::endl;
+                throw;
+            }
+        } catch (...) {
+            healthy.Cancel();
+            reader.join();
+            throw;
+        }
+        healthy.Cancel();
+        reader.join();
+        healthy.Close();
+        Expect(f.com3->IsConnected(), "slow consumer cannot stop local driver");
+        std::cout << "Slow-client bounded queue isolation: 9,830,400 healthy output bytes, no drops\n";
+        // Measure forwarding from Publish entry to decoded event reception (loopback,
+        // controlled transports, 64-byte packets, 1000 samples/load, no physical UART).
+        LARGE_INTEGER frequency;
+        QueryPerformanceFrequency(&frequency);
+        DWORD handles = 0;
+        GetProcessHandleCount(GetCurrentProcess(), &handles);
+        PROCESS_MEMORY_COUNTERS memory{};
+        GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory));
+        std::cout
+            << "environment=Windows runner loopback; physical_serial_rate=not_applicable; controlled_COMs=2; handles="
+            << handles << " working_set=" << memory.WorkingSetSize << '\n';
+        for (size_t count : {1u, 2u, 8u, 32u}) {
+            auto idle = Measure();
+            Fixture load(18600, 18615);
+            std::vector<std::unique_ptr<GatewayClient>> clients;
+            for (size_t i = 0; i < count; ++i) {
+                auto c = std::make_unique<GatewayClient>();
+                c->Connect(L"127.0.0.1", load.server.Port());
+                c->Request("subscribe", "session-5", {{"after", 0}});
+                clients.push_back(std::move(c));
+            }
+            std::vector<double> delays;
+            auto active = Measure();
+            LARGE_INTEGER begin{}, finished{};
+            QueryPerformanceCounter(&begin);
+            for (int sample = 0; sample < 1000; ++sample) {
+                LARGE_INTEGER start, end;
+                QueryPerformanceCounter(&start);
+                load.server.Publish("session-5", Bytes(64, static_cast<std::uint8_t>(sample)));
+                for (auto &c : clients) {
+                    auto e = c->Receive();
+                    Expect(e.value("kind", "") == "output" &&
+                               Decode64(e["data"]) == Bytes(64, static_cast<std::uint8_t>(sample)),
+                           "load byte check");
+                    QueryPerformanceCounter(&end);
+                    delays.push_back(double(end.QuadPart - start.QuadPart) * 1000 / frequency.QuadPart);
+                }
+            }
+            std::sort(delays.begin(), delays.end());
+            auto percentile = [&](double q) {
+                return delays[std::min(delays.size() - 1, static_cast<size_t>(q * delays.size()))];
+            };
+            std::cout << "forwarding clients=" << count << " P50_ms=" << percentile(.50)
+                      << " P95_ms=" << percentile(.95) << " P99_ms=" << percentile(.99) << " samples=" << delays.size()
+                      << '\n';
+            QueryPerformanceCounter(&finished);
+            auto end = Measure();
+            clients.clear();
+            load.server.Stop();
+            load.com3->Stop();
+            load.com5->Stop();
+            auto reclaimed = Measure();
+            std::cout << "load clients=" << count << " verified_output_bytes=" << count * 1000 * 64
+                      << " wall_ms=" << double(finished.QuadPart - begin.QuadPart) * 1000 / frequency.QuadPart
+                      << " cpu_ms=" << double(end.cpu - active.cpu) / 10000 << " working_set=" << end.working
+                      << " peak_working_set=" << end.peak << " threads_idle=" << idle.threads
+                      << " threads_active=" << active.threads << " threads_reclaimed=" << reclaimed.threads
+                      << " handles_idle=" << idle.handles << " handles_active=" << active.handles
+                      << " handles_reclaimed=" << reclaimed.handles << '\n';
+            Expect(reclaimed.threads <= idle.threads, "load service and client threads reclaimed after stop");
+        }
+    } catch (const std::exception &e) {
+        std::cerr << e.what() << '\n';
+        return 1;
+    }
     return 0;
 }

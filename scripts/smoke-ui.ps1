@@ -4,6 +4,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 Add-Type -AssemblyName System.Drawing
+$env:SERIALCTL_UI_METRICS = '1'
+$env:PYTHONIOENCODING = 'utf-8'
 Add-Type @'
 using System;
 using System.Text;
@@ -15,7 +17,27 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder name, int size);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder text, int size);
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool EnumDisplaySettings(string device, int mode, [In,Out] byte[] settings);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int ChangeDisplaySettings([In,Out] byte[] settings, int flags);
+    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr dc,int index);
+    public static string PrepareDesktop() {
+        var mode=new byte[220]; BitConverter.GetBytes((ushort)220).CopyTo(mode,68);
+        if(!EnumDisplaySettings(null,-1,mode)) return "Current mode unavailable";
+        foreach(var candidate in new [] {new [] {1920,1080},new [] {1280,1024}}) {
+            BitConverter.GetBytes(0x00180000u).CopyTo(mode,72);
+            BitConverter.GetBytes(candidate[0]).CopyTo(mode,172);
+            BitConverter.GetBytes(candidate[1]).CopyTo(mode,176);
+            int result=ChangeDisplaySettings(mode,0);
+            if(result==0) return "Requested "+candidate[0]+"x"+candidate[1]+" accepted";
+        }
+        return "Display driver retained current resolution";
+    }
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window,int command);
     [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr window);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
     [DllImport("user32.dll", EntryPoint="SendMessageW")] public static extern IntPtr Send(IntPtr window,uint message,IntPtr w,IntPtr l);
@@ -24,6 +46,7 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr window, int id);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="GetPropW")] public static extern IntPtr GetProp(IntPtr window, string name);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SetText(IntPtr window, uint message, IntPtr wParam, string text);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr ReadText(IntPtr window, uint message, IntPtr wParam, StringBuilder text);
     public static void Fill(IntPtr dialog, int id, string text) {
@@ -114,6 +137,13 @@ public static class SerialCtlUiSmoke {
     }
 }
 '@
+function Capture-Desktop([string]$Name) {
+    $size=[Drawing.Size]::new([SerialCtlUiSmoke]::GetSystemMetrics(0),[SerialCtlUiSmoke]::GetSystemMetrics(1))
+    $screen = New-Object Drawing.Bitmap($size.Width,$size.Height)
+    $graphics = [Drawing.Graphics]::FromImage($screen)
+    try { $graphics.CopyFromScreen(0,0,0,0,$size); $screen.Save((Join-Path $OutputDirectory ($Name+'.png')),[Drawing.Imaging.ImageFormat]::Png) }
+    finally { $graphics.Dispose(); $screen.Dispose() }
+}
 function Wait-Dialog([int]$ProcessId, [string]$Title) {
     for ($attempt = 0; $attempt -lt 150; $attempt++) {
         $dialog = [SerialCtlUiSmoke]::Dialog([uint32]$ProcessId, $Title)
@@ -136,6 +166,13 @@ function Capture-Window([IntPtr]$Handle, [string]$Name) {
 }
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+$displayResult=[SerialCtlUiSmoke]::PrepareDesktop()
+Start-Sleep -Milliseconds 300
+$screenDc=[SerialCtlUiSmoke]::GetDC([IntPtr]::Zero)
+try {$dpi=[SerialCtlUiSmoke]::GetDeviceCaps($screenDc,88)} finally {[SerialCtlUiSmoke]::ReleaseDC([IntPtr]::Zero,$screenDc)|Out-Null}
+$cpuInfo = Get-CimInstance Win32_Processor
+$computerInfo = Get-CimInstance Win32_ComputerSystem
+[ordered]@{system=[Environment]::OSVersion.VersionString; cpu=@($cpuInfo | ForEach-Object {$_.Name}); logicalProcessors=[Environment]::ProcessorCount; memoryBytes=[int64]$computerInfo.TotalPhysicalMemory; dpi=$dpi; width=[SerialCtlUiSmoke]::GetSystemMetrics(0);height=[SerialCtlUiSmoke]::GetSystemMetrics(1);resolution=$displayResult;capture='CopyFromScreen actual physical desktop; PrintWindow separate layout inspection';hardware='No physical UART/IT6332A; SFTP mock isolated'} | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'ui-environment.json') -Encoding UTF8
 $root = Get-SerialCtlRepositoryRoot
 $version = Get-SerialCtlVersion
 $extract = Join-Path $OutputDirectory 'payload'
@@ -150,7 +187,18 @@ public static class FakePlink {
             Console.WriteLine("Remote directory is /home/test\nListing directory /home/test\n-rw-r--r-- 1 test test 12 Jan 01 2026 test.txt");
             return 0;
         }
-        foreach (string arg in args) if (arg == "-hostkey") { while (Console.ReadLine() != null) {} return 0; }
+        foreach (string arg in args) if (arg == "-hostkey") {
+            var producer = new System.Threading.Thread(() => {
+                for (int i=0;;i++) {
+                    Console.WriteLine("SERIALCTL_PAINT_" + (i%1000).ToString("D3") + " controlled SSH output during SFTP layout");
+                    System.Threading.Thread.Sleep(10);
+                }
+            });
+            producer.IsBackground = true;
+            producer.Start();
+            while (Console.ReadLine() != null) {}
+            return 0;
+        }
         Console.WriteLine("The host key is not cached for this server\nkey fingerprint is:\nssh-ed25519 255 SHA256:ui-smoke-test");
         return 1;
     }
@@ -303,48 +351,47 @@ foreach ($architecture in @('x64')) {
             Start-Sleep -Milliseconds 150
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,980,620,$true)|Out-Null
             Start-Sleep -Milliseconds 150
+            foreach($frame in 0..15){[SerialCtlUiSmoke]::Send($powerPane,0x111,[IntPtr](90+($frame%4)),[IntPtr]0)|Out-Null;Start-Sleep -Milliseconds 16;Capture-Desktop "$architecture-$theme-power-tab-frame-$frame"}
             Capture-Window $application.MainWindowHandle "$architecture-$theme-power-minimum"
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,1180,760,$true)|Out-Null
             [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]90,[IntPtr]::Zero)|Out-Null
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x111,[IntPtr]300,[IntPtr]::Zero) | Out-Null
             Start-Sleep -Milliseconds 700
             Capture-Window $application.MainWindowHandle "$architecture-$theme-cmd"
-            if ([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,302) -ne [IntPtr]::Zero) { throw 'Obsolete API toolbar entry exists.' }
+            if ([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,303) -ne [IntPtr]::Zero) { throw 'Obsolete API toolbar entry exists.' }
             # The exact packaged GUI starts its fixed-scope service automatically.
-            $found = @((& python (Join-Path $native 'serialctl_api.py') 127.0.0.1 discover | ConvertFrom-Json))
-            if ($found.Count -ne 1) { throw 'Automatic API discovery failed.' }
-            $script:apiBase = 'http://127.0.0.1:' + $found[0].port + '/api/v1'
-            function Request-TestApi([string]$Path,$Body=$null) {
-                if ($null -eq $Body) { return Invoke-RestMethod -Uri ($apiBase+$Path) -TimeoutSec 10 }
-                return Invoke-RestMethod -Uri ($apiBase+$Path) -Method Post -ContentType 'application/json' -Body ($Body|ConvertTo-Json -Compress) -TimeoutSec 10
+            & python (Join-Path (Get-SerialCtlRepositoryRoot) 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() (Join-Path $OutputDirectory ("$architecture-$theme-display.json"))
+            if ($LASTEXITCODE -ne 0) { throw 'Unified gateway / real GUI CMD key editing failed.' }
+            & python (Join-Path $root 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() --start-stream
+            if ($LASTEXITCODE -ne 0) { throw 'Sustained CMD producer did not start.' }
+            [SerialCtlUiSmoke]::SetForegroundWindow($application.MainWindowHandle)|Out-Null
+            $commandRect=New-Object SerialCtlUiSmoke+RECT
+            [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112),[ref]$commandRect)|Out-Null
+            $splitX=$commandRect.Left-22 # 16 px card padding and half of the 12 px gap (runner DPI 100%).
+            $mouseY=$commandRect.Top+100
+            [SerialCtlUiSmoke]::SetCursorPos($splitX,$mouseY)|Out-Null
+            [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+            foreach($frame in 0..11){
+                [SerialCtlUiSmoke]::SetCursorPos(($splitX-($frame%6)*18),$mouseY)|Out-Null
+                Start-Sleep -Milliseconds 16
+                Capture-Desktop "$architecture-$theme-drag-frame-$frame"
             }
-            function Assert-TestApiDenied([string]$Path,$Body=@{}) {
-                $denied=$false
-                try { Request-TestApi $Path $Body | Out-Null }
-                catch { if ($_.Exception.Response.StatusCode.value__ -eq 403) { $denied=$true } else { throw } }
-                if (-not $denied) { throw ('Unexpected API capability: '+$Path) }
+            [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+            $afterDrag=New-Object SerialCtlUiSmoke+RECT
+            [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112),[ref]$afterDrag)|Out-Null
+            if($afterDrag.Left -eq $commandRect.Left){throw 'Actual mouse did not drag sidebar splitter.'}
+            foreach($frame in 0..9){
+                [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x111,[IntPtr]125,[IntPtr]0)|Out-Null
+                Start-Sleep -Milliseconds 45
+                Capture-Desktop "$architecture-$theme-animation-frame-$frame"
             }
-            $resources = (Request-TestApi '/resources').resources
-            $cmdResource = @($resources | Where-Object { $_.kind -eq 'cmd' -and $_.connected })[-1].id
-            if (-not $cmdResource) { throw 'New CMD session not automatically available.' }
-            $powerState = Request-TestApi '/power-supplies/power-1'
-            if ($powerState.connected -or $powerState.selectedChannels.Count -ne 1 -or $powerState.selectedChannels[0] -ne 1) { throw 'Unexpected actual power connection/selection state.' }
-            foreach ($endpoint in @('connect','disconnect','channels/parameters','channels/protection','task','stop')) {
-                Assert-TestApiDenied ('/power-supplies/power-1/'+$endpoint)
-            }
-            Assert-TestApiDenied '/power-supplies/power-1/channels/output' @{channels=@(2);enabled=$true}
-            $command = [Text.Encoding]::ASCII.GetBytes("echo SERIALCTL_REMOTE_VISIBLE`r`n")
-            Request-TestApi ('/sessions/'+$cmdResource+'/input') @{ data=[Convert]::ToBase64String($command) } | Out-Null
-            $received = ''
-            for ($attempt=0;$attempt -lt 50;$attempt++) {
-                $events = Request-TestApi ('/sessions/'+$cmdResource+'/events?after=0')
-                $received = (@($events.events | Where-Object { $_.type -eq 'output' } | ForEach-Object {
-                    [Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($_.data))
-                }) -join '')
-                if ($received.Contains('SERIALCTL_REMOTE_VISIBLE')) { break }
-                Start-Sleep -Milliseconds 100
-            }
-            if (-not $received.Contains('SERIALCTL_REMOTE_VISIBLE')) { throw 'GUI API CMD stream lost command output.' }
+            Start-Sleep -Milliseconds 250
+            if([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112)) -eq $false){[SerialCtlUiSmoke]::Send($application.MainWindowHandle,0x111,[IntPtr]125,[IntPtr]0)|Out-Null;Start-Sleep -Milliseconds 250}
+            foreach($frame in 0..11){[SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,(980+($frame%6)*40),(620+($frame%6)*20),$true)|Out-Null;Start-Sleep -Milliseconds 16;Capture-Desktop "$architecture-$theme-resize-frame-$frame"}
+            [SerialCtlUiSmoke]::ShowWindow($application.MainWindowHandle,3)|Out-Null
+            Start-Sleep -Milliseconds 100;Capture-Desktop "$architecture-$theme-maximized"
+            [SerialCtlUiSmoke]::ShowWindow($application.MainWindowHandle,9)|Out-Null
+            [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,1180,760,$true)|Out-Null
             Capture-Window $application.MainWindowHandle "$architecture-$theme-api-cmd-visible"
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle,$false)
             [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x111, [IntPtr]115, [IntPtr]::Zero) | Out-Null
@@ -372,8 +419,18 @@ foreach ($architecture in @('x64')) {
         $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
         [SerialCtlUiSmoke]::Fill($dialog, 1101, 'UI draft command')
         [SerialCtlUiSmoke]::Fill($dialog, 1102, 'echo ui-draft')
-        [SerialCtlUiSmoke]::PostMessage($dialog, 0x111, [IntPtr]1, [IntPtr]::Zero) | Out-Null
-        Start-Sleep -Milliseconds 300
+        $cover=Start-Process -FilePath (Join-Path $env:WINDIR 'System32/notepad.exe') -PassThru
+        try {
+            $cover.WaitForInputIdle(5000)|Out-Null
+            [SerialCtlUiSmoke]::SetForegroundWindow($dialog)|Out-Null
+            Start-Sleep -Milliseconds 100
+            if([SerialCtlUiSmoke]::GetForegroundWindow() -ne $dialog){throw 'Cannot establish foreground modal test condition.'}
+            Capture-Desktop "$architecture-modal-foreground-before"
+            [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]1,[IntPtr]::Zero)|Out-Null
+            Start-Sleep -Milliseconds 100
+            if([SerialCtlUiSmoke]::GetForegroundWindow() -ne $application.MainWindowHandle){throw 'Modal dismissal did not retain owner foreground.'}
+            Capture-Desktop "$architecture-modal-owner-after"
+        } finally {if(-not $cover.HasExited){$cover.Kill()}}
         if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before) { throw 'Draft was saved automatically.' }
         $list = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 112)
         [SerialCtlUiSmoke]::PostMessage($list, 0x201, [IntPtr]1, [IntPtr]((20 -shl 16) -bor 16)) | Out-Null
@@ -392,9 +449,18 @@ foreach ($architecture in @('x64')) {
         Start-Sleep -Milliseconds 300
         if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -eq $before) { throw 'Explicit Save did not persist draft.' }
         if (-not (Get-Content $commandsFile -Raw).Contains('echo ui-draft')) { throw 'Saved command missing.' }
+        & python (Join-Path $root 'tests/integration/gui_disconnect_smoke.py') $native $application.MainWindowHandle.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')
+        if($LASTEXITCODE -ne 0){throw 'GUI connection list / all-disconnect process cleanup failed.'}
+        Capture-Desktop "$architecture-all-disconnected"
         [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         if (-not $application.WaitForExit(10000)) { throw 'Packaged application did not close normally.' }
         if ($application.ExitCode -ne 0) { throw 'Packaged application exit code was not zero.' }
+    } catch {
+        Capture-Desktop "$architecture-failure-desktop"
+        if($application.MainWindowHandle -ne [IntPtr]::Zero){Capture-Window $application.MainWindowHandle "$architecture-failure-window"}
+        $failureLogs=Join-Path $env:APPDATA 'SerialCtl/logs'
+        if(Test-Path $failureLogs){Get-ChildItem $failureLogs -Filter '*.log' | ForEach-Object {Copy-Item $_.FullName (Join-Path $OutputDirectory ('failure-'+$_.Name)) -Force}}
+        throw
     } finally { if (-not $application.HasExited) { $application.Kill() } }
     # Exercise the asynchronous first-host dialog without any real network/credentials.
     $sandbox = Join-Path $OutputDirectory "mock-$architecture"
@@ -464,10 +530,20 @@ foreach ($architecture in @('x64')) {
             $bounds = New-Object SerialCtlUiSmoke+RECT
             [SerialCtlUiSmoke]::GetClientRect($header, [ref]$bounds) | Out-Null
             $originalWidth = $bounds.Right
-            [SerialCtlUiSmoke]::PostMessage($header, 0x201, [IntPtr]1, [IntPtr]((16 -shl 16) -bor ($originalWidth-2))) | Out-Null
-            [SerialCtlUiSmoke]::PostMessage($header, 0x200, [IntPtr]1, [IntPtr]((16 -shl 16) -bor ($originalWidth-26))) | Out-Null
-            [SerialCtlUiSmoke]::PostMessage($header, 0x202, [IntPtr]0, [IntPtr]((16 -shl 16) -bor ($originalWidth-26))) | Out-Null
+            $headerScreen=New-Object SerialCtlUiSmoke+RECT
+            [SerialCtlUiSmoke]::GetWindowRect($header,[ref]$headerScreen)|Out-Null
+            $terminal = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 107)
+            $beforePaint = [SerialCtlUiSmoke]::GetProp($terminal, 'SerialCtl.PaintSample').ToInt64()
+            if ($beforePaint -le 0) {throw 'Controlled SSH stdout was not actually painted before SFTP drag.'}
+            [SerialCtlUiSmoke]::SetForegroundWindow($application.MainWindowHandle)|Out-Null
+            [SerialCtlUiSmoke]::SetCursorPos(($headerScreen.Right-2),($headerScreen.Top+16))|Out-Null
+            [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+            foreach($frame in 1..10){[SerialCtlUiSmoke]::SetCursorPos(($headerScreen.Right-2-$frame*3),($headerScreen.Top+16))|Out-Null;Start-Sleep -Milliseconds 16;Capture-Desktop "$architecture-$theme-sftp-column-frame-$frame"}
+            $afterPaint = [SerialCtlUiSmoke]::GetProp($terminal, 'SerialCtl.PaintSample').ToInt64()
+            [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
             Start-Sleep -Milliseconds 300
+            if ($afterPaint -le $beforePaint) {throw 'SFTP column drag did not overlap actual sustained stdout painting.'}
+            [ordered]@{beforePaint=$beforePaint;afterPaint=$afterPaint;capture='CopyFromScreen, actual mouse, 10 intermediate frames';source='Isolated mock SSH stdout every 10ms, production terminal/SFTP controls; no real server test'} | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory "$architecture-$theme-sftp-sustained.json") -Encoding UTF8
             [SerialCtlUiSmoke]::GetClientRect($header, [ref]$bounds) | Out-Null
             if ($bounds.Right -ge $originalWidth) { throw 'SFTP name column did not resize.' }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)

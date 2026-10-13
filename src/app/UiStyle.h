@@ -1,5 +1,7 @@
 #pragma once
+#include <algorithm>
 #include <commctrl.h>
+#include <map>
 #include <string>
 #include <vector>
 #include <windows.h>
@@ -163,5 +165,149 @@ inline void UiStyleField(HWND control, UiFieldStyle *style) {
     SetWindowSubclass(control, UiFieldProc, 71, reinterpret_cast<DWORD_PTR>(style));
     SetWindowPos(control, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+} // namespace serialctl
+
+namespace serialctl {
+// Restore only the owner of a modal dismissed while that modal was foreground.
+// One restoration per dialog; never topmost and never from repaint/timer paths.
+inline void UiEndOwnedDialog(HWND dialog, INT_PTR result) {
+    HWND owner = GetWindow(dialog, GW_OWNER);
+    if (owner && GetForegroundWindow() == dialog)
+        SetPropW(owner, L"SerialCtl.RestoreModal", reinterpret_cast<HANDLE>(1));
+    EndDialog(dialog, result);
+}
+class UiModalOwner {
+  public:
+    explicit UiModalOwner(HWND owner) : owner_(owner), focus_(GetFocus()) {
+        RemovePropW(owner_, L"SerialCtl.RestoreModal");
+    }
+    ~UiModalOwner() {
+        if (!IsWindow(owner_) || !RemovePropW(owner_, L"SerialCtl.RestoreModal"))
+            return;
+        SetActiveWindow(owner_);
+        if (GetForegroundWindow() != owner_)
+            SetForegroundWindow(owner_);
+        if (IsWindow(focus_) && (focus_ == owner_ || IsChild(owner_, focus_)))
+            SetFocus(focus_);
+    }
+
+  private:
+    HWND owner_, focus_;
+};
+inline INT_PTR UiDialogBoxOwned(HINSTANCE instance, LPCWSTR resource, HWND owner, DLGPROC proc, LPARAM parameter) {
+    UiModalOwner restore(owner);
+    return DialogBoxParamW(instance, resource, owner, proc, parameter);
+}
+inline INT_PTR UiDialogBoxIndirectOwned(HINSTANCE instance, LPCDLGTEMPLATE resource, HWND owner, DLGPROC proc,
+                                        LPARAM parameter) {
+    UiModalOwner restore(owner);
+    return DialogBoxIndirectParamW(instance, resource, owner, proc, parameter);
+}
+// Collect final child bounds/visibility, then commit one native layout transaction.
+// If a native batch allocation fails, apply all final bounds individually.
+class UiLayoutBatch {
+  public:
+    void Move(HWND h, int x, int y, int w, int height, BOOL = FALSE) {
+        auto &v = items_[h];
+        v.rect = {x, y, x + w, y + height};
+        v.move = true;
+    }
+    void Show(HWND h, int show) {
+        items_[h].show = show == SW_HIDE ? 0 : 1;
+    }
+    void ComboVisibleHeight(HWND h, int height) {
+        items_[h].comboHeight = height;
+    }
+    void Commit() {
+        struct Move {
+            HWND h;
+            RECT rect;
+            UINT flags;
+        };
+        std::vector<Move> changes;
+        std::vector<std::pair<HWND, int>> combos;
+        for (auto &p : items_) {
+            auto h = p.first;
+            auto &v = p.second;
+            if (!h)
+                continue;
+            if (v.comboHeight >= 0)
+                combos.push_back({h, v.comboHeight});
+            UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE;
+            bool different = false;
+            if (v.move) {
+                RECT r{};
+                GetWindowRect(h, &r);
+                MapWindowPoints(HWND_DESKTOP, GetParent(h), reinterpret_cast<POINT *>(&r), 2);
+                // ComboBox window height is the closed field, while the requested
+                // layout height also reserves its dropdown. Compare position/width
+                // here and commit the visible height after the native move.
+                if (v.comboHeight >= 0)
+                    r.bottom = v.rect.bottom;
+                if (!EqualRect(&r, &v.rect)) {
+                    flags &= ~(SWP_NOMOVE | SWP_NOSIZE);
+                    different = true;
+                }
+            }
+            bool visible = (GetWindowLongPtrW(h, GWL_STYLE) & WS_VISIBLE) != 0;
+            if (v.show >= 0 && visible != (v.show != 0)) {
+                flags |= v.show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW;
+                different = true;
+            }
+            if (different)
+                changes.push_back({h, v.rect, flags});
+        }
+        items_.clear();
+        HDWP batch = changes.empty() ? nullptr : BeginDeferWindowPos(static_cast<int>(changes.size()));
+        for (auto &c : changes) {
+            if (!batch)
+                break;
+            batch = DeferWindowPos(batch, c.h, nullptr, c.rect.left, c.rect.top, c.rect.right - c.rect.left,
+                                   c.rect.bottom - c.rect.top, c.flags);
+        }
+        bool applied = batch && EndDeferWindowPos(batch);
+        if (!applied)
+            for (auto &c : changes)
+                SetWindowPos(c.h, nullptr, c.rect.left, c.rect.top, c.rect.right - c.rect.left,
+                             c.rect.bottom - c.rect.top, c.flags);
+        for (auto &c : changes)
+            InvalidateRect(c.h, nullptr, FALSE);
+        for (auto &combo : combos) {
+            RECT bounds{};
+            GetWindowRect(combo.first, &bounds);
+            int visible = bounds.bottom - bounds.top;
+            if (visible != combo.second) {
+                auto selection = static_cast<WPARAM>(-1);
+                int current = static_cast<int>(SendMessageW(combo.first, CB_GETITEMHEIGHT, selection, 0));
+                SendMessageW(combo.first, CB_SETITEMHEIGHT, selection, std::max(1, current + combo.second - visible));
+                InvalidateRect(combo.first, nullptr, FALSE);
+            }
+        }
+    }
+    ~UiLayoutBatch() {
+        Commit();
+    }
+
+  private:
+    struct Item {
+        RECT rect{};
+        bool move = false;
+        int comboHeight = -1;
+        int show = -1;
+    };
+    std::map<HWND, Item> items_;
+};
+inline void UiPlus(HDC dc, const RECT &r, COLORREF color, int dpi) {
+    int half = MulDiv(7, dpi, 96), width = std::max(1, MulDiv(2, dpi, 96));
+    int cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    HPEN pen = CreatePen(PS_SOLID, width, color);
+    auto old = SelectObject(dc, pen);
+    MoveToEx(dc, cx - half, cy, nullptr);
+    LineTo(dc, cx + half + 1, cy);
+    MoveToEx(dc, cx, cy - half, nullptr);
+    LineTo(dc, cx, cy + half + 1);
+    SelectObject(dc, old);
+    DeleteObject(pen);
 }
 } // namespace serialctl

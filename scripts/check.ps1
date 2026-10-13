@@ -38,6 +38,11 @@ $requiredFiles = @(
     'src/app/serialctl.rc.in',
     "docs/package/RELEASE-NOTES-$($version.Display).md",
     'docs/package/README.md',
+    'docs/package/AUTO-UPDATE.md',
+    'docs/package/update.ini',
+    'docs/architecture/AUTO-UPDATE.md',
+    'docs/testing/AUTO-UPDATE-ACCEPTANCE.md',
+    'tools/new_update_feed.py',
     'docs/testing/WIN7-HARDWARE-TEST.md',
     'THIRD-PARTY-NOTICES.md',
     'third_party/manifest.json'
@@ -71,6 +76,12 @@ foreach ($token in @('@SERIALCTL_FILE_VERSION_COMMA@', '@SERIALCTL_SEMVER@', '@S
     Assert-SerialCtlCondition -Condition ($resourceTemplate.Contains($token)) `
         -Message "The resource template is missing the version token $token"
 }
+
+# The only INI allowed in a release is this disabled, non-secret template.
+$updateTemplateLines = @(Get-Content -LiteralPath (Join-Path $repositoryRoot 'docs/package/update.ini') -Encoding UTF8 |
+    ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith(';') })
+Assert-SerialCtlCondition -Condition (($updateTemplateLines -join "`n") -ceq "[update]`nurl=") `
+    -Message 'The packaged update.ini must contain only [update] and a blank url; deployment settings must remain local'
 
 $scanRoots = @('CMakeLists.txt', 'README.md', 'VERSION.md', 'AGENTS.md', 'src', 'tests', 'docs', 'scripts', 'tools')
 $oldVersionPattern = ('V2' + '\.0\.0|2' + '\.0\.0\.0|SerialCtl-' + 'V2')
@@ -138,6 +149,7 @@ $serialCtlDlls = @(
     'ole32.dll',
     'SHELL32.dll',
     'USER32.dll',
+    'WINHTTP.dll',
     'WS2_32.dll'
 )
 $puttyDlls = @('ADVAPI32.dll', 'KERNEL32.dll', 'USER32.dll')
@@ -160,17 +172,21 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     }
 
     $testPrograms = @{
+        'update_client_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'WINHTTP.dll', 'WS2_32.dll')
+        'update_installer_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'SHELL32.dll', 'USER32.dll')
         'power_service_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
         'session_logger_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
         'cmd_connection_test.exe' = @('KERNEL32.dll')
         'api_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
-        'shared_serial_protocol_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
+        'shared_serial_protocol_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'tcp_connection_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'terminal_model_test.exe' = @('KERNEL32.dll')
         'terminal_decoder_test.exe' = @('KERNEL32.dll')
         'putty_host_key_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll')
-        'multi_serial_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
-        'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
+        'multi_serial_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
+        # PSAPI_VERSION=2 maps the metrics call to K32GetProcessMemoryInfo,
+        # provided by KERNEL32 on Windows 7; retain the exact import check.
+        'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'sftp_model_test.exe' = @('KERNEL32.dll')
     }
     foreach ($testName in $testPrograms.Keys) {
