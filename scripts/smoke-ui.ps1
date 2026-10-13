@@ -152,8 +152,15 @@ function Click-Control([IntPtr]$Parent, [int]$Id) {
         [SerialCtlUiSmoke]::PostMessage($Parent, 0x111, [IntPtr]$Id, [IntPtr]::Zero) | Out-Null
         return
     }
-    $control = [SerialCtlUiSmoke]::GetDlgItem($Parent, $Id)
-    if ($control -eq [IntPtr]::Zero -or -not [SerialCtlUiSmoke]::IsWindowVisible($control) -or -not [SerialCtlUiSmoke]::IsWindowEnabled($control)) {
+    # System mouse messages are queued asynchronously. Wait for the prior page
+    # click to expose this target, rather than querying the old page immediately.
+    $readyUntil = [DateTime]::UtcNow.AddSeconds(2)
+    do {
+        $control = [SerialCtlUiSmoke]::GetDlgItem($Parent, $Id)
+        $ready = $control -ne [IntPtr]::Zero -and [SerialCtlUiSmoke]::IsWindowVisible($control) -and [SerialCtlUiSmoke]::IsWindowEnabled($control)
+        if (-not $ready) { Start-Sleep -Milliseconds 20 }
+    } while (-not $ready -and [DateTime]::UtcNow -lt $readyUntil)
+    if (-not $ready) {
         throw "No visible enabled control for real mouse click: $Id"
     }
     $rootWindow = [SerialCtlUiSmoke]::GetAncestor($control, 2)
@@ -173,6 +180,7 @@ function Click-Control([IntPtr]$Parent, [int]$Id) {
     [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
     Start-Sleep -Milliseconds 25
     [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 40
     [ordered]@{ utc=[DateTime]::UtcNow.ToString('o'); parent=$Parent.ToInt64(); control=$control.ToInt64(); id=$Id; x=$point.X; y=$point.Y; foregroundBefore=$before; input='system mouse_event down/up; target hit tested; behavior is not WM_COMMAND' } |
         ConvertTo-Json -Compress | Add-Content (Join-Path $OutputDirectory 'actual-clicks.jsonl') -Encoding UTF8
 }
