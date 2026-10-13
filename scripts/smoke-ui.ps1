@@ -38,7 +38,8 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
-    [DllImport("user32.dll")] public static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string className,string caption);
+    [DllImport("user32.dll")] public static extern bool GetMenuItemRect(IntPtr window,IntPtr menu,uint item,out RECT rect);
     [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
@@ -308,13 +309,16 @@ foreach ($architecture in @('x64')) {
                         [SerialCtlUiSmoke]::mouse_event(16,0,0,0,[UIntPtr]::Zero)
                         Start-Sleep -Milliseconds 100
                         Capture-Desktop "$architecture-$theme-shared-port-menu"
-                        foreach ($key in @(36,13)) {
-                            [SerialCtlUiSmoke]::keybd_event([byte]$key,0,0,[UIntPtr]::Zero)
-                            Start-Sleep -Milliseconds 20
-                            [SerialCtlUiSmoke]::keybd_event([byte]$key,0,2,[UIntPtr]::Zero)
-                            Start-Sleep -Milliseconds 40
-                        }
-                        [ordered]@{utc=[DateTime]::UtcNow.ToString('o');id=1024;action='right click Refresh then physical Home/Enter';targetCommand=9010} | ConvertTo-Json -Compress | Add-Content (Join-Path $OutputDirectory 'actual-clicks.jsonl') -Encoding UTF8
+                        $popup = [SerialCtlUiSmoke]::FindWindow('#32768',$null)
+                        if ($popup -eq [IntPtr]::Zero) { throw 'Actual context menu did not open.' }
+                        $menu = [SerialCtlUiSmoke]::Send($popup,0x01E1,[IntPtr]::Zero,[IntPtr]::Zero) # MN_GETHMENU: read only.
+                        $itemRect = New-Object SerialCtlUiSmoke+RECT
+                        if (-not [SerialCtlUiSmoke]::GetMenuItemRect($dialog,$menu,0,[ref]$itemRect)) { throw 'Cannot locate first actual context-menu item.' }
+                        [SerialCtlUiSmoke]::SetCursorPos([int](($itemRect.Left+$itemRect.Right)/2),[int](($itemRect.Top+$itemRect.Bottom)/2)) | Out-Null
+                        [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+                        Start-Sleep -Milliseconds 25
+                        [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+                        [ordered]@{utc=[DateTime]::UtcNow.ToString('o');id=1024;action='right click Refresh then click first actual menu item';targetCommand=9010;itemBounds=@($itemRect.Left,$itemRect.Top,$itemRect.Right,$itemRect.Bottom)} | ConvertTo-Json -Compress | Add-Content (Join-Path $OutputDirectory 'actual-clicks.jsonl') -Encoding UTF8
                     } else { Click-Control $dialog 9010 }
                     $portDialog = Wait-Dialog $application.Id '高级共享端口'
                     [SerialCtlUiSmoke]::Fill($portDialog, 1402, '7000')
