@@ -1,0 +1,71 @@
+{
+    "schema_version":  1,
+    "product":  "SerialCtl",
+    "version":  "V1.0.6",
+    "semantic_version":  "1.0.6",
+    "package":  {
+                    "kind":  "portable-bundle",
+                    "archive":  "SerialCtl-V1.0.6-Win7-x64.zip",
+                    "generated_utc":  "2026-10-11T00:07:28.2975567Z"
+                },
+    "source":  {
+                   "revision":  "5f12678e4da327f146edb5ce12eb3b3ea9c8afd0",
+                   "state":  "clean"
+               },
+    "build":  {
+                  "configuration":  "Release",
+                  "runtime":  "static-msvc-mt",
+                  "pe_subsystem_version":  "6.01"
+              },
+    "optional_driver":  {
+                            "name":  "NI-VISA Runtime",
+                            "version":  "18.0",
+                            "source_url":  "https://download.ni.com/support/softlib/visa/NI-VISA/18.0/Windows/NIVISA1800runtime.zip",
+                            "source_archive_sha256":  "e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517"
+                        },
+    "payloads":  [
+                     {
+                         "os":  "windows",
+                         "architecture":  "x64",
+                         "implementation":  "native-cpp17-win32",
+                         "minimum_os":  "Windows 7 SP1",
+                         "directory":  ".",
+                         "files":  [
+                                       {
+                                           "path":  "serialctl.exe",
+                                           "size":  1889792,
+                                           "sha256":  "9c1cbc61715ef3b10a06675a0979488d7cb10b224018999fe78c8075253657b6"
+                                       },
+                                       {
+                                           "path":  "plink.exe",
+                                           "size":  1011200,
+                                           "sha256":  "fb15bf12b038abb6174cb073f710eac55a68a1479769f81c0ee02d03a0c5c246"
+                                       },
+                                       {
+                                           "path":  "psftp.exe",
+                                           "size":  1032704,
+                                           "sha256":  "065a5ea3086e54fb65ba9f2e05f4b72d984fc82dda978dbd1017c9b45ee4feb8"
+                                       }
+                                   ]
+                     }
+                 ],
+    "dependencies":  [
+                         {
+                             "name":  "PuTTY",
+                             "version":  "0.85"
+                         },
+                         {
+                             "name":  "YY-Thunks",
+                             "version":  "1.2.1"
+                         },
+                         {
+                             "name":  "nlohmann/json",
+                             "version":  "3.11.3"
+                         }
+                     ],
+    "verification":  {
+                         "automated_tests":  "passed-before-packaging",
+                         "archive_reopened":  true,
+                         "windows_7_hardware":  "not-run"
+                     }
+}

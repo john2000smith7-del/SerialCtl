@@ -1,0 +1,15 @@
+test_busy_instance_still_counts_for_ambiguity (test_serialctl_client.CoreTests.test_busy_instance_still_counts_for_ambiguity) ... ok
+test_capacity_is_not_no_service (test_serialctl_client.CoreTests.test_capacity_is_not_no_service) ... ok
+test_common_core (test_serialctl_client.CoreTests.test_common_core) ... ok
+test_early_capacity_reply_survives_write_error (test_serialctl_client.CoreTests.test_early_capacity_reply_survives_write_error) ... ok
+test_explicit_com (test_serialctl_client.CoreTests.test_explicit_com) ... ok
+test_frame_limit (test_serialctl_client.CoreTests.test_frame_limit) ... ok
+test_input_bounds (test_serialctl_client.CoreTests.test_input_bounds) ... ok
+test_no_random_instance_selection (test_serialctl_client.CoreTests.test_no_random_instance_selection) ... ok
+test_power_boolean (test_serialctl_client.CoreTests.test_power_boolean) ... ok
+test_stopped_consumer_reports_bounded_queue_failure (test_serialctl_client.CoreTests.test_stopped_consumer_reports_bounded_queue_failure) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.002s
+
+OK

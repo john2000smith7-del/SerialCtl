@@ -1,0 +1,28 @@
+{
+  "system": "Windows-2022Server-10.0.20348-SP0",
+  "ACP": 1252,
+  "OEMCP": 437,
+  "cases": [
+    {
+      "page": 437,
+      "input_base64": "ZWNobyBTRVJJQUxDVExfUElQRV9BU0NJSQ0KZWNobyBTRVJJQUxDVExfUEFHRV9ET05FDQo=",
+      "output_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+U0VSSUFMQ1RMX1BJUEVfQVNDSUkNCg0KRDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPlNFUklBTENUTF9QQUdFX0RPTkUNCg==",
+      "decoded": "\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PIPE_ASCII\r\n\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PAGE_DONE\r\n",
+      "matches": true
+    },
+    {
+      "page": 936,
+      "input_base64": "ZWNobyBTRVJJQUxDVExfUElQRV/W0M7EDQplY2hvIFNFUklBTENUTF9QQUdFX0RPTkUNCg==",
+      "output_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+U0VSSUFMQ1RMX1BJUEVfPz8/Pw0KDQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+U0VSSUFMQ1RMX1BBR0VfRE9ORQ0K",
+      "decoded": "\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PIPE_????\r\n\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PAGE_DONE\r\n",
+      "matches": false
+    },
+    {
+      "page": 65001,
+      "input_base64": "ZWNobyBTRVJJQUxDVExfUElQRV/kuK3mlocNCmVjaG8gU0VSSUFMQ1RMX1BBR0VfRE9ORQ0K",
+      "output_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+U0VSSUFMQ1RMX1BJUEVf77+977+977+977+977+977+9DQoNCkQ6XGFcU2VyaWFsQ3RsXFNlcmlhbEN0bD5TRVJJQUxDVExfUEFHRV9ET05FDQo=",
+      "decoded": "\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PIPE_\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\r\n\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PAGE_DONE\r\n",
+      "matches": false
+    }
+  ]
+}

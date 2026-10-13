@@ -1,0 +1,8 @@
+2026-10-11T00:03:56.9800000Z Evaluating build.if
+2026-10-11T00:03:56.9800000Z Evaluating: success()
+2026-10-11T00:03:56.9800000Z Result: true
+2026-10-11T00:03:56.9800000Z Requested labels: windows-2022
+2026-10-11T00:03:56.9800000Z Job defined at: john2000smith7-del/SerialCtl/.github/workflows/windows-build.yml@refs/heads/fix/unified-websocket-win7
+2026-10-11T00:03:56.9800000Z Waiting for a runner to pick up this job...
+2026-10-11T00:03:57.2520000Z Job is about to start running on the hosted runner: GitHub Actions 1000000067
+2026-10-11T00:03:57.2520000Z Job is waiting for a hosted runner to come online.

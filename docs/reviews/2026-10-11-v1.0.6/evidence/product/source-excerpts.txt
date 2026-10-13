@@ -1,0 +1,187 @@
+
+MainWindow.cpp 1742-1752
+1742:     case PowerStateChanged:
+1743:         if (disconnectAllPending_ && !powerService_.State().value("connected", false)) {
+1744:             disconnectAllPending_ = false;
+1745:             powerPageOpened_ = false;
+1746:             powerVisible_ = false;
+1747:             RECT r{};
+1748:             GetClientRect(window_, &r);
+1749:             LayoutControls(r.right, r.bottom);
+1750:         }
+1751:         RefreshConnectionList();
+1752:         return 0;
+
+MainWindow.cpp 2046-2057
+2046:     case MessageStatus: {
+2047:         std::unique_ptr<StatusMessage> status(reinterpret_cast<StatusMessage*>(lParam));
+2048:         if (status) {
+2049:             SessionState* session = FindSession(status->sessionId);
+2050:             if (session == activeSession_) {
+2051:                 SetConnectedUi(connection_ && connection_->IsConnected());
+2052:                 AppendStatus(status->text, status->isError);
+2053:             } else if (session && session->logger) {
+2054:                 session->logger->WriteStatus(status->text);
+2055:             }
+2056:         }
+2057:         return 0;
+
+MainWindow.cpp 2772-2776
+2772:         if (connected && session && session->mode == 1) {
+2773:             state = session->port ? L"TCP " + std::to_wstring(session->port) + L" · 共享" : L"本地可用 · 未共享";
+2774:             if (!session->port) stateColor = colors.danger;
+2775:         }
+2776:         DrawTextSimple(dc, state, subtitle, stateColor, smallFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+MainWindow.cpp 3511-3559
+3511: void MainWindow::DisconnectAll() {
+3512:     disconnectAllInProgress_ = true;
+3513:     StopCommandSequence(false);
+3514:     connectionCancel_ = true;
+3515:     if (pendingSession_) {
+3516:         pendingSession_->connection->CancelStart();
+3517:         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
+3518:         apiServer_.SetSessions(sessionService_.Ids());
+3519:     }
+3520:     sftpOperationCancel_ = true;
+3521:     sftpTransferCancel_ = true;
+3522:     while (!sessions_.empty()) {
+3523:         activeSession_ = sessions_.back().get();
+3524:         connection_ = activeSession_->connection.get();
+3525:         logger_ = activeSession_->logger.get();
+3526:         Disconnect();
+3527:     }
+3528:     if (connectionThread_.joinable())
+3529:         connectionThread_.join();
+3530:     pendingSession_.reset();
+3531:     pendingConnectionData_.clear();
+3532:     pendingConnectionBytes_ = 0;
+3533:     {
+3534:         std::lock_guard<std::mutex> lock(receivedMutex_);
+3535:         received_.clear();
+3536:         receivedBytes_.clear();
+3537:         receiveOverflow_.clear();
+3538:     }
+3539:     disconnectAllInProgress_ = false;
+3540:     if (sftpThread_.joinable())
+3541:         sftpThread_.join();
+3542:     if (sftpTransferThread_.joinable())
+3543:         sftpTransferThread_.join();
+3544:     if (powerService_.State().value("connected", false)) {
+3545:         auto action = powerService_.Submit({{"type", "disconnect"}, {"source", "local"}});
+3546:         if (action.contains("error")) {
+3547:             AppendStatus(L"电源断开请求失败；输出状态未知", true);
+3548:             return;
+3549:         }
+3550:         disconnectAllPending_ = true;
+3551:     } else {
+3552:         powerPageOpened_ = false;
+3553:         powerVisible_ = false;
+3554:     }
+3555:     RefreshConnectionList();
+3556:     RECT r{};
+3557:     GetClientRect(window_, &r);
+3558:     LayoutControls(r.right, r.bottom);
+3559:     AppendStatus(disconnectAllPending_ ? L"会话已断开；电源任务收尾与掉电确认处理中" : L"全部连接已断开并清空", false);
+
+MainWindow.cpp 3752-3827
+3752: void MainWindow::SendCommand(size_t index) {
+3753:     if (index >= commands_.size() || commands_[index].commands.empty() || runningCommandIndex_ >= 0) return;
+3754:     if (!connection_ || !connection_->IsConnected() || !activeSession_) {
+3755:         AppendStatus(L"请先建立连接，再执行常用命令。", true);
+3756:         return;
+3757:     }
+3758:     const CommandItem& command = commands_[index];
+3759:     if (command.commands.size() == 1) {
+3760:         const std::wstring text = command.commands.front() + SelectedLineEnding();
+3761:         const std::string encoded = EncodeTerminalText(text);
+3762:         if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text))
+3763:             AppendStatus(L"已发送命令：" + command.commands.front(), false);
+3764:         return;
+3765:     }
+3766: 
+3767:     runningCommandIndex_ = static_cast<int>(index);
+3768:     runningCommandStep_ = 0;
+3769:     runningCommandSessionId_ = activeSession_->id;
+3770:     runningCommandCodePage_ = SelectedCodePage();
+3771:     runningCommandLineEnding_ = SelectedLineEnding();
+3772:     UpdateCommandActions();
+3773:     InvalidateRect(commandList_, nullptr, FALSE);
+3774:     SendNextCommandStep();
+3775: }
+3776: 
+3777: void MainWindow::SendNextCommandStep() {
+3778:     if (runningCommandIndex_ < 0 || runningCommandIndex_ >= static_cast<int>(commands_.size())) return;
+3779:     const CommandItem& command = commands_[static_cast<size_t>(runningCommandIndex_)];
+3780:     if (!activeSession_ || activeSession_->id != runningCommandSessionId_ || !connection_ ||
+3781:         !connection_->IsConnected() || runningCommandStep_ >= command.commands.size()) {
+3782:         StopCommandSequence(false);
+3783:         return;
+3784:     }
+3785: 
+3786:     const std::wstring& step = command.commands[runningCommandStep_];
+3787:     const std::wstring text = step + runningCommandLineEnding_;
+3788:     const std::string encoded =
+3789:         selectedMode_ == 4 ? EncodeTerminalText(text) : WideToMultiByte(text, runningCommandCodePage_);
+3790:     if (!SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text)) {
+3791:         StopCommandSequence(false);
+3792:         return;
+3793:     }
+3794: 
+3795:     ++runningCommandStep_;
+3796:     InvalidateRect(commandList_, nullptr, FALSE);
+3797:     if (runningCommandStep_ >= command.commands.size()) {
+3798:         const std::wstring name = command.name;
+3799:         StopCommandSequence(false);
+3800:         AppendStatus(L"宏“" + name + L"”执行完成。", false);
+3801:         return;
+3802:     }
+3803: 
+3804:     AppendStatus(L"正在执行宏“" + command.name + L"”（" +
+3805:         std::to_wstring(runningCommandStep_) + L"/" + std::to_wstring(command.commands.size()) +
+3806:         L"）：" + step, false);
+3807:     KillTimer(window_, StatusTimerId);
+3808:     if (!SetTimer(window_, CommandTimerId, command.intervalMs, nullptr)) {
+3809:         StopCommandSequence(false);
+3810:         AppendStatus(L"无法继续执行宏，计时器创建失败。", true);
+3811:     }
+3812: }
+3813: 
+3814: void MainWindow::StopCommandSequence(bool showStatus) {
+3815:     if (runningCommandIndex_ < 0) return;
+3816:     std::wstring name;
+3817:     if (runningCommandIndex_ < static_cast<int>(commands_.size()))
+3818:         name = commands_[static_cast<size_t>(runningCommandIndex_)].name;
+3819:     KillTimer(window_, CommandTimerId);
+3820:     runningCommandIndex_ = -1;
+3821:     runningCommandStep_ = 0;
+3822:     runningCommandSessionId_ = 0;
+3823:     runningCommandLineEnding_.clear();
+3824:     UpdateCommandActions();
+3825:     InvalidateRect(commandList_, nullptr, FALSE);
+3826:     if (showStatus) AppendStatus(L"宏“" + name + L"”已停止。", false);
+3827: }
+
+MainWindow.cpp 4247-4268
+4247:     if (selectedMode_ == 4) {
+4248:         ScrollTerminalToBottom();
+4249:         auto &editor = activeSession_->cmdEditor;
+4250:         auto draft = editor.Text();
+4251:         draft.insert(editor.Cursor(), pasted);
+4252:         auto end = draft.find_last_of(L"\r\n");
+4253:         if (end == std::wstring::npos) {
+4254:             if (!editor.Insert(pasted))
+4255:                 AppendStatus(L"CMD 输入过长", true);
+4256:         } else {
+4257:             auto submitted = draft.substr(0, end + 1);
+4258:             auto encoded = EncodeTerminalText(submitted);
+4259:             if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), false)) {
+4260:                 editor.SubmittedBatch(submitted);
+4261:                 if (!editor.Insert(draft.substr(end + 1)))
+4262:                     AppendStatus(L"CMD 尾行过长", true);
+4263:             }
+4264:         }
+4265:         ClearTerminalSelection();
+4266:         InvalidateRect(terminal_, nullptr, FALSE);
+4267:         return;
+4268:     }

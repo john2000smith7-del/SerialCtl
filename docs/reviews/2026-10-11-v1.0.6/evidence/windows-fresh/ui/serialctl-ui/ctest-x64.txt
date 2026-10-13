@@ -1,0 +1,282 @@
+Start testing: Oct 11 00:06 Coordinated Universal Time
+----------------------------------------------------------
+1/14 Testing: session_logger
+1/14 Test: session_logger
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/session_logger_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"session_logger" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+65 MiB logging, rotation, complete export and source protection passed
+<end of output>
+Test time =  16.83 sec
+----------------------------------------------------------
+Test Passed.
+"session_logger" end time: Oct 11 00:06 Coordinated Universal Time
+"session_logger" time elapsed: 00:00:16
+----------------------------------------------------------
+
+2/14 Testing: power_service
+2/14 Test: power_service
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/power_service_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"power_service" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.71 sec
+----------------------------------------------------------
+Test Passed.
+"power_service" end time: Oct 11 00:06 Coordinated Universal Time
+"power_service" time elapsed: 00:00:02
+----------------------------------------------------------
+
+3/14 Testing: cmd_connection
+3/14 Test: cmd_connection
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/cmd_connection_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"cmd_connection" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+CMD session retains state and shuts down
+<end of output>
+Test time =   0.14 sec
+----------------------------------------------------------
+Test Passed.
+"cmd_connection" end time: Oct 11 00:06 Coordinated Universal Time
+"cmd_connection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/14 Testing: api_server
+4/14 Test: api_server
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/api_server_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"api_server" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+request-stage=1 op=resources
+request-stage=2 op=connect
+request-stage=3 op=disconnect
+request-stage=4 op=ssh
+request-stage=5 op=sftp
+request-stage=6 op=power.parameters
+request-stage=7 op=power.mode
+request-stage=8 op=power.scpi
+request-stage=9 op=power.task
+request-stage=10 op=power.reset
+request-stage=11 op=power.output
+request-stage=12 op=power.output
+request-stage=13 op=power.output
+request-stage=14 op=power.output
+request-stage=15 op=input
+request-stage=16 op=unsubscribe
+request-stage=17 op=input
+request-stage=18 op=input
+request-stage=19 op=power.output
+illegal-stage=20 expected=1003 frame=goABAgME
+illegal-stage=21 expected=1002 frame=gf4AAQECAwQA
+illegal-stage=22 expected=1002 frame=iIIBAgMEAu8=
+illegal-stage=23 expected=1002 frame=gQA=
+illegal-stage=24 expected=1002 frame=if4Afg==
+illegal-stage=25 expected=1002 frame=gIABAgME
+illegal-stage=26 expected=1002 frame=wYABAgME
+illegal-stage=27 expected=1009 frame=gf8AAAAAAAIAAQ==
+illegal-stage=28 expected=1007 frame=gYEBAgME/g==
+illegal-stage=29 expected=1002 frame=iIEBAgMEAA==
+request-stage=30 op=session.get
+stage=31 stopping first server
+stage=32 first server stopped
+stage=33 capacity fixture
+capacity=16
+capacity=32
+capacity=48
+capacity=64
+capacity=80
+capacity=96
+capacity=112
+capacity=128
+stage=34 capacity clients cleared
+Unified gateway scope, RFC6455, legacy rejection, byte integrity, replay and lifecycle passed
+<end of output>
+Test time =   4.03 sec
+----------------------------------------------------------
+Test Passed.
+"api_server" end time: Oct 11 00:06 Coordinated Universal Time
+"api_server" time elapsed: 00:00:04
+----------------------------------------------------------
+
+5/14 Testing: shared_serial_protocol
+5/14 Test: shared_serial_protocol
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/shared_serial_protocol_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"shared_serial_protocol" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Native remote client discovery, first byte, binary and reconnect passed
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"shared_serial_protocol" end time: Oct 11 00:06 Coordinated Universal Time
+"shared_serial_protocol" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/14 Testing: tcp_connection
+6/14 Test: tcp_connection
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/tcp_connection_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"tcp_connection" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Telnet terminal negotiation test passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"tcp_connection" end time: Oct 11 00:06 Coordinated Universal Time
+"tcp_connection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/14 Testing: terminal_model
+7/14 Test: terminal_model
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/terminal_model_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"terminal_model" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Terminal model tests passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"terminal_model" end time: Oct 11 00:06 Coordinated Universal Time
+"terminal_model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/14 Testing: putty_host_key
+8/14 Test: putty_host_key
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/putty_host_key_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"putty_host_key" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Host key confirmation and persistence tests passed
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"putty_host_key" end time: Oct 11 00:06 Coordinated Universal Time
+"putty_host_key" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/14 Testing: serial_share_backpressure
+9/14 Test: serial_share_backpressure
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/serial_share_backpressure_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"serial_share_backpressure" start time: Oct 11 00:06 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Slow-client bounded queue isolation: 9,830,400 healthy output bytes, no drops
+environment=Windows runner loopback; physical_serial_rate=not_applicable; controlled_COMs=2; handles=119 working_set=7462912
+forwarding clients=1 P50_ms=0.0641 P95_ms=0.0827 P99_ms=0.1106 samples=1000
+load clients=1 verified_output_bytes=64000 wall_ms=69.0557 cpu_ms=93.75 working_set=8986624 peak_working_set=11554816 threads_idle=8 threads_active=13 threads_reclaimed=8 handles_idle=119 handles_active=138 handles_reclaimed=119
+forwarding clients=2 P50_ms=0.0888 P95_ms=0.1038 P99_ms=0.122 samples=2000
+load clients=2 verified_output_bytes=128000 wall_ms=97.9975 cpu_ms=109.375 working_set=9097216 peak_working_set=11554816 threads_idle=8 threads_active=15 threads_reclaimed=8 handles_idle=119 handles_active=149 handles_reclaimed=119
+forwarding clients=8 P50_ms=0.112 P95_ms=0.1541 P99_ms=0.1673 samples=8000
+load clients=8 verified_output_bytes=512000 wall_ms=153.648 cpu_ms=343.75 working_set=9453568 peak_working_set=11554816 threads_idle=8 threads_active=27 threads_reclaimed=8 handles_idle=119 handles_active=215 handles_reclaimed=119
+forwarding clients=32 P50_ms=0.3588 P95_ms=0.5871 P99_ms=0.6674 samples=32000
+load clients=32 verified_output_bytes=2048000 wall_ms=549.267 cpu_ms=1031.25 working_set=11132928 peak_working_set=11554816 threads_idle=8 threads_active=75 threads_reclaimed=8 handles_idle=119 handles_active=479 handles_reclaimed=119
+<end of output>
+Test time =  10.99 sec
+----------------------------------------------------------
+Test Passed.
+"serial_share_backpressure" end time: Oct 11 00:07 Coordinated Universal Time
+"serial_share_backpressure" time elapsed: 00:00:10
+----------------------------------------------------------
+
+10/14 Testing: multi_serial
+10/14 Test: multi_serial
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/multi_serial_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"multi_serial" start time: Oct 11 00:07 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Two AI plus desktop, multi-COM isolation, target removal, fallback and local survival passed
+<end of output>
+Test time =   0.91 sec
+----------------------------------------------------------
+Test Passed.
+"multi_serial" end time: Oct 11 00:07 Coordinated Universal Time
+"multi_serial" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/14 Testing: api_client
+11/14 Test: api_client
+Command: "C:/hostedtoolcache/windows/Python/3.14.8/x64/python3.exe" "D:/a/SerialCtl/SerialCtl/tests/integration/test_api_client.py"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"api_client" start time: Oct 11 00:07 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.006s
+
+OK
+<end of output>
+Test time =   1.14 sec
+----------------------------------------------------------
+Test Passed.
+"api_client" end time: Oct 11 00:07 Coordinated Universal Time
+"api_client" time elapsed: 00:00:01
+----------------------------------------------------------
+
+12/14 Testing: linux_gateway_client
+12/14 Test: linux_gateway_client
+Command: "C:/hostedtoolcache/windows/Python/3.14.8/x64/python3.exe" "D:/a/SerialCtl/SerialCtl/tests/integration/test_gateway_client.py" "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/multi_serial_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"linux_gateway_client" start time: Oct 11 00:07 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+{"code": "HISTORY_GAP", "resource": "session-5", "cursor": 1104, "message": "Fresh live selection; older output unavailable, history is incomplete"}
+Python / production C++: binary 0-255, 64 KiB, multi-COM, two clients, scope, target loss, 128 capacity and ambiguity PASS
+<end of output>
+Test time =   8.32 sec
+----------------------------------------------------------
+Test Passed.
+"linux_gateway_client" end time: Oct 11 00:07 Coordinated Universal Time
+"linux_gateway_client" time elapsed: 00:00:08
+----------------------------------------------------------
+
+13/14 Testing: terminal_decoder
+13/14 Test: terminal_decoder
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/terminal_decoder_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"terminal_decoder" start time: Oct 11 00:07 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Terminal decoder split UTF-8/GBK/OEM tests passed
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"terminal_decoder" end time: Oct 11 00:07 Coordinated Universal Time
+"terminal_decoder" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/14 Testing: sftp_model
+14/14 Test: sftp_model
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/sftp_model_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"sftp_model" start time: Oct 11 00:07 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+SFTP model tests passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"sftp_model" end time: Oct 11 00:07 Coordinated Universal Time
+"sftp_model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 11 00:07 Coordinated Universal Time

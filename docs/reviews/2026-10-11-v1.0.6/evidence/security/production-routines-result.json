@@ -1,0 +1,18 @@
+{
+  "events_guard_returned_error": false,
+  "events_max_message": 131072,
+  "events_result_bytes": 131069,
+  "events_wire_payload_bytes": 131309,
+  "power_disconnect_at_capacity": {
+    "error": "Power command queue full or shutting down"
+  },
+  "power_off_at_capacity": {
+    "error": "Power command queue full or shutting down"
+  },
+  "power_queue_depth_after": 128,
+  "power_queue_depth_before": 128,
+  "power_stop_at_capacity": {
+    "error": "Power command queue full or shutting down"
+  },
+  "python_wire_actual_rejection": "Message too large"
+}

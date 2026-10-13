@@ -1,0 +1,17 @@
+{
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "tools": {
+    "git": "/usr/local/bin/git",
+    "cmake": null,
+    "g++": "/usr/bin/g++",
+    "clang++": null,
+    "pwsh": null,
+    "wine": null,
+    "wine64": null,
+    "Xvfb": null,
+    "xdotool": null,
+    "gh": "/usr/bin/gh",
+    "x86_64-w64-mingw32-g++": null
+  },
+  "display_present": false
+}

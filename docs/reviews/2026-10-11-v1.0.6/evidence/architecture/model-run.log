@@ -1,0 +1,19 @@
+2026-10-11T03:46:16Z
+Linux f8dad2834936 6.18.44 #1 SMP Sat Sep 26 20:02:31 UTC 2026 x86_64 GNU/Linux
+g++ (Debian 14.2.0-19) 14.2.0
+Copyright (C) 2024 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+5f12678e4da327f146edb5ce12eb3b3ea9c8afd0
+PROJECT_VERSION=V1.0.6
+CPP_VERSION=V1.0.6
+owner_response_hex=1b5b306e1b5b313b31521b5b3f313b32631b5b383b32343b383074
+remote_response_hex=1b5b306e1b5b313b31521b5b3f313b32631b5b383b33303b31303074
+two_models_total_reply_bytes=55
+historical_output_replay_response_hex=1b5b306e1b5b313b31521b5b3f313b32631b5b383b33303b31303074
+PASS: production models both reply, different grids report different sizes, replay replies again.
+LIMIT: no MainWindow, network, driver, or real device executed by this harness.
+Terminal model tests passed
+1ae1e307491b8a11153a4ec9c85d5ecdbb401fb91aafdeaff0cc51fffe32c90c  /workspace/serialctl-audit/evidence/architecture/terminal-response-model
+8cdd19dc25c361b57745eb1ce2003c1cab8e8c31d6d22db1b0930e32aa6f2155  /workspace/serialctl-audit/evidence/architecture/terminal-model-test

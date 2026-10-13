@@ -1,0 +1,4 @@
+COMMAND: ['/workspace/serialctl-audit/evidence/local-tests/terminal-model-test']
+Terminal model tests passed
+
+EXIT: 0

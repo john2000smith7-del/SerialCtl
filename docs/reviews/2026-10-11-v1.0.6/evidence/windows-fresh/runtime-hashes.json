@@ -1,0 +1,33 @@
+{
+  "source_sha": "5f12678e4da327f146edb5ce12eb3b3ea9c8afd0",
+  "source_state": "clean",
+  "package_sha256": "8bd51a23508600dba47b52132dad4741ff5dea316e7170cd28b51eb6b7af873d",
+  "hash_list_entries": 317,
+  "failures": [],
+  "payloads": [
+    {
+      "file": "serialctl.exe",
+      "sha256": "9c1cbc61715ef3b10a06675a0979488d7cb10b224018999fe78c8075253657b6",
+      "bytes": 1889792,
+      "manifest_match": true,
+      "machine": "0x8664",
+      "subsystem_version": "6.01"
+    },
+    {
+      "file": "plink.exe",
+      "sha256": "fb15bf12b038abb6174cb073f710eac55a68a1479769f81c0ee02d03a0c5c246",
+      "bytes": 1011200,
+      "manifest_match": true,
+      "machine": "0x8664",
+      "subsystem_version": "6.01"
+    },
+    {
+      "file": "psftp.exe",
+      "sha256": "065a5ea3086e54fb65ba9f2e05f4b72d984fc82dda978dbd1017c9b45ee4feb8",
+      "bytes": 1032704,
+      "manifest_match": true,
+      "machine": "0x8664",
+      "subsystem_version": "6.01"
+    }
+  ]
+}

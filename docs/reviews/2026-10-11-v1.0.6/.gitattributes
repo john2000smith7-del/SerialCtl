@@ -1,0 +1,2 @@
+# Preserve original evidence byte-for-byte, including CRLF and trailing spaces.
+evidence/** -text -whitespace

@@ -1,0 +1,199 @@
+{
+  "audit_sha": "5f12678e4da327f146edb5ce12eb3b3ea9c8afd0",
+  "version": "V1.0.6",
+  "tracking_issue": "https://github.com/john2000smith7-del/SerialCtl/issues/26",
+  "items": [
+    {
+      "id": "F01",
+      "title": "[F01][P1] 电源队列满时 OFF、stop、disconnect 被容量检查提前拒绝",
+      "kind": "defect",
+      "status": "已确认：原样生产Submit受控运行；实体电源未运行",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/2",
+      "number": 2
+    },
+    {
+      "id": "F02",
+      "title": "[F02][P1] 共享终端自动回复缺少唯一所有者，历史回放可能生成新的设备输入",
+      "kind": "defect",
+      "status": "生产TerminalModel实跑及完整源码路由确认；双窗口UART端到端待补",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/3",
+      "number": 3
+    },
+    {
+      "id": "F03",
+      "title": "[F03][P2] events历史响应只检查result长度，完整JSON超限导致客户端断连",
+      "kind": "defect",
+      "status": "已确认：生产历史函数受控实跑和公共Python解帧验证",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/4",
+      "number": 4
+    },
+    {
+      "id": "F04",
+      "title": "[F04][P2] 宏把入队称作执行完成，停止按钮未说明仅停止后续提交",
+      "kind": "defect",
+      "status": "源码确认；慢命令真实GUI专项待补",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/5",
+      "number": 5
+    },
+    {
+      "id": "F05",
+      "title": "[F05][P2] 超长CMD多行粘贴先提交前缀再失败，清空原草稿",
+      "kind": "defect",
+      "status": "已确认：原样生产粘贴分支+生产编辑器受控实跑",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/6",
+      "number": 6
+    },
+    {
+      "id": "F06",
+      "title": "[F06][P2] 日志同步导出阻塞UI，慢盘时可能触发接收溢出与连接停止",
+      "kind": "defect",
+      "status": "同步阻塞路径已确认；真实慢盘数据丢失/无限挂起为候选",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/7",
+      "number": 7
+    },
+    {
+      "id": "F07",
+      "title": "[F07][P2] 后台会话错误未保存在会话状态，切回后只能看到通用断开",
+      "kind": "defect",
+      "status": "源码确认；动态颜色刷新影响未验证",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/8",
+      "number": 8
+    },
+    {
+      "id": "F08",
+      "title": "[F08][P2] 终端缺少到主操作区的键盘焦点路径，主控件未设置Tabstop",
+      "kind": "defect",
+      "status": "源码缺口确认；物理键盘焦点轨迹待补",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/9",
+      "number": 9
+    },
+    {
+      "id": "F09",
+      "title": "[F09][P2] 侧栏以物理像素保存却先按未缩放上限加载，高DPI重启宽度缩小",
+      "kind": "defect",
+      "status": "源码及公式复现确认；真实125/150/200%DPI未运行",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/10",
+      "number": 10
+    },
+    {
+      "id": "F10",
+      "title": "[F10][P1候选] 全部断开后掉电确认失败可能丢失持续告警，需保存异步最终结果",
+      "kind": "defect",
+      "status": "反馈代码链缺口确认；故障注入与实体输出未运行",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/11",
+      "number": 11
+    },
+    {
+      "id": "F11",
+      "title": "[F11][P2候选] 十步命令编辑窗口无工作区高度上限和内部滚动，高DPI越界待验证",
+      "kind": "defect",
+      "status": "源码无高度上限；真实小工作区/高DPI未运行",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/12",
+      "number": 12
+    },
+    {
+      "id": "F12",
+      "title": "[F12][P2候选] WebSocket握手只有单次recv超时，持续慢滴可延长槽位占用",
+      "kind": "defect",
+      "status": "源码缺少绝对deadline；Windows慢滴实测未运行",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/13",
+      "number": 13
+    },
+    {
+      "id": "F13",
+      "title": "[F13][P3] 共享串口卡片仍显示TCP，易误导旧用户使用已移除入口",
+      "kind": "defect",
+      "status": "源码确认；双主题改后裁字待验收",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/14",
+      "number": 14
+    },
+    {
+      "id": "F14",
+      "title": "[F14][P2] 快速反向侧栏动画在真实桌面中间帧出现双折叠按钮",
+      "kind": "defect",
+      "status": "已观察：两主题CopyFromScreen原图；根因与持续时间待定位",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/15",
+      "number": 15
+    },
+    {
+      "id": "F15",
+      "title": "[F15][P3] 十步上限后添加指令已禁用但仍绘为可用蓝色",
+      "kind": "defect",
+      "status": "源码确认+两主题原始PrintWindow截图支持",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/16",
+      "number": 16
+    },
+    {
+      "id": "O01",
+      "title": "[O01][优化] 逐步抽离SessionRuntime，降低设备/日志与MainWindow消息循环的耦合",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/17",
+      "number": 17
+    },
+    {
+      "id": "O02",
+      "title": "[O02][优化] 补Publish/队列观测与多资源压力，再收短全局锁内序列化和复制",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/18",
+      "number": 18
+    },
+    {
+      "id": "O03",
+      "title": "[O03][优化] 明确多资源历史淘汰公平性和总预算，并加强内部类型化能力边界",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/19",
+      "number": 19
+    },
+    {
+      "id": "O04",
+      "title": "[O04][优化] 内网部署收敛监听接口与来源，明确CMD等同用户shell的信任范围",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/20",
+      "number": 20
+    },
+    {
+      "id": "O05",
+      "title": "[O05][优化] 按需求设计可选写租约、输入来源可见性与任务完成协议",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/21",
+      "number": 21
+    },
+    {
+      "id": "O06",
+      "title": "[O06][优化] 补协议、磁盘故障和GUI行为断言，收窄现有验收中过宽PASS表述",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/22",
+      "number": 22
+    },
+    {
+      "id": "O07",
+      "title": "[O07][优化] 完成Win7、真实硬件/网络、高DPI与至少8小时现场验收",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/23",
+      "number": 23
+    },
+    {
+      "id": "O08",
+      "title": "[O08][优化] 在远程串口实例歧义提示旁暴露指定端口入口",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/24",
+      "number": 24
+    },
+    {
+      "id": "O09",
+      "title": "[O09][优化] 明确SFTP断连后的恢复与重试归属，按需要提供显式重新绑定",
+      "kind": "roadmap",
+      "status": "优化/验证建议",
+      "url": "https://github.com/john2000smith7-del/SerialCtl/issues/25",
+      "number": 25
+    }
+  ]
+}

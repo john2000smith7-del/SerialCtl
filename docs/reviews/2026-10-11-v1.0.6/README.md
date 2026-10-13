@@ -1,0 +1,16 @@
+# V1.0.6 独立综合审核归档
+
+**审核结论：当前分支不应标记为全部验收通过。** 电源安全操作满队列拒绝、历史完整报文超限、CMD粘贴局部提交及双主题动画按钮重影均有具体证据。源码确认、受控复现、真实桌面观察和候选风险分别记录，不把建议当漏洞。
+
+源码固定：`5f12678e4da327f146edb5ce12eb3b3ea9c8afd0`，`fix/unified-websocket-win7`，V1.0.6。审核时尚未合并至main；后续代码变化不改变本报告的证据基线。本次归档没有修改生产代码。
+
+- [问题与优化交接索引：15项问题、9项优化](ISSUES.md)；[GitHub总追踪 #26](https://github.com/john2000smith7-del/SerialCtl/issues/26)
+- [统一审核报告与F01–F15](REPORT.md)
+- [四位独立报告及四份交叉复审](reports/)
+- [证据索引、完整artifact及到期时间](evidence/README.md)
+- [可复跑补充脚本](scripts/README.md)
+- [Win7、实体硬件、真实网络、高DPI与8小时人工清单](reports/09-manual-acceptance.md)
+
+本仓库保留全部文本证据及17张关键原始截图；完整209张截图位于同次Actions产物。独立初稿保留阶段性表述，最终以统一报告及交叉复审为准，尤其日志等待释放mutex、CMD Shift+Tab/F6范围、history问题客户端范围和动画反例。
+
+问题和优化路线已逐项建立GitHub Issue，供修复者在交接索引中认领并关联PR。关闭问题应附修改SHA和实际回归证据；尚未运行的硬件/Win7项目须继续标记未运行。

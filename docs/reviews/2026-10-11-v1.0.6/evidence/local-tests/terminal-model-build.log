@@ -1,0 +1,3 @@
+COMMAND: ['g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Isrc/terminal', 'tests/unit/TerminalModelTest.cpp', 'src/terminal/TerminalModel.cpp', '-o', '/workspace/serialctl-audit/evidence/local-tests/terminal-model-test']
+
+EXIT: 0

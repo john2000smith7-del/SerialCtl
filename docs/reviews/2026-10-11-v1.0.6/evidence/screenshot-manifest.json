@@ -1,0 +1,1256 @@
+[
+  {
+    "file": "gui-connections-drag-0.png",
+    "bytes": 1015265,
+    "sha256": "e8d13a5bb3d37ea4e91e22eb603b266b2caf33207c049ae734bffe984aabe3ab",
+    "retained_in_repository": false
+  },
+  {
+    "file": "gui-connections-drag-1.png",
+    "bytes": 1015243,
+    "sha256": "dfa58b3728d9b2ada88e19fb1fc1c35c37bb30b0e37ca1a21dcfd946d5ea62e8",
+    "retained_in_repository": true
+  },
+  {
+    "file": "gui-connections-drag-2.png",
+    "bytes": 1015131,
+    "sha256": "90512e75103cfe75e9faec9d00a1c660382b4e40625c3172a81b1fe77c10c86b",
+    "retained_in_repository": false
+  },
+  {
+    "file": "gui-connections-drag-3.png",
+    "bytes": 1014850,
+    "sha256": "bc081ac985bae566dfbd9c44475880b4fea18ac4b086a4fb083cd4b44196b987",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-all-disconnected.png",
+    "bytes": 991259,
+    "sha256": "c1c3f41374f29c6b2203a7331409086a37d9cdbfb190ce3f1fa0f1944f60065e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-command-draft.png",
+    "bytes": 81452,
+    "sha256": "c1ded9d605b97ad47cf90794236128e8cc642de2430e11d9f8c46f2025ea2dfa",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-animation-frame-0.png",
+    "bytes": 1023296,
+    "sha256": "26b7649ec5f2582fb7ee91fcc31c833c7a384d7c3509a1d05a47df6aed874063",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-animation-frame-1.png",
+    "bytes": 1023871,
+    "sha256": "972cbe983ba90d7fced330d0c44e58ea120c1c70e9a25bab1145b1ac3b9bf501",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-animation-frame-2.png",
+    "bytes": 1024090,
+    "sha256": "fc96f9f2a65ce49783d4b1a87bf648766fd8ac54d239220c77bfe2809a2c0857",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-animation-frame-3.png",
+    "bytes": 1024266,
+    "sha256": "fee5a2a92162435f8c00003fca16135aff5484c89866823ebee59054e4441bf4",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-animation-frame-4.png",
+    "bytes": 1024157,
+    "sha256": "a76dc8b62523f274ebf49b6a788dff9c4d78c46f03bf7e674647c93b505105c8",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-animation-frame-5.png",
+    "bytes": 1024167,
+    "sha256": "9b38ad487ba687b8c251919b0bbfa90fac19a0d287a08506b269d0bfe76b63d3",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-animation-frame-6.png",
+    "bytes": 1024069,
+    "sha256": "c7c1bddc5b0db9211bee7988cc46947389ec43653c151dfb2f5bd93fd13a1e86",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-animation-frame-7.png",
+    "bytes": 1024363,
+    "sha256": "758ffeaddff634ff55624fc9795c4f43938998fdbe5d5be087eed7d2baacbbc2",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-dark-animation-frame-8.png",
+    "bytes": 1024125,
+    "sha256": "52412a0766349b46179620298afb5be7d897e0913595dd6748771e6d93020f3e",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-dark-animation-frame-9.png",
+    "bytes": 1024493,
+    "sha256": "21191eabcb55f740bc92061f06949ab2d2f13d5513546ee94346b4d78b2b330a",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-dark-api-cmd-visible.png",
+    "bytes": 81208,
+    "sha256": "2774ce8de6c113419c71507251724725f6ca0f1ce4f046d6f54db798e19146e5",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-dark-cmd.png",
+    "bytes": 42849,
+    "sha256": "1484e9318c3020a1848f95bbfd876b151209dfcbc3064ccf2e906baa199eefeb",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-collapsed.png",
+    "bytes": 55986,
+    "sha256": "89065c39d921552b4d572031ee4a01dbe1aa80866adebfa0ef28c23cac03d7e0",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-command.png",
+    "bytes": 6349,
+    "sha256": "b0d8c07b85a81e7cc5d8ef0aff79c57aa7398395c2063f2a45be419a1b7943c7",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-connection-0.png",
+    "bytes": 6728,
+    "sha256": "1503073aba9075af6220e83544f80df6cb668e642865f56eaad4bc80eda7a792",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-connection-1.png",
+    "bytes": 9124,
+    "sha256": "dfe3df0047fb194cebf8465517b1afa9e8bdf2e0ea0f9ca2eea4c05cd73a1e6f",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-connection-2.png",
+    "bytes": 5656,
+    "sha256": "ef98ae9a01f5fd33ab335739aeb2a57393897ed359408b1e0634a92c22ae60ce",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-connection-3.png",
+    "bytes": 7134,
+    "sha256": "ea2b575ea5723e16c388c1010666defb700b45160fbe7e9e273adc36363e3ba6",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-0.png",
+    "bytes": 1031107,
+    "sha256": "45bc4ae9fa6217d3fa801f5e4a2f30ba27f6d2fc99d451e4a828610fcd262eef",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-1.png",
+    "bytes": 1031250,
+    "sha256": "a0956c50fe1f4805c961039e8b6e5cac89a0e41ff6c8a9f9864e5b82d05ad453",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-10.png",
+    "bytes": 1033731,
+    "sha256": "ca6df1423b12311ddac774639a070cac1021735f96d16ae9d7c7385aafdec193",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-11.png",
+    "bytes": 1033463,
+    "sha256": "ebdf5eb623139dd46a1ee3c4f449428c1b558d7f37149d64b83296921aab5315",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-2.png",
+    "bytes": 1030435,
+    "sha256": "5154f42a5e4704c4f2c39c41f8dc61417b1874ef341edfddfdd8367b0126e925",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-3.png",
+    "bytes": 1032020,
+    "sha256": "c376c8efad265c2192ac8fc16868c138c1e46d124ac590562935f8c42a1045f5",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-4.png",
+    "bytes": 1033107,
+    "sha256": "9dff6c336705d1e581d9ce725603cc6e6299ad9e333a9ef6e4d8c2f0b9cea1b9",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-5.png",
+    "bytes": 1033250,
+    "sha256": "0ad1c78eadc99257baa7d85b4b8ec10fb2d3140f32d536456b2b81b3bd17a6ab",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-6.png",
+    "bytes": 1033452,
+    "sha256": "c652b9a4c542d2bf7a9a075757f34e5b909404c3ec6f102e37c88998e6731e58",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-7.png",
+    "bytes": 1033373,
+    "sha256": "a7958d1c1f1907af31200596eb6b0154c570f15e26f8846451542d88a58c646e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-8.png",
+    "bytes": 1033728,
+    "sha256": "cdd0cc2af2d44cdb8210b843d23c5686959e0a83e1e10cd64a75f213f713d528",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-drag-frame-9.png",
+    "bytes": 1033499,
+    "sha256": "443485b16c77b0a07621ee95c5b2a96fa3c7351d9ad90ba05235bd3fe4b7b90c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-host-key.png",
+    "bytes": 11863,
+    "sha256": "0310b340728058ee9b930bfde64b0f5fcbdc32ce9c00c49dfc87fccb14596408",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-macro-ten.png",
+    "bytes": 15077,
+    "sha256": "d10d3955f62dc4b6e72b50fe573f87d56b8e96d0a2d1e650249e095520fe61f1",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-dark-macro.png",
+    "bytes": 9023,
+    "sha256": "7c300696a26d8c227cc77c54be5c42b4556a9d1fd343501c8effadab50299624",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-maximized.png",
+    "bytes": 137880,
+    "sha256": "1ff2e74666538ee9803914dc41032a1e737eca270f0de63dd1a6509101dc2b7c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-automation-110.png",
+    "bytes": 54958,
+    "sha256": "45f68e172ff1d1c18f68e26093d51c9215e889685cbf34ce6abe0a594dcf9647",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-automation-111.png",
+    "bytes": 55432,
+    "sha256": "92d51caf8298c58f7c8e852240598a43192ba0b17f853b0069c93d1d99353f87",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-automation-112.png",
+    "bytes": 54685,
+    "sha256": "6a6ecb30922aab233481ac3ab8dbce3713a5adbcab65ecaf5ac79156cfac48bc",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-automation-113.png",
+    "bytes": 56085,
+    "sha256": "fd6a2117deb304889da072dfca6b507a8346ae9823dd2bf3f284e6f2a17a5d30",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-automation-114.png",
+    "bytes": 60020,
+    "sha256": "6900067c35ed2e2d28910e04abd3e35a6ffaba04f443a5eb0952611913fd7776",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-disconnected.png",
+    "bytes": 48406,
+    "sha256": "ba20c0383e513a648ec745b7afdf63fbd567a18fb2876ba18c18b97bebc0f232",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-layout.png",
+    "bytes": 53069,
+    "sha256": "dd9be4d8398bd78592c13e1240ed1e7f8ef202288a287246608d42e488b01a61",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-minimum.png",
+    "bytes": 47808,
+    "sha256": "8a41777317ff6d18b27475da7c7e2b5323692c8ec6f296ac8a3124fd476fc84b",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-mode-0.png",
+    "bytes": 53069,
+    "sha256": "dd9be4d8398bd78592c13e1240ed1e7f8ef202288a287246608d42e488b01a61",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-mode-1.png",
+    "bytes": 52240,
+    "sha256": "8390ebbd62048737559d240ba0c34e9d4ca7205b1fc51d329330bf658219ff5a",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-mode-2.png",
+    "bytes": 52198,
+    "sha256": "49153a1386f1c13acdb58f413fcc721574d8a9261c798a05dc9a21382a14faeb",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-mode-3.png",
+    "bytes": 52885,
+    "sha256": "3946d2470579515f9a41071dc86d6b58946113034fdf1c33da9192d5e0219796",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-sequence-editor.png",
+    "bytes": 8613,
+    "sha256": "2d470ab16e43ccd6ea1760cfc965bfe3c509c3c081d8d3809f61682144060542",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-serial.png",
+    "bytes": 10059,
+    "sha256": "db0ba40473d446e6385257287afaba282707ad42d16e3043b9f71fa5602ed927",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-settings-191.png",
+    "bytes": 54499,
+    "sha256": "54fd998c45faca3ae9c99cb2700befcae7d449869bb4e7ea459683dd76d3a851",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-settings-192.png",
+    "bytes": 55282,
+    "sha256": "7d8f37827687876c1df853961cd4b4e42ec836af491cb8efa4340e3cfdffb909",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-settings-193.png",
+    "bytes": 55083,
+    "sha256": "e12b6b6cd29b65e64a46640feb00b97e42c79a1775346ea9cb10359de9a7957c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-91.png",
+    "bytes": 54958,
+    "sha256": "45f68e172ff1d1c18f68e26093d51c9215e889685cbf34ce6abe0a594dcf9647",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-92.png",
+    "bytes": 55083,
+    "sha256": "e12b6b6cd29b65e64a46640feb00b97e42c79a1775346ea9cb10359de9a7957c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-93.png",
+    "bytes": 53713,
+    "sha256": "7445236290de5d388a07b5785f3dea9a42ea832fec22793e1b875648fea0d2f7",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-0.png",
+    "bytes": 1070210,
+    "sha256": "95bd71fa28c6e2e3948befb647fe5e142f6974ca3b85de482b2907616048ae50",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-1.png",
+    "bytes": 1070555,
+    "sha256": "29234759832ef02715f09dd7e558e82cd53d67b90e8623ba898d53e42ad10682",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-10.png",
+    "bytes": 1070023,
+    "sha256": "2533c5825e2f77b27eaaf5d677e4707ee2dad1f02facf0606767af3dc7680fdc",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-11.png",
+    "bytes": 1069519,
+    "sha256": "8745c2f0562e3f091ed9fec589467ed84670f29ac43ee7ab89d9508005ab5bd4",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-12.png",
+    "bytes": 1070210,
+    "sha256": "95bd71fa28c6e2e3948befb647fe5e142f6974ca3b85de482b2907616048ae50",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-13.png",
+    "bytes": 1070555,
+    "sha256": "29234759832ef02715f09dd7e558e82cd53d67b90e8623ba898d53e42ad10682",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-14.png",
+    "bytes": 1070035,
+    "sha256": "bd0fa1d550afe44358e7d7fe9364f7aa493ba8d7f080dace5bb1047be26580c2",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-15.png",
+    "bytes": 1069519,
+    "sha256": "8745c2f0562e3f091ed9fec589467ed84670f29ac43ee7ab89d9508005ab5bd4",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-2.png",
+    "bytes": 1070035,
+    "sha256": "bd0fa1d550afe44358e7d7fe9364f7aa493ba8d7f080dace5bb1047be26580c2",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-3.png",
+    "bytes": 1069519,
+    "sha256": "8745c2f0562e3f091ed9fec589467ed84670f29ac43ee7ab89d9508005ab5bd4",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-4.png",
+    "bytes": 1070210,
+    "sha256": "95bd71fa28c6e2e3948befb647fe5e142f6974ca3b85de482b2907616048ae50",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-5.png",
+    "bytes": 1070555,
+    "sha256": "29234759832ef02715f09dd7e558e82cd53d67b90e8623ba898d53e42ad10682",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-6.png",
+    "bytes": 1070023,
+    "sha256": "2533c5825e2f77b27eaaf5d677e4707ee2dad1f02facf0606767af3dc7680fdc",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-7.png",
+    "bytes": 1069519,
+    "sha256": "8745c2f0562e3f091ed9fec589467ed84670f29ac43ee7ab89d9508005ab5bd4",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-8.png",
+    "bytes": 1070210,
+    "sha256": "95bd71fa28c6e2e3948befb647fe5e142f6974ca3b85de482b2907616048ae50",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-tab-frame-9.png",
+    "bytes": 1070555,
+    "sha256": "29234759832ef02715f09dd7e558e82cd53d67b90e8623ba898d53e42ad10682",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-power-usb.png",
+    "bytes": 9599,
+    "sha256": "e54ae9355d99fed80f07b6539289bed0c099219dd5f97a05ca85af38e73e9928",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-0.png",
+    "bytes": 1087598,
+    "sha256": "fb2d425c3b56ba18d6ccffc335cc596cff893cf64dc4117f6713cf7269972340",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-1.png",
+    "bytes": 1079581,
+    "sha256": "7c1767fbd0f240d6cba231ae4bb72bd894e78d6fc259acc6eab42c3897f29ae5",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-10.png",
+    "bytes": 1053741,
+    "sha256": "3cb519dbcd86a6c5a51c350eb8257d48df073812f1ca25d3f746e8a5503342f5",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-11.png",
+    "bytes": 1040544,
+    "sha256": "72377c45b83484d8aed5127e9cc122ae36edbd112860fcbf388e4b4f33bd4aa9",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-2.png",
+    "bytes": 1070039,
+    "sha256": "9b98160d5ed15ebf91f9c41426e87d894742d855710b9a153db02d2d59440c7e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-3.png",
+    "bytes": 1060562,
+    "sha256": "c2cc3aeab3168487de6735856837c0b249c57dc677529c5cf90e4b3d6041ed0f",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-4.png",
+    "bytes": 1052661,
+    "sha256": "3dc4bef49ec861f1011ce061fde0b31cbf2ef182943345d5d0a25eca4d2afefb",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-5.png",
+    "bytes": 1040293,
+    "sha256": "8e40e695174940df7dfcfd128fcef15927a2b608d751fcbe062800aec1f8c957",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-6.png",
+    "bytes": 1087903,
+    "sha256": "b63f8fd17d9ec49162b66d4cf265d0dbb62f8ef65abe20888cee26aaece84061",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-7.png",
+    "bytes": 1080103,
+    "sha256": "22db9a1741d2b4c71fb1fcf5b6a4df1ec98b199f5d4962db4067d6a445dbf795",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-8.png",
+    "bytes": 1071161,
+    "sha256": "b6b49c78e59d9f322f24e27065120484bdf5c765148d099254ba0d05bc1ade6a",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-resize-frame-9.png",
+    "bytes": 1061843,
+    "sha256": "05a44c22b4885b9cd289572f37daec5933e7f2afec547865ddd7ae3838de37db",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-collapsed.png",
+    "bytes": 91308,
+    "sha256": "da10128f97b615c26a7f27f956df64288d2447bf5f5dab9ebed3e56287eb0587",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-1.png",
+    "bytes": 842311,
+    "sha256": "9f69b15713c604ec8f5d5c11b062abe0d1ff105fd3bb0783ba6df1ff632f4a47",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-10.png",
+    "bytes": 843273,
+    "sha256": "cca9cc1b3f6dc5102d627f22c9e7a672e9903f14a3300aba0369cffc96f387aa",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-2.png",
+    "bytes": 842379,
+    "sha256": "d256ed546702470b090c18ef0511fbef0648b015c675d21f783b8cd8586271e0",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-3.png",
+    "bytes": 842222,
+    "sha256": "e91766fa0573a0e800bfffa6eb2cddbbaef5abf0575b3ec34fc44b53ed0e5c4c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-4.png",
+    "bytes": 842262,
+    "sha256": "951ef2b5064823e8f9dd6640466461cab4d625cc3fbcdb7b9fbdec9296dbd0e4",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-5.png",
+    "bytes": 843054,
+    "sha256": "0181e13e262d9b041fcb853c96d5c64ea59372eb0c6c6dac08188040a1513bfe",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-6.png",
+    "bytes": 843501,
+    "sha256": "afc8ef4a1c26bc92e87ae8b7d0e625beafc2571fd2a88aed362c1c5bbb8d7df8",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-7.png",
+    "bytes": 843635,
+    "sha256": "c26c5a1951fc88569aec220711ea78bc7578def9f1c02eef307cd7c82ee9f5be",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-8.png",
+    "bytes": 843883,
+    "sha256": "ebaca0e24fa2f23f669ddf342d3151e68f22af6c80d7fce5bcc34fc93dccecf2",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-column-frame-9.png",
+    "bytes": 843687,
+    "sha256": "b5621ff008463cdf151e52565bff84280034ced2e8278e218a6a11bf3896fcc9",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-path.png",
+    "bytes": 6537,
+    "sha256": "3def5f80c013fd1bcd14f0f9093b7d6a77869ca72f58db2af5ff06de24b95d69",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp-resized.png",
+    "bytes": 74360,
+    "sha256": "1dd87be900c6c239664e195b82243ee7d7619913fc9e8bf76e071b876afcbed1",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-sftp.png",
+    "bytes": 75115,
+    "sha256": "57d95424c31b66f3cfaa5a3ff5b3630d92d95e3f99f172299aa47381add0d6c7",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-shared-port.png",
+    "bytes": 6479,
+    "sha256": "2d48137caf561de4b89503cd557faa65e2c72bdbe3a46f6e7360e1b36645ab2c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-dark-ssh-dialog.png",
+    "bytes": 7402,
+    "sha256": "586ad91ee21f0a153f2d310a1e89fc646921d54288dce4d8bdbea5e968bbd865",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-animation-frame-0.png",
+    "bytes": 1020757,
+    "sha256": "345ed2070015b17bab317506977cee3f666bd05d09e930958f8c7ded062d20da",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-animation-frame-1.png",
+    "bytes": 1020842,
+    "sha256": "8ccffeeec6468c17a186297ca523671290864cfd9b38786aa4f9df0a52ed85f7",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-animation-frame-2.png",
+    "bytes": 1021078,
+    "sha256": "aa1dbe0ba3671b6ef3eae3c4c4e99d07bb36d3a1f904ea42f1996afbdde8c6b7",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-animation-frame-3.png",
+    "bytes": 1021576,
+    "sha256": "fc65d6c38a8606f0d0af9a421a6ea8a39349427a526da79325dc8f31c13eacfc",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-animation-frame-4.png",
+    "bytes": 1021471,
+    "sha256": "4b1db75c3fb8d70127323d2c2d5a4bc868a010355495025ecf2c64a41ee81202",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-animation-frame-5.png",
+    "bytes": 1022100,
+    "sha256": "195274246be52cf97ed52739aa87f05bfada99017a5c507ad8922be87136e816",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-animation-frame-6.png",
+    "bytes": 1022092,
+    "sha256": "1819af7a13e52cb749646d45f3e5dd99435ee6ad98cb312a8e0a7f742bd4b4dd",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-animation-frame-7.png",
+    "bytes": 1022259,
+    "sha256": "8ef43bb620c90ec3af1cef5d9d286d0b71af994c62ba57e84f3692176d5c41a0",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-light-animation-frame-8.png",
+    "bytes": 1022014,
+    "sha256": "9a497591fc5c421ca4bd5525608443c6ef8e565f602ccdcc4fe577ce738d22a0",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-light-animation-frame-9.png",
+    "bytes": 1021895,
+    "sha256": "c0c5f6a643cb7952daa2b2efdc648d1c8ea81290966d72a74599f62a169b2858",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-light-api-cmd-visible.png",
+    "bytes": 76137,
+    "sha256": "db0903412c51bebf0d9b9f30414d5d8c09e0476131e92dec557144f7beefd4c6",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-cmd.png",
+    "bytes": 36724,
+    "sha256": "a337f35af19594483f180d749513fb93eda1887bd2bdc7d3b805b01e2f0d14d7",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-collapsed.png",
+    "bytes": 20277,
+    "sha256": "ccfd01f17fc616db1f54ebd355e67f52eedde16bddce80c413e61e50aa85ecb6",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-command.png",
+    "bytes": 6415,
+    "sha256": "1858023fb87baa580e88182d55e9219eceb6df1d316ba019e91273c974859ec3",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-connection-0.png",
+    "bytes": 6726,
+    "sha256": "e8a7c9c9c6a2f3d7aca35c7108219cb3f1135f6e8817747a87876189206db0a1",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-connection-1.png",
+    "bytes": 9055,
+    "sha256": "81cb94ff86b35845497161ef08bef2f40acac3270bbbd4df274d6ab435d94c73",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-connection-2.png",
+    "bytes": 5644,
+    "sha256": "f7e9e5f838f4fdc776b7dd9d8c8b6e13f2e60e82a67db159d215b684a45d479c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-connection-3.png",
+    "bytes": 7203,
+    "sha256": "0de46bb69fb8e2738cf0e35538c1d54673314050bccce50186b35ef587309b3c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-0.png",
+    "bytes": 1029102,
+    "sha256": "e38ab82d756ee0642b9bec952c14dd0d2c926cd8da49d059bd45d1692a1db706",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-light-drag-frame-1.png",
+    "bytes": 1028831,
+    "sha256": "727559249635b356352765aaf766b6e2395e0188acacc32bc7cbf55f03421c5e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-10.png",
+    "bytes": 1029481,
+    "sha256": "015f3652fce80175cc9db33203cc01db9c863a425fd4ef4c66b9356a246896ca",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-11.png",
+    "bytes": 1029548,
+    "sha256": "32d24b31d9ba3c89b3662d8a585e8b50278eb56bfc6add127a7e490f900aa6a2",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-2.png",
+    "bytes": 1028953,
+    "sha256": "51fe9b01361d177ee0977712458a9f60e70f5c2830e7a96bd264343084281cec",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-3.png",
+    "bytes": 1029632,
+    "sha256": "959837a2eea305fd062fe419822762ff23422c274b1ddfe9d7682ead68dcd2cb",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-4.png",
+    "bytes": 1029356,
+    "sha256": "199159ddeb46d7ce0003addf8145de859d34aa4ce7ff5973e7d1e7b6f853a1d6",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-5.png",
+    "bytes": 1029539,
+    "sha256": "ab2826056c06c32ed39cdd5ba88c8ee8a1ecafa5613f18865f891b5437dfe3fa",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-6.png",
+    "bytes": 1029081,
+    "sha256": "3376ca47e453cf165e409b7141dd947ab31fb1d0635c666be86c145c0a85b4de",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-7.png",
+    "bytes": 1028915,
+    "sha256": "1a6a2872b0cf02d503b51d3dc2898b9498ef37cc124a44bdad6f5829f3a458a3",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-8.png",
+    "bytes": 1028825,
+    "sha256": "ca66471dbe5fabab27a39a7f16d373c080b79e34e2a53afddec153f7eda4b16e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-drag-frame-9.png",
+    "bytes": 1029198,
+    "sha256": "6f6a131495b3df6ce3abf7824d0b9b4a630135edbef24c5dc64166db6c7b76f7",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-host-key.png",
+    "bytes": 11863,
+    "sha256": "0310b340728058ee9b930bfde64b0f5fcbdc32ce9c00c49dfc87fccb14596408",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-macro-ten.png",
+    "bytes": 14997,
+    "sha256": "f3c45bf342a5f86ab4e264d7f4538602f32b2b9997e150910ee26d30f6f65bbf",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-light-macro.png",
+    "bytes": 9053,
+    "sha256": "0866c5881407c6b1f1e81cacb3a9d5a0ca4a9ab11a1346240cff699d7d951d21",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-light-maximized.png",
+    "bytes": 130365,
+    "sha256": "56bd681618fe5c234134588063916a1d913480e6ee47c0d160cef88e5effdbc5",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-automation-110.png",
+    "bytes": 48152,
+    "sha256": "d4cadc0c1e164abf3e41e5d66d8d67cdc000ecdf9e346cbb677e7b4c1cb297f5",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-automation-111.png",
+    "bytes": 48679,
+    "sha256": "a403145e5c0764420995136199abdaa55cba6115362fbb619525e0a0ebf6bfdb",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-automation-112.png",
+    "bytes": 48041,
+    "sha256": "0c6dbb232156d9bd169b98d692a85ab9723477170cd13b3b88c2de7a31270b5c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-automation-113.png",
+    "bytes": 49360,
+    "sha256": "f6251371e542bbacc5093d0c3cdb45cd8ff16164c85ed6fadf44f5046afe4844",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-automation-114.png",
+    "bytes": 52622,
+    "sha256": "8e9b7d77788e229e067526cb54fe7df62cc53dac9826c97e6c7b8a9a31b4ce04",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-disconnected.png",
+    "bytes": 41614,
+    "sha256": "4f27cd7654df9e9cc696ee7ada206d1b7b1e223b9ed457c65ece1da642c8fa3c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-layout.png",
+    "bytes": 46323,
+    "sha256": "b6bfce78c14d810c7f1d18298a51bb09c568fd4f0c3bad21a0ad35269f78e0ec",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-minimum.png",
+    "bytes": 41051,
+    "sha256": "b9a4022a5000b8dd9fa0760d1bc12029014f234505fcfcbc4566e268d902f6c8",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-mode-0.png",
+    "bytes": 46323,
+    "sha256": "b6bfce78c14d810c7f1d18298a51bb09c568fd4f0c3bad21a0ad35269f78e0ec",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-mode-1.png",
+    "bytes": 45150,
+    "sha256": "5640e96382f665f4832a078558baa49ebb9ce521797c857c0ebdc041f78da1b4",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-mode-2.png",
+    "bytes": 45116,
+    "sha256": "3fca7970440fdb5f504584e38410977dda5c3f0d8167f7ea084be440b556d72a",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-mode-3.png",
+    "bytes": 45577,
+    "sha256": "96ae2035ab71e933bf215eb6ca565a9dc2553985a5f1373f2986ab462410712a",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-sequence-editor.png",
+    "bytes": 7966,
+    "sha256": "29fadd900227f171406957c0cee7f4ca6d9f72f8f2a71a191108d41b32dc459a",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-serial.png",
+    "bytes": 9936,
+    "sha256": "1af0a8847f9200adc6d0ca5b8c6828bac40f32b66784595b928f8c275bfc5121",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-settings-191.png",
+    "bytes": 47589,
+    "sha256": "381032fe0ce3a052413b0c9edb7b25cd09b811947db5fb6b321a2f0e0c332a4d",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-settings-192.png",
+    "bytes": 48485,
+    "sha256": "fdbfe7a0e84d9f9c142cf3918ab9b6fa0f17fd48e0c3ce5640f8b63966169898",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-settings-193.png",
+    "bytes": 47644,
+    "sha256": "2eb764657f9b15743f9fe095fbce53d0b60270fb018f319b01350a5f5bc39717",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-91.png",
+    "bytes": 48152,
+    "sha256": "d4cadc0c1e164abf3e41e5d66d8d67cdc000ecdf9e346cbb677e7b4c1cb297f5",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-92.png",
+    "bytes": 49963,
+    "sha256": "879b09c91746522b2768c843da7363b48baeae51db80528abb80222e4a3a7236",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-93.png",
+    "bytes": 46958,
+    "sha256": "5846998a01902353bfba1ba5692395e89f83ded5e8bc1bf87c31cebe2067df7a",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-0.png",
+    "bytes": 1064706,
+    "sha256": "883aac8ba159365e33f3239e389def42daacc157118eb3eda445943f4c0d330f",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-1.png",
+    "bytes": 1065074,
+    "sha256": "7964554cd4fcb9ac1e5dba1295aec60e9693f1c5b3a36f020a64b0ffd0eba5f0",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-10.png",
+    "bytes": 1064274,
+    "sha256": "2f9bd4076a2fc583948e5c45a11124e846c8edf919a2fd4d5f7a5efbc2ba283e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-11.png",
+    "bytes": 1064092,
+    "sha256": "5128d5bfb4de265bf95235b5464f01a49b5dd298499c061f1e78841370ece6e2",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-12.png",
+    "bytes": 1064706,
+    "sha256": "883aac8ba159365e33f3239e389def42daacc157118eb3eda445943f4c0d330f",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-13.png",
+    "bytes": 1065074,
+    "sha256": "7964554cd4fcb9ac1e5dba1295aec60e9693f1c5b3a36f020a64b0ffd0eba5f0",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-14.png",
+    "bytes": 1064274,
+    "sha256": "2f9bd4076a2fc583948e5c45a11124e846c8edf919a2fd4d5f7a5efbc2ba283e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-15.png",
+    "bytes": 1064092,
+    "sha256": "5128d5bfb4de265bf95235b5464f01a49b5dd298499c061f1e78841370ece6e2",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-2.png",
+    "bytes": 1064274,
+    "sha256": "2f9bd4076a2fc583948e5c45a11124e846c8edf919a2fd4d5f7a5efbc2ba283e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-3.png",
+    "bytes": 1064092,
+    "sha256": "5128d5bfb4de265bf95235b5464f01a49b5dd298499c061f1e78841370ece6e2",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-4.png",
+    "bytes": 1064706,
+    "sha256": "883aac8ba159365e33f3239e389def42daacc157118eb3eda445943f4c0d330f",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-5.png",
+    "bytes": 1065074,
+    "sha256": "7964554cd4fcb9ac1e5dba1295aec60e9693f1c5b3a36f020a64b0ffd0eba5f0",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-6.png",
+    "bytes": 1064274,
+    "sha256": "2f9bd4076a2fc583948e5c45a11124e846c8edf919a2fd4d5f7a5efbc2ba283e",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-7.png",
+    "bytes": 1064092,
+    "sha256": "5128d5bfb4de265bf95235b5464f01a49b5dd298499c061f1e78841370ece6e2",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-8.png",
+    "bytes": 1064706,
+    "sha256": "883aac8ba159365e33f3239e389def42daacc157118eb3eda445943f4c0d330f",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-tab-frame-9.png",
+    "bytes": 1065074,
+    "sha256": "7964554cd4fcb9ac1e5dba1295aec60e9693f1c5b3a36f020a64b0ffd0eba5f0",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-power-usb.png",
+    "bytes": 9738,
+    "sha256": "bb3305c360233209f55081ab7db197f1a7cb41c13906346ca0bd9941bcaf0467",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-0.png",
+    "bytes": 1084983,
+    "sha256": "58b22709c189bbe2aa6da3c7d5a1bc22097bcc8e7b834ff89567bc714575bc6f",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-1.png",
+    "bytes": 1076817,
+    "sha256": "4561ac478e626f64d8f4be018ed32a2f32cf941f933aee6ee177c2b7df15855b",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-10.png",
+    "bytes": 1049978,
+    "sha256": "a45078aeb582b998526552a9f02950ea62d7fa884421e58b7673358992d90eff",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-11.png",
+    "bytes": 1036897,
+    "sha256": "896143924245193bdaa64441c655880e5fa2906d635ef4da899f73a938a8afa1",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-2.png",
+    "bytes": 1067095,
+    "sha256": "55ed8fa5fd91e891e46359c2d0cbdca095a0c6026ff80ee7c9f8573e29779f12",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-3.png",
+    "bytes": 1057451,
+    "sha256": "5fe939bccb0778559bb7f63ad657bd3ce4b12d073b0db6dfc4fba83af615016c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-4.png",
+    "bytes": 1049502,
+    "sha256": "7d781a02f5735f933e9bf9b8a1c085e1f36ded69de8be663048b45b0a228554c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-5.png",
+    "bytes": 1036676,
+    "sha256": "e7fa29218d9180f15436bd982e6e98c45422df0912609fb6e9fd421c154e69f6",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-6.png",
+    "bytes": 1084757,
+    "sha256": "e85eda9bb7d06323f7e706b1c90da378aa5cc5ba1eb3dda8ff46d5454b6470ca",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-7.png",
+    "bytes": 1076745,
+    "sha256": "08428b5bbdda6b56ec01cb8e31df6f7d23588dab603835c559c43ce9b9e91c17",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-8.png",
+    "bytes": 1067380,
+    "sha256": "c0f70188ab4d2b8030d827ee6de9ed67ad3b3919e32d1a47515f1b87d79c805d",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-resize-frame-9.png",
+    "bytes": 1058070,
+    "sha256": "46ddf303125dc6f314c86887646ae014cb0158c2e5df36d060507675c1c28114",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-collapsed.png",
+    "bytes": 88709,
+    "sha256": "40b7a652bf5fa0864eb7b9341408cb467c68dbab6984cbb80c4c2cb6bae2c508",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-1.png",
+    "bytes": 840635,
+    "sha256": "2bfa817f4165d6eeb200db7ea708517572c2eb3f724671ff349566e8cd88e838",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-10.png",
+    "bytes": 840732,
+    "sha256": "5cfdf59ebd56425eb0155d49ca9822e70286a40f58f5183710990a163ed99461",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-2.png",
+    "bytes": 840312,
+    "sha256": "aa504b27424597dd26e2e371d729d0a9f4b98b1bdc8583eec661e146b515fdfe",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-3.png",
+    "bytes": 840590,
+    "sha256": "a3db65c31819074d4014d06ca13c2dabe6773a8a260947fced849d6a79cc037b",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-4.png",
+    "bytes": 840683,
+    "sha256": "f2c4c4f6c9794cf7994e50f70be19b6712c2045e56739fec4583ff9a6027602f",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-5.png",
+    "bytes": 840726,
+    "sha256": "cf9795c5217241b05c18d173841a1072f762d4061d4581c11f0cec1425f4bf99",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-6.png",
+    "bytes": 840358,
+    "sha256": "0498206e6233a781848aee4fd9fa113f5c9a1b4614d1c32d3ef913de79c09ba3",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-7.png",
+    "bytes": 839958,
+    "sha256": "b5710d7916b14c037012247f2421686cf3a2e060b277d1b0941034af61e7956c",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-8.png",
+    "bytes": 840190,
+    "sha256": "ff84353d3ed66121c6d9ce709e57f3ad5e8e6e954fdd8618750afb3fb149f2f4",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-column-frame-9.png",
+    "bytes": 840517,
+    "sha256": "0f0da6cf26f924533ae6f672f2b766cffc4c01266d0cdceae0aa61e603cc126a",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-path.png",
+    "bytes": 6578,
+    "sha256": "d88b47ca9ef409beac55b199dca83192d426466cfaa51905359a625f4694eaef",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp-resized.png",
+    "bytes": 70470,
+    "sha256": "f38e7675ab7c4e13f4230c5ff9e8b00a55270724722f7e42b16536b35ecbe2f7",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-sftp.png",
+    "bytes": 70417,
+    "sha256": "fc58e138c94a50b70c57bb7719c7acb2c48592b9321b92c365adf530d14ef0af",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-shared-port.png",
+    "bytes": 6535,
+    "sha256": "131bc14c73055a52cad026ef788bfc0a306f5bf3bde3b2246c6efc5bcdea9706",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-light-ssh-dialog.png",
+    "bytes": 7381,
+    "sha256": "6bf621ebda1dc8cfbfa235a1ed5b5127b2b01b402809dd0ab8ac5f0aec6f10cf",
+    "retained_in_repository": false
+  },
+  {
+    "file": "x64-modal-foreground-before.png",
+    "bytes": 605866,
+    "sha256": "e1749e8a7683e850a37f284d13f9f60e8e1012703261e67e1fff03b49dd83a2f",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-modal-owner-after.png",
+    "bytes": 620980,
+    "sha256": "9ce443a65ea4fff8bb8a5e53910d7043e386da8b17641b89298840fd4ac6e86e",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-packaged-dark.png",
+    "bytes": 64425,
+    "sha256": "7d1c6c456fa0cf32e414289f237a236005434539bf61f36fda0a6378df311864",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-packaged-light.png",
+    "bytes": 28974,
+    "sha256": "26055c3cdbf042367949f26ccac9ff91dd885ee9554eb7adba63821917f166bc",
+    "retained_in_repository": true
+  },
+  {
+    "file": "x64-unsaved-close.png",
+    "bytes": 7079,
+    "sha256": "1ea074880672a0b7f086526f1c5d92dd341e395d11116a776c9a1ce471f3b3fc",
+    "retained_in_repository": false
+  }
+]

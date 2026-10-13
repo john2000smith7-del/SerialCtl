@@ -1,0 +1,564 @@
+﻿2026-10-11T00:03:59.6775133Z Current runner version: '2.337.0'
+2026-10-11T00:03:59.6800874Z ##[group]Runner Image Provisioner
+2026-10-11T00:03:59.6801667Z Hosted Compute Agent
+2026-10-11T00:03:59.6802184Z Version: 20261002.596
+2026-10-11T00:03:59.6802749Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-11T00:03:59.6803430Z Build Date: 2026-10-02T22:28:27Z
+2026-10-11T00:03:59.6804039Z Worker ID: {e4d32149-0fe9-4071-be87-549f8c7e3ae8}
+2026-10-11T00:03:59.6804727Z Region: northcentralus
+2026-10-11T00:03:59.6805227Z Cloud: Azure
+2026-10-11T00:03:59.6805695Z ##[endgroup]
+2026-10-11T00:03:59.6806897Z ##[group]Operating System
+2026-10-11T00:03:59.6807465Z Microsoft Windows Server 2022
+2026-10-11T00:03:59.6808001Z 10.0.20348
+2026-10-11T00:03:59.6808446Z Datacenter
+2026-10-11T00:03:59.6808935Z ##[endgroup]
+2026-10-11T00:03:59.6809398Z ##[group]Runner Image
+2026-10-11T00:03:59.6809972Z Image: windows-2022
+2026-10-11T00:03:59.6810500Z Version: 20261004.326.1
+2026-10-11T00:03:59.6812038Z Included Software: https://github.com/actions/runner-images/blob/win22/20261004.326/images/windows/Windows2022-Readme.md
+2026-10-11T00:03:59.6813490Z Image Release: https://github.com/actions/runner-images/releases/tag/win22%2F20261004.326
+2026-10-11T00:03:59.6814394Z ##[endgroup]
+2026-10-11T00:03:59.6815374Z ##[group]GITHUB_TOKEN Permissions
+2026-10-11T00:03:59.6817296Z Contents: read
+2026-10-11T00:03:59.6817788Z Metadata: read
+2026-10-11T00:03:59.6818252Z ##[endgroup]
+2026-10-11T00:03:59.6820241Z Secret source: Actions
+2026-10-11T00:03:59.6821036Z Cache mode: write
+2026-10-11T00:03:59.6821670Z Prepare workflow directory
+2026-10-11T00:03:59.7137868Z Prepare all required actions
+2026-10-11T00:03:59.7186445Z Getting action download info
+2026-10-11T00:03:59.9351700Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-11T00:04:00.0299447Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-10-11T00:04:00.1523850Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-11T00:04:00.4491611Z Complete job name: build
+2026-10-11T00:04:00.6289446Z ##[group]Run actions/checkout@v4
+2026-10-11T00:04:00.6290798Z with:
+2026-10-11T00:04:00.6291318Z   fetch-depth: 0
+2026-10-11T00:04:00.6291844Z   repository: john2000smith7-del/SerialCtl
+2026-10-11T00:04:00.6296589Z   token: ***
+2026-10-11T00:04:00.6297055Z   ssh-strict: true
+2026-10-11T00:04:00.6297499Z   ssh-user: git
+2026-10-11T00:04:00.6297960Z   persist-credentials: true
+2026-10-11T00:04:00.6298464Z   clean: true
+2026-10-11T00:04:00.6298947Z   sparse-checkout-cone-mode: true
+2026-10-11T00:04:00.6299543Z   fetch-tags: false
+2026-10-11T00:04:00.6300803Z   show-progress: true
+2026-10-11T00:04:00.6301564Z   lfs: false
+2026-10-11T00:04:00.6301999Z   submodules: false
+2026-10-11T00:04:00.6302448Z   set-safe-directory: true
+2026-10-11T00:04:00.6302962Z   allow-unsafe-pr-checkout: false
+2026-10-11T00:04:00.6304637Z ##[endgroup]
+2026-10-11T00:04:00.7801002Z Syncing repository: john2000smith7-del/SerialCtl
+2026-10-11T00:04:00.7802911Z ##[group]Getting Git version info
+2026-10-11T00:04:00.7803532Z Working directory is 'D:\a\SerialCtl\SerialCtl'
+2026-10-11T00:04:00.8776919Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-11T00:04:01.2333728Z git version 2.56.0.windows.1
+2026-10-11T00:04:01.2374348Z ##[endgroup]
+2026-10-11T00:04:01.2392310Z Temporarily overriding HOME='D:\a\_temp\08a2fd39-51da-432f-9bd8-4dccfb5a356d' before making global git config changes
+2026-10-11T00:04:01.2405438Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-11T00:04:01.2407047Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\SerialCtl\SerialCtl
+2026-10-11T00:04:01.2963452Z Deleting the contents of 'D:\a\SerialCtl\SerialCtl'
+2026-10-11T00:04:01.2968335Z ##[group]Initializing the repository
+2026-10-11T00:04:01.2977317Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\SerialCtl\SerialCtl
+2026-10-11T00:04:01.3840808Z Initialized empty Git repository in D:/a/SerialCtl/SerialCtl/.git/
+2026-10-11T00:04:01.3882026Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/john2000smith7-del/SerialCtl
+2026-10-11T00:04:01.4445212Z ##[endgroup]
+2026-10-11T00:04:01.4446199Z ##[group]Disabling automatic garbage collection
+2026-10-11T00:04:01.4454478Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-10-11T00:04:01.4755592Z ##[endgroup]
+2026-10-11T00:04:01.4756567Z ##[group]Setting up auth
+2026-10-11T00:04:01.4768791Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-11T00:04:01.5073244Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-11T00:04:02.8979870Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-11T00:04:02.9277612Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-11T00:04:03.4262014Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-11T00:04:03.4564629Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-11T00:04:03.9563202Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-10-11T00:04:03.9899487Z ##[endgroup]
+2026-10-11T00:04:03.9901194Z ##[group]Fetching the repository
+2026-10-11T00:04:03.9913400Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-10-11T00:04:05.4266329Z From https://github.com/john2000smith7-del/SerialCtl
+2026-10-11T00:04:05.4267390Z  * [new branch]      fix/unified-websocket-win7 -> origin/fix/unified-websocket-win7
+2026-10-11T00:04:05.4268179Z  * [new branch]      main           -> origin/main
+2026-10-11T00:04:05.4268743Z  * [new branch]      release/v1.0.3 -> origin/release/v1.0.3
+2026-10-11T00:04:05.4269293Z  * [new tag]         v1.0.0         -> v1.0.0
+2026-10-11T00:04:05.4269820Z  * [new tag]         v1.0.1         -> v1.0.1
+2026-10-11T00:04:05.4270366Z  * [new tag]         v1.0.2         -> v1.0.2
+2026-10-11T00:04:05.4270924Z  * [new tag]         v1.0.3         -> v1.0.3
+2026-10-11T00:04:05.4271402Z  * [new tag]         v1.0.4         -> v1.0.4
+2026-10-11T00:04:05.4271925Z  * [new tag]         v1.0.5         -> v1.0.5
+2026-10-11T00:04:05.4272392Z  * [new tag]         v1.1.0         -> v1.1.0
+2026-10-11T00:04:05.4324771Z [command]"C:\Program Files\Git\bin\git.exe" branch --list --remote origin/fix/unified-websocket-win7
+2026-10-11T00:04:05.4750207Z   origin/fix/unified-websocket-win7
+2026-10-11T00:04:05.4795844Z [command]"C:\Program Files\Git\bin\git.exe" rev-parse refs/remotes/origin/fix/unified-websocket-win7
+2026-10-11T00:04:05.5110535Z 5f12678e4da327f146edb5ce12eb3b3ea9c8afd0
+2026-10-11T00:04:05.5141336Z ##[endgroup]
+2026-10-11T00:04:05.5142063Z ##[group]Determining the checkout info
+2026-10-11T00:04:05.5142825Z ##[endgroup]
+2026-10-11T00:04:05.5151929Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-10-11T00:04:05.5578497Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-10-11T00:04:05.5915436Z ##[group]Checking out the ref
+2026-10-11T00:04:05.5926573Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force -B fix/unified-websocket-win7 refs/remotes/origin/fix/unified-websocket-win7
+2026-10-11T00:04:05.7525519Z Switched to a new branch 'fix/unified-websocket-win7'
+2026-10-11T00:04:05.7544756Z branch 'fix/unified-websocket-win7' set up to track 'origin/fix/unified-websocket-win7'.
+2026-10-11T00:04:05.7605994Z ##[endgroup]
+2026-10-11T00:04:05.7994896Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-10-11T00:04:05.8266547Z 5f12678e4da327f146edb5ce12eb3b3ea9c8afd0
+2026-10-11T00:04:05.8684254Z ##[group]Run actions/cache@v4
+2026-10-11T00:04:05.8684702Z with:
+2026-10-11T00:04:05.8685024Z   path: D:\a\_temp/SerialCtl-NIVISA1800runtime.zip
+2026-10-11T00:04:05.8685547Z   key: visa18-e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517
+2026-10-11T00:04:05.8686076Z   enableCrossOsArchive: false
+2026-10-11T00:04:05.8686376Z   fail-on-cache-miss: false
+2026-10-11T00:04:05.8686688Z   lookup-only: false
+2026-10-11T00:04:05.8686957Z   save-always: false
+2026-10-11T00:04:05.8687231Z ##[endgroup]
+2026-10-11T00:04:05.9946258Z (node:2520) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-11T00:04:05.9947214Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-11T00:04:06.2289291Z Cache hit for: visa18-e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517
+2026-10-11T00:04:06.2393412Z (node:2520) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-11T00:04:07.4131441Z Received 123961787 of 123961787 (100.0%), 108.7 MBs/sec
+2026-10-11T00:04:07.4136508Z Cache Size: ~118 MB (123961787 B)
+2026-10-11T00:04:07.4181891Z [command]"C:\Program Files\Git\usr\bin\tar.exe" -xf D:/a/_temp/13957dfb-5aef-424b-bce0-356169242d64/cache.tzst -P -C D:/a/SerialCtl/SerialCtl --force-local --use-compress-program "zstd -d"
+2026-10-11T00:04:07.7431465Z Cache restored successfully
+2026-10-11T00:04:07.7650031Z Cache restored from key: visa18-e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517
+2026-10-11T00:04:07.7983662Z ##[group]Run Start-Transcript -Path "$env:RUNNER_TEMP/serialctl-build.txt"
+2026-10-11T00:04:07.7984601Z [36;1mStart-Transcript -Path "$env:RUNNER_TEMP/serialctl-build.txt"[0m
+2026-10-11T00:04:07.7985145Z [36;1mtry { ./scripts/release.ps1 } finally { Stop-Transcript }[0m
+2026-10-11T00:04:07.8088097Z shell: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command ". '{0}'"
+2026-10-11T00:04:07.8088577Z env:
+2026-10-11T00:04:07.8088896Z   SERIALCTL_EVIDENCE_DIR: D:\a\_temp/serialctl-ui
+2026-10-11T00:04:07.8089336Z   SERIALCTL_VISA_CACHE: D:\a\_temp/SerialCtl-NIVISA1800runtime.zip
+2026-10-11T00:04:07.8089772Z ##[endgroup]
+2026-10-11T00:04:11.2626252Z Transcript started, output file is D:\a\_temp/serialctl-build.txt
+2026-10-11T00:04:11.9857328Z ==> Preflight source/version/dependency checks
+2026-10-11T00:04:13.2036257Z [PASS] Source/version/dependency checks: V1.0.6
+2026-10-11T00:04:13.4530484Z [PASS] Git provenance: 5f12678e4da327f146edb5ce12eb3b3ea9c8afd0
+2026-10-11T00:04:13.4550459Z [PASS] Source-only checks completed
+2026-10-11T00:04:13.4560822Z ==> Clean x64 Release build
+2026-10-11T00:04:14.2010665Z ==> Configure x64
+2026-10-11T00:04:14.4642224Z -- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.20348.
+2026-10-11T00:04:24.4312606Z -- The CXX compiler identification is MSVC 19.44.35229.0
+2026-10-11T00:04:24.5575069Z -- Detecting CXX compiler ABI info
+2026-10-11T00:04:25.5610497Z -- Detecting CXX compiler ABI info - done
+2026-10-11T00:04:25.5754888Z -- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+2026-10-11T00:04:25.5773927Z -- Detecting CXX compile features
+2026-10-11T00:04:25.5928785Z -- Detecting CXX compile features - done
+2026-10-11T00:04:27.3415165Z -- Found Python3: C:/hostedtoolcache/windows/Python/3.14.8/x64/python3.exe (found version "3.14.8") found components: Interpreter
+2026-10-11T00:04:27.3423769Z -- Configuring done (13.1s)
+2026-10-11T00:04:27.4649676Z -- Generating done (0.1s)
+2026-10-11T00:04:27.4655512Z -- Build files have been written to: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+2026-10-11T00:04:27.4770248Z ==> Build x64 Release
+2026-10-11T00:04:27.5674302Z MSBuild version 17.14.60+43b635718 for .NET Framework
+2026-10-11T00:04:27.5954482Z 
+2026-10-11T00:04:27.9423747Z   1>Checking Build System
+2026-10-11T00:04:28.1840178Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:04:28.3538762Z   ApiServerTest.cpp
+2026-10-11T00:04:28.4540231Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:04:28.5644364Z   PuttyHostKeyTest.cpp
+2026-10-11T00:04:28.5774017Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:04:28.5804335Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:04:28.6389904Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:04:29.2754849Z   PowerServiceTest.cpp
+2026-10-11T00:04:29.2759951Z   MultiSerialTest.cpp
+2026-10-11T00:04:29.2829847Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:04:29.3265049Z   App.cpp
+2026-10-11T00:04:29.3620296Z   SerialShareBackpressureTest.cpp
+2026-10-11T00:04:31.4042525Z   PuttyHostKey.cpp
+2026-10-11T00:04:33.3141258Z   ChildProcess.cpp
+2026-10-11T00:04:34.3530630Z   ApiServer.cpp
+2026-10-11T00:04:34.3839020Z   ApiServer.cpp
+2026-10-11T00:04:34.5796461Z   PowerService.cpp
+2026-10-11T00:04:34.7230328Z   ApiServer.cpp
+2026-10-11T00:04:34.7786909Z   Generating Code...
+2026-10-11T00:04:35.1272298Z   MainWindow.cpp
+2026-10-11T00:04:39.0686029Z   WebSocket.cpp
+2026-10-11T00:04:39.6481567Z   WebSocket.cpp
+2026-10-11T00:04:39.9630264Z   WebSocket.cpp
+2026-10-11T00:04:40.7124631Z   SessionLogger.cpp
+2026-10-11T00:04:41.0185037Z   GatewayClient.cpp
+2026-10-11T00:04:41.3745441Z   GatewayClient.cpp
+2026-10-11T00:04:41.5672204Z   GatewayClient.cpp
+2026-10-11T00:04:41.7614694Z   ToolbarIcons.cpp
+2026-10-11T00:04:42.6649620Z   Generating Code...
+2026-10-11T00:04:42.7605809Z   PowerPane.cpp
+2026-10-11T00:04:45.5400300Z   SessionService.cpp
+2026-10-11T00:04:45.9374616Z   SessionService.cpp
+2026-10-11T00:04:46.0627295Z   SessionService.cpp
+2026-10-11T00:04:48.3463357Z D:\a\SerialCtl\SerialCtl\src\app\PowerPane.cpp(695,14): warning C4456: declaration of 'selected' hides previous local declaration [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:04:48.5493799Z       D:\a\SerialCtl\SerialCtl\src\app\PowerPane.cpp(669,9):
+2026-10-11T00:04:48.7719113Z       see declaration of 'selected'
+2026-10-11T00:04:48.9246879Z   
+2026-10-11T00:04:49.0497894Z   putty_host_key_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\putty_host_key_test.exe
+2026-10-11T00:04:49.1755028Z D:\a\SerialCtl\SerialCtl\src\app\PowerPane.cpp(1223,47): warning C4389: '==': signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:04:49.4581688Z D:\a\SerialCtl\SerialCtl\src\app\PowerPane.cpp(1224,47): warning C4389: '==': signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:04:49.5576523Z D:\a\SerialCtl\SerialCtl\src\app\PowerPane.cpp(1225,47): warning C4389: '==': signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:04:49.7271217Z D:\a\SerialCtl\SerialCtl\src\app\PowerPane.cpp(1398,83): warning C4245: 'argument': conversion from 'int' to 'WPARAM', signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:04:50.1912596Z   PowerService.cpp
+2026-10-11T00:04:50.8470846Z   QueuedConnection.cpp
+2026-10-11T00:04:50.8486906Z   QueuedConnection.cpp
+2026-10-11T00:04:51.0916104Z   QueuedConnection.cpp
+2026-10-11T00:04:52.2489807Z   SharedSerialConnection.cpp
+2026-10-11T00:04:52.3066093Z   SharedSerialConnection.cpp
+2026-10-11T00:04:52.6652672Z   SharedSerialConnection.cpp
+2026-10-11T00:04:53.8831435Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:04:54.9953825Z D:\a\SerialCtl\SerialCtl\src\connections\SharedSerialConnection.cpp(76,61): warning C4018: '<=': signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\api_server_test.vcxproj]
+2026-10-11T00:04:55.6051024Z D:\a\SerialCtl\SerialCtl\src\connections\SharedSerialConnection.cpp(76,61): warning C4018: '<=': signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serial_share_backpressure_test.vcxproj]
+2026-10-11T00:04:55.6802060Z   ApiServer.cpp
+2026-10-11T00:04:55.6994763Z D:\a\SerialCtl\SerialCtl\src\connections\SharedSerialConnection.cpp(76,61): warning C4018: '<=': signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\multi_serial_test.vcxproj]
+2026-10-11T00:04:56.5894684Z   Generating Code...
+2026-10-11T00:04:56.9339010Z   Generating Code...
+2026-10-11T00:04:57.3066475Z   Generating Code...
+2026-10-11T00:05:03.7979535Z   WebSocket.cpp
+2026-10-11T00:05:08.2864510Z   GatewayClient.cpp
+2026-10-11T00:05:17.0922428Z   SessionService.cpp
+2026-10-11T00:05:19.9224605Z   SessionLoggerTest.cpp
+2026-10-11T00:05:22.9415190Z   SessionLogger.cpp
+2026-10-11T00:05:24.8969613Z   ChildProcess.cpp
+2026-10-11T00:05:25.4130870Z   power_service_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\power_service_test.exe
+2026-10-11T00:05:28.2620499Z   Generating Code...
+2026-10-11T00:05:28.8536935Z   CmdConnection.cpp
+2026-10-11T00:05:30.6689573Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:05:30.7680706Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:05:30.8776698Z   SftpModelTest.cpp
+2026-10-11T00:05:30.8879439Z   CmdConsoleBridge.cpp
+2026-10-11T00:05:30.9497264Z   SharedSerialProtocolTest.cpp
+2026-10-11T00:05:31.0752685Z   serial_share_backpressure_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serial_share_backpressure_test.exe
+2026-10-11T00:05:31.1030962Z   multi_serial_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\multi_serial_test.exe
+2026-10-11T00:05:31.4859869Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:05:31.5596161Z   api_server_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\api_server_test.exe
+2026-10-11T00:05:31.6093507Z   session_logger_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\session_logger_test.exe
+2026-10-11T00:05:31.7605101Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:05:31.8293733Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:05:31.9190291Z   TcpConnectionTest.cpp
+2026-10-11T00:05:31.9782270Z D:\a\SerialCtl\SerialCtl\src\connections\CmdConsoleBridge.cpp(52,65): warning C4267: 'argument': conversion from 'size_t' to 'const _Ty', possible loss of data [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:05:31.9791517Z D:\a\SerialCtl\SerialCtl\src\connections\CmdConsoleBridge.cpp(52,65): warning C4267:         with [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:05:31.9817110Z D:\a\SerialCtl\SerialCtl\src\connections\CmdConsoleBridge.cpp(52,65): warning C4267:         [ [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:05:32.0245733Z D:\a\SerialCtl\SerialCtl\src\connections\CmdConsoleBridge.cpp(52,65): warning C4267:             _Ty=DWORD [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:05:32.0288939Z D:\a\SerialCtl\SerialCtl\src\connections\CmdConsoleBridge.cpp(52,65): warning C4267:         ] [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:05:32.1212247Z   SftpModel.cpp
+2026-10-11T00:05:32.1696293Z   QueuedConnection.cpp
+2026-10-11T00:05:32.3203650Z   TerminalModelTest.cpp
+2026-10-11T00:05:32.3386359Z   TerminalDecoderTest.cpp
+2026-10-11T00:05:33.4221092Z   TerminalModel.cpp
+2026-10-11T00:05:33.4924137Z   Generating Code...
+2026-10-11T00:05:33.5137290Z   TcpConnection.cpp
+2026-10-11T00:05:33.6699577Z   PlinkConnection.cpp
+2026-10-11T00:05:34.8742281Z   Generating Code...
+2026-10-11T00:05:35.1519804Z   ApiServer.cpp
+2026-10-11T00:05:35.4742626Z   Generating Code...
+2026-10-11T00:05:35.6440968Z   PuttyHostKey.cpp
+2026-10-11T00:05:38.5369857Z   SerialConnection.cpp
+2026-10-11T00:05:39.0598874Z   terminal_decoder_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_decoder_test.exe
+2026-10-11T00:05:39.2303403Z   sftp_model_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\sftp_model_test.exe
+2026-10-11T00:05:39.2892912Z   terminal_model_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_model_test.exe
+2026-10-11T00:05:39.4684306Z   tcp_connection_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\tcp_connection_test.exe
+2026-10-11T00:05:39.5624883Z   SerialDevice.cpp
+2026-10-11T00:05:40.0903789Z   WebSocket.cpp
+2026-10-11T00:05:40.3479987Z   SharedSerialConnection.cpp
+2026-10-11T00:05:40.9228935Z   GatewayClient.cpp
+2026-10-11T00:05:41.4945790Z D:\a\SerialCtl\SerialCtl\src\connections\SharedSerialConnection.cpp(76,61): warning C4018: '<=': signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\serialctl.vcxproj]
+2026-10-11T00:05:42.4134352Z   TcpConnection.cpp
+2026-10-11T00:05:42.7376382Z   SessionService.cpp
+2026-10-11T00:05:43.3478243Z   SessionLogger.cpp
+2026-10-11T00:05:44.3801633Z   Generating Code...
+2026-10-11T00:05:45.0623180Z   QueuedConnection.cpp
+2026-10-11T00:05:46.5710206Z   SharedSerialConnection.cpp
+2026-10-11T00:05:48.5416735Z D:\a\SerialCtl\SerialCtl\src\connections\SharedSerialConnection.cpp(76,61): warning C4018: '<=': signed/unsigned mismatch [D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\shared_serial_protocol_test.vcxproj]
+2026-10-11T00:05:50.2937302Z   Generating Code...
+2026-10-11T00:06:08.3416410Z   shared_serial_protocol_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\shared_serial_protocol_test.exe
+2026-10-11T00:06:19.4973423Z   Compiling...
+2026-10-11T00:06:19.4973764Z   SftpClient.cpp
+2026-10-11T00:06:20.2618110Z   SftpModel.cpp
+2026-10-11T00:06:20.9812102Z   TerminalModel.cpp
+2026-10-11T00:06:21.4359389Z   Generating Code...
+2026-10-11T00:06:24.3446876Z   serialctl.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serialctl.exe
+2026-10-11T00:06:24.4612097Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:06:24.5298757Z   CmdConnectionTest.cpp
+2026-10-11T00:06:26.0595855Z   CmdConnection.cpp
+2026-10-11T00:06:26.7674583Z   QueuedConnection.cpp
+2026-10-11T00:06:27.4668418Z   ChildProcess.cpp
+2026-10-11T00:06:28.0657682Z   SessionService.cpp
+2026-10-11T00:06:29.7811166Z   Generating Code...
+2026-10-11T00:06:32.5353253Z   cmd_connection_test.vcxproj -> D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\cmd_connection_test.exe
+2026-10-11T00:06:32.5924279Z   Building Custom Rule D:/a/SerialCtl/SerialCtl/CMakeLists.txt
+2026-10-11T00:06:32.6743034Z [PASS] SerialCtl build completed: All / Release
+2026-10-11T00:06:32.6754700Z ==> x64 automated tests
+2026-10-11T00:06:32.7685084Z ==> Test x64 Release
+2026-10-11T00:06:33.1832335Z Internal ctest changing into directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+2026-10-11T00:06:33.2588165Z Test project D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+2026-10-11T00:06:33.2951039Z       Start  1: session_logger
+2026-10-11T00:06:50.1332916Z  1/14 Test  #1: session_logger ...................   Passed   16.83 sec
+2026-10-11T00:06:50.1343775Z       Start  2: power_service
+2026-10-11T00:06:52.8449498Z  2/14 Test  #2: power_service ....................   Passed    2.71 sec
+2026-10-11T00:06:52.8452181Z       Start  3: cmd_connection
+2026-10-11T00:06:52.9862334Z  3/14 Test  #3: cmd_connection ...................   Passed    0.14 sec
+2026-10-11T00:06:52.9865138Z       Start  4: api_server
+2026-10-11T00:06:57.0216219Z  4/14 Test  #4: api_server .......................   Passed    4.03 sec
+2026-10-11T00:06:57.0220449Z       Start  5: shared_serial_protocol
+2026-10-11T00:06:57.1045317Z  5/14 Test  #5: shared_serial_protocol ...........   Passed    0.08 sec
+2026-10-11T00:06:57.1047746Z       Start  6: tcp_connection
+2026-10-11T00:06:57.1147108Z  6/14 Test  #6: tcp_connection ...................   Passed    0.01 sec
+2026-10-11T00:06:57.1149661Z       Start  7: terminal_model
+2026-10-11T00:06:57.1245545Z  7/14 Test  #7: terminal_model ...................   Passed    0.01 sec
+2026-10-11T00:06:57.1246096Z       Start  8: putty_host_key
+2026-10-11T00:06:57.2418390Z  8/14 Test  #8: putty_host_key ...................   Passed    0.12 sec
+2026-10-11T00:06:57.2422113Z       Start  9: serial_share_backpressure
+2026-10-11T00:07:08.2369311Z  9/14 Test  #9: serial_share_backpressure ........   Passed   10.99 sec
+2026-10-11T00:07:08.2372506Z       Start 10: multi_serial
+2026-10-11T00:07:09.1510855Z 10/14 Test #10: multi_serial .....................   Passed    0.91 sec
+2026-10-11T00:07:09.1513826Z       Start 11: api_client
+2026-10-11T00:07:10.2961618Z 11/14 Test #11: api_client .......................   Passed    1.14 sec
+2026-10-11T00:07:10.2964817Z       Start 12: linux_gateway_client
+2026-10-11T00:07:18.6142956Z 12/14 Test #12: linux_gateway_client .............   Passed    8.32 sec
+2026-10-11T00:07:18.6148139Z       Start 13: terminal_decoder
+2026-10-11T00:07:18.6342941Z 13/14 Test #13: terminal_decoder .................   Passed    0.02 sec
+2026-10-11T00:07:18.6345704Z       Start 14: sftp_model
+2026-10-11T00:07:18.6421971Z 14/14 Test #14: sftp_model .......................   Passed    0.01 sec
+2026-10-11T00:07:18.6428085Z 
+2026-10-11T00:07:18.6428368Z 100% tests passed, 0 tests failed out of 14
+2026-10-11T00:07:18.6428739Z 
+2026-10-11T00:07:18.6428911Z Total Test time (real) =  45.38 sec
+2026-10-11T00:07:18.6737549Z [PASS] SerialCtl tests completed: All / Release
+2026-10-11T00:07:18.6749685Z ==> PE, version, dependency, and Win7 compatibility checks
+2026-10-11T00:07:18.7970703Z [PASS] Source/version/dependency checks: V1.0.6
+2026-10-11T00:07:18.8880915Z [PASS] Git provenance: 5f12678e4da327f146edb5ce12eb3b3ea9c8afd0
+2026-10-11T00:07:22.9478877Z [PASS] x64 / GUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serialctl.exe
+2026-10-11T00:07:23.1639289Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\plink.exe
+2026-10-11T00:07:23.3749834Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\psftp.exe
+2026-10-11T00:07:23.5840764Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\putty_host_key_test.exe
+2026-10-11T00:07:23.7820712Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_model_test.exe
+2026-10-11T00:07:23.9850283Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\power_service_test.exe
+2026-10-11T00:07:24.1854440Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\sftp_model_test.exe
+2026-10-11T00:07:24.3923747Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\multi_serial_test.exe
+2026-10-11T00:07:24.6014767Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\api_server_test.exe
+2026-10-11T00:07:24.8135647Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\cmd_connection_test.exe
+2026-10-11T00:07:25.0128735Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\tcp_connection_test.exe
+2026-10-11T00:07:25.2196382Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\shared_serial_protocol_test.exe
+2026-10-11T00:07:25.4258337Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serial_share_backpressure_test.exe
+2026-10-11T00:07:25.6246747Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\session_logger_test.exe
+2026-10-11T00:07:25.8272294Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_decoder_test.exe
+2026-10-11T00:07:25.8282666Z [PASS] Binary compatibility checks completed: All / Release
+2026-10-11T00:07:25.8292673Z [NOT RUN] Windows 7 SP1 hardware/VM, serial adapter, SSH/SFTP server, and long-running field tests
+2026-10-11T00:07:25.8302838Z ==> Explicit-allowlist package and reopen verification
+2026-10-11T00:07:25.8580426Z ==> Install x64 runtime into package staging
+2026-10-11T00:07:25.8725300Z -- Installing: D:\a\SerialCtl\SerialCtl\build\release\stage\SerialCtl-V1.0.6\././serialctl.exe
+2026-10-11T00:07:25.8754763Z -- Installing: D:\a\SerialCtl\SerialCtl\build\release\stage\SerialCtl-V1.0.6\././plink.exe
+2026-10-11T00:07:25.8770729Z -- Installing: D:\a\SerialCtl\SerialCtl\build\release\stage\SerialCtl-V1.0.6\././psftp.exe
+2026-10-11T00:07:28.1874712Z [PASS] Original NI-VISA 18.0 Runtime, complete offline installer and licenses
+2026-10-11T00:07:48.0198672Z [PASS] x64 / GUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\serialctl.exe
+2026-10-11T00:07:48.2265055Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\plink.exe
+2026-10-11T00:07:48.4358181Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\psftp.exe
+2026-10-11T00:07:48.6001359Z [PASS] Candidate archive was reopened and verified: D:\a\SerialCtl\SerialCtl\build\release\out\SerialCtl-V1.0.6-Win7-x64.zip
+2026-10-11T00:07:48.6013319Z [PASS] Candidate SHA-256: 8bd51a23508600dba47b52132dad4741ff5dea316e7170cd28b51eb6b7af873d
+2026-10-11T00:07:48.6027825Z D:\a\SerialCtl\SerialCtl\build\release\out\SerialCtl-V1.0.6-Win7-x64.zip
+2026-10-11T00:07:48.9252182Z ==> Remove disposable build state after successful promotion
+2026-10-11T00:07:49.2200938Z [PASS] Local release ready: D:\a\SerialCtl\SerialCtl\bin\SerialCtl-V1.0.6-Win7-x64.zip
+2026-10-11T00:07:49.2210479Z [PASS] SHA-256: 8bd51a23508600dba47b52132dad4741ff5dea316e7170cd28b51eb6b7af873d
+2026-10-11T00:07:49.2220446Z [NOT RUN] Windows 7 SP1 real-machine/VM and physical serial-device acceptance
+2026-10-11T00:07:49.3369155Z Transcript stopped, output file is D:\a\_temp\serialctl-build.txt
+2026-10-11T00:07:49.4014309Z ##[group]Run python tests/integration/cmd_pipe_encoding_probe.py "$env:RUNNER_TEMP/serialctl-ui/cmd-pipe-encoding.json"
+2026-10-11T00:07:49.4015413Z [36;1mpython tests/integration/cmd_pipe_encoding_probe.py "$env:RUNNER_TEMP/serialctl-ui/cmd-pipe-encoding.json"[0m
+2026-10-11T00:07:49.4016023Z [36;1mif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }[0m
+2026-10-11T00:07:49.4016515Z [36;1m./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"[0m
+2026-10-11T00:07:49.4046981Z shell: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command ". '{0}'"
+2026-10-11T00:07:49.4047485Z ##[endgroup]
+2026-10-11T00:07:50.7700197Z {"page": 437, "input_base64": "ZWNobyBTRVJJQUxDVExfUElQRV9BU0NJSQ0KZWNobyBTRVJJQUxDVExfUEFHRV9ET05FDQo=", "output_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+U0VSSUFMQ1RMX1BJUEVfQVNDSUkNCg0KRDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPlNFUklBTENUTF9QQUdFX0RPTkUNCg==", "decoded": "\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PIPE_ASCII\r\n\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PAGE_DONE\r\n", "matches": true}
+2026-10-11T00:07:50.7703129Z {"page": 936, "input_base64": "ZWNobyBTRVJJQUxDVExfUElQRV/W0M7EDQplY2hvIFNFUklBTENUTF9QQUdFX0RPTkUNCg==", "output_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+U0VSSUFMQ1RMX1BJUEVfPz8/Pw0KDQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+U0VSSUFMQ1RMX1BBR0VfRE9ORQ0K", "decoded": "\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PIPE_????\r\n\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PAGE_DONE\r\n", "matches": false}
+2026-10-11T00:07:50.7706138Z {"page": 65001, "input_base64": "ZWNobyBTRVJJQUxDVExfUElQRV/kuK3mlocNCmVjaG8gU0VSSUFMQ1RMX1BBR0VfRE9ORQ0K", "output_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+U0VSSUFMQ1RMX1BJUEVf77+977+977+977+977+977+9DQoNCkQ6XGFcU2VyaWFsQ3RsXFNlcmlhbEN0bD5TRVJJQUxDVExfUEFHRV9ET05FDQo=", "decoded": "\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PIPE_\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\r\n\r\nD:\\a\\SerialCtl\\SerialCtl>SERIALCTL_PAGE_DONE\r\n", "matches": false}
+2026-10-11T00:08:05.6185574Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:05.6189395Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:05.6190834Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:05.6192885Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:06.2626467Z Label 串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:06.2628226Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:06.2629682Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:06.2632381Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:06.2633402Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:06.2633978Z Label 流控: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:06.8885907Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:06.8887028Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:07.5133749Z Label 远端串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:07.5135758Z Label 来源 IP: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:07.6361717Z Label 服务端口（通常使用自动发现）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:08.9215737Z Label 连接方式: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:08.9217318Z Label 设备 / COM 口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:08.9218323Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:08.9220662Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:08.9223899Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:08.9224667Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:19.6105107Z CMD display P50=5.597 ms P95=6.686 ms P99=8.451 ms; 100 samples
+2026-10-11T00:08:19.6106840Z PASS: packaged GUI unified WebSocket scope, CMD stdout, GUI sequential line editing, persistent state; outputs visible/local logged
+2026-10-11T00:08:21.2140435Z Started sustained real CMD child stdout on session-1
+2026-10-11T00:08:27.2324086Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:27.2326318Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:27.5440639Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:27.5445832Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:27.5450051Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:28.1867960Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:28.1869857Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:28.1900206Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:30.0485867Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:30.0490680Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:30.0519544Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:30.0540950Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:30.6738426Z Label 串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:30.6739468Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:30.6742822Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:30.6762719Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:30.6780004Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:30.6780865Z Label 流控: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:31.2992223Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:31.2995321Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:31.9246463Z Label 远端串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:31.9250081Z Label 来源 IP: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:32.0368524Z Label 服务端口（通常使用自动发现）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:33.2697362Z Label 连接方式: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:33.2699697Z Label 设备 / COM 口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:33.2701622Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:33.2703087Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:33.2703945Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:33.2704843Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-11T00:08:43.2269332Z CMD display P50=5.283 ms P95=6.154 ms P99=6.619 ms; 100 samples
+2026-10-11T00:08:43.2270329Z PASS: packaged GUI unified WebSocket scope, CMD stdout, GUI sequential line editing, persistent state; outputs visible/local logged
+2026-10-11T00:08:44.8235317Z Started sustained real CMD child stdout on session-2
+2026-10-11T00:08:50.9996015Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:51.0002110Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:51.3117184Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:51.3123456Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:51.3127520Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:51.9534784Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:51.9540313Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:51.9566370Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:58.5629728Z PASS: 35 real CMD sessions, list anchors/wheel/keys, all-disconnect child cleanup 0.375s
+2026-10-11T00:08:59.4682180Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:59.4683186Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:08:59.4685261Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:08:59.4687498Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:09:01.9221879Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:09:01.9224301Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-11T00:09:01.9226769Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:09:01.9228868Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:09:04.9125674Z Label 远端目录（可粘贴 pwd 输出）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:09:09.1206327Z Label 远端目录（可粘贴 pwd 输出）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-11T00:09:12.1321487Z [PASS] x64 startup/shutdown, light default and both themes, monochrome toolbar, power three-column layout and automatic sidebar collapse, USB/RS232-only connection and sequence dialogs, all power modes and categories, persistent CMD, automatic fixed-scope API and real GUI CMD round-trip, all connection and command dialogs, label metrics, narrow/collapsed command and mock SFTP panels, host-key confirmation, command drafts and Save, manual SFTP path and persisted column resize
+2026-10-11T00:09:12.1330372Z [NOT RUN] Actual Windows 7 hardware and field server tests
+2026-10-11T00:09:12.1761878Z ##[group]Run python tests/integration/test_serialctl_client.py
+2026-10-11T00:09:12.1762503Z [36;1mpython tests/integration/test_serialctl_client.py[0m
+2026-10-11T00:09:12.1763023Z [36;1mif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }[0m
+2026-10-11T00:09:12.1794771Z shell: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command ". '{0}'"
+2026-10-11T00:09:12.1795256Z ##[endgroup]
+2026-10-11T00:09:12.8400244Z ..........
+2026-10-11T00:09:12.8400883Z ----------------------------------------------------------------------
+2026-10-11T00:09:12.8401471Z Ran 10 tests in 0.002s
+2026-10-11T00:09:12.8401725Z 
+2026-10-11T00:09:12.8401845Z OK
+2026-10-11T00:09:12.9625551Z ##[group]Run actions/upload-artifact@v4
+2026-10-11T00:09:12.9626073Z with:
+2026-10-11T00:09:12.9626393Z   name: SerialCtl-Win7-portable
+2026-10-11T00:09:12.9626722Z   path: bin/SerialCtl-*-Win7-x64.zip
+2026-10-11T00:09:12.9627078Z   if-no-files-found: error
+2026-10-11T00:09:12.9627398Z   retention-days: 30
+2026-10-11T00:09:12.9627664Z   compression-level: 6
+2026-10-11T00:09:12.9627938Z   overwrite: false
+2026-10-11T00:09:12.9628207Z   include-hidden-files: false
+2026-10-11T00:09:12.9628560Z ##[endgroup]
+2026-10-11T00:09:13.1592642Z (node:8792) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-11T00:09:13.1593595Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-11T00:09:13.1652695Z With the provided path, there will be 1 file uploaded
+2026-10-11T00:09:13.1658873Z Artifact name is valid!
+2026-10-11T00:09:13.1661105Z Root directory input is valid!
+2026-10-11T00:09:13.4302671Z Beginning upload of artifact content to blob storage
+2026-10-11T00:09:13.7211720Z (node:8792) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-11T00:09:14.2980078Z Uploaded bytes 8388608
+2026-10-11T00:09:14.4789620Z Uploaded bytes 16777216
+2026-10-11T00:09:14.7120475Z Uploaded bytes 25165824
+2026-10-11T00:09:14.8350559Z Uploaded bytes 33554432
+2026-10-11T00:09:15.0348143Z Uploaded bytes 41943040
+2026-10-11T00:09:15.2951373Z Uploaded bytes 50331648
+2026-10-11T00:09:15.5183025Z Uploaded bytes 58720256
+2026-10-11T00:09:15.8246685Z Uploaded bytes 67108864
+2026-10-11T00:09:16.0827129Z Uploaded bytes 75497472
+2026-10-11T00:09:16.3136916Z Uploaded bytes 83886080
+2026-10-11T00:09:16.6385647Z Uploaded bytes 92274688
+2026-10-11T00:09:16.8037942Z Uploaded bytes 100663296
+2026-10-11T00:09:17.0617071Z Uploaded bytes 109051904
+2026-10-11T00:09:17.2929749Z Uploaded bytes 117440512
+2026-10-11T00:09:17.6611239Z Uploaded bytes 125829120
+2026-10-11T00:09:17.7716000Z Uploaded bytes 129879735
+2026-10-11T00:09:17.8088003Z Finished uploading artifact content to blob storage!
+2026-10-11T00:09:17.8092192Z SHA256 digest of uploaded artifact zip is 5c5d10a142a9adc8bee8092c91d3eabb9838082efe0dc274769a40a31283c5bd
+2026-10-11T00:09:17.8094733Z Finalizing artifact upload
+2026-10-11T00:09:18.0553393Z Artifact SerialCtl-Win7-portable.zip successfully finalized. Artifact ID 11686566640
+2026-10-11T00:09:18.0554799Z Artifact SerialCtl-Win7-portable has been successfully uploaded! Final size is 129879735 bytes. Artifact ID is 11686566640
+2026-10-11T00:09:18.0565913Z Artifact download URL: https://github.com/john2000smith7-del/SerialCtl/actions/runs/38097145874/artifacts/11686566640
+2026-10-11T00:09:18.0875562Z ##[group]Run actions/upload-artifact@v4
+2026-10-11T00:09:18.0875997Z with:
+2026-10-11T00:09:18.0876302Z   name: SerialCtl-UI-evidence
+2026-10-11T00:09:18.0877042Z   path: D:\a\_temp/serialctl-ui/*.png
+D:\a\_temp/serialctl-ui/*.txt
+D:\a\_temp/serialctl-ui/*.json
+D:\a\_temp/serialctl-ui/*.log
+D:\a\_temp/serialctl-build.txt
+
+2026-10-11T00:09:18.0877723Z   if-no-files-found: warn
+2026-10-11T00:09:18.0878013Z   compression-level: 6
+2026-10-11T00:09:18.0878315Z   overwrite: false
+2026-10-11T00:09:18.0878596Z   include-hidden-files: false
+2026-10-11T00:09:18.0878899Z ##[endgroup]
+2026-10-11T00:09:18.2666640Z (node:2024) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-11T00:09:18.2667500Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-11T00:09:18.3259129Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-10-11T00:09:18.3261462Z The least common ancestor is D:\a\_temp. This will be the root directory of the artifact
+2026-10-11T00:09:18.3262224Z With the provided path, there will be 218 files uploaded
+2026-10-11T00:09:18.3267864Z Artifact name is valid!
+2026-10-11T00:09:18.3269320Z Root directory input is valid!
+2026-10-11T00:09:18.5846263Z Beginning upload of artifact content to blob storage
+2026-10-11T00:09:18.9413694Z (node:2024) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-11T00:09:19.4880836Z Uploaded bytes 8388608
+2026-10-11T00:09:19.8890295Z Uploaded bytes 16777216
+2026-10-11T00:09:19.8934082Z Uploaded bytes 25165824
+2026-10-11T00:09:20.3074780Z Uploaded bytes 33554432
+2026-10-11T00:09:20.4986491Z Uploaded bytes 41943040
+2026-10-11T00:09:20.9417828Z Uploaded bytes 50331648
+2026-10-11T00:09:21.5284828Z Uploaded bytes 58720256
+2026-10-11T00:09:21.8004555Z Uploaded bytes 67108864
+2026-10-11T00:09:21.9204562Z Uploaded bytes 75497472
+2026-10-11T00:09:22.1380315Z Uploaded bytes 83886080
+2026-10-11T00:09:22.5037975Z Uploaded bytes 92274688
+2026-10-11T00:09:22.7896005Z Uploaded bytes 100663296
+2026-10-11T00:09:23.0893971Z Uploaded bytes 109051904
+2026-10-11T00:09:23.4167493Z Uploaded bytes 117440512
+2026-10-11T00:09:23.7622769Z Uploaded bytes 125829120
+2026-10-11T00:09:23.8034886Z Uploaded bytes 126323202
+2026-10-11T00:09:23.8375631Z Finished uploading artifact content to blob storage!
+2026-10-11T00:09:23.8379390Z SHA256 digest of uploaded artifact zip is ac204cae833f37fcaf43a38e43181f450752adb558dd0f85091a45fd8d30eef8
+2026-10-11T00:09:23.8381854Z Finalizing artifact upload
+2026-10-11T00:09:24.1098442Z Artifact SerialCtl-UI-evidence.zip successfully finalized. Artifact ID 11686766435
+2026-10-11T00:09:24.1099505Z Artifact SerialCtl-UI-evidence has been successfully uploaded! Final size is 126323202 bytes. Artifact ID is 11686766435
+2026-10-11T00:09:24.1110929Z Artifact download URL: https://github.com/john2000smith7-del/SerialCtl/actions/runs/38097145874/artifacts/11686766435
+2026-10-11T00:09:24.1441531Z Post job cleanup.
+2026-10-11T00:09:24.2714614Z Cache hit occurred on the primary key visa18-e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517, not saving cache.
+2026-10-11T00:09:24.2716812Z (node:3916) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-11T00:09:24.2717503Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-11T00:09:24.2976995Z Post job cleanup.
+2026-10-11T00:09:24.4690067Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-11T00:09:24.4982762Z git version 2.56.0.windows.1
+2026-10-11T00:09:24.5043458Z Temporarily overriding HOME='D:\a\_temp\df9d2f08-d6f9-4243-abbb-7c6c15a98ea5' before making global git config changes
+2026-10-11T00:09:24.5044709Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-11T00:09:24.5057470Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\SerialCtl\SerialCtl
+2026-10-11T00:09:24.5461932Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-11T00:09:24.5758808Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-11T00:09:25.0551601Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-11T00:09:25.0865848Z http.https://github.com/.extraheader
+2026-10-11T00:09:25.0911024Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-10-11T00:09:25.1208237Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-11T00:09:25.5836297Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-11T00:09:25.6133232Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-11T00:09:26.1061782Z Cleaning up orphan processes
+2026-10-11T00:09:26.1628600Z Terminate orphan process: pid (4344) (vctip)
+2026-10-11T00:09:26.1672241Z Terminate orphan process: pid (6352) (MSBuild)
+2026-10-11T00:09:26.1730659Z Terminate orphan process: pid (5360) (MSBuild)
+2026-10-11T00:09:26.1777148Z Terminate orphan process: pid (7748) (MSBuild)
+2026-10-11T00:09:26.2169660Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

@@ -1,0 +1,53 @@
+{
+  "kind": "source-formula reproduction; not actual Windows or DPI run",
+  "persisted_sidebar_width": [
+    {
+      "dpi": 96,
+      "saved_physical_width": 650,
+      "loaded_before_ScaleUiMetrics": 650,
+      "restored_physical_width_assuming_space_available": 650,
+      "lost_physical_width": 0
+    },
+    {
+      "dpi": 120,
+      "saved_physical_width": 812,
+      "loaded_before_ScaleUiMetrics": 650,
+      "restored_physical_width_assuming_space_available": 650,
+      "lost_physical_width": 162
+    },
+    {
+      "dpi": 144,
+      "saved_physical_width": 975,
+      "loaded_before_ScaleUiMetrics": 650,
+      "restored_physical_width_assuming_space_available": 650,
+      "lost_physical_width": 325
+    },
+    {
+      "dpi": 192,
+      "saved_physical_width": 1300,
+      "loaded_before_ScaleUiMetrics": 650,
+      "restored_physical_width_assuming_space_available": 650,
+      "lost_physical_width": 650
+    }
+  ],
+  "command_dialog": [
+    {
+      "steps": 1,
+      "client_height_DLU": 136,
+      "work_area_height_cap": false,
+      "scrolling_container": false
+    },
+    {
+      "steps": 2,
+      "client_height_DLU": 184,
+      "work_area_height_cap": false,
+      "scrolling_container": false
+    },
+    {
+      "steps": 10,
+      "client_height_DLU": 328,
+      "work_area_height_cap": false,
+      "scrolling_container": false
+    }
+  ]
+}
