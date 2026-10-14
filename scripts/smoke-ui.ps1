@@ -440,6 +440,10 @@ foreach ($architecture in @('x64')) {
             # The exact packaged GUI starts its fixed-scope service automatically.
             & python (Join-Path (Get-SerialCtlRepositoryRoot) 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() (Join-Path $OutputDirectory ("$architecture-$theme-display.json"))
             if ($LASTEXITCODE -ne 0) { throw 'Unified gateway / real GUI CMD key editing failed.' }
+            if ($ActualMouse) {
+                & python (Join-Path $root 'tests/integration/gui_cmd_user_input.py') --native-dir $native --hwnd $application.MainWindowHandle.ToInt64() --pid $application.Id --output-json (Join-Path $OutputDirectory "$architecture-$theme-cmd-real-input.json")
+                if ($LASTEXITCODE -ne 0) { throw 'Real CMD SendInput keyboard execution failed.' }
+            }
             $streamOptions = @('--start-stream')
             if ($ActualMouse) { $streamOptions += '--long-stream' }
             & python (Join-Path $root 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() @streamOptions

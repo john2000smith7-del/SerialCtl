@@ -23,6 +23,7 @@
 - SFTP 名称/大小列边界双向调整；记录实际列宽和相邻列位置。此项使用隔离的 SSH/SFTP 子进程替身，界面仍为生产程序，不代表真实服务器已经通过。
 - 持续真实 CMD / 受控 SSH 输出期间操作。用实际绘制的不同 stdout 标记证明输出与鼠标按住的时间重叠，不能只用窗口重绘计数证明。
 - 实际点击创建大量 CMD；系统滚轮、Home/End、覆盖滚动条拖动；“全部断开”后检查资源为空、原 CMD 进程树确实退出。列表初始锚点和通知刷新属于明确标记的测试准备操作。
+- 浅、深主题的空闲真实 CMD：实际点击终端后，通过 `SendInput` 逐个输入 ASCII 字符及 Home/Left/Right/Delete/End/Backspace/Enter，检查焦点、HWND 和 PID。命令必须写出字节完全匹配的临时文件，并由只读 WebSocket 订阅读到独立输出行；再检查环境变量和工作目录跨命令保留。此项不使用直接发送的窗口键盘消息或 WebSocket 命令注入，中文 IME 不在覆盖范围。`*-cmd-real-input.json` 保存输入、原始事件和文件证据，同名前缀的 before/after PNG 来自真实桌面。
 
 `actual-clicks.jsonl` 保存按钮输入；`*-user-actions.json` 保存窗口/控件几何、输入时间、逐项结论、截图 SHA-256、响应及输出观察；`gui-lifecycle.json` 保存键盘焦点、列表选择和进程清理结果。程序来源与摘要保存在 `interaction-receipt.json`、`program-package-sha256.json`、`program-executable-sha256.json`。
 
