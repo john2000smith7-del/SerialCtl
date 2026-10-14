@@ -195,20 +195,25 @@ def run(args, report):
         client.subscribe(resource, cursor)
 
         def output_line(value, timeout=10):
-            pattern = re.compile(rb'(?:^|[\r\n])' + re.escape(value.encode('ascii')) + rb'\r?\n')
+            # CMD writes its prompt without a newline. With echo disabled,
+            # TYPE's exact file record can immediately follow that prompt.
+            # Input events are excluded, and file bytes are independently
+            # verified, so accepting this output boundary cannot count typing
+            # the command as execution.
+            pattern = re.compile(re.escape(value.encode('ascii')) + rb'\r\n')
             deadline = time.monotonic() + timeout
             while not pattern.search(raw):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise AssertionError('Missing standalone executed output line: ' + value)
+                    raise AssertionError('Missing exact executed output record: ' + value)
                 try:
                     event = client.next_event(resource, timeout=remaining)
                 except queue.Empty as error:
-                    raise AssertionError('Missing standalone executed output line: ' + value) from error
+                    raise AssertionError('Missing exact executed output record: ' + value) from error
                 report['websocket_events'].append(event)
                 if event.get('kind') == 'output':
                     raw.extend(base64.b64decode(event['data'], validate=True))
-            report['checks'].append({'check': 'raw executed output line', 'expected': value, 'passed': True})
+            report['checks'].append({'check': 'exact CRLF record in device stdout (CMD prompt may precede it)', 'expected': value, 'passed': True})
 
         def file_matches(name, expected):
             path = fixture / name
