@@ -1,0 +1,812 @@
+{
+  "status": "FAIL",
+  "window": 328134,
+  "pid": 1100,
+  "created_real_cmd_sessions": 35,
+  "child_processes_before": {
+    "8196": "cmd.exe",
+    "5640": "serialctl.exe",
+    "8": "serialctl.exe",
+    "1544": "conhost.exe",
+    "4620": "serialctl.exe",
+    "1040": "serialctl.exe",
+    "544": "serialctl.exe",
+    "8224": "serialctl.exe",
+    "7204": "serialctl.exe",
+    "6692": "cmd.exe",
+    "3112": "cmd.exe",
+    "2092": "conhost.exe",
+    "3124": "cmd.exe",
+    "1080": "serialctl.exe",
+    "1084": "serialctl.exe",
+    "8252": "conhost.exe",
+    "3136": "cmd.exe",
+    "6212": "conhost.exe",
+    "4688": "conhost.exe",
+    "1620": "cmd.exe",
+    "1120": "conhost.exe",
+    "8288": "cmd.exe",
+    "5732": "cmd.exe",
+    "4708": "cmd.exe",
+    "3180": "serialctl.exe",
+    "5748": "conhost.exe",
+    "3192": "cmd.exe",
+    "8316": "serialctl.exe",
+    "7812": "conhost.exe",
+    "6276": "cmd.exe",
+    "2712": "serialctl.exe",
+    "8344": "conhost.exe",
+    "5800": "conhost.exe",
+    "5804": "serialctl.exe",
+    "5808": "conhost.exe",
+    "6328": "cmd.exe",
+    "4800": "conhost.exe",
+    "7872": "conhost.exe",
+    "6848": "cmd.exe",
+    "8384": "cmd.exe",
+    "5316": "conhost.exe",
+    "1740": "powershell.exe",
+    "4816": "cmd.exe",
+    "4312": "serialctl.exe",
+    "6872": "serialctl.exe",
+    "8412": "serialctl.exe",
+    "6880": "serialctl.exe",
+    "740": "conhost.exe",
+    "6888": "conhost.exe",
+    "1264": "cmd.exe",
+    "8440": "conhost.exe",
+    "7932": "serialctl.exe",
+    "764": "conhost.exe",
+    "1792": "conhost.exe",
+    "4356": "conhost.exe",
+    "776": "serialctl.exe",
+    "3344": "serialctl.exe",
+    "4888": "conhost.exe",
+    "2332": "serialctl.exe",
+    "3868": "conhost.exe",
+    "7452": "conhost.exe",
+    "3360": "serialctl.exe",
+    "7456": "conhost.exe",
+    "8480": "cmd.exe",
+    "2340": "conhost.exe",
+    "8000": "serialctl.exe",
+    "7492": "serialctl.exe",
+    "1864": "cmd.exe",
+    "3916": "serialctl.exe",
+    "4948": "serialctl.exe",
+    "7516": "conhost.exe",
+    "3948": "serialctl.exe",
+    "2928": "cmd.exe",
+    "2944": "serialctl.exe",
+    "5504": "cmd.exe",
+    "7048": "conhost.exe",
+    "7052": "serialctl.exe",
+    "3980": "conhost.exe",
+    "6032": "serialctl.exe",
+    "7576": "cmd.exe",
+    "3492": "serialctl.exe",
+    "7076": "cmd.exe",
+    "2984": "powershell.exe",
+    "2480": "conhost.exe",
+    "8120": "cmd.exe",
+    "3516": "cmd.exe",
+    "5052": "cmd.exe",
+    "8128": "cmd.exe",
+    "4032": "cmd.exe",
+    "3032": "cmd.exe",
+    "7640": "cmd.exe",
+    "6104": "cmd.exe",
+    "5596": "cmd.exe",
+    "992": "serialctl.exe",
+    "6112": "serialctl.exe",
+    "1508": "conhost.exe",
+    "1512": "serialctl.exe",
+    "2536": "conhost.exe",
+    "5096": "conhost.exe",
+    "8172": "cmd.exe",
+    "508": "conhost.exe",
+    "1516": "cmd.exe",
+    "4592": "cmd.exe",
+    "2548": "cmd.exe",
+    "2036": "conhost.exe",
+    "7672": "conhost.exe",
+    "5628": "serialctl.exe"
+  },
+  "children_after": {},
+  "disconnect_seconds": 0.3439999999999941,
+  "top_anchor": 12,
+  "selection_anchor": 34,
+  "top_after_mouse_drag": 0,
+  "desktop_frames": [
+    "gui-connections-drag-0.png",
+    "gui-connections-drag-1.png",
+    "gui-connections-drag-2.png",
+    "gui-connections-drag-3.png"
+  ],
+  "known_child_creation_times": {
+    "8196": 134364505978261816,
+    "5640": 134364504836418716,
+    "8": 134364505396543454,
+    "1544": 134364505851668924,
+    "4620": 134364505920312163,
+    "1040": 134364505885941637,
+    "544": 134364505862883272,
+    "8224": 134364505983585871,
+    "7204": 134364505845769474,
+    "6692": 134364505828810371,
+    "3112": 134364505868971836,
+    "2092": 134364505972081068,
+    "3124": 134364505903476143,
+    "1080": 134364505822743562,
+    "1084": 134364505903040936,
+    "8252": 134364505983668266,
+    "3136": 134364505886365905,
+    "6212": 134364505891816530,
+    "4688": 134364505834278448,
+    "1620": 134364505949493879,
+    "1120": 134364505926187069,
+    "8288": 134364505984039576,
+    "5732": 134364505817515433,
+    "4708": 134364505863295044,
+    "3180": 134364505960636370,
+    "5748": 134364505840080460,
+    "3192": 134364505920748934,
+    "8316": 134364505989375447,
+    "7812": 134364505880209160,
+    "6276": 134364505966738179,
+    "2712": 134364505874331313,
+    "8344": 134364505989457414,
+    "5800": 134364505954885366,
+    "5804": 134364505828382991,
+    "5808": 134364505886027643,
+    "6328": 134364505926560137,
+    "4800": 134364505828480989,
+    "7872": 134364505862967226,
+    "6848": 134364505874786609,
+    "8384": 134364505989854468,
+    "5316": 134364505811587394,
+    "1740": 134364504950143055,
+    "4816": 134364505955236661,
+    "4312": 134364505937553770,
+    "6872": 134364505954791384,
+    "8412": 134364505995170912,
+    "6880": 134364505931910799,
+    "740": 134364505908772259,
+    "6888": 134364505817194234,
+    "1264": 134364505823170636,
+    "8440": 134364505995253633,
+    "7932": 134364505851580142,
+    "764": 134364505396639394,
+    "1792": 134364505943298840,
+    "4356": 134364505966367056,
+    "776": 134364505971994287,
+    "3344": 134364505811474872,
+    "4888": 134364505977870951,
+    "2332": 134364505868533680,
+    "3868": 134364505897479479,
+    "7452": 134364505949123612,
+    "3360": 134364505908686244,
+    "7456": 134364505937641695,
+    "8480": 134364505995644121,
+    "2340": 134364505868615335,
+    "8000": 134364505966285838,
+    "7492": 134364505834178777,
+    "1864": 134364505834586246,
+    "3916": 134364505897396558,
+    "4948": 134364505817097331,
+    "7516": 134364505914596604,
+    "3948": 134364505926103175,
+    "2928": 134364505897853041,
+    "2944": 134364505880123608,
+    "5504": 134364505892183509,
+    "7048": 134364505931993773,
+    "7052": 134364505891733812,
+    "3980": 134364505857324333,
+    "6032": 134364505914513753,
+    "7576": 134364505937988980,
+    "3492": 134364505857242043,
+    "7076": 134364505396950967,
+    "2984": 134364505495100249,
+    "2480": 134364505920394819,
+    "8120": 134364505857666109,
+    "3516": 134364505846160258,
+    "5052": 134364505943677651,
+    "8128": 134364504836802961,
+    "4032": 134364505932352969,
+    "3032": 134364505840400774,
+    "7640": 134364505852005057,
+    "6104": 134364505961102178,
+    "5596": 134364505909159863,
+    "992": 134364505943216487,
+    "6112": 134364505977788131,
+    "1508": 134364505903124059,
+    "1512": 134364505949040309,
+    "2536": 134364505874415384,
+    "5096": 134364505960720755,
+    "8172": 134364505880565786,
+    "508": 134364504836520776,
+    "1516": 134364505972448888,
+    "4592": 134364505914975189,
+    "2548": 134364505811889735,
+    "2036": 134364505845854283,
+    "7672": 134364505822849209,
+    "5628": 134364505839981778
+  },
+  "known_children_all_exited": true,
+  "checks": [
+    "stable refresh fixture",
+    "system mouse creation of 33 CMD sessions",
+    "system mouse wheel",
+    "SendInput Home/End with observed actual focus and explicit recovery",
+    "physical overlay thumb drag",
+    "system mouse all-disconnect",
+    "job child termination"
+  ],
+  "input_events": [
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 274.796,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 275.359,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 275.937,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 276.5,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 277.078,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 277.656,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 278.234,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 278.812,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 279.375,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 279.937,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 280.515,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 281.093,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 281.671,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 282.25,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 282.828,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 283.39,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 283.953,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 284.531,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 285.109,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 285.687,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 286.265,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 286.843,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 287.406,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 287.984,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 288.562,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 289.14,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 289.718,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 290.281,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 290.859,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 291.437,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 292.015,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 292.593,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 300,
+      "hwnd": 131472,
+      "point": [
+        479,
+        67
+      ],
+      "monotonic": 293.171,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 106,
+      "hwnd": 131636,
+      "point": [
+        118,
+        200
+      ],
+      "monotonic": 293.375,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "click",
+      "control": 106,
+      "hwnd": 131636,
+      "point": [
+        193,
+        387
+      ],
+      "monotonic": 293.953,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "reacquire-list-focus",
+      "reason": "Establish real list keyboard focus after observing the row-click result",
+      "control": 106,
+      "focus": {
+        "hwnd": 131636,
+        "control": 106,
+        "foreground": 328134
+      },
+      "method": "actual click on current overlay thumb; no SetFocus",
+      "monotonic": 293.953
+    },
+    {
+      "action": "wheel",
+      "control": 106,
+      "hwnd": 131636,
+      "delta": -120,
+      "monotonic": 293.953,
+      "method": "system mouse_event wheel"
+    },
+    {
+      "action": "key",
+      "control": 106,
+      "hwnd": 131636,
+      "vk": 36,
+      "actual_focus_before": {
+        "hwnd": 131636,
+        "control": 106,
+        "foreground": 328134
+      },
+      "required_list_focus": true,
+      "monotonic": 293.953,
+      "method": "SendInput virtual key down/up"
+    },
+    {
+      "action": "key",
+      "control": 106,
+      "hwnd": 131636,
+      "vk": 35,
+      "actual_focus_before": {
+        "hwnd": 66102,
+        "control": 107,
+        "foreground": 328134
+      },
+      "required_list_focus": false,
+      "monotonic": 293.953,
+      "method": "SendInput virtual key down/up"
+    },
+    {
+      "action": "click",
+      "control": 106,
+      "hwnd": 131636,
+      "point": [
+        193,
+        231
+      ],
+      "monotonic": 296.015,
+      "method": "system mouse_event down/up"
+    },
+    {
+      "action": "reacquire-list-focus",
+      "reason": "Independently verify End and continue lifecycle checks after recording consecutive-key behavior",
+      "control": 106,
+      "focus": {
+        "hwnd": 131636,
+        "control": 106,
+        "foreground": 328134
+      },
+      "method": "actual click on current overlay thumb; no SetFocus",
+      "monotonic": 296.015
+    },
+    {
+      "action": "key",
+      "control": 106,
+      "hwnd": 131636,
+      "vk": 35,
+      "actual_focus_before": {
+        "hwnd": 131636,
+        "control": 106,
+        "foreground": 328134
+      },
+      "required_list_focus": true,
+      "monotonic": 296.015,
+      "method": "SendInput virtual key down/up"
+    },
+    {
+      "action": "overlay-thumb-drag",
+      "control": 106,
+      "hwnd": 131636,
+      "monotonic": 297.75,
+      "method": "system mouse_event down/up with SetCursorPos path"
+    },
+    {
+      "action": "click",
+      "control": 302,
+      "hwnd": 262218,
+      "point": [
+        118,
+        708
+      ],
+      "monotonic": 297.906,
+      "method": "system mouse_event down/up"
+    }
+  ],
+  "input_validation": "Every input target HWND is matched to the GUI PID and control ID; visible, enabled, foreground, and WindowFromPoint hit-tested; keyboard focus read through GetGUIThreadInfo",
+  "fixtures": [
+    "LB_SETTOPINDEX establishes top anchor 12; not a user action",
+    "20 WM_APP+9 messages trigger state-notification refresh; not user actions",
+    "WebSocket input starts a real long-running CMD child before all-disconnect"
+  ],
+  "hardware": "no physical serial/SFTP/power; task-owned output covered separately by PowerService controlled tests",
+  "observations": [
+    {
+      "action": "connection-row-click",
+      "selection": 12,
+      "focus_after": {
+        "hwnd": 66102,
+        "control": 107,
+        "foreground": 328134
+      },
+      "observation": "Row selection moved focus to the terminal",
+      "classification": "observation only; row-click focus may be intentional"
+    },
+    {
+      "action": "Home",
+      "result": {
+        "selection": 0,
+        "focus_after": {
+          "hwnd": 66102,
+          "control": 107,
+          "foreground": 328134
+        }
+      }
+    },
+    {
+      "action": "End-directly-after-Home",
+      "expected_selection": 35,
+      "result": {
+        "selection": 0,
+        "focus_after": {
+          "hwnd": 66102,
+          "control": 107,
+          "foreground": 328134
+        }
+      }
+    },
+    {
+      "action": "End-after-explicit-thumb-focus-recovery",
+      "selection": 35,
+      "focus_after": {
+        "hwnd": 131636,
+        "control": 106,
+        "foreground": 328134
+      }
+    }
+  ],
+  "behavior_failures": [
+    {
+      "check": "consecutive Home/End connection-list navigation",
+      "expected": "End selects the last connection-list row after Home",
+      "expected_selection": 35,
+      "actual": {
+        "selection": 0,
+        "focus_after": {
+          "hwnd": 66102,
+          "control": 107,
+          "foreground": 328134
+        }
+      },
+      "home": {
+        "selection": 0,
+        "focus_after": {
+          "hwnd": 66102,
+          "control": 107,
+          "foreground": 328134
+        }
+      },
+      "impact": "Keyboard navigation leaves the connection list after selecting a session"
+    }
+  ],
+  "exit_code": 2
+}

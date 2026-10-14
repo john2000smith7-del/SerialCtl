@@ -1,0 +1,26 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261014111801
+Username: runnervmtn0fv\runneradmin
+RunAs User: runnervmtn0fv\runneradmin
+Configuration Name: 
+Machine: runnervmtn0fv (Microsoft Windows NT 10.0.20348.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command . 'D:\a\_temp\4c779955-0a7a-4a71-8bd6-d299cadfbc40.ps1'
+Process ID: 1180
+PSVersion: 5.1.20348.5622
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.20348.5622
+BuildVersion: 10.0.20348.5622
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is D:\a\_temp/serialctl-ui/desktop-interaction-transcript.txt
+
+
+PS>TerminatingError(): "Real CMD SendInput keyboard execution failed."
+**********************
+Windows PowerShell transcript end
+End time: 20261014111846
+**********************

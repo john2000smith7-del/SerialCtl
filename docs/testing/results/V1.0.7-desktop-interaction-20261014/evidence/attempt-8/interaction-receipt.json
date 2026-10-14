@@ -1,0 +1,9 @@
+﻿{
+    "programSourceSha":  "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+    "testSourceSha":  "b1ad82e00cdb3b154e3981f84685f18c358888fc",
+    "buildRun":  "38392007467",
+    "testRun":  "38555533286",
+    "programSource":  "Verified portable artifact, unchanged production source",
+    "os":  "Microsoft Windows NT 10.0.20348.0",
+    "scope":  "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+}

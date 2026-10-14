@@ -1,5 +1,7 @@
 # 真实桌面交互测试
 
+已执行的 [2026-10-14 V1.0.7 实际审核报告](results/V1.0.7-desktop-interaction-20261014/README.md)记录两主题的真实鼠标/键盘结果、残留问题和原始证据；不能把脚本存在当作已经通过。
+
 此测试在实际 Windows 桌面运行已构建的 SerialCtl，通过系统鼠标和键盘操作窗口。生产程序、界面和设备状态不由测试脚本重画。截图来自屏幕 DC 的 BitBlt / CopyFromScreen；原有 PrintWindow 图片仅作为单独的布局证据。
 
 ## 执行

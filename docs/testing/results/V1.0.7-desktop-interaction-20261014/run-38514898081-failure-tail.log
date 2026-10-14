@@ -1,0 +1,100 @@
+2026-10-14T05:07:20.8174306Z ##[endgroup]
+2026-10-14T05:07:21.9349190Z Transcript started, output file is D:\a\_temp/serialctl-ui/desktop-interaction-transcript.txt
+2026-10-14T05:07:34.2313462Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:07:34.2314448Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:07:34.2315882Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:07:34.2317996Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:07:34.9543400Z Label 串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:07:34.9544311Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:07:34.9545261Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:07:34.9546325Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:07:34.9547465Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:07:34.9548692Z Label 流控: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:07:35.6733556Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:07:35.6735018Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:07:36.3766409Z Label 远端串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:07:36.3768361Z Label 来源 IP: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:07:36.8502308Z Label 服务端口（通常使用自动发现）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:07:38.3312429Z Label 连接方式: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:07:38.3313152Z Label 设备 / COM 口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:07:38.3313734Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:07:38.3314213Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:07:38.3314795Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:07:38.3315415Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:07:53.6076963Z CMD display P50=4.858 ms P95=5.488 ms P99=5.594 ms; 100 samples
+2026-10-14T05:07:53.6077731Z PASS: packaged GUI unified WebSocket scope, CMD stdout, GUI sequential line editing, persistent state; outputs visible/local logged
+2026-10-14T05:07:55.2058761Z Started sustained real CMD child stdout on session-1
+2026-10-14T05:08:11.2688655Z FAIL: Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery
+2026-10-14T05:08:18.6682529Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:18.6683912Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:19.0906746Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:19.0910724Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:19.0911828Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:20.5302109Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:20.5302706Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:20.5305419Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:22.7987532Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:08:22.7989083Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:08:22.7990180Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:22.8008163Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:23.5175510Z Label 串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:08:23.5176841Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:08:23.5178341Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:23.5179228Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:23.5195145Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:23.5208343Z Label 流控: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:24.2228171Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:08:24.2228892Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:08:24.9268253Z Label 远端串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:24.9269301Z Label 来源 IP: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:08:25.3812280Z Label 服务端口（通常使用自动发现）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:08:26.9112786Z Label 连接方式: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:08:26.9114165Z Label 设备 / COM 口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:08:26.9115323Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:08:26.9117247Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:08:26.9118339Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:08:26.9120037Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-14T05:08:39.4721316Z CMD display P50=3.257 ms P95=3.952 ms P99=4.181 ms; 100 samples
+2026-10-14T05:08:39.4721893Z PASS: packaged GUI unified WebSocket scope, CMD stdout, GUI sequential line editing, persistent state; outputs visible/local logged
+2026-10-14T05:08:41.0628402Z Started sustained real CMD child stdout on session-2
+2026-10-14T05:08:57.5596670Z FAIL: Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery
+2026-10-14T05:09:05.0514495Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:05.0536713Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:05.4731119Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:05.4732380Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:05.4736504Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:06.8790868Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:06.8791711Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:06.8797602Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:34.2842501Z Completed: 35 real CMD sessions, list anchors/wheel/keys, all-disconnect child cleanup 0.406s
+2026-10-14T05:09:34.2843113Z FAIL: GUI lifecycle checks; 1 observed behavior failures
+2026-10-14T05:09:35.1234911Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:09:35.1236718Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:09:35.1237464Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:35.1239565Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:37.9011672Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:09:37.9012626Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-14T05:09:37.9013524Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:37.9015172Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:41.3002710Z Label 远端目录（可粘贴 pwd 输出）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:09:52.6895586Z FAIL: Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery
+2026-10-14T05:09:55.2842886Z Label 远端目录（可粘贴 pwd 输出）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T05:10:06.3673697Z FAIL: Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery
+2026-10-14T05:10:07.6653227Z Transcript stopped, output file is D:\a\_temp\serialctl-ui\desktop-interaction-transcript.txt
+2026-10-14T05:10:07.6971769Z x64-light desktop sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T05:10:07.6972475Z x64-dark desktop sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T05:10:07.6973254Z Real connection list Home/End behavior failed; see gui-lifecycle.json. Remaining cases continue.
+2026-10-14T05:10:07.6973958Z x64-light SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T05:10:07.6974539Z x64-dark SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T05:10:07.6975103Z At D:\a\SerialCtl\SerialCtl\scripts\smoke-ui.ps1:664 char:38
+2026-10-14T05:10:07.6975577Z + ... ehaviorFailures.Count -gt 0) { throw ($behaviorFailures -join "`n") }
+2026-10-14T05:10:07.6976092Z +                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-10-14T05:10:07.6976733Z     + CategoryInfo          : OperationStopped: (x64-light deskt...cases continue.:String) [], RuntimeException
+2026-10-14T05:10:07.6977469Z     + FullyQualifiedErrorId : x64-light desktop sidebar input failed; see user-actions.json. Remaining cases continue. 
+2026-10-14T05:10:07.6977858Z    
+2026-10-14T05:10:07.6978123Z x64-dark desktop sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T05:10:07.6978621Z Real connection list Home/End behavior failed; see gui-lifecycle.json. Remaining cases continue.
+2026-10-14T05:10:07.6979222Z x64-light SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T05:10:07.6979639Z x64-dark SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T05:10:07.6979939Z  
+2026-10-14T05:10:07.7206210Z ##[error]Process completed with exit code 1.

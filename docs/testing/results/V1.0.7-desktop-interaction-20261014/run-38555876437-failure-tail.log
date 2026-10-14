@@ -1,0 +1,130 @@
+2026-10-14T11:23:46.6857782Z Label 远端目录（可粘贴 pwd 输出）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-14T11:23:58.8754572Z FAIL: Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery
+2026-10-14T11:24:00.2036495Z Transcript stopped, output file is D:\a\_temp\serialctl-ui\desktop-interaction-transcript.txt
+2026-10-14T11:24:00.2467873Z x64-light desktop sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T11:24:00.2468995Z x64-dark desktop sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T11:24:00.2469968Z Real connection list Home/End behavior failed; see gui-lifecycle.json. Remaining cases continue.
+2026-10-14T11:24:00.2471026Z x64-light SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T11:24:00.2472007Z x64-dark SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T11:24:00.2472848Z At D:\a\SerialCtl\SerialCtl\scripts\smoke-ui.ps1:668 char:38
+2026-10-14T11:24:00.2473754Z + ... ehaviorFailures.Count -gt 0) { throw ($behaviorFailures -join "`n") }
+2026-10-14T11:24:00.2474545Z +                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-10-14T11:24:00.2475539Z     + CategoryInfo          : OperationStopped: (x64-light deskt...cases continue.:String) [], RuntimeException
+2026-10-14T11:24:00.2476870Z     + FullyQualifiedErrorId : x64-light desktop sidebar input failed; see user-actions.json. Remaining cases continue. 
+2026-10-14T11:24:00.2477855Z    
+2026-10-14T11:24:00.2478520Z x64-dark desktop sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T11:24:00.2479599Z Real connection list Home/End behavior failed; see gui-lifecycle.json. Remaining cases continue.
+2026-10-14T11:24:00.2480761Z x64-light SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T11:24:00.2481745Z x64-dark SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+2026-10-14T11:24:00.2482516Z  
+2026-10-14T11:24:00.2764723Z ##[error]Process completed with exit code 1.
+2026-10-14T11:24:00.2907304Z ##[group]Run $files = @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Join-Path "$env:RUNNER_TEMP/serialctl-ui/payload" $_ } | Where-Object { Test-Path $_ }
+2026-10-14T11:24:00.2908536Z [36;1m$files = @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Join-Path "$env:RUNNER_TEMP/serialctl-ui/payload" $_ } | Where-Object { Test-Path $_ }[0m
+2026-10-14T11:24:00.2909860Z [36;1mif ($files) { $files | ForEach-Object { Get-FileHash -LiteralPath $_ -Algorithm SHA256 } | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-executable-sha256.json" -Encoding UTF8 }[0m
+2026-10-14T11:24:00.2947128Z shell: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command ". '{0}'"
+2026-10-14T11:24:00.2947579Z ##[endgroup]
+2026-10-14T11:24:00.5632101Z ##[group]Run actions/upload-artifact@v4
+2026-10-14T11:24:00.5632466Z with:
+2026-10-14T11:24:00.5660501Z   name: SerialCtl-actual-desktop-interaction
+2026-10-14T11:24:00.5661347Z   path: D:\a\_temp/serialctl-ui/*.png
+D:\a\_temp/serialctl-ui/*.json
+D:\a\_temp/serialctl-ui/*.jsonl
+D:\a\_temp/serialctl-ui/*.txt
+D:\a\_temp/serialctl-ui/*.log
+
+2026-10-14T11:24:00.5662079Z   if-no-files-found: error
+2026-10-14T11:24:00.5662347Z   retention-days: 30
+2026-10-14T11:24:00.5662592Z   compression-level: 6
+2026-10-14T11:24:00.5662831Z   overwrite: false
+2026-10-14T11:24:00.5663072Z   include-hidden-files: false
+2026-10-14T11:24:00.5663354Z ##[endgroup]
+2026-10-14T11:24:00.7526724Z (node:3524) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-14T11:24:00.7527913Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-14T11:24:00.9766742Z With the provided path, there will be 601 files uploaded
+2026-10-14T11:24:00.9773067Z Artifact name is valid!
+2026-10-14T11:24:00.9775061Z Root directory input is valid!
+2026-10-14T11:24:01.2805409Z Beginning upload of artifact content to blob storage
+2026-10-14T11:24:01.7041670Z (node:3524) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-14T11:24:02.3449185Z Uploaded bytes 8388608
+2026-10-14T11:24:02.5333553Z Uploaded bytes 16777216
+2026-10-14T11:24:02.7598584Z Uploaded bytes 25165824
+2026-10-14T11:24:02.9154254Z Uploaded bytes 33554432
+2026-10-14T11:24:03.2175979Z Uploaded bytes 41943040
+2026-10-14T11:24:03.5406518Z Uploaded bytes 50331648
+2026-10-14T11:24:03.8583540Z Uploaded bytes 58720256
+2026-10-14T11:24:04.1599212Z Uploaded bytes 67108864
+2026-10-14T11:24:04.5317665Z Uploaded bytes 75497472
+2026-10-14T11:24:04.7905378Z Uploaded bytes 83886080
+2026-10-14T11:24:05.0222667Z Uploaded bytes 92274688
+2026-10-14T11:24:05.3041960Z Uploaded bytes 100663296
+2026-10-14T11:24:05.7274316Z Uploaded bytes 109051904
+2026-10-14T11:24:05.9132190Z Uploaded bytes 117440512
+2026-10-14T11:24:06.1287057Z Uploaded bytes 125829120
+2026-10-14T11:24:06.4226510Z Uploaded bytes 134217728
+2026-10-14T11:24:06.6904138Z Uploaded bytes 142606336
+2026-10-14T11:24:06.9715219Z Uploaded bytes 150994944
+2026-10-14T11:24:07.2633693Z Uploaded bytes 159383552
+2026-10-14T11:24:07.5563420Z Uploaded bytes 167772160
+2026-10-14T11:24:07.8416919Z Uploaded bytes 176160768
+2026-10-14T11:24:08.1344237Z Uploaded bytes 184549376
+2026-10-14T11:24:08.4304312Z Uploaded bytes 192937984
+2026-10-14T11:24:08.7179910Z Uploaded bytes 201326592
+2026-10-14T11:24:08.9877586Z Uploaded bytes 209715200
+2026-10-14T11:24:09.2857374Z Uploaded bytes 218103808
+2026-10-14T11:24:09.5394132Z Uploaded bytes 226492416
+2026-10-14T11:24:09.8143244Z Uploaded bytes 234881024
+2026-10-14T11:24:10.1372373Z Uploaded bytes 243269632
+2026-10-14T11:24:10.4397798Z Uploaded bytes 251658240
+2026-10-14T11:24:10.7126633Z Uploaded bytes 260046848
+2026-10-14T11:24:11.0786799Z Uploaded bytes 268435456
+2026-10-14T11:24:11.2927580Z Uploaded bytes 276824064
+2026-10-14T11:24:11.5382611Z Uploaded bytes 285212672
+2026-10-14T11:24:11.8507296Z Uploaded bytes 293601280
+2026-10-14T11:24:12.0811921Z Uploaded bytes 301989888
+2026-10-14T11:24:12.3641865Z Uploaded bytes 310378496
+2026-10-14T11:24:12.6510030Z Uploaded bytes 318767104
+2026-10-14T11:24:12.9585908Z Uploaded bytes 327155712
+2026-10-14T11:24:13.2210619Z Uploaded bytes 335544320
+2026-10-14T11:24:13.5047597Z Uploaded bytes 343932928
+2026-10-14T11:24:13.7512702Z Uploaded bytes 352321536
+2026-10-14T11:24:14.0288389Z Uploaded bytes 360710144
+2026-10-14T11:24:14.3062847Z Uploaded bytes 369098752
+2026-10-14T11:24:14.5863525Z Uploaded bytes 377487360
+2026-10-14T11:24:14.9554000Z Uploaded bytes 385875968
+2026-10-14T11:24:15.1855998Z Uploaded bytes 394264576
+2026-10-14T11:24:15.4542550Z Uploaded bytes 402653184
+2026-10-14T11:24:15.7563617Z Uploaded bytes 411041792
+2026-10-14T11:24:15.9917758Z Uploaded bytes 419430400
+2026-10-14T11:24:16.3074651Z Uploaded bytes 427819008
+2026-10-14T11:24:16.6122221Z Uploaded bytes 436207616
+2026-10-14T11:24:16.8544406Z Uploaded bytes 444596224
+2026-10-14T11:24:17.1439145Z Uploaded bytes 452984832
+2026-10-14T11:24:17.3955517Z Uploaded bytes 461373440
+2026-10-14T11:24:17.6837925Z Uploaded bytes 469762048
+2026-10-14T11:24:17.9700057Z Uploaded bytes 478150656
+2026-10-14T11:24:18.2495196Z Uploaded bytes 486539264
+2026-10-14T11:24:18.5676568Z Uploaded bytes 494927872
+2026-10-14T11:24:18.6642562Z Uploaded bytes 498376391
+2026-10-14T11:24:18.7142499Z Finished uploading artifact content to blob storage!
+2026-10-14T11:24:18.7146522Z SHA256 digest of uploaded artifact zip is 992b71fe4a9461b36ca8bbd053249d1351a4201227c09c4c25896649af17bb43
+2026-10-14T11:24:18.7149129Z Finalizing artifact upload
+2026-10-14T11:24:19.0598434Z Artifact SerialCtl-actual-desktop-interaction.zip successfully finalized. Artifact ID 11890477053
+2026-10-14T11:24:19.0599983Z Artifact SerialCtl-actual-desktop-interaction has been successfully uploaded! Final size is 498376391 bytes. Artifact ID is 11890477053
+2026-10-14T11:24:19.0611116Z Artifact download URL: https://github.com/john2000smith7-del/SerialCtl/actions/runs/38555876437/artifacts/11890477053
+2026-10-14T11:24:19.0947690Z Post job cleanup.
+2026-10-14T11:24:19.2811292Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-14T11:24:19.3138917Z git version 2.56.0.windows.1
+2026-10-14T11:24:19.3208615Z Temporarily overriding HOME='D:\a\_temp\554767d1-2f1a-4c17-aa2f-56d7e1365a4c' before making global git config changes
+2026-10-14T11:24:19.3210441Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-14T11:24:19.3221301Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\SerialCtl\SerialCtl
+2026-10-14T11:24:19.3552077Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-14T11:24:19.3857736Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-14T11:24:19.8571646Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-14T11:24:19.8820725Z http.https://github.com/.extraheader
+2026-10-14T11:24:19.8855150Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-10-14T11:24:19.9228373Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-14T11:24:20.3884507Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-14T11:24:20.4172534Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-14T11:24:20.9043701Z Cleaning up orphan processes
+2026-10-14T11:24:20.9450009Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/download-artifact@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

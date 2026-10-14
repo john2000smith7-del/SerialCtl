@@ -1,0 +1,4824 @@
+{
+  "status": "FAIL",
+  "mode": "sftp",
+  "prefix": "x64-light",
+  "pid": 8904,
+  "window": 262640,
+  "system": "Windows-2022Server-10.0.20348-SP0",
+  "python": "3.12.10",
+  "started_utc": "2026-10-14T11:23:34.069443+00:00",
+  "input": "SetCursorPos + mouse_event, dispatched by Windows",
+  "capture": "visible desktop GetDC(NULL) + BitBlt; no PrintWindow; hardware cursor excluded",
+  "scope": "production GUI; caller substitutes SSH/SFTP child processes, not UI or layout; no real server assertion",
+  "limitations": [
+    "Captured frames do not prove absence of flicker between frames.",
+    "Measured DPI only; this run does not establish other DPI values or Win7 compatibility."
+  ],
+  "operations": [
+    {
+      "name": "activate-by-caption-click",
+      "status": "PASS",
+      "before": {
+        "seconds": 0.099891,
+        "utc": "2026-10-14T11:23:34.116316+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 320,
+        "terminal_paint_probe": 320,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              796
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1177,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1177,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "wm_null_ms": 0.073,
+      "after": {
+        "seconds": 0.250678,
+        "utc": "2026-10-14T11:23:34.277432+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 330,
+        "terminal_paint_probe": 330,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              796
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1177,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1177,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-column-boundary-1",
+      "status": "PASS",
+      "before": {
+        "seconds": 0.315746,
+        "utc": "2026-10-14T11:23:34.335898+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 334,
+        "terminal_paint_probe": 334,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              796
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1177,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1177,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "name_width_change": -24,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.101,
+      "after": {
+        "seconds": 0.806767,
+        "utc": "2026-10-14T11:23:34.824666+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 365,
+        "terminal_paint_probe": 365,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              796
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1153,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1153,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-column-boundary-2",
+      "status": "PASS",
+      "before": {
+        "seconds": 1.379336,
+        "utc": "2026-10-14T11:23:35.403492+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 401,
+        "terminal_paint_probe": 401,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1153,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1153,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "name_width_change": 32,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.105,
+      "after": {
+        "seconds": 1.906317,
+        "utc": "2026-10-14T11:23:35.924295+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 435,
+        "terminal_paint_probe": 435,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1185,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1185,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-column-boundary-3",
+      "status": "PASS",
+      "before": {
+        "seconds": 2.480529,
+        "utc": "2026-10-14T11:23:36.501871+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 472,
+        "terminal_paint_probe": 472,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1185,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1185,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "name_width_change": -16,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.097,
+      "after": {
+        "seconds": 3.005187,
+        "utc": "2026-10-14T11:23:37.021580+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 505,
+        "terminal_paint_probe": 505,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-size-boundary-1",
+      "status": "PASS",
+      "before": {
+        "seconds": 3.57934,
+        "utc": "2026-10-14T11:23:37.599696+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 542,
+        "terminal_paint_probe": 542,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "size_width_change": 14,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.092,
+      "after": {
+        "seconds": 4.101538,
+        "utc": "2026-10-14T11:23:38.119393+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 575,
+        "terminal_paint_probe": 575,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1155,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1155,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-size-boundary-2",
+      "status": "PASS",
+      "before": {
+        "seconds": 4.678227,
+        "utc": "2026-10-14T11:23:38.697519+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 612,
+        "terminal_paint_probe": 612,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1155,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1155,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "size_width_change": -14,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.101,
+      "after": {
+        "seconds": 5.199597,
+        "utc": "2026-10-14T11:23:39.217360+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 645,
+        "terminal_paint_probe": 645,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-collapse",
+      "status": "PASS",
+      "before": {
+        "seconds": 5.775727,
+        "utc": "2026-10-14T11:23:39.795492+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 682,
+        "terminal_paint_probe": 682,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.1,
+      "after": {
+        "seconds": 6.468787,
+        "utc": "2026-10-14T11:23:40.486654+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 726,
+        "terminal_paint_probe": 726,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              1454,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1650,
+              273,
+              1690,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1500,
+              273,
+              1570,
+              305
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              1570,
+              273,
+              1640,
+              305
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              343
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1498,
+              383,
+              1726,
+              776
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1498,
+              351,
+              1640,
+              383
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1640,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1710,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1498,
+              832,
+              1726,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-expand",
+      "status": "PASS",
+      "before": {
+        "seconds": 7.081998,
+        "utc": "2026-10-14T11:23:41.097081+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 765,
+        "terminal_paint_probe": 765,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              1454,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1650,
+              273,
+              1690,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1500,
+              273,
+              1570,
+              305
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              1570,
+              273,
+              1640,
+              305
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              343
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1498,
+              383,
+              1726,
+              776
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1498,
+              351,
+              1640,
+              383
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1640,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1710,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1498,
+              832,
+              1726,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.095,
+      "after": {
+        "seconds": 7.798939,
+        "utc": "2026-10-14T11:23:41.817073+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 811,
+        "terminal_paint_probe": 811,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-rapid-reversal",
+      "status": "FAIL",
+      "before": {
+        "seconds": 8.378694,
+        "utc": "2026-10-14T11:23:42.395410+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 848,
+        "terminal_paint_probe": 848,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "single_click_observations": [
+        {
+          "seconds": 8.378857,
+          "utc": "2026-10-14T11:23:42.395410+00:00",
+          "index": 0,
+          "bounds": [
+            1486,
+            273,
+            1514,
+            301
+          ],
+          "point": [
+            1491,
+            287
+          ],
+          "window_from_point": 131652,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": null,
+          "bounds_before_down": [
+            1486,
+            273,
+            1514,
+            301
+          ],
+          "hit_before_down": 131652,
+          "bounds_before_up": [
+            1486,
+            273,
+            1514,
+            301
+          ],
+          "hit_before_up": 131652,
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 8.396754,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 8.457057,
+          "utc": "2026-10-14T11:23:42.474099+00:00",
+          "index": 1,
+          "bounds": [
+            1386,
+            273,
+            1414,
+            301
+          ],
+          "point": [
+            1408,
+            287
+          ],
+          "window_from_point": 131652,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 83,
+          "bounds_before_down": [
+            1386,
+            273,
+            1414,
+            301
+          ],
+          "hit_before_down": 131652,
+          "bounds_before_up": [
+            1438,
+            273,
+            1466,
+            301
+          ],
+          "hit_before_up": 262640,
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 8.551042,
+          "caption_flipped": false
+        }
+      ],
+      "double_click_ambiguity": "Prior center-only rapid input can be coalesced by the native Button class into BN_DOUBLECLICKED; counting those pairs as ten BN_CLICKED actions is ambiguous. This run alternates separated points and verifies the toggle caption after every single click. Prior attempt evidence is retained unchanged.",
+      "system_double_click_width_px": 4,
+      "error": "Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery",
+      "after": {
+        "seconds": 8.551165,
+        "utc": "2026-10-14T11:23:42.577966+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 859,
+        "terminal_paint_probe": 860,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              1448,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1492,
+              311,
+              1720,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1644,
+              273,
+              1684,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1494,
+              273,
+              1564,
+              305
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              1564,
+              273,
+              1634,
+              305
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              1492,
+              311,
+              1720,
+              343
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1492,
+              383,
+              1720,
+              776
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1489,
+              273,
+              1517,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1492,
+              351,
+              1634,
+              383
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1634,
+              351,
+              1704,
+              383
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1704,
+              351,
+              1704,
+              383
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1492,
+              832,
+              1720,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "recovery-after-sidebar-failure",
+      "status": "PASS",
+      "before": {
+        "seconds": 8.660837,
+        "utc": "2026-10-14T11:23:42.678335+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 866,
+        "terminal_paint_probe": 866,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              1454,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1650,
+              273,
+              1690,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1500,
+              273,
+              1570,
+              305
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              1570,
+              273,
+              1640,
+              305
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              343
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1498,
+              383,
+              1726,
+              776
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1498,
+              351,
+              1640,
+              383
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1640,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1710,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1498,
+              832,
+              1726,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "needed_click": true,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.1,
+      "after": {
+        "seconds": 9.739967,
+        "utc": "2026-10-14T11:23:43.757737+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 262640,
+        "maximized": false,
+        "terminal_paint_sample": 935,
+        "terminal_paint_probe": 935,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1374,
+              273,
+              1478,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1486,
+              273,
+              1514,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    }
+  ],
+  "input_trace": [
+    {
+      "seconds": 0.10273,
+      "utc": "2026-10-14T11:23:34.116316+00:00",
+      "event": "mouse_move",
+      "x": 670,
+      "y": 160
+    },
+    {
+      "seconds": 0.121829,
+      "utc": "2026-10-14T11:23:34.147561+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.130174,
+      "utc": "2026-10-14T11:23:34.156944+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 0.315842,
+      "utc": "2026-10-14T11:23:34.335898+00:00",
+      "event": "mouse_move",
+      "x": 1175,
+      "y": 367
+    },
+    {
+      "seconds": 0.316119,
+      "utc": "2026-10-14T11:23:34.335898+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.316224,
+      "utc": "2026-10-14T11:23:34.335898+00:00",
+      "event": "mouse_move",
+      "x": 1172,
+      "y": 367
+    },
+    {
+      "seconds": 0.365639,
+      "utc": "2026-10-14T11:23:34.383237+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 367
+    },
+    {
+      "seconds": 0.412918,
+      "utc": "2026-10-14T11:23:34.430600+00:00",
+      "event": "mouse_move",
+      "x": 1166,
+      "y": 367
+    },
+    {
+      "seconds": 0.45958,
+      "utc": "2026-10-14T11:23:34.477963+00:00",
+      "event": "mouse_move",
+      "x": 1163,
+      "y": 367
+    },
+    {
+      "seconds": 0.507522,
+      "utc": "2026-10-14T11:23:34.525343+00:00",
+      "event": "mouse_move",
+      "x": 1160,
+      "y": 367
+    },
+    {
+      "seconds": 0.554517,
+      "utc": "2026-10-14T11:23:34.572720+00:00",
+      "event": "mouse_move",
+      "x": 1157,
+      "y": 367
+    },
+    {
+      "seconds": 0.602147,
+      "utc": "2026-10-14T11:23:34.620091+00:00",
+      "event": "mouse_move",
+      "x": 1154,
+      "y": 367
+    },
+    {
+      "seconds": 0.649006,
+      "utc": "2026-10-14T11:23:34.667457+00:00",
+      "event": "mouse_move",
+      "x": 1151,
+      "y": 367
+    },
+    {
+      "seconds": 0.697447,
+      "utc": "2026-10-14T11:23:34.714802+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 1.379468,
+      "utc": "2026-10-14T11:23:35.403492+00:00",
+      "event": "mouse_move",
+      "x": 1151,
+      "y": 367
+    },
+    {
+      "seconds": 1.408792,
+      "utc": "2026-10-14T11:23:35.434726+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 1.408886,
+      "utc": "2026-10-14T11:23:35.434726+00:00",
+      "event": "mouse_move",
+      "x": 1155,
+      "y": 367
+    },
+    {
+      "seconds": 1.464303,
+      "utc": "2026-10-14T11:23:35.482221+00:00",
+      "event": "mouse_move",
+      "x": 1159,
+      "y": 367
+    },
+    {
+      "seconds": 1.511847,
+      "utc": "2026-10-14T11:23:35.529575+00:00",
+      "event": "mouse_move",
+      "x": 1163,
+      "y": 367
+    },
+    {
+      "seconds": 1.559197,
+      "utc": "2026-10-14T11:23:35.576951+00:00",
+      "event": "mouse_move",
+      "x": 1167,
+      "y": 367
+    },
+    {
+      "seconds": 1.606557,
+      "utc": "2026-10-14T11:23:35.624294+00:00",
+      "event": "mouse_move",
+      "x": 1171,
+      "y": 367
+    },
+    {
+      "seconds": 1.653264,
+      "utc": "2026-10-14T11:23:35.671648+00:00",
+      "event": "mouse_move",
+      "x": 1175,
+      "y": 367
+    },
+    {
+      "seconds": 1.70118,
+      "utc": "2026-10-14T11:23:35.718999+00:00",
+      "event": "mouse_move",
+      "x": 1179,
+      "y": 367
+    },
+    {
+      "seconds": 1.748544,
+      "utc": "2026-10-14T11:23:35.766360+00:00",
+      "event": "mouse_move",
+      "x": 1183,
+      "y": 367
+    },
+    {
+      "seconds": 1.795899,
+      "utc": "2026-10-14T11:23:35.813752+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.480627,
+      "utc": "2026-10-14T11:23:36.501871+00:00",
+      "event": "mouse_move",
+      "x": 1183,
+      "y": 367
+    },
+    {
+      "seconds": 2.507165,
+      "utc": "2026-10-14T11:23:36.533127+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.507255,
+      "utc": "2026-10-14T11:23:36.533127+00:00",
+      "event": "mouse_move",
+      "x": 1181,
+      "y": 367
+    },
+    {
+      "seconds": 2.562367,
+      "utc": "2026-10-14T11:23:36.580455+00:00",
+      "event": "mouse_move",
+      "x": 1179,
+      "y": 367
+    },
+    {
+      "seconds": 2.610096,
+      "utc": "2026-10-14T11:23:36.627811+00:00",
+      "event": "mouse_move",
+      "x": 1177,
+      "y": 367
+    },
+    {
+      "seconds": 2.657317,
+      "utc": "2026-10-14T11:23:36.675162+00:00",
+      "event": "mouse_move",
+      "x": 1175,
+      "y": 367
+    },
+    {
+      "seconds": 2.704805,
+      "utc": "2026-10-14T11:23:36.722537+00:00",
+      "event": "mouse_move",
+      "x": 1173,
+      "y": 367
+    },
+    {
+      "seconds": 2.751892,
+      "utc": "2026-10-14T11:23:36.769909+00:00",
+      "event": "mouse_move",
+      "x": 1171,
+      "y": 367
+    },
+    {
+      "seconds": 2.799429,
+      "utc": "2026-10-14T11:23:36.817265+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 367
+    },
+    {
+      "seconds": 2.846709,
+      "utc": "2026-10-14T11:23:36.864630+00:00",
+      "event": "mouse_move",
+      "x": 1167,
+      "y": 367
+    },
+    {
+      "seconds": 2.8939,
+      "utc": "2026-10-14T11:23:36.911704+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 3.579448,
+      "utc": "2026-10-14T11:23:37.599696+00:00",
+      "event": "mouse_move",
+      "x": 1392,
+      "y": 367
+    },
+    {
+      "seconds": 3.605102,
+      "utc": "2026-10-14T11:23:37.630946+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 3.605184,
+      "utc": "2026-10-14T11:23:37.630946+00:00",
+      "event": "mouse_move",
+      "x": 1394,
+      "y": 367
+    },
+    {
+      "seconds": 3.661044,
+      "utc": "2026-10-14T11:23:37.678275+00:00",
+      "event": "mouse_move",
+      "x": 1396,
+      "y": 367
+    },
+    {
+      "seconds": 3.707666,
+      "utc": "2026-10-14T11:23:37.725633+00:00",
+      "event": "mouse_move",
+      "x": 1397,
+      "y": 367
+    },
+    {
+      "seconds": 3.754592,
+      "utc": "2026-10-14T11:23:37.772989+00:00",
+      "event": "mouse_move",
+      "x": 1399,
+      "y": 367
+    },
+    {
+      "seconds": 3.802673,
+      "utc": "2026-10-14T11:23:37.820172+00:00",
+      "event": "mouse_move",
+      "x": 1401,
+      "y": 367
+    },
+    {
+      "seconds": 3.849839,
+      "utc": "2026-10-14T11:23:37.867595+00:00",
+      "event": "mouse_move",
+      "x": 1402,
+      "y": 367
+    },
+    {
+      "seconds": 3.897765,
+      "utc": "2026-10-14T11:23:37.914856+00:00",
+      "event": "mouse_move",
+      "x": 1404,
+      "y": 367
+    },
+    {
+      "seconds": 3.944892,
+      "utc": "2026-10-14T11:23:37.962196+00:00",
+      "event": "mouse_move",
+      "x": 1406,
+      "y": 367
+    },
+    {
+      "seconds": 3.992407,
+      "utc": "2026-10-14T11:23:38.009543+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 4.678327,
+      "utc": "2026-10-14T11:23:38.697519+00:00",
+      "event": "mouse_move",
+      "x": 1392,
+      "y": 367
+    },
+    {
+      "seconds": 4.687102,
+      "utc": "2026-10-14T11:23:38.713140+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 4.687195,
+      "utc": "2026-10-14T11:23:38.713140+00:00",
+      "event": "mouse_move",
+      "x": 1390,
+      "y": 367
+    },
+    {
+      "seconds": 4.742619,
+      "utc": "2026-10-14T11:23:38.760519+00:00",
+      "event": "mouse_move",
+      "x": 1388,
+      "y": 367
+    },
+    {
+      "seconds": 4.790084,
+      "utc": "2026-10-14T11:23:38.807884+00:00",
+      "event": "mouse_move",
+      "x": 1387,
+      "y": 367
+    },
+    {
+      "seconds": 4.837275,
+      "utc": "2026-10-14T11:23:38.855251+00:00",
+      "event": "mouse_move",
+      "x": 1385,
+      "y": 367
+    },
+    {
+      "seconds": 4.88454,
+      "utc": "2026-10-14T11:23:38.902416+00:00",
+      "event": "mouse_move",
+      "x": 1383,
+      "y": 367
+    },
+    {
+      "seconds": 4.948165,
+      "utc": "2026-10-14T11:23:38.965407+00:00",
+      "event": "mouse_move",
+      "x": 1382,
+      "y": 367
+    },
+    {
+      "seconds": 4.995653,
+      "utc": "2026-10-14T11:23:39.012757+00:00",
+      "event": "mouse_move",
+      "x": 1380,
+      "y": 367
+    },
+    {
+      "seconds": 5.044255,
+      "utc": "2026-10-14T11:23:39.060135+00:00",
+      "event": "mouse_move",
+      "x": 1378,
+      "y": 367
+    },
+    {
+      "seconds": 5.089799,
+      "utc": "2026-10-14T11:23:39.107514+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 5.775826,
+      "utc": "2026-10-14T11:23:39.795492+00:00",
+      "event": "mouse_move",
+      "x": 1500,
+      "y": 287
+    },
+    {
+      "seconds": 5.785122,
+      "utc": "2026-10-14T11:23:39.811225+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 5.793449,
+      "utc": "2026-10-14T11:23:39.820185+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 7.082095,
+      "utc": "2026-10-14T11:23:41.097081+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 7.086875,
+      "utc": "2026-10-14T11:23:41.112708+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 7.095172,
+      "utc": "2026-10-14T11:23:41.121964+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 8.37897,
+      "utc": "2026-10-14T11:23:42.395410+00:00",
+      "event": "mouse_move",
+      "x": 1491,
+      "y": 287
+    },
+    {
+      "seconds": 8.385202,
+      "utc": "2026-10-14T11:23:42.411036+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 8.39356,
+      "utc": "2026-10-14T11:23:42.420281+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 8.457109,
+      "utc": "2026-10-14T11:23:42.474099+00:00",
+      "event": "mouse_move",
+      "x": 1408,
+      "y": 287
+    },
+    {
+      "seconds": 8.479873,
+      "utc": "2026-10-14T11:23:42.505356+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 8.488286,
+      "utc": "2026-10-14T11:23:42.514988+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.311421,
+      "utc": "2026-10-14T11:23:43.338240+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 9.325441,
+      "utc": "2026-10-14T11:23:43.351272+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.333798,
+      "utc": "2026-10-14T11:23:43.360533+00:00",
+      "event": "left_up"
+    }
+  ],
+  "frames": [
+    {
+      "seconds": 0.099729,
+      "utc": "2026-10-14T11:23:34.116316+00:00",
+      "path": "x64-light-sftp-0000-initial.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 320,
+      "terminal_paint_probe": 320,
+      "sha256": "e9321ce79dbaf00ee6e369136ffa37cd2e5001711e7425f5d35d03a225242f4e"
+    },
+    {
+      "seconds": 0.365528,
+      "utc": "2026-10-14T11:23:34.383237+00:00",
+      "path": "x64-light-sftp-0001-sftp-column-boundary-1-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 337,
+      "terminal_paint_probe": 337,
+      "sha256": "d26c1197ea959bdfa10941ec3d6a7a2551089a210e616c2b54770b7d7e00bca2"
+    },
+    {
+      "seconds": 0.412801,
+      "utc": "2026-10-14T11:23:34.430600+00:00",
+      "path": "x64-light-sftp-0002-sftp-column-boundary-1-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 340,
+      "terminal_paint_probe": 340,
+      "sha256": "da42ca35f1615f7936290216cb6ecaf37184a18fa2012d83601e40d1e9f8c17e"
+    },
+    {
+      "seconds": 0.459463,
+      "utc": "2026-10-14T11:23:34.477963+00:00",
+      "path": "x64-light-sftp-0003-sftp-column-boundary-1-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 343,
+      "terminal_paint_probe": 343,
+      "sha256": "2d3b445a76715f4bf51bea978fa9a06e998d9a72e82522c01da099deb47e173d"
+    },
+    {
+      "seconds": 0.507401,
+      "utc": "2026-10-14T11:23:34.525343+00:00",
+      "path": "x64-light-sftp-0004-sftp-column-boundary-1-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 346,
+      "terminal_paint_probe": 346,
+      "sha256": "ca789bb6f5a4d21f2cc3e7647050f2d4c1e457054c2f02138a839a1e38f86440"
+    },
+    {
+      "seconds": 0.554404,
+      "utc": "2026-10-14T11:23:34.572720+00:00",
+      "path": "x64-light-sftp-0005-sftp-column-boundary-1-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 349,
+      "terminal_paint_probe": 349,
+      "sha256": "51fa5b8cd98dc1407b5d268b4db3c721a8beae974a52d66faab5dfc9b85a3905"
+    },
+    {
+      "seconds": 0.602037,
+      "utc": "2026-10-14T11:23:34.620091+00:00",
+      "path": "x64-light-sftp-0006-sftp-column-boundary-1-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 352,
+      "terminal_paint_probe": 352,
+      "sha256": "f9fa1229628c1962438ccc0e0b2a2450ce94404fa91c1a26d5f88098fa0963d2"
+    },
+    {
+      "seconds": 0.648897,
+      "utc": "2026-10-14T11:23:34.667457+00:00",
+      "path": "x64-light-sftp-0007-sftp-column-boundary-1-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 355,
+      "terminal_paint_probe": 355,
+      "sha256": "860ecde4339ccfd01d7c9e89e5ed3f130376abc4c93cf3e45f619266019e95fc"
+    },
+    {
+      "seconds": 0.697182,
+      "utc": "2026-10-14T11:23:34.714802+00:00",
+      "path": "x64-light-sftp-0008-sftp-column-boundary-1-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 358,
+      "terminal_paint_probe": 358,
+      "sha256": "ace3e0e49ee8fbc701b980097773f1135927ac471c0af86106164def8d1476c3"
+    },
+    {
+      "seconds": 0.80626,
+      "utc": "2026-10-14T11:23:34.824666+00:00",
+      "path": "x64-light-sftp-0009-sftp-column-boundary-1-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 365,
+      "terminal_paint_probe": 365,
+      "sha256": "11e42cff41314652eda4d7fdb54fd364758dd3cdbe35ec4ac6b16da4ccbda845"
+    },
+    {
+      "seconds": 1.464189,
+      "utc": "2026-10-14T11:23:35.482221+00:00",
+      "path": "x64-light-sftp-0010-sftp-column-boundary-2-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 407,
+      "terminal_paint_probe": 407,
+      "sha256": "d7f58f4bcc3f33dd21575a52d9050d9a8e8709b0b66fe842276ddc403d782b2c"
+    },
+    {
+      "seconds": 1.51173,
+      "utc": "2026-10-14T11:23:35.529575+00:00",
+      "path": "x64-light-sftp-0011-sftp-column-boundary-2-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 410,
+      "terminal_paint_probe": 410,
+      "sha256": "f0c898a539d12ad143cd8cb35f3e82adcad5f3c130f6d8680d711765a9342116"
+    },
+    {
+      "seconds": 1.559085,
+      "utc": "2026-10-14T11:23:35.576951+00:00",
+      "path": "x64-light-sftp-0012-sftp-column-boundary-2-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 413,
+      "terminal_paint_probe": 413,
+      "sha256": "c2af22d5373354b87324bfd78ea231c784faaa41f34bad02ae32ad62879ccbcd"
+    },
+    {
+      "seconds": 1.606443,
+      "utc": "2026-10-14T11:23:35.624294+00:00",
+      "path": "x64-light-sftp-0013-sftp-column-boundary-2-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 416,
+      "terminal_paint_probe": 416,
+      "sha256": "e5632f8a07564b5725aba3a5a0ba68e8a0853bcfc832df8f88200facd96950c6"
+    },
+    {
+      "seconds": 1.65315,
+      "utc": "2026-10-14T11:23:35.671648+00:00",
+      "path": "x64-light-sftp-0014-sftp-column-boundary-2-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 419,
+      "terminal_paint_probe": 419,
+      "sha256": "61f295e1a5a56689ed3289b76283df4f40c09d1a19450edd14005a6c33cc1ca0"
+    },
+    {
+      "seconds": 1.701073,
+      "utc": "2026-10-14T11:23:35.718999+00:00",
+      "path": "x64-light-sftp-0015-sftp-column-boundary-2-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 422,
+      "terminal_paint_probe": 422,
+      "sha256": "4cdc273de7e513479a6fefc72f947c83714504954bc2ed7672925b4cd1cd6c25"
+    },
+    {
+      "seconds": 1.74843,
+      "utc": "2026-10-14T11:23:35.766360+00:00",
+      "path": "x64-light-sftp-0016-sftp-column-boundary-2-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 425,
+      "terminal_paint_probe": 425,
+      "sha256": "57291731f11a0b3f21501bc9a8c907f3b726c6f9cd000479e0283ffc9a719a22"
+    },
+    {
+      "seconds": 1.795587,
+      "utc": "2026-10-14T11:23:35.813752+00:00",
+      "path": "x64-light-sftp-0017-sftp-column-boundary-2-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 428,
+      "terminal_paint_probe": 428,
+      "sha256": "7576c2ecbda9b1bf6e9b725d05b1c7ee84c96843efe255a975c3fb6726b05f7c"
+    },
+    {
+      "seconds": 1.905746,
+      "utc": "2026-10-14T11:23:35.924295+00:00",
+      "path": "x64-light-sftp-0018-sftp-column-boundary-2-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 435,
+      "terminal_paint_probe": 435,
+      "sha256": "040b4c3a33ce074baab42f650c0bf9de07600eb384d96655a707d3628c69af86"
+    },
+    {
+      "seconds": 2.562259,
+      "utc": "2026-10-14T11:23:36.580455+00:00",
+      "path": "x64-light-sftp-0019-sftp-column-boundary-3-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 477,
+      "terminal_paint_probe": 477,
+      "sha256": "78364d093f39e014ee68b24dcb63a8a0f7b99fcc281600df08ec31c9b86f52ec"
+    },
+    {
+      "seconds": 2.609987,
+      "utc": "2026-10-14T11:23:36.627811+00:00",
+      "path": "x64-light-sftp-0020-sftp-column-boundary-3-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 480,
+      "terminal_paint_probe": 480,
+      "sha256": "4910a79f925c46ff3ef94ab4f1a11b25dda460b99019b4fbf77006831cae5c1c"
+    },
+    {
+      "seconds": 2.657207,
+      "utc": "2026-10-14T11:23:36.675162+00:00",
+      "path": "x64-light-sftp-0021-sftp-column-boundary-3-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 483,
+      "terminal_paint_probe": 483,
+      "sha256": "5d29c91c2fcc2f0f95237976d8382a7ec4ef825e0772e125e9ba61b4510faed7"
+    },
+    {
+      "seconds": 2.704696,
+      "utc": "2026-10-14T11:23:36.722537+00:00",
+      "path": "x64-light-sftp-0022-sftp-column-boundary-3-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 486,
+      "terminal_paint_probe": 486,
+      "sha256": "50811a47d9eaf90f099f834d0fd0da6315995970f721e03bcb8aeeb9cbff91e7"
+    },
+    {
+      "seconds": 2.751786,
+      "utc": "2026-10-14T11:23:36.769909+00:00",
+      "path": "x64-light-sftp-0023-sftp-column-boundary-3-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 489,
+      "terminal_paint_probe": 489,
+      "sha256": "ad0894b694b234d6cf3c27b1e9a29a0b277f2ef03033bb8621349e87d705e0ad"
+    },
+    {
+      "seconds": 2.799322,
+      "utc": "2026-10-14T11:23:36.817265+00:00",
+      "path": "x64-light-sftp-0024-sftp-column-boundary-3-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 492,
+      "terminal_paint_probe": 492,
+      "sha256": "5e23ff5953d917dfb2c0b08ef306fd954f185810ffde20c968a6a0c7f1d48525"
+    },
+    {
+      "seconds": 2.846602,
+      "utc": "2026-10-14T11:23:36.864630+00:00",
+      "path": "x64-light-sftp-0025-sftp-column-boundary-3-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 495,
+      "terminal_paint_probe": 495,
+      "sha256": "507f285632c30b9a4f377add7f6dd67109f5b7afc0a6c3fd5cf2a3e6d8493763"
+    },
+    {
+      "seconds": 2.893627,
+      "utc": "2026-10-14T11:23:36.911704+00:00",
+      "path": "x64-light-sftp-0026-sftp-column-boundary-3-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 498,
+      "terminal_paint_probe": 498,
+      "sha256": "8970b736bcce6ae53d3d91c5a8923e12e88d3b3746813a2af0d9490148d0cd06"
+    },
+    {
+      "seconds": 3.004738,
+      "utc": "2026-10-14T11:23:37.021580+00:00",
+      "path": "x64-light-sftp-0027-sftp-column-boundary-3-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 505,
+      "terminal_paint_probe": 505,
+      "sha256": "b5aa8d25f00c162d61eb8910180931d46b6babc0d62120e884eb9d29142f38d6"
+    },
+    {
+      "seconds": 3.660935,
+      "utc": "2026-10-14T11:23:37.678275+00:00",
+      "path": "x64-light-sftp-0028-sftp-size-boundary-1-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 547,
+      "terminal_paint_probe": 547,
+      "sha256": "0a726844416bd2aa4e79b08fb605dd0aaaad16538e621bf74b667dcff5023847"
+    },
+    {
+      "seconds": 3.707562,
+      "utc": "2026-10-14T11:23:37.725633+00:00",
+      "path": "x64-light-sftp-0029-sftp-size-boundary-1-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 550,
+      "terminal_paint_probe": 550,
+      "sha256": "7c95ced50f03fa41899308d4695219a9423f9740793bc2d91afb14340c77313b"
+    },
+    {
+      "seconds": 3.754481,
+      "utc": "2026-10-14T11:23:37.772989+00:00",
+      "path": "x64-light-sftp-0030-sftp-size-boundary-1-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 553,
+      "terminal_paint_probe": 553,
+      "sha256": "d10ccad81ca7a5b886969193c5f0cc163db32d65895f152f798460be150944a1"
+    },
+    {
+      "seconds": 3.802561,
+      "utc": "2026-10-14T11:23:37.820172+00:00",
+      "path": "x64-light-sftp-0031-sftp-size-boundary-1-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 556,
+      "terminal_paint_probe": 556,
+      "sha256": "1fed2436a885f40cf2a242c5ec3916912732ced1f6c39d6fb6fcf69084af5f41"
+    },
+    {
+      "seconds": 3.849726,
+      "utc": "2026-10-14T11:23:37.867595+00:00",
+      "path": "x64-light-sftp-0032-sftp-size-boundary-1-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 559,
+      "terminal_paint_probe": 559,
+      "sha256": "e805c3754523ed0c9638cd1153b814e764b8d55d94402e18f0323a08a4a41578"
+    },
+    {
+      "seconds": 3.897656,
+      "utc": "2026-10-14T11:23:37.914856+00:00",
+      "path": "x64-light-sftp-0033-sftp-size-boundary-1-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 562,
+      "terminal_paint_probe": 562,
+      "sha256": "b22d6c5f93b9edb25366157149be8c87190f285b195885a80c76fadb61f53298"
+    },
+    {
+      "seconds": 3.944782,
+      "utc": "2026-10-14T11:23:37.962196+00:00",
+      "path": "x64-light-sftp-0034-sftp-size-boundary-1-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 565,
+      "terminal_paint_probe": 565,
+      "sha256": "d417ce47298f7008460a0beed7e53e992af04a227f9918d1032e59353888cf9d"
+    },
+    {
+      "seconds": 3.992122,
+      "utc": "2026-10-14T11:23:38.009543+00:00",
+      "path": "x64-light-sftp-0035-sftp-size-boundary-1-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 568,
+      "terminal_paint_probe": 568,
+      "sha256": "5ac4821d4450de2a80e2f4de9998b51a509d9cb0ab73683f4b3454326dcab78f"
+    },
+    {
+      "seconds": 4.101086,
+      "utc": "2026-10-14T11:23:38.119393+00:00",
+      "path": "x64-light-sftp-0036-sftp-size-boundary-1-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 575,
+      "terminal_paint_probe": 575,
+      "sha256": "fd2cdd31da6dcf82c957afa9ed76bb92d970121f4d0d9a069d214801e703962f"
+    },
+    {
+      "seconds": 4.74251,
+      "utc": "2026-10-14T11:23:38.760519+00:00",
+      "path": "x64-light-sftp-0037-sftp-size-boundary-2-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 616,
+      "terminal_paint_probe": 616,
+      "sha256": "6278edf09c17dc4e86f16f486700100f9dcb66e26abb7b4c62ddce1943e4637e"
+    },
+    {
+      "seconds": 4.789968,
+      "utc": "2026-10-14T11:23:38.807884+00:00",
+      "path": "x64-light-sftp-0038-sftp-size-boundary-2-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 619,
+      "terminal_paint_probe": 619,
+      "sha256": "219ea0df2e1fcacf227bf706e78e2bee51ecd516cd615c4181be5db262313438"
+    },
+    {
+      "seconds": 4.837165,
+      "utc": "2026-10-14T11:23:38.855251+00:00",
+      "path": "x64-light-sftp-0039-sftp-size-boundary-2-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 622,
+      "terminal_paint_probe": 622,
+      "sha256": "4f16a43aeb31ba001c0ed1ae5cf29b23d09dd13e640102dd9d97473c02ba0b2a"
+    },
+    {
+      "seconds": 4.88443,
+      "utc": "2026-10-14T11:23:38.902416+00:00",
+      "path": "x64-light-sftp-0040-sftp-size-boundary-2-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 625,
+      "terminal_paint_probe": 625,
+      "sha256": "cfafa8f16ef648ed05d57835855a02fe5e7a98c9b673e4f6a8c1de2ff7ef5008"
+    },
+    {
+      "seconds": 4.948055,
+      "utc": "2026-10-14T11:23:38.965407+00:00",
+      "path": "x64-light-sftp-0041-sftp-size-boundary-2-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 629,
+      "terminal_paint_probe": 629,
+      "sha256": "e7e1c815dac774333c03002510091c1746783201727d7634127c164d6dd26348"
+    },
+    {
+      "seconds": 4.995541,
+      "utc": "2026-10-14T11:23:39.012757+00:00",
+      "path": "x64-light-sftp-0042-sftp-size-boundary-2-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 632,
+      "terminal_paint_probe": 632,
+      "sha256": "b0fd14669ee49636553b257c33a75f50ccf925e8691318448a43dab234456d89"
+    },
+    {
+      "seconds": 5.044108,
+      "utc": "2026-10-14T11:23:39.060135+00:00",
+      "path": "x64-light-sftp-0043-sftp-size-boundary-2-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 635,
+      "terminal_paint_probe": 635,
+      "sha256": "bc2128e880ba636561b6e6a2690f1ecf4918f22b2c19065fc2ef4a291774c4b8"
+    },
+    {
+      "seconds": 5.089545,
+      "utc": "2026-10-14T11:23:39.107514+00:00",
+      "path": "x64-light-sftp-0044-sftp-size-boundary-2-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 638,
+      "terminal_paint_probe": 638,
+      "sha256": "da9937f6b326f33ed0cd7d2435d4ab99b3d5cb2eae7ad0806741b11fe1b726d2"
+    },
+    {
+      "seconds": 5.199137,
+      "utc": "2026-10-14T11:23:39.217360+00:00",
+      "path": "x64-light-sftp-0045-sftp-size-boundary-2-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 645,
+      "terminal_paint_probe": 645,
+      "sha256": "be4c8680b93f1dd2776f16171b80b489d38fd487341caf0417c9f2465a90b315"
+    },
+    {
+      "seconds": 5.856668,
+      "utc": "2026-10-14T11:23:39.874042+00:00",
+      "path": "x64-light-sftp-0046-sidebar-collapse-animation-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 687,
+      "terminal_paint_probe": 687,
+      "sha256": "b89451954360952c8782df25497ceee78c183b106bb1431714b11dc76c83a653"
+    },
+    {
+      "seconds": 5.919534,
+      "utc": "2026-10-14T11:23:39.937276+00:00",
+      "path": "x64-light-sftp-0047-sidebar-collapse-animation-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 691,
+      "terminal_paint_probe": 691,
+      "sha256": "f9fa6e25079e38cf2c2655b363f6f3b9a9e3bd851857e7412ed2f40707fea0bb"
+    },
+    {
+      "seconds": 5.982973,
+      "utc": "2026-10-14T11:23:40.000255+00:00",
+      "path": "x64-light-sftp-0048-sidebar-collapse-animation-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 695,
+      "terminal_paint_probe": 695,
+      "sha256": "51344edd1126469cc4d383d3c0e402ca1c32c5b2dd5c9af445a38ad04f3ed510"
+    },
+    {
+      "seconds": 6.047459,
+      "utc": "2026-10-14T11:23:40.063240+00:00",
+      "path": "x64-light-sftp-0049-sidebar-collapse-animation-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 699,
+      "terminal_paint_probe": 699,
+      "sha256": "3d4671eae997904960095ab620d734e81b188453a0ac8fb5e6decb2ca40fbcf9"
+    },
+    {
+      "seconds": 6.108777,
+      "utc": "2026-10-14T11:23:40.126232+00:00",
+      "path": "x64-light-sftp-0050-sidebar-collapse-animation-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 703,
+      "terminal_paint_probe": 703,
+      "sha256": "96c6842d182f4a4d5d3abc1fbef45e3eea1701d92412a0661d264ff728a67c60"
+    },
+    {
+      "seconds": 6.171307,
+      "utc": "2026-10-14T11:23:40.189226+00:00",
+      "path": "x64-light-sftp-0051-sidebar-collapse-animation-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 707,
+      "terminal_paint_probe": 707,
+      "sha256": "9b48ebe077399107296f4617bed46acdb33c72a027417a1eaff8dcb0aad10dcb"
+    },
+    {
+      "seconds": 6.26526,
+      "utc": "2026-10-14T11:23:40.282970+00:00",
+      "path": "x64-light-sftp-0052-sidebar-collapse-animation-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 713,
+      "terminal_paint_probe": 713,
+      "sha256": "9812e06da661daa5d85f7025996f263ca17dfb3faaf6a141863a24ceefdc7a79"
+    },
+    {
+      "seconds": 6.327923,
+      "utc": "2026-10-14T11:23:40.345946+00:00",
+      "path": "x64-light-sftp-0053-sidebar-collapse-animation-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 717,
+      "terminal_paint_probe": 717,
+      "sha256": "0d92e6651628169ea5ae9ff47aa9594bf911781acd0814e6c5fbe819e867c230"
+    },
+    {
+      "seconds": 6.468565,
+      "utc": "2026-10-14T11:23:40.486654+00:00",
+      "path": "x64-light-sftp-0054-sidebar-collapse-settled.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 726,
+      "terminal_paint_probe": 726,
+      "sha256": "aaaa28ce13a9f68feaa989ebb2dce0573e4cc76ce5564c034b4bc46349f66cd6"
+    },
+    {
+      "seconds": 7.159003,
+      "utc": "2026-10-14T11:23:41.175905+00:00",
+      "path": "x64-light-sftp-0055-sidebar-expand-animation-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 770,
+      "terminal_paint_probe": 770,
+      "sha256": "7452cda22a78b80a166ad5b2d28b8ea9ed4b0ecc445b1860057e3f1a2901ec5c"
+    },
+    {
+      "seconds": 7.221922,
+      "utc": "2026-10-14T11:23:41.239009+00:00",
+      "path": "x64-light-sftp-0056-sidebar-expand-animation-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 774,
+      "terminal_paint_probe": 774,
+      "sha256": "64018ffa243cbdc8a99168e46066d24c75828405175ae0a108f30cc7fc1338ac"
+    },
+    {
+      "seconds": 7.283516,
+      "utc": "2026-10-14T11:23:41.301458+00:00",
+      "path": "x64-light-sftp-0057-sidebar-expand-animation-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 778,
+      "terminal_paint_probe": 778,
+      "sha256": "eae9c35d5f8603494ffc89b38406638d8ee3409763d94c356a115635a5134a8f"
+    },
+    {
+      "seconds": 7.361667,
+      "utc": "2026-10-14T11:23:41.379545+00:00",
+      "path": "x64-light-sftp-0058-sidebar-expand-animation-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 783,
+      "terminal_paint_probe": 783,
+      "sha256": "b77512cf8411d4c530b401a6d2e97fb4f13510a0457c4aeb584f13cd975a4ed7"
+    },
+    {
+      "seconds": 7.439618,
+      "utc": "2026-10-14T11:23:41.457681+00:00",
+      "path": "x64-light-sftp-0059-sidebar-expand-animation-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 788,
+      "terminal_paint_probe": 788,
+      "sha256": "c7a76090aa13bdd8939705c623b8ea843255aa314030b0a46bd930ea22fcff17"
+    },
+    {
+      "seconds": 7.501863,
+      "utc": "2026-10-14T11:23:41.520132+00:00",
+      "path": "x64-light-sftp-0060-sidebar-expand-animation-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 792,
+      "terminal_paint_probe": 792,
+      "sha256": "3422b308e90b6cf1f6925f95f51df2f6bb9f290c60c00ea70c9f3c71f4183765"
+    },
+    {
+      "seconds": 7.580114,
+      "utc": "2026-10-14T11:23:41.598211+00:00",
+      "path": "x64-light-sftp-0061-sidebar-expand-animation-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 797,
+      "terminal_paint_probe": 797,
+      "sha256": "e9dbce5c38dba0c99ce6e35146a7eff1f7eca7a0dbf0208124622fc50351214d"
+    },
+    {
+      "seconds": 7.643209,
+      "utc": "2026-10-14T11:23:41.660679+00:00",
+      "path": "x64-light-sftp-0062-sidebar-expand-animation-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 801,
+      "terminal_paint_probe": 801,
+      "sha256": "6cf130559e38b74779cbd4ec20ae437d31ce11434aa05a44d3bbc3b03a124c6a"
+    },
+    {
+      "seconds": 7.798726,
+      "utc": "2026-10-14T11:23:41.817073+00:00",
+      "path": "x64-light-sftp-0063-sidebar-expand-settled.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 811,
+      "terminal_paint_probe": 811,
+      "sha256": "1e009315d9034beb10196a72482b4832a39ca469b1d1b602629dec74e9d52d10"
+    },
+    {
+      "seconds": 8.456933,
+      "utc": "2026-10-14T11:23:42.474099+00:00",
+      "path": "x64-light-sftp-0064-sidebar-reversal-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 853,
+      "terminal_paint_probe": 853,
+      "sha256": "4f6d80081796e99991f62fc9c56b689cc8ef67ada585f98042da8245ed4e07e5"
+    },
+    {
+      "seconds": 8.66072,
+      "utc": "2026-10-14T11:23:42.678335+00:00",
+      "path": "x64-light-sftp-0065-sidebar-behavior-failure.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 866,
+      "terminal_paint_probe": 866,
+      "sha256": "d3b873ea4383a04ae0038e908150818400b1ff6fbf8dfa03f9b2447a076920c9"
+    },
+    {
+      "seconds": 9.739746,
+      "utc": "2026-10-14T11:23:43.757737+00:00",
+      "path": "x64-light-sftp-0066-sidebar-recovery-for-remaining-tests.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 935,
+      "terminal_paint_probe": 935,
+      "sha256": "c77959f281255df8933e56a79f40625e18aa68e233af04e949d4a714a743d1c4"
+    },
+    {
+      "seconds": 9.928002,
+      "utc": "2026-10-14T11:23:43.945547+00:00",
+      "path": "x64-light-sftp-0067-final.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "terminal_paint_sample": 947,
+      "terminal_paint_probe": 947,
+      "sha256": "6e31e0d9e81f3874a2d18660903d313b6de3e555c0cd6f5531fd4723a5b5fdf7"
+    }
+  ],
+  "drag_evidence": [
+    {
+      "name": "sftp-column-boundary-1",
+      "held_frames": [
+        "x64-light-sftp-0001-sftp-column-boundary-1-held-01.png",
+        "x64-light-sftp-0002-sftp-column-boundary-1-held-02.png",
+        "x64-light-sftp-0003-sftp-column-boundary-1-held-03.png",
+        "x64-light-sftp-0004-sftp-column-boundary-1-held-04.png",
+        "x64-light-sftp-0005-sftp-column-boundary-1-held-05.png",
+        "x64-light-sftp-0006-sftp-column-boundary-1-held-06.png",
+        "x64-light-sftp-0007-sftp-column-boundary-1-held-07.png",
+        "x64-light-sftp-0008-sftp-column-boundary-1-held-08.png"
+      ],
+      "paint_sample_first": 337,
+      "paint_sample_last": 358,
+      "stdout_markers_while_held": [
+        337,
+        340,
+        343,
+        346,
+        349,
+        352,
+        355,
+        358
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sftp-column-boundary-2",
+      "held_frames": [
+        "x64-light-sftp-0010-sftp-column-boundary-2-held-01.png",
+        "x64-light-sftp-0011-sftp-column-boundary-2-held-02.png",
+        "x64-light-sftp-0012-sftp-column-boundary-2-held-03.png",
+        "x64-light-sftp-0013-sftp-column-boundary-2-held-04.png",
+        "x64-light-sftp-0014-sftp-column-boundary-2-held-05.png",
+        "x64-light-sftp-0015-sftp-column-boundary-2-held-06.png",
+        "x64-light-sftp-0016-sftp-column-boundary-2-held-07.png",
+        "x64-light-sftp-0017-sftp-column-boundary-2-held-08.png"
+      ],
+      "paint_sample_first": 407,
+      "paint_sample_last": 428,
+      "stdout_markers_while_held": [
+        407,
+        410,
+        413,
+        416,
+        419,
+        422,
+        425,
+        428
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sftp-column-boundary-3",
+      "held_frames": [
+        "x64-light-sftp-0019-sftp-column-boundary-3-held-01.png",
+        "x64-light-sftp-0020-sftp-column-boundary-3-held-02.png",
+        "x64-light-sftp-0021-sftp-column-boundary-3-held-03.png",
+        "x64-light-sftp-0022-sftp-column-boundary-3-held-04.png",
+        "x64-light-sftp-0023-sftp-column-boundary-3-held-05.png",
+        "x64-light-sftp-0024-sftp-column-boundary-3-held-06.png",
+        "x64-light-sftp-0025-sftp-column-boundary-3-held-07.png",
+        "x64-light-sftp-0026-sftp-column-boundary-3-held-08.png"
+      ],
+      "paint_sample_first": 477,
+      "paint_sample_last": 498,
+      "stdout_markers_while_held": [
+        477,
+        480,
+        483,
+        486,
+        489,
+        492,
+        495,
+        498
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sftp-size-boundary-1",
+      "held_frames": [
+        "x64-light-sftp-0028-sftp-size-boundary-1-held-01.png",
+        "x64-light-sftp-0029-sftp-size-boundary-1-held-02.png",
+        "x64-light-sftp-0030-sftp-size-boundary-1-held-03.png",
+        "x64-light-sftp-0031-sftp-size-boundary-1-held-04.png",
+        "x64-light-sftp-0032-sftp-size-boundary-1-held-05.png",
+        "x64-light-sftp-0033-sftp-size-boundary-1-held-06.png",
+        "x64-light-sftp-0034-sftp-size-boundary-1-held-07.png",
+        "x64-light-sftp-0035-sftp-size-boundary-1-held-08.png"
+      ],
+      "paint_sample_first": 547,
+      "paint_sample_last": 568,
+      "stdout_markers_while_held": [
+        547,
+        550,
+        553,
+        556,
+        559,
+        562,
+        565,
+        568
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sftp-size-boundary-2",
+      "held_frames": [
+        "x64-light-sftp-0037-sftp-size-boundary-2-held-01.png",
+        "x64-light-sftp-0038-sftp-size-boundary-2-held-02.png",
+        "x64-light-sftp-0039-sftp-size-boundary-2-held-03.png",
+        "x64-light-sftp-0040-sftp-size-boundary-2-held-04.png",
+        "x64-light-sftp-0041-sftp-size-boundary-2-held-05.png",
+        "x64-light-sftp-0042-sftp-size-boundary-2-held-06.png",
+        "x64-light-sftp-0043-sftp-size-boundary-2-held-07.png",
+        "x64-light-sftp-0044-sftp-size-boundary-2-held-08.png"
+      ],
+      "paint_sample_first": 616,
+      "paint_sample_last": 638,
+      "stdout_markers_while_held": [
+        616,
+        619,
+        622,
+        625,
+        629,
+        632,
+        635,
+        638
+      ],
+      "stdout_changed_while_held": true
+    }
+  ],
+  "behavior_failures": [
+    "Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery"
+  ],
+  "dpi": 96,
+  "desktop_bounds": [
+    0,
+    0,
+    1920,
+    1080
+  ],
+  "system_window_drag": {
+    "before": false,
+    "scope": "Temporary test-desktop setting; no profile persistence or product change",
+    "during_test": true,
+    "restored": false
+  },
+  "paint_samples": {
+    "before": 334,
+    "after": 943
+  },
+  "distinct_painted_stdout_markers": 67,
+  "drags_overlapping_painted_stdout": [
+    "sftp-column-boundary-1",
+    "sftp-column-boundary-2",
+    "sftp-column-boundary-3",
+    "sftp-size-boundary-1",
+    "sftp-size-boundary-2"
+  ],
+  "final_layout": {
+    "terminal_minimum_content_width": 368,
+    "visible_child_bounds": "PASS"
+  },
+  "final_state": {
+    "seconds": 9.874292,
+    "utc": "2026-10-14T11:23:43.898632+00:00",
+    "window_bounds": [
+      370,
+      140,
+      1550,
+      900
+    ],
+    "client_bounds": [
+      378,
+      171,
+      1542,
+      892
+    ],
+    "foreground": 262640,
+    "maximized": false,
+    "terminal_paint_sample": 943,
+    "terminal_paint_probe": 943,
+    "controls": {
+      "106": {
+        "bounds": [
+          406,
+          311,
+          571,
+          824
+        ],
+        "visible": true
+      },
+      "107": {
+        "bounds": [
+          615,
+          271,
+          983,
+          864
+        ],
+        "visible": true
+      },
+      "112": {
+        "bounds": [
+          1027,
+          311,
+          1514,
+          820
+        ],
+        "visible": false
+      },
+      "115": {
+        "bounds": [
+          1374,
+          273,
+          1478,
+          305
+        ],
+        "visible": false
+      },
+      "117": {
+        "bounds": [
+          1029,
+          273,
+          1099,
+          305
+        ],
+        "visible": true
+      },
+      "118": {
+        "bounds": [
+          1099,
+          273,
+          1169,
+          305
+        ],
+        "visible": true
+      },
+      "119": {
+        "bounds": [
+          1027,
+          311,
+          1514,
+          343
+        ],
+        "visible": true
+      },
+      "120": {
+        "bounds": [
+          1027,
+          383,
+          1514,
+          776
+        ],
+        "visible": true
+      },
+      "125": {
+        "bounds": [
+          1486,
+          273,
+          1514,
+          301
+        ],
+        "visible": true
+      },
+      "126": {
+        "bounds": [
+          1027,
+          351,
+          1169,
+          383
+        ],
+        "visible": true
+      },
+      "127": {
+        "bounds": [
+          1169,
+          351,
+          1394,
+          383
+        ],
+        "visible": true
+      },
+      "128": {
+        "bounds": [
+          1394,
+          351,
+          1498,
+          383
+        ],
+        "visible": true
+      },
+      "130": {
+        "bounds": [
+          1027,
+          832,
+          1514,
+          832
+        ],
+        "visible": false
+      }
+    }
+  },
+  "completed_utc": "2026-10-14T11:23:43.945547+00:00"
+}

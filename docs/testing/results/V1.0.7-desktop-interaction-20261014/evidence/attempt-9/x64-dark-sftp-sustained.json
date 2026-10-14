@@ -1,0 +1,6 @@
+﻿{
+    "beforePaint":  1159,
+    "afterPaint":  1236,
+    "capture":  "CopyFromScreen, actual mouse, 10 intermediate frames",
+    "source":  "Isolated mock SSH stdout every 10ms, production terminal/SFTP controls; no real server test"
+}

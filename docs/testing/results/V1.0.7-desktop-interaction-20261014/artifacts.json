@@ -1,0 +1,164 @@
+[
+  {
+    "attempt": 1,
+    "run": 38479128078,
+    "artifact_id": 11857246608,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38479128078/artifacts/11857246608",
+    "zip_bytes": 1107929,
+    "zip_sha256": "7355d7059cf80101a276d6531c0f8d0804ba8160d3c563bfcc24070dd90fdea8",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "109beb3d91c4213d6dc930eb449d397062555462",
+      "buildRun": "38392007467",
+      "testRun": "38479128078",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "脚本把菜单项当普通子控件，未完成"
+  },
+  {
+    "attempt": 2,
+    "run": 38479471188,
+    "artifact_id": 11857012454,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38479471188/artifacts/11857012454",
+    "zip_bytes": 2136075,
+    "zip_sha256": "6612f486c998eda9551691a85a2cc660a197552bc482fc3041f3fedbddcb7b0e",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "0a69eec26481a00cf278ec49c8d1678d824d2c65",
+      "buildRun": "38392007467",
+      "testRun": "38479471188",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "菜单键盘定位脚本未命中，未完成"
+  },
+  {
+    "attempt": 3,
+    "run": 38479776927,
+    "artifact_id": 11856483113,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38479776927/artifacts/11856483113",
+    "zip_bytes": 2293571,
+    "zip_sha256": "9793c5b60039fc21e52c28936b5739b917b45a49d4a48eab913f7500dafe81a0",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "665ddf1a3941a1ff26f0e0453a222a954175fdfb",
+      "buildRun": "38392007467",
+      "testRun": "38479776927",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "异步页面出现前查询控件，脚本竞态，未完成"
+  },
+  {
+    "attempt": 4,
+    "run": 38480014449,
+    "artifact_id": 11857272252,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38480014449/artifacts/11857272252",
+    "zip_bytes": 149777989,
+    "zip_sha256": "b5458dd1720c77612db8ebafe40b934cc1e913f40acafe00e4e74231ea691e17",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "a7248c7bfb071d1d1ea6219b20261eff196b7773",
+      "buildRun": "38392007467",
+      "testRun": "38480014449",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "外框只有系统轮廓；快速同点点击有双击歧义"
+  },
+  {
+    "attempt": 5,
+    "run": 38514277054,
+    "artifact_id": 11870144730,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38514277054/artifacts/11870144730",
+    "zip_bytes": 140402820,
+    "zip_sha256": "b45d01262a029344d0d4973a07d92cc926a6aecf651b26c406b47a2a219d4835",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "bb11beca94611b2773b9a518a545275ee738a82b",
+      "buildRun": "38392007467",
+      "testRun": "38514277054",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "真实全内容外框；快速点击失败，输入投递仍有歧义"
+  },
+  {
+    "attempt": 6,
+    "run": 38514686093,
+    "artifact_id": 11871109443,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38514686093/artifacts/11871109443",
+    "zip_bytes": 90100347,
+    "zip_sha256": "882cab8c00906d034be8351631607cd4a3993060ff7638acdcf1b5a6c1e89ab3",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "04a598f71c532ed5ef040ab269e14b5bea8c2c82",
+      "buildRun": "38392007467",
+      "testRun": "38514686093",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "新增观测写到错误函数导致NameError，测试脚本错误"
+  },
+  {
+    "attempt": 7,
+    "run": 38514898081,
+    "artifact_id": 11871580776,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38514898081/artifacts/11871580776",
+    "zip_bytes": 491772996,
+    "zip_sha256": "58e0fd1c678c958ab841361158ce988880ecb503e2b04f1f0274c0f51283628c",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "317bec2ebe52df114058dacf81801157c10e1c79",
+      "buildRun": "38392007467",
+      "testRun": "38514898081",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "完整执行两主题/桌面/SFTP/列表/清理，保留5项行为失败"
+  },
+  {
+    "attempt": 8,
+    "run": 38555533286,
+    "artifact_id": 11890546171,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38555533286/artifacts/11890546171",
+    "zip_bytes": 20318931,
+    "zip_sha256": "a90accf12505d0d174178627ce7895b52b8b5df4698ffa051a98786afcd00a75",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "b1ad82e00cdb3b154e3981f84685f18c358888fc",
+      "buildRun": "38392007467",
+      "testRun": "38555533286",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "真实键盘已生成正确文件；CMD无换行prompt导致输出正则误判，测试脚本错误"
+  },
+  {
+    "attempt": 9,
+    "run": 38555876437,
+    "artifact_id": 11890477053,
+    "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/38555876437/artifacts/11890477053",
+    "zip_bytes": 498376391,
+    "zip_sha256": "992b71fe4a9461b36ca8bbd053249d1351a4201227c09c4c25896649af17bb43",
+    "receipt": {
+      "programSourceSha": "0454b51685d4aa6ec1a3dd316f2427b916cfd777",
+      "testSourceSha": "40afd80b6c85a5c17bdd364df59e10a2cfb892bb",
+      "buildRun": "38392007467",
+      "testRun": "38555876437",
+      "programSource": "Verified portable artifact, unchanged production source",
+      "os": "Microsoft Windows NT 10.0.20348.0",
+      "scope": "Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices"
+    },
+    "outcome": "完整执行；两主题真实CMD键盘/文件/输出检查通过；保留相同四项侧栏行为失败与一项连续列表导航失败"
+  }
+]

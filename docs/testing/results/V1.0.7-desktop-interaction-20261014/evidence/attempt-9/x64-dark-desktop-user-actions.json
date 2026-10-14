@@ -1,0 +1,8223 @@
+{
+  "status": "FAIL",
+  "mode": "desktop",
+  "prefix": "x64-dark",
+  "pid": 1100,
+  "window": 328134,
+  "system": "Windows-2022Server-10.0.20348-SP0",
+  "python": "3.12.10",
+  "started_utc": "2026-10-14T11:22:29.672943+00:00",
+  "input": "SetCursorPos + mouse_event, dispatched by Windows",
+  "capture": "visible desktop GetDC(NULL) + BitBlt; no PrintWindow; hardware cursor excluded",
+  "scope": "production GUI with real CMD stdout",
+  "limitations": [
+    "Captured frames do not prove absence of flicker between frames.",
+    "Measured DPI only; this run does not establish other DPI values or Win7 compatibility."
+  ],
+  "operations": [
+    {
+      "name": "activate-by-caption-click",
+      "status": "PASS",
+      "before": {
+        "seconds": 0.080552,
+        "utc": "2026-10-14T11:22:29.688572+00:00",
+        "window_bounds": [
+          0,
+          0,
+          1180,
+          760
+        ],
+        "client_bounds": [
+          8,
+          31,
+          1172,
+          752
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2255,
+        "terminal_paint_probe": 100,
+        "controls": {
+          "106": {
+            "bounds": [
+              36,
+              171,
+              201,
+              619
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              245,
+              131,
+              705,
+              724
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              749,
+              171,
+              1144,
+              680
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1004,
+              133,
+              1108,
+              165
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              751,
+              133,
+              821,
+              165
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              821,
+              133,
+              891,
+              165
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              749,
+              171,
+              1144,
+              203
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              749,
+              243,
+              1144,
+              636
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1116,
+              133,
+              1144,
+              161
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              749,
+              211,
+              929,
+              243
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              929,
+              211,
+              1024,
+              243
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1024,
+              211,
+              1128,
+              243
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              749,
+              692,
+              1144,
+              692
+            ],
+            "visible": false
+          }
+        }
+      },
+      "wm_null_ms": 0.616,
+      "after": {
+        "seconds": 0.243411,
+        "utc": "2026-10-14T11:22:29.864834+00:00",
+        "window_bounds": [
+          0,
+          0,
+          1180,
+          760
+        ],
+        "client_bounds": [
+          8,
+          31,
+          1172,
+          752
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2262,
+        "terminal_paint_probe": 8,
+        "controls": {
+          "106": {
+            "bounds": [
+              36,
+              171,
+              201,
+              619
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              245,
+              131,
+              705,
+              724
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              749,
+              171,
+              1144,
+              680
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1004,
+              133,
+              1108,
+              165
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              751,
+              133,
+              821,
+              165
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              821,
+              133,
+              891,
+              165
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              749,
+              171,
+              1144,
+              203
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              749,
+              243,
+              1144,
+              636
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1116,
+              133,
+              1144,
+              161
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              749,
+              211,
+              929,
+              243
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              929,
+              211,
+              1024,
+              243
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1024,
+              211,
+              1128,
+              243
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              749,
+              692,
+              1144,
+              692
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "caption-drag-to-40-40",
+      "status": "PASS",
+      "before": {
+        "seconds": 0.323529,
+        "utc": "2026-10-14T11:22:29.939920+00:00",
+        "window_bounds": [
+          0,
+          0,
+          1180,
+          760
+        ],
+        "client_bounds": [
+          8,
+          31,
+          1172,
+          752
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2267,
+        "terminal_paint_probe": 13,
+        "controls": {
+          "106": {
+            "bounds": [
+              36,
+              171,
+              201,
+              619
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              245,
+              131,
+              705,
+              724
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              749,
+              171,
+              1144,
+              680
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1004,
+              133,
+              1108,
+              165
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              751,
+              133,
+              821,
+              165
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              821,
+              133,
+              891,
+              165
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              749,
+              171,
+              1144,
+              203
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              749,
+              243,
+              1144,
+              636
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1116,
+              133,
+              1144,
+              161
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              749,
+              211,
+              929,
+              243
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              929,
+              211,
+              1024,
+              243
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1024,
+              211,
+              1128,
+              243
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              749,
+              692,
+              1144,
+              692
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.931,
+      "after": {
+        "seconds": 0.847761,
+        "utc": "2026-10-14T11:22:30.459520+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2299,
+        "terminal_paint_probe": 45,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "resize-round-1-minimum",
+      "status": "PASS",
+      "before": {
+        "seconds": 1.560104,
+        "utc": "2026-10-14T11:22:31.178934+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2344,
+        "terminal_paint_probe": 90,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "target_outer_size": [
+        980,
+        620
+      ],
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.082,
+      "after": {
+        "seconds": 2.1022,
+        "utc": "2026-10-14T11:22:31.714839+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1020,
+          660
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1012,
+          652
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2372,
+        "terminal_paint_probe": 125,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              228,
+              519
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              272,
+              171,
+              640,
+              624
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              684,
+              211,
+              984,
+              580
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              844,
+              173,
+              948,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              686,
+              173,
+              756,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              756,
+              173,
+              826,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              684,
+              211,
+              984,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              684,
+              283,
+              984,
+              536
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              956,
+              173,
+              984,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              684,
+              251,
+              864,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              864,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              968,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              684,
+              592,
+              984,
+              592
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "resize-round-1-large",
+      "status": "PASS",
+      "before": {
+        "seconds": 2.821289,
+        "utc": "2026-10-14T11:22:32.434043+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1020,
+          660
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1012,
+          652
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2418,
+        "terminal_paint_probe": 171,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              228,
+              519
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              272,
+              171,
+              640,
+              624
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              684,
+              211,
+              984,
+              580
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              844,
+              173,
+              948,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              686,
+              173,
+              756,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              756,
+              173,
+              826,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              684,
+              211,
+              984,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              684,
+              283,
+              984,
+              536
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              956,
+              173,
+              984,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              684,
+              251,
+              864,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              864,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              968,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              684,
+              592,
+              984,
+              592
+            ],
+            "visible": false
+          }
+        }
+      },
+      "target_outer_size": [
+        1180,
+        760
+      ],
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 1.062,
+      "after": {
+        "seconds": 3.345248,
+        "utc": "2026-10-14T11:22:32.954524+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2446,
+        "terminal_paint_probe": 203,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "resize-round-2-minimum",
+      "status": "PASS",
+      "before": {
+        "seconds": 4.077277,
+        "utc": "2026-10-14T11:22:33.688912+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2493,
+        "terminal_paint_probe": 250,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "target_outer_size": [
+        980,
+        620
+      ],
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.077,
+      "after": {
+        "seconds": 4.596895,
+        "utc": "2026-10-14T11:22:34.209401+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1020,
+          660
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1012,
+          652
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2518,
+        "terminal_paint_probe": 283,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              228,
+              519
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              272,
+              171,
+              640,
+              624
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              684,
+              211,
+              984,
+              580
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              844,
+              173,
+              948,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              686,
+              173,
+              756,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              756,
+              173,
+              826,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              684,
+              211,
+              984,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              684,
+              283,
+              984,
+              536
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              956,
+              173,
+              984,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              684,
+              251,
+              864,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              864,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              968,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              684,
+              592,
+              984,
+              592
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "resize-round-2-large",
+      "status": "PASS",
+      "before": {
+        "seconds": 5.318621,
+        "utc": "2026-10-14T11:22:34.928296+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1020,
+          660
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1012,
+          652
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2564,
+        "terminal_paint_probe": 329,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              228,
+              519
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              272,
+              171,
+              640,
+              624
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              684,
+              211,
+              984,
+              580
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              844,
+              173,
+              948,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              686,
+              173,
+              756,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              756,
+              173,
+              826,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              684,
+              211,
+              984,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              684,
+              283,
+              984,
+              536
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              956,
+              173,
+              984,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              684,
+              251,
+              864,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              864,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              968,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              684,
+              592,
+              984,
+              592
+            ],
+            "visible": false
+          }
+        }
+      },
+      "target_outer_size": [
+        1180,
+        760
+      ],
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 1.047,
+      "after": {
+        "seconds": 5.823659,
+        "utc": "2026-10-14T11:22:35.441841+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2587,
+        "terminal_paint_probe": 361,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "resize-round-3-minimum",
+      "status": "PASS",
+      "before": {
+        "seconds": 6.565198,
+        "utc": "2026-10-14T11:22:36.184295+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2634,
+        "terminal_paint_probe": 408,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "target_outer_size": [
+        980,
+        620
+      ],
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.1,
+      "after": {
+        "seconds": 7.138587,
+        "utc": "2026-10-14T11:22:36.751163+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1020,
+          660
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1012,
+          652
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2664,
+        "terminal_paint_probe": 445,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              228,
+              519
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              272,
+              171,
+              640,
+              624
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              684,
+              211,
+              984,
+              580
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              844,
+              173,
+              948,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              686,
+              173,
+              756,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              756,
+              173,
+              826,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              684,
+              211,
+              984,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              684,
+              283,
+              984,
+              536
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              956,
+              173,
+              984,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              684,
+              251,
+              864,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              864,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              968,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              684,
+              592,
+              984,
+              592
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "resize-round-3-large",
+      "status": "PASS",
+      "before": {
+        "seconds": 7.857108,
+        "utc": "2026-10-14T11:22:37.470101+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1020,
+          660
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1012,
+          652
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2710,
+        "terminal_paint_probe": 491,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              228,
+              519
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              272,
+              171,
+              640,
+              624
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              684,
+              211,
+              984,
+              580
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              844,
+              173,
+              948,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              686,
+              173,
+              756,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              756,
+              173,
+              826,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              684,
+              211,
+              984,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              684,
+              283,
+              984,
+              536
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              956,
+              173,
+              984,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              684,
+              251,
+              864,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              864,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              968,
+              251,
+              968,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              684,
+              592,
+              984,
+              592
+            ],
+            "visible": false
+          }
+        }
+      },
+      "target_outer_size": [
+        1180,
+        760
+      ],
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.127,
+      "after": {
+        "seconds": 8.376804,
+        "utc": "2026-10-14T11:22:37.989553+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2735,
+        "terminal_paint_probe": 523,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "caption-double-click-maximize",
+      "status": "PASS",
+      "before": {
+        "seconds": 9.117402,
+        "utc": "2026-10-14T11:22:38.724070+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2782,
+        "terminal_paint_probe": 570,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 7.042,
+      "after": {
+        "seconds": 9.527805,
+        "utc": "2026-10-14T11:22:39.146632+00:00",
+        "window_bounds": [
+          -8,
+          -8,
+          1928,
+          1048
+        ],
+        "client_bounds": [
+          0,
+          23,
+          1920,
+          1040
+        ],
+        "foreground": 328134,
+        "maximized": true,
+        "terminal_paint_sample": 2805,
+        "terminal_paint_probe": 596,
+        "controls": {
+          "106": {
+            "bounds": [
+              28,
+              163,
+              244,
+              907
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              288,
+              123,
+              1453,
+              1012
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1497,
+              163,
+              1892,
+              968
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1752,
+              125,
+              1856,
+              157
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              1499,
+              125,
+              1569,
+              157
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1569,
+              125,
+              1639,
+              157
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1497,
+              163,
+              1892,
+              195
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1497,
+              235,
+              1892,
+              924
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1864,
+              125,
+              1892,
+              153
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1497,
+              203,
+              1677,
+              235
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1677,
+              203,
+              1772,
+              235
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1772,
+              203,
+              1876,
+              235
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1497,
+              980,
+              1892,
+              980
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "caption-double-click-restore",
+      "status": "PASS",
+      "before": {
+        "seconds": 9.566961,
+        "utc": "2026-10-14T11:22:39.177876+00:00",
+        "window_bounds": [
+          -8,
+          -8,
+          1928,
+          1048
+        ],
+        "client_bounds": [
+          0,
+          23,
+          1920,
+          1040
+        ],
+        "foreground": 328134,
+        "maximized": true,
+        "terminal_paint_sample": 2807,
+        "terminal_paint_probe": 598,
+        "controls": {
+          "106": {
+            "bounds": [
+              28,
+              163,
+              244,
+              907
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              288,
+              123,
+              1453,
+              1012
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1497,
+              163,
+              1892,
+              968
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1752,
+              125,
+              1856,
+              157
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              1499,
+              125,
+              1569,
+              157
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1569,
+              125,
+              1639,
+              157
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1497,
+              163,
+              1892,
+              195
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1497,
+              235,
+              1892,
+              924
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1864,
+              125,
+              1892,
+              153
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1497,
+              203,
+              1677,
+              235
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1677,
+              203,
+              1772,
+              235
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1772,
+              203,
+              1876,
+              235
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1497,
+              980,
+              1892,
+              980
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.079,
+      "after": {
+        "seconds": 10.082545,
+        "utc": "2026-10-14T11:22:39.694590+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2839,
+        "terminal_paint_probe": 632,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-splitter-1",
+      "status": "PASS",
+      "before": {
+        "seconds": 10.176119,
+        "utc": "2026-10-14T11:22:39.796520+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2845,
+        "terminal_paint_probe": 638,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              745,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              791,
+              173,
+              861,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              861,
+              173,
+              931,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              789,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              789,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              789,
+              251,
+              969,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              969,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              789,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.078,
+      "after": {
+        "seconds": 10.696277,
+        "utc": "2026-10-14T11:22:40.308725+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2877,
+        "terminal_paint_probe": 671,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              654,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              698,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              700,
+              173,
+              770,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              770,
+              173,
+              840,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              698,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              698,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              698,
+              251,
+              878,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              878,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              698,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-splitter-2",
+      "status": "PASS",
+      "before": {
+        "seconds": 11.414966,
+        "utc": "2026-10-14T11:22:41.029344+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2923,
+        "terminal_paint_probe": 717,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              654,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              698,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              700,
+              173,
+              770,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              770,
+              173,
+              840,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              698,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              698,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              698,
+              251,
+              878,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              878,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              698,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.079,
+      "after": {
+        "seconds": 11.936172,
+        "utc": "2026-10-14T11:22:41.548962+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 2955,
+        "terminal_paint_probe": 750,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              713,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              757,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              759,
+              173,
+              829,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              829,
+              173,
+              899,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              757,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              757,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              757,
+              251,
+              937,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              937,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              757,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-splitter-3",
+      "status": "PASS",
+      "before": {
+        "seconds": 12.65209,
+        "utc": "2026-10-14T11:22:42.268508+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3001,
+        "terminal_paint_probe": 796,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              713,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              757,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              759,
+              173,
+              829,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              829,
+              173,
+              899,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              757,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              757,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              757,
+              251,
+              937,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              937,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              757,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.071,
+      "after": {
+        "seconds": 13.209207,
+        "utc": "2026-10-14T11:22:42.819923+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3035,
+        "terminal_paint_probe": 831,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              662,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              708,
+              173,
+              778,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              778,
+              173,
+              848,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              706,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              706,
+              251,
+              886,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              886,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              706,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-collapse",
+      "status": "PASS",
+      "before": {
+        "seconds": 13.924061,
+        "utc": "2026-10-14T11:22:43.539096+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3081,
+        "terminal_paint_probe": 877,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              662,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              708,
+              173,
+              778,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              778,
+              173,
+              848,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              706,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              706,
+              251,
+              886,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              886,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              706,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.133,
+      "after": {
+        "seconds": 14.61786,
+        "utc": "2026-10-14T11:22:44.230448+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3124,
+        "terminal_paint_probe": 921,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              1124,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1168,
+              211,
+              1396,
+              720
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1320,
+              173,
+              1360,
+              205
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1170,
+              173,
+              1240,
+              205
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              1240,
+              173,
+              1310,
+              205
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              1168,
+              211,
+              1396,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1168,
+              283,
+              1396,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1162,
+              173,
+              1190,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1168,
+              251,
+              1332,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1332,
+              251,
+              1380,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1380,
+              251,
+              1380,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1168,
+              732,
+              1396,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-expand",
+      "status": "PASS",
+      "before": {
+        "seconds": 15.373876,
+        "utc": "2026-10-14T11:22:44.981066+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3172,
+        "terminal_paint_probe": 969,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              1124,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1168,
+              211,
+              1396,
+              720
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1320,
+              173,
+              1360,
+              205
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1170,
+              173,
+              1240,
+              205
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              1240,
+              173,
+              1310,
+              205
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              1168,
+              211,
+              1396,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1168,
+              283,
+              1396,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1162,
+              173,
+              1190,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1168,
+              251,
+              1332,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1332,
+              251,
+              1380,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1380,
+              251,
+              1380,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1168,
+              732,
+              1396,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.092,
+      "after": {
+        "seconds": 16.105841,
+        "utc": "2026-10-14T11:22:45.718690+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3218,
+        "terminal_paint_probe": 16,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              662,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              708,
+              173,
+              778,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              778,
+              173,
+              848,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              706,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              706,
+              251,
+              886,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              886,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              706,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-rapid-reversal",
+      "status": "FAIL",
+      "before": {
+        "seconds": 16.819541,
+        "utc": "2026-10-14T11:22:46.438621+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3263,
+        "terminal_paint_probe": 61,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              662,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              708,
+              173,
+              778,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              778,
+              173,
+              848,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              706,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              706,
+              251,
+              886,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              886,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              706,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "single_click_observations": [
+        {
+          "seconds": 16.81975,
+          "utc": "2026-10-14T11:22:46.438621+00:00",
+          "index": 0,
+          "bounds": [
+            1156,
+            173,
+            1184,
+            201
+          ],
+          "point": [
+            1161,
+            187
+          ],
+          "window_from_point": 66312,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": null,
+          "bounds_before_down": [
+            1156,
+            173,
+            1184,
+            201
+          ],
+          "hit_before_down": 66312,
+          "bounds_before_up": [
+            1156,
+            173,
+            1184,
+            201
+          ],
+          "hit_before_up": 66312,
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 16.860487,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 16.92368,
+          "utc": "2026-10-14T11:22:46.533049+00:00",
+          "index": 1,
+          "bounds": [
+            1058,
+            173,
+            1086,
+            201
+          ],
+          "point": [
+            1080,
+            187
+          ],
+          "window_from_point": 66312,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 81,
+          "bounds_before_down": [
+            1058,
+            173,
+            1086,
+            201
+          ],
+          "hit_before_down": 66312,
+          "bounds_before_up": [
+            1058,
+            173,
+            1086,
+            201
+          ],
+          "hit_before_up": 66312,
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 16.939885,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 17.002132,
+          "utc": "2026-10-14T11:22:46.611945+00:00",
+          "index": 2,
+          "bounds": [
+            1007,
+            173,
+            1035,
+            201
+          ],
+          "point": [
+            1012,
+            187
+          ],
+          "window_from_point": 66312,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 68,
+          "bounds_before_down": [
+            1007,
+            173,
+            1035,
+            201
+          ],
+          "hit_before_down": 66312,
+          "bounds_before_up": [
+            972,
+            173,
+            1000,
+            201
+          ],
+          "hit_before_up": 328134,
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 17.075633,
+          "caption_flipped": false
+        }
+      ],
+      "double_click_ambiguity": "Prior center-only rapid input can be coalesced by the native Button class into BN_DOUBLECLICKED; counting those pairs as ten BN_CLICKED actions is ambiguous. This run alternates separated points and verifies the toggle caption after every single click. Prior attempt evidence is retained unchanged.",
+      "system_double_click_width_px": 4,
+      "error": "Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery",
+      "after": {
+        "seconds": 17.075738,
+        "utc": "2026-10-14T11:22:46.697758+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3278,
+        "terminal_paint_probe": 76,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              669,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              713,
+              211,
+              941,
+              720
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              865,
+              173,
+              905,
+              205
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              715,
+              173,
+              785,
+              205
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              785,
+              173,
+              855,
+              205
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              713,
+              211,
+              941,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              713,
+              283,
+              941,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              934,
+              173,
+              962,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              713,
+              251,
+              877,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              877,
+              251,
+              925,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              925,
+              251,
+              925,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              713,
+              732,
+              941,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "recovery-after-sidebar-failure",
+      "status": "PASS",
+      "before": {
+        "seconds": 17.282833,
+        "utc": "2026-10-14T11:22:46.895019+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3291,
+        "terminal_paint_probe": 89,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              662,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              708,
+              173,
+              778,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              778,
+              173,
+              848,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              706,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              706,
+              251,
+              886,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              886,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              706,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      },
+      "needed_click": false,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.088,
+      "after": {
+        "seconds": 18.001107,
+        "utc": "2026-10-14T11:22:47.614234+00:00",
+        "window_bounds": [
+          40,
+          40,
+          1220,
+          800
+        ],
+        "client_bounds": [
+          48,
+          71,
+          1212,
+          792
+        ],
+        "foreground": 328134,
+        "maximized": false,
+        "terminal_paint_sample": 3337,
+        "terminal_paint_probe": 135,
+        "controls": {
+          "106": {
+            "bounds": [
+              76,
+              211,
+              241,
+              659
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              285,
+              171,
+              662,
+              764
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              720
+            ],
+            "visible": true
+          },
+          "115": {
+            "bounds": [
+              1044,
+              173,
+              1148,
+              205
+            ],
+            "visible": true
+          },
+          "117": {
+            "bounds": [
+              708,
+              173,
+              778,
+              205
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              778,
+              173,
+              848,
+              205
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              706,
+              211,
+              1184,
+              243
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              706,
+              283,
+              1184,
+              676
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1156,
+              173,
+              1184,
+              201
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              706,
+              251,
+              886,
+              283
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              886,
+              251,
+              1064,
+              283
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1064,
+              251,
+              1168,
+              283
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              706,
+              732,
+              1184,
+              732
+            ],
+            "visible": false
+          }
+        }
+      }
+    }
+  ],
+  "input_trace": [
+    {
+      "seconds": 0.085226,
+      "utc": "2026-10-14T11:22:29.704211+00:00",
+      "event": "mouse_move",
+      "x": 300,
+      "y": 20
+    },
+    {
+      "seconds": 0.114002,
+      "utc": "2026-10-14T11:22:29.735460+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.122456,
+      "utc": "2026-10-14T11:22:29.744378+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 0.327565,
+      "utc": "2026-10-14T11:22:29.939920+00:00",
+      "event": "mouse_move",
+      "x": 220,
+      "y": 20
+    },
+    {
+      "seconds": 0.350253,
+      "utc": "2026-10-14T11:22:29.971164+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.350437,
+      "utc": "2026-10-14T11:22:29.971164+00:00",
+      "event": "mouse_move",
+      "x": 225,
+      "y": 25
+    },
+    {
+      "seconds": 0.408105,
+      "utc": "2026-10-14T11:22:30.018539+00:00",
+      "event": "mouse_move",
+      "x": 230,
+      "y": 30
+    },
+    {
+      "seconds": 0.455888,
+      "utc": "2026-10-14T11:22:30.065896+00:00",
+      "event": "mouse_move",
+      "x": 235,
+      "y": 35
+    },
+    {
+      "seconds": 0.500713,
+      "utc": "2026-10-14T11:22:30.113230+00:00",
+      "event": "mouse_move",
+      "x": 240,
+      "y": 40
+    },
+    {
+      "seconds": 0.549829,
+      "utc": "2026-10-14T11:22:30.160588+00:00",
+      "event": "mouse_move",
+      "x": 245,
+      "y": 45
+    },
+    {
+      "seconds": 0.595549,
+      "utc": "2026-10-14T11:22:30.207945+00:00",
+      "event": "mouse_move",
+      "x": 250,
+      "y": 50
+    },
+    {
+      "seconds": 0.643089,
+      "utc": "2026-10-14T11:22:30.263943+00:00",
+      "event": "mouse_move",
+      "x": 255,
+      "y": 55
+    },
+    {
+      "seconds": 0.69021,
+      "utc": "2026-10-14T11:22:30.302710+00:00",
+      "event": "mouse_move",
+      "x": 260,
+      "y": 60
+    },
+    {
+      "seconds": 0.737493,
+      "utc": "2026-10-14T11:22:30.350078+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 1.562431,
+      "utc": "2026-10-14T11:22:31.178934+00:00",
+      "event": "mouse_move",
+      "x": 1219,
+      "y": 799
+    },
+    {
+      "seconds": 1.589339,
+      "utc": "2026-10-14T11:22:31.210175+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 1.589513,
+      "utc": "2026-10-14T11:22:31.210175+00:00",
+      "event": "mouse_move",
+      "x": 1194,
+      "y": 782
+    },
+    {
+      "seconds": 1.661864,
+      "utc": "2026-10-14T11:22:31.274696+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 764
+    },
+    {
+      "seconds": 1.710725,
+      "utc": "2026-10-14T11:22:31.320619+00:00",
+      "event": "mouse_move",
+      "x": 1144,
+      "y": 746
+    },
+    {
+      "seconds": 1.757872,
+      "utc": "2026-10-14T11:22:31.367987+00:00",
+      "event": "mouse_move",
+      "x": 1119,
+      "y": 729
+    },
+    {
+      "seconds": 1.803425,
+      "utc": "2026-10-14T11:22:31.415389+00:00",
+      "event": "mouse_move",
+      "x": 1094,
+      "y": 712
+    },
+    {
+      "seconds": 1.851882,
+      "utc": "2026-10-14T11:22:31.462788+00:00",
+      "event": "mouse_move",
+      "x": 1069,
+      "y": 694
+    },
+    {
+      "seconds": 1.89945,
+      "utc": "2026-10-14T11:22:31.510178+00:00",
+      "event": "mouse_move",
+      "x": 1044,
+      "y": 676
+    },
+    {
+      "seconds": 1.946695,
+      "utc": "2026-10-14T11:22:31.557572+00:00",
+      "event": "mouse_move",
+      "x": 1019,
+      "y": 659
+    },
+    {
+      "seconds": 1.99283,
+      "utc": "2026-10-14T11:22:31.604953+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.821494,
+      "utc": "2026-10-14T11:22:32.434043+00:00",
+      "event": "mouse_move",
+      "x": 1019,
+      "y": 659
+    },
+    {
+      "seconds": 2.828627,
+      "utc": "2026-10-14T11:22:32.449667+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.828808,
+      "utc": "2026-10-14T11:22:32.449667+00:00",
+      "event": "mouse_move",
+      "x": 1044,
+      "y": 676
+    },
+    {
+      "seconds": 2.87497,
+      "utc": "2026-10-14T11:22:32.497073+00:00",
+      "event": "mouse_move",
+      "x": 1069,
+      "y": 694
+    },
+    {
+      "seconds": 2.932152,
+      "utc": "2026-10-14T11:22:32.544437+00:00",
+      "event": "mouse_move",
+      "x": 1094,
+      "y": 712
+    },
+    {
+      "seconds": 2.979849,
+      "utc": "2026-10-14T11:22:32.591805+00:00",
+      "event": "mouse_move",
+      "x": 1119,
+      "y": 729
+    },
+    {
+      "seconds": 3.028955,
+      "utc": "2026-10-14T11:22:32.639182+00:00",
+      "event": "mouse_move",
+      "x": 1144,
+      "y": 746
+    },
+    {
+      "seconds": 3.091565,
+      "utc": "2026-10-14T11:22:32.709641+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 764
+    },
+    {
+      "seconds": 3.137625,
+      "utc": "2026-10-14T11:22:32.749425+00:00",
+      "event": "mouse_move",
+      "x": 1194,
+      "y": 782
+    },
+    {
+      "seconds": 3.185211,
+      "utc": "2026-10-14T11:22:32.796959+00:00",
+      "event": "mouse_move",
+      "x": 1219,
+      "y": 799
+    },
+    {
+      "seconds": 3.232005,
+      "utc": "2026-10-14T11:22:32.846708+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 4.077464,
+      "utc": "2026-10-14T11:22:33.688912+00:00",
+      "event": "mouse_move",
+      "x": 1219,
+      "y": 799
+    },
+    {
+      "seconds": 4.099219,
+      "utc": "2026-10-14T11:22:33.720151+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 4.099489,
+      "utc": "2026-10-14T11:22:33.720151+00:00",
+      "event": "mouse_move",
+      "x": 1194,
+      "y": 782
+    },
+    {
+      "seconds": 4.157061,
+      "utc": "2026-10-14T11:22:33.767541+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 764
+    },
+    {
+      "seconds": 4.202381,
+      "utc": "2026-10-14T11:22:33.814668+00:00",
+      "event": "mouse_move",
+      "x": 1144,
+      "y": 746
+    },
+    {
+      "seconds": 4.251161,
+      "utc": "2026-10-14T11:22:33.862494+00:00",
+      "event": "mouse_move",
+      "x": 1119,
+      "y": 729
+    },
+    {
+      "seconds": 4.297354,
+      "utc": "2026-10-14T11:22:33.909911+00:00",
+      "event": "mouse_move",
+      "x": 1094,
+      "y": 712
+    },
+    {
+      "seconds": 4.344686,
+      "utc": "2026-10-14T11:22:33.957307+00:00",
+      "event": "mouse_move",
+      "x": 1069,
+      "y": 694
+    },
+    {
+      "seconds": 4.392018,
+      "utc": "2026-10-14T11:22:34.004726+00:00",
+      "event": "mouse_move",
+      "x": 1044,
+      "y": 676
+    },
+    {
+      "seconds": 4.439649,
+      "utc": "2026-10-14T11:22:34.052121+00:00",
+      "event": "mouse_move",
+      "x": 1019,
+      "y": 659
+    },
+    {
+      "seconds": 4.489757,
+      "utc": "2026-10-14T11:22:34.099515+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 5.318839,
+      "utc": "2026-10-14T11:22:34.928296+00:00",
+      "event": "mouse_move",
+      "x": 1019,
+      "y": 659
+    },
+    {
+      "seconds": 5.322918,
+      "utc": "2026-10-14T11:22:34.943924+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 5.323166,
+      "utc": "2026-10-14T11:22:34.943924+00:00",
+      "event": "mouse_move",
+      "x": 1044,
+      "y": 676
+    },
+    {
+      "seconds": 5.368617,
+      "utc": "2026-10-14T11:22:34.975634+00:00",
+      "event": "mouse_move",
+      "x": 1069,
+      "y": 694
+    },
+    {
+      "seconds": 5.414528,
+      "utc": "2026-10-14T11:22:35.023020+00:00",
+      "event": "mouse_move",
+      "x": 1094,
+      "y": 712
+    },
+    {
+      "seconds": 5.463173,
+      "utc": "2026-10-14T11:22:35.070380+00:00",
+      "event": "mouse_move",
+      "x": 1119,
+      "y": 729
+    },
+    {
+      "seconds": 5.509146,
+      "utc": "2026-10-14T11:22:35.117751+00:00",
+      "event": "mouse_move",
+      "x": 1144,
+      "y": 746
+    },
+    {
+      "seconds": 5.557745,
+      "utc": "2026-10-14T11:22:35.165127+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 764
+    },
+    {
+      "seconds": 5.604952,
+      "utc": "2026-10-14T11:22:35.212504+00:00",
+      "event": "mouse_move",
+      "x": 1194,
+      "y": 782
+    },
+    {
+      "seconds": 5.652557,
+      "utc": "2026-10-14T11:22:35.259972+00:00",
+      "event": "mouse_move",
+      "x": 1219,
+      "y": 799
+    },
+    {
+      "seconds": 5.69932,
+      "utc": "2026-10-14T11:22:35.307247+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 6.567678,
+      "utc": "2026-10-14T11:22:36.184295+00:00",
+      "event": "mouse_move",
+      "x": 1219,
+      "y": 799
+    },
+    {
+      "seconds": 6.59458,
+      "utc": "2026-10-14T11:22:36.215518+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 6.594849,
+      "utc": "2026-10-14T11:22:36.215518+00:00",
+      "event": "mouse_move",
+      "x": 1194,
+      "y": 782
+    },
+    {
+      "seconds": 6.652508,
+      "utc": "2026-10-14T11:22:36.263011+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 764
+    },
+    {
+      "seconds": 6.731706,
+      "utc": "2026-10-14T11:22:36.341512+00:00",
+      "event": "mouse_move",
+      "x": 1144,
+      "y": 746
+    },
+    {
+      "seconds": 6.792241,
+      "utc": "2026-10-14T11:22:36.404541+00:00",
+      "event": "mouse_move",
+      "x": 1119,
+      "y": 729
+    },
+    {
+      "seconds": 6.840349,
+      "utc": "2026-10-14T11:22:36.451893+00:00",
+      "event": "mouse_move",
+      "x": 1094,
+      "y": 712
+    },
+    {
+      "seconds": 6.887235,
+      "utc": "2026-10-14T11:22:36.499265+00:00",
+      "event": "mouse_move",
+      "x": 1069,
+      "y": 694
+    },
+    {
+      "seconds": 6.936384,
+      "utc": "2026-10-14T11:22:36.546628+00:00",
+      "event": "mouse_move",
+      "x": 1044,
+      "y": 676
+    },
+    {
+      "seconds": 6.981914,
+      "utc": "2026-10-14T11:22:36.593984+00:00",
+      "event": "mouse_move",
+      "x": 1019,
+      "y": 659
+    },
+    {
+      "seconds": 7.031025,
+      "utc": "2026-10-14T11:22:36.641324+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 7.857283,
+      "utc": "2026-10-14T11:22:37.470101+00:00",
+      "event": "mouse_move",
+      "x": 1019,
+      "y": 659
+    },
+    {
+      "seconds": 7.880199,
+      "utc": "2026-10-14T11:22:37.501342+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 7.880464,
+      "utc": "2026-10-14T11:22:37.501342+00:00",
+      "event": "mouse_move",
+      "x": 1044,
+      "y": 676
+    },
+    {
+      "seconds": 7.924966,
+      "utc": "2026-10-14T11:22:37.533067+00:00",
+      "event": "mouse_move",
+      "x": 1069,
+      "y": 694
+    },
+    {
+      "seconds": 7.973174,
+      "utc": "2026-10-14T11:22:37.580457+00:00",
+      "event": "mouse_move",
+      "x": 1094,
+      "y": 712
+    },
+    {
+      "seconds": 8.031019,
+      "utc": "2026-10-14T11:22:37.643504+00:00",
+      "event": "mouse_move",
+      "x": 1119,
+      "y": 729
+    },
+    {
+      "seconds": 8.078602,
+      "utc": "2026-10-14T11:22:37.690898+00:00",
+      "event": "mouse_move",
+      "x": 1144,
+      "y": 746
+    },
+    {
+      "seconds": 8.126869,
+      "utc": "2026-10-14T11:22:37.738287+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 764
+    },
+    {
+      "seconds": 8.172604,
+      "utc": "2026-10-14T11:22:37.785703+00:00",
+      "event": "mouse_move",
+      "x": 1194,
+      "y": 782
+    },
+    {
+      "seconds": 8.220271,
+      "utc": "2026-10-14T11:22:37.833134+00:00",
+      "event": "mouse_move",
+      "x": 1219,
+      "y": 799
+    },
+    {
+      "seconds": 8.267859,
+      "utc": "2026-10-14T11:22:37.879703+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.127462,
+      "utc": "2026-10-14T11:22:38.739698+00:00",
+      "event": "mouse_move",
+      "x": 260,
+      "y": 60
+    },
+    {
+      "seconds": 9.150035,
+      "utc": "2026-10-14T11:22:38.770947+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.158415,
+      "utc": "2026-10-14T11:22:38.780368+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.218815,
+      "utc": "2026-10-14T11:22:38.840913+00:00",
+      "event": "mouse_move",
+      "x": 260,
+      "y": 60
+    },
+    {
+      "seconds": 9.219059,
+      "utc": "2026-10-14T11:22:38.840913+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.228086,
+      "utc": "2026-10-14T11:22:38.849533+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.698523,
+      "utc": "2026-10-14T11:22:39.318510+00:00",
+      "event": "mouse_move",
+      "x": 212,
+      "y": 12
+    },
+    {
+      "seconds": 9.713521,
+      "utc": "2026-10-14T11:22:39.334135+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.721855,
+      "utc": "2026-10-14T11:22:39.343824+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.782267,
+      "utc": "2026-10-14T11:22:39.404331+00:00",
+      "event": "mouse_move",
+      "x": 212,
+      "y": 12
+    },
+    {
+      "seconds": 9.782507,
+      "utc": "2026-10-14T11:22:39.404331+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.791981,
+      "utc": "2026-10-14T11:22:39.412812+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 10.176217,
+      "utc": "2026-10-14T11:22:39.796520+00:00",
+      "event": "mouse_move",
+      "x": 767,
+      "y": 306
+    },
+    {
+      "seconds": 10.183501,
+      "utc": "2026-10-14T11:22:39.804056+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 10.183743,
+      "utc": "2026-10-14T11:22:39.804056+00:00",
+      "event": "mouse_move",
+      "x": 756,
+      "y": 306
+    },
+    {
+      "seconds": 10.257275,
+      "utc": "2026-10-14T11:22:39.867274+00:00",
+      "event": "mouse_move",
+      "x": 746,
+      "y": 306
+    },
+    {
+      "seconds": 10.304056,
+      "utc": "2026-10-14T11:22:39.914687+00:00",
+      "event": "mouse_move",
+      "x": 735,
+      "y": 306
+    },
+    {
+      "seconds": 10.349912,
+      "utc": "2026-10-14T11:22:39.962059+00:00",
+      "event": "mouse_move",
+      "x": 724,
+      "y": 306
+    },
+    {
+      "seconds": 10.398854,
+      "utc": "2026-10-14T11:22:40.009414+00:00",
+      "event": "mouse_move",
+      "x": 714,
+      "y": 306
+    },
+    {
+      "seconds": 10.444719,
+      "utc": "2026-10-14T11:22:40.056784+00:00",
+      "event": "mouse_move",
+      "x": 703,
+      "y": 306
+    },
+    {
+      "seconds": 10.492169,
+      "utc": "2026-10-14T11:22:40.104133+00:00",
+      "event": "mouse_move",
+      "x": 693,
+      "y": 306
+    },
+    {
+      "seconds": 10.539536,
+      "utc": "2026-10-14T11:22:40.151487+00:00",
+      "event": "mouse_move",
+      "x": 682,
+      "y": 306
+    },
+    {
+      "seconds": 10.588648,
+      "utc": "2026-10-14T11:22:40.198834+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.415057,
+      "utc": "2026-10-14T11:22:41.029344+00:00",
+      "event": "mouse_move",
+      "x": 676,
+      "y": 306
+    },
+    {
+      "seconds": 11.439906,
+      "utc": "2026-10-14T11:22:41.060590+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.440071,
+      "utc": "2026-10-14T11:22:41.060590+00:00",
+      "event": "mouse_move",
+      "x": 684,
+      "y": 306
+    },
+    {
+      "seconds": 11.495865,
+      "utc": "2026-10-14T11:22:41.107957+00:00",
+      "event": "mouse_move",
+      "x": 692,
+      "y": 306
+    },
+    {
+      "seconds": 11.543337,
+      "utc": "2026-10-14T11:22:41.155304+00:00",
+      "event": "mouse_move",
+      "x": 700,
+      "y": 306
+    },
+    {
+      "seconds": 11.592662,
+      "utc": "2026-10-14T11:22:41.202662+00:00",
+      "event": "mouse_move",
+      "x": 708,
+      "y": 306
+    },
+    {
+      "seconds": 11.637694,
+      "utc": "2026-10-14T11:22:41.250000+00:00",
+      "event": "mouse_move",
+      "x": 717,
+      "y": 306
+    },
+    {
+      "seconds": 11.684736,
+      "utc": "2026-10-14T11:22:41.297060+00:00",
+      "event": "mouse_move",
+      "x": 725,
+      "y": 306
+    },
+    {
+      "seconds": 11.733798,
+      "utc": "2026-10-14T11:22:41.344411+00:00",
+      "event": "mouse_move",
+      "x": 733,
+      "y": 306
+    },
+    {
+      "seconds": 11.779303,
+      "utc": "2026-10-14T11:22:41.391739+00:00",
+      "event": "mouse_move",
+      "x": 741,
+      "y": 306
+    },
+    {
+      "seconds": 11.828279,
+      "utc": "2026-10-14T11:22:41.439108+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 12.65219,
+      "utc": "2026-10-14T11:22:42.268508+00:00",
+      "event": "mouse_move",
+      "x": 735,
+      "y": 306
+    },
+    {
+      "seconds": 12.678641,
+      "utc": "2026-10-14T11:22:42.299745+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 12.678889,
+      "utc": "2026-10-14T11:22:42.299745+00:00",
+      "event": "mouse_move",
+      "x": 729,
+      "y": 306
+    },
+    {
+      "seconds": 12.736544,
+      "utc": "2026-10-14T11:22:42.347125+00:00",
+      "event": "mouse_move",
+      "x": 724,
+      "y": 306
+    },
+    {
+      "seconds": 12.798053,
+      "utc": "2026-10-14T11:22:42.410124+00:00",
+      "event": "mouse_move",
+      "x": 718,
+      "y": 306
+    },
+    {
+      "seconds": 12.862428,
+      "utc": "2026-10-14T11:22:42.473090+00:00",
+      "event": "mouse_move",
+      "x": 712,
+      "y": 306
+    },
+    {
+      "seconds": 12.90841,
+      "utc": "2026-10-14T11:22:42.520444+00:00",
+      "event": "mouse_move",
+      "x": 707,
+      "y": 306
+    },
+    {
+      "seconds": 12.955368,
+      "utc": "2026-10-14T11:22:42.567825+00:00",
+      "event": "mouse_move",
+      "x": 701,
+      "y": 306
+    },
+    {
+      "seconds": 13.004479,
+      "utc": "2026-10-14T11:22:42.615200+00:00",
+      "event": "mouse_move",
+      "x": 696,
+      "y": 306
+    },
+    {
+      "seconds": 13.051803,
+      "utc": "2026-10-14T11:22:42.662549+00:00",
+      "event": "mouse_move",
+      "x": 690,
+      "y": 306
+    },
+    {
+      "seconds": 13.097636,
+      "utc": "2026-10-14T11:22:42.709919+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 13.92415,
+      "utc": "2026-10-14T11:22:43.539096+00:00",
+      "event": "mouse_move",
+      "x": 1170,
+      "y": 187
+    },
+    {
+      "seconds": 13.949825,
+      "utc": "2026-10-14T11:22:43.570340+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 13.958156,
+      "utc": "2026-10-14T11:22:43.580106+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 15.373968,
+      "utc": "2026-10-14T11:22:44.981066+00:00",
+      "event": "mouse_move",
+      "x": 1176,
+      "y": 187
+    },
+    {
+      "seconds": 15.391744,
+      "utc": "2026-10-14T11:22:45.012307+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 15.400043,
+      "utc": "2026-10-14T11:22:45.022056+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 16.819812,
+      "utc": "2026-10-14T11:22:46.438621+00:00",
+      "event": "mouse_move",
+      "x": 1161,
+      "y": 187
+    },
+    {
+      "seconds": 16.848882,
+      "utc": "2026-10-14T11:22:46.469870+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 16.857304,
+      "utc": "2026-10-14T11:22:46.479203+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 16.923735,
+      "utc": "2026-10-14T11:22:46.533049+00:00",
+      "event": "mouse_move",
+      "x": 1080,
+      "y": 187
+    },
+    {
+      "seconds": 16.928379,
+      "utc": "2026-10-14T11:22:46.548677+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 16.936723,
+      "utc": "2026-10-14T11:22:46.558659+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 17.002185,
+      "utc": "2026-10-14T11:22:46.611945+00:00",
+      "event": "mouse_move",
+      "x": 1012,
+      "y": 187
+    },
+    {
+      "seconds": 17.007248,
+      "utc": "2026-10-14T11:22:46.627571+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 17.015567,
+      "utc": "2026-10-14T11:22:46.637513+00:00",
+      "event": "left_up"
+    }
+  ],
+  "frames": [
+    {
+      "seconds": 0.080381,
+      "utc": "2026-10-14T11:22:29.688572+00:00",
+      "path": "x64-dark-desktop-0000-initial.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        0,
+        0,
+        1180,
+        760
+      ],
+      "terminal_paint_sample": 2255,
+      "terminal_paint_probe": 100,
+      "sha256": "757e9f0ff80e62787ad5b0e8f82b71f6ecb169a9c9533525c8633d862e3f36e2"
+    },
+    {
+      "seconds": 0.407984,
+      "utc": "2026-10-14T11:22:30.018539+00:00",
+      "path": "x64-dark-desktop-0001-caption-drag-to-40-40-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        5,
+        5,
+        1185,
+        765
+      ],
+      "terminal_paint_sample": 2272,
+      "terminal_paint_probe": 18,
+      "sha256": "eb152d92d2eda84694020b07bb433cbb261cebb750bdfbd8ef9e4adab0a939dc"
+    },
+    {
+      "seconds": 0.455745,
+      "utc": "2026-10-14T11:22:30.065896+00:00",
+      "path": "x64-dark-desktop-0002-caption-drag-to-40-40-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        10,
+        10,
+        1190,
+        770
+      ],
+      "terminal_paint_sample": 2275,
+      "terminal_paint_probe": 21,
+      "sha256": "a25147f32c35e5f7fa531e6f0c312b3f74b75185a096b210178039183c70d8a0"
+    },
+    {
+      "seconds": 0.500592,
+      "utc": "2026-10-14T11:22:30.113230+00:00",
+      "path": "x64-dark-desktop-0003-caption-drag-to-40-40-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        15,
+        15,
+        1195,
+        775
+      ],
+      "terminal_paint_sample": 2278,
+      "terminal_paint_probe": 24,
+      "sha256": "a34be8ff0ec5b711848410e8ddcb72ed70150920a88a60643d6028c269d5b81b"
+    },
+    {
+      "seconds": 0.549701,
+      "utc": "2026-10-14T11:22:30.160588+00:00",
+      "path": "x64-dark-desktop-0004-caption-drag-to-40-40-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        20,
+        20,
+        1200,
+        780
+      ],
+      "terminal_paint_sample": 2280,
+      "terminal_paint_probe": 26,
+      "sha256": "2915ee0e96ac71249bd3e769dd38a312fa05b1e1c77834707f967bb3403e1bf9"
+    },
+    {
+      "seconds": 0.595424,
+      "utc": "2026-10-14T11:22:30.207945+00:00",
+      "path": "x64-dark-desktop-0005-caption-drag-to-40-40-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        25,
+        25,
+        1205,
+        785
+      ],
+      "terminal_paint_sample": 2283,
+      "terminal_paint_probe": 29,
+      "sha256": "d44c473c0fc9f94da2e735ff73dd23ff6cabbd6b585a6f6debb91aab8bfbf804"
+    },
+    {
+      "seconds": 0.642973,
+      "utc": "2026-10-14T11:22:30.263943+00:00",
+      "path": "x64-dark-desktop-0006-caption-drag-to-40-40-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        30,
+        30,
+        1210,
+        790
+      ],
+      "terminal_paint_sample": 2286,
+      "terminal_paint_probe": 32,
+      "sha256": "5943247205cdc5d2671a99de68231354223b3c35d1b0f97d4fab17555fd3ca1c"
+    },
+    {
+      "seconds": 0.690093,
+      "utc": "2026-10-14T11:22:30.302710+00:00",
+      "path": "x64-dark-desktop-0007-caption-drag-to-40-40-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        35,
+        35,
+        1215,
+        795
+      ],
+      "terminal_paint_sample": 2289,
+      "terminal_paint_probe": 35,
+      "sha256": "df74028292fc4c4de206b188a8d3f1a9594fb2fdbb03d5fd51886d6150cf9cba"
+    },
+    {
+      "seconds": 0.737286,
+      "utc": "2026-10-14T11:22:30.350078+00:00",
+      "path": "x64-dark-desktop-0008-caption-drag-to-40-40-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2292,
+      "terminal_paint_probe": 38,
+      "sha256": "dd459bd7afe3661b98794c482948845291bf29a9773fa5b1d96b08bfa54aace7"
+    },
+    {
+      "seconds": 0.846429,
+      "utc": "2026-10-14T11:22:30.459520+00:00",
+      "path": "x64-dark-desktop-0009-caption-drag-to-40-40-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2299,
+      "terminal_paint_probe": 45,
+      "sha256": "9a184ac2b881ebe76abc81ded25a50e05e506205bfa0332443f15e582ae30a7d"
+    },
+    {
+      "seconds": 1.661752,
+      "utc": "2026-10-14T11:22:31.274696+00:00",
+      "path": "x64-dark-desktop-0010-resize-round-1-minimum-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1195,
+        783
+      ],
+      "terminal_paint_sample": 2351,
+      "terminal_paint_probe": 97,
+      "sha256": "98f4964c9c1514c6aefe1538b0c354582cb6d03f4969f05fb8e81ad8c325b459"
+    },
+    {
+      "seconds": 1.710584,
+      "utc": "2026-10-14T11:22:31.320619+00:00",
+      "path": "x64-dark-desktop-0011-resize-round-1-minimum-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1170,
+        765
+      ],
+      "terminal_paint_sample": 2352,
+      "terminal_paint_probe": 98,
+      "sha256": "f89117073ee4a60698fa5e345d602484fc513613c02db7c5ce9324425ff228a5"
+    },
+    {
+      "seconds": 1.757709,
+      "utc": "2026-10-14T11:22:31.367987+00:00",
+      "path": "x64-dark-desktop-0012-resize-round-1-minimum-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1145,
+        747
+      ],
+      "terminal_paint_sample": 2355,
+      "terminal_paint_probe": 102,
+      "sha256": "f5d4d5261c03955d8a81d5a7e48962931c838b8e78cfe3a4bd5133bb7280fbd7"
+    },
+    {
+      "seconds": 1.803317,
+      "utc": "2026-10-14T11:22:31.415389+00:00",
+      "path": "x64-dark-desktop-0013-resize-round-1-minimum-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1120,
+        730
+      ],
+      "terminal_paint_sample": 2358,
+      "terminal_paint_probe": 106,
+      "sha256": "cbf136d75f6d75caf3ec670f6695ad1a1ff057389eb276912fa4c8bcf0aa06c4"
+    },
+    {
+      "seconds": 1.851764,
+      "utc": "2026-10-14T11:22:31.462788+00:00",
+      "path": "x64-dark-desktop-0014-resize-round-1-minimum-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1095,
+        713
+      ],
+      "terminal_paint_sample": 2360,
+      "terminal_paint_probe": 109,
+      "sha256": "ae4089ede7e886be9d72eff8186db708db0d079276799c4daf44d63a604d08d0"
+    },
+    {
+      "seconds": 1.899308,
+      "utc": "2026-10-14T11:22:31.510178+00:00",
+      "path": "x64-dark-desktop-0015-resize-round-1-minimum-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1070,
+        695
+      ],
+      "terminal_paint_sample": 2362,
+      "terminal_paint_probe": 112,
+      "sha256": "d16c3d8877925f573abdbcf10bada85fcf9f4307a3e61236172e79d2a5f8cd66"
+    },
+    {
+      "seconds": 1.946562,
+      "utc": "2026-10-14T11:22:31.557572+00:00",
+      "path": "x64-dark-desktop-0016-resize-round-1-minimum-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1045,
+        677
+      ],
+      "terminal_paint_sample": 2364,
+      "terminal_paint_probe": 115,
+      "sha256": "70b1dac0ad07ff03182b131c66ea2cf9e098e75e5faff272e47d723ec617dfb3"
+    },
+    {
+      "seconds": 1.992571,
+      "utc": "2026-10-14T11:22:31.604953+00:00",
+      "path": "x64-dark-desktop-0017-resize-round-1-minimum-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1020,
+        660
+      ],
+      "terminal_paint_sample": 2365,
+      "terminal_paint_probe": 116,
+      "sha256": "4e810a7a28253bf11e9a72d128b3e6e24a05dacf9c2ab9cb473d79c2180bb663"
+    },
+    {
+      "seconds": 2.101662,
+      "utc": "2026-10-14T11:22:31.714839+00:00",
+      "path": "x64-dark-desktop-0018-resize-round-1-minimum-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1020,
+        660
+      ],
+      "terminal_paint_sample": 2372,
+      "terminal_paint_probe": 125,
+      "sha256": "9840134fb0a4833119aef5aea6ed663ee4feea930e09f3008f4598c53e88176a"
+    },
+    {
+      "seconds": 2.874735,
+      "utc": "2026-10-14T11:22:32.481394+00:00",
+      "path": "x64-dark-desktop-0019-resize-round-1-large-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1045,
+        677
+      ],
+      "terminal_paint_sample": 2420,
+      "terminal_paint_probe": 173,
+      "sha256": "655c32b371f960a900d1b197ec2c9495dcca2e8394511d9c785d89c8ff753708"
+    },
+    {
+      "seconds": 2.932037,
+      "utc": "2026-10-14T11:22:32.544437+00:00",
+      "path": "x64-dark-desktop-0020-resize-round-1-large-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1070,
+        695
+      ],
+      "terminal_paint_sample": 2423,
+      "terminal_paint_probe": 177,
+      "sha256": "2778e3336b5e9a514d8ce882b8ca85644f146a22c32760cbcd22dc536dbb01bd"
+    },
+    {
+      "seconds": 2.979731,
+      "utc": "2026-10-14T11:22:32.591805+00:00",
+      "path": "x64-dark-desktop-0021-resize-round-1-large-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1095,
+        713
+      ],
+      "terminal_paint_sample": 2424,
+      "terminal_paint_probe": 178,
+      "sha256": "629cb1a967a5d44f561cf3b5f3ed688a3ffb1ef3ea145ab7d0f1d7094b324b61"
+    },
+    {
+      "seconds": 3.028809,
+      "utc": "2026-10-14T11:22:32.639182+00:00",
+      "path": "x64-dark-desktop-0022-resize-round-1-large-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1120,
+        730
+      ],
+      "terminal_paint_sample": 2427,
+      "terminal_paint_probe": 182,
+      "sha256": "f42c5c9635bea44ff43fd23c74df1082ad0c33a5443a5867b6802eb51117ef31"
+    },
+    {
+      "seconds": 3.091456,
+      "utc": "2026-10-14T11:22:32.709641+00:00",
+      "path": "x64-dark-desktop-0023-resize-round-1-large-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1145,
+        747
+      ],
+      "terminal_paint_sample": 2431,
+      "terminal_paint_probe": 187,
+      "sha256": "faf0a06c788130608aedcf8e1d0f2c23a475c1ab3f6c80af02dc45ad11df7235"
+    },
+    {
+      "seconds": 3.137504,
+      "utc": "2026-10-14T11:22:32.749425+00:00",
+      "path": "x64-dark-desktop-0024-resize-round-1-large-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1170,
+        765
+      ],
+      "terminal_paint_sample": 2433,
+      "terminal_paint_probe": 189,
+      "sha256": "ea919b83d4456313cae6c72399391c61d5f3970d4da76a93d2ac36a1b2699bd9"
+    },
+    {
+      "seconds": 3.185072,
+      "utc": "2026-10-14T11:22:32.796959+00:00",
+      "path": "x64-dark-desktop-0025-resize-round-1-large-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1195,
+        783
+      ],
+      "terminal_paint_sample": 2436,
+      "terminal_paint_probe": 192,
+      "sha256": "666e80b102c075407f68405434cde5efb8302586563282916fd7ff32654f0d96"
+    },
+    {
+      "seconds": 3.231762,
+      "utc": "2026-10-14T11:22:32.846708+00:00",
+      "path": "x64-dark-desktop-0026-resize-round-1-large-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2439,
+      "terminal_paint_probe": 196,
+      "sha256": "46b971b7452c597e8f6e91d081e9c7c8ad8a6ad460138e613d18b0103378fc85"
+    },
+    {
+      "seconds": 3.343634,
+      "utc": "2026-10-14T11:22:32.954524+00:00",
+      "path": "x64-dark-desktop-0027-resize-round-1-large-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2446,
+      "terminal_paint_probe": 203,
+      "sha256": "0b0c16d79544a1e9146afb8f2cb727111fac3ec567e4c24d00a91f8c807fd49f"
+    },
+    {
+      "seconds": 4.156934,
+      "utc": "2026-10-14T11:22:33.767541+00:00",
+      "path": "x64-dark-desktop-0028-resize-round-2-minimum-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1195,
+        783
+      ],
+      "terminal_paint_sample": 2496,
+      "terminal_paint_probe": 253,
+      "sha256": "d8b6126ef282f45460e4e1b4203a082a601f34f950bbc901e2221b2edaa702fe"
+    },
+    {
+      "seconds": 4.20227,
+      "utc": "2026-10-14T11:22:33.814668+00:00",
+      "path": "x64-dark-desktop-0029-resize-round-2-minimum-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1170,
+        765
+      ],
+      "terminal_paint_sample": 2500,
+      "terminal_paint_probe": 258,
+      "sha256": "16ab1d2b543de1b5a77503802463801c772fc4922088e80e3ca21c073d1cd78b"
+    },
+    {
+      "seconds": 4.250911,
+      "utc": "2026-10-14T11:22:33.862494+00:00",
+      "path": "x64-dark-desktop-0030-resize-round-2-minimum-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1145,
+        747
+      ],
+      "terminal_paint_sample": 2501,
+      "terminal_paint_probe": 259,
+      "sha256": "883eb18c9b0716559f45333c7ac7c1a8832c760ee72f80f0f2fe2c42d416abb3"
+    },
+    {
+      "seconds": 4.297231,
+      "utc": "2026-10-14T11:22:33.909911+00:00",
+      "path": "x64-dark-desktop-0031-resize-round-2-minimum-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1120,
+        730
+      ],
+      "terminal_paint_sample": 2505,
+      "terminal_paint_probe": 264,
+      "sha256": "32108235b0785f5e486419159b7fc112106f4a1d0ed371f6aed97db561d9d6d2"
+    },
+    {
+      "seconds": 4.34457,
+      "utc": "2026-10-14T11:22:33.957307+00:00",
+      "path": "x64-dark-desktop-0032-resize-round-2-minimum-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1095,
+        713
+      ],
+      "terminal_paint_sample": 2507,
+      "terminal_paint_probe": 267,
+      "sha256": "ee9c345e28d353e5a151d2508963167fb4dffc6b0947a9fcba7a8a273aaf8a01"
+    },
+    {
+      "seconds": 4.391905,
+      "utc": "2026-10-14T11:22:34.004726+00:00",
+      "path": "x64-dark-desktop-0033-resize-round-2-minimum-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1070,
+        695
+      ],
+      "terminal_paint_sample": 2509,
+      "terminal_paint_probe": 270,
+      "sha256": "481837513bd5885b54ca21b15ee360d117409b69bba22b48f79c07d2652da461"
+    },
+    {
+      "seconds": 4.439536,
+      "utc": "2026-10-14T11:22:34.052121+00:00",
+      "path": "x64-dark-desktop-0034-resize-round-2-minimum-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1045,
+        677
+      ],
+      "terminal_paint_sample": 2511,
+      "terminal_paint_probe": 273,
+      "sha256": "e186a1d13086cdec3a942e9f106a3908057d3825661f02247d5c616a99767fc4"
+    },
+    {
+      "seconds": 4.489549,
+      "utc": "2026-10-14T11:22:34.099515+00:00",
+      "path": "x64-dark-desktop-0035-resize-round-2-minimum-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1020,
+        660
+      ],
+      "terminal_paint_sample": 2512,
+      "terminal_paint_probe": 274,
+      "sha256": "4086064973766baa371fa38fbd4a205336c97a654dd635365daeeb482fa2567d"
+    },
+    {
+      "seconds": 4.596479,
+      "utc": "2026-10-14T11:22:34.209401+00:00",
+      "path": "x64-dark-desktop-0036-resize-round-2-minimum-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1020,
+        660
+      ],
+      "terminal_paint_sample": 2518,
+      "terminal_paint_probe": 283,
+      "sha256": "83ebbd4c101a085ca20c7f3e654e65461b8f95b08f24014db1fd5a2dcfde9bd4"
+    },
+    {
+      "seconds": 5.368499,
+      "utc": "2026-10-14T11:22:34.975634+00:00",
+      "path": "x64-dark-desktop-0037-resize-round-2-large-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1045,
+        677
+      ],
+      "terminal_paint_sample": 2566,
+      "terminal_paint_probe": 332,
+      "sha256": "b49bce48b91172971740bf29ae73705da6c7c11ff3d080508026d9801549a418"
+    },
+    {
+      "seconds": 5.414413,
+      "utc": "2026-10-14T11:22:35.023020+00:00",
+      "path": "x64-dark-desktop-0038-resize-round-2-large-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1070,
+        695
+      ],
+      "terminal_paint_sample": 2568,
+      "terminal_paint_probe": 335,
+      "sha256": "bc963d30f35e28d74373031581689595d1fcaabf7e3d66ebbd36053eb67e4333"
+    },
+    {
+      "seconds": 5.463057,
+      "utc": "2026-10-14T11:22:35.070380+00:00",
+      "path": "x64-dark-desktop-0039-resize-round-2-large-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1095,
+        713
+      ],
+      "terminal_paint_sample": 2570,
+      "terminal_paint_probe": 338,
+      "sha256": "e6b1ddcb61e6231264c6de5da973f45f9833c4efb976202d2fce7792bf15d0b3"
+    },
+    {
+      "seconds": 5.509032,
+      "utc": "2026-10-14T11:22:35.117751+00:00",
+      "path": "x64-dark-desktop-0040-resize-round-2-large-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1120,
+        730
+      ],
+      "terminal_paint_sample": 2572,
+      "terminal_paint_probe": 341,
+      "sha256": "e154fff2d1efed8bd986ad2a9cb115237c4dfe5ded99e15d3043b7403b0731d4"
+    },
+    {
+      "seconds": 5.557632,
+      "utc": "2026-10-14T11:22:35.165127+00:00",
+      "path": "x64-dark-desktop-0041-resize-round-2-large-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1145,
+        747
+      ],
+      "terminal_paint_sample": 2574,
+      "terminal_paint_probe": 344,
+      "sha256": "1070c6e9f71f189cc342c822151f34f921199e1a530566ea41e4acad888310a1"
+    },
+    {
+      "seconds": 5.604839,
+      "utc": "2026-10-14T11:22:35.212504+00:00",
+      "path": "x64-dark-desktop-0042-resize-round-2-large-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1170,
+        765
+      ],
+      "terminal_paint_sample": 2576,
+      "terminal_paint_probe": 347,
+      "sha256": "8974a3c831c9fa0be1b427d653b7f72d96aee143670a2ea46a52c5f19523c700"
+    },
+    {
+      "seconds": 5.652441,
+      "utc": "2026-10-14T11:22:35.259972+00:00",
+      "path": "x64-dark-desktop-0043-resize-round-2-large-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1195,
+        783
+      ],
+      "terminal_paint_sample": 2578,
+      "terminal_paint_probe": 350,
+      "sha256": "327509372032982691a37e3cac5ea866be623944a4143ad29da619cfccb52041"
+    },
+    {
+      "seconds": 5.699098,
+      "utc": "2026-10-14T11:22:35.307247+00:00",
+      "path": "x64-dark-desktop-0044-resize-round-2-large-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2580,
+      "terminal_paint_probe": 353,
+      "sha256": "0270a208add25bf6689282bb03febdecd569ad97cec7f170a94c66f357ae24d9"
+    },
+    {
+      "seconds": 5.822068,
+      "utc": "2026-10-14T11:22:35.441841+00:00",
+      "path": "x64-dark-desktop-0045-resize-round-2-large-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2587,
+      "terminal_paint_probe": 361,
+      "sha256": "8bf251a120b5a9822fd6ae4482c1850f2c7ef88f0307f41a2c48a104b9df7914"
+    },
+    {
+      "seconds": 6.652355,
+      "utc": "2026-10-14T11:22:36.263011+00:00",
+      "path": "x64-dark-desktop-0046-resize-round-3-minimum-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1195,
+        783
+      ],
+      "terminal_paint_sample": 2638,
+      "terminal_paint_probe": 412,
+      "sha256": "112ad75b6adbc8d4ba52186c684165aa386206d8f99e4abd6c6bcf28eb3a8104"
+    },
+    {
+      "seconds": 6.731555,
+      "utc": "2026-10-14T11:22:36.341512+00:00",
+      "path": "x64-dark-desktop-0047-resize-round-3-minimum-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1170,
+        765
+      ],
+      "terminal_paint_sample": 2643,
+      "terminal_paint_probe": 419,
+      "sha256": "513209afb0872752336779f765ffc93437e3461c2850876fc62b854ae84ab22e"
+    },
+    {
+      "seconds": 6.792123,
+      "utc": "2026-10-14T11:22:36.404541+00:00",
+      "path": "x64-dark-desktop-0048-resize-round-3-minimum-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1145,
+        747
+      ],
+      "terminal_paint_sample": 2646,
+      "terminal_paint_probe": 423,
+      "sha256": "82ed02e7114e4d5c261171f3488a2e2cbc017d8a7ec2f321e4de24c0bb961cd0"
+    },
+    {
+      "seconds": 6.840182,
+      "utc": "2026-10-14T11:22:36.451893+00:00",
+      "path": "x64-dark-desktop-0049-resize-round-3-minimum-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1120,
+        730
+      ],
+      "terminal_paint_sample": 2647,
+      "terminal_paint_probe": 424,
+      "sha256": "ff20428a772fe9d1aea8f6a1606d3b18e7497da4746095a51074c03836263d23"
+    },
+    {
+      "seconds": 6.8871,
+      "utc": "2026-10-14T11:22:36.499265+00:00",
+      "path": "x64-dark-desktop-0050-resize-round-3-minimum-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1095,
+        713
+      ],
+      "terminal_paint_sample": 2649,
+      "terminal_paint_probe": 427,
+      "sha256": "5cd9b2f56c7ab302751b86c4e840bde0d8a016d1432f52931030f116121a1398"
+    },
+    {
+      "seconds": 6.936245,
+      "utc": "2026-10-14T11:22:36.546628+00:00",
+      "path": "x64-dark-desktop-0051-resize-round-3-minimum-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1070,
+        695
+      ],
+      "terminal_paint_sample": 2652,
+      "terminal_paint_probe": 431,
+      "sha256": "6fb30fc8da6ea608252fa84aa8b295785159db7bb8facdc2d43ad6859cdd0cd1"
+    },
+    {
+      "seconds": 6.981782,
+      "utc": "2026-10-14T11:22:36.593984+00:00",
+      "path": "x64-dark-desktop-0052-resize-round-3-minimum-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1045,
+        677
+      ],
+      "terminal_paint_sample": 2655,
+      "terminal_paint_probe": 434,
+      "sha256": "3c90ecda812c90653ec5ae1931380455573646fcb3641ff2d754f48ef8868379"
+    },
+    {
+      "seconds": 7.030636,
+      "utc": "2026-10-14T11:22:36.641324+00:00",
+      "path": "x64-dark-desktop-0053-resize-round-3-minimum-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1020,
+        660
+      ],
+      "terminal_paint_sample": 2658,
+      "terminal_paint_probe": 437,
+      "sha256": "4912525df686b11742b8cfe62370c0fda442e22bf1cac05939278f4242ff077f"
+    },
+    {
+      "seconds": 7.138149,
+      "utc": "2026-10-14T11:22:36.751163+00:00",
+      "path": "x64-dark-desktop-0054-resize-round-3-minimum-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1020,
+        660
+      ],
+      "terminal_paint_sample": 2664,
+      "terminal_paint_probe": 445,
+      "sha256": "bc6de1e706df6e44c891e9dee67a0cdb4f39a14007a78f395c432ff7cdbe1a15"
+    },
+    {
+      "seconds": 7.924858,
+      "utc": "2026-10-14T11:22:37.533067+00:00",
+      "path": "x64-dark-desktop-0055-resize-round-3-large-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1045,
+        677
+      ],
+      "terminal_paint_sample": 2713,
+      "terminal_paint_probe": 495,
+      "sha256": "8d3262982ac480e3ea5499650219daed995819efeec08b2f7316fbaef2a6bb74"
+    },
+    {
+      "seconds": 7.973062,
+      "utc": "2026-10-14T11:22:37.580457+00:00",
+      "path": "x64-dark-desktop-0056-resize-round-3-large-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1070,
+        695
+      ],
+      "terminal_paint_sample": 2715,
+      "terminal_paint_probe": 498,
+      "sha256": "8c00f7a45b83991d8eadd3d2e9150f45ef30508cb7210125e6e4d88b0890566f"
+    },
+    {
+      "seconds": 8.030907,
+      "utc": "2026-10-14T11:22:37.643504+00:00",
+      "path": "x64-dark-desktop-0057-resize-round-3-large-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1095,
+        713
+      ],
+      "terminal_paint_sample": 2718,
+      "terminal_paint_probe": 502,
+      "sha256": "33146d57066060dde177a1b0d536972d7ee3f2bbb7b3a8250c74f700b93d990b"
+    },
+    {
+      "seconds": 8.078494,
+      "utc": "2026-10-14T11:22:37.690898+00:00",
+      "path": "x64-dark-desktop-0058-resize-round-3-large-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1120,
+        730
+      ],
+      "terminal_paint_sample": 2720,
+      "terminal_paint_probe": 505,
+      "sha256": "c104c6bd748f974089338a87a64d0ec891679f753221664fa132b7f8d61c6001"
+    },
+    {
+      "seconds": 8.12676,
+      "utc": "2026-10-14T11:22:37.738287+00:00",
+      "path": "x64-dark-desktop-0059-resize-round-3-large-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1145,
+        747
+      ],
+      "terminal_paint_sample": 2722,
+      "terminal_paint_probe": 508,
+      "sha256": "14552419aa125d9d5d87a90ba9fb5e92fe9dea4b9ad8d6a945470d808ddf4de4"
+    },
+    {
+      "seconds": 8.172495,
+      "utc": "2026-10-14T11:22:37.785703+00:00",
+      "path": "x64-dark-desktop-0060-resize-round-3-large-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1170,
+        765
+      ],
+      "terminal_paint_sample": 2724,
+      "terminal_paint_probe": 510,
+      "sha256": "23d36d3bab63b00e002dead5193f9be06b6db28704b590416ae68c22548c1610"
+    },
+    {
+      "seconds": 8.220166,
+      "utc": "2026-10-14T11:22:37.833134+00:00",
+      "path": "x64-dark-desktop-0061-resize-round-3-large-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1195,
+        783
+      ],
+      "terminal_paint_sample": 2726,
+      "terminal_paint_probe": 513,
+      "sha256": "00837ed53fdbe413b206f6b363dd8a346d5060cf74a18eb887431d5f1580d4cb"
+    },
+    {
+      "seconds": 8.267607,
+      "utc": "2026-10-14T11:22:37.879703+00:00",
+      "path": "x64-dark-desktop-0062-resize-round-3-large-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2728,
+      "terminal_paint_probe": 515,
+      "sha256": "38ab70820ed059abe1473ed44640fcb828286653b3cf5f7d064ac3903848cfa2"
+    },
+    {
+      "seconds": 8.376341,
+      "utc": "2026-10-14T11:22:37.989553+00:00",
+      "path": "x64-dark-desktop-0063-resize-round-3-large-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2735,
+      "terminal_paint_probe": 523,
+      "sha256": "3b9b7391c4983269cb603614bee7a1752e599451331eb2ded05059d895038613"
+    },
+    {
+      "seconds": 9.520223,
+      "utc": "2026-10-14T11:22:39.131011+00:00",
+      "path": "x64-dark-desktop-0064-caption-double-click-maximize.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        -8,
+        -8,
+        1928,
+        1048
+      ],
+      "terminal_paint_sample": 2804,
+      "terminal_paint_probe": 595,
+      "sha256": "3b5d1b79f5c618b2f72dc5906f52b205dcc387dbafde3d679fcc7ec2bbd5d60e"
+    },
+    {
+      "seconds": 10.082121,
+      "utc": "2026-10-14T11:22:39.694590+00:00",
+      "path": "x64-dark-desktop-0065-caption-double-click-restore.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2839,
+      "terminal_paint_probe": 632,
+      "sha256": "44e3b8ec11adab41ab85541cd71d7eeb3f1d066812aebc4df497bcbb3ff9be23"
+    },
+    {
+      "seconds": 10.257136,
+      "utc": "2026-10-14T11:22:39.867274+00:00",
+      "path": "x64-dark-desktop-0066-sidebar-splitter-1-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2850,
+      "terminal_paint_probe": 643,
+      "sha256": "b61167dc8a03cc08769fd97c7498690c2481052ecd06c685386e48b5be7eb786"
+    },
+    {
+      "seconds": 10.303946,
+      "utc": "2026-10-14T11:22:39.914687+00:00",
+      "path": "x64-dark-desktop-0067-sidebar-splitter-1-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2853,
+      "terminal_paint_probe": 646,
+      "sha256": "feaddd77888c967e942e13c1a52af19e6cf36c91272346b886896d0361d450e9"
+    },
+    {
+      "seconds": 10.349807,
+      "utc": "2026-10-14T11:22:39.962059+00:00",
+      "path": "x64-dark-desktop-0068-sidebar-splitter-1-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2856,
+      "terminal_paint_probe": 649,
+      "sha256": "3f5ac2cdafabb38d12949bdcc38349c8e8e3b03834b69abb4b43aca87c9bf9dc"
+    },
+    {
+      "seconds": 10.398713,
+      "utc": "2026-10-14T11:22:40.009414+00:00",
+      "path": "x64-dark-desktop-0069-sidebar-splitter-1-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2859,
+      "terminal_paint_probe": 652,
+      "sha256": "5d269577c5cca0363d0dc15781d810d7c6c28d9efd5889b5ada8a4b1e31d69b7"
+    },
+    {
+      "seconds": 10.444601,
+      "utc": "2026-10-14T11:22:40.056784+00:00",
+      "path": "x64-dark-desktop-0070-sidebar-splitter-1-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2862,
+      "terminal_paint_probe": 655,
+      "sha256": "9cf10ff8d81b6cf6f1fb362827750050c52bd8afebabc247d44ebfa138a76fd7"
+    },
+    {
+      "seconds": 10.492063,
+      "utc": "2026-10-14T11:22:40.104133+00:00",
+      "path": "x64-dark-desktop-0071-sidebar-splitter-1-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2865,
+      "terminal_paint_probe": 658,
+      "sha256": "97d58c88a60aff14b401af86c61e5e39a5a46069cb3a9f265899689322aa0f53"
+    },
+    {
+      "seconds": 10.539433,
+      "utc": "2026-10-14T11:22:40.151487+00:00",
+      "path": "x64-dark-desktop-0072-sidebar-splitter-1-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2868,
+      "terminal_paint_probe": 661,
+      "sha256": "f1e6dcfed5a51fe135420be38d91ce4c3860a9cc886c22186b37320c4d3e0039"
+    },
+    {
+      "seconds": 10.588349,
+      "utc": "2026-10-14T11:22:40.198834+00:00",
+      "path": "x64-dark-desktop-0073-sidebar-splitter-1-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2871,
+      "terminal_paint_probe": 664,
+      "sha256": "75650d5fe3e98a7d2bd044075333d54c51a28683098dfc910b5adb179c8dd32f"
+    },
+    {
+      "seconds": 10.695865,
+      "utc": "2026-10-14T11:22:40.308725+00:00",
+      "path": "x64-dark-desktop-0074-sidebar-splitter-1-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2877,
+      "terminal_paint_probe": 671,
+      "sha256": "965d6658e8977924ddf94fb7015106a1827a9c507041f6800f09f2be24c00d8c"
+    },
+    {
+      "seconds": 11.49576,
+      "utc": "2026-10-14T11:22:41.107957+00:00",
+      "path": "x64-dark-desktop-0075-sidebar-splitter-2-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2928,
+      "terminal_paint_probe": 722,
+      "sha256": "788a5f29045e493dc6837f30a06407eb9051d2fc4a4a8c6c7e2f3200352a5559"
+    },
+    {
+      "seconds": 11.543228,
+      "utc": "2026-10-14T11:22:41.155304+00:00",
+      "path": "x64-dark-desktop-0076-sidebar-splitter-2-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2931,
+      "terminal_paint_probe": 725,
+      "sha256": "3c4c26146ea54be0a01f5419ee212bce9ab87e4bf1e3d6debe94d016765fbd18"
+    },
+    {
+      "seconds": 11.592552,
+      "utc": "2026-10-14T11:22:41.202662+00:00",
+      "path": "x64-dark-desktop-0077-sidebar-splitter-2-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2934,
+      "terminal_paint_probe": 728,
+      "sha256": "d6f1926b1cbabb915b77909168651a6979f2ccb47270d6bc23fd991ea1b0b0fd"
+    },
+    {
+      "seconds": 11.637587,
+      "utc": "2026-10-14T11:22:41.250000+00:00",
+      "path": "x64-dark-desktop-0078-sidebar-splitter-2-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2937,
+      "terminal_paint_probe": 731,
+      "sha256": "36c223cbac679eccec32715cd2a712b2c9bf41ca1529c55e361628392871bb4f"
+    },
+    {
+      "seconds": 11.684631,
+      "utc": "2026-10-14T11:22:41.297060+00:00",
+      "path": "x64-dark-desktop-0079-sidebar-splitter-2-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2940,
+      "terminal_paint_probe": 734,
+      "sha256": "0f3493f6e68750a1431ebe93a282f71832393ae8a6c672eeca9f39e1352004ef"
+    },
+    {
+      "seconds": 11.733684,
+      "utc": "2026-10-14T11:22:41.344411+00:00",
+      "path": "x64-dark-desktop-0080-sidebar-splitter-2-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2943,
+      "terminal_paint_probe": 737,
+      "sha256": "125a0b88960ef31a2974c93d576a0194237eac080e19f0974d6166abe8eb419b"
+    },
+    {
+      "seconds": 11.779197,
+      "utc": "2026-10-14T11:22:41.391739+00:00",
+      "path": "x64-dark-desktop-0081-sidebar-splitter-2-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2946,
+      "terminal_paint_probe": 740,
+      "sha256": "9947c9ba1c71f777e6994d6ce5fc34c19646bfe87333b4234cd73aed8d2471b4"
+    },
+    {
+      "seconds": 11.828021,
+      "utc": "2026-10-14T11:22:41.439108+00:00",
+      "path": "x64-dark-desktop-0082-sidebar-splitter-2-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2949,
+      "terminal_paint_probe": 743,
+      "sha256": "49282205d13015bda72ba528dcf785a4b3526231373db808098ded4f58e3a3fd"
+    },
+    {
+      "seconds": 11.935755,
+      "utc": "2026-10-14T11:22:41.548962+00:00",
+      "path": "x64-dark-desktop-0083-sidebar-splitter-2-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 2955,
+      "terminal_paint_probe": 750,
+      "sha256": "90ea02ea1a18b31e26861d4a64a0b8a237acc11a637b2baffb7732bd70a2c99e"
+    },
+    {
+      "seconds": 12.736427,
+      "utc": "2026-10-14T11:22:42.347125+00:00",
+      "path": "x64-dark-desktop-0084-sidebar-splitter-3-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3006,
+      "terminal_paint_probe": 801,
+      "sha256": "15a0d5aa442287a5f52e06a62f14a1dbceb9892a163f188546b88ea76aa86df4"
+    },
+    {
+      "seconds": 12.797938,
+      "utc": "2026-10-14T11:22:42.410124+00:00",
+      "path": "x64-dark-desktop-0085-sidebar-splitter-3-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3010,
+      "terminal_paint_probe": 805,
+      "sha256": "7da5cd9f8f592adba15a5902c578775eefa3f0705fd72fbdf60ef8421696dc65"
+    },
+    {
+      "seconds": 12.862319,
+      "utc": "2026-10-14T11:22:42.473090+00:00",
+      "path": "x64-dark-desktop-0086-sidebar-splitter-3-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3014,
+      "terminal_paint_probe": 809,
+      "sha256": "fd2c6ffba3f42ecd3716b294337bc33e1459e05cbd9a6bcc02d48e56e73d76e2"
+    },
+    {
+      "seconds": 12.908305,
+      "utc": "2026-10-14T11:22:42.520444+00:00",
+      "path": "x64-dark-desktop-0087-sidebar-splitter-3-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3017,
+      "terminal_paint_probe": 812,
+      "sha256": "82e2fe896de723866dad2123ed02e23d171b061a16d8ae429fc621e3f46bb92d"
+    },
+    {
+      "seconds": 12.955262,
+      "utc": "2026-10-14T11:22:42.567825+00:00",
+      "path": "x64-dark-desktop-0088-sidebar-splitter-3-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3020,
+      "terminal_paint_probe": 815,
+      "sha256": "601e1fea039f08731e8f14a2d4a9d162774ef693828b5701cfa30e9ff906b7d5"
+    },
+    {
+      "seconds": 13.004371,
+      "utc": "2026-10-14T11:22:42.615200+00:00",
+      "path": "x64-dark-desktop-0089-sidebar-splitter-3-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3023,
+      "terminal_paint_probe": 818,
+      "sha256": "25e3d2cd48df6653c8d51c57abb018fd7932d319690a4b6ec310575f2a6ffcaf"
+    },
+    {
+      "seconds": 13.051697,
+      "utc": "2026-10-14T11:22:42.662549+00:00",
+      "path": "x64-dark-desktop-0090-sidebar-splitter-3-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3026,
+      "terminal_paint_probe": 821,
+      "sha256": "3134ecef2b604fc5161285dcfc85d68d2509149d8bb0cd0d25d12adeb6f3153c"
+    },
+    {
+      "seconds": 13.097336,
+      "utc": "2026-10-14T11:22:42.709919+00:00",
+      "path": "x64-dark-desktop-0091-sidebar-splitter-3-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3029,
+      "terminal_paint_probe": 824,
+      "sha256": "011e97a5304f94d354ac7f0a8021bf3ba3363c6ca8e7cec36f659509742f4ba3"
+    },
+    {
+      "seconds": 13.208799,
+      "utc": "2026-10-14T11:22:42.819923+00:00",
+      "path": "x64-dark-desktop-0092-sidebar-splitter-3-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3035,
+      "terminal_paint_probe": 831,
+      "sha256": "be2a55eb7495cbdb68f5c97d18a35a4f4f3e1cd1d245cb607c871fd6386d0205"
+    },
+    {
+      "seconds": 14.021292,
+      "utc": "2026-10-14T11:22:43.633549+00:00",
+      "path": "x64-dark-desktop-0093-sidebar-collapse-animation-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3087,
+      "terminal_paint_probe": 883,
+      "sha256": "8da4e4c3acf275041ac63688516f12f6801c57f1bb0256f788a1b89d2e87eecb"
+    },
+    {
+      "seconds": 14.084848,
+      "utc": "2026-10-14T11:22:43.696551+00:00",
+      "path": "x64-dark-desktop-0094-sidebar-collapse-animation-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3091,
+      "terminal_paint_probe": 887,
+      "sha256": "7b456c1990736e6e7c70797bd6d5684bb6a2649097a579edb94446c2f1d606bb"
+    },
+    {
+      "seconds": 14.147547,
+      "utc": "2026-10-14T11:22:43.759539+00:00",
+      "path": "x64-dark-desktop-0095-sidebar-collapse-animation-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3095,
+      "terminal_paint_probe": 891,
+      "sha256": "d8b1d1707e814f3c968aee19396ef157c2d7a6f9f3744447de2e9080074c2b47"
+    },
+    {
+      "seconds": 14.210067,
+      "utc": "2026-10-14T11:22:43.822277+00:00",
+      "path": "x64-dark-desktop-0096-sidebar-collapse-animation-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3098,
+      "terminal_paint_probe": 895,
+      "sha256": "a670ef40eb5c90dc0f0cc7791e05cb35c05f691117fb1baf58fbfe61b375b2cc"
+    },
+    {
+      "seconds": 14.27233,
+      "utc": "2026-10-14T11:22:43.885127+00:00",
+      "path": "x64-dark-desktop-0097-sidebar-collapse-animation-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3102,
+      "terminal_paint_probe": 899,
+      "sha256": "98ef3177a18ad65bbfba12ddf2b6381ce47b0f0cddecf50590a03024ac1c6750"
+    },
+    {
+      "seconds": 14.335033,
+      "utc": "2026-10-14T11:22:43.948112+00:00",
+      "path": "x64-dark-desktop-0098-sidebar-collapse-animation-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3106,
+      "terminal_paint_probe": 903,
+      "sha256": "0833ca3a4aa0c81cfcec361d574054ac7c245695c494284312c8099580af71f7"
+    },
+    {
+      "seconds": 14.41364,
+      "utc": "2026-10-14T11:22:44.026243+00:00",
+      "path": "x64-dark-desktop-0099-sidebar-collapse-animation-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3110,
+      "terminal_paint_probe": 907,
+      "sha256": "896256f48ff31ee043f09a2ec7df04cb615bb98b0e79334b789e23c49ab5afc4"
+    },
+    {
+      "seconds": 14.476625,
+      "utc": "2026-10-14T11:22:44.089247+00:00",
+      "path": "x64-dark-desktop-0100-sidebar-collapse-animation-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3115,
+      "terminal_paint_probe": 912,
+      "sha256": "0f4e26b843a58ce598c4f67399ec0cbafe647df0e758425f153b1a4c0b86d668"
+    },
+    {
+      "seconds": 14.617597,
+      "utc": "2026-10-14T11:22:44.230448+00:00",
+      "path": "x64-dark-desktop-0101-sidebar-collapse-settled.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3124,
+      "terminal_paint_probe": 921,
+      "sha256": "9960bb416ee69a2bf554ccf84ed9c8359e105de17c950f15e294b0f25fddbecf"
+    },
+    {
+      "seconds": 15.463104,
+      "utc": "2026-10-14T11:22:45.075489+00:00",
+      "path": "x64-dark-desktop-0102-sidebar-expand-animation-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3177,
+      "terminal_paint_probe": 974,
+      "sha256": "7e8468468a76739f68da4759400ab77b0e55baba29e460c7518090e2fd853b78"
+    },
+    {
+      "seconds": 15.52839,
+      "utc": "2026-10-14T11:22:45.138493+00:00",
+      "path": "x64-dark-desktop-0103-sidebar-expand-animation-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3182,
+      "terminal_paint_probe": 979,
+      "sha256": "9d111422e41897cdba9062818d185eaea5a45cc85c09c554c6c5e767e207d304"
+    },
+    {
+      "seconds": 15.589523,
+      "utc": "2026-10-14T11:22:45.201532+00:00",
+      "path": "x64-dark-desktop-0104-sidebar-expand-animation-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3186,
+      "terminal_paint_probe": 983,
+      "sha256": "519207863cc36dbd9c7a5b9cfec7ea24c99c4c4ac4e6a5eb9cd2c76e424b7239"
+    },
+    {
+      "seconds": 15.685039,
+      "utc": "2026-10-14T11:22:45.295757+00:00",
+      "path": "x64-dark-desktop-0105-sidebar-expand-animation-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3191,
+      "terminal_paint_probe": 989,
+      "sha256": "9167b4c4023a41dc4a1d6b0199d33001d710b9b47c1c31c5db6a56a307715347"
+    },
+    {
+      "seconds": 15.745835,
+      "utc": "2026-10-14T11:22:45.358725+00:00",
+      "path": "x64-dark-desktop-0106-sidebar-expand-animation-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3195,
+      "terminal_paint_probe": 993,
+      "sha256": "752f33df0c406f6884142f917b0caaa6161bb3fcd60604e8ad8556ab10750ee8"
+    },
+    {
+      "seconds": 15.824344,
+      "utc": "2026-10-14T11:22:45.442395+00:00",
+      "path": "x64-dark-desktop-0107-sidebar-expand-animation-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3200,
+      "terminal_paint_probe": 998,
+      "sha256": "c1678b48803e336bacbef0fdc5b9e90021ce74df19d3265eccc0020125781563"
+    },
+    {
+      "seconds": 15.886896,
+      "utc": "2026-10-14T11:22:45.499986+00:00",
+      "path": "x64-dark-desktop-0108-sidebar-expand-animation-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3204,
+      "terminal_paint_probe": 2,
+      "sha256": "a62ea397eaf2381353b5fe315bba0feff104e83a766d20b94ed9ec4185a8a9cb"
+    },
+    {
+      "seconds": 15.965113,
+      "utc": "2026-10-14T11:22:45.578110+00:00",
+      "path": "x64-dark-desktop-0109-sidebar-expand-animation-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3209,
+      "terminal_paint_probe": 7,
+      "sha256": "8fc5c66c10adadfc21e35796722766eb00fffe608ae75ba44d70adbd990257dd"
+    },
+    {
+      "seconds": 16.105614,
+      "utc": "2026-10-14T11:22:45.718690+00:00",
+      "path": "x64-dark-desktop-0110-sidebar-expand-settled.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3218,
+      "terminal_paint_probe": 16,
+      "sha256": "1e111f6c62ecc2e52bcd58076e4523560e82763cdc2c71a4227991ba195a6383"
+    },
+    {
+      "seconds": 16.923558,
+      "utc": "2026-10-14T11:22:46.533049+00:00",
+      "path": "x64-dark-desktop-0111-sidebar-reversal-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3270,
+      "terminal_paint_probe": 68,
+      "sha256": "02b1603b9fa4ae23ca7f6fd8a5f76160ff3e679f07c8b0f2c5c710bc21777d87"
+    },
+    {
+      "seconds": 17.002011,
+      "utc": "2026-10-14T11:22:46.611945+00:00",
+      "path": "x64-dark-desktop-0112-sidebar-reversal-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3275,
+      "terminal_paint_probe": 73,
+      "sha256": "cf1fba06e6a40fdbf1caa5543068e68dfbcfb8048581bf24a0762d9f32263a90"
+    },
+    {
+      "seconds": 17.282714,
+      "utc": "2026-10-14T11:22:46.895019+00:00",
+      "path": "x64-dark-desktop-0113-sidebar-behavior-failure.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3291,
+      "terminal_paint_probe": 89,
+      "sha256": "4469211da63bb3621f5cd1cbc8576b0b2d041ff1817882baff67cb8645ff8a8b"
+    },
+    {
+      "seconds": 18.000897,
+      "utc": "2026-10-14T11:22:47.614234+00:00",
+      "path": "x64-dark-desktop-0114-sidebar-recovery-for-remaining-tests.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3337,
+      "terminal_paint_probe": 135,
+      "sha256": "d810bc6443e364b93cc28db6502c877051905dfc2e519569a7dd9597374fff1b"
+    },
+    {
+      "seconds": 18.204958,
+      "utc": "2026-10-14T11:22:47.818060+00:00",
+      "path": "x64-dark-desktop-0115-final.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        40,
+        40,
+        1220,
+        800
+      ],
+      "terminal_paint_sample": 3349,
+      "terminal_paint_probe": 147,
+      "sha256": "8a566db03dff5f7fb05d7498d352a7a413a0bea355e9ceac9712517fef52e259"
+    }
+  ],
+  "drag_evidence": [
+    {
+      "name": "caption-drag-to-40-40",
+      "held_frames": [
+        "x64-dark-desktop-0001-caption-drag-to-40-40-held-01.png",
+        "x64-dark-desktop-0002-caption-drag-to-40-40-held-02.png",
+        "x64-dark-desktop-0003-caption-drag-to-40-40-held-03.png",
+        "x64-dark-desktop-0004-caption-drag-to-40-40-held-04.png",
+        "x64-dark-desktop-0005-caption-drag-to-40-40-held-05.png",
+        "x64-dark-desktop-0006-caption-drag-to-40-40-held-06.png",
+        "x64-dark-desktop-0007-caption-drag-to-40-40-held-07.png",
+        "x64-dark-desktop-0008-caption-drag-to-40-40-held-08.png"
+      ],
+      "paint_sample_first": 2272,
+      "paint_sample_last": 2292,
+      "stdout_markers_while_held": [
+        18,
+        21,
+        24,
+        26,
+        29,
+        32,
+        35,
+        38
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-round-1-minimum",
+      "held_frames": [
+        "x64-dark-desktop-0010-resize-round-1-minimum-held-01.png",
+        "x64-dark-desktop-0011-resize-round-1-minimum-held-02.png",
+        "x64-dark-desktop-0012-resize-round-1-minimum-held-03.png",
+        "x64-dark-desktop-0013-resize-round-1-minimum-held-04.png",
+        "x64-dark-desktop-0014-resize-round-1-minimum-held-05.png",
+        "x64-dark-desktop-0015-resize-round-1-minimum-held-06.png",
+        "x64-dark-desktop-0016-resize-round-1-minimum-held-07.png",
+        "x64-dark-desktop-0017-resize-round-1-minimum-held-08.png"
+      ],
+      "paint_sample_first": 2351,
+      "paint_sample_last": 2365,
+      "stdout_markers_while_held": [
+        97,
+        98,
+        102,
+        106,
+        109,
+        112,
+        115,
+        116
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-round-1-large",
+      "held_frames": [
+        "x64-dark-desktop-0019-resize-round-1-large-held-01.png",
+        "x64-dark-desktop-0020-resize-round-1-large-held-02.png",
+        "x64-dark-desktop-0021-resize-round-1-large-held-03.png",
+        "x64-dark-desktop-0022-resize-round-1-large-held-04.png",
+        "x64-dark-desktop-0023-resize-round-1-large-held-05.png",
+        "x64-dark-desktop-0024-resize-round-1-large-held-06.png",
+        "x64-dark-desktop-0025-resize-round-1-large-held-07.png",
+        "x64-dark-desktop-0026-resize-round-1-large-held-08.png"
+      ],
+      "paint_sample_first": 2420,
+      "paint_sample_last": 2439,
+      "stdout_markers_while_held": [
+        173,
+        177,
+        178,
+        182,
+        187,
+        189,
+        192,
+        196
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-round-2-minimum",
+      "held_frames": [
+        "x64-dark-desktop-0028-resize-round-2-minimum-held-01.png",
+        "x64-dark-desktop-0029-resize-round-2-minimum-held-02.png",
+        "x64-dark-desktop-0030-resize-round-2-minimum-held-03.png",
+        "x64-dark-desktop-0031-resize-round-2-minimum-held-04.png",
+        "x64-dark-desktop-0032-resize-round-2-minimum-held-05.png",
+        "x64-dark-desktop-0033-resize-round-2-minimum-held-06.png",
+        "x64-dark-desktop-0034-resize-round-2-minimum-held-07.png",
+        "x64-dark-desktop-0035-resize-round-2-minimum-held-08.png"
+      ],
+      "paint_sample_first": 2496,
+      "paint_sample_last": 2512,
+      "stdout_markers_while_held": [
+        253,
+        258,
+        259,
+        264,
+        267,
+        270,
+        273,
+        274
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-round-2-large",
+      "held_frames": [
+        "x64-dark-desktop-0037-resize-round-2-large-held-01.png",
+        "x64-dark-desktop-0038-resize-round-2-large-held-02.png",
+        "x64-dark-desktop-0039-resize-round-2-large-held-03.png",
+        "x64-dark-desktop-0040-resize-round-2-large-held-04.png",
+        "x64-dark-desktop-0041-resize-round-2-large-held-05.png",
+        "x64-dark-desktop-0042-resize-round-2-large-held-06.png",
+        "x64-dark-desktop-0043-resize-round-2-large-held-07.png",
+        "x64-dark-desktop-0044-resize-round-2-large-held-08.png"
+      ],
+      "paint_sample_first": 2566,
+      "paint_sample_last": 2580,
+      "stdout_markers_while_held": [
+        332,
+        335,
+        338,
+        341,
+        344,
+        347,
+        350,
+        353
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-round-3-minimum",
+      "held_frames": [
+        "x64-dark-desktop-0046-resize-round-3-minimum-held-01.png",
+        "x64-dark-desktop-0047-resize-round-3-minimum-held-02.png",
+        "x64-dark-desktop-0048-resize-round-3-minimum-held-03.png",
+        "x64-dark-desktop-0049-resize-round-3-minimum-held-04.png",
+        "x64-dark-desktop-0050-resize-round-3-minimum-held-05.png",
+        "x64-dark-desktop-0051-resize-round-3-minimum-held-06.png",
+        "x64-dark-desktop-0052-resize-round-3-minimum-held-07.png",
+        "x64-dark-desktop-0053-resize-round-3-minimum-held-08.png"
+      ],
+      "paint_sample_first": 2638,
+      "paint_sample_last": 2658,
+      "stdout_markers_while_held": [
+        412,
+        419,
+        423,
+        424,
+        427,
+        431,
+        434,
+        437
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-round-3-large",
+      "held_frames": [
+        "x64-dark-desktop-0055-resize-round-3-large-held-01.png",
+        "x64-dark-desktop-0056-resize-round-3-large-held-02.png",
+        "x64-dark-desktop-0057-resize-round-3-large-held-03.png",
+        "x64-dark-desktop-0058-resize-round-3-large-held-04.png",
+        "x64-dark-desktop-0059-resize-round-3-large-held-05.png",
+        "x64-dark-desktop-0060-resize-round-3-large-held-06.png",
+        "x64-dark-desktop-0061-resize-round-3-large-held-07.png",
+        "x64-dark-desktop-0062-resize-round-3-large-held-08.png"
+      ],
+      "paint_sample_first": 2713,
+      "paint_sample_last": 2728,
+      "stdout_markers_while_held": [
+        495,
+        498,
+        502,
+        505,
+        508,
+        510,
+        513,
+        515
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-1",
+      "held_frames": [
+        "x64-dark-desktop-0066-sidebar-splitter-1-held-01.png",
+        "x64-dark-desktop-0067-sidebar-splitter-1-held-02.png",
+        "x64-dark-desktop-0068-sidebar-splitter-1-held-03.png",
+        "x64-dark-desktop-0069-sidebar-splitter-1-held-04.png",
+        "x64-dark-desktop-0070-sidebar-splitter-1-held-05.png",
+        "x64-dark-desktop-0071-sidebar-splitter-1-held-06.png",
+        "x64-dark-desktop-0072-sidebar-splitter-1-held-07.png",
+        "x64-dark-desktop-0073-sidebar-splitter-1-held-08.png"
+      ],
+      "paint_sample_first": 2850,
+      "paint_sample_last": 2871,
+      "stdout_markers_while_held": [
+        643,
+        646,
+        649,
+        652,
+        655,
+        658,
+        661,
+        664
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-2",
+      "held_frames": [
+        "x64-dark-desktop-0075-sidebar-splitter-2-held-01.png",
+        "x64-dark-desktop-0076-sidebar-splitter-2-held-02.png",
+        "x64-dark-desktop-0077-sidebar-splitter-2-held-03.png",
+        "x64-dark-desktop-0078-sidebar-splitter-2-held-04.png",
+        "x64-dark-desktop-0079-sidebar-splitter-2-held-05.png",
+        "x64-dark-desktop-0080-sidebar-splitter-2-held-06.png",
+        "x64-dark-desktop-0081-sidebar-splitter-2-held-07.png",
+        "x64-dark-desktop-0082-sidebar-splitter-2-held-08.png"
+      ],
+      "paint_sample_first": 2928,
+      "paint_sample_last": 2949,
+      "stdout_markers_while_held": [
+        722,
+        725,
+        728,
+        731,
+        734,
+        737,
+        740,
+        743
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-3",
+      "held_frames": [
+        "x64-dark-desktop-0084-sidebar-splitter-3-held-01.png",
+        "x64-dark-desktop-0085-sidebar-splitter-3-held-02.png",
+        "x64-dark-desktop-0086-sidebar-splitter-3-held-03.png",
+        "x64-dark-desktop-0087-sidebar-splitter-3-held-04.png",
+        "x64-dark-desktop-0088-sidebar-splitter-3-held-05.png",
+        "x64-dark-desktop-0089-sidebar-splitter-3-held-06.png",
+        "x64-dark-desktop-0090-sidebar-splitter-3-held-07.png",
+        "x64-dark-desktop-0091-sidebar-splitter-3-held-08.png"
+      ],
+      "paint_sample_first": 3006,
+      "paint_sample_last": 3029,
+      "stdout_markers_while_held": [
+        801,
+        805,
+        809,
+        812,
+        815,
+        818,
+        821,
+        824
+      ],
+      "stdout_changed_while_held": true
+    }
+  ],
+  "behavior_failures": [
+    "Mouse click aimed at moving sidebar toggle did not change its target state; see down/up bounds and hit targets before attributing message delivery"
+  ],
+  "dpi": 96,
+  "desktop_bounds": [
+    0,
+    0,
+    1920,
+    1080
+  ],
+  "system_window_drag": {
+    "before": false,
+    "scope": "Temporary test-desktop setting; no profile persistence or product change",
+    "during_test": true,
+    "restored": false
+  },
+  "paint_samples": {
+    "before": 2267,
+    "after": 3348
+  },
+  "distinct_painted_stdout_markers": 115,
+  "drags_overlapping_painted_stdout": [
+    "caption-drag-to-40-40",
+    "resize-round-1-minimum",
+    "resize-round-1-large",
+    "resize-round-2-minimum",
+    "resize-round-2-large",
+    "resize-round-3-minimum",
+    "resize-round-3-large",
+    "sidebar-splitter-1",
+    "sidebar-splitter-2",
+    "sidebar-splitter-3"
+  ],
+  "final_layout": {
+    "terminal_minimum_content_width": 368,
+    "visible_child_bounds": "PASS"
+  },
+  "final_state": {
+    "seconds": 18.177056,
+    "utc": "2026-10-14T11:22:47.797956+00:00",
+    "window_bounds": [
+      40,
+      40,
+      1220,
+      800
+    ],
+    "client_bounds": [
+      48,
+      71,
+      1212,
+      792
+    ],
+    "foreground": 328134,
+    "maximized": false,
+    "terminal_paint_sample": 3348,
+    "terminal_paint_probe": 146,
+    "controls": {
+      "106": {
+        "bounds": [
+          76,
+          211,
+          241,
+          659
+        ],
+        "visible": true
+      },
+      "107": {
+        "bounds": [
+          285,
+          171,
+          662,
+          764
+        ],
+        "visible": true
+      },
+      "112": {
+        "bounds": [
+          706,
+          211,
+          1184,
+          720
+        ],
+        "visible": true
+      },
+      "115": {
+        "bounds": [
+          1044,
+          173,
+          1148,
+          205
+        ],
+        "visible": true
+      },
+      "117": {
+        "bounds": [
+          708,
+          173,
+          778,
+          205
+        ],
+        "visible": true
+      },
+      "118": {
+        "bounds": [
+          778,
+          173,
+          848,
+          205
+        ],
+        "visible": true
+      },
+      "119": {
+        "bounds": [
+          706,
+          211,
+          1184,
+          243
+        ],
+        "visible": false
+      },
+      "120": {
+        "bounds": [
+          706,
+          283,
+          1184,
+          676
+        ],
+        "visible": false
+      },
+      "125": {
+        "bounds": [
+          1156,
+          173,
+          1184,
+          201
+        ],
+        "visible": true
+      },
+      "126": {
+        "bounds": [
+          706,
+          251,
+          886,
+          283
+        ],
+        "visible": false
+      },
+      "127": {
+        "bounds": [
+          886,
+          251,
+          1064,
+          283
+        ],
+        "visible": false
+      },
+      "128": {
+        "bounds": [
+          1064,
+          251,
+          1168,
+          283
+        ],
+        "visible": false
+      },
+      "130": {
+        "bounds": [
+          706,
+          732,
+          1184,
+          732
+        ],
+        "visible": false
+      }
+    }
+  },
+  "completed_utc": "2026-10-14T11:22:47.818060+00:00"
+}

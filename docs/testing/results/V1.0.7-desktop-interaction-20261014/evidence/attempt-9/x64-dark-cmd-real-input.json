@@ -1,0 +1,4590 @@
+{
+  "status": "PASS",
+  "main_hwnd": 328134,
+  "pid": 1100,
+  "environment": "Windows-2022Server-10.0.20348-SP0",
+  "input_events": [
+    {
+      "action": "mouse-click",
+      "point": [
+        475,
+        427
+      ],
+      "hwnd": 66102,
+      "monotonic": 237.0
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.906
+    },
+    {
+      "action": "character",
+      "character": "c",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.921
+    },
+    {
+      "action": "character",
+      "character": "h",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.921
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.921
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.921
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.937
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.937
+    },
+    {
+      "action": "character",
+      "character": "Y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.937
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.937
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.953
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.953
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.953
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.968
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.968
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.968
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.968
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.984
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.984
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.984
+    },
+    {
+      "action": "character",
+      "character": "F",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 238.984
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.0
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.0
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.0
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.0
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.015
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.015
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.015
+    },
+    {
+      "action": "character",
+      "character": "O",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.031
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.031
+    },
+    {
+      "action": "character",
+      "character": ">",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.031
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.031
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.046
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.046
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.046
+    },
+    {
+      "action": "character",
+      "character": "M",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.046
+    },
+    {
+      "action": "character",
+      "character": "P",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.062
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.062
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.062
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.078
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.078
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.078
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.078
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.093
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.093
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.093
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.093
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.109
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.109
+    },
+    {
+      "action": "character",
+      "character": "k",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.109
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.125
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.125
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.125
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.125
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.14
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.14
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.14
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.14
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.156
+    },
+    {
+      "action": "character",
+      "character": "f",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.156
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.156
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.156
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.171
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.171
+    },
+    {
+      "action": "character",
+      "character": "b",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.171
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.187
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.187
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.187
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.187
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.203
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.203
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.203
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.203
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.218
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.218
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.218
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.218
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.234
+    },
+    {
+      "action": "key",
+      "key": "Home",
+      "vk": 36,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.234
+    },
+    {
+      "action": "key",
+      "key": "Right",
+      "vk": 39,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.265
+    },
+    {
+      "action": "key",
+      "key": "Right",
+      "vk": 39,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.281
+    },
+    {
+      "action": "key",
+      "key": "Right",
+      "vk": 39,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.312
+    },
+    {
+      "action": "key",
+      "key": "Left",
+      "vk": 37,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.343
+    },
+    {
+      "action": "key",
+      "key": "Right",
+      "vk": 39,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.359
+    },
+    {
+      "action": "key",
+      "key": "Delete",
+      "vk": 46,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.39
+    },
+    {
+      "action": "character",
+      "character": "o",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.406
+    },
+    {
+      "action": "key",
+      "key": "End",
+      "vk": 35,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.421
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.437
+    },
+    {
+      "action": "key",
+      "key": "Backspace",
+      "vk": 8,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.453
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.468
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.5
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.5
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.5
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.515
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.515
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.515
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.531
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.531
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.531
+    },
+    {
+      "action": "character",
+      "character": "M",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.531
+    },
+    {
+      "action": "character",
+      "character": "P",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.546
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.546
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.546
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.546
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.562
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.562
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.562
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.578
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.578
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.578
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.578
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.593
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.593
+    },
+    {
+      "action": "character",
+      "character": "k",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.593
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.593
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.609
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.609
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.609
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.609
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.625
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.625
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.625
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.64
+    },
+    {
+      "action": "character",
+      "character": "f",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.64
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.64
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.64
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.656
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.656
+    },
+    {
+      "action": "character",
+      "character": "b",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.656
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.656
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.671
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.671
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.671
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.687
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.687
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.687
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.687
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.703
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.703
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.703
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.703
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.718
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.718
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.75
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.75
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.75
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.75
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.765
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.765
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.765
+    },
+    {
+      "action": "character",
+      "character": "R",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.765
+    },
+    {
+      "action": "character",
+      "character": "I",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.781
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.781
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.781
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.796
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.796
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.796
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.796
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.812
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.812
+    },
+    {
+      "action": "character",
+      "character": "Y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.812
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.812
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.828
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.828
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.828
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.828
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.843
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.843
+    },
+    {
+      "action": "character",
+      "character": "F",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.843
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.859
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.859
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.859
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.859
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.875
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.875
+    },
+    {
+      "action": "character",
+      "character": "=",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.875
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.875
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.89
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.89
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.89
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.906
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.906
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.906
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.906
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.921
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.921
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.921
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.921
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.937
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.937
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.937
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.937
+    },
+    {
+      "action": "character",
+      "character": "F",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.953
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.953
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.953
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.968
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.968
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.968
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.968
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.984
+    },
+    {
+      "action": "character",
+      "character": "O",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.984
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.984
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 239.984
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.0
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.015
+    },
+    {
+      "action": "character",
+      "character": "u",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.031
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.031
+    },
+    {
+      "action": "character",
+      "character": "h",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.031
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.031
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.046
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.046
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.046
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.062
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.062
+    },
+    {
+      "action": "character",
+      "character": "M",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.062
+    },
+    {
+      "action": "character",
+      "character": "P",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.062
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.078
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.078
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.078
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.078
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.093
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.093
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.093
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.109
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.109
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.109
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.109
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.125
+    },
+    {
+      "action": "character",
+      "character": "k",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.125
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.125
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.125
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.14
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.14
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.14
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.14
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.156
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.156
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.156
+    },
+    {
+      "action": "character",
+      "character": "f",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.171
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.171
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.171
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.171
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.187
+    },
+    {
+      "action": "character",
+      "character": "b",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.187
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.187
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.187
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.203
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.218
+    },
+    {
+      "action": "character",
+      "character": "c",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.234
+    },
+    {
+      "action": "character",
+      "character": "h",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.234
+    },
+    {
+      "action": "character",
+      "character": "o",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.234
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.234
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.25
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.25
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.25
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.25
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.265
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.265
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.265
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.281
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.281
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.281
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.281
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.296
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.296
+    },
+    {
+      "action": "character",
+      "character": "F",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.296
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.296
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.312
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.312
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.312
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.312
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.328
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.328
+    },
+    {
+      "action": "character",
+      "character": "O",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.328
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.343
+    },
+    {
+      "action": "character",
+      "character": ">",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.343
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.343
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.343
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.359
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.359
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.359
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.359
+    },
+    {
+      "action": "character",
+      "character": "v",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.375
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.375
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.375
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.39
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.39
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.39
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.39
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.421
+    },
+    {
+      "action": "character",
+      "character": "c",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.421
+    },
+    {
+      "action": "character",
+      "character": "h",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.421
+    },
+    {
+      "action": "character",
+      "character": "o",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.437
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.437
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.437
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.453
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.453
+    },
+    {
+      "action": "character",
+      "character": "R",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.453
+    },
+    {
+      "action": "character",
+      "character": "I",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.453
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.468
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.468
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.468
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.468
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.484
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.484
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.484
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.5
+    },
+    {
+      "action": "character",
+      "character": "Y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.5
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.5
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.5
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.515
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.515
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.515
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.515
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.531
+    },
+    {
+      "action": "character",
+      "character": "F",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.531
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.531
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.531
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.546
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.546
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.546
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.562
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.562
+    },
+    {
+      "action": "character",
+      "character": ">",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.562
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.562
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.578
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.578
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.578
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.578
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.593
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.593
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.593
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.609
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.609
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.625
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.64
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.64
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.64
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.656
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.656
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.656
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.656
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.671
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.671
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.671
+    },
+    {
+      "action": "character",
+      "character": "v",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.671
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.687
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.687
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.687
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.687
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.703
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.703
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.703
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.718
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.718
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.718
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.718
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.734
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.734
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.734
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.734
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.75
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.765
+    },
+    {
+      "action": "character",
+      "character": "o",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.781
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.781
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.781
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.781
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.812
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.812
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.828
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.828
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.828
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.828
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.843
+    },
+    {
+      "action": "character",
+      "character": "R",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.843
+    },
+    {
+      "action": "character",
+      "character": "I",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.843
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.843
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.859
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.859
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.859
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.875
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.875
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.875
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.875
+    },
+    {
+      "action": "character",
+      "character": "Y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.89
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.89
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.89
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.89
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.906
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.906
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.906
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.906
+    },
+    {
+      "action": "character",
+      "character": "F",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.921
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.921
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.921
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.937
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.937
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.937
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.937
+    },
+    {
+      "action": "character",
+      "character": "=",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.953
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.953
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.953
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.984
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.984
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 240.984
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.0
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.0
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.0
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.0
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.015
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.015
+    },
+    {
+      "action": "character",
+      "character": "M",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.015
+    },
+    {
+      "action": "character",
+      "character": "P",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.015
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.031
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.031
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.031
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.046
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.046
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.046
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.046
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.062
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.062
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.062
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.062
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.078
+    },
+    {
+      "action": "character",
+      "character": "k",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.078
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.078
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.093
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.093
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.093
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.093
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.109
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.109
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.109
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.109
+    },
+    {
+      "action": "character",
+      "character": "f",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.125
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.125
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.125
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.125
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.14
+    },
+    {
+      "action": "character",
+      "character": "b",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.14
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.14
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.156
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.156
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.156
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.156
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.171
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.171
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.171
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.171
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.187
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.187
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.187
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.203
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 66102,
+        "foreground": 328134
+      },
+      "monotonic": 241.203
+    }
+  ],
+  "websocket_events": [
+    {
+      "codePage": 65001,
+      "data": "ZWNobyBLRVlfRVhFQ180RTYyOEY4OUQ0QjdfT0s+IiVURU1QJVxTZXJpYWxDdGwta2V5cy00ZTYyOGY4OWQ0YjdcZWRpdGVkLnR4dCINCg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 471,
+      "source": "gui",
+      "tick": 239468,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 472,
+      "source": "device",
+      "tick": 239468,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "RDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 473,
+      "source": "device",
+      "tick": 239468,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "dHlwZSAiJVRFTVAlXFNlcmlhbEN0bC1rZXlzLTRlNjI4Zjg5ZDRiN1xlZGl0ZWQudHh0Ig0K",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 474,
+      "source": "gui",
+      "tick": 239718,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "S0VZX0VYRUNfNEU2MjhGODlENEI3X09LDQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 475,
+      "source": "device",
+      "tick": 239718,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 476,
+      "source": "device",
+      "tick": 239718,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "c2V0ICJTRVJJQUxDVExfS0VZU180RTYyOEY4OUQ0Qjc9U1RBVEVfRVhFQ180RTYyOEY4OUQ0QjdfT0siDQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 477,
+      "source": "gui",
+      "tick": 240000,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 478,
+      "source": "device",
+      "tick": 240000,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "RDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 479,
+      "source": "device",
+      "tick": 240000,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "cHVzaGQgIiVURU1QJVxTZXJpYWxDdGwta2V5cy00ZTYyOGY4OWQ0YjciDQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 480,
+      "source": "gui",
+      "tick": 240203,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 481,
+      "source": "device",
+      "tick": 240203,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "QzpcVXNlcnNcUlVOTkVSfjFcQXBwRGF0YVxMb2NhbFxUZW1wXFNlcmlhbEN0bC1rZXlzLTRlNjI4Zjg5ZDRiNz4=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 482,
+      "source": "device",
+      "tick": 240203,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "ZWNobyBDRF9FWEVDXzRFNjI4Rjg5RDRCN19PSz5yZWxhdGl2ZS50eHQNCg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 483,
+      "source": "gui",
+      "tick": 240390,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 484,
+      "source": "device",
+      "tick": 240390,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "QzpcVXNlcnNcUlVOTkVSfjFcQXBwRGF0YVxMb2NhbFxUZW1wXFNlcmlhbEN0bC1rZXlzLTRlNjI4Zjg5ZDRiNz4=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 485,
+      "source": "device",
+      "tick": 240390,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "ZWNobyAlU0VSSUFMQ1RMX0tFWVNfNEU2MjhGODlENEI3JT5zdGF0ZS50eHQNCg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 486,
+      "source": "gui",
+      "tick": 240609,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 487,
+      "source": "device",
+      "tick": 240609,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "QzpcVXNlcnNcUlVOTkVSfjFcQXBwRGF0YVxMb2NhbFxUZW1wXFNlcmlhbEN0bC1rZXlzLTRlNjI4Zjg5ZDRiNz4=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 488,
+      "source": "device",
+      "tick": 240609,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "dHlwZSByZWxhdGl2ZS50eHQgc3RhdGUudHh0DQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 489,
+      "source": "gui",
+      "tick": 240750,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQpyZWxhdGl2ZS50eHQNCg0KDQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 490,
+      "source": "device",
+      "tick": 240750,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "Q0RfRVhFQ180RTYyOEY4OUQ0QjdfT0sNCg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 491,
+      "source": "device",
+      "tick": 240750,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQpzdGF0ZS50eHQNCg0KDQpTVEFURV9FWEVDXzRFNjI4Rjg5RDRCN19PSw0KDQpDOlxVc2Vyc1xSVU5ORVJ+MVxBcHBEYXRhXExvY2FsXFRlbXBcU2VyaWFsQ3RsLWtleXMtNGU2MjhmODlkNGI3Pg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 492,
+      "source": "device",
+      "tick": 240750,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "cG9wZA0K",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 493,
+      "source": "gui",
+      "tick": 240781,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 494,
+      "source": "device",
+      "tick": 240781,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "RDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 495,
+      "source": "device",
+      "tick": 240781,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "c2V0ICJTRVJJQUxDVExfS0VZU180RTYyOEY4OUQ0Qjc9Ig0K",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 496,
+      "source": "gui",
+      "tick": 240953,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 497,
+      "source": "device",
+      "tick": 240953,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "RDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg==",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 498,
+      "source": "device",
+      "tick": 240953,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "dHlwZSAiJVRFTVAlXFNlcmlhbEN0bC1rZXlzLTRlNjI4Zjg5ZDRiN1xlZGl0ZWQudHh0Ig0K",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 499,
+      "source": "gui",
+      "tick": 241203,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "S0VZX0VYRUNfNEU2MjhGODlENEI3X09LDQo=",
+      "instance": "14de750ba0d5d68ccf81ce530d3f34c7",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 500,
+      "source": "device",
+      "tick": 241203,
+      "type": "event",
+      "version": 1
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "D:\\a\\_temp\\serialctl-ui\\x64-dark-cmd-real-input-before.png",
+      "method": "desktop CopyFromScreen",
+      "sha256": "efeffaa863b45ae0037afbf68871b19f1edc2680523cc43a57546b27811fe9fd"
+    },
+    {
+      "path": "D:\\a\\_temp\\serialctl-ui\\x64-dark-cmd-real-input-after.png",
+      "method": "desktop CopyFromScreen",
+      "sha256": "d9c6311bdb57a2cf39e915423dc15d5c068254b117bcb6a25efa4660cf3510b8"
+    }
+  ],
+  "checks": [
+    {
+      "check": "exact CRLF record in device stdout (CMD prompt may precede it)",
+      "expected": "KEY_EXEC_4E628F89D4B7_OK",
+      "passed": true
+    },
+    {
+      "check": "Home/Left/Right/Delete/End/Backspace editing executes corrected command",
+      "passed": true
+    },
+    {
+      "check": "exact CRLF record in device stdout (CMD prompt may precede it)",
+      "expected": "CD_EXEC_4E628F89D4B7_OK",
+      "passed": true
+    },
+    {
+      "check": "exact CRLF record in device stdout (CMD prompt may precede it)",
+      "expected": "STATE_EXEC_4E628F89D4B7_OK",
+      "passed": true
+    },
+    {
+      "check": "set value and changed working directory persist across keyboard-submitted commands",
+      "passed": true
+    },
+    {
+      "check": "exact CRLF record in device stdout (CMD prompt may precede it)",
+      "expected": "KEY_EXEC_4E628F89D4B7_OK",
+      "passed": true
+    }
+  ],
+  "files": [
+    {
+      "path": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\SerialCtl-keys-4e628f89d4b7\\edited.txt",
+      "base64": "S0VZX0VYRUNfNEU2MjhGODlENEI3X09LDQo=",
+      "sha256": "21073cbe007d896b5403663027669f6fad4eb4305da2423bd34e6815b72d8375",
+      "passed": true
+    },
+    {
+      "path": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\SerialCtl-keys-4e628f89d4b7\\relative.txt",
+      "base64": "Q0RfRVhFQ180RTYyOEY4OUQ0QjdfT0sNCg==",
+      "sha256": "86826e42d201ec90334f093752abcf5f1a3c7eae9279c82a86d0426182f12342",
+      "passed": true
+    },
+    {
+      "path": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\SerialCtl-keys-4e628f89d4b7\\state.txt",
+      "base64": "U1RBVEVfRVhFQ180RTYyOEY4OUQ0QjdfT0sNCg==",
+      "sha256": "caf10d1d53bb89ba852fa65de99679ce8614eec3bea45a7f9bf364dbf061bc17",
+      "passed": true
+    }
+  ],
+  "input_method": "Actual terminal mouse click and SendInput keyboard down/up; characters use KEYEVENTF_UNICODE one at a time; no WM_CHAR/WM_KEYDOWN messages or WebSocket command input",
+  "limitations": [
+    "ASCII keyboard characters only; Chinese IME is not covered",
+    "Requires an existing active idle CMD with an empty local draft; latest connected CMD resource is observed",
+    "Screenshots are finite desktop samples, not a video or physical monitor latency measurement"
+  ],
+  "terminal_hwnd": 66102,
+  "input_structure_bytes": 40,
+  "focus_after_click": {
+    "focus": 66102,
+    "foreground": 328134
+  },
+  "fixture_directory": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\SerialCtl-keys-4e628f89d4b7",
+  "fixtures": [
+    "An empty unique TEMP directory is created by Python; all command/file content is produced by real GUI keyboard input"
+  ],
+  "resource": "session-2",
+  "state_before": {
+    "codePage": 65001,
+    "codePageSource": "console",
+    "connected": true,
+    "id": "session-2",
+    "inputCodePage": 65001,
+    "kind": "cmd",
+    "name": "\u672c\u5730 CMD #2",
+    "outputCodePage": 65001
+  },
+  "state_after": {
+    "codePage": 65001,
+    "codePageSource": "console",
+    "connected": true,
+    "id": "session-2",
+    "inputCodePage": 65001,
+    "kind": "cmd",
+    "name": "\u672c\u5730 CMD #2",
+    "outputCodePage": 65001
+  },
+  "focus_after_commands": {
+    "focus": 66102,
+    "foreground": 328134
+  },
+  "observed_output_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+S0VZX0VYRUNfNEU2MjhGODlENEI3X09LDQo=",
+  "fixture_cleanup": "Successful run restores directory with popd and clears its unique environment variable; evidence files retained in the unique TEMP directory",
+  "exit_code": 0
+}

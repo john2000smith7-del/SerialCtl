@@ -1,0 +1,37 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261014050721
+Username: runnervmtn0fv\runneradmin
+RunAs User: runnervmtn0fv\runneradmin
+Configuration Name: 
+Machine: runnervmtn0fv (Microsoft Windows NT 10.0.20348.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command . 'D:\a\_temp\ca5d4859-4a81-4e50-b2a7-60c515092e46.ps1'
+Process ID: 4612
+PSVersion: 5.1.20348.5622
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.20348.5622
+BuildVersion: 10.0.20348.5622
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is D:\a\_temp/serialctl-ui/desktop-interaction-transcript.txt
+
+
+
+
+
+
+
+
+
+PS>TerminatingError(): "x64-light desktop sidebar input failed; see user-actions.json. Remaining cases continue.
+x64-dark desktop sidebar input failed; see user-actions.json. Remaining cases continue.
+Real connection list Home/End behavior failed; see gui-lifecycle.json. Remaining cases continue.
+x64-light SFTP sidebar input failed; see user-actions.json. Remaining cases continue.
+x64-dark SFTP sidebar input failed; see user-actions.json. Remaining cases continue."
+**********************
+Windows PowerShell transcript end
+End time: 20261014051007
+**********************
