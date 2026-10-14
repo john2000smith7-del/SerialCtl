@@ -67,6 +67,7 @@ class DesktopActions:
         self.pending_pixels = []
         self.trace = []
         self.operations = []
+        self.drag_full_before = None
         self.drag_evidence = []
         self.report = {
             "status": "RUNNING", "mode": args.mode, "prefix": args.prefix,
@@ -105,6 +106,8 @@ class DesktopActions:
             "GetDlgCtrlID": ((w.HWND,), c.c_int),
             "GetWindowThreadProcessId": ((w.HWND, c.POINTER(w.DWORD)), w.DWORD),
             "GetForegroundWindow": ((), w.HWND),
+            "WindowFromPoint": ((POINT,), w.HWND),
+            "GetWindowTextW": ((w.HWND, w.LPWSTR, c.c_int), c.c_int),
             "IsWindow": ((w.HWND,), w.BOOL),
             "IsWindowVisible": ((w.HWND,), w.BOOL),
             "IsWindowEnabled": ((w.HWND,), w.BOOL),
@@ -114,6 +117,7 @@ class DesktopActions:
             "mouse_event": ((w.DWORD, w.DWORD, w.DWORD, w.DWORD, c.c_size_t), None),
             "GetSystemMetrics": ((c.c_int,), c.c_int),
             "SetProcessDPIAware": ((), w.BOOL),
+            "SystemParametersInfoW": ((w.UINT, w.UINT, c.c_void_p, w.UINT), w.BOOL),
             "GetPropW": ((w.HWND, w.LPCWSTR), w.HANDLE),
             "SendMessageTimeoutW": ((w.HWND, w.UINT, c.c_size_t, c.c_ssize_t,
                                      w.UINT, w.UINT, c.POINTER(c.c_size_t)), c.c_ssize_t),
@@ -144,6 +148,33 @@ class DesktopActions:
     def timestamp(self):
         return {"seconds": round(time.perf_counter() - self.started, 6),
                 "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+
+    def prepare_full_window_drag(self):
+        enabled = w.BOOL()
+        require(self.user.SystemParametersInfoW(0x26, 0, c.byref(enabled), 0),
+                "Cannot read SPI_GETDRAGFULLWINDOWS")
+        self.drag_full_before = bool(enabled.value)
+        self.report["system_window_drag"] = {
+            "before": self.drag_full_before,
+            "scope": "Temporary test-desktop setting; no profile persistence or product change",
+        }
+        if not self.drag_full_before:
+            require(self.user.SystemParametersInfoW(0x25, 1, None, 0),
+                    "Cannot enable actual content movement/resizing on test desktop")
+        require(self.user.SystemParametersInfoW(0x26, 0, c.byref(enabled), 0),
+                "Cannot verify SPI_GETDRAGFULLWINDOWS")
+        self.report["system_window_drag"]["during_test"] = bool(enabled.value)
+        require(enabled.value, "Full-window drag must be enabled for continuous resize evidence")
+
+    def restore_full_window_drag(self):
+        if self.drag_full_before is not None:
+            require(self.user.SystemParametersInfoW(0x25, int(self.drag_full_before), None, 0),
+                    "Cannot restore original test-desktop full-window drag setting")
+            enabled = w.BOOL()
+            require(self.user.SystemParametersInfoW(0x26, 0, c.byref(enabled), 0),
+                    "Cannot read restored full-window drag setting")
+            self.report["system_window_drag"]["restored"] = bool(enabled.value)
+            require(bool(enabled.value) == self.drag_full_before, "Desktop drag setting was not restored")
 
     def desktop_rect(self):
         u = self.user
@@ -260,6 +291,11 @@ class DesktopActions:
                 "Control cannot receive user click: " + str(identifier))
         rect = self.rect(window)
         self.click(((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2))
+
+    def caption(self, window):
+        text = c.create_unicode_buffer(256)
+        self.user.GetWindowTextW(window, text, len(text))
+        return text.value
 
     def capture(self, label):
         left, top, right, bottom = self.desktop_rect()
@@ -456,9 +492,53 @@ class DesktopActions:
                 self.capture(label + "-settled")
         with self.operation("sidebar-rapid-reversal") as entry:
             clicks = []
+            click_observations = []
+            entry["single_click_observations"] = click_observations
+            entry["double_click_ambiguity"] = (
+                "Prior center-only rapid input can be coalesced by the native Button class into "
+                "BN_DOUBLECLICKED; counting those pairs as ten BN_CLICKED actions is ambiguous. "
+                "This run alternates separated points and verifies the toggle caption after every single click. "
+                "Prior attempt evidence is retained unchanged.")
+            double_click_width = self.user.GetSystemMetrics(36)  # SM_CXDOUBLECLK.
+            entry["system_double_click_width_px"] = double_click_width
+            previous_point = None
             for index in range(10):
+                toggle = self.control(125)
+                bounds = self.rect(toggle)
+                inset = max(4, round(5 * self.scale))
+                y = (bounds[1] + bounds[3]) // 2
+                candidates = [(bounds[0] + inset, y), (bounds[2] - inset - 1, y)]
+                point = candidates[index % 2]
+                # Animated button movement can cancel the local left/right
+                # offset. Choose the other safe point in that case, recording
+                # actual screen coordinates rather than assuming separation.
+                if previous_point and abs(point[0] - previous_point[0]) <= double_click_width:
+                    point = candidates[1 - index % 2]
+                require(previous_point is None or abs(point[0] - previous_point[0]) > double_click_width,
+                        "Toggle is too narrow to disambiguate consecutive single clicks")
+                target = self.user.WindowFromPoint(POINT(*point))
+                require(target == toggle, "Rapid-click point is obstructed or outside the actual toggle")
+                before_caption = self.caption(toggle)
+                require(before_caption, "Cannot read native toggle caption before single click")
+                observation = {**self.timestamp(), "index": index, "bounds": bounds,
+                               "point": list(point), "window_from_point": int(target),
+                               "caption_before": before_caption,
+                               "distance_from_previous_x": (abs(point[0] - previous_point[0])
+                                                            if previous_point else None)}
+                click_observations.append(observation)
                 clicks.append(time.perf_counter())
-                self.click_control(125)
+                self.click(point)
+                after_caption = self.caption(toggle)
+                deadline = time.perf_counter() + .06
+                while after_caption == before_caption and time.perf_counter() < deadline:
+                    time.sleep(.003)
+                    after_caption = self.caption(toggle)
+                observation["caption_after_mouse_up"] = after_caption
+                observation["caption_observed_seconds"] = self.timestamp()["seconds"]
+                observation["caption_flipped"] = bool(after_caption and after_caption != before_caption)
+                require(observation["caption_flipped"],
+                        "Verified single click did not flip the actual sidebar target caption")
+                previous_point = point
                 time.sleep(.033)
                 self.capture(f"sidebar-reversal-{index:02d}")
             time.sleep(.3)
@@ -516,6 +596,7 @@ class DesktopActions:
                 entry["assertions"] = self.check_layout()
 
     def run(self):
+        self.prepare_full_window_drag()
         require(self.user.IsWindow(self.window), "The supplied HWND is not a live production window")
         process_id = w.DWORD()
         self.user.GetWindowThreadProcessId(self.window, c.byref(process_id))
@@ -577,6 +658,7 @@ def main():
     if os.name != "nt":
         parser.error("This test requires an actual interactive Windows desktop; it cannot pass on Linux.")
     test = DesktopActions(args)
+    exit_code = 0
     try:
         test.run()
     except Exception as error:
@@ -588,9 +670,18 @@ def main():
             test.capture("failure")
         test.flush_frames()
         print(test.report["traceback"], file=sys.stderr)
-        return 1
-    print(f"PASS {args.prefix} {args.mode}: {len(test.operations)} actual user operations, {len(test.frames)} desktop frames, {test.dpi} DPI")
-    return 0
+        exit_code = 1
+    finally:
+        try:
+            test.restore_full_window_drag()
+        except Exception as error:
+            test.report["status"] = "FAIL"
+            test.report["desktop_restore_error"] = str(error)
+            exit_code = 1
+        test.save()
+    if exit_code == 0:
+        print(f"PASS {args.prefix} {args.mode}: {len(test.operations)} actual user operations, {len(test.frames)} desktop frames, {test.dpi} DPI")
+    return exit_code
 
 
 if __name__ == "__main__":

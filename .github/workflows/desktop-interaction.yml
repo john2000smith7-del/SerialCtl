@@ -51,7 +51,7 @@ jobs:
         shell: powershell
         run: |
           $files = @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Join-Path "$env:RUNNER_TEMP/serialctl-ui/payload" $_ } | Where-Object { Test-Path $_ }
-          if ($files) { $files | Get-FileHash -Algorithm SHA256 | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-executable-sha256.json" -Encoding UTF8 }
+          if ($files) { $files | ForEach-Object { Get-FileHash -LiteralPath $_ -Algorithm SHA256 } | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-executable-sha256.json" -Encoding UTF8 }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
