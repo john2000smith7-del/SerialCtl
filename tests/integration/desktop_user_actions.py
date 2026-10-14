@@ -29,6 +29,10 @@ def require(condition, message):
         raise AssertionError(message)
 
 
+class SidebarBehaviorFailure(AssertionError):
+    """Observed input outcome; retain failure while exercising other controls."""
+
+
 class POINT(c.Structure):
     _fields_ = [("x", w.LONG), ("y", w.LONG)]
 
@@ -82,6 +86,7 @@ class DesktopActions:
                             "Measured DPI only; this run does not establish other DPI values or Win7 compatibility."],
             "operations": self.operations, "input_trace": self.trace, "frames": self.frames,
             "drag_evidence": self.drag_evidence,
+            "behavior_failures": [],
         }
         dpi_function = getattr(self.user, "GetDpiForWindow", None)
         if dpi_function:
@@ -449,7 +454,14 @@ class DesktopActions:
             label = "caption-double-click-" + ("maximize" if maximize else "restore")
             with self.operation(label) as entry:
                 point = self.caption_point()
-                self.click(point)
+                self.move_mouse(point)
+                observation["bounds_before_down"] = self.rect(toggle)
+                observation["hit_before_down"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
+                self.button(True)
+                time.sleep(.008)
+                observation["bounds_before_up"] = self.rect(toggle)
+                observation["hit_before_up"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
+                self.button(False)
                 time.sleep(.06)
                 self.click(point)
                 time.sleep(.25)
@@ -536,8 +548,10 @@ class DesktopActions:
                 observation["caption_after_mouse_up"] = after_caption
                 observation["caption_observed_seconds"] = self.timestamp()["seconds"]
                 observation["caption_flipped"] = bool(after_caption and after_caption != before_caption)
-                require(observation["caption_flipped"],
-                        "Verified single click did not flip the actual sidebar target caption")
+                if not observation["caption_flipped"]:
+                    raise SidebarBehaviorFailure(
+                        "Mouse click aimed at moving sidebar toggle did not change its target state; "
+                        "see down/up bounds and hit targets before attributing message delivery")
                 previous_point = point
                 time.sleep(.033)
                 self.capture(f"sidebar-reversal-{index:02d}")
@@ -549,10 +563,28 @@ class DesktopActions:
             active = 112 if self.args.mode == "desktop" else 119
             entry["expected_final_expanded"] = True  # Started expanded, ten toggles.
             entry["actual_final_expanded"] = self.visible(active)
-            require(entry["actual_final_expanded"],
-                    "Ten real rapid toggle clicks did not restore expanded sidebar")
+            if not entry["actual_final_expanded"]:
+                raise SidebarBehaviorFailure("Ten rapid toggle attempts did not restore expanded sidebar")
             entry["assertions"] = self.check_layout()
             self.capture("sidebar-reversal-settled")
+
+    def check_sidebar_and_continue(self):
+        try:
+            self.sidebar_toggle()
+        except SidebarBehaviorFailure as error:
+            self.report["behavior_failures"].append(str(error))
+            self.capture("sidebar-behavior-failure")
+            # Recovery is a separate operation and cannot change the failed
+            # operation or overall FAIL result. Other cases need an open pane.
+            with self.operation("recovery-after-sidebar-failure") as entry:
+                time.sleep(.65)
+                active = 112 if self.args.mode == "desktop" else 119
+                entry["needed_click"] = not self.visible(active)
+                if entry["needed_click"]:
+                    self.click_control(125)
+                    time.sleep(.35)
+                entry["assertions"] = self.check_layout()
+                self.capture("sidebar-recovery-for-remaining-tests")
 
     def sftp_columns(self):
         for index, delta in enumerate((-24, 32, -16)):
@@ -623,11 +655,11 @@ class DesktopActions:
                 self.resize(round(1180 * self.scale), round(760 * self.scale), f"resize-round-{round_number}-large")
             self.maximize_restore()
             self.sidebar_drag()
-            self.sidebar_toggle()
+            self.check_sidebar_and_continue()
         else:
             require(self.visible(119) and self.visible(126), "Caller must open the actual SFTP panel")
             self.sftp_columns()
-            self.sidebar_toggle()
+            self.check_sidebar_and_continue()
         final_paint = int(self.user.GetPropW(self.control(107), "SerialCtl.PaintSample") or 0)
         require(final_paint > initial_paint, "No terminal painting occurred during real user operations")
         self.report["paint_samples"] = {"before": initial_paint, "after": final_paint}
@@ -642,7 +674,7 @@ class DesktopActions:
         self.report["final_layout"] = self.check_layout()
         self.report["final_state"] = self.snapshot()
         self.capture("final")
-        self.report["status"] = "PASS"
+        self.report["status"] = "FAIL" if self.report["behavior_failures"] else "PASS"
         self.report["completed_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.flush_frames()
 
@@ -661,6 +693,9 @@ def main():
     exit_code = 0
     try:
         test.run()
+        if test.report["behavior_failures"]:
+            exit_code = 2
+            print("FAIL: " + "; ".join(test.report["behavior_failures"]), file=sys.stderr)
     except Exception as error:
         test.report["status"] = "FAIL"
         test.report["error"] = str(error)

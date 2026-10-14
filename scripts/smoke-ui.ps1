@@ -446,7 +446,8 @@ foreach ($architecture in @('x64')) {
             if ($LASTEXITCODE -ne 0) { throw 'Sustained CMD producer did not start.' }
             if ($ActualMouse) {
                 & python (Join-Path $root 'tests/integration/desktop_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --mode desktop
-                if ($LASTEXITCODE -ne 0) { throw 'Actual desktop mouse move/resize/panel test failed.' }
+                if ($LASTEXITCODE -eq 2) { $behaviorFailures.Add("$architecture-$theme desktop sidebar input failed; see user-actions.json. Remaining cases continue.") }
+                elseif ($LASTEXITCODE -ne 0) { throw 'Actual desktop mouse move/resize/panel test failed.' }
             }
             [SerialCtlUiSmoke]::SetForegroundWindow($application.MainWindowHandle)|Out-Null
             $commandRect=New-Object SerialCtlUiSmoke+RECT
@@ -636,7 +637,8 @@ foreach ($architecture in @('x64')) {
             Capture-Window $application.MainWindowHandle "$architecture-$theme-sftp-resized"
             if ($ActualMouse) {
                 & python (Join-Path $root 'tests/integration/desktop_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --mode sftp
-                if ($LASTEXITCODE -ne 0) { throw 'Actual SFTP column/panel mouse test failed.' }
+                if ($LASTEXITCODE -eq 2) { $behaviorFailures.Add("$architecture-$theme SFTP sidebar input failed; see user-actions.json. Remaining cases continue.") }
+                elseif ($LASTEXITCODE -ne 0) { throw 'Actual SFTP column/panel mouse test failed.' }
             }
             Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 300
