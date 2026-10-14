@@ -454,14 +454,7 @@ class DesktopActions:
             label = "caption-double-click-" + ("maximize" if maximize else "restore")
             with self.operation(label) as entry:
                 point = self.caption_point()
-                self.move_mouse(point)
-                observation["bounds_before_down"] = self.rect(toggle)
-                observation["hit_before_down"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
-                self.button(True)
-                time.sleep(.008)
-                observation["bounds_before_up"] = self.rect(toggle)
-                observation["hit_before_up"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
-                self.button(False)
+                self.click(point)
                 time.sleep(.06)
                 self.click(point)
                 time.sleep(.25)
@@ -539,7 +532,14 @@ class DesktopActions:
                                                             if previous_point else None)}
                 click_observations.append(observation)
                 clicks.append(time.perf_counter())
-                self.click(point)
+                self.move_mouse(point)
+                observation["bounds_before_down"] = self.rect(toggle)
+                observation["hit_before_down"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
+                self.button(True)
+                time.sleep(.008)
+                observation["bounds_before_up"] = self.rect(toggle)
+                observation["hit_before_up"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
+                self.button(False)
                 after_caption = self.caption(toggle)
                 deadline = time.perf_counter() + .06
                 while after_caption == before_caption and time.perf_counter() < deadline:
