@@ -121,6 +121,7 @@ class DesktopActions:
             "GetCursorPos": ((c.POINTER(POINT),), w.BOOL),
             "mouse_event": ((w.DWORD, w.DWORD, w.DWORD, w.DWORD, c.c_size_t), None),
             "GetSystemMetrics": ((c.c_int,), c.c_int),
+            "GetDoubleClickTime": ((), w.UINT),
             "SetProcessDPIAware": ((), w.BOOL),
             "SystemParametersInfoW": ((w.UINT, w.UINT, c.c_void_p, w.UINT), w.BOOL),
             "GetPropW": ((w.HWND, w.LPCWSTR), w.HANDLE),
@@ -336,6 +337,7 @@ class DesktopActions:
         file_name = f"{self.args.prefix}-{self.args.mode}-{len(self.frames):04d}-{label}.png"
         frame = {**self.timestamp(), "path": file_name, "width": width, "height": height,
                  "window_bounds": self.rect(self.window),
+                 "sidebar_toggle_bounds": self.rect(self.control(125)),
                  "terminal_paint_sample": int(self.user.GetPropW(self.control(107), "SerialCtl.PaintSample") or 0),
                  "terminal_paint_probe": int(self.user.GetPropW(self.control(107), "SerialCtl.PaintProbe") or 0)}
         self.frames.append(frame)
@@ -485,88 +487,117 @@ class DesktopActions:
                 entry["assertions"] = self.check_layout()
 
     def sidebar_toggle(self):
+        initial_toggle_bounds = self.rect(self.control(125))
+
+        def check_anchor(bounds, phase):
+            if bounds != initial_toggle_bounds:
+                raise SidebarBehaviorFailure(
+                    f"Sidebar toggle moved during {phase}: "
+                    f"expected {initial_toggle_bounds}, observed {bounds}")
+
+        def capture_frame(label):
+            self.capture(label)
+            check_anchor(self.frames[-1]["sidebar_toggle_bounds"], label)
+
         for collapse in (True, False):
             label = "sidebar-" + ("collapse" if collapse else "expand")
             with self.operation(label) as entry:
+                entry["initial_toggle_bounds"] = initial_toggle_bounds
                 self.click_control(125)
                 for frame in range(8):
                     time.sleep(.022)
-                    self.capture(f"{label}-animation-{frame:02d}")
+                    capture_frame(f"{label}-animation-{frame:02d}")
                 time.sleep(.1)
                 entry["assertions"] = self.check_layout(expanded=not collapse)
-                self.capture(label + "-settled")
-        with self.operation("sidebar-rapid-reversal") as entry:
-            clicks = []
-            click_observations = []
-            entry["single_click_observations"] = click_observations
-            entry["double_click_ambiguity"] = (
-                "Prior center-only rapid input can be coalesced by the native Button class into "
-                "BN_DOUBLECLICKED; counting those pairs as ten BN_CLICKED actions is ambiguous. "
-                "This run alternates separated points and verifies the toggle caption after every single click. "
-                "Prior attempt evidence is retained unchanged.")
-            double_click_width = self.user.GetSystemMetrics(36)  # SM_CXDOUBLECLK.
-            entry["system_double_click_width_px"] = double_click_width
-            previous_point = None
-            for index in range(10):
-                toggle = self.control(125)
-                bounds = self.rect(toggle)
-                inset = max(4, round(5 * self.scale))
-                y = (bounds[1] + bounds[3]) // 2
-                candidates = [(bounds[0] + inset, y), (bounds[2] - inset - 1, y)]
-                point = candidates[index % 2]
-                # Animated button movement can cancel the local left/right
-                # offset. Choose the other safe point in that case, recording
-                # actual screen coordinates rather than assuming separation.
-                if previous_point and abs(point[0] - previous_point[0]) <= double_click_width:
-                    point = candidates[1 - index % 2]
-                require(previous_point is None or abs(point[0] - previous_point[0]) > double_click_width,
-                        "Toggle is too narrow to disambiguate consecutive single clicks")
-                target = self.user.WindowFromPoint(POINT(*point))
-                require(target == toggle, "Rapid-click point is obstructed or outside the actual toggle")
-                before_caption = self.caption(toggle)
-                require(before_caption, "Cannot read native toggle caption before single click")
-                observation = {**self.timestamp(), "index": index, "bounds": bounds,
-                               "point": list(point), "window_from_point": int(target),
-                               "caption_before": before_caption,
-                               "distance_from_previous_x": (abs(point[0] - previous_point[0])
-                                                            if previous_point else None)}
-                click_observations.append(observation)
-                clicks.append(time.perf_counter())
-                self.move_mouse(point)
-                observation["bounds_before_down"] = self.rect(toggle)
-                observation["hit_before_down"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
-                self.button(True)
-                time.sleep(.008)
-                observation["bounds_before_up"] = self.rect(toggle)
-                observation["hit_before_up"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
-                self.button(False)
-                after_caption = self.caption(toggle)
-                deadline = time.perf_counter() + .06
-                while after_caption == before_caption and time.perf_counter() < deadline:
-                    time.sleep(.003)
+                capture_frame(label + "-settled")
+                entry["assertions"]["fixed_sidebar_toggle"] = "PASS"
+        for stationary in (False, True):
+            operation = "sidebar-rapid-same-point-reversal" if stationary else "sidebar-rapid-reversal"
+            frame_prefix = "sidebar-same-point-reversal" if stationary else "sidebar-reversal"
+            with self.operation(operation) as entry:
+                clicks = []
+                click_observations = []
+                entry["initial_toggle_bounds"] = initial_toggle_bounds
+                entry["stationary_pointer"] = stationary
+                entry["single_click_observations"] = click_observations
+                entry["double_click_ambiguity"] = (
+                    "This sequence uses one fixed point and verifies the target caption after every "
+                    "released click, including input eligible for native double-click handling. "
+                    "It does not assert which native notifications were delivered."
+                    if stationary else
+                    "Prior center-only rapid input could be coalesced by the native Button class into "
+                    "BN_DOUBLECLICKED. This sequence alternates separated points and verifies the toggle "
+                    "caption after every released click. Prior attempt evidence is retained unchanged.")
+                double_click_width = self.user.GetSystemMetrics(36)  # SM_CXDOUBLECLK.
+                double_click_time = self.user.GetDoubleClickTime()
+                entry["system_double_click_width_px"] = double_click_width
+                entry["system_double_click_time_ms"] = double_click_time
+                previous_point = None
+                for index in range(10):
+                    toggle = self.control(125)
+                    bounds = self.rect(toggle)
+                    check_anchor(bounds, f"{operation} click {index} target selection")
+                    inset = max(4, round(5 * self.scale))
+                    y = (bounds[1] + bounds[3]) // 2
+                    candidates = [(bounds[0] + inset, y), (bounds[2] - inset - 1, y)]
+                    point = ((initial_toggle_bounds[0] + initial_toggle_bounds[2]) // 2,
+                             (initial_toggle_bounds[1] + initial_toggle_bounds[3]) // 2) if stationary else candidates[index % 2]
+                    if not stationary:
+                        require(previous_point is None or abs(point[0] - previous_point[0]) > double_click_width,
+                                "Toggle is too narrow to disambiguate consecutive single clicks")
+                    target = self.user.WindowFromPoint(POINT(*point))
+                    require(target == toggle, "Rapid-click point is obstructed or outside the actual toggle")
+                    before_caption = self.caption(toggle)
+                    require(before_caption, "Cannot read native toggle caption before single click")
+                    observation = {**self.timestamp(), "index": index, "bounds": bounds,
+                                   "point": list(point), "window_from_point": int(target),
+                                   "caption_before": before_caption,
+                                   "distance_from_previous_x": (abs(point[0] - previous_point[0])
+                                                                if previous_point else None)}
+                    click_observations.append(observation)
+                    clicks.append(time.perf_counter())
+                    self.move_mouse(point)
+                    observation["bounds_before_down"] = self.rect(toggle)
+                    observation["hit_before_down"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
+                    self.button(True)
+                    time.sleep(.008)
+                    observation["bounds_before_up"] = self.rect(toggle)
+                    observation["hit_before_up"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
+                    self.button(False)
+                    observation["bounds_after_up"] = self.rect(toggle)
                     after_caption = self.caption(toggle)
-                observation["caption_after_mouse_up"] = after_caption
-                observation["caption_observed_seconds"] = self.timestamp()["seconds"]
-                observation["caption_flipped"] = bool(after_caption and after_caption != before_caption)
-                if not observation["caption_flipped"]:
-                    raise SidebarBehaviorFailure(
-                        "Mouse click aimed at moving sidebar toggle did not change its target state; "
-                        "see down/up bounds and hit targets before attributing message delivery")
-                previous_point = point
-                time.sleep(.033)
-                self.capture(f"sidebar-reversal-{index:02d}")
-            time.sleep(.3)
-            intervals = [round((b - a) * 1000, 3) for a, b in zip(clicks, clicks[1:])]
-            entry["click_intervals_ms"] = intervals
-            require(any(interval < 200 for interval in intervals),
-                    "Input/capture was too slow to test reversal within 200 ms animation")
-            active = 112 if self.args.mode == "desktop" else 119
-            entry["expected_final_expanded"] = True  # Started expanded, ten toggles.
-            entry["actual_final_expanded"] = self.visible(active)
-            if not entry["actual_final_expanded"]:
-                raise SidebarBehaviorFailure("Ten rapid toggle attempts did not restore expanded sidebar")
-            entry["assertions"] = self.check_layout()
-            self.capture("sidebar-reversal-settled")
+                    deadline = time.perf_counter() + .06
+                    while after_caption == before_caption and time.perf_counter() < deadline:
+                        time.sleep(.003)
+                        after_caption = self.caption(toggle)
+                    observation["caption_after_mouse_up"] = after_caption
+                    observation["caption_observed_seconds"] = self.timestamp()["seconds"]
+                    observation["caption_flipped"] = bool(after_caption and after_caption != before_caption)
+                    for phase in ("bounds_before_down", "bounds_before_up", "bounds_after_up"):
+                        check_anchor(observation[phase], f"{operation} click {index} {phase}")
+                    if not observation["caption_flipped"]:
+                        raise SidebarBehaviorFailure(
+                            "Mouse click at sidebar toggle did not change its target state; "
+                            "see down/up bounds and hit targets before attributing message delivery")
+                    previous_point = point
+                    time.sleep(.033)
+                    capture_frame(f"{frame_prefix}-{index:02d}")
+                time.sleep(.3)
+                intervals = [round((b - a) * 1000, 3) for a, b in zip(clicks, clicks[1:])]
+                entry["click_intervals_ms"] = intervals
+                require(any(interval < 200 for interval in intervals),
+                        "Input/capture was too slow to test reversal within 200 ms animation")
+                if stationary:
+                    require(any(interval < double_click_time for interval in intervals),
+                            "Same-point input was too slow to exercise native double-click timing")
+                active = 112 if self.args.mode == "desktop" else 119
+                entry["expected_final_expanded"] = True  # Started expanded, ten toggles.
+                entry["actual_final_expanded"] = self.visible(active)
+                if not entry["actual_final_expanded"]:
+                    raise SidebarBehaviorFailure("Ten rapid toggle attempts did not restore expanded sidebar")
+                entry["assertions"] = self.check_layout()
+                capture_frame(frame_prefix + "-settled")
+                entry["assertions"]["fixed_sidebar_toggle"] = "PASS"
 
     def check_sidebar_and_continue(self):
         try:
