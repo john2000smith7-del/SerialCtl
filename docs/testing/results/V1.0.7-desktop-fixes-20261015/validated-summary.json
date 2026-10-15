@@ -1,0 +1,636 @@
+{
+  "scopes": [
+    {
+      "status": "PASS",
+      "dpi": 96,
+      "distinct_painted_stdout_markers": 131,
+      "drags_overlapping_painted_stdout": [
+        "caption-drag-to-40-40",
+        "resize-round-1-minimum",
+        "resize-round-1-large",
+        "resize-round-2-minimum",
+        "resize-round-2-large",
+        "resize-round-3-minimum",
+        "resize-round-3-large",
+        "sidebar-splitter-1",
+        "sidebar-splitter-2",
+        "sidebar-splitter-3"
+      ],
+      "behavior_failures": [],
+      "file": "x64-dark-desktop-user-actions.json",
+      "operations": 17,
+      "frames": 134,
+      "rapid": [
+        {
+          "name": "sidebar-rapid-reversal",
+          "clicks": 10,
+          "all_caption_flipped": true,
+          "all_anchor_unchanged": true,
+          "min_interval_ms": 77.564,
+          "max_interval_ms": 109.975,
+          "under200ms": 9,
+          "intervals": 9,
+          "final_expanded": true
+        },
+        {
+          "name": "sidebar-rapid-same-point-reversal",
+          "clicks": 10,
+          "all_caption_flipped": true,
+          "all_anchor_unchanged": true,
+          "min_interval_ms": 77.697,
+          "max_interval_ms": 109.06,
+          "under200ms": 9,
+          "intervals": 9,
+          "final_expanded": true
+        }
+      ]
+    },
+    {
+      "status": "PASS",
+      "dpi": 96,
+      "distinct_painted_stdout_markers": 86,
+      "drags_overlapping_painted_stdout": [
+        "sftp-column-boundary-1",
+        "sftp-column-boundary-2",
+        "sftp-column-boundary-3",
+        "sftp-size-boundary-1",
+        "sftp-size-boundary-2"
+      ],
+      "behavior_failures": [],
+      "file": "x64-dark-sftp-user-actions.json",
+      "operations": 10,
+      "frames": 87,
+      "rapid": [
+        {
+          "name": "sidebar-rapid-reversal",
+          "clicks": 10,
+          "all_caption_flipped": true,
+          "all_anchor_unchanged": true,
+          "min_interval_ms": 76.344,
+          "max_interval_ms": 100.508,
+          "under200ms": 9,
+          "intervals": 9,
+          "final_expanded": true
+        },
+        {
+          "name": "sidebar-rapid-same-point-reversal",
+          "clicks": 10,
+          "all_caption_flipped": true,
+          "all_anchor_unchanged": true,
+          "min_interval_ms": 77.816,
+          "max_interval_ms": 102.038,
+          "under200ms": 9,
+          "intervals": 9,
+          "final_expanded": true
+        }
+      ]
+    },
+    {
+      "status": "PASS",
+      "dpi": 96,
+      "distinct_painted_stdout_markers": 130,
+      "drags_overlapping_painted_stdout": [
+        "caption-drag-to-40-40",
+        "resize-round-1-minimum",
+        "resize-round-1-large",
+        "resize-round-2-minimum",
+        "resize-round-2-large",
+        "resize-round-3-minimum",
+        "resize-round-3-large",
+        "sidebar-splitter-1",
+        "sidebar-splitter-2",
+        "sidebar-splitter-3"
+      ],
+      "behavior_failures": [],
+      "file": "x64-light-desktop-user-actions.json",
+      "operations": 17,
+      "frames": 134,
+      "rapid": [
+        {
+          "name": "sidebar-rapid-reversal",
+          "clicks": 10,
+          "all_caption_flipped": true,
+          "all_anchor_unchanged": true,
+          "min_interval_ms": 77.26,
+          "max_interval_ms": 101.285,
+          "under200ms": 9,
+          "intervals": 9,
+          "final_expanded": true
+        },
+        {
+          "name": "sidebar-rapid-same-point-reversal",
+          "clicks": 10,
+          "all_caption_flipped": true,
+          "all_anchor_unchanged": true,
+          "min_interval_ms": 77.929,
+          "max_interval_ms": 110.638,
+          "under200ms": 9,
+          "intervals": 9,
+          "final_expanded": true
+        }
+      ]
+    },
+    {
+      "status": "PASS",
+      "dpi": 96,
+      "distinct_painted_stdout_markers": 86,
+      "drags_overlapping_painted_stdout": [
+        "sftp-column-boundary-1",
+        "sftp-column-boundary-2",
+        "sftp-column-boundary-3",
+        "sftp-size-boundary-1",
+        "sftp-size-boundary-2"
+      ],
+      "behavior_failures": [],
+      "file": "x64-light-sftp-user-actions.json",
+      "operations": 10,
+      "frames": 87,
+      "rapid": [
+        {
+          "name": "sidebar-rapid-reversal",
+          "clicks": 10,
+          "all_caption_flipped": true,
+          "all_anchor_unchanged": true,
+          "min_interval_ms": 85.146,
+          "max_interval_ms": 120.332,
+          "under200ms": 9,
+          "intervals": 9,
+          "final_expanded": true
+        },
+        {
+          "name": "sidebar-rapid-same-point-reversal",
+          "clicks": 10,
+          "all_caption_flipped": true,
+          "all_anchor_unchanged": true,
+          "min_interval_ms": 78.249,
+          "max_interval_ms": 109.747,
+          "under200ms": 9,
+          "intervals": 9,
+          "final_expanded": true
+        }
+      ]
+    }
+  ],
+  "lifecycle": {
+    "status": "PASS",
+    "exit_code": 0,
+    "created_real_cmd_sessions": 35,
+    "disconnect_seconds": 0.39100000000001955,
+    "known_children_all_exited": true,
+    "children_after": {},
+    "behavior_failures": [],
+    "observations": [
+      {
+        "action": "power-row-setup",
+        "method": "system mouse click on toolbar control 301",
+        "power_row": 2,
+        "terminal_visible": false,
+        "power_hwnd": 131470,
+        "power_pid": 7448,
+        "power_visible": true
+      },
+      {
+        "action": "connection-row-click",
+        "selection": 12,
+        "focus_after": {
+          "hwnd": 131474,
+          "control": 107,
+          "foreground": 458848
+        },
+        "expected_focus_control": 107,
+        "classification": "Mouse row activation must preserve terminal focus behavior"
+      },
+      {
+        "action": "Home",
+        "result": {
+          "selection": 0,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        }
+      },
+      {
+        "action": "End-directly-after-Home",
+        "expected_selection": 35,
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        }
+      },
+      {
+        "action": "Up-from-power",
+        "theme": "dark",
+        "result": {
+          "selection": 34,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Down-to-power",
+        "theme": "dark",
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "PageUp-from-power",
+        "theme": "dark",
+        "result": {
+          "selection": 28,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "PageDown",
+        "theme": "dark",
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Home-from-lower-rows",
+        "theme": "dark",
+        "result": {
+          "selection": 0,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Down-between-sessions",
+        "theme": "dark",
+        "result": {
+          "selection": 1,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Up-between-sessions",
+        "theme": "dark",
+        "result": {
+          "selection": 0,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "End-to-power",
+        "theme": "dark",
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Home-from-power",
+        "theme": "dark",
+        "result": {
+          "selection": 0,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "mouse-session-after-keyboard-navigation",
+        "theme": "dark",
+        "selection_before": 0,
+        "expected_selection": 1,
+        "expected_focus_control": 107,
+        "result": {
+          "selection": 1,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131474,
+            "control": 107,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "method": "system mouse click on an unselected ordinary session row"
+      },
+      {
+        "action": "theme-switch-for-keyboard-navigation",
+        "theme": "light",
+        "caption_before": "\u6d45\u8272",
+        "caption_after": "\u6df1\u8272"
+      },
+      {
+        "action": "Home",
+        "theme": "light",
+        "result": {
+          "selection": 0,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "End-directly-after-Home",
+        "theme": "light",
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Up-from-power",
+        "theme": "light",
+        "result": {
+          "selection": 34,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Down-to-power",
+        "theme": "light",
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "PageUp-from-power",
+        "theme": "light",
+        "result": {
+          "selection": 28,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "PageDown",
+        "theme": "light",
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Home-from-lower-rows",
+        "theme": "light",
+        "result": {
+          "selection": 0,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Down-between-sessions",
+        "theme": "light",
+        "result": {
+          "selection": 1,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Up-between-sessions",
+        "theme": "light",
+        "result": {
+          "selection": 0,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "End-to-power",
+        "theme": "light",
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "Home-from-power",
+        "theme": "light",
+        "result": {
+          "selection": 0,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "input_sequence": "uninterrupted real connection-list keyboard navigation"
+      },
+      {
+        "action": "mouse-session-after-keyboard-navigation",
+        "theme": "light",
+        "selection_before": 0,
+        "expected_selection": 1,
+        "expected_focus_control": 107,
+        "result": {
+          "selection": 1,
+          "top_index": 0,
+          "focus_after": {
+            "hwnd": 131474,
+            "control": 107,
+            "foreground": 458848
+          },
+          "terminal_visible": true,
+          "power_visible": false
+        },
+        "passed": true,
+        "method": "system mouse click on an unselected ordinary session row"
+      },
+      {
+        "action": "End-after-explicit-thumb-focus-recovery",
+        "result": {
+          "selection": 35,
+          "top_index": 28,
+          "focus_after": {
+            "hwnd": 131476,
+            "control": 106,
+            "foreground": 458848
+          },
+          "terminal_visible": false,
+          "power_visible": true
+        }
+      }
+    ]
+  },
+  "actual_click_rows": 166,
+  "png_count": 657
+}

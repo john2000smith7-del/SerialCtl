@@ -1,0 +1,561 @@
+Start testing: Oct 15 04:55 Coordinated Universal Time
+----------------------------------------------------------
+1/16 Testing: update_client
+1/16 Test: update_client
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/update_client_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"update_client" start time: Oct 15 04:55 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+[PASS] RSA-2048 SHA-256 signed manifest accepted with explicit test key
+[PASS] production trust rejects ephemeral test key
+[PASS] tampered manifest rejected before JSON parsing
+[PASS] tampered signature rejected
+[PASS] signature length strictly limited
+[PASS] missing signature rejected
+[PASS] even signed JSON duplicate keys rejected
+[PASS] even signed excessive JSON nesting rejected
+[PASS] versions compare numerically
+[PASS] noncanonical version rejected
+[PASS] noncanonical version rejected
+[PASS] noncanonical version rejected
+[PASS] noncanonical version rejected
+[PASS] noncanonical version rejected
+[PASS] HTTP valid signed files download and verify as Ready
+[PASS] staging is isolated in install directory
+[PASS] worker re-verification covers all signed files and VERSION
+[PASS] same-size post-download tampering rejected by installer SHA-256 verification
+[PASS] unlisted staged payload rejected by final verification
+[PASS] missing config disables update without contacting network
+[PASS] blank config disables update without contacting network
+[PASS] equal version downloads no payload
+[PASS] older signed version cannot downgrade
+[PASS] same/older version only requests signed metadata
+[PASS] previously failed version is quarantined
+[PASS] editing update.ini URL takes effect on next check
+[PASS] signed path traversal rejected before payload downloads
+[PASS] non-allowlisted destination rejected before payload downloads
+[PASS] non-allowlisted destination rejected before payload downloads
+[PASS] non-allowlisted destination rejected before payload downloads
+[PASS] non-allowlisted destination rejected before payload downloads
+[PASS] non-allowlisted destination rejected before payload downloads
+[PASS] cross-origin or ambiguous relative URL rejected
+[PASS] cross-origin or ambiguous relative URL rejected
+[PASS] cross-origin or ambiguous relative URL rejected
+[PASS] cross-origin or ambiguous relative URL rejected
+[PASS] cross-origin or ambiguous relative URL rejected
+[PASS] signed oversized file rejected before downloads
+[PASS] signed total size limit enforced
+[PASS] duplicate destinations rejected
+[PASS] wrong architecture rejected
+[PASS] missing required runtime file rejected
+[PASS] wrong product rejected
+[PASS] unsupported schema rejected
+[PASS] unknown root field rejected
+[PASS] unknown file field rejected
+[PASS] negative payload length rejected
+[PASS] fractional payload length rejected
+[PASS] nonhex SHA-256 rejected
+[PASS] empty runtime file rejected
+[PASS] HTTP tampered signature fails closed
+[PASS] HTTP payload corruption fails closed
+[PASS] failed staging is removed without touching installed files
+[PASS] declared payload size exceeding signed size is rejected
+[PASS] early socket close with correct signed Content-Length rejects a truncated HTTP body
+[PASS] declared oversized metadata rejected
+[PASS] chunked oversized metadata rejected by actual-byte cap
+[PASS] HTTP redirect rejected without following it
+[PASS] HTTP login HTML cannot become trusted metadata
+[PASS] HTTP authentication challenge rejected without credential retry
+[PASS] HTTP missing manifest reports failure
+[PASS] multi-megabyte binary payload preserves all byte values
+[PASS] validly signed VERSION content must match signed product version
+[PASS] unreachable HTTP server preserves current program
+[PASS] unsupported configured URL scheme rejected
+[PASS] unsafe configured manifest URL rejected
+[PASS] unsafe configured manifest URL rejected
+[PASS] unsafe configured manifest URL rejected
+[PASS] unsafe configured manifest URL rejected
+[PASS] pre-cancelled work makes no HTTP request
+[PASS] cancel during stalled HTTP returns within one second
+[PASS] original runtime SHA-256 is unchanged after all downloads and failures
+[PASS] cancel interrupts a pending body read without freeing its callback buffer early
+[PASS] two independent HTTP fixtures overlap a stalled body and signed payload download
+[PASS] cancelling one shared-session request does not cancel another update check
+[PASS] concurrent successful update preserves staged bytes and the installed runtime
+[PASS] continuous slow header bytes remain bounded by the metadata deadline or stricter native timeout
+[METRIC] slow_header_ms=15002
+[METRIC] handle_type_scenario=native-open-close-only type=ALPC Port before=6 after=6 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=Directory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=EtwRegistration before=60 after=60 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=Event before=48 after=48 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=File before=26 after=26 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=IRTimer before=4 after=4 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=IoCompletion before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=Key before=12 after=12 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=Mutant before=1 after=1 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=Section before=4 after=4 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=Semaphore before=12 after=12 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=Thread before=10 after=10 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=TpWorkerFactory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-close-only type=WaitCompletionPacket before=12 after=12 delta=0
+[METRIC] native_lifetime_scenario=native-open-close-only cycles=64 handles_before=201 handles_after=201 operations_ok=1
+[PASS] native session/request lifetime diagnostic API calls succeed
+[METRIC] handle_type_scenario=native-open-timeouts-close type=ALPC Port before=6 after=6 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=Directory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=EtwRegistration before=60 after=60 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=Event before=48 after=48 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=File before=26 after=26 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=IRTimer before=4 after=4 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=IoCompletion before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=Key before=12 after=12 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=Mutant before=1 after=1 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=Section before=4 after=4 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=Semaphore before=12 after=12 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=Thread before=10 after=10 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=TpWorkerFactory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-close type=WaitCompletionPacket before=12 after=12 delta=0
+[METRIC] native_lifetime_scenario=native-open-timeouts-close cycles=64 handles_before=201 handles_after=201 operations_ok=1
+[PASS] native session/request lifetime diagnostic API calls succeed
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=ALPC Port before=6 after=6 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=Directory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=EtwRegistration before=60 after=60 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=Event before=48 after=48 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=File before=26 after=26 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=IRTimer before=4 after=4 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=IoCompletion before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=Key before=12 after=12 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=Mutant before=1 after=1 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=Section before=4 after=4 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=Semaphore before=12 after=12 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=Thread before=10 after=10 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=TpWorkerFactory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=native-open-timeouts-request-close type=WaitCompletionPacket before=12 after=12 delta=0
+[METRIC] native_lifetime_scenario=native-open-timeouts-request-close cycles=64 handles_before=201 handles_after=201 operations_ok=1
+[PASS] native session/request lifetime diagnostic API calls succeed
+[METRIC] native_handle_tracing_status=0x0
+[METRIC] handle_type_scenario=completed-404-requests type=ALPC Port before=6 after=6 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=Directory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=EtwRegistration before=60 after=60 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=Event before=49 after=49 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=File before=27 after=27 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=IRTimer before=4 after=4 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=IoCompletion before=2 after=2 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=Key before=12 after=12 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=Mutant before=1 after=1 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=Section before=4 after=4 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=Semaphore before=12 after=12 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=Thread before=12 after=12 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=TpWorkerFactory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=completed-404-requests type=WaitCompletionPacket before=12 after=12 delta=0
+[METRIC] completed_404_cycles=64 handles_before=205 handles_after=205 states_created_before=122 states_created_after=186 states_destroyed_before=122 states_destroyed_after=186 closing_before=122 closing_after=186
+[PASS] 64 completed HTTP 404 requests are rejected
+[METRIC] handle_type_scenario=new-worker-per-cycle type=ALPC Port before=6 after=6 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=Directory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=EtwRegistration before=60 after=60 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=Event before=49 after=49 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=File before=27 after=27 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=IRTimer before=4 after=4 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=IoCompletion before=2 after=2 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=Key before=12 after=12 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=Mutant before=1 after=1 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=Section before=4 after=4 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=Semaphore before=12 after=12 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=Thread before=12 after=12 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=TpWorkerFactory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=new-worker-per-cycle type=WaitCompletionPacket before=12 after=12 delta=0
+[METRIC] cancellation_cycles=64 handles_before=205 handles_after=205 threads_before=9 threads_after=9 maximum_cancel_ms=16
+[METRIC] http_states_created_before=186 http_states_created_after=250 http_states_destroyed_before=186 http_states_destroyed_after=250 http_closing_callbacks_before=186 http_closing_callbacks_after=250
+[METRIC] handle_type_scenario=same-worker-64-cycles type=ALPC Port before=6 after=6 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=Directory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=EtwRegistration before=60 after=60 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=Event before=49 after=50 delta=1
+[METRIC] handle_type_scenario=same-worker-64-cycles type=File before=27 after=27 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=IRTimer before=4 after=4 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=IoCompletion before=2 after=2 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=Key before=12 after=12 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=Mutant before=1 after=1 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=Section before=4 after=4 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=Semaphore before=12 after=12 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=Thread before=13 after=14 delta=1
+[METRIC] handle_type_scenario=same-worker-64-cycles type=TpWorkerFactory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=same-worker-64-cycles type=WaitCompletionPacket before=12 after=12 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=ALPC Port before=6 after=6 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=Directory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=EtwRegistration before=60 after=60 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=Event before=49 after=49 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=File before=27 after=27 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=IRTimer before=4 after=4 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=IoCompletion before=2 after=2 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=Key before=12 after=12 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=Mutant before=1 after=1 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=Section before=4 after=4 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=Semaphore before=12 after=12 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=Thread before=13 after=12 delta=-1
+[METRIC] handle_type_scenario=same-worker-after-join type=TpWorkerFactory before=2 after=2 delta=0
+[METRIC] handle_type_scenario=same-worker-after-join type=WaitCompletionPacket before=12 after=12 delta=0
+[METRIC] same_worker_cancellation_cycles=64 handles_before=206 handles_after=208 handles_after_join=205 threads_before=10 threads_after=10 maximum_cancel_ms=46 states_created_before=250 states_created_after=314 states_destroyed_before=250 states_destroyed_after=314 closing_before=250 closing_after=314
+[PASS] same worker releases every HTTP callback state and event
+[PASS] 64 cancellations on the same worker finish promptly
+[PASS] same-worker cancellation cycles show no unbounded handle/thread growth
+[PASS] all HTTP callback states and buffers are released after HANDLE_CLOSING
+[PASS] 64 active HTTP cancellations finish promptly
+[PASS] 64 cancellation cycles show no unbounded handle/thread growth (allows native pool variation)
+<end of output>
+Test time =  29.93 sec
+----------------------------------------------------------
+Test Passed.
+"update_client" end time: Oct 15 04:55 Coordinated Universal Time
+"update_client" time elapsed: 00:00:29
+----------------------------------------------------------
+
+2/16 Testing: update_installer
+2/16 Test: update_installer
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/update_installer_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"update_installer" start time: Oct 15 04:55 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+[PASS] real Win32 files replaced before health confirmation
+[PASS] all original bytes restored
+[PASS] newly added file removed by rollback
+[PASS] configuration and driver bytes preserved
+[PASS] rollback removes completed journal
+[PASS] replacement fault injected after two files
+[PASS] partial transaction has durable recovery journal
+[PASS] all original bytes restored
+[PASS] newly added file removed by rollback
+[PASS] configuration and driver bytes preserved
+[PASS] real Windows deny-delete file handle blocks replacement
+[PASS] locked target fails preflight before any transaction starts
+[PASS] all original bytes restored
+[PASS] newly added file removed by rollback
+[PASS] configuration and driver bytes preserved
+[PASS] recovery integrity fixture created
+[PASS] damaged backup rejects recovery before any restoration
+[PASS] failed recovery retains journal and current executable
+[PASS] forged journal cannot target configuration or traverse directories
+[PASS] all original bytes restored
+[PASS] newly added file removed by rollback
+[PASS] configuration and driver bytes preserved
+[PASS] signed worker validates and parent exits normally
+[PASS] real replacement process creates window and completes health ACK
+[PASS] healthy update commits new files and finalizes journal
+[PASS] full worker preserves update.ini
+[PASS] failed-health fixture parent exits normally
+[PASS] replacement early exit triggers rollback and old process restart
+[PASS] health failure restores all original payload bytes
+[PASS] failed version persists to avoid update loop
+[PASS] failed-health fixture parent exits normally
+[PASS] replacement health timeout terminates only own child then restarts old process
+[PASS] health failure restores all original payload bytes
+[PASS] failed version persists to avoid update loop
+[PASS] failed-health fixture parent exits normally
+[PASS] replacement compiled-version mismatch refuses health ACK and restores original application
+[PASS] health failure restores all original payload bytes
+[PASS] failed version persists to avoid update loop
+[PASS] interrupted-install state prepared without worker cleanup
+[PASS] next real process startup launches recovery before GUI initialization
+[PASS] persisted journal restores previous payload set on next launch
+[PASS] renamed same-directory instance holds runtime registration
+[PASS] worker rejects another live instance even with renamed executable
+[PASS] other instance remains running and original files remain unchanged
+[PASS] ordinary startup through real junction succeeds with automatic update disabled
+[PASS] resolved installation identity detects live instance through junction alias
+[PASS] junction instance is not terminated and payload remains unchanged
+[PASS] real 8.3-path instance starts and registers
+[PASS] long-path updater detects renamed live instance launched through 8.3 alias
+[PASS] 8.3 instance remains running without replacement
+[PASS] ready worker remains alive after caller refuses launch without terminating helper
+[PASS] unapproved real helper rejects subsequent normal parent exit
+[PASS] unapproved helper never starts a transaction, changes payloads, or launches replacement processes
+[PASS] launch failure evidence survives deletion of disposable staged log
+BOUNDARY: actual Win32 file/process/health/journal operations; ephemeral test trust only; replacement application is this fixture, not SerialCtl GUI; no Win7/hardware/power-loss claim.
+<end of output>
+Test time =   5.57 sec
+----------------------------------------------------------
+Test Passed.
+"update_installer" end time: Oct 15 04:55 Coordinated Universal Time
+"update_installer" time elapsed: 00:00:05
+----------------------------------------------------------
+
+3/16 Testing: session_logger
+3/16 Test: session_logger
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/session_logger_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"session_logger" start time: Oct 15 04:55 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+65 MiB logging, rotation, complete export and source protection passed
+<end of output>
+Test time =  16.58 sec
+----------------------------------------------------------
+Test Passed.
+"session_logger" end time: Oct 15 04:56 Coordinated Universal Time
+"session_logger" time elapsed: 00:00:16
+----------------------------------------------------------
+
+4/16 Testing: power_service
+4/16 Test: power_service
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/power_service_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"power_service" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   2.80 sec
+----------------------------------------------------------
+Test Passed.
+"power_service" end time: Oct 15 04:56 Coordinated Universal Time
+"power_service" time elapsed: 00:00:02
+----------------------------------------------------------
+
+5/16 Testing: cmd_connection
+5/16 Test: cmd_connection
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/cmd_connection_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"cmd_connection" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+CMD session retains state and shuts down
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"cmd_connection" end time: Oct 15 04:56 Coordinated Universal Time
+"cmd_connection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/16 Testing: api_server
+6/16 Test: api_server
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/api_server_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"api_server" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+request-stage=1 op=resources
+request-stage=2 op=connect
+request-stage=3 op=disconnect
+request-stage=4 op=ssh
+request-stage=5 op=sftp
+request-stage=6 op=power.parameters
+request-stage=7 op=power.mode
+request-stage=8 op=power.scpi
+request-stage=9 op=power.task
+request-stage=10 op=power.reset
+request-stage=11 op=power.output
+request-stage=12 op=power.output
+request-stage=13 op=power.output
+request-stage=14 op=power.output
+request-stage=15 op=input
+request-stage=16 op=unsubscribe
+request-stage=17 op=input
+request-stage=18 op=input
+request-stage=19 op=power.output
+illegal-stage=20 expected=1003 frame=goABAgME
+illegal-stage=21 expected=1002 frame=gf4AAQECAwQA
+illegal-stage=22 expected=1002 frame=iIIBAgMEAu8=
+illegal-stage=23 expected=1002 frame=gQA=
+illegal-stage=24 expected=1002 frame=if4Afg==
+illegal-stage=25 expected=1002 frame=gIABAgME
+illegal-stage=26 expected=1002 frame=wYABAgME
+illegal-stage=27 expected=1009 frame=gf8AAAAAAAIAAQ==
+illegal-stage=28 expected=1007 frame=gYEBAgME/g==
+illegal-stage=29 expected=1002 frame=iIEBAgMEAA==
+request-stage=30 op=session.get
+stage=31 stopping first server
+stage=32 first server stopped
+stage=33 capacity fixture
+capacity=16
+capacity=32
+capacity=48
+capacity=64
+capacity=80
+capacity=96
+capacity=112
+capacity=128
+stage=34 capacity clients cleared
+Unified gateway scope, RFC6455, legacy rejection, byte integrity, replay and lifecycle passed
+<end of output>
+Test time =   3.28 sec
+----------------------------------------------------------
+Test Passed.
+"api_server" end time: Oct 15 04:56 Coordinated Universal Time
+"api_server" time elapsed: 00:00:03
+----------------------------------------------------------
+
+7/16 Testing: shared_serial_protocol
+7/16 Test: shared_serial_protocol
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/shared_serial_protocol_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"shared_serial_protocol" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Native remote client discovery, first byte, binary and reconnect passed
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"shared_serial_protocol" end time: Oct 15 04:56 Coordinated Universal Time
+"shared_serial_protocol" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/16 Testing: tcp_connection
+8/16 Test: tcp_connection
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/tcp_connection_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"tcp_connection" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Telnet terminal negotiation test passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"tcp_connection" end time: Oct 15 04:56 Coordinated Universal Time
+"tcp_connection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/16 Testing: terminal_model
+9/16 Test: terminal_model
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/terminal_model_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"terminal_model" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Terminal model tests passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"terminal_model" end time: Oct 15 04:56 Coordinated Universal Time
+"terminal_model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/16 Testing: putty_host_key
+10/16 Test: putty_host_key
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/putty_host_key_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"putty_host_key" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Host key confirmation and persistence tests passed
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"putty_host_key" end time: Oct 15 04:56 Coordinated Universal Time
+"putty_host_key" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/16 Testing: serial_share_backpressure
+11/16 Test: serial_share_backpressure
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/serial_share_backpressure_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"serial_share_backpressure" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Slow-client bounded queue isolation: 9,830,400 healthy output bytes, no drops
+environment=Windows runner loopback; physical_serial_rate=not_applicable; controlled_COMs=2; handles=119 working_set=7266304
+forwarding clients=1 P50_ms=0.0396 P95_ms=0.0569 P99_ms=0.0824 samples=1000
+load clients=1 verified_output_bytes=64000 wall_ms=42.3217 cpu_ms=15.625 working_set=8826880 peak_working_set=11493376 threads_idle=7 threads_active=12 threads_reclaimed=7 handles_idle=119 handles_active=138 handles_reclaimed=119
+forwarding clients=2 P50_ms=0.0462 P95_ms=0.0552 P99_ms=0.0732 samples=2000
+load clients=2 verified_output_bytes=128000 wall_ms=49.8823 cpu_ms=62.5 working_set=8916992 peak_working_set=11493376 threads_idle=7 threads_active=14 threads_reclaimed=7 handles_idle=119 handles_active=149 handles_reclaimed=119
+forwarding clients=8 P50_ms=0.0878 P95_ms=0.1162 P99_ms=0.1258 samples=8000
+load clients=8 verified_output_bytes=512000 wall_ms=117.598 cpu_ms=203.125 working_set=9322496 peak_working_set=11493376 threads_idle=7 threads_active=26 threads_reclaimed=7 handles_idle=119 handles_active=215 handles_reclaimed=119
+forwarding clients=32 P50_ms=0.251 P95_ms=0.3783 P99_ms=0.4564 samples=32000
+load clients=32 verified_output_bytes=2048000 wall_ms=390.357 cpu_ms=609.375 working_set=11051008 peak_working_set=11493376 threads_idle=7 threads_active=74 threads_reclaimed=7 handles_idle=119 handles_active=479 handles_reclaimed=119
+<end of output>
+Test time =  10.67 sec
+----------------------------------------------------------
+Test Passed.
+"serial_share_backpressure" end time: Oct 15 04:56 Coordinated Universal Time
+"serial_share_backpressure" time elapsed: 00:00:10
+----------------------------------------------------------
+
+12/16 Testing: multi_serial
+12/16 Test: multi_serial
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/multi_serial_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"multi_serial" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Two AI plus desktop, multi-COM isolation, target removal, fallback and local survival passed
+<end of output>
+Test time =   0.90 sec
+----------------------------------------------------------
+Test Passed.
+"multi_serial" end time: Oct 15 04:56 Coordinated Universal Time
+"multi_serial" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/16 Testing: api_client
+13/16 Test: api_client
+Command: "C:/hostedtoolcache/windows/Python/3.14.8/x64/python3.exe" "D:/a/SerialCtl/SerialCtl/tests/integration/test_api_client.py"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"api_client" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.007s
+
+OK
+<end of output>
+Test time =   1.19 sec
+----------------------------------------------------------
+Test Passed.
+"api_client" end time: Oct 15 04:56 Coordinated Universal Time
+"api_client" time elapsed: 00:00:01
+----------------------------------------------------------
+
+14/16 Testing: linux_gateway_client
+14/16 Test: linux_gateway_client
+Command: "C:/hostedtoolcache/windows/Python/3.14.8/x64/python3.exe" "D:/a/SerialCtl/SerialCtl/tests/integration/test_gateway_client.py" "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/multi_serial_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"linux_gateway_client" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+{"code": "HISTORY_GAP", "resource": "session-5", "cursor": 1104, "message": "Fresh live selection; older output unavailable, history is incomplete"}
+Python / production C++: binary 0-255, 64 KiB, multi-COM, two clients, scope, target loss, 128 capacity and ambiguity PASS
+<end of output>
+Test time =   8.14 sec
+----------------------------------------------------------
+Test Passed.
+"linux_gateway_client" end time: Oct 15 04:56 Coordinated Universal Time
+"linux_gateway_client" time elapsed: 00:00:08
+----------------------------------------------------------
+
+15/16 Testing: terminal_decoder
+15/16 Test: terminal_decoder
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/terminal_decoder_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"terminal_decoder" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Terminal decoder split UTF-8/GBK/OEM tests passed
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"terminal_decoder" end time: Oct 15 04:56 Coordinated Universal Time
+"terminal_decoder" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/16 Testing: sftp_model
+16/16 Test: sftp_model
+Command: "D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake/Release/sftp_model_test.exe"
+Directory: D:/a/SerialCtl/SerialCtl/build/windows/x64/cmake
+"sftp_model" start time: Oct 15 04:56 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+SFTP model tests passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"sftp_model" end time: Oct 15 04:56 Coordinated Universal Time
+"sftp_model" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 15 04:56 Coordinated Universal Time

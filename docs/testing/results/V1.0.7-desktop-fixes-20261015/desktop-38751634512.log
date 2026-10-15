@@ -1,0 +1,355 @@
+﻿2026-10-15T14:28:03.6771234Z Current runner version: '2.337.0'
+2026-10-15T14:28:03.6808559Z ##[group]Runner Image Provisioner
+2026-10-15T14:28:03.6809744Z Hosted Compute Agent
+2026-10-15T14:28:03.6810642Z Version: 20261012.601
+2026-10-15T14:28:03.6811743Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+2026-10-15T14:28:03.6812929Z Build Date: 2026-10-12T17:48:21Z
+2026-10-15T14:28:03.6814068Z Worker ID: {de6c418a-8cae-4b8b-afbf-bedc2d79afc9}
+2026-10-15T14:28:03.6815331Z Region: southcentralus
+2026-10-15T14:28:03.6816308Z Cloud: Azure
+2026-10-15T14:28:03.6817110Z ##[endgroup]
+2026-10-15T14:28:03.6819248Z ##[group]Operating System
+2026-10-15T14:28:03.6820339Z Microsoft Windows Server 2022
+2026-10-15T14:28:03.6821321Z 10.0.20348
+2026-10-15T14:28:03.6822187Z Datacenter
+2026-10-15T14:28:03.6823000Z ##[endgroup]
+2026-10-15T14:28:03.6823844Z ##[group]Runner Image
+2026-10-15T14:28:03.6825184Z Image: windows-2022
+2026-10-15T14:28:03.6826069Z Version: 20261012.333.1
+2026-10-15T14:28:03.6828505Z Included Software: https://github.com/actions/runner-images/blob/win22/20261012.333/images/windows/Windows2022-Readme.md
+2026-10-15T14:28:03.6831203Z Image Release: https://github.com/actions/runner-images/releases/tag/win22%2F20261012.333
+2026-10-15T14:28:03.6833006Z ##[endgroup]
+2026-10-15T14:28:03.6834880Z ##[group]GITHUB_TOKEN Permissions
+2026-10-15T14:28:03.6838392Z Actions: read
+2026-10-15T14:28:03.6839260Z Contents: read
+2026-10-15T14:28:03.6840212Z Metadata: read
+2026-10-15T14:28:03.6841096Z ##[endgroup]
+2026-10-15T14:28:03.6844003Z Secret source: Actions
+2026-10-15T14:28:03.6845599Z Cache mode: write
+2026-10-15T14:28:03.6846673Z Prepare workflow directory
+2026-10-15T14:28:03.7227896Z Prepare all required actions
+2026-10-15T14:28:03.7274808Z Getting action download info
+2026-10-15T14:28:04.0127104Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-15T14:28:04.1554479Z Download action repository 'actions/download-artifact@v4' (SHA:d3f86a106a0bac45b974a628896c90dbdf5c8093)
+2026-10-15T14:28:04.7115337Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-15T14:28:05.0289746Z Complete job name: desktop
+2026-10-15T14:28:05.2296746Z ##[group]Run actions/checkout@v4
+2026-10-15T14:28:05.2298225Z with:
+2026-10-15T14:28:05.2298749Z   fetch-depth: 0
+2026-10-15T14:28:05.2299325Z   repository: john2000smith7-del/SerialCtl
+2026-10-15T14:28:05.2303954Z   token: ***
+2026-10-15T14:28:05.2304458Z   ssh-strict: true
+2026-10-15T14:28:05.2304963Z   ssh-user: git
+2026-10-15T14:28:05.2305470Z   persist-credentials: true
+2026-10-15T14:28:05.2306030Z   clean: true
+2026-10-15T14:28:05.2306548Z   sparse-checkout-cone-mode: true
+2026-10-15T14:28:05.2307165Z   fetch-tags: false
+2026-10-15T14:28:05.2307691Z   show-progress: true
+2026-10-15T14:28:05.2308191Z   lfs: false
+2026-10-15T14:28:05.2308571Z   submodules: false
+2026-10-15T14:28:05.2308990Z   set-safe-directory: true
+2026-10-15T14:28:05.2309465Z   allow-unsafe-pr-checkout: false
+2026-10-15T14:28:05.2310196Z ##[endgroup]
+2026-10-15T14:28:05.3723100Z Syncing repository: john2000smith7-del/SerialCtl
+2026-10-15T14:28:05.3724903Z ##[group]Getting Git version info
+2026-10-15T14:28:05.3725534Z Working directory is 'D:\a\SerialCtl\SerialCtl'
+2026-10-15T14:28:05.4801189Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-15T14:28:05.8860328Z git version 2.56.0.windows.2
+2026-10-15T14:28:05.8906877Z ##[endgroup]
+2026-10-15T14:28:05.8923818Z Temporarily overriding HOME='D:\a\_temp\933e57cf-e974-4627-9d01-1c8760182395' before making global git config changes
+2026-10-15T14:28:05.8925414Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-15T14:28:05.8935953Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\SerialCtl\SerialCtl
+2026-10-15T14:28:05.9584896Z Deleting the contents of 'D:\a\SerialCtl\SerialCtl'
+2026-10-15T14:28:05.9590152Z ##[group]Initializing the repository
+2026-10-15T14:28:05.9598878Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\SerialCtl\SerialCtl
+2026-10-15T14:28:06.0571123Z Initialized empty Git repository in D:/a/SerialCtl/SerialCtl/.git/
+2026-10-15T14:28:06.0613392Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/john2000smith7-del/SerialCtl
+2026-10-15T14:28:06.1225827Z ##[endgroup]
+2026-10-15T14:28:06.1226699Z ##[group]Disabling automatic garbage collection
+2026-10-15T14:28:06.1227545Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-10-15T14:28:06.1502183Z ##[endgroup]
+2026-10-15T14:28:06.1503052Z ##[group]Setting up auth
+2026-10-15T14:28:06.1514533Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-15T14:28:06.1791222Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-15T14:28:07.6825708Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-15T14:28:07.7122520Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-15T14:28:08.1845760Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-15T14:28:08.2157131Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-15T14:28:08.7135024Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-10-15T14:28:08.7425423Z ##[endgroup]
+2026-10-15T14:28:08.7426099Z ##[group]Fetching the repository
+2026-10-15T14:28:08.7438488Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-10-15T14:28:12.5538537Z From https://github.com/john2000smith7-del/SerialCtl
+2026-10-15T14:28:12.5539326Z  * [new branch]      main       -> origin/main
+2026-10-15T14:28:12.5539633Z  * [new tag]         v1.0.0     -> v1.0.0
+2026-10-15T14:28:12.5539907Z  * [new tag]         v1.0.1     -> v1.0.1
+2026-10-15T14:28:12.5540166Z  * [new tag]         v1.0.2     -> v1.0.2
+2026-10-15T14:28:12.5540430Z  * [new tag]         v1.0.3     -> v1.0.3
+2026-10-15T14:28:12.5540766Z  * [new tag]         v1.0.4     -> v1.0.4
+2026-10-15T14:28:12.5541047Z  * [new tag]         v1.0.5     -> v1.0.5
+2026-10-15T14:28:12.5541286Z  * [new tag]         v1.1.0     -> v1.1.0
+2026-10-15T14:28:12.5574577Z [command]"C:\Program Files\Git\bin\git.exe" branch --list --remote origin/main
+2026-10-15T14:28:12.5828349Z   origin/main
+2026-10-15T14:28:12.5860516Z [command]"C:\Program Files\Git\bin\git.exe" rev-parse refs/remotes/origin/main
+2026-10-15T14:28:12.6116628Z ea9d0f351505ae93fa8a0d2d4d49cf29c8209d07
+2026-10-15T14:28:12.6141894Z ##[endgroup]
+2026-10-15T14:28:12.6142452Z ##[group]Determining the checkout info
+2026-10-15T14:28:12.6143905Z ##[endgroup]
+2026-10-15T14:28:12.6152567Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-10-15T14:28:12.6458679Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-10-15T14:28:12.6729886Z ##[group]Checking out the ref
+2026-10-15T14:28:12.6737752Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force -B main refs/remotes/origin/main
+2026-10-15T14:28:13.0328935Z Switched to a new branch 'main'
+2026-10-15T14:28:13.0342765Z branch 'main' set up to track 'origin/main'.
+2026-10-15T14:28:13.0419437Z ##[endgroup]
+2026-10-15T14:28:13.0725168Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-10-15T14:28:13.0982705Z ea9d0f351505ae93fa8a0d2d4d49cf29c8209d07
+2026-10-15T14:28:13.1320194Z ##[group]Run $ErrorActionPreference = 'Stop'
+2026-10-15T14:28:13.1320702Z [36;1m$ErrorActionPreference = 'Stop'[0m
+2026-10-15T14:28:13.1321145Z [36;1mif ($env:BUILD_RUN -notmatch '^\d+$') { throw 'Expected numeric build run ID.' }[0m
+2026-10-15T14:28:13.1321777Z [36;1m$run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json[0m
+2026-10-15T14:28:13.1322852Z [36;1mif ($LASTEXITCODE -ne 0 -or $run.status -ne 'completed' -or $run.conclusion -ne 'success' -or $run.name -ne 'Windows Win7 release build') { throw 'Source build must have passed the complete Windows verification workflow.' }[0m
+2026-10-15T14:28:13.1323811Z [36;1mgit cat-file -e "$($run.head_sha)^{commit}"[0m
+2026-10-15T14:28:13.1324273Z [36;1mif ($LASTEXITCODE -ne 0) { throw 'Source build commit not present in repository.' }[0m
+2026-10-15T14:28:13.1325166Z [36;1mgit diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1[0m
+2026-10-15T14:28:13.1326157Z [36;1mif ($LASTEXITCODE -ne 0) { throw 'Production source or package inputs changed; select a matching successful build.' }[0m
+2026-10-15T14:28:13.1326848Z [36;1mNew-Item -ItemType Directory "$env:RUNNER_TEMP/serialctl-ui" -Force | Out-Null[0m
+2026-10-15T14:28:13.1328703Z [36;1m[ordered]@{ programSourceSha=$run.head_sha; testSourceSha=$env:GITHUB_SHA; buildRun=$env:BUILD_RUN; testRun=$env:GITHUB_RUN_ID; programSource='Verified portable artifact, unchanged production source'; os=[Environment]::OSVersion.VersionString; scope='Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices' } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/interaction-receipt.json" -Encoding UTF8[0m
+2026-10-15T14:28:13.1418354Z shell: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command ". '{0}'"
+2026-10-15T14:28:13.1418784Z env:
+2026-10-15T14:28:13.1421291Z   GH_TOKEN: ***
+2026-10-15T14:28:13.1421495Z   BUILD_RUN: 38683760398
+2026-10-15T14:28:13.1421694Z ##[endgroup]
+2026-10-15T14:28:22.0878587Z ##[group]Run actions/download-artifact@v4
+2026-10-15T14:28:22.0878953Z with:
+2026-10-15T14:28:22.0879152Z   name: SerialCtl-Win7-portable
+2026-10-15T14:28:22.0879384Z   path: bin
+2026-10-15T14:28:22.0879552Z   run-id: 38683760398
+2026-10-15T14:28:22.0882053Z   github-token: ***
+2026-10-15T14:28:22.0882266Z   merge-multiple: false
+2026-10-15T14:28:22.0882491Z   repository: john2000smith7-del/SerialCtl
+2026-10-15T14:28:22.0882757Z ##[endgroup]
+2026-10-15T14:28:22.2564083Z Downloading single artifact
+2026-10-15T14:28:22.2631910Z (node:2888) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-15T14:28:22.2632651Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-15T14:28:22.3126529Z (node:2888) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-15T14:28:22.5386705Z Preparing to download the following artifacts:
+2026-10-15T14:28:22.5388527Z - SerialCtl-Win7-portable (ID: 11949407164, Size: 129968069, Expected Digest: sha256:e88aae4b50911ed79e3082ea823980c8c517f8974a20e95e2625bcd9906d6d10)
+2026-10-15T14:28:22.5427475Z Downloading artifact '11949407164' from 'john2000smith7-del/SerialCtl'
+2026-10-15T14:28:22.7128510Z Redirecting to blob download url: https://productionresultssa7.blob.core.windows.net/actions-results/55e06673-3507-82e2-a35a-d754d6d57e82/workflow-job-run-512a2258-88f7-5b03-b199-3b9f70812078/artifacts/409a6f5280dde7e1d26b83d87214fd49e6d5eb44cafdb67a3e1d9d321be065ec.zip
+2026-10-15T14:28:22.7130363Z Starting download of artifact to: D:\a\SerialCtl\SerialCtl\bin
+2026-10-15T14:28:22.9890972Z (node:2888) [DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.
+2026-10-15T14:28:25.9080861Z SHA256 digest of downloaded artifact is e88aae4b50911ed79e3082ea823980c8c517f8974a20e95e2625bcd9906d6d10
+2026-10-15T14:28:25.9082478Z Artifact download completed successfully.
+2026-10-15T14:28:25.9082939Z Total of 1 artifact(s) downloaded
+2026-10-15T14:28:25.9094555Z Download artifact has finished successfully
+2026-10-15T14:28:25.9323844Z ##[group]Run $ErrorActionPreference = 'Stop'
+2026-10-15T14:28:25.9324270Z [36;1m$ErrorActionPreference = 'Stop'[0m
+2026-10-15T14:28:25.9325197Z [36;1mGet-ChildItem bin -Filter '*.zip' | Get-FileHash -Algorithm SHA256 | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-package-sha256.json" -Encoding UTF8[0m
+2026-10-15T14:28:25.9326349Z [36;1mStart-Transcript -Path "$env:RUNNER_TEMP/serialctl-ui/desktop-interaction-transcript.txt"[0m
+2026-10-15T14:28:25.9327172Z [36;1mtry { ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui" -ActualMouse } finally { Stop-Transcript }[0m
+2026-10-15T14:28:25.9363149Z shell: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command ". '{0}'"
+2026-10-15T14:28:25.9363570Z ##[endgroup]
+2026-10-15T14:28:26.7718676Z Transcript started, output file is D:\a\_temp/serialctl-ui/desktop-interaction-transcript.txt
+2026-10-15T14:28:39.5033553Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:28:39.5034939Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:28:39.5037222Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:28:39.5039643Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:28:40.2385274Z Label 串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:28:40.2386301Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:28:40.2387445Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:28:40.2389667Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:28:40.2391488Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:28:40.2392888Z Label 流控: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:28:40.9422642Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:28:40.9424470Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:28:41.6767323Z Label 远端串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:28:41.6769360Z Label 来源 IP: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:28:42.1202069Z Label 服务端口（通常使用自动发现）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:28:43.6624196Z Label 连接方式: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:28:43.6625919Z Label 设备 / COM 口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:28:43.6627096Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:28:43.6628023Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:28:43.6629570Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:28:43.6630459Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:28:58.8639073Z CMD display P50=6.040 ms P95=6.887 ms P99=7.107 ms; 100 samples
+2026-10-15T14:28:58.8639801Z PASS: packaged GUI unified WebSocket scope, CMD stdout, GUI sequential line editing, persistent state; outputs visible/local logged
+2026-10-15T14:29:03.7783272Z PASS: real CMD SendInput execution; report D:\a\_temp\serialctl-ui\x64-light-cmd-real-input.json
+2026-10-15T14:29:05.3816786Z Started sustained real CMD child stdout on session-1
+2026-10-15T14:29:26.5331170Z PASS x64-light desktop: 17 actual user operations, 134 desktop frames, 96 DPI
+2026-10-15T14:29:33.6809400Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:33.6811631Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:34.0876838Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:34.0878331Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:34.0879178Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:35.5558367Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:35.5559990Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:35.5596676Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:37.7754519Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:29:37.7759138Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:29:37.7764295Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:37.7783385Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:38.4791141Z Label 串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:29:38.4793012Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:29:38.4793911Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:38.4796041Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:38.4816486Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:38.4833095Z Label 流控: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:39.1828057Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:29:39.1832332Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:29:39.9025434Z Label 远端串口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:39.9029435Z Label 来源 IP: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:29:40.3256440Z Label 服务端口（通常使用自动发现）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:29:41.8581590Z Label 连接方式: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:29:41.8583357Z Label 设备 / COM 口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:29:41.8584990Z Label 波特率: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:29:41.8586315Z Label 数据位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:29:41.8587869Z Label 校验: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:29:41.8588859Z Label 停止位: design-font=Microsoft YaHei UI, text-height=20, bounds-height=28
+2026-10-15T14:29:55.3273369Z CMD display P50=4.410 ms P95=5.282 ms P99=5.760 ms; 100 samples
+2026-10-15T14:29:55.3274494Z PASS: packaged GUI unified WebSocket scope, CMD stdout, GUI sequential line editing, persistent state; outputs visible/local logged
+2026-10-15T14:30:00.0576579Z PASS: real CMD SendInput execution; report D:\a\_temp\serialctl-ui\x64-dark-cmd-real-input.json
+2026-10-15T14:30:01.6644791Z Started sustained real CMD child stdout on session-2
+2026-10-15T14:30:22.9392028Z PASS x64-dark desktop: 17 actual user operations, 134 desktop frames, 96 DPI
+2026-10-15T14:30:30.6290142Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:30:30.6292669Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:30:31.0524622Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:30:31.0526848Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:30:31.0531446Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:30:32.4600910Z Label 名称（可选）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:30:32.4606400Z Label 指令: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:30:32.4631977Z Label 指令间隔（毫秒）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:31:00.1545010Z Completed: 35 real CMD sessions, list anchors/wheel/keys, all-disconnect child cleanup 0.391s
+2026-10-15T14:31:00.1545697Z PASS: GUI lifecycle checks; 0 observed behavior failures
+2026-10-15T14:31:01.0426433Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:31:01.0428067Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:31:01.0430379Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:31:01.0433006Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:31:03.7922625Z Label 主机: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:31:03.7924002Z Label 端口: design-font=Microsoft YaHei UI, text-height=20, bounds-height=22
+2026-10-15T14:31:03.7926689Z Label 用户名: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:31:03.7928854Z Label 密码: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:31:07.1715529Z Label 远端目录（可粘贴 pwd 输出）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:31:22.6002779Z PASS x64-light sftp: 10 actual user operations, 87 desktop frames, 96 DPI
+2026-10-15T14:31:25.2373988Z Label 远端目录（可粘贴 pwd 输出）: design-font=Microsoft YaHei UI, text-height=20, bounds-height=21
+2026-10-15T14:31:39.9394579Z PASS x64-dark sftp: 10 actual user operations, 87 desktop frames, 96 DPI
+2026-10-15T14:31:41.1239909Z [PASS] Executed assertions for packaged startup/shutdown, theme/dialog layout, controlled CMD, panel geometry, drafts, and isolated SFTP UI. See per-case JSON for input method and scope.
+2026-10-15T14:31:41.1247295Z [NOT RUN] Actual Windows 7 hardware and field server tests
+2026-10-15T14:31:41.2270335Z Transcript stopped, output file is D:\a\_temp\serialctl-ui\desktop-interaction-transcript.txt
+2026-10-15T14:31:41.2597743Z ##[group]Run $files = @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Join-Path "$env:RUNNER_TEMP/serialctl-ui/payload" $_ } | Where-Object { Test-Path $_ }
+2026-10-15T14:31:41.2599000Z [36;1m$files = @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Join-Path "$env:RUNNER_TEMP/serialctl-ui/payload" $_ } | Where-Object { Test-Path $_ }[0m
+2026-10-15T14:31:41.2600393Z [36;1mif ($files) { $files | ForEach-Object { Get-FileHash -LiteralPath $_ -Algorithm SHA256 } | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-executable-sha256.json" -Encoding UTF8 }[0m
+2026-10-15T14:31:41.2636997Z shell: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command ". '{0}'"
+2026-10-15T14:31:41.2637468Z ##[endgroup]
+2026-10-15T14:31:41.5424507Z ##[group]Run actions/upload-artifact@v4
+2026-10-15T14:31:41.5424928Z with:
+2026-10-15T14:31:41.5425208Z   name: SerialCtl-actual-desktop-interaction
+2026-10-15T14:31:41.5425994Z   path: D:\a\_temp/serialctl-ui/*.png
+D:\a\_temp/serialctl-ui/*.json
+D:\a\_temp/serialctl-ui/*.jsonl
+D:\a\_temp/serialctl-ui/*.txt
+D:\a\_temp/serialctl-ui/*.log
+
+2026-10-15T14:31:41.5426680Z   if-no-files-found: error
+2026-10-15T14:31:41.5426970Z   retention-days: 30
+2026-10-15T14:31:41.5427221Z   compression-level: 6
+2026-10-15T14:31:41.5427468Z   overwrite: false
+2026-10-15T14:31:41.5427722Z   include-hidden-files: false
+2026-10-15T14:31:41.5428000Z ##[endgroup]
+2026-10-15T14:31:41.7277554Z (node:752) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-15T14:31:41.7278634Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-15T14:31:41.9260119Z With the provided path, there will be 674 files uploaded
+2026-10-15T14:31:41.9266528Z Artifact name is valid!
+2026-10-15T14:31:41.9268555Z Root directory input is valid!
+2026-10-15T14:31:42.2756859Z Beginning upload of artifact content to blob storage
+2026-10-15T14:31:42.6134017Z (node:752) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-15T14:31:43.1232403Z Uploaded bytes 8388608
+2026-10-15T14:31:43.4434672Z Uploaded bytes 16777216
+2026-10-15T14:31:43.4624878Z Uploaded bytes 25165824
+2026-10-15T14:31:43.7229698Z Uploaded bytes 33554432
+2026-10-15T14:31:43.9270039Z Uploaded bytes 41943040
+2026-10-15T14:31:44.2105348Z Uploaded bytes 50331648
+2026-10-15T14:31:44.5173230Z Uploaded bytes 58720256
+2026-10-15T14:31:44.7536062Z Uploaded bytes 67108864
+2026-10-15T14:31:45.0468140Z Uploaded bytes 75497472
+2026-10-15T14:31:45.2542848Z Uploaded bytes 83886080
+2026-10-15T14:31:45.5597803Z Uploaded bytes 92274688
+2026-10-15T14:31:45.7723285Z Uploaded bytes 100663296
+2026-10-15T14:31:45.9712154Z Uploaded bytes 109051904
+2026-10-15T14:31:46.3805397Z Uploaded bytes 117440512
+2026-10-15T14:31:46.5581065Z Uploaded bytes 125829120
+2026-10-15T14:31:46.8480697Z Uploaded bytes 134217728
+2026-10-15T14:31:47.1236216Z Uploaded bytes 142606336
+2026-10-15T14:31:47.4308947Z Uploaded bytes 150994944
+2026-10-15T14:31:47.7379306Z Uploaded bytes 159383552
+2026-10-15T14:31:47.9163763Z Uploaded bytes 167772160
+2026-10-15T14:31:48.2210409Z Uploaded bytes 176160768
+2026-10-15T14:31:48.5068852Z Uploaded bytes 184549376
+2026-10-15T14:31:48.8136826Z Uploaded bytes 192937984
+2026-10-15T14:31:49.0893216Z Uploaded bytes 201326592
+2026-10-15T14:31:49.4078495Z Uploaded bytes 209715200
+2026-10-15T14:31:49.7202550Z Uploaded bytes 218103808
+2026-10-15T14:31:50.0173822Z Uploaded bytes 226492416
+2026-10-15T14:31:50.2931110Z Uploaded bytes 234881024
+2026-10-15T14:31:50.6243513Z Uploaded bytes 243269632
+2026-10-15T14:31:50.9426140Z Uploaded bytes 251658240
+2026-10-15T14:31:51.2333525Z Uploaded bytes 260046848
+2026-10-15T14:31:51.5136530Z Uploaded bytes 268435456
+2026-10-15T14:31:51.8051760Z Uploaded bytes 276824064
+2026-10-15T14:31:52.2016390Z Uploaded bytes 285212672
+2026-10-15T14:31:52.4484863Z Uploaded bytes 293601280
+2026-10-15T14:31:52.7489530Z Uploaded bytes 301989888
+2026-10-15T14:31:53.0305188Z Uploaded bytes 310378496
+2026-10-15T14:31:53.3728610Z Uploaded bytes 318767104
+2026-10-15T14:31:53.5267092Z Uploaded bytes 327155712
+2026-10-15T14:31:53.8013190Z Uploaded bytes 335544320
+2026-10-15T14:31:54.0744631Z Uploaded bytes 343932928
+2026-10-15T14:31:54.3543943Z Uploaded bytes 352321536
+2026-10-15T14:31:54.6575002Z Uploaded bytes 360710144
+2026-10-15T14:31:54.9529299Z Uploaded bytes 369098752
+2026-10-15T14:31:55.1733490Z Uploaded bytes 377487360
+2026-10-15T14:31:55.4151378Z Uploaded bytes 385875968
+2026-10-15T14:31:55.7727787Z Uploaded bytes 394264576
+2026-10-15T14:31:55.9989683Z Uploaded bytes 402653184
+2026-10-15T14:31:56.2271402Z Uploaded bytes 411041792
+2026-10-15T14:31:56.5694925Z Uploaded bytes 419430400
+2026-10-15T14:31:56.9151516Z Uploaded bytes 427819008
+2026-10-15T14:31:57.1077865Z Uploaded bytes 436207616
+2026-10-15T14:31:57.3752603Z Uploaded bytes 444596224
+2026-10-15T14:31:57.7260804Z Uploaded bytes 452984832
+2026-10-15T14:31:57.9886339Z Uploaded bytes 461373440
+2026-10-15T14:31:58.1744648Z Uploaded bytes 469762048
+2026-10-15T14:31:58.6582875Z Uploaded bytes 478150656
+2026-10-15T14:31:58.7789437Z Uploaded bytes 486539264
+2026-10-15T14:31:59.0599486Z Uploaded bytes 494927872
+2026-10-15T14:31:59.2877640Z Uploaded bytes 503316480
+2026-10-15T14:31:59.6351406Z Uploaded bytes 511705088
+2026-10-15T14:31:59.8859967Z Uploaded bytes 520093696
+2026-10-15T14:32:00.3091532Z Uploaded bytes 528482304
+2026-10-15T14:32:00.4943200Z Uploaded bytes 536870912
+2026-10-15T14:32:00.8022272Z Uploaded bytes 545259520
+2026-10-15T14:32:01.0585433Z Uploaded bytes 553648128
+2026-10-15T14:32:01.2616774Z Uploaded bytes 562036736
+2026-10-15T14:32:01.4947250Z Uploaded bytes 567301575
+2026-10-15T14:32:01.5366534Z Finished uploading artifact content to blob storage!
+2026-10-15T14:32:01.5370628Z SHA256 digest of uploaded artifact zip is 84bf3b016918e86516bb2f48456cfe39cbc094c1ea6952f05b906ec604b9f68b
+2026-10-15T14:32:01.5373042Z Finalizing artifact upload
+2026-10-15T14:32:01.8828980Z Artifact SerialCtl-actual-desktop-interaction.zip successfully finalized. Artifact ID 11980499567
+2026-10-15T14:32:01.8830169Z Artifact SerialCtl-actual-desktop-interaction has been successfully uploaded! Final size is 567301575 bytes. Artifact ID is 11980499567
+2026-10-15T14:32:01.8840736Z Artifact download URL: https://github.com/john2000smith7-del/SerialCtl/actions/runs/38751634512/artifacts/11980499567
+2026-10-15T14:32:01.9207473Z Post job cleanup.
+2026-10-15T14:32:02.0972501Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-15T14:32:02.1232385Z git version 2.56.0.windows.2
+2026-10-15T14:32:02.1294605Z Temporarily overriding HOME='D:\a\_temp\ac4e602e-1491-499d-b4b0-8621da454ca4' before making global git config changes
+2026-10-15T14:32:02.1295921Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-15T14:32:02.1306940Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\SerialCtl\SerialCtl
+2026-10-15T14:32:02.1618271Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-15T14:32:02.1926584Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-15T14:32:02.6529573Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-15T14:32:02.6790276Z http.https://github.com/.extraheader
+2026-10-15T14:32:02.6825659Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-10-15T14:32:02.7119240Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-15T14:32:03.1845899Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-15T14:32:03.2121631Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-15T14:32:03.6723113Z Cleaning up orphan processes
+2026-10-15T14:32:03.7220134Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/download-artifact@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

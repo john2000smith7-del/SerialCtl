@@ -149,6 +149,8 @@ SerialCtl-V1.0.7-Win7-x64.zip
 
 - [V1.0.6 独立审核、交叉复审与原始证据](docs/reviews/2026-10-11-v1.0.6/README.md)
 - [V1.0.7 自动更新实际验证记录](docs/testing/results/V1.0.7-auto-update/README.md)
+- [V1.0.7 真实点击、拖动和缩放审核](docs/testing/results/V1.0.7-desktop-interaction-20261014/README.md)
+- [2026-10-15 桌面修复回归：点击/焦点通过，侧栏白块仍待处理](docs/testing/results/V1.0.7-desktop-fixes-20261015/README.md)
 
 ## GitHub 自动构建与下载
 

@@ -1,0 +1,86 @@
+{
+  "source": "38751634512 artifact11980499567",
+  "checks": [
+    {
+      "file": "x64-dark-desktop-user-actions.json",
+      "status": "PASS",
+      "operations": 17,
+      "frames_sha256_verified": 134,
+      "fixed_sidebar_frames": 40,
+      "toggle_bounds": [
+        1162,
+        173,
+        1190,
+        201
+      ],
+      "rapid_clicks": 20,
+      "rapid_intervals_min_ms": 77.564,
+      "rapid_intervals_max_ms": 109.975,
+      "system_double_click_time_ms": 500,
+      "system_double_click_width_px": 4,
+      "caption_flips_and_hits_verified": true,
+      "fixed_before_down_before_up_after_up": true
+    },
+    {
+      "file": "x64-dark-sftp-user-actions.json",
+      "status": "PASS",
+      "operations": 10,
+      "frames_sha256_verified": 87,
+      "fixed_sidebar_frames": 40,
+      "toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "rapid_clicks": 20,
+      "rapid_intervals_min_ms": 76.344,
+      "rapid_intervals_max_ms": 102.038,
+      "system_double_click_time_ms": 500,
+      "system_double_click_width_px": 4,
+      "caption_flips_and_hits_verified": true,
+      "fixed_before_down_before_up_after_up": true
+    },
+    {
+      "file": "x64-light-desktop-user-actions.json",
+      "status": "PASS",
+      "operations": 17,
+      "frames_sha256_verified": 134,
+      "fixed_sidebar_frames": 40,
+      "toggle_bounds": [
+        1162,
+        173,
+        1190,
+        201
+      ],
+      "rapid_clicks": 20,
+      "rapid_intervals_min_ms": 77.26,
+      "rapid_intervals_max_ms": 110.638,
+      "system_double_click_time_ms": 500,
+      "system_double_click_width_px": 4,
+      "caption_flips_and_hits_verified": true,
+      "fixed_before_down_before_up_after_up": true
+    },
+    {
+      "file": "x64-light-sftp-user-actions.json",
+      "status": "PASS",
+      "operations": 10,
+      "frames_sha256_verified": 87,
+      "fixed_sidebar_frames": 40,
+      "toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "rapid_clicks": 20,
+      "rapid_intervals_min_ms": 78.249,
+      "rapid_intervals_max_ms": 120.332,
+      "system_double_click_time_ms": 500,
+      "system_double_click_width_px": 4,
+      "caption_flips_and_hits_verified": true,
+      "fixed_before_down_before_up_after_up": true
+    }
+  ],
+  "limits": "Structured data cross-check only; no image appearance claim."
+}

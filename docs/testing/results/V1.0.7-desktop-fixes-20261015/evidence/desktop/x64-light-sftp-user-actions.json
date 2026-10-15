@@ -1,0 +1,6752 @@
+{
+  "status": "PASS",
+  "mode": "sftp",
+  "prefix": "x64-light",
+  "pid": 8540,
+  "window": 328192,
+  "system": "Windows-2022Server-10.0.20348-SP0",
+  "python": "3.12.10",
+  "started_utc": "2026-10-15T14:31:09.498559+00:00",
+  "input": "SetCursorPos + mouse_event, dispatched by Windows",
+  "capture": "visible desktop GetDC(NULL) + BitBlt; no PrintWindow; hardware cursor excluded",
+  "scope": "production GUI; caller substitutes SSH/SFTP child processes, not UI or layout; no real server assertion",
+  "limitations": [
+    "Captured frames do not prove absence of flicker between frames.",
+    "Measured DPI only; this run does not establish other DPI values or Win7 compatibility."
+  ],
+  "operations": [
+    {
+      "name": "activate-by-caption-click",
+      "status": "PASS",
+      "before": {
+        "seconds": 0.105346,
+        "utc": "2026-10-15T14:31:09.545433+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 313,
+        "terminal_paint_probe": 313,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              796
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1177,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1177,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "wm_null_ms": 0.073,
+      "after": {
+        "seconds": 0.255682,
+        "utc": "2026-10-15T14:31:09.706313+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 323,
+        "terminal_paint_probe": 323,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              796
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1177,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1177,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-column-boundary-1",
+      "status": "PASS",
+      "before": {
+        "seconds": 0.321315,
+        "utc": "2026-10-15T14:31:09.764761+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 327,
+        "terminal_paint_probe": 327,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              796
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1177,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1177,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "name_width_change": -24,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.075,
+      "after": {
+        "seconds": 0.81388,
+        "utc": "2026-10-15T14:31:10.253734+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 358,
+        "terminal_paint_probe": 358,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              796
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1153,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1153,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-column-boundary-2",
+      "status": "PASS",
+      "before": {
+        "seconds": 1.431642,
+        "utc": "2026-10-15T14:31:10.881097+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 402,
+        "terminal_paint_probe": 402,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1153,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1153,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "name_width_change": 32,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.09,
+      "after": {
+        "seconds": 2.014302,
+        "utc": "2026-10-15T14:31:11.460807+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 450,
+        "terminal_paint_probe": 450,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1185,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1185,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-column-boundary-3",
+      "status": "PASS",
+      "before": {
+        "seconds": 2.600824,
+        "utc": "2026-10-15T14:31:12.048814+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 499,
+        "terminal_paint_probe": 499,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1185,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1185,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "name_width_change": -16,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.088,
+      "after": {
+        "seconds": 3.181713,
+        "utc": "2026-10-15T14:31:12.629536+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 547,
+        "terminal_paint_probe": 547,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-size-boundary-1",
+      "status": "PASS",
+      "before": {
+        "seconds": 3.770224,
+        "utc": "2026-10-15T14:31:13.219378+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 595,
+        "terminal_paint_probe": 595,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "size_width_change": 14,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.06,
+      "after": {
+        "seconds": 4.355196,
+        "utc": "2026-10-15T14:31:13.802502+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 644,
+        "terminal_paint_probe": 644,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1155,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1155,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sftp-size-boundary-2",
+      "status": "PASS",
+      "before": {
+        "seconds": 4.95166,
+        "utc": "2026-10-15T14:31:14.400672+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 693,
+        "terminal_paint_probe": 693,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1155,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1155,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "size_width_change": -14,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS"
+      },
+      "wm_null_ms": 0.08,
+      "after": {
+        "seconds": 5.518657,
+        "utc": "2026-10-15T14:31:14.966064+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 740,
+        "terminal_paint_probe": 740,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-collapse",
+      "status": "PASS",
+      "before": {
+        "seconds": 6.115742,
+        "utc": "2026-10-15T14:31:15.566071+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 789,
+        "terminal_paint_probe": 789,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "initial_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS",
+        "fixed_sidebar_toggle": "PASS"
+      },
+      "wm_null_ms": 2.283,
+      "after": {
+        "seconds": 6.784345,
+        "utc": "2026-10-15T14:31:16.234453+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 845,
+        "terminal_paint_probe": 845,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              1454,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1456,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1500,
+              273,
+              1570,
+              305
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              1570,
+              273,
+              1640,
+              305
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              343
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1498,
+              383,
+              1726,
+              776
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1498,
+              351,
+              1640,
+              383
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1640,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1710,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1498,
+              832,
+              1726,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-expand",
+      "status": "PASS",
+      "before": {
+        "seconds": 7.419067,
+        "utc": "2026-10-15T14:31:16.864448+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 897,
+        "terminal_paint_probe": 897,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              1454,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1456,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1500,
+              273,
+              1570,
+              305
+            ],
+            "visible": false
+          },
+          "118": {
+            "bounds": [
+              1570,
+              273,
+              1640,
+              305
+            ],
+            "visible": false
+          },
+          "119": {
+            "bounds": [
+              1498,
+              311,
+              1726,
+              343
+            ],
+            "visible": false
+          },
+          "120": {
+            "bounds": [
+              1498,
+              383,
+              1726,
+              776
+            ],
+            "visible": false
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1498,
+              351,
+              1640,
+              383
+            ],
+            "visible": false
+          },
+          "127": {
+            "bounds": [
+              1640,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "128": {
+            "bounds": [
+              1710,
+              351,
+              1710,
+              383
+            ],
+            "visible": false
+          },
+          "130": {
+            "bounds": [
+              1498,
+              832,
+              1726,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "initial_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS",
+        "fixed_sidebar_toggle": "PASS"
+      },
+      "wm_null_ms": 0.08,
+      "after": {
+        "seconds": 8.091047,
+        "utc": "2026-10-15T14:31:17.538318+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 953,
+        "terminal_paint_probe": 953,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-rapid-reversal",
+      "status": "PASS",
+      "before": {
+        "seconds": 8.822151,
+        "utc": "2026-10-15T14:31:18.270323+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 1013,
+        "terminal_paint_probe": 13,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "initial_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "stationary_pointer": false,
+      "single_click_observations": [
+        {
+          "seconds": 8.822789,
+          "utc": "2026-10-15T14:31:18.270323+00:00",
+          "index": 0,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1497,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": null,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 8.855566,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 8.942594,
+          "utc": "2026-10-15T14:31:18.390325+00:00",
+          "index": 1,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1514,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 8.963591,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 9.057899,
+          "utc": "2026-10-15T14:31:18.504316+00:00",
+          "index": 2,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1497,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 9.089692,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 9.178225,
+          "utc": "2026-10-15T14:31:18.624323+00:00",
+          "index": 3,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1514,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 9.199065,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 9.263377,
+          "utc": "2026-10-15T14:31:18.708321+00:00",
+          "index": 4,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1497,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 9.287647,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 9.370261,
+          "utc": "2026-10-15T14:31:18.816818+00:00",
+          "index": 5,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1514,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 9.391352,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 9.459558,
+          "utc": "2026-10-15T14:31:18.904646+00:00",
+          "index": 6,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1497,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 9.483872,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 9.565638,
+          "utc": "2026-10-15T14:31:19.012646+00:00",
+          "index": 7,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1514,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 9.589249,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 9.676966,
+          "utc": "2026-10-15T14:31:19.127134+00:00",
+          "index": 8,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1497,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 9.697855,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 9.783599,
+          "utc": "2026-10-15T14:31:19.229365+00:00",
+          "index": 9,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1514,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 17,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 9.806055,
+          "caption_flipped": true
+        }
+      ],
+      "double_click_ambiguity": "Prior center-only rapid input could be coalesced by the native Button class into BN_DOUBLECLICKED. This sequence alternates separated points and verifies the toggle caption after every released click. Prior attempt evidence is retained unchanged.",
+      "system_double_click_width_px": 4,
+      "system_double_click_time_ms": 500,
+      "click_intervals_ms": [
+        119.8,
+        115.307,
+        120.332,
+        85.146,
+        106.881,
+        89.301,
+        106.073,
+        111.334,
+        106.627
+      ],
+      "expected_final_expanded": true,
+      "actual_final_expanded": true,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS",
+        "fixed_sidebar_toggle": "PASS"
+      },
+      "wm_null_ms": 0.089,
+      "after": {
+        "seconds": 10.232746,
+        "utc": "2026-10-15T14:31:19.680553+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 1128,
+        "terminal_paint_probe": 128,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    },
+    {
+      "name": "sidebar-rapid-same-point-reversal",
+      "status": "PASS",
+      "before": {
+        "seconds": 10.979656,
+        "utc": "2026-10-15T14:31:20.424831+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 1190,
+        "terminal_paint_probe": 190,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      },
+      "initial_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "stationary_pointer": true,
+      "single_click_observations": [
+        {
+          "seconds": 10.979766,
+          "utc": "2026-10-15T14:31:20.424831+00:00",
+          "index": 0,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": null,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 10.998074,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.061772,
+          "utc": "2026-10-15T14:31:20.508832+00:00",
+          "index": 1,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 11.085391,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.169922,
+          "utc": "2026-10-15T14:31:20.617179+00:00",
+          "index": 2,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 11.193716,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.260077,
+          "utc": "2026-10-15T14:31:20.707605+00:00",
+          "index": 3,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 11.281586,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.354534,
+          "utc": "2026-10-15T14:31:20.804423+00:00",
+          "index": 4,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 11.377606,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.459822,
+          "utc": "2026-10-15T14:31:20.904039+00:00",
+          "index": 5,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 11.477555,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.538079,
+          "utc": "2026-10-15T14:31:20.978312+00:00",
+          "index": 6,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 11.586976,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.647826,
+          "utc": "2026-10-15T14:31:21.088280+00:00",
+          "index": 7,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 11.681643,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.743368,
+          "utc": "2026-10-15T14:31:21.182917+00:00",
+          "index": 8,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "折叠侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "展开侧栏",
+          "caption_observed_seconds": 11.776459,
+          "caption_flipped": true
+        },
+        {
+          "seconds": 11.837462,
+          "utc": "2026-10-15T14:31:21.277711+00:00",
+          "index": 9,
+          "bounds": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "point": [
+            1506,
+            287
+          ],
+          "window_from_point": 131636,
+          "caption_before": "展开侧栏",
+          "distance_from_previous_x": 0,
+          "bounds_before_down": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_down": 131636,
+          "bounds_before_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "hit_before_up": 131636,
+          "bounds_after_up": [
+            1492,
+            273,
+            1520,
+            301
+          ],
+          "caption_after_mouse_up": "折叠侧栏",
+          "caption_observed_seconds": 11.886619,
+          "caption_flipped": true
+        }
+      ],
+      "double_click_ambiguity": "This sequence uses one fixed point and verifies the target caption after every released click, including input eligible for native double-click handling. It does not assert which native notifications were delivered.",
+      "system_double_click_width_px": 4,
+      "system_double_click_time_ms": 500,
+      "click_intervals_ms": [
+        82.007,
+        108.15,
+        90.154,
+        94.464,
+        105.289,
+        78.249,
+        109.747,
+        95.542,
+        94.095
+      ],
+      "expected_final_expanded": true,
+      "actual_final_expanded": true,
+      "assertions": {
+        "terminal_minimum_content_width": 368,
+        "visible_child_bounds": "PASS",
+        "fixed_sidebar_toggle": "PASS"
+      },
+      "wm_null_ms": 0.089,
+      "after": {
+        "seconds": 12.291155,
+        "utc": "2026-10-15T14:31:21.731577+00:00",
+        "window_bounds": [
+          370,
+          140,
+          1550,
+          900
+        ],
+        "client_bounds": [
+          378,
+          171,
+          1542,
+          892
+        ],
+        "foreground": 328192,
+        "maximized": false,
+        "terminal_paint_sample": 1282,
+        "terminal_paint_probe": 282,
+        "controls": {
+          "106": {
+            "bounds": [
+              406,
+              311,
+              571,
+              824
+            ],
+            "visible": true
+          },
+          "107": {
+            "bounds": [
+              615,
+              271,
+              983,
+              864
+            ],
+            "visible": true
+          },
+          "112": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              820
+            ],
+            "visible": false
+          },
+          "115": {
+            "bounds": [
+              1380,
+              273,
+              1484,
+              305
+            ],
+            "visible": false
+          },
+          "117": {
+            "bounds": [
+              1029,
+              273,
+              1099,
+              305
+            ],
+            "visible": true
+          },
+          "118": {
+            "bounds": [
+              1099,
+              273,
+              1169,
+              305
+            ],
+            "visible": true
+          },
+          "119": {
+            "bounds": [
+              1027,
+              311,
+              1514,
+              343
+            ],
+            "visible": true
+          },
+          "120": {
+            "bounds": [
+              1027,
+              383,
+              1514,
+              776
+            ],
+            "visible": true
+          },
+          "125": {
+            "bounds": [
+              1492,
+              273,
+              1520,
+              301
+            ],
+            "visible": true
+          },
+          "126": {
+            "bounds": [
+              1027,
+              351,
+              1169,
+              383
+            ],
+            "visible": true
+          },
+          "127": {
+            "bounds": [
+              1169,
+              351,
+              1394,
+              383
+            ],
+            "visible": true
+          },
+          "128": {
+            "bounds": [
+              1394,
+              351,
+              1498,
+              383
+            ],
+            "visible": true
+          },
+          "130": {
+            "bounds": [
+              1027,
+              832,
+              1514,
+              832
+            ],
+            "visible": false
+          }
+        }
+      }
+    }
+  ],
+  "input_trace": [
+    {
+      "seconds": 0.108046,
+      "utc": "2026-10-15T14:31:09.545433+00:00",
+      "event": "mouse_move",
+      "x": 670,
+      "y": 160
+    },
+    {
+      "seconds": 0.126845,
+      "utc": "2026-10-15T14:31:09.576676+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.13522,
+      "utc": "2026-10-15T14:31:09.585853+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 0.321405,
+      "utc": "2026-10-15T14:31:09.764761+00:00",
+      "event": "mouse_move",
+      "x": 1175,
+      "y": 367
+    },
+    {
+      "seconds": 0.321643,
+      "utc": "2026-10-15T14:31:09.764761+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.321696,
+      "utc": "2026-10-15T14:31:09.764761+00:00",
+      "event": "mouse_move",
+      "x": 1172,
+      "y": 367
+    },
+    {
+      "seconds": 0.370718,
+      "utc": "2026-10-15T14:31:09.812113+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 367
+    },
+    {
+      "seconds": 0.418619,
+      "utc": "2026-10-15T14:31:09.859464+00:00",
+      "event": "mouse_move",
+      "x": 1166,
+      "y": 367
+    },
+    {
+      "seconds": 0.465918,
+      "utc": "2026-10-15T14:31:09.906698+00:00",
+      "event": "mouse_move",
+      "x": 1163,
+      "y": 367
+    },
+    {
+      "seconds": 0.51286,
+      "utc": "2026-10-15T14:31:09.954045+00:00",
+      "event": "mouse_move",
+      "x": 1160,
+      "y": 367
+    },
+    {
+      "seconds": 0.56039,
+      "utc": "2026-10-15T14:31:10.001402+00:00",
+      "event": "mouse_move",
+      "x": 1157,
+      "y": 367
+    },
+    {
+      "seconds": 0.609646,
+      "utc": "2026-10-15T14:31:10.048742+00:00",
+      "event": "mouse_move",
+      "x": 1154,
+      "y": 367
+    },
+    {
+      "seconds": 0.655068,
+      "utc": "2026-10-15T14:31:10.096070+00:00",
+      "event": "mouse_move",
+      "x": 1151,
+      "y": 367
+    },
+    {
+      "seconds": 0.702712,
+      "utc": "2026-10-15T14:31:10.143434+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 1.431743,
+      "utc": "2026-10-15T14:31:10.881097+00:00",
+      "event": "mouse_move",
+      "x": 1151,
+      "y": 367
+    },
+    {
+      "seconds": 1.449326,
+      "utc": "2026-10-15T14:31:10.899089+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 1.44943,
+      "utc": "2026-10-15T14:31:10.899089+00:00",
+      "event": "mouse_move",
+      "x": 1155,
+      "y": 367
+    },
+    {
+      "seconds": 1.512113,
+      "utc": "2026-10-15T14:31:10.959087+00:00",
+      "event": "mouse_move",
+      "x": 1159,
+      "y": 367
+    },
+    {
+      "seconds": 1.566059,
+      "utc": "2026-10-15T14:31:11.013082+00:00",
+      "event": "mouse_move",
+      "x": 1163,
+      "y": 367
+    },
+    {
+      "seconds": 1.620551,
+      "utc": "2026-10-15T14:31:11.067082+00:00",
+      "event": "mouse_move",
+      "x": 1167,
+      "y": 367
+    },
+    {
+      "seconds": 1.673753,
+      "utc": "2026-10-15T14:31:11.121085+00:00",
+      "event": "mouse_move",
+      "x": 1171,
+      "y": 367
+    },
+    {
+      "seconds": 1.728342,
+      "utc": "2026-10-15T14:31:11.175080+00:00",
+      "event": "mouse_move",
+      "x": 1175,
+      "y": 367
+    },
+    {
+      "seconds": 1.782605,
+      "utc": "2026-10-15T14:31:11.229084+00:00",
+      "event": "mouse_move",
+      "x": 1179,
+      "y": 367
+    },
+    {
+      "seconds": 1.833718,
+      "utc": "2026-10-15T14:31:11.280808+00:00",
+      "event": "mouse_move",
+      "x": 1183,
+      "y": 367
+    },
+    {
+      "seconds": 1.888076,
+      "utc": "2026-10-15T14:31:11.334806+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.600921,
+      "utc": "2026-10-15T14:31:12.048814+00:00",
+      "event": "mouse_move",
+      "x": 1183,
+      "y": 367
+    },
+    {
+      "seconds": 2.614452,
+      "utc": "2026-10-15T14:31:12.064505+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.614601,
+      "utc": "2026-10-15T14:31:12.064505+00:00",
+      "event": "mouse_move",
+      "x": 1181,
+      "y": 367
+    },
+    {
+      "seconds": 2.677299,
+      "utc": "2026-10-15T14:31:12.124550+00:00",
+      "event": "mouse_move",
+      "x": 1179,
+      "y": 367
+    },
+    {
+      "seconds": 2.733123,
+      "utc": "2026-10-15T14:31:12.178552+00:00",
+      "event": "mouse_move",
+      "x": 1177,
+      "y": 367
+    },
+    {
+      "seconds": 2.786464,
+      "utc": "2026-10-15T14:31:12.232550+00:00",
+      "event": "mouse_move",
+      "x": 1175,
+      "y": 367
+    },
+    {
+      "seconds": 2.840137,
+      "utc": "2026-10-15T14:31:12.286552+00:00",
+      "event": "mouse_move",
+      "x": 1173,
+      "y": 367
+    },
+    {
+      "seconds": 2.893754,
+      "utc": "2026-10-15T14:31:12.340544+00:00",
+      "event": "mouse_move",
+      "x": 1171,
+      "y": 367
+    },
+    {
+      "seconds": 2.947664,
+      "utc": "2026-10-15T14:31:12.394551+00:00",
+      "event": "mouse_move",
+      "x": 1169,
+      "y": 367
+    },
+    {
+      "seconds": 3.000715,
+      "utc": "2026-10-15T14:31:12.448547+00:00",
+      "event": "mouse_move",
+      "x": 1167,
+      "y": 367
+    },
+    {
+      "seconds": 3.054994,
+      "utc": "2026-10-15T14:31:12.502550+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 3.770343,
+      "utc": "2026-10-15T14:31:13.219378+00:00",
+      "event": "mouse_move",
+      "x": 1392,
+      "y": 367
+    },
+    {
+      "seconds": 3.787488,
+      "utc": "2026-10-15T14:31:13.237337+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 3.787582,
+      "utc": "2026-10-15T14:31:13.237337+00:00",
+      "event": "mouse_move",
+      "x": 1394,
+      "y": 367
+    },
+    {
+      "seconds": 3.850797,
+      "utc": "2026-10-15T14:31:13.297344+00:00",
+      "event": "mouse_move",
+      "x": 1396,
+      "y": 367
+    },
+    {
+      "seconds": 3.904908,
+      "utc": "2026-10-15T14:31:13.351342+00:00",
+      "event": "mouse_move",
+      "x": 1397,
+      "y": 367
+    },
+    {
+      "seconds": 3.957832,
+      "utc": "2026-10-15T14:31:13.405341+00:00",
+      "event": "mouse_move",
+      "x": 1399,
+      "y": 367
+    },
+    {
+      "seconds": 4.011886,
+      "utc": "2026-10-15T14:31:13.459346+00:00",
+      "event": "mouse_move",
+      "x": 1401,
+      "y": 367
+    },
+    {
+      "seconds": 4.065353,
+      "utc": "2026-10-15T14:31:13.513347+00:00",
+      "event": "mouse_move",
+      "x": 1402,
+      "y": 367
+    },
+    {
+      "seconds": 4.119726,
+      "utc": "2026-10-15T14:31:13.567345+00:00",
+      "event": "mouse_move",
+      "x": 1404,
+      "y": 367
+    },
+    {
+      "seconds": 4.173447,
+      "utc": "2026-10-15T14:31:13.621341+00:00",
+      "event": "mouse_move",
+      "x": 1406,
+      "y": 367
+    },
+    {
+      "seconds": 4.227695,
+      "utc": "2026-10-15T14:31:13.675450+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 4.951761,
+      "utc": "2026-10-15T14:31:14.400672+00:00",
+      "event": "mouse_move",
+      "x": 1392,
+      "y": 367
+    },
+    {
+      "seconds": 4.956667,
+      "utc": "2026-10-15T14:31:14.406673+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 4.956777,
+      "utc": "2026-10-15T14:31:14.406673+00:00",
+      "event": "mouse_move",
+      "x": 1390,
+      "y": 367
+    },
+    {
+      "seconds": 5.018713,
+      "utc": "2026-10-15T14:31:14.466666+00:00",
+      "event": "mouse_move",
+      "x": 1388,
+      "y": 367
+    },
+    {
+      "seconds": 5.072897,
+      "utc": "2026-10-15T14:31:14.520674+00:00",
+      "event": "mouse_move",
+      "x": 1387,
+      "y": 367
+    },
+    {
+      "seconds": 5.126894,
+      "utc": "2026-10-15T14:31:14.574667+00:00",
+      "event": "mouse_move",
+      "x": 1385,
+      "y": 367
+    },
+    {
+      "seconds": 5.181246,
+      "utc": "2026-10-15T14:31:14.628675+00:00",
+      "event": "mouse_move",
+      "x": 1383,
+      "y": 367
+    },
+    {
+      "seconds": 5.234773,
+      "utc": "2026-10-15T14:31:14.682674+00:00",
+      "event": "mouse_move",
+      "x": 1382,
+      "y": 367
+    },
+    {
+      "seconds": 5.289226,
+      "utc": "2026-10-15T14:31:14.736676+00:00",
+      "event": "mouse_move",
+      "x": 1380,
+      "y": 367
+    },
+    {
+      "seconds": 5.342902,
+      "utc": "2026-10-15T14:31:14.790674+00:00",
+      "event": "mouse_move",
+      "x": 1378,
+      "y": 367
+    },
+    {
+      "seconds": 5.397053,
+      "utc": "2026-10-15T14:31:14.844671+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 6.115836,
+      "utc": "2026-10-15T14:31:15.566071+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 6.122204,
+      "utc": "2026-10-15T14:31:15.572065+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 6.133374,
+      "utc": "2026-10-15T14:31:15.584057+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 7.419164,
+      "utc": "2026-10-15T14:31:16.864448+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 7.42088,
+      "utc": "2026-10-15T14:31:16.870453+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 7.431701,
+      "utc": "2026-10-15T14:31:16.882451+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 8.82302,
+      "utc": "2026-10-15T14:31:18.270323+00:00",
+      "event": "mouse_move",
+      "x": 1497,
+      "y": 287
+    },
+    {
+      "seconds": 8.838696,
+      "utc": "2026-10-15T14:31:18.288319+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 8.850071,
+      "utc": "2026-10-15T14:31:18.300318+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 8.94265,
+      "utc": "2026-10-15T14:31:18.390325+00:00",
+      "event": "mouse_move",
+      "x": 1514,
+      "y": 287
+    },
+    {
+      "seconds": 8.947913,
+      "utc": "2026-10-15T14:31:18.396314+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 8.957791,
+      "utc": "2026-10-15T14:31:18.408314+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.057963,
+      "utc": "2026-10-15T14:31:18.504316+00:00",
+      "event": "mouse_move",
+      "x": 1497,
+      "y": 287
+    },
+    {
+      "seconds": 9.073865,
+      "utc": "2026-10-15T14:31:18.522312+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.083785,
+      "utc": "2026-10-15T14:31:18.534315+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.178296,
+      "utc": "2026-10-15T14:31:18.624323+00:00",
+      "event": "mouse_move",
+      "x": 1514,
+      "y": 287
+    },
+    {
+      "seconds": 9.181084,
+      "utc": "2026-10-15T14:31:18.630326+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.192008,
+      "utc": "2026-10-15T14:31:18.642322+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.263975,
+      "utc": "2026-10-15T14:31:18.714312+00:00",
+      "event": "mouse_move",
+      "x": 1497,
+      "y": 287
+    },
+    {
+      "seconds": 9.271043,
+      "utc": "2026-10-15T14:31:18.720333+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.281706,
+      "utc": "2026-10-15T14:31:18.732313+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.370324,
+      "utc": "2026-10-15T14:31:18.816818+00:00",
+      "event": "mouse_move",
+      "x": 1514,
+      "y": 287
+    },
+    {
+      "seconds": 9.378942,
+      "utc": "2026-10-15T14:31:18.829406+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.387695,
+      "utc": "2026-10-15T14:31:18.838481+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.45962,
+      "utc": "2026-10-15T14:31:18.904646+00:00",
+      "event": "mouse_move",
+      "x": 1497,
+      "y": 287
+    },
+    {
+      "seconds": 9.467161,
+      "utc": "2026-10-15T14:31:18.916645+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.478102,
+      "utc": "2026-10-15T14:31:18.928645+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.565685,
+      "utc": "2026-10-15T14:31:19.012646+00:00",
+      "event": "mouse_move",
+      "x": 1514,
+      "y": 287
+    },
+    {
+      "seconds": 9.575254,
+      "utc": "2026-10-15T14:31:19.024659+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.586024,
+      "utc": "2026-10-15T14:31:19.036645+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.677024,
+      "utc": "2026-10-15T14:31:19.127134+00:00",
+      "event": "mouse_move",
+      "x": 1497,
+      "y": 287
+    },
+    {
+      "seconds": 9.683896,
+      "utc": "2026-10-15T14:31:19.133129+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.69468,
+      "utc": "2026-10-15T14:31:19.145146+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.783645,
+      "utc": "2026-10-15T14:31:19.229365+00:00",
+      "event": "mouse_move",
+      "x": 1514,
+      "y": 287
+    },
+    {
+      "seconds": 9.792104,
+      "utc": "2026-10-15T14:31:19.241350+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.802872,
+      "utc": "2026-10-15T14:31:19.253354+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 10.979841,
+      "utc": "2026-10-15T14:31:20.424831+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 10.980884,
+      "utc": "2026-10-15T14:31:20.430826+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 10.992467,
+      "utc": "2026-10-15T14:31:20.442823+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.061819,
+      "utc": "2026-10-15T14:31:20.508832+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.071453,
+      "utc": "2026-10-15T14:31:20.520832+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.08214,
+      "utc": "2026-10-15T14:31:20.532824+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.169974,
+      "utc": "2026-10-15T14:31:20.617179+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.179804,
+      "utc": "2026-10-15T14:31:20.629204+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.190566,
+      "utc": "2026-10-15T14:31:20.641262+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.260122,
+      "utc": "2026-10-15T14:31:20.707605+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.270037,
+      "utc": "2026-10-15T14:31:20.720614+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.278384,
+      "utc": "2026-10-15T14:31:20.729018+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.354658,
+      "utc": "2026-10-15T14:31:20.804423+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.360849,
+      "utc": "2026-10-15T14:31:20.810429+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.371786,
+      "utc": "2026-10-15T14:31:20.822424+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.459884,
+      "utc": "2026-10-15T14:31:20.904039+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.465827,
+      "utc": "2026-10-15T14:31:20.915071+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.474426,
+      "utc": "2026-10-15T14:31:20.924790+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.538132,
+      "utc": "2026-10-15T14:31:20.978312+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.575401,
+      "utc": "2026-10-15T14:31:21.025188+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.583801,
+      "utc": "2026-10-15T14:31:21.034394+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.647888,
+      "utc": "2026-10-15T14:31:21.088280+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.670146,
+      "utc": "2026-10-15T14:31:21.119519+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.678481,
+      "utc": "2026-10-15T14:31:21.129131+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.743415,
+      "utc": "2026-10-15T14:31:21.182917+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.764956,
+      "utc": "2026-10-15T14:31:21.214183+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.773293,
+      "utc": "2026-10-15T14:31:21.223951+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.837514,
+      "utc": "2026-10-15T14:31:21.277711+00:00",
+      "event": "mouse_move",
+      "x": 1506,
+      "y": 287
+    },
+    {
+      "seconds": 11.875193,
+      "utc": "2026-10-15T14:31:21.324585+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.883478,
+      "utc": "2026-10-15T14:31:21.334178+00:00",
+      "event": "left_up"
+    }
+  ],
+  "frames": [
+    {
+      "seconds": 0.105181,
+      "utc": "2026-10-15T14:31:09.545433+00:00",
+      "path": "x64-light-sftp-0000-initial.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 313,
+      "terminal_paint_probe": 313,
+      "sha256": "d0dc6d2b887d8a19c7ce6601d58560c2160dfc8bdd7562efd7930a1cfb1253ad"
+    },
+    {
+      "seconds": 0.370602,
+      "utc": "2026-10-15T14:31:09.812113+00:00",
+      "path": "x64-light-sftp-0001-sftp-column-boundary-1-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 330,
+      "terminal_paint_probe": 330,
+      "sha256": "531fdb4c9adc16b1a0d5ca91dab4c55e372c4c78794a93a80d175cd6395636b9"
+    },
+    {
+      "seconds": 0.418505,
+      "utc": "2026-10-15T14:31:09.859464+00:00",
+      "path": "x64-light-sftp-0002-sftp-column-boundary-1-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 333,
+      "terminal_paint_probe": 333,
+      "sha256": "e9235fafec773bed5bab5e50d4a02e19e2c6b8185554b38c07b8cfdc8c8a9b8c"
+    },
+    {
+      "seconds": 0.465806,
+      "utc": "2026-10-15T14:31:09.906698+00:00",
+      "path": "x64-light-sftp-0003-sftp-column-boundary-1-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 336,
+      "terminal_paint_probe": 336,
+      "sha256": "9729ffbc2a67af5f65ff39c91a5ea24f1af3b78ff2581678d371e664b05219ea"
+    },
+    {
+      "seconds": 0.512738,
+      "utc": "2026-10-15T14:31:09.954045+00:00",
+      "path": "x64-light-sftp-0004-sftp-column-boundary-1-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 339,
+      "terminal_paint_probe": 339,
+      "sha256": "fcbeb9bdff30d75bc4e915e25a5cdefe411d472be4bcf88a7da0a80659853c37"
+    },
+    {
+      "seconds": 0.560273,
+      "utc": "2026-10-15T14:31:10.001402+00:00",
+      "path": "x64-light-sftp-0005-sftp-column-boundary-1-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 342,
+      "terminal_paint_probe": 342,
+      "sha256": "c2be2e8e55fdc415288b70b3aaa957473cd919cbf9173c1b77b1def9b1752146"
+    },
+    {
+      "seconds": 0.609544,
+      "utc": "2026-10-15T14:31:10.048742+00:00",
+      "path": "x64-light-sftp-0006-sftp-column-boundary-1-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 345,
+      "terminal_paint_probe": 345,
+      "sha256": "a68f78fa004c2ced45277009e91ef45512aff72c1aaa09567ab8b15292c42f32"
+    },
+    {
+      "seconds": 0.654951,
+      "utc": "2026-10-15T14:31:10.096070+00:00",
+      "path": "x64-light-sftp-0007-sftp-column-boundary-1-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 348,
+      "terminal_paint_probe": 348,
+      "sha256": "b2042d4fe1e2f60e9288f817fa16421fb2aaee80edcbbac6d0f134345c8135ad"
+    },
+    {
+      "seconds": 0.702407,
+      "utc": "2026-10-15T14:31:10.143434+00:00",
+      "path": "x64-light-sftp-0008-sftp-column-boundary-1-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 351,
+      "terminal_paint_probe": 351,
+      "sha256": "771c09fd504efd075c2ce243e2b076674243121f3187f9005381464c779fcfd4"
+    },
+    {
+      "seconds": 0.813209,
+      "utc": "2026-10-15T14:31:10.253734+00:00",
+      "path": "x64-light-sftp-0009-sftp-column-boundary-1-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 358,
+      "terminal_paint_probe": 358,
+      "sha256": "af00d6618becfbd1516a8bd4e58026c98237af1e8ba4d86e6374e4faa6610430"
+    },
+    {
+      "seconds": 1.511985,
+      "utc": "2026-10-15T14:31:10.959087+00:00",
+      "path": "x64-light-sftp-0010-sftp-column-boundary-2-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 409,
+      "terminal_paint_probe": 409,
+      "sha256": "8280c65305ec0a7a874638e742768e0e489aa3ba26e2f24eef2dee975c72c79e"
+    },
+    {
+      "seconds": 1.565954,
+      "utc": "2026-10-15T14:31:11.013082+00:00",
+      "path": "x64-light-sftp-0011-sftp-column-boundary-2-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 414,
+      "terminal_paint_probe": 414,
+      "sha256": "d61755be9a424d6380c149fe59fbe889da5d4836d7651db1ae817b12f364722c"
+    },
+    {
+      "seconds": 1.620438,
+      "utc": "2026-10-15T14:31:11.067082+00:00",
+      "path": "x64-light-sftp-0012-sftp-column-boundary-2-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 418,
+      "terminal_paint_probe": 418,
+      "sha256": "fdc1057394a36636085f3841b7ad268172e6b29a656f6d72c35645ad573d9c3b"
+    },
+    {
+      "seconds": 1.673648,
+      "utc": "2026-10-15T14:31:11.121085+00:00",
+      "path": "x64-light-sftp-0013-sftp-column-boundary-2-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 423,
+      "terminal_paint_probe": 423,
+      "sha256": "763876d58e44391d57c47c27d47af8479fddb2158e0907b805b6916ad1e3c12b"
+    },
+    {
+      "seconds": 1.728233,
+      "utc": "2026-10-15T14:31:11.175080+00:00",
+      "path": "x64-light-sftp-0014-sftp-column-boundary-2-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 427,
+      "terminal_paint_probe": 427,
+      "sha256": "2d0ddf4454a29186be2b13c9a005493e098e973d3d1238b251154397b51da7c1"
+    },
+    {
+      "seconds": 1.782492,
+      "utc": "2026-10-15T14:31:11.229084+00:00",
+      "path": "x64-light-sftp-0015-sftp-column-boundary-2-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 432,
+      "terminal_paint_probe": 432,
+      "sha256": "d2850d23d6a03642424a0a2cb819306ee64871c7f8824f7d1b993737239967ca"
+    },
+    {
+      "seconds": 1.833607,
+      "utc": "2026-10-15T14:31:11.280808+00:00",
+      "path": "x64-light-sftp-0016-sftp-column-boundary-2-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 436,
+      "terminal_paint_probe": 436,
+      "sha256": "cece8b5e3a26ea556b72b39c39f54d716a52327e74d607df37c7b5d53812b0d3"
+    },
+    {
+      "seconds": 1.88779,
+      "utc": "2026-10-15T14:31:11.334806+00:00",
+      "path": "x64-light-sftp-0017-sftp-column-boundary-2-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 440,
+      "terminal_paint_probe": 440,
+      "sha256": "e5ed9d6292e7ae11c16c2f234115b1c78aa5ae97b41b92df1c76143a1532362b"
+    },
+    {
+      "seconds": 2.01385,
+      "utc": "2026-10-15T14:31:11.460807+00:00",
+      "path": "x64-light-sftp-0018-sftp-column-boundary-2-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 450,
+      "terminal_paint_probe": 450,
+      "sha256": "496cf6b930040422944eea41f32d5a40c34e5be29d2743b3a7516a675cc93b4b"
+    },
+    {
+      "seconds": 2.677189,
+      "utc": "2026-10-15T14:31:12.124550+00:00",
+      "path": "x64-light-sftp-0019-sftp-column-boundary-3-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 505,
+      "terminal_paint_probe": 505,
+      "sha256": "176bf4a69cb2d6a52b6bbb5a627f6e48f168ee7119b643aebf88340b54071797"
+    },
+    {
+      "seconds": 2.732986,
+      "utc": "2026-10-15T14:31:12.178552+00:00",
+      "path": "x64-light-sftp-0020-sftp-column-boundary-3-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 509,
+      "terminal_paint_probe": 509,
+      "sha256": "f85bf496a9d83ba0dc0fd85feacaafe9a73a2ded8a8b8f0577cc6573a7b1b35d"
+    },
+    {
+      "seconds": 2.786343,
+      "utc": "2026-10-15T14:31:12.232550+00:00",
+      "path": "x64-light-sftp-0021-sftp-column-boundary-3-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 514,
+      "terminal_paint_probe": 514,
+      "sha256": "8036f160b3fc2ea585ee61f5c46f4fb1e596c9dcdbf04be7d70219697901f712"
+    },
+    {
+      "seconds": 2.840022,
+      "utc": "2026-10-15T14:31:12.286552+00:00",
+      "path": "x64-light-sftp-0022-sftp-column-boundary-3-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 518,
+      "terminal_paint_probe": 518,
+      "sha256": "27b276b5c2b9e4a17153d6d240fe8380b8e8670e3d3aef0cc66cdf766be060f9"
+    },
+    {
+      "seconds": 2.893616,
+      "utc": "2026-10-15T14:31:12.340544+00:00",
+      "path": "x64-light-sftp-0023-sftp-column-boundary-3-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 523,
+      "terminal_paint_probe": 523,
+      "sha256": "9e78b9cf409e80b5e2ad796ee90b10ad205f22fae714fa72df6dd0335e1fe9cb"
+    },
+    {
+      "seconds": 2.947547,
+      "utc": "2026-10-15T14:31:12.394551+00:00",
+      "path": "x64-light-sftp-0024-sftp-column-boundary-3-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 527,
+      "terminal_paint_probe": 527,
+      "sha256": "4ef87ebe7c9f5b3f53d28abffa9ebf104f06375f0539f6d97a46f3ea35141a0b"
+    },
+    {
+      "seconds": 3.000603,
+      "utc": "2026-10-15T14:31:12.448547+00:00",
+      "path": "x64-light-sftp-0025-sftp-column-boundary-3-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 532,
+      "terminal_paint_probe": 532,
+      "sha256": "9e3bc971455faa65fe2fd52c064b5ad674e33997c6ca996f1b8fbf191ab1366e"
+    },
+    {
+      "seconds": 3.054718,
+      "utc": "2026-10-15T14:31:12.502550+00:00",
+      "path": "x64-light-sftp-0026-sftp-column-boundary-3-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 536,
+      "terminal_paint_probe": 536,
+      "sha256": "41e234db40bb834e58d540f82566617c58646c1a7f9f5328fba562e8997350f4"
+    },
+    {
+      "seconds": 3.181271,
+      "utc": "2026-10-15T14:31:12.629536+00:00",
+      "path": "x64-light-sftp-0027-sftp-column-boundary-3-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 547,
+      "terminal_paint_probe": 547,
+      "sha256": "fadb29609408ca77c20ce92877e4097945970071b2311b6848268b279bd781ff"
+    },
+    {
+      "seconds": 3.850688,
+      "utc": "2026-10-15T14:31:13.297344+00:00",
+      "path": "x64-light-sftp-0028-sftp-size-boundary-1-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 602,
+      "terminal_paint_probe": 602,
+      "sha256": "db2acaa252c4a9f1ad925f17e86ed3531d3fed624bae13187ec435485013f7d0"
+    },
+    {
+      "seconds": 3.904793,
+      "utc": "2026-10-15T14:31:13.351342+00:00",
+      "path": "x64-light-sftp-0029-sftp-size-boundary-1-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 606,
+      "terminal_paint_probe": 606,
+      "sha256": "49a1b1a45032d996df63f86315551ba23c22794a2617274c6a35d34b76c403d3"
+    },
+    {
+      "seconds": 3.957714,
+      "utc": "2026-10-15T14:31:13.405341+00:00",
+      "path": "x64-light-sftp-0030-sftp-size-boundary-1-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 610,
+      "terminal_paint_probe": 610,
+      "sha256": "5796621da1a588e319f34210e5c77f578354f6c71f68f353758906ba2a561eb3"
+    },
+    {
+      "seconds": 4.011772,
+      "utc": "2026-10-15T14:31:13.459346+00:00",
+      "path": "x64-light-sftp-0031-sftp-size-boundary-1-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 615,
+      "terminal_paint_probe": 615,
+      "sha256": "3364bc4d475cf8be69e99c792f6415ff167abb115f3b0b5265dc55a874b56d58"
+    },
+    {
+      "seconds": 4.065249,
+      "utc": "2026-10-15T14:31:13.513347+00:00",
+      "path": "x64-light-sftp-0032-sftp-size-boundary-1-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 620,
+      "terminal_paint_probe": 620,
+      "sha256": "319f43e2ff3d2e2dbdb6af298b76d68578b56f96b9d1c0df33d46cc772faf2ba"
+    },
+    {
+      "seconds": 4.119613,
+      "utc": "2026-10-15T14:31:13.567345+00:00",
+      "path": "x64-light-sftp-0033-sftp-size-boundary-1-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 624,
+      "terminal_paint_probe": 624,
+      "sha256": "fe51ddddeefcef5b47ed4f0a12b33e58e97c061def663f6dbbe616616f7e9de4"
+    },
+    {
+      "seconds": 4.173338,
+      "utc": "2026-10-15T14:31:13.621341+00:00",
+      "path": "x64-light-sftp-0034-sftp-size-boundary-1-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 629,
+      "terminal_paint_probe": 629,
+      "sha256": "e65c76b6d47b906a175630f295da1f818f3babb3aee626ab48aa3a77289d5302"
+    },
+    {
+      "seconds": 4.227425,
+      "utc": "2026-10-15T14:31:13.675450+00:00",
+      "path": "x64-light-sftp-0035-sftp-size-boundary-1-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 633,
+      "terminal_paint_probe": 633,
+      "sha256": "e7f5fecee6c707f5db75d7f3b9d6de1c1a5a35a826d1e3600b5a7c2b49e2f047"
+    },
+    {
+      "seconds": 4.354729,
+      "utc": "2026-10-15T14:31:13.802502+00:00",
+      "path": "x64-light-sftp-0036-sftp-size-boundary-1-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 644,
+      "terminal_paint_probe": 644,
+      "sha256": "55075f7b17fa190db15a1970d3f9582d4e6e1bd1a2d049d02da135d51fecde02"
+    },
+    {
+      "seconds": 5.018608,
+      "utc": "2026-10-15T14:31:14.466666+00:00",
+      "path": "x64-light-sftp-0037-sftp-size-boundary-2-held-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 699,
+      "terminal_paint_probe": 699,
+      "sha256": "5236ab6889a8a3510cd46446bd2b26176d8f8ac96d34c70d1093d7a56bfcf5c5"
+    },
+    {
+      "seconds": 5.072787,
+      "utc": "2026-10-15T14:31:14.520674+00:00",
+      "path": "x64-light-sftp-0038-sftp-size-boundary-2-held-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 703,
+      "terminal_paint_probe": 703,
+      "sha256": "9591e52f33564aed83c6a8fda2a7b8f7a5792864f216a128d2a9194a9526de19"
+    },
+    {
+      "seconds": 5.126788,
+      "utc": "2026-10-15T14:31:14.574667+00:00",
+      "path": "x64-light-sftp-0039-sftp-size-boundary-2-held-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 708,
+      "terminal_paint_probe": 708,
+      "sha256": "abdf535e32f63e3eba4f9a4962a581f0882c7f24939bf6227aac441a391c3b26"
+    },
+    {
+      "seconds": 5.181126,
+      "utc": "2026-10-15T14:31:14.628675+00:00",
+      "path": "x64-light-sftp-0040-sftp-size-boundary-2-held-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 712,
+      "terminal_paint_probe": 712,
+      "sha256": "e044196da2b306fa3b10a17daa5df14c47154f9290324cb1bbf568cd2d4b84b1"
+    },
+    {
+      "seconds": 5.234671,
+      "utc": "2026-10-15T14:31:14.682674+00:00",
+      "path": "x64-light-sftp-0041-sftp-size-boundary-2-held-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 717,
+      "terminal_paint_probe": 717,
+      "sha256": "c3cbd27b167914690c9543ce27ccc34a9af9e8fa4ca43c9999dc53c21c427741"
+    },
+    {
+      "seconds": 5.289112,
+      "utc": "2026-10-15T14:31:14.736676+00:00",
+      "path": "x64-light-sftp-0042-sftp-size-boundary-2-held-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 721,
+      "terminal_paint_probe": 721,
+      "sha256": "715011e948f75bf9e51748067581f8204f60b59f5edc17ca29dee618e3691698"
+    },
+    {
+      "seconds": 5.342797,
+      "utc": "2026-10-15T14:31:14.790674+00:00",
+      "path": "x64-light-sftp-0043-sftp-size-boundary-2-held-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 726,
+      "terminal_paint_probe": 726,
+      "sha256": "9a9e1ca48be9af0b36d0104218deab4ca14b1c08ecf614255d949ca7fe7c16d2"
+    },
+    {
+      "seconds": 5.396763,
+      "utc": "2026-10-15T14:31:14.844671+00:00",
+      "path": "x64-light-sftp-0044-sftp-size-boundary-2-held-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 730,
+      "terminal_paint_probe": 730,
+      "sha256": "258644c276aa3f5e1bdb0ab7af90804117ff7c627e9d96d48ed59e475d3d022e"
+    },
+    {
+      "seconds": 5.518215,
+      "utc": "2026-10-15T14:31:14.966064+00:00",
+      "path": "x64-light-sftp-0045-sftp-size-boundary-2-released.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 740,
+      "terminal_paint_probe": 740,
+      "sha256": "c8884c45c89a6879bb8351c2579fded0d40eb23613109b2477ad5cafc1997a2b"
+    },
+    {
+      "seconds": 6.184678,
+      "utc": "2026-10-15T14:31:15.632070+00:00",
+      "path": "x64-light-sftp-0046-sidebar-collapse-animation-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 795,
+      "terminal_paint_probe": 795,
+      "sha256": "2ee0d6783a5f86b9967ad4d7ba22c6a2694a7370696fcd7d9729cee547492478"
+    },
+    {
+      "seconds": 6.257372,
+      "utc": "2026-10-15T14:31:15.704069+00:00",
+      "path": "x64-light-sftp-0047-sidebar-collapse-animation-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 801,
+      "terminal_paint_probe": 801,
+      "sha256": "f0af3e0b5afbf8f3d23dcbfdfad3c28648ebf332d1be939efc7a1ddde58b090a"
+    },
+    {
+      "seconds": 6.330222,
+      "utc": "2026-10-15T14:31:15.776180+00:00",
+      "path": "x64-light-sftp-0048-sidebar-collapse-animation-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 807,
+      "terminal_paint_probe": 807,
+      "sha256": "80877de081d5cfec984c12a911d0512f112146022cbc07e50799b3202ca25684"
+    },
+    {
+      "seconds": 6.382531,
+      "utc": "2026-10-15T14:31:15.830173+00:00",
+      "path": "x64-light-sftp-0049-sidebar-collapse-animation-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 811,
+      "terminal_paint_probe": 811,
+      "sha256": "c28cb95e3e32b7681f5d1e20c6a4b60bf49b35144dc4772c009f8a7529f604f7"
+    },
+    {
+      "seconds": 6.455109,
+      "utc": "2026-10-15T14:31:15.902447+00:00",
+      "path": "x64-light-sftp-0050-sidebar-collapse-animation-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 817,
+      "terminal_paint_probe": 817,
+      "sha256": "bea77f555a3c85c559d9353c5a995b7903387faa92c5cee3a2282c8aeedc1bc4"
+    },
+    {
+      "seconds": 6.527462,
+      "utc": "2026-10-15T14:31:15.974481+00:00",
+      "path": "x64-light-sftp-0051-sidebar-collapse-animation-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 823,
+      "terminal_paint_probe": 823,
+      "sha256": "9bdfe01682163132d2b009d99f2c774447f02d0f5c7dc0adc4064709b8814ffa"
+    },
+    {
+      "seconds": 6.581509,
+      "utc": "2026-10-15T14:31:16.028480+00:00",
+      "path": "x64-light-sftp-0052-sidebar-collapse-animation-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 828,
+      "terminal_paint_probe": 828,
+      "sha256": "e27ab21d9732cd6164a63734595e257c6e464e4012cdf1839f8cdbb56eb0b9dd"
+    },
+    {
+      "seconds": 6.63517,
+      "utc": "2026-10-15T14:31:16.082484+00:00",
+      "path": "x64-light-sftp-0053-sidebar-collapse-animation-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 832,
+      "terminal_paint_probe": 832,
+      "sha256": "36d26fd8d6c9cbae0fe9e705cc733c753cba79145e2f1f60fafed1653c948772"
+    },
+    {
+      "seconds": 6.78192,
+      "utc": "2026-10-15T14:31:16.228458+00:00",
+      "path": "x64-light-sftp-0054-sidebar-collapse-settled.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 844,
+      "terminal_paint_probe": 844,
+      "sha256": "505752268d49b35458b20502516085906bd743ad66c33eb04869464fa6b0a3b6"
+    },
+    {
+      "seconds": 7.484838,
+      "utc": "2026-10-15T14:31:16.930757+00:00",
+      "path": "x64-light-sftp-0055-sidebar-expand-animation-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 902,
+      "terminal_paint_probe": 902,
+      "sha256": "59de53bc8e072530fba8c8b9c9c264d0e4c8ad37741d487a9c094e38ca55ceb3"
+    },
+    {
+      "seconds": 7.539326,
+      "utc": "2026-10-15T14:31:16.984758+00:00",
+      "path": "x64-light-sftp-0056-sidebar-expand-animation-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 908,
+      "terminal_paint_probe": 908,
+      "sha256": "4f1a63a398b67936dfbde60954dbaa9673d2d7fd5f4a11f896d2e383d8733bf8"
+    },
+    {
+      "seconds": 7.593098,
+      "utc": "2026-10-15T14:31:17.038940+00:00",
+      "path": "x64-light-sftp-0057-sidebar-expand-animation-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 912,
+      "terminal_paint_probe": 912,
+      "sha256": "a053406077a54f93decdccf706dbd1a1baace15028a1360164e43d3e73ab02ad"
+    },
+    {
+      "seconds": 7.664347,
+      "utc": "2026-10-15T14:31:17.110933+00:00",
+      "path": "x64-light-sftp-0058-sidebar-expand-animation-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 918,
+      "terminal_paint_probe": 918,
+      "sha256": "122bd6103eb8633ebf419ea347ee1051f50647ff876ad5b166b6337af22cc858"
+    },
+    {
+      "seconds": 7.733247,
+      "utc": "2026-10-15T14:31:17.180621+00:00",
+      "path": "x64-light-sftp-0059-sidebar-expand-animation-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 924,
+      "terminal_paint_probe": 924,
+      "sha256": "0e97596653c12ddddce2cd6ee154e07ee5d45e58de79e123d63fab8f12831628"
+    },
+    {
+      "seconds": 7.806106,
+      "utc": "2026-10-15T14:31:17.252623+00:00",
+      "path": "x64-light-sftp-0060-sidebar-expand-animation-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 930,
+      "terminal_paint_probe": 930,
+      "sha256": "7b8ab2ce613734af7348c0fa43b39178fd4edd2394d678248097a34b14c5cd08"
+    },
+    {
+      "seconds": 7.87739,
+      "utc": "2026-10-15T14:31:17.324620+00:00",
+      "path": "x64-light-sftp-0061-sidebar-expand-animation-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 936,
+      "terminal_paint_probe": 936,
+      "sha256": "486485e90e872408f955d650b6bd7a1174e3f3b8adec8a5811530e80696e0d8b"
+    },
+    {
+      "seconds": 7.948842,
+      "utc": "2026-10-15T14:31:17.396621+00:00",
+      "path": "x64-light-sftp-0062-sidebar-expand-animation-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 941,
+      "terminal_paint_probe": 941,
+      "sha256": "8fc6ef0f3eaa67b643c7d3ddd12fc06b9c8e684b3b1988815e525f897e271755"
+    },
+    {
+      "seconds": 8.090843,
+      "utc": "2026-10-15T14:31:17.538318+00:00",
+      "path": "x64-light-sftp-0063-sidebar-expand-settled.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 953,
+      "terminal_paint_probe": 953,
+      "sha256": "5efc390939b9450bccf705389860b9d7c7f406400d234e993d07fd77cd1540e0"
+    },
+    {
+      "seconds": 8.942424,
+      "utc": "2026-10-15T14:31:18.390325+00:00",
+      "path": "x64-light-sftp-0064-sidebar-reversal-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1023,
+      "terminal_paint_probe": 23,
+      "sha256": "cd4967e575c770920ff97f654624a7f5893ee55eea6eb818c1310a101ec5f396"
+    },
+    {
+      "seconds": 9.057777,
+      "utc": "2026-10-15T14:31:18.504316+00:00",
+      "path": "x64-light-sftp-0065-sidebar-reversal-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1032,
+      "terminal_paint_probe": 32,
+      "sha256": "bc99eb7246daf6f43bb2ee806b8a7cdc3ba53214ece7d55a5754ce1bc968ebb2"
+    },
+    {
+      "seconds": 9.177442,
+      "utc": "2026-10-15T14:31:18.624323+00:00",
+      "path": "x64-light-sftp-0066-sidebar-reversal-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1042,
+      "terminal_paint_probe": 42,
+      "sha256": "72752c82c984b320e6f0855ee4056448c68a48748e7b2c683209816b02e62825"
+    },
+    {
+      "seconds": 9.263229,
+      "utc": "2026-10-15T14:31:18.708321+00:00",
+      "path": "x64-light-sftp-0067-sidebar-reversal-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1049,
+      "terminal_paint_probe": 49,
+      "sha256": "a68dc6b16c59db00f188a5b69cb834604bc2790753bdb3ac3f00d49b359d96b7"
+    },
+    {
+      "seconds": 9.370113,
+      "utc": "2026-10-15T14:31:18.816818+00:00",
+      "path": "x64-light-sftp-0068-sidebar-reversal-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1058,
+      "terminal_paint_probe": 58,
+      "sha256": "104483404864514fd4d9354742b606848372bde3764c8a2e8cb6be0c27cb7267"
+    },
+    {
+      "seconds": 9.459385,
+      "utc": "2026-10-15T14:31:18.904646+00:00",
+      "path": "x64-light-sftp-0069-sidebar-reversal-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1064,
+      "terminal_paint_probe": 64,
+      "sha256": "d29f06f648416e13c3f8eb2768871d3023de7061891ba3083859094dd445ea65"
+    },
+    {
+      "seconds": 9.565517,
+      "utc": "2026-10-15T14:31:19.012646+00:00",
+      "path": "x64-light-sftp-0070-sidebar-reversal-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1073,
+      "terminal_paint_probe": 73,
+      "sha256": "2d1ec25a8916b7a77bdb1f4e39ca57ca96ad979692b259f52b2bd3d4af98d9bd"
+    },
+    {
+      "seconds": 9.6768,
+      "utc": "2026-10-15T14:31:19.127134+00:00",
+      "path": "x64-light-sftp-0071-sidebar-reversal-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1081,
+      "terminal_paint_probe": 81,
+      "sha256": "4648a458f088141247e687efebed528ab85d7d4caf3b8fdf4fff3e27104fe866"
+    },
+    {
+      "seconds": 9.783489,
+      "utc": "2026-10-15T14:31:19.229365+00:00",
+      "path": "x64-light-sftp-0072-sidebar-reversal-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1091,
+      "terminal_paint_probe": 91,
+      "sha256": "9973a4b3b2cdcadeeccf65114a1d19db5ec273d157c8120015c680d6aa03fc1f"
+    },
+    {
+      "seconds": 9.890619,
+      "utc": "2026-10-15T14:31:19.337449+00:00",
+      "path": "x64-light-sftp-0073-sidebar-reversal-09.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1100,
+      "terminal_paint_probe": 100,
+      "sha256": "2adbbf3ad9c59f210c671ae9dbab62a3aa00404b68269a610df71026315f3470"
+    },
+    {
+      "seconds": 10.232532,
+      "utc": "2026-10-15T14:31:19.680553+00:00",
+      "path": "x64-light-sftp-0074-sidebar-reversal-settled.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1128,
+      "terminal_paint_probe": 128,
+      "sha256": "6491ebb93b452427d17cd37061f65ce55be4d9a54ab2b23127d7ddf7a8dc35ac"
+    },
+    {
+      "seconds": 11.061648,
+      "utc": "2026-10-15T14:31:20.508832+00:00",
+      "path": "x64-light-sftp-0075-sidebar-same-point-reversal-00.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1197,
+      "terminal_paint_probe": 197,
+      "sha256": "958a85568464a86b3b186e789b5e41241fc23827f66ba7af5826a3af9a3f12ea"
+    },
+    {
+      "seconds": 11.169803,
+      "utc": "2026-10-15T14:31:20.617179+00:00",
+      "path": "x64-light-sftp-0076-sidebar-same-point-reversal-01.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1206,
+      "terminal_paint_probe": 206,
+      "sha256": "fa3248eea014a6c6883cf5def91d7fc375f17aa8c5e9166fe5fef69ff167017a"
+    },
+    {
+      "seconds": 11.259959,
+      "utc": "2026-10-15T14:31:20.707605+00:00",
+      "path": "x64-light-sftp-0077-sidebar-same-point-reversal-02.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1214,
+      "terminal_paint_probe": 214,
+      "sha256": "548351ff0115cde556fa40c65f43c73cbfa9e4e8a88e2e3dc2c53aba50523aaf"
+    },
+    {
+      "seconds": 11.354357,
+      "utc": "2026-10-15T14:31:20.804423+00:00",
+      "path": "x64-light-sftp-0078-sidebar-same-point-reversal-03.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1221,
+      "terminal_paint_probe": 221,
+      "sha256": "41448343309f27fbdbdfec152f71173b6d89237d620080815026b3de911876a4"
+    },
+    {
+      "seconds": 11.459654,
+      "utc": "2026-10-15T14:31:20.904039+00:00",
+      "path": "x64-light-sftp-0079-sidebar-same-point-reversal-04.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1229,
+      "terminal_paint_probe": 229,
+      "sha256": "eee4332fba71a5af12212ae4bed72da20420a61a7150fc9cb6333f72767ed9e9"
+    },
+    {
+      "seconds": 11.537959,
+      "utc": "2026-10-15T14:31:20.978312+00:00",
+      "path": "x64-light-sftp-0080-sidebar-same-point-reversal-05.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1233,
+      "terminal_paint_probe": 233,
+      "sha256": "42684d12d17a9c6c59ccc4d99df7efce8190aa9baf0866d23a330be516ec7862"
+    },
+    {
+      "seconds": 11.647697,
+      "utc": "2026-10-15T14:31:21.088280+00:00",
+      "path": "x64-light-sftp-0081-sidebar-same-point-reversal-06.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1241,
+      "terminal_paint_probe": 241,
+      "sha256": "ebb48b46fa118f9c4f6b3dd9e234f7bc3e83b7dadd6124f3d8ac23ae688e252e"
+    },
+    {
+      "seconds": 11.74325,
+      "utc": "2026-10-15T14:31:21.182917+00:00",
+      "path": "x64-light-sftp-0082-sidebar-same-point-reversal-07.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1247,
+      "terminal_paint_probe": 247,
+      "sha256": "3e59cbead2f524595ef227144d2c27a473e58d93b833b9a7fa2feded927061f6"
+    },
+    {
+      "seconds": 11.837331,
+      "utc": "2026-10-15T14:31:21.277711+00:00",
+      "path": "x64-light-sftp-0083-sidebar-same-point-reversal-08.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1253,
+      "terminal_paint_probe": 253,
+      "sha256": "f9b92be345fac0cc9fa787255ff5b102fc104d588da56ceec3b4f8eb6b55f41e"
+    },
+    {
+      "seconds": 11.949063,
+      "utc": "2026-10-15T14:31:21.387893+00:00",
+      "path": "x64-light-sftp-0084-sidebar-same-point-reversal-09.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1260,
+      "terminal_paint_probe": 260,
+      "sha256": "361d94f5b4ebcb318e5a4c12407afe06124f3619e80fb336c2b26036ea82a541"
+    },
+    {
+      "seconds": 12.290937,
+      "utc": "2026-10-15T14:31:21.731577+00:00",
+      "path": "x64-light-sftp-0085-sidebar-same-point-reversal-settled.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1282,
+      "terminal_paint_probe": 282,
+      "sha256": "61256659a1a810b1bb9bd74864951508018e97b729174365ff148045b82f71d7"
+    },
+    {
+      "seconds": 13.071886,
+      "utc": "2026-10-15T14:31:22.513779+00:00",
+      "path": "x64-light-sftp-0086-final.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        370,
+        140,
+        1550,
+        900
+      ],
+      "sidebar_toggle_bounds": [
+        1492,
+        273,
+        1520,
+        301
+      ],
+      "terminal_paint_sample": 1332,
+      "terminal_paint_probe": 332,
+      "sha256": "cb0f7592fa8efe0836c34dd63683162cc64df76e59dcefcb48969c5be56d16c6"
+    }
+  ],
+  "drag_evidence": [
+    {
+      "name": "sftp-column-boundary-1",
+      "held_frames": [
+        "x64-light-sftp-0001-sftp-column-boundary-1-held-01.png",
+        "x64-light-sftp-0002-sftp-column-boundary-1-held-02.png",
+        "x64-light-sftp-0003-sftp-column-boundary-1-held-03.png",
+        "x64-light-sftp-0004-sftp-column-boundary-1-held-04.png",
+        "x64-light-sftp-0005-sftp-column-boundary-1-held-05.png",
+        "x64-light-sftp-0006-sftp-column-boundary-1-held-06.png",
+        "x64-light-sftp-0007-sftp-column-boundary-1-held-07.png",
+        "x64-light-sftp-0008-sftp-column-boundary-1-held-08.png"
+      ],
+      "paint_sample_first": 330,
+      "paint_sample_last": 351,
+      "stdout_markers_while_held": [
+        330,
+        333,
+        336,
+        339,
+        342,
+        345,
+        348,
+        351
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sftp-column-boundary-2",
+      "held_frames": [
+        "x64-light-sftp-0010-sftp-column-boundary-2-held-01.png",
+        "x64-light-sftp-0011-sftp-column-boundary-2-held-02.png",
+        "x64-light-sftp-0012-sftp-column-boundary-2-held-03.png",
+        "x64-light-sftp-0013-sftp-column-boundary-2-held-04.png",
+        "x64-light-sftp-0014-sftp-column-boundary-2-held-05.png",
+        "x64-light-sftp-0015-sftp-column-boundary-2-held-06.png",
+        "x64-light-sftp-0016-sftp-column-boundary-2-held-07.png",
+        "x64-light-sftp-0017-sftp-column-boundary-2-held-08.png"
+      ],
+      "paint_sample_first": 409,
+      "paint_sample_last": 440,
+      "stdout_markers_while_held": [
+        409,
+        414,
+        418,
+        423,
+        427,
+        432,
+        436,
+        440
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sftp-column-boundary-3",
+      "held_frames": [
+        "x64-light-sftp-0019-sftp-column-boundary-3-held-01.png",
+        "x64-light-sftp-0020-sftp-column-boundary-3-held-02.png",
+        "x64-light-sftp-0021-sftp-column-boundary-3-held-03.png",
+        "x64-light-sftp-0022-sftp-column-boundary-3-held-04.png",
+        "x64-light-sftp-0023-sftp-column-boundary-3-held-05.png",
+        "x64-light-sftp-0024-sftp-column-boundary-3-held-06.png",
+        "x64-light-sftp-0025-sftp-column-boundary-3-held-07.png",
+        "x64-light-sftp-0026-sftp-column-boundary-3-held-08.png"
+      ],
+      "paint_sample_first": 505,
+      "paint_sample_last": 536,
+      "stdout_markers_while_held": [
+        505,
+        509,
+        514,
+        518,
+        523,
+        527,
+        532,
+        536
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sftp-size-boundary-1",
+      "held_frames": [
+        "x64-light-sftp-0028-sftp-size-boundary-1-held-01.png",
+        "x64-light-sftp-0029-sftp-size-boundary-1-held-02.png",
+        "x64-light-sftp-0030-sftp-size-boundary-1-held-03.png",
+        "x64-light-sftp-0031-sftp-size-boundary-1-held-04.png",
+        "x64-light-sftp-0032-sftp-size-boundary-1-held-05.png",
+        "x64-light-sftp-0033-sftp-size-boundary-1-held-06.png",
+        "x64-light-sftp-0034-sftp-size-boundary-1-held-07.png",
+        "x64-light-sftp-0035-sftp-size-boundary-1-held-08.png"
+      ],
+      "paint_sample_first": 602,
+      "paint_sample_last": 633,
+      "stdout_markers_while_held": [
+        602,
+        606,
+        610,
+        615,
+        620,
+        624,
+        629,
+        633
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sftp-size-boundary-2",
+      "held_frames": [
+        "x64-light-sftp-0037-sftp-size-boundary-2-held-01.png",
+        "x64-light-sftp-0038-sftp-size-boundary-2-held-02.png",
+        "x64-light-sftp-0039-sftp-size-boundary-2-held-03.png",
+        "x64-light-sftp-0040-sftp-size-boundary-2-held-04.png",
+        "x64-light-sftp-0041-sftp-size-boundary-2-held-05.png",
+        "x64-light-sftp-0042-sftp-size-boundary-2-held-06.png",
+        "x64-light-sftp-0043-sftp-size-boundary-2-held-07.png",
+        "x64-light-sftp-0044-sftp-size-boundary-2-held-08.png"
+      ],
+      "paint_sample_first": 699,
+      "paint_sample_last": 730,
+      "stdout_markers_while_held": [
+        699,
+        703,
+        708,
+        712,
+        717,
+        721,
+        726,
+        730
+      ],
+      "stdout_changed_while_held": true
+    }
+  ],
+  "behavior_failures": [],
+  "dpi": 96,
+  "desktop_bounds": [
+    0,
+    0,
+    1920,
+    1080
+  ],
+  "system_window_drag": {
+    "before": false,
+    "scope": "Temporary test-desktop setting; no profile persistence or product change",
+    "during_test": true,
+    "restored": false
+  },
+  "paint_samples": {
+    "before": 327,
+    "after": 1328
+  },
+  "distinct_painted_stdout_markers": 86,
+  "drags_overlapping_painted_stdout": [
+    "sftp-column-boundary-1",
+    "sftp-column-boundary-2",
+    "sftp-column-boundary-3",
+    "sftp-size-boundary-1",
+    "sftp-size-boundary-2"
+  ],
+  "final_layout": {
+    "terminal_minimum_content_width": 368,
+    "visible_child_bounds": "PASS"
+  },
+  "final_state": {
+    "seconds": 13.017607,
+    "utc": "2026-10-15T14:31:22.466915+00:00",
+    "window_bounds": [
+      370,
+      140,
+      1550,
+      900
+    ],
+    "client_bounds": [
+      378,
+      171,
+      1542,
+      892
+    ],
+    "foreground": 328192,
+    "maximized": false,
+    "terminal_paint_sample": 1328,
+    "terminal_paint_probe": 328,
+    "controls": {
+      "106": {
+        "bounds": [
+          406,
+          311,
+          571,
+          824
+        ],
+        "visible": true
+      },
+      "107": {
+        "bounds": [
+          615,
+          271,
+          983,
+          864
+        ],
+        "visible": true
+      },
+      "112": {
+        "bounds": [
+          1027,
+          311,
+          1514,
+          820
+        ],
+        "visible": false
+      },
+      "115": {
+        "bounds": [
+          1380,
+          273,
+          1484,
+          305
+        ],
+        "visible": false
+      },
+      "117": {
+        "bounds": [
+          1029,
+          273,
+          1099,
+          305
+        ],
+        "visible": true
+      },
+      "118": {
+        "bounds": [
+          1099,
+          273,
+          1169,
+          305
+        ],
+        "visible": true
+      },
+      "119": {
+        "bounds": [
+          1027,
+          311,
+          1514,
+          343
+        ],
+        "visible": true
+      },
+      "120": {
+        "bounds": [
+          1027,
+          383,
+          1514,
+          776
+        ],
+        "visible": true
+      },
+      "125": {
+        "bounds": [
+          1492,
+          273,
+          1520,
+          301
+        ],
+        "visible": true
+      },
+      "126": {
+        "bounds": [
+          1027,
+          351,
+          1169,
+          383
+        ],
+        "visible": true
+      },
+      "127": {
+        "bounds": [
+          1169,
+          351,
+          1394,
+          383
+        ],
+        "visible": true
+      },
+      "128": {
+        "bounds": [
+          1394,
+          351,
+          1498,
+          383
+        ],
+        "visible": true
+      },
+      "130": {
+        "bounds": [
+          1027,
+          832,
+          1514,
+          832
+        ],
+        "visible": false
+      }
+    }
+  },
+  "completed_utc": "2026-10-15T14:31:22.513779+00:00"
+}

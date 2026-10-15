@@ -1,0 +1,14 @@
+﻿{
+    "system":  "Microsoft Windows NT 10.0.20348.0",
+    "cpu":  [
+                "AMD EPYC 9V74 80-Core Processor                "
+            ],
+    "logicalProcessors":  4,
+    "memoryBytes":  17174360064,
+    "dpi":  96,
+    "width":  1920,
+    "height":  1080,
+    "resolution":  "Requested 1920x1080 accepted",
+    "capture":  "CopyFromScreen actual physical desktop; PrintWindow separate layout inspection",
+    "hardware":  "No physical UART/IT6332A; SFTP mock isolated"
+}

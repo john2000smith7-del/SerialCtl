@@ -1,0 +1,4590 @@
+{
+  "status": "PASS",
+  "main_hwnd": 458848,
+  "pid": 7448,
+  "environment": "Windows-2022Server-10.0.20348-SP0",
+  "input_events": [
+    {
+      "action": "mouse-click",
+      "point": [
+        475,
+        427
+      ],
+      "hwnd": 131474,
+      "monotonic": 386.984
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.859
+    },
+    {
+      "action": "character",
+      "character": "c",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.875
+    },
+    {
+      "action": "character",
+      "character": "h",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.875
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.875
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.89
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.89
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.89
+    },
+    {
+      "action": "character",
+      "character": "Y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.89
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.906
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.906
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.906
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.906
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.921
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.921
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.921
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.921
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.937
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.937
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.937
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.953
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.953
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.953
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.953
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.968
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.968
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.968
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.968
+    },
+    {
+      "action": "character",
+      "character": "O",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.984
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.984
+    },
+    {
+      "action": "character",
+      "character": ">",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.984
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 388.984
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.0
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.0
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.0
+    },
+    {
+      "action": "character",
+      "character": "M",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.015
+    },
+    {
+      "action": "character",
+      "character": "P",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.015
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.015
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.015
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.031
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.031
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.031
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.031
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.046
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.046
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.046
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.062
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.062
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.062
+    },
+    {
+      "action": "character",
+      "character": "k",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.062
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.078
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.078
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.078
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.078
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.093
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.093
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.093
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.109
+    },
+    {
+      "action": "character",
+      "character": "b",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.109
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.109
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.109
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.125
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.125
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.125
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.125
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.14
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.14
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.14
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.14
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.156
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.156
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.156
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.171
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.171
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.171
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.171
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.187
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.187
+    },
+    {
+      "action": "key",
+      "key": "Home",
+      "vk": 36,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.187
+    },
+    {
+      "action": "key",
+      "key": "Right",
+      "vk": 39,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.218
+    },
+    {
+      "action": "key",
+      "key": "Right",
+      "vk": 39,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.234
+    },
+    {
+      "action": "key",
+      "key": "Right",
+      "vk": 39,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.265
+    },
+    {
+      "action": "key",
+      "key": "Left",
+      "vk": 37,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.296
+    },
+    {
+      "action": "key",
+      "key": "Right",
+      "vk": 39,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.312
+    },
+    {
+      "action": "key",
+      "key": "Delete",
+      "vk": 46,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.343
+    },
+    {
+      "action": "character",
+      "character": "o",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.375
+    },
+    {
+      "action": "key",
+      "key": "End",
+      "vk": 35,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.375
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.39
+    },
+    {
+      "action": "key",
+      "key": "Backspace",
+      "vk": 8,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.406
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.421
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.453
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.453
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.468
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.468
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.468
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.468
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.484
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.484
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.484
+    },
+    {
+      "action": "character",
+      "character": "M",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.5
+    },
+    {
+      "action": "character",
+      "character": "P",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.5
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.5
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.5
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.515
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.515
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.515
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.515
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.531
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.531
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.531
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.531
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.546
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.546
+    },
+    {
+      "action": "character",
+      "character": "k",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.546
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.562
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.562
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.562
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.562
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.578
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.578
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.578
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.578
+    },
+    {
+      "action": "character",
+      "character": "b",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.593
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.593
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.593
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.609
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.609
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.609
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.609
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.625
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.625
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.625
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.625
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.64
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.64
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.64
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.656
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.656
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.656
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.656
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.671
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.671
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.671
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.703
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.703
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.703
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.718
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.718
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.718
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.718
+    },
+    {
+      "action": "character",
+      "character": "R",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.734
+    },
+    {
+      "action": "character",
+      "character": "I",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.734
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.734
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.734
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.75
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.75
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.75
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.765
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.765
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.765
+    },
+    {
+      "action": "character",
+      "character": "Y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.765
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.781
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.781
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.781
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.781
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.796
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.796
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.796
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.812
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.812
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.812
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.812
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.828
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.828
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.828
+    },
+    {
+      "action": "character",
+      "character": "=",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.828
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.843
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.843
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.843
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.843
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.859
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.859
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.859
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.875
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.875
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.875
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.875
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.89
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.89
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.89
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.89
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.906
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.906
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.906
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.921
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.921
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.921
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.921
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.937
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.937
+    },
+    {
+      "action": "character",
+      "character": "O",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.937
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.937
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.953
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.953
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.984
+    },
+    {
+      "action": "character",
+      "character": "u",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.984
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.984
+    },
+    {
+      "action": "character",
+      "character": "h",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 389.984
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.0
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.0
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.0
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.0
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.015
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.015
+    },
+    {
+      "action": "character",
+      "character": "M",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.015
+    },
+    {
+      "action": "character",
+      "character": "P",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.031
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.031
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.031
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.031
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.046
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.046
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.046
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.046
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.062
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.062
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.062
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.078
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.078
+    },
+    {
+      "action": "character",
+      "character": "k",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.078
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.078
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.093
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.093
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.093
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.093
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.109
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.109
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.109
+    },
+    {
+      "action": "character",
+      "character": "b",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.109
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.125
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.125
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.125
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.14
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.14
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.14
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.14
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.156
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.156
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.187
+    },
+    {
+      "action": "character",
+      "character": "c",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.187
+    },
+    {
+      "action": "character",
+      "character": "h",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.187
+    },
+    {
+      "action": "character",
+      "character": "o",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.187
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.203
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.203
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.203
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.203
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.218
+    },
+    {
+      "action": "character",
+      "character": "X",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.218
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.218
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.234
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.234
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.234
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.234
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.25
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.25
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.25
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.25
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.265
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.265
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.265
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.265
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.281
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.281
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.281
+    },
+    {
+      "action": "character",
+      "character": "O",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.296
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.296
+    },
+    {
+      "action": "character",
+      "character": ">",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.296
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.296
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.312
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.312
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.312
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.312
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.328
+    },
+    {
+      "action": "character",
+      "character": "v",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.328
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.328
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.343
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.343
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.343
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.343
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.359
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.375
+    },
+    {
+      "action": "character",
+      "character": "c",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.39
+    },
+    {
+      "action": "character",
+      "character": "h",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.39
+    },
+    {
+      "action": "character",
+      "character": "o",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.39
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.39
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.406
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.406
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.406
+    },
+    {
+      "action": "character",
+      "character": "R",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.406
+    },
+    {
+      "action": "character",
+      "character": "I",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.421
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.421
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.421
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.437
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.437
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.437
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.437
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.453
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.453
+    },
+    {
+      "action": "character",
+      "character": "Y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.453
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.453
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.468
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.468
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.468
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.484
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.484
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.484
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.484
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.5
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.5
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.5
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.5
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.515
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.515
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.515
+    },
+    {
+      "action": "character",
+      "character": ">",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.515
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.531
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.531
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.531
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.546
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.546
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.546
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.546
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.562
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.562
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.562
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.593
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.593
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.593
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.609
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.609
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.609
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.609
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.625
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.625
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.625
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.64
+    },
+    {
+      "action": "character",
+      "character": "v",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.64
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.64
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.64
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.656
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.656
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.656
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.656
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.671
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.671
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.671
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.671
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.687
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.687
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.687
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.703
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.703
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.703
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.734
+    },
+    {
+      "action": "character",
+      "character": "o",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.734
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.734
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.75
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.75
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.765
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.781
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.781
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.781
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.796
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.796
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.796
+    },
+    {
+      "action": "character",
+      "character": "R",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.796
+    },
+    {
+      "action": "character",
+      "character": "I",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.812
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.812
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.812
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.812
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.828
+    },
+    {
+      "action": "character",
+      "character": "L",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.828
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.828
+    },
+    {
+      "action": "character",
+      "character": "K",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.828
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.843
+    },
+    {
+      "action": "character",
+      "character": "Y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.843
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.843
+    },
+    {
+      "action": "character",
+      "character": "_",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.859
+    },
+    {
+      "action": "character",
+      "character": "D",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.859
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.859
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.859
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.875
+    },
+    {
+      "action": "character",
+      "character": "B",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.875
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.875
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.875
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.89
+    },
+    {
+      "action": "character",
+      "character": "A",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.89
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.89
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.89
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.906
+    },
+    {
+      "action": "character",
+      "character": "=",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.906
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.906
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.921
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.937
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.937
+    },
+    {
+      "action": "character",
+      "character": "p",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.953
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.953
+    },
+    {
+      "action": "character",
+      "character": " ",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.953
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.968
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.968
+    },
+    {
+      "action": "character",
+      "character": "T",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.968
+    },
+    {
+      "action": "character",
+      "character": "E",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.968
+    },
+    {
+      "action": "character",
+      "character": "M",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.984
+    },
+    {
+      "action": "character",
+      "character": "P",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.984
+    },
+    {
+      "action": "character",
+      "character": "%",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.984
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 390.984
+    },
+    {
+      "action": "character",
+      "character": "S",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.0
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.0
+    },
+    {
+      "action": "character",
+      "character": "r",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.0
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.015
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.015
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.015
+    },
+    {
+      "action": "character",
+      "character": "C",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.015
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.031
+    },
+    {
+      "action": "character",
+      "character": "l",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.031
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.031
+    },
+    {
+      "action": "character",
+      "character": "k",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.031
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.046
+    },
+    {
+      "action": "character",
+      "character": "y",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.046
+    },
+    {
+      "action": "character",
+      "character": "s",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.046
+    },
+    {
+      "action": "character",
+      "character": "-",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.062
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.062
+    },
+    {
+      "action": "character",
+      "character": "9",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.062
+    },
+    {
+      "action": "character",
+      "character": "3",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.062
+    },
+    {
+      "action": "character",
+      "character": "7",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.078
+    },
+    {
+      "action": "character",
+      "character": "b",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.078
+    },
+    {
+      "action": "character",
+      "character": "2",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.078
+    },
+    {
+      "action": "character",
+      "character": "1",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.078
+    },
+    {
+      "action": "character",
+      "character": "4",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.093
+    },
+    {
+      "action": "character",
+      "character": "a",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.093
+    },
+    {
+      "action": "character",
+      "character": "8",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.093
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.093
+    },
+    {
+      "action": "character",
+      "character": "6",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.109
+    },
+    {
+      "action": "character",
+      "character": "\\",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.109
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.109
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.125
+    },
+    {
+      "action": "character",
+      "character": "i",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.125
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.125
+    },
+    {
+      "action": "character",
+      "character": "e",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.125
+    },
+    {
+      "action": "character",
+      "character": "d",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.14
+    },
+    {
+      "action": "character",
+      "character": ".",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.14
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.14
+    },
+    {
+      "action": "character",
+      "character": "x",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.14
+    },
+    {
+      "action": "character",
+      "character": "t",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.156
+    },
+    {
+      "action": "character",
+      "character": "\"",
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.156
+    },
+    {
+      "action": "key",
+      "key": "Enter",
+      "vk": 13,
+      "focus_before": {
+        "focus": 131474,
+        "foreground": 458848
+      },
+      "monotonic": 391.156
+    }
+  ],
+  "websocket_events": [
+    {
+      "codePage": 65001,
+      "data": "ZWNobyBLRVlfRVhFQ19EOTM3QjIxNEE4NjZfT0s+IiVURU1QJVxTZXJpYWxDdGwta2V5cy1kOTM3YjIxNGE4NjZcZWRpdGVkLnR4dCINCg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 466,
+      "source": "gui",
+      "tick": 389421,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 467,
+      "source": "device",
+      "tick": 389421,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "RDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 468,
+      "source": "device",
+      "tick": 389421,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "dHlwZSAiJVRFTVAlXFNlcmlhbEN0bC1rZXlzLWQ5MzdiMjE0YTg2NlxlZGl0ZWQudHh0Ig0K",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 469,
+      "source": "gui",
+      "tick": 389671,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "S0VZX0VYRUNfRDkzN0IyMTRBODY2X09LDQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 470,
+      "source": "device",
+      "tick": 389671,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 471,
+      "source": "device",
+      "tick": 389671,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "c2V0ICJTRVJJQUxDVExfS0VZU19EOTM3QjIxNEE4NjY9U1RBVEVfRVhFQ19EOTM3QjIxNEE4NjZfT0siDQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 472,
+      "source": "gui",
+      "tick": 389953,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 473,
+      "source": "device",
+      "tick": 389953,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "RDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 474,
+      "source": "device",
+      "tick": 389953,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "cHVzaGQgIiVURU1QJVxTZXJpYWxDdGwta2V5cy1kOTM3YjIxNGE4NjYiDQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 475,
+      "source": "gui",
+      "tick": 390156,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 476,
+      "source": "device",
+      "tick": 390156,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "QzpcVXNlcnNcUlVOTkVSfjFcQXBwRGF0YVxMb2NhbFxUZW1wXFNlcmlhbEN0bC1rZXlzLWQ5MzdiMjE0YTg2Nj4=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 477,
+      "source": "device",
+      "tick": 390156,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "ZWNobyBDRF9FWEVDX0Q5MzdCMjE0QTg2Nl9PSz5yZWxhdGl2ZS50eHQNCg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 478,
+      "source": "gui",
+      "tick": 390359,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 479,
+      "source": "device",
+      "tick": 390359,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "QzpcVXNlcnNcUlVOTkVSfjFcQXBwRGF0YVxMb2NhbFxUZW1wXFNlcmlhbEN0bC1rZXlzLWQ5MzdiMjE0YTg2Nj4=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 480,
+      "source": "device",
+      "tick": 390359,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "ZWNobyAlU0VSSUFMQ1RMX0tFWVNfRDkzN0IyMTRBODY2JT5zdGF0ZS50eHQNCg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 481,
+      "source": "gui",
+      "tick": 390562,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 482,
+      "source": "device",
+      "tick": 390562,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "QzpcVXNlcnNcUlVOTkVSfjFcQXBwRGF0YVxMb2NhbFxUZW1wXFNlcmlhbEN0bC1rZXlzLWQ5MzdiMjE0YTg2Nj4=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 483,
+      "source": "device",
+      "tick": 390562,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "dHlwZSByZWxhdGl2ZS50eHQgc3RhdGUudHh0DQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 484,
+      "source": "gui",
+      "tick": 390703,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQpyZWxhdGl2ZS50eHQNCg0KDQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 485,
+      "source": "device",
+      "tick": 390703,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "Q0RfRVhFQ19EOTM3QjIxNEE4NjZfT0sNCg0Kc3RhdGUudHh0DQoNCg0KU1RBVEVfRVhFQ19EOTM3QjIxNEE4NjZfT0sNCg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 486,
+      "source": "device",
+      "tick": 390703,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQpDOlxVc2Vyc1xSVU5ORVJ+MVxBcHBEYXRhXExvY2FsXFRlbXBcU2VyaWFsQ3RsLWtleXMtZDkzN2IyMTRhODY2Pg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 487,
+      "source": "device",
+      "tick": 390703,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "cG9wZA0K",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 488,
+      "source": "gui",
+      "tick": 390750,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 489,
+      "source": "device",
+      "tick": 390750,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "RDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 490,
+      "source": "device",
+      "tick": 390750,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "c2V0ICJTRVJJQUxDVExfS0VZU19EOTM3QjIxNEE4NjY9Ig0K",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 491,
+      "source": "gui",
+      "tick": 390921,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "DQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 492,
+      "source": "device",
+      "tick": 390921,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "RDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg==",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 493,
+      "source": "device",
+      "tick": 390921,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "dHlwZSAiJVRFTVAlXFNlcmlhbEN0bC1rZXlzLWQ5MzdiMjE0YTg2NlxlZGl0ZWQudHh0Ig0K",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "input",
+      "resource": "session-2",
+      "seq": 494,
+      "source": "gui",
+      "tick": 391156,
+      "type": "event",
+      "version": 1
+    },
+    {
+      "codePage": 65001,
+      "data": "S0VZX0VYRUNfRDkzN0IyMTRBODY2X09LDQo=",
+      "instance": "f84805b98bdb92962ed876edf4e4fff0",
+      "kind": "output",
+      "resource": "session-2",
+      "seq": 495,
+      "source": "device",
+      "tick": 391156,
+      "type": "event",
+      "version": 1
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "D:\\a\\_temp\\serialctl-ui\\x64-dark-cmd-real-input-before.png",
+      "method": "desktop CopyFromScreen",
+      "sha256": "b613e85623839e0897606ca3e526933aceb9a7bbf1626e832207d785b40afa30"
+    },
+    {
+      "path": "D:\\a\\_temp\\serialctl-ui\\x64-dark-cmd-real-input-after.png",
+      "method": "desktop CopyFromScreen",
+      "sha256": "1b5aa443c4bd00a4a747ea5c8704bd6cd0326c30e8061b47c4976f2d0e28bed9"
+    }
+  ],
+  "checks": [
+    {
+      "check": "exact CRLF record in device stdout (CMD prompt may precede it)",
+      "expected": "KEY_EXEC_D937B214A866_OK",
+      "passed": true
+    },
+    {
+      "check": "Home/Left/Right/Delete/End/Backspace editing executes corrected command",
+      "passed": true
+    },
+    {
+      "check": "exact CRLF record in device stdout (CMD prompt may precede it)",
+      "expected": "CD_EXEC_D937B214A866_OK",
+      "passed": true
+    },
+    {
+      "check": "exact CRLF record in device stdout (CMD prompt may precede it)",
+      "expected": "STATE_EXEC_D937B214A866_OK",
+      "passed": true
+    },
+    {
+      "check": "set value and changed working directory persist across keyboard-submitted commands",
+      "passed": true
+    },
+    {
+      "check": "exact CRLF record in device stdout (CMD prompt may precede it)",
+      "expected": "KEY_EXEC_D937B214A866_OK",
+      "passed": true
+    }
+  ],
+  "files": [
+    {
+      "path": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\SerialCtl-keys-d937b214a866\\edited.txt",
+      "base64": "S0VZX0VYRUNfRDkzN0IyMTRBODY2X09LDQo=",
+      "sha256": "7ea074170b504d0dadbba70656f8a61dd841d993a4ed7c3548a233c467bb7393",
+      "passed": true
+    },
+    {
+      "path": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\SerialCtl-keys-d937b214a866\\relative.txt",
+      "base64": "Q0RfRVhFQ19EOTM3QjIxNEE4NjZfT0sNCg==",
+      "sha256": "629ab4123c07f9526e287cc3f23a88bdc971f4b2a795805a4020e0dbe2e525e7",
+      "passed": true
+    },
+    {
+      "path": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\SerialCtl-keys-d937b214a866\\state.txt",
+      "base64": "U1RBVEVfRVhFQ19EOTM3QjIxNEE4NjZfT0sNCg==",
+      "sha256": "a270225ab44e863304ef97650a83e05719379598388aa2f1cad0671e891c5119",
+      "passed": true
+    }
+  ],
+  "input_method": "Actual terminal mouse click and SendInput keyboard down/up; characters use KEYEVENTF_UNICODE one at a time; no WM_CHAR/WM_KEYDOWN messages or WebSocket command input",
+  "limitations": [
+    "ASCII keyboard characters only; Chinese IME is not covered",
+    "Requires an existing active idle CMD with an empty local draft; latest connected CMD resource is observed",
+    "Screenshots are finite desktop samples, not a video or physical monitor latency measurement"
+  ],
+  "terminal_hwnd": 131474,
+  "input_structure_bytes": 40,
+  "focus_after_click": {
+    "focus": 131474,
+    "foreground": 458848
+  },
+  "fixture_directory": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\SerialCtl-keys-d937b214a866",
+  "fixtures": [
+    "An empty unique TEMP directory is created by Python; all command/file content is produced by real GUI keyboard input"
+  ],
+  "resource": "session-2",
+  "state_before": {
+    "codePage": 65001,
+    "codePageSource": "console",
+    "connected": true,
+    "id": "session-2",
+    "inputCodePage": 65001,
+    "kind": "cmd",
+    "name": "\u672c\u5730 CMD #2",
+    "outputCodePage": 65001
+  },
+  "state_after": {
+    "codePage": 65001,
+    "codePageSource": "console",
+    "connected": true,
+    "id": "session-2",
+    "inputCodePage": 65001,
+    "kind": "cmd",
+    "name": "\u672c\u5730 CMD #2",
+    "outputCodePage": 65001
+  },
+  "focus_after_commands": {
+    "focus": 131474,
+    "foreground": 458848
+  },
+  "observed_output_base64": "DQpDOlxVc2Vyc1xSVU5ORVJ+MVxBcHBEYXRhXExvY2FsXFRlbXBcU2VyaWFsQ3RsLWtleXMtZDkzN2IyMTRhODY2Pg0KRDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPg0KRDpcYVxTZXJpYWxDdGxcU2VyaWFsQ3RsPktFWV9FWEVDX0Q5MzdCMjE0QTg2Nl9PSw0K",
+  "fixture_cleanup": "Successful run restores directory with popd and clears its unique environment variable; evidence files retained in the unique TEMP directory",
+  "exit_code": 0
+}
