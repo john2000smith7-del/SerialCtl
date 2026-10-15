@@ -13,6 +13,8 @@ window, pid = int(sys.argv[2]), int(sys.argv[3])
 u, k = ctypes.windll.user32, ctypes.windll.kernel32
 u.GetDlgItem.argtypes = (w.HWND, ctypes.c_int)
 u.GetDlgItem.restype = w.HWND
+u.FindWindowExW.argtypes = (w.HWND, w.HWND, w.LPCWSTR, w.LPCWSTR)
+u.FindWindowExW.restype = w.HWND
 u.GetWindowTextW.argtypes = (w.HWND, w.LPWSTR, ctypes.c_int)
 u.SendMessageW.argtypes = (w.HWND, w.UINT, ctypes.c_size_t, ctypes.c_ssize_t)
 u.SendMessageW.restype = ctypes.c_ssize_t
@@ -185,21 +187,23 @@ def reacquire_list_focus(listing,reason):
                          'focus':focus_state(thread),'method':'actual click on current overlay thumb; no SetFocus',
                          'monotonic':time.monotonic()})
     return thread
-def navigation_state(listing,thread):
+def navigation_state(listing,thread,power_pane):
     return {'selection':u.SendMessageW(listing,0x188,0,0),
             'top_index':u.SendMessageW(listing,0x18e,0,0),
             'focus_after':focus_state(thread),
-            'terminal_visible':bool(u.IsWindowVisible(u.GetDlgItem(window,107)))}
-def verify_navigation(listing,thread,theme,label,vk,selection_matches,power_row):
+            'terminal_visible':bool(u.IsWindowVisible(u.GetDlgItem(window,107))),
+            'power_visible':bool(u.IsWindowVisible(power_pane))}
+def verify_navigation(listing,thread,theme,label,vk,selection_matches,power_row,power_pane):
     # Each call requires focus produced by the preceding key, with no repair.
     key(106,vk)
     deadline=time.monotonic()+2
     while True:
-        state=navigation_state(listing,thread)
+        state=navigation_state(listing,thread,power_pane)
         passed=(selection_matches(state['selection']) and
                 state['focus_after']['hwnd']==listing and
                 state['focus_after']['foreground']==window and
-                state['terminal_visible']==(state['selection']!=power_row))
+                state['terminal_visible']==(state['selection']!=power_row) and
+                state['power_visible']==(state['selection']==power_row))
         if passed or time.monotonic()>=deadline:break
         time.sleep(.02)
     observations.append({'action':label,'theme':theme,'result':state,'passed':passed,
@@ -209,14 +213,14 @@ def verify_navigation(listing,thread,theme,label,vk,selection_matches,power_row)
                                   'expected':'Native list selection, list HWND 106 focus, and matching session/power view',
                                   'power_row':power_row})
     return passed
-def verify_extended_navigation(listing,thread,theme,power_row):
+def verify_extended_navigation(listing,thread,theme,power_row,power_pane):
     # Start immediately after End selected the power row. Page offsets are native
     # listbox behavior; assert meaningful movement without reproducing its formula.
     cases=[('Up-from-power',0x26,lambda selected:selected==power_row-1),
            ('Down-to-power',0x28,lambda selected:selected==power_row),
            ('PageUp-from-power',0x21,lambda selected:0<=selected<power_row)]
     for label,vk,selection_matches in cases:
-        if not verify_navigation(listing,thread,theme,label,vk,selection_matches,power_row):return False
+        if not verify_navigation(listing,thread,theme,label,vk,selection_matches,power_row,power_pane):return False
     before_page_down=u.SendMessageW(listing,0x188,0,0)
     cases=[('PageDown',0x22,lambda selected:before_page_down<selected<=power_row),
            ('Home-from-lower-rows',0x24,lambda selected:selected==0),
@@ -225,20 +229,59 @@ def verify_extended_navigation(listing,thread,theme,power_row):
            ('End-to-power',0x23,lambda selected:selected==power_row),
            ('Home-from-power',0x24,lambda selected:selected==0)]
     for label,vk,selection_matches in cases:
-        if not verify_navigation(listing,thread,theme,label,vk,selection_matches,power_row):return False
+        if not verify_navigation(listing,thread,theme,label,vk,selection_matches,power_row,power_pane):return False
     return True
+def verify_mouse_session_activation(listing,thread,theme,power_row,power_pane):
+    # End the independent keyboard sequence with an actual click. Selecting a
+    # different session detects a keyboard-origin flag leaking into mouse input.
+    assert focused(listing,thread),'Completed keyboard sequence must retain list focus'
+    selected=u.SendMessageW(listing,0x188,0,0)
+    top=u.SendMessageW(listing,0x18e,0,0)
+    target=top if top!=selected else top+1
+    assert 0<=target<power_row and target!=selected,'Expected a visible unselected session row'
+    item_height=u.SendMessageW(listing,0x1a1,0,0)
+    bounds=w.RECT();origin=w.POINT(0,0)
+    assert u.GetClientRect(listing,ctypes.byref(bounds)) and u.ClientToScreen(listing,ctypes.byref(origin))
+    row_y=(target-top)*item_height+item_height//2
+    assert item_height>0 and 0<=row_y<bounds.bottom,'Session click target is outside the visible list'
+    actual_list,_=click(106,(origin.x+bounds.right//2,origin.y+row_y))
+    assert actual_list==listing
+    terminal=u.GetDlgItem(window,107)
+    deadline=time.monotonic()+2
+    while True:
+        state=navigation_state(listing,thread,power_pane)
+        passed=(state['selection']==target and state['focus_after']['hwnd']==terminal and
+                state['focus_after']['foreground']==window and state['terminal_visible'] and
+                not state['power_visible'])
+        if passed or time.monotonic()>=deadline:break
+        time.sleep(.02)
+    observations.append({'action':'mouse-session-after-keyboard-navigation','theme':theme,
+                         'selection_before':selected,'expected_selection':target,
+                         'expected_focus_control':107,'result':state,'passed':passed,
+                         'method':'system mouse click on an unselected ordinary session row'})
+    if not passed:
+        behavior_failures.append({'check':'Mouse session activation after keyboard navigation',
+                                  'theme':theme,'expected_selection':target,'expected_focus_control':107,
+                                  'actual':state})
+    return passed
 def run(c):
     count=lambda:len([r for r in c.resources()['resources'] if r['kind']=='cmd' and r['connected']])
     baseline=count()
     listing=u.GetDlgItem(window,106)
+    power_pane=u.FindWindowExW(window,None,'SerialCtlPowerPane',None)
+    assert power_pane and u.IsWindow(power_pane),'Missing direct-child power pane'
+    power_owner=w.DWORD()
+    power_thread=u.GetWindowThreadProcessId(power_pane,ctypes.byref(power_owner))
+    assert power_owner.value==pid and power_thread,'Power pane belongs to another process'
     # Real toolbar activation establishes the disconnected power pseudo-row;
     # keyboard transitions do not require or operate physical power hardware.
     click(301)
     wait(lambda:u.SendMessageW(listing,0x18b,0,0)>0 and
          u.SendMessageW(listing,0x188,0,0)==u.SendMessageW(listing,0x18b,0,0)-1 and
-         not u.IsWindowVisible(u.GetDlgItem(window,107)))
+         not u.IsWindowVisible(u.GetDlgItem(window,107)) and u.IsWindowVisible(power_pane))
     observations.append({'action':'power-row-setup','method':'system mouse click on toolbar control 301',
-                         'power_row':u.SendMessageW(listing,0x188,0,0),'terminal_visible':False})
+                         'power_row':u.SendMessageW(listing,0x188,0,0),'terminal_visible':False,
+                         'power_hwnd':int(power_pane),'power_pid':power_owner.value,'power_visible':True})
     baseline_rows=u.SendMessageW(listing,0x18b,0,0)
     for index in range(32):
         click(300)
@@ -287,23 +330,25 @@ def run(c):
     assert u.SendMessageW(listing,0x18e,0,0)>top,'wheel must scroll native/overlay list'
     key(106,0x24) # Actual keyboard Home.
     wait(lambda:u.SendMessageW(listing,0x188,0,0)==0)
-    home_state={'selection':u.SendMessageW(listing,0x188,0,0),'focus_after':focus_state(thread)}
+    home_state=navigation_state(listing,thread,power_pane)
     observations.append({'action':'Home','result':home_state})
     key(106,0x23,require_list_focus=False) # End follows Home without repairing focus.
     expected_end=u.SendMessageW(listing,0x18b,0,0)-1
     deadline=time.monotonic()+2
     while u.SendMessageW(listing,0x188,0,0)!=expected_end and time.monotonic()<deadline:
         time.sleep(.02)
-    end_state={'selection':u.SendMessageW(listing,0x188,0,0),'focus_after':focus_state(thread)}
+    end_state=navigation_state(listing,thread,power_pane)
     observations.append({'action':'End-directly-after-Home','expected_selection':expected_end,'result':end_state})
     consecutive_passed=(end_state['selection']==expected_end and
                         home_state['focus_after']['hwnd']==listing and
                         end_state['focus_after']['hwnd']==listing and
                         home_state['focus_after']['foreground']==window and
-                        end_state['focus_after']['foreground']==window)
+                        end_state['focus_after']['foreground']==window and
+                        home_state['terminal_visible'] and not home_state['power_visible'] and
+                        not end_state['terminal_visible'] and end_state['power_visible'])
     if not consecutive_passed:
         behavior_failures.append({'check':'consecutive Home/End connection-list navigation',
-                                  'expected':'End selects the last row after Home; both keys retain list HWND 106 focus',
+                                  'expected':'Home selects a session and End selects power; list HWND 106 retains focus and exactly the selected view is visible',
                                   'expected_selection':expected_end,'actual':end_state,'home':home_state,
                                   'impact':'Keyboard navigation leaves the connection list after selecting a session'})
         observations.append({'action':'extended-list-keyboard-navigation','status':'SKIPPED',
@@ -315,16 +360,21 @@ def run(c):
         current_theme='dark' if original_theme_caption=='浅色' else 'light'
         # The first extended sequence directly follows the original Home/End,
         # before any thumb click or other focus recovery.
-        if verify_extended_navigation(listing,thread,current_theme,expected_end):
+        if verify_extended_navigation(listing,thread,current_theme,expected_end,power_pane):
+            verify_mouse_session_activation(listing,thread,current_theme,expected_end,power_pane)
             try:
                 click(104)
-                wait(lambda:control_text(theme_button)!=original_theme_caption)
+                expected_theme_caption='深色' if original_theme_caption=='浅色' else '浅色'
+                wait(lambda:control_text(theme_button)==expected_theme_caption)
                 other_theme='light' if current_theme=='dark' else 'dark'
+                observations.append({'action':'theme-switch-for-keyboard-navigation','theme':other_theme,
+                                     'caption_before':original_theme_caption,'caption_after':control_text(theme_button)})
                 thread=reacquire_list_focus(listing,'Start an independent navigation sequence in '+other_theme+' theme')
-                if (verify_navigation(listing,thread,other_theme,'Home',0x24,lambda selected:selected==0,expected_end) and
+                if (verify_navigation(listing,thread,other_theme,'Home',0x24,lambda selected:selected==0,expected_end,power_pane) and
                         verify_navigation(listing,thread,other_theme,'End-directly-after-Home',0x23,
-                                          lambda selected:selected==expected_end,expected_end)):
-                    verify_extended_navigation(listing,thread,other_theme,expected_end)
+                                          lambda selected:selected==expected_end,expected_end,power_pane)):
+                    if verify_extended_navigation(listing,thread,other_theme,expected_end,power_pane):
+                        verify_mouse_session_activation(listing,thread,other_theme,expected_end,power_pane)
             finally:
                 if control_text(theme_button)!=original_theme_caption:
                     click(104)
@@ -337,8 +387,15 @@ def run(c):
     thread=reacquire_list_focus(listing,'Independently verify End and continue lifecycle checks after recording consecutive-key behavior')
     key(106,0x23)
     wait(lambda:u.SendMessageW(listing,0x188,0,0)==u.SendMessageW(listing,0x18b,0,0)-1)
+    recovered_end=navigation_state(listing,thread,power_pane)
     observations.append({'action':'End-after-explicit-thumb-focus-recovery',
-                         'selection':u.SendMessageW(listing,0x188,0,0),'focus_after':focus_state(thread)})
+                         'result':recovered_end})
+    if (recovered_end['focus_after']['hwnd']!=listing or
+            recovered_end['focus_after']['foreground']!=window or
+            recovered_end['terminal_visible'] or not recovered_end['power_visible']):
+        behavior_failures.append({'check':'End after explicit thumb focus recovery',
+                                  'expected':'Power view visible, terminal hidden, list focus retained',
+                                  'actual':recovered_end})
     # Physical mouse drag of the visible overlay thumb, with real desktop captures.
     mouse_x,start_y,origin=thumb_geometry(listing)
     actual_list,_,_,_=input_target(106,(mouse_x,start_y))
