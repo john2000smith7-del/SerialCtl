@@ -1,0 +1,66 @@
+name: Export large audit evidence in parts
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_id:
+        description: Existing artifact ID in this repository; original bytes are preserved
+        required: true
+permissions:
+  actions: read
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download and verify the original artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" > artifact.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > original.zip
+          python - <<'PY'
+          import hashlib, json, pathlib, zipfile
+          metadata = json.loads(pathlib.Path('artifact.json').read_text())
+          original = pathlib.Path('original.zip')
+          digest = hashlib.file_digest(original.open('rb'), 'sha256').hexdigest()
+          assert metadata['digest'] == 'sha256:' + digest, 'Original artifact SHA-256 mismatch'
+          assert metadata['size_in_bytes'] == original.stat().st_size, 'Original artifact length mismatch'
+          with zipfile.ZipFile(original) as archive:
+              assert archive.testzip() is None, 'Original artifact ZIP CRC mismatch'
+          parts = []
+          with original.open('rb') as source:
+              for index in range(2):
+                  content = source.read(300 * 1024 * 1024)
+                  assert content, 'Expected an artifact between 300 and 600 MiB'
+                  folder = pathlib.Path('part-' + str(index))
+                  folder.mkdir()
+                  name = 'original.zip.part-' + str(index)
+                  (folder / name).write_bytes(content)
+                  parts.append({'name': name, 'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest()})
+              assert not source.read(1), 'Artifact exceeds supported 600 MiB export size'
+          receipt = {'originalArtifact': metadata, 'originalZipSha256': digest,
+                     'parts': parts, 'method': 'Binary split only; concatenate parts 0 then 1 to recover the exact original ZIP'}
+          for index in range(2):
+              pathlib.Path('part-' + str(index), 'split-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print('Verified original SHA-256:', digest)
+          print('Original files, screenshots and test records were not modified.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-evidence-part-0
+          path: part-0/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-evidence-part-1
+          path: part-1/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
