@@ -1385,6 +1385,10 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
 LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     (void)referenceData;
+    // Owner-drawn buttons otherwise turn the second press into BN_DOUBLECLICKED.
+    // Keep this toggle's normal release/cancel semantics for rapid reversal.
+    if (GetDlgCtrlID(window) == IdRightPanelToggle && message == WM_LBUTTONDBLCLK)
+        message = WM_LBUTTONDOWN;
     if (message == WM_MOUSEMOVE && !GetPropW(window, Ui::HoverProperty)) {
         SetPropW(window, Ui::HoverProperty, reinterpret_cast<HANDLE>(1));
         TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0};
@@ -1678,7 +1682,14 @@ LRESULT CALLBACK MainWindow::OverlayListSubclassProc(HWND window, UINT message, 
         self->scrollingThumbOffset_ = 0;
     }
 
+    // Native listbox selection notifications occur inside this dispatch. Scope
+    // input origin to it instead of remembering the last key across mouse input.
+    const bool keyboardInput = window == self->connectionList_ &&
+        (message == WM_KEYDOWN || message == WM_CHAR);
+    const bool previousKeyboardInput = self->connectionListKeyboardInput_;
+    if (keyboardInput) self->connectionListKeyboardInput_ = true;
     const LRESULT result = DefSubclassProc(window, message, wParam, lParam);
+    self->connectionListKeyboardInput_ = previousKeyboardInput;
     if (message == WM_PAINT) {
         DrawOverlayScrollbar(window, self->darkMode_);
         if (IsComboDropList(window)) DrawOverlayListFrame(window, self->darkMode_);
@@ -1957,6 +1968,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         break;
     case WM_TIMER:
         if(wParam==SideAnimationTimerId) {
+            if (!rightPanelAnimating_) return 0; // A canceled timer may already have a queued message.
             const double t=std::min(1.0,static_cast<double>(GetTickCount64()-rightPanelAnimationAt_)/200.0);
             const double ease=1-(1-t)*(1-t)*(1-t);
             rightPanelAnimatedWidth_=rightPanelAnimationFrom_+static_cast<int>((rightPanelAnimationTo_-rightPanelAnimationFrom_)*ease);
@@ -2035,8 +2047,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             pendingMode_ = 4; powerVisible_ = false; ConnectFromDialog(); return 0;
         }
         if (LOWORD(wParam) == IdPower && HIWORD(wParam) == BN_CLICKED) {
-            KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
-            powerVisible_ = true; powerPageOpened_ = true; RefreshConnectionList(); RECT r{}; GetClientRect(window_, &r); LayoutControls(r.right, r.bottom); InvalidateRect(window_, nullptr, TRUE); for(HWND button:toolbarButtons_)InvalidateRect(button,nullptr,TRUE); return 0;
+            ShowPowerPage(); return 0;
         } {
         const int id = LOWORD(wParam);
         const int notification = HIWORD(wParam);
@@ -2085,9 +2096,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (id == IdConnectionList && notification == LBN_SELCHANGE) {
             const LRESULT selected = SendMessageW(connectionList_, LB_GETCURSEL, 0, 0);
             if (selected != LB_ERR) {
-                if(static_cast<size_t>(selected)==sessions_.size()&&powerPageOpened_)
-                    PostMessageW(window_,WM_COMMAND,IdPower,0);
-                else SwitchSession(static_cast<size_t>(selected));
+                if (static_cast<size_t>(selected) == sessions_.size() && powerPageOpened_)
+                    ShowPowerPage();
+                else SwitchSession(static_cast<size_t>(selected), connectionListKeyboardInput_
+                    ? SessionFocus::Preserve : SessionFocus::Terminal);
             }
             return 0;
         }
@@ -2425,14 +2437,15 @@ void MainWindow::LayoutControls(int width, int height) {
     const int rightInnerRight = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)
         ? rightInnerLeft + Ui::MinRightWidth - Ui::PanelPadding * 2
         : actualRightInnerRight;
-    const int toggleLeft = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)
-        ? rightLeft + (layout.rightWidth - Ui::Gap - Ui::IconButtonSize) / 2
-        : actualRightInnerRight - Ui::IconButtonSize;
+    // The final rail is fixed at the right edge. Keep its button stationary even
+    // while the rest of the sidebar moves, avoiding missed releases and trails.
+    const int toggleLeft = width - Ui::Gap - Ui::CollapsedRightWidth +
+        (Ui::CollapsedRightWidth - Ui::IconButtonSize) / 2;
     batch.Move(rightPanelToggleButton_, toggleLeft, headerTop + 2, Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
     batch.Move(commandHeader_, rightInnerLeft + 2, headerTop + 2, Ui::SegmentWidth, Ui::SegmentHeight, TRUE);
     batch.Move(sftpTabButton_, rightInnerLeft + 2 + Ui::SegmentWidth, headerTop + 2, Ui::SegmentWidth,
                Ui::SegmentHeight, TRUE);
-    const int addCommandRight = rightInnerRight - Ui::IconButtonSize - Ui::Space;
+    const int addCommandRight = toggleLeft - Ui::Space;
     const int addCommandLeftLimit = rightInnerLeft + 4 + Ui::SegmentWidth * 2 + Ui::Space;
     const int addCommandWidth =
         std::max(Ui::IconButtonSize, std::min(Ui::Scale(104), addCommandRight - addCommandLeftLimit));
@@ -3656,7 +3669,21 @@ MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
     return found == sessions_.end() ? nullptr : found->get();
 }
 
-void MainWindow::SwitchSession(size_t index) {
+void MainWindow::ShowPowerPage() {
+    KillTimer(window_, SideAnimationTimerId);
+    rightPanelAnimating_ = false;
+    rightPanelAnimatedWidth_ = -1;
+    powerVisible_ = true;
+    powerPageOpened_ = true;
+    RefreshConnectionList();
+    RECT client{};
+    GetClientRect(window_, &client);
+    LayoutControls(client.right, client.bottom);
+    InvalidateRect(window_, nullptr, TRUE);
+    for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
+}
+
+void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (index >= sessions_.size()) return;
     powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE); ShowWindow(terminal_, SW_SHOW);
     if (activeSession_ && activeSession_ != sessions_[index].get())
@@ -3693,7 +3720,7 @@ void MainWindow::SwitchSession(size_t index) {
     RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
     InvalidateRect(window_, nullptr, TRUE);
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
-    SetFocus(terminal_);
+    if (focus == SessionFocus::Terminal) SetFocus(terminal_);
 }
 
 bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText) {
@@ -4927,6 +4954,7 @@ void MainWindow::SetRightPanelCollapsed(bool collapsed) {
     if(rightPanelAnimating_ && SetTimer(window_,SideAnimationTimerId,16,nullptr)) {
         ShowSftpPanel(sftpPanelVisible_); return;
     }
+    KillTimer(window_, SideAnimationTimerId);
     rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
     LayoutControls(client.right,client.bottom);ShowSftpPanel(sftpPanelVisible_);
     InvalidateRect(window_,nullptr,FALSE);

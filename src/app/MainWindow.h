@@ -47,6 +47,7 @@ public:
     HWND Handle() const { return window_; }
 
 private:
+    enum class SessionFocus { Terminal, Preserve };
     enum class SftpTransferDirection { Upload, Download };
     enum class SftpTransferState { Queued, Running, Completed, Failed, Canceled };
     enum class SftpMutationKind { CreateDirectory, Rename, Delete, ChangeMode };
@@ -165,7 +166,8 @@ private:
     void CompleteConnection(bool success, const std::wstring& error);
     void Disconnect();
     void DisconnectAll();
-    void SwitchSession(size_t index);
+    void SwitchSession(size_t index, SessionFocus focus = SessionFocus::Terminal);
+    void ShowPowerPage();
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
     void SendTerminalCharacter(wchar_t character);
@@ -352,6 +354,7 @@ private:
     UINT runningCommandCodePage_ = CP_UTF8;
     std::wstring runningCommandLineEnding_;
     HWND scrollingList_ = nullptr;
+    bool connectionListKeyboardInput_ = false;
     int scrollingThumbOffset_ = 0;
     bool terminalSelecting_ = false;
     bool terminalSelectionActive_ = false;
