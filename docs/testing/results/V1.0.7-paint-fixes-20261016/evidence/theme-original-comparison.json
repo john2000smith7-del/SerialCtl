@@ -1,0 +1,40 @@
+{
+  "historical": {
+    "source": "docs/testing/results/V1.0.7-auto-update/evidence/updater-url-a-404-theme.png",
+    "sha256": "a1a299e8fe35a8c50c7d50d2ac4efbde03f17741c516432c98e33d11f64cebdb",
+    "bounds": [
+      46,
+      662,
+      198,
+      694
+    ],
+    "samples": 608,
+    "most_common": [
+      [
+        [
+          242,
+          242,
+          247
+        ],
+        608
+      ]
+    ],
+    "matching_dark_enabled": 0.0,
+    "matching_dark_disabled": 0.0,
+    "meaning": "Historical original screen only; no new Windows execution claimed."
+  },
+  "new_build": {
+    "source": "build-ui/serialctl-ui/updater-url-a-404-theme.png",
+    "sha256": "a87640028d59eb3cc45edadd3899771bbfdb68e9bee6f8f0652bb578a1ea139a",
+    "programSourceSha": "42936e8ad3d878824409c5a5dff4cbf4c55bace1",
+    "buildRun": 38854030334,
+    "bounds": [
+      46,
+      662,
+      198,
+      694
+    ],
+    "samples": 608,
+    "matching_dark_enabled": 1.0
+  }
+}

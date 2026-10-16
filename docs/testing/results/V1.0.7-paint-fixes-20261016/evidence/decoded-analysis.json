@@ -1,0 +1,46 @@
+[
+  {
+    "report": "x64-dark-desktop-paint.json",
+    "status": "PASS",
+    "video": "x64-dark-desktop-paint.mkv",
+    "video_sha256": "a673e4cb9c8287d0a88e0d8f4d60a81ec84e7d443d39593f8eccfe312bbf7483",
+    "decoded_frames": 623,
+    "original_pngs_pixel_identical_to_video": 8,
+    "independent_dark_white_patch_frames": [],
+    "method": "FFmpeg RGB24 lossless decode; PNG encoding only; no resizing, recoloring or reconstruction",
+    "limits": "Temporal sampling has recorded gaps; vectorized test only detects the specified large light rectangles; inspect originals visually."
+  },
+  {
+    "report": "x64-dark-sftp-paint.json",
+    "status": "PASS",
+    "video": "x64-dark-sftp-paint.mkv",
+    "video_sha256": "907e8df7e74b060a7ed6a55f753953cd82ae8862f8f6bd50cd0139ad2b3dba8f",
+    "decoded_frames": 622,
+    "original_pngs_pixel_identical_to_video": 8,
+    "independent_dark_white_patch_frames": [],
+    "method": "FFmpeg RGB24 lossless decode; PNG encoding only; no resizing, recoloring or reconstruction",
+    "limits": "Temporal sampling has recorded gaps; vectorized test only detects the specified large light rectangles; inspect originals visually."
+  },
+  {
+    "report": "x64-light-desktop-paint.json",
+    "status": "PASS",
+    "video": "x64-light-desktop-paint.mkv",
+    "video_sha256": "5aeee3e051b5fbba36ddfc58c665b66f40ff06edb2a32e857de193f8ac8bce02",
+    "decoded_frames": 616,
+    "original_pngs_pixel_identical_to_video": 8,
+    "independent_dark_white_patch_frames": [],
+    "method": "FFmpeg RGB24 lossless decode; PNG encoding only; no resizing, recoloring or reconstruction",
+    "limits": "Temporal sampling has recorded gaps; vectorized test only detects the specified large light rectangles; inspect originals visually."
+  },
+  {
+    "report": "x64-light-sftp-paint.json",
+    "status": "PASS",
+    "video": "x64-light-sftp-paint.mkv",
+    "video_sha256": "47206e105a8a21e9670609d442cb05e53e07b5cb927642689b350fbfe14ed07e",
+    "decoded_frames": 615,
+    "original_pngs_pixel_identical_to_video": 8,
+    "independent_dark_white_patch_frames": [],
+    "method": "FFmpeg RGB24 lossless decode; PNG encoding only; no resizing, recoloring or reconstruction",
+    "limits": "Temporal sampling has recorded gaps; vectorized test only detects the specified large light rectangles; inspect originals visually."
+  }
+]

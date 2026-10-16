@@ -1,0 +1,1697 @@
+{
+  "status": "PASS",
+  "mode": "desktop",
+  "prefix": "x64-light",
+  "pid": 7948,
+  "window": 327896,
+  "system": "Windows-2022Server-10.0.20348-SP0",
+  "python": "3.12.10",
+  "started_utc": "2026-10-16T05:18:54.905348+00:00",
+  "input": "SetCursorPos + mouse_event, dispatched by Windows",
+  "capture": "visible desktop GetDC(NULL) + BitBlt; no PrintWindow; hardware cursor excluded",
+  "scope": "production GUI with real CMD stdout",
+  "limitations": [
+    "Captured frames do not prove absence of flicker between frames.",
+    "Measured DPI only; this run does not establish other DPI values or Win7 compatibility.",
+    "Disabled footer state is not exercised by this connected-session case."
+  ],
+  "operations": [],
+  "input_trace": [
+    {
+      "seconds": 0.703925,
+      "utc": "2026-10-16T05:18:55.563632+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 0.7203,
+      "utc": "2026-10-16T05:18:55.579160+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.728496,
+      "utc": "2026-10-16T05:18:55.588759+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 1.42586,
+      "utc": "2026-10-16T05:18:56.286026+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 1.440762,
+      "utc": "2026-10-16T05:18:56.300051+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 1.449131,
+      "utc": "2026-10-16T05:18:56.309239+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.145642,
+      "utc": "2026-10-16T05:18:57.005806+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 2.161034,
+      "utc": "2026-10-16T05:18:57.020343+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.169365,
+      "utc": "2026-10-16T05:18:57.029487+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.882499,
+      "utc": "2026-10-16T05:18:57.742552+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 2.898531,
+      "utc": "2026-10-16T05:18:57.757592+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.906868,
+      "utc": "2026-10-16T05:18:57.766965+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 3.603667,
+      "utc": "2026-10-16T05:18:58.463705+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 3.634124,
+      "utc": "2026-10-16T05:18:58.493415+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 3.642527,
+      "utc": "2026-10-16T05:18:58.502612+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 4.339838,
+      "utc": "2026-10-16T05:18:59.200002+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 4.354825,
+      "utc": "2026-10-16T05:18:59.214027+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 4.363158,
+      "utc": "2026-10-16T05:18:59.223272+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 5.059787,
+      "utc": "2026-10-16T05:18:59.919875+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 5.074769,
+      "utc": "2026-10-16T05:18:59.933999+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 5.08312,
+      "utc": "2026-10-16T05:18:59.943225+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 5.779487,
+      "utc": "2026-10-16T05:19:00.639495+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 5.795172,
+      "utc": "2026-10-16T05:19:00.654521+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 5.803508,
+      "utc": "2026-10-16T05:19:00.663632+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 6.500697,
+      "utc": "2026-10-16T05:19:01.360865+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 6.516443,
+      "utc": "2026-10-16T05:19:01.375391+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 6.524859,
+      "utc": "2026-10-16T05:19:01.384934+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 7.221595,
+      "utc": "2026-10-16T05:19:02.081629+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 7.23761,
+      "utc": "2026-10-16T05:19:02.096523+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 7.246289,
+      "utc": "2026-10-16T05:19:02.106360+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 7.973515,
+      "utc": "2026-10-16T05:19:02.833616+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 7.989622,
+      "utc": "2026-10-16T05:19:02.848643+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 7.997959,
+      "utc": "2026-10-16T05:19:02.858051+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 8.694545,
+      "utc": "2026-10-16T05:19:03.554682+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 8.710199,
+      "utc": "2026-10-16T05:19:03.569213+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 8.718537,
+      "utc": "2026-10-16T05:19:03.578663+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.415827,
+      "utc": "2026-10-16T05:19:04.275998+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 9.430933,
+      "utc": "2026-10-16T05:19:04.290028+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.439268,
+      "utc": "2026-10-16T05:19:04.299377+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 10.136453,
+      "utc": "2026-10-16T05:19:04.996594+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 10.151564,
+      "utc": "2026-10-16T05:19:05.010634+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 10.159914,
+      "utc": "2026-10-16T05:19:05.020022+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 10.856251,
+      "utc": "2026-10-16T05:19:05.716360+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 10.871626,
+      "utc": "2026-10-16T05:19:05.730889+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 10.879977,
+      "utc": "2026-10-16T05:19:05.740078+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.577041,
+      "utc": "2026-10-16T05:19:06.436916+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 11.592316,
+      "utc": "2026-10-16T05:19:06.451452+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.600618,
+      "utc": "2026-10-16T05:19:06.460739+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 12.29702,
+      "utc": "2026-10-16T05:19:07.157088+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 12.312924,
+      "utc": "2026-10-16T05:19:07.172128+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 12.321254,
+      "utc": "2026-10-16T05:19:07.181353+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 13.018383,
+      "utc": "2026-10-16T05:19:07.878476+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 13.048852,
+      "utc": "2026-10-16T05:19:07.908165+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 13.057202,
+      "utc": "2026-10-16T05:19:07.917294+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 13.754524,
+      "utc": "2026-10-16T05:19:08.614680+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 13.769531,
+      "utc": "2026-10-16T05:19:08.628707+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 13.777902,
+      "utc": "2026-10-16T05:19:08.637983+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 14.490303,
+      "utc": "2026-10-16T05:19:09.350402+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 14.505749,
+      "utc": "2026-10-16T05:19:09.364928+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 14.514111,
+      "utc": "2026-10-16T05:19:09.374204+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 14.80167,
+      "utc": "2026-10-16T05:19:09.647339+00:00",
+      "event": "mouse_move",
+      "x": 118,
+      "y": 708
+    },
+    {
+      "seconds": 14.960547,
+      "utc": "2026-10-16T05:19:09.819685+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 15.089729,
+      "utc": "2026-10-16T05:19:09.944960+00:00",
+      "event": "mouse_move",
+      "x": 285,
+      "y": 171
+    },
+    {
+      "seconds": 15.109356,
+      "utc": "2026-10-16T05:19:09.969254+00:00",
+      "event": "left_up"
+    }
+  ],
+  "frames": [
+    {
+      "seconds": 0.092574,
+      "utc": "2026-10-16T05:18:54.952683+00:00",
+      "path": "x64-light-desktop-0000-theme-before-full-desktop.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        0,
+        0,
+        1180,
+        760
+      ],
+      "sidebar_toggle_bounds": [
+        1122,
+        133,
+        1150,
+        161
+      ],
+      "terminal_paint_sample": 100,
+      "terminal_paint_probe": 100,
+      "sha256": "17868465555fbfd3894ff7b900af19ba9b3b1a6c1ad2ecdc8801bcba834a1b89"
+    },
+    {
+      "seconds": 14.717576,
+      "utc": "2026-10-16T05:19:09.569218+00:00",
+      "path": "x64-light-desktop-0001-theme-after-unhovered-full-desktop.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        0,
+        0,
+        1180,
+        760
+      ],
+      "sidebar_toggle_bounds": [
+        1122,
+        133,
+        1150,
+        161
+      ],
+      "terminal_paint_sample": 1011,
+      "terminal_paint_probe": 922,
+      "sha256": "b8b3cefbdcb7ee08788c297126ce8d2c3cf2239a5e9d2a0661c22b2601d8c0b7"
+    }
+  ],
+  "drag_evidence": [],
+  "behavior_failures": [],
+  "dpi": 96,
+  "desktop_bounds": [
+    0,
+    0,
+    1920,
+    1080
+  ],
+  "initial_theme_caption": "深色",
+  "purpose": "#29 theme changes without hovering the affected footer",
+  "color_samples": [
+    {
+      "seconds": 0.745234,
+      "utc": "2026-10-16T05:18:55.605333+00:00",
+      "path": "x64-light-theme-00-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 0.870676,
+      "utc": "2026-10-16T05:18:55.730841+00:00",
+      "path": "x64-light-theme-00-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 1.465628,
+      "utc": "2026-10-16T05:18:56.325822+00:00",
+      "path": "x64-light-theme-01-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 1.59062,
+      "utc": "2026-10-16T05:18:56.450816+00:00",
+      "path": "x64-light-theme-01-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.185857,
+      "utc": "2026-10-16T05:18:57.046061+00:00",
+      "path": "x64-light-theme-02-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.326286,
+      "utc": "2026-10-16T05:18:57.186458+00:00",
+      "path": "x64-light-theme-02-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.92337,
+      "utc": "2026-10-16T05:18:57.783550+00:00",
+      "path": "x64-light-theme-03-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.04885,
+      "utc": "2026-10-16T05:18:57.909039+00:00",
+      "path": "x64-light-theme-03-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.659002,
+      "utc": "2026-10-16T05:18:58.519195+00:00",
+      "path": "x64-light-theme-04-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.784025,
+      "utc": "2026-10-16T05:18:58.644213+00:00",
+      "path": "x64-light-theme-04-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 4.379658,
+      "utc": "2026-10-16T05:18:59.239855+00:00",
+      "path": "x64-light-theme-05-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 4.504667,
+      "utc": "2026-10-16T05:18:59.364839+00:00",
+      "path": "x64-light-theme-05-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.099623,
+      "utc": "2026-10-16T05:18:59.959797+00:00",
+      "path": "x64-light-theme-06-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.224609,
+      "utc": "2026-10-16T05:19:00.084832+00:00",
+      "path": "x64-light-theme-06-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.819994,
+      "utc": "2026-10-16T05:19:00.680198+00:00",
+      "path": "x64-light-theme-07-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.944981,
+      "utc": "2026-10-16T05:19:00.805166+00:00",
+      "path": "x64-light-theme-07-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 6.541323,
+      "utc": "2026-10-16T05:19:01.401510+00:00",
+      "path": "x64-light-theme-08-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 6.665821,
+      "utc": "2026-10-16T05:19:01.525993+00:00",
+      "path": "x64-light-theme-08-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 7.262751,
+      "utc": "2026-10-16T05:19:02.122933+00:00",
+      "path": "x64-light-theme-09-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 7.387291,
+      "utc": "2026-10-16T05:19:02.247417+00:00",
+      "path": "x64-light-theme-09-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.014453,
+      "utc": "2026-10-16T05:19:02.874618+00:00",
+      "path": "x64-light-theme-10-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.139428,
+      "utc": "2026-10-16T05:19:02.999604+00:00",
+      "path": "x64-light-theme-10-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.735051,
+      "utc": "2026-10-16T05:19:03.595232+00:00",
+      "path": "x64-light-theme-11-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.860531,
+      "utc": "2026-10-16T05:19:03.720716+00:00",
+      "path": "x64-light-theme-11-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 9.455763,
+      "utc": "2026-10-16T05:19:04.315954+00:00",
+      "path": "x64-light-theme-12-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 9.580311,
+      "utc": "2026-10-16T05:19:04.440464+00:00",
+      "path": "x64-light-theme-12-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.17641,
+      "utc": "2026-10-16T05:19:05.036600+00:00",
+      "path": "x64-light-theme-13-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.301711,
+      "utc": "2026-10-16T05:19:05.161872+00:00",
+      "path": "x64-light-theme-13-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.896479,
+      "utc": "2026-10-16T05:19:05.756651+00:00",
+      "path": "x64-light-theme-14-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.020999,
+      "utc": "2026-10-16T05:19:05.881134+00:00",
+      "path": "x64-light-theme-14-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.617127,
+      "utc": "2026-10-16T05:19:06.477318+00:00",
+      "path": "x64-light-theme-15-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.742133,
+      "utc": "2026-10-16T05:19:06.602295+00:00",
+      "path": "x64-light-theme-15-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 12.337747,
+      "utc": "2026-10-16T05:19:07.197925+00:00",
+      "path": "x64-light-theme-16-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 12.462251,
+      "utc": "2026-10-16T05:19:07.322422+00:00",
+      "path": "x64-light-theme-16-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.073664,
+      "utc": "2026-10-16T05:19:07.933856+00:00",
+      "path": "x64-light-theme-17-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.198165,
+      "utc": "2026-10-16T05:19:08.058334+00:00",
+      "path": "x64-light-theme-17-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.794389,
+      "utc": "2026-10-16T05:19:08.654555+00:00",
+      "path": "x64-light-theme-18-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.934977,
+      "utc": "2026-10-16T05:19:08.795177+00:00",
+      "path": "x64-light-theme-18-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.530583,
+      "utc": "2026-10-16T05:19:09.390775+00:00",
+      "path": "x64-light-theme-19-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.655587,
+      "utc": "2026-10-16T05:19:09.515757+00:00",
+      "path": "x64-light-theme-19-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.902029,
+      "utc": "2026-10-16T05:19:09.762252+00:00",
+      "path": "x64-light-theme-hover.png",
+      "sha256": "83e54b5441ae47fe6753d34e1c326427a0b8bbe187812fb780b4b63787aeb622",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "hover",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        229,
+        241,
+        255
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 15.0608,
+      "utc": "2026-10-16T05:19:09.921021+00:00",
+      "path": "x64-light-theme-pressed.png",
+      "sha256": "c53e5e120eb889a6cc0faf22edf40b446dc54e93686a2554cecdfdb462223f1c",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "pressed",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        229,
+        241,
+        255
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 15.209822,
+      "utc": "2026-10-16T05:19:10.070033+00:00",
+      "path": "x64-light-theme-cancelled-focused.png",
+      "sha256": "f9b7cd067e9273ed1a989fe34078c26c0014ab0b94feab9c8d8ef9797522a4e7",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    }
+  ],
+  "theme_clicks": [
+    {
+      "seconds": 0.703774,
+      "utc": "2026-10-16T05:18:55.563632+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 1.425786,
+      "utc": "2026-10-16T05:18:56.286026+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 2.14558,
+      "utc": "2026-10-16T05:18:57.005806+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 2.882378,
+      "utc": "2026-10-16T05:18:57.742552+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 3.603536,
+      "utc": "2026-10-16T05:18:58.463705+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 4.33977,
+      "utc": "2026-10-16T05:18:59.200002+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 5.059645,
+      "utc": "2026-10-16T05:18:59.919875+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 5.779323,
+      "utc": "2026-10-16T05:19:00.639495+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 6.500629,
+      "utc": "2026-10-16T05:19:01.360865+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 7.22142,
+      "utc": "2026-10-16T05:19:02.081629+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 7.973441,
+      "utc": "2026-10-16T05:19:02.833616+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 8.694474,
+      "utc": "2026-10-16T05:19:03.554682+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 9.415767,
+      "utc": "2026-10-16T05:19:04.275998+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 10.136384,
+      "utc": "2026-10-16T05:19:04.996594+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 10.856167,
+      "utc": "2026-10-16T05:19:05.716360+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 11.576752,
+      "utc": "2026-10-16T05:19:06.436916+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 12.296921,
+      "utc": "2026-10-16T05:19:07.157088+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 13.018304,
+      "utc": "2026-10-16T05:19:07.878476+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 13.754465,
+      "utc": "2026-10-16T05:19:08.614680+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 14.490212,
+      "utc": "2026-10-16T05:19:09.350402+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    }
+  ],
+  "cancelled_press": {
+    "pressed_state": 108,
+    "outside_state": 104,
+    "native_cancel_wait_ms": 19.239,
+    "outside_point": [
+      285,
+      171
+    ],
+    "outside_hit": 328138,
+    "session_count_before_release": 2
+  },
+  "session_count": [
+    2,
+    2
+  ],
+  "stdout_marker": [
+    100,
+    955
+  ]
+}

@@ -1,0 +1,160 @@
+﻿{
+    "system":  "Microsoft Windows NT 10.0.20348.0",
+    "source":  "42936e8ad3d878824409c5a5dff4cbf4c55bace1",
+    "packageSha256":  "251CD63B17F433CAECB8A83A514BD1CBF28563C10E9945AA880A30794CB2BDA9",
+    "exeSha256":  "C6EED3E671B24312079FE782511F413A8712666BA1EA90DEEE364BDA9C3CEC72",
+    "httpOrigin":  "http://127.0.0.1:53974",
+    "capture":  "Actual desktop CopyFromScreen; system mouse injection and SendInput keyboard; no PrintWindow",
+    "scope":  "Production packaged GUI negative update integration; HTTP layer is a loopback substitute. No production signing key, successful production upgrade, Win7, real intranet server or hardware is tested here.",
+    "noConfigScope":  "No requests to controlled HTTP fixture and no updater staging for missing/empty URL. This is not a machine-wide packet capture.",
+    "cases":  [
+                  {
+                      "name":  "missing",
+                      "result":  "PASS",
+                      "startupMs":  108,
+                      "processId":  6984,
+                      "theme":  {
+                                    "before":  "深色",
+                                    "after":  "浅色",
+                                    "input":  "system mouse injection via mouse_event"
+                                },
+                      "beforeCloseMs":  1020,
+                      "threadsBeforeClose":  7,
+                      "handlesBeforeClose":  216,
+                      "normalCloseMs":  21,
+                      "exitCode":  0,
+                      "immutableFilesUnchanged":  true,
+                      "httpRequests":  [
+
+                                       ]
+                  },
+                  {
+                      "name":  "empty",
+                      "result":  "PASS",
+                      "configuredUrl":  "",
+                      "iniSha256Before":  "53BC293065BBCE7CF3DF8700100A3E7047069E2B96905E189E603CB68B1D7A40",
+                      "startupMs":  60,
+                      "processId":  3012,
+                      "theme":  {
+                                    "before":  "深色",
+                                    "after":  "浅色",
+                                    "input":  "system mouse injection via mouse_event"
+                                },
+                      "beforeCloseMs":  913,
+                      "threadsBeforeClose":  7,
+                      "handlesBeforeClose":  216,
+                      "normalCloseMs":  20,
+                      "exitCode":  0,
+                      "iniSha256After":  "53BC293065BBCE7CF3DF8700100A3E7047069E2B96905E189E603CB68B1D7A40",
+                      "immutableFilesUnchanged":  true,
+                      "httpRequests":  [
+
+                                       ]
+                  },
+                  {
+                      "name":  "url-a-404",
+                      "result":  "PASS",
+                      "configuredUrl":  "http://127.0.0.1:53974/a/update.json",
+                      "iniSha256Before":  "69AF1EBBA7EDC7AACD8348D482B63C48CFCFC38893C8F38F1A1BEA4F1DC929D0",
+                      "startupMs":  66,
+                      "processId":  6132,
+                      "visibleError":  "自动更新失败，继续使用当前版本：Update server must return HTTP 200 without a redirect",
+                      "theme":  {
+                                    "before":  "深色",
+                                    "after":  "浅色",
+                                    "input":  "system mouse injection via mouse_event"
+                                },
+                      "cmdProof":  "SERIALCTL_UPDATE_GUI_url_a_404",
+                      "beforeCloseMs":  501,
+                      "threadsBeforeClose":  12,
+                      "handlesBeforeClose":  289,
+                      "normalCloseMs":  30,
+                      "exitCode":  0,
+                      "iniSha256After":  "69AF1EBBA7EDC7AACD8348D482B63C48CFCFC38893C8F38F1A1BEA4F1DC929D0",
+                      "immutableFilesUnchanged":  true,
+                      "httpRequests":  [
+                                           "2026-10-16T05:11:29.1742953Z GET /a/update.json HTTP/1.1"
+                                       ]
+                  },
+                  {
+                      "name":  "url-b-invalid-signature",
+                      "result":  "PASS",
+                      "configuredUrl":  "http://127.0.0.1:53974/b/update.json",
+                      "iniSha256Before":  "F293CEBC8E8F3976EDC2A28274F6622D7A77EF13C5ACC0A4D1721C65867C6D94",
+                      "startupMs":  68,
+                      "processId":  4528,
+                      "visibleError":  "自动更新失败，继续使用当前版本：Update manifest signature is invalid",
+                      "theme":  {
+                                    "before":  "深色",
+                                    "after":  "浅色",
+                                    "input":  "system mouse injection via mouse_event"
+                                },
+                      "beforeCloseMs":  311,
+                      "threadsBeforeClose":  9,
+                      "handlesBeforeClose":  275,
+                      "normalCloseMs":  22,
+                      "exitCode":  0,
+                      "iniSha256After":  "F293CEBC8E8F3976EDC2A28274F6622D7A77EF13C5ACC0A4D1721C65867C6D94",
+                      "immutableFilesUnchanged":  true,
+                      "httpRequests":  [
+                                           "2026-10-16T05:11:29.7056396Z GET /b/update.json HTTP/1.1",
+                                           "2026-10-16T05:11:29.7212612Z GET /b/update.json.sig HTTP/1.1"
+                                       ]
+                  },
+                  {
+                      "name":  "slowheaders",
+                      "result":  "PASS",
+                      "configuredUrl":  "http://127.0.0.1:53974/slowheaders/update.json",
+                      "iniSha256Before":  "10D779B66CB756E6E999C6E2EEE5FC1590CFF801C17CEF52F67474928E5E183D",
+                      "startupMs":  63,
+                      "processId":  8060,
+                      "theme":  {
+                                    "before":  "深色",
+                                    "after":  "浅色",
+                                    "input":  "system mouse injection via mouse_event"
+                                },
+                      "beforeCloseMs":  294,
+                      "threadsBeforeClose":  10,
+                      "handlesBeforeClose":  282,
+                      "normalCloseMs":  20,
+                      "exitCode":  0,
+                      "iniSha256After":  "10D779B66CB756E6E999C6E2EEE5FC1590CFF801C17CEF52F67474928E5E183D",
+                      "immutableFilesUnchanged":  true,
+                      "httpRequests":  [
+                                           "2026-10-16T05:11:30.0650176Z GET /slowheaders/update.json HTTP/1.1"
+                                       ]
+                  },
+                  {
+                      "name":  "slowbody",
+                      "result":  "PASS",
+                      "configuredUrl":  "http://127.0.0.1:53974/slowbody/update.json",
+                      "iniSha256Before":  "BD68DC81AE0784C820B06CB8564F5F57FBD422A2D66BF54189ECD0AFFDCD984E",
+                      "startupMs":  68,
+                      "processId":  756,
+                      "theme":  {
+                                    "before":  "深色",
+                                    "after":  "浅色",
+                                    "input":  "system mouse injection via mouse_event"
+                                },
+                      "cmdProof":  "SERIALCTL_UPDATE_GUI_slowbody",
+                      "beforeCloseMs":  533,
+                      "threadsBeforeClose":  13,
+                      "handlesBeforeClose":  294,
+                      "normalCloseMs":  49,
+                      "exitCode":  0,
+                      "iniSha256After":  "BD68DC81AE0784C820B06CB8564F5F57FBD422A2D66BF54189ECD0AFFDCD984E",
+                      "immutableFilesUnchanged":  true,
+                      "httpRequests":  [
+                                           "2026-10-16T05:11:30.4092926Z GET /slowbody/update.json HTTP/1.1"
+                                       ]
+                  }
+              ],
+    "result":  "PASS",
+    "httpRequests":  [
+                         "2026-10-16T05:11:29.1742953Z GET /a/update.json HTTP/1.1",
+                         "2026-10-16T05:11:29.7056396Z GET /b/update.json HTTP/1.1",
+                         "2026-10-16T05:11:29.7212612Z GET /b/update.json.sig HTTP/1.1",
+                         "2026-10-16T05:11:30.0650176Z GET /slowheaders/update.json HTTP/1.1",
+                         "2026-10-16T05:11:30.4092926Z GET /slowbody/update.json HTTP/1.1"
+                     ]
+}

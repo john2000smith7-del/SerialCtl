@@ -1,0 +1,42 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261016051817
+Username: runnervmgnbhw\runneradmin
+RunAs User: runnervmgnbhw\runneradmin
+Configuration Name: 
+Machine: runnervmgnbhw (Microsoft Windows NT 10.0.20348.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.EXE -command . 'D:\a\_temp\a333bed1-4f46-4139-835a-562783e4d533.ps1'
+Process ID: 2052
+PSVersion: 5.1.20348.5622
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.20348.5622
+BuildVersion: 10.0.20348.5622
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is D:\a\_temp/serialctl-ui/desktop-interaction-transcript.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[PASS] Executed assertions for packaged startup/shutdown, theme/dialog layout, controlled CMD, panel geometry, drafts, and isolated SFTP UI. See per-case JSON for input method and scope.
+[NOT RUN] Actual Windows 7 hardware and field server tests
+**********************
+Windows PowerShell transcript end
+End time: 20261016052344
+**********************

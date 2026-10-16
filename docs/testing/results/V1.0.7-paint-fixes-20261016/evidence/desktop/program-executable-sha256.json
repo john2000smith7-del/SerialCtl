@@ -1,0 +1,14 @@
+﻿[
+    {
+        "Path":  "D:\\a\\_temp\\serialctl-ui\\payload\\serialctl.exe",
+        "Hash":  "C6EED3E671B24312079FE782511F413A8712666BA1EA90DEEE364BDA9C3CEC72"
+    },
+    {
+        "Path":  "D:\\a\\_temp\\serialctl-ui\\payload\\plink.exe",
+        "Hash":  "FB15BF12B038ABB6174CB073F710EAC55A68A1479769F81C0EE02D03A0C5C246"
+    },
+    {
+        "Path":  "D:\\a\\_temp\\serialctl-ui\\payload\\psftp.exe",
+        "Hash":  "065A5EA3086E54FB65BA9F2E05F4B72D984FC82DDA978DBD1017C9B45EE4FEB8"
+    }
+]

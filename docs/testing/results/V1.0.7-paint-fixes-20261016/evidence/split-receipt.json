@@ -1,0 +1,36 @@
+{
+  "originalArtifact": {
+    "id": 12027425361,
+    "node_id": "MDg6QXJ0aWZhY3QxMjAyNzQyNTM2MQ==",
+    "name": "SerialCtl-actual-desktop-interaction",
+    "size_in_bytes": 580199709,
+    "url": "https://api.github.com/repos/john2000smith7-del/SerialCtl/actions/artifacts/12027425361",
+    "archive_download_url": "https://api.github.com/repos/john2000smith7-del/SerialCtl/actions/artifacts/12027425361/zip",
+    "expired": false,
+    "digest": "sha256:3162ff9a27c05c9ac87758bbc585be5d1b022137907a6d82a7cb18a65d4948a0",
+    "created_at": "2026-10-16T05:24:06Z",
+    "updated_at": "2026-10-16T05:24:06Z",
+    "expires_at": "2026-11-15T05:23:45Z",
+    "workflow_run": {
+      "id": 38855024430,
+      "repository_id": 1409462770,
+      "head_repository_id": 1409462770,
+      "head_branch": "main",
+      "head_sha": "3a4fa759310b133b5ce8031cd4cca4598a63ffe6"
+    }
+  },
+  "originalZipSha256": "3162ff9a27c05c9ac87758bbc585be5d1b022137907a6d82a7cb18a65d4948a0",
+  "parts": [
+    {
+      "name": "original.zip.part-0",
+      "bytes": 314572800,
+      "sha256": "a521fa4993f03eea306c39e8b17059a724ab0fdbc9fd3206c49c6b4c80dc8867"
+    },
+    {
+      "name": "original.zip.part-1",
+      "bytes": 265626909,
+      "sha256": "62f3e52666b0a7c05134885f512f9250d8f0498fb5a18fd10bcc5d5f362a5f69"
+    }
+  ],
+  "method": "Binary split only; concatenate parts 0 then 1 to recover the exact original ZIP"
+}

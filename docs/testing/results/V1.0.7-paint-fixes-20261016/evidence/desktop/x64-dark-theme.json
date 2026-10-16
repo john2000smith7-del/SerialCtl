@@ -1,0 +1,1697 @@
+{
+  "status": "PASS",
+  "mode": "desktop",
+  "prefix": "x64-dark",
+  "pid": 7948,
+  "window": 327896,
+  "system": "Windows-2022Server-10.0.20348-SP0",
+  "python": "3.12.10",
+  "started_utc": "2026-10-16T05:20:32.894442+00:00",
+  "input": "SetCursorPos + mouse_event, dispatched by Windows",
+  "capture": "visible desktop GetDC(NULL) + BitBlt; no PrintWindow; hardware cursor excluded",
+  "scope": "production GUI with real CMD stdout",
+  "limitations": [
+    "Captured frames do not prove absence of flicker between frames.",
+    "Measured DPI only; this run does not establish other DPI values or Win7 compatibility.",
+    "Disabled footer state is not exercised by this connected-session case."
+  ],
+  "operations": [],
+  "input_trace": [
+    {
+      "seconds": 0.705267,
+      "utc": "2026-10-16T05:20:33.554851+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 0.733873,
+      "utc": "2026-10-16T05:20:33.582550+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.742164,
+      "utc": "2026-10-16T05:20:33.591890+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 1.454718,
+      "utc": "2026-10-16T05:20:34.304312+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 1.470427,
+      "utc": "2026-10-16T05:20:34.318843+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 1.478779,
+      "utc": "2026-10-16T05:20:34.328458+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.174942,
+      "utc": "2026-10-16T05:20:35.024628+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 2.190407,
+      "utc": "2026-10-16T05:20:35.039157+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.198745,
+      "utc": "2026-10-16T05:20:35.048425+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.896065,
+      "utc": "2026-10-16T05:20:35.745710+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 2.910805,
+      "utc": "2026-10-16T05:20:35.759739+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.919133,
+      "utc": "2026-10-16T05:20:35.768819+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 3.632616,
+      "utc": "2026-10-16T05:20:36.482203+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 3.663058,
+      "utc": "2026-10-16T05:20:36.511911+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 3.671382,
+      "utc": "2026-10-16T05:20:36.521061+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 4.38356,
+      "utc": "2026-10-16T05:20:37.233227+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 4.399696,
+      "utc": "2026-10-16T05:20:37.248258+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 4.408063,
+      "utc": "2026-10-16T05:20:37.257711+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 5.120787,
+      "utc": "2026-10-16T05:20:37.970488+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 5.135828,
+      "utc": "2026-10-16T05:20:37.984518+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 5.144196,
+      "utc": "2026-10-16T05:20:37.993866+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 5.841565,
+      "utc": "2026-10-16T05:20:38.691233+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 5.856774,
+      "utc": "2026-10-16T05:20:38.705262+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 5.865136,
+      "utc": "2026-10-16T05:20:38.714808+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 6.562085,
+      "utc": "2026-10-16T05:20:39.411774+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 6.593322,
+      "utc": "2026-10-16T05:20:39.441984+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 6.601689,
+      "utc": "2026-10-16T05:20:39.451344+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 7.298641,
+      "utc": "2026-10-16T05:20:40.148285+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 7.315411,
+      "utc": "2026-10-16T05:20:40.163949+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 7.323774,
+      "utc": "2026-10-16T05:20:40.173445+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 8.020944,
+      "utc": "2026-10-16T05:20:40.870565+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 8.035932,
+      "utc": "2026-10-16T05:20:40.884590+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 8.044279,
+      "utc": "2026-10-16T05:20:40.893935+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 8.741369,
+      "utc": "2026-10-16T05:20:41.590999+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 8.756205,
+      "utc": "2026-10-16T05:20:41.605128+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 8.764551,
+      "utc": "2026-10-16T05:20:41.614204+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.461405,
+      "utc": "2026-10-16T05:20:42.311126+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 9.477672,
+      "utc": "2026-10-16T05:20:42.326152+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.486022,
+      "utc": "2026-10-16T05:20:42.335679+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 10.182601,
+      "utc": "2026-10-16T05:20:43.032258+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 10.19866,
+      "utc": "2026-10-16T05:20:43.047284+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 10.207034,
+      "utc": "2026-10-16T05:20:43.056687+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 10.90431,
+      "utc": "2026-10-16T05:20:43.753988+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 10.91927,
+      "utc": "2026-10-16T05:20:43.768025+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 10.927621,
+      "utc": "2026-10-16T05:20:43.777265+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.624424,
+      "utc": "2026-10-16T05:20:44.473965+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 11.639948,
+      "utc": "2026-10-16T05:20:44.488491+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.648285,
+      "utc": "2026-10-16T05:20:44.497949+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 12.345119,
+      "utc": "2026-10-16T05:20:45.194443+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 12.361312,
+      "utc": "2026-10-16T05:20:45.209977+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 12.369693,
+      "utc": "2026-10-16T05:20:45.219360+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 13.066318,
+      "utc": "2026-10-16T05:20:45.915913+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 13.081776,
+      "utc": "2026-10-16T05:20:45.930447+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 13.090107,
+      "utc": "2026-10-16T05:20:45.939780+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 13.787308,
+      "utc": "2026-10-16T05:20:46.636914+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 13.802726,
+      "utc": "2026-10-16T05:20:46.651441+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 13.811054,
+      "utc": "2026-10-16T05:20:46.660726+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 14.508323,
+      "utc": "2026-10-16T05:20:47.357863+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 14.52359,
+      "utc": "2026-10-16T05:20:47.372404+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 14.531909,
+      "utc": "2026-10-16T05:20:47.381580+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 14.838377,
+      "utc": "2026-10-16T05:20:47.686437+00:00",
+      "event": "mouse_move",
+      "x": 118,
+      "y": 708
+    },
+    {
+      "seconds": 14.994269,
+      "utc": "2026-10-16T05:20:47.843175+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 15.124337,
+      "utc": "2026-10-16T05:20:47.968676+00:00",
+      "event": "mouse_move",
+      "x": 285,
+      "y": 171
+    },
+    {
+      "seconds": 15.143887,
+      "utc": "2026-10-16T05:20:47.988227+00:00",
+      "event": "left_up"
+    }
+  ],
+  "frames": [
+    {
+      "seconds": 0.092179,
+      "utc": "2026-10-16T05:20:32.941310+00:00",
+      "path": "x64-dark-desktop-0000-theme-before-full-desktop.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        0,
+        0,
+        1180,
+        760
+      ],
+      "sidebar_toggle_bounds": [
+        1122,
+        133,
+        1150,
+        161
+      ],
+      "terminal_paint_sample": 4959,
+      "terminal_paint_probe": 100,
+      "sha256": "dac4e81a611b125c4201b5e828ce883fc5493c86c825762e8f24d02c9f4e4d0a"
+    },
+    {
+      "seconds": 14.751184,
+      "utc": "2026-10-16T05:20:47.592213+00:00",
+      "path": "x64-dark-desktop-0001-theme-after-unhovered-full-desktop.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        0,
+        0,
+        1180,
+        760
+      ],
+      "sidebar_toggle_bounds": [
+        1122,
+        133,
+        1150,
+        161
+      ],
+      "terminal_paint_sample": 5876,
+      "terminal_paint_probe": 927,
+      "sha256": "23e5055527e2d1bc8485b515a372fa42b56e777e1817431b5c153c64c4359673"
+    }
+  ],
+  "drag_evidence": [],
+  "behavior_failures": [],
+  "dpi": 96,
+  "desktop_bounds": [
+    0,
+    0,
+    1920,
+    1080
+  ],
+  "initial_theme_caption": "浅色",
+  "purpose": "#29 theme changes without hovering the affected footer",
+  "color_samples": [
+    {
+      "seconds": 0.758675,
+      "utc": "2026-10-16T05:20:33.608456+00:00",
+      "path": "x64-dark-theme-00-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 0.884293,
+      "utc": "2026-10-16T05:20:33.733923+00:00",
+      "path": "x64-dark-theme-00-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 1.495258,
+      "utc": "2026-10-16T05:20:34.345023+00:00",
+      "path": "x64-dark-theme-01-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 1.619775,
+      "utc": "2026-10-16T05:20:34.469490+00:00",
+      "path": "x64-dark-theme-01-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.215315,
+      "utc": "2026-10-16T05:20:35.065000+00:00",
+      "path": "x64-dark-theme-02-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.340994,
+      "utc": "2026-10-16T05:20:35.190729+00:00",
+      "path": "x64-dark-theme-02-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.935619,
+      "utc": "2026-10-16T05:20:35.785389+00:00",
+      "path": "x64-dark-theme-03-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.061162,
+      "utc": "2026-10-16T05:20:35.910862+00:00",
+      "path": "x64-dark-theme-03-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.687878,
+      "utc": "2026-10-16T05:20:36.537624+00:00",
+      "path": "x64-dark-theme-04-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.812968,
+      "utc": "2026-10-16T05:20:36.662613+00:00",
+      "path": "x64-dark-theme-04-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 4.424555,
+      "utc": "2026-10-16T05:20:37.274292+00:00",
+      "path": "x64-dark-theme-05-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 4.549614,
+      "utc": "2026-10-16T05:20:37.399297+00:00",
+      "path": "x64-dark-theme-05-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.160728,
+      "utc": "2026-10-16T05:20:38.010434+00:00",
+      "path": "x64-dark-theme-06-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.285759,
+      "utc": "2026-10-16T05:20:38.135508+00:00",
+      "path": "x64-dark-theme-06-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.881676,
+      "utc": "2026-10-16T05:20:38.731380+00:00",
+      "path": "x64-dark-theme-07-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 6.007113,
+      "utc": "2026-10-16T05:20:38.856874+00:00",
+      "path": "x64-dark-theme-07-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 6.618171,
+      "utc": "2026-10-16T05:20:39.467918+00:00",
+      "path": "x64-dark-theme-08-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 6.743705,
+      "utc": "2026-10-16T05:20:39.593400+00:00",
+      "path": "x64-dark-theme-08-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 7.340266,
+      "utc": "2026-10-16T05:20:40.190016+00:00",
+      "path": "x64-dark-theme-09-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 7.46527,
+      "utc": "2026-10-16T05:20:40.314991+00:00",
+      "path": "x64-dark-theme-09-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.060752,
+      "utc": "2026-10-16T05:20:40.910506+00:00",
+      "path": "x64-dark-theme-10-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.186267,
+      "utc": "2026-10-16T05:20:41.036009+00:00",
+      "path": "x64-dark-theme-10-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.781057,
+      "utc": "2026-10-16T05:20:41.630791+00:00",
+      "path": "x64-dark-theme-11-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.906559,
+      "utc": "2026-10-16T05:20:41.756296+00:00",
+      "path": "x64-dark-theme-11-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 9.502505,
+      "utc": "2026-10-16T05:20:42.352255+00:00",
+      "path": "x64-dark-theme-12-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 9.627517,
+      "utc": "2026-10-16T05:20:42.477238+00:00",
+      "path": "x64-dark-theme-12-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.223523,
+      "utc": "2026-10-16T05:20:43.073253+00:00",
+      "path": "x64-dark-theme-13-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.348851,
+      "utc": "2026-10-16T05:20:43.198584+00:00",
+      "path": "x64-dark-theme-13-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.944095,
+      "utc": "2026-10-16T05:20:43.793850+00:00",
+      "path": "x64-dark-theme-14-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.069108,
+      "utc": "2026-10-16T05:20:43.918844+00:00",
+      "path": "x64-dark-theme-14-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.664811,
+      "utc": "2026-10-16T05:20:44.514537+00:00",
+      "path": "x64-dark-theme-15-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.789811,
+      "utc": "2026-10-16T05:20:44.639546+00:00",
+      "path": "x64-dark-theme-15-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 12.386196,
+      "utc": "2026-10-16T05:20:45.235932+00:00",
+      "path": "x64-dark-theme-16-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 12.511174,
+      "utc": "2026-10-16T05:20:45.360912+00:00",
+      "path": "x64-dark-theme-16-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.106759,
+      "utc": "2026-10-16T05:20:45.956355+00:00",
+      "path": "x64-dark-theme-17-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.23164,
+      "utc": "2026-10-16T05:20:46.081359+00:00",
+      "path": "x64-dark-theme-17-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.827553,
+      "utc": "2026-10-16T05:20:46.677286+00:00",
+      "path": "x64-dark-theme-18-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.952566,
+      "utc": "2026-10-16T05:20:46.802276+00:00",
+      "path": "x64-dark-theme-18-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.548423,
+      "utc": "2026-10-16T05:20:47.398154+00:00",
+      "path": "x64-dark-theme-19-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.673415,
+      "utc": "2026-10-16T05:20:47.523139+00:00",
+      "path": "x64-dark-theme-19-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.938982,
+      "utc": "2026-10-16T05:20:47.788728+00:00",
+      "path": "x64-dark-theme-hover.png",
+      "sha256": "c02738f705f8446b82afb22f14d1e923916379492aa1291ff84d7b92467bcc91",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "hover",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        31,
+        55,
+        80
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 15.094718,
+      "utc": "2026-10-16T05:20:47.944455+00:00",
+      "path": "x64-dark-theme-pressed.png",
+      "sha256": "12e3cb060a670b7ef6cdbba61f2aa090f8bd907ac9267d5e6711fcf8a8c59be0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "pressed",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        31,
+        55,
+        80
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 15.24422,
+      "utc": "2026-10-16T05:20:48.093954+00:00",
+      "path": "x64-dark-theme-cancelled-focused.png",
+      "sha256": "8060aff2f5d635f886dee5c43d1a6525f67284dc51c9d00d13f4f801df15418c",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    }
+  ],
+  "theme_clicks": [
+    {
+      "seconds": 0.705139,
+      "utc": "2026-10-16T05:20:33.554851+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 1.454557,
+      "utc": "2026-10-16T05:20:34.304312+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 2.174865,
+      "utc": "2026-10-16T05:20:35.024628+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 2.895958,
+      "utc": "2026-10-16T05:20:35.745710+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 3.632496,
+      "utc": "2026-10-16T05:20:36.482203+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 4.383463,
+      "utc": "2026-10-16T05:20:37.233227+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 5.120709,
+      "utc": "2026-10-16T05:20:37.970488+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 5.841482,
+      "utc": "2026-10-16T05:20:38.691233+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 6.561987,
+      "utc": "2026-10-16T05:20:39.411774+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 7.298531,
+      "utc": "2026-10-16T05:20:40.148285+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 8.020793,
+      "utc": "2026-10-16T05:20:40.870565+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 8.741217,
+      "utc": "2026-10-16T05:20:41.590999+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 9.461337,
+      "utc": "2026-10-16T05:20:42.311126+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 10.182462,
+      "utc": "2026-10-16T05:20:43.032258+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 10.904247,
+      "utc": "2026-10-16T05:20:43.753988+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 11.624256,
+      "utc": "2026-10-16T05:20:44.473965+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 12.34502,
+      "utc": "2026-10-16T05:20:45.194443+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 13.066174,
+      "utc": "2026-10-16T05:20:45.915913+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 13.787175,
+      "utc": "2026-10-16T05:20:46.636914+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 14.508185,
+      "utc": "2026-10-16T05:20:47.357863+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    }
+  ],
+  "cancelled_press": {
+    "pressed_state": 108,
+    "outside_state": 104,
+    "native_cancel_wait_ms": 15.764,
+    "outside_point": [
+      285,
+      171
+    ],
+    "outside_hit": 328138,
+    "session_count_before_release": 3
+  },
+  "session_count": [
+    3,
+    3
+  ],
+  "stdout_marker": [
+    100,
+    961
+  ]
+}

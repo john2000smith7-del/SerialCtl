@@ -1,0 +1,1935 @@
+[
+  {
+    "report": "x64-dark-desktop-paint.json",
+    "files": [
+      {
+        "path": "x64-dark-desktop-paint-decoded-00005.png",
+        "sha256": "9ad7802d9d4a73e27be4e27129fda590b36130f99bddd479651462826e7cc2e2",
+        "encoded_index": 5,
+        "original_sample_index": 5,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-000",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 0.41380500000000003,
+            "actual_seconds": 0.431918,
+            "difference_ms": 18.113
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00069.png",
+        "sha256": "be9382607e99e9a9473750941d0078625e36cd2e30ce0f3f09975f06e91da1fc",
+        "encoded_index": 69,
+        "original_sample_index": 69,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-024",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 2.952505,
+            "actual_seconds": 2.954118,
+            "difference_ms": 1.613
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00134.png",
+        "sha256": "87f33315d2ae548d8e5e4b83df71af4f48d3ed5a67cf05da4d923904f95fcaaa",
+        "encoded_index": 134,
+        "original_sample_index": 134,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-049",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 5.555093,
+            "actual_seconds": 5.556498,
+            "difference_ms": 1.405
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00204.png",
+        "sha256": "1f1984ce8fcf765f0c75eb05fec2b3f0405dba661ac36522c3c56f1ac5142bb0",
+        "encoded_index": 204,
+        "original_sample_index": 204,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-074",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 8.252896,
+            "actual_seconds": 8.253453,
+            "difference_ms": 0.557
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00274.png",
+        "sha256": "0344cefb893aedbb20f85a315e56d69acc4987c194c559028831d9deaac474d7",
+        "encoded_index": 274,
+        "original_sample_index": 274,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-099",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 11.029256,
+            "actual_seconds": 11.027565,
+            "difference_ms": -1.691
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00295.png",
+        "sha256": "d3e5af6368f45bc7882ed9105b3809aa534f73d17172388b66038299dcb7eed5",
+        "encoded_index": 295,
+        "original_sample_index": 295,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.856398,
+            "actual_seconds": 11.875151,
+            "difference_ms": 18.753
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00296.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 296,
+        "original_sample_index": 296,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.936398,
+            "actual_seconds": 11.921814,
+            "difference_ms": -14.584
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00297.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 297,
+        "original_sample_index": 297,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.996398000000001,
+            "actual_seconds": 11.984513,
+            "difference_ms": -11.885
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00298.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 298,
+        "original_sample_index": 298,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 12.016398,
+            "actual_seconds": 12.015678,
+            "difference_ms": -0.72
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00299.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 299,
+        "original_sample_index": 299,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 12.036398,
+            "actual_seconds": 12.046983,
+            "difference_ms": 10.585
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 12.056398000000002,
+            "actual_seconds": 12.046983,
+            "difference_ms": -9.415
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00300.png",
+        "sha256": "7a9a4e8b0c19b2f2dacf23bc0a983383ef2a51298bbd8c62c3698cf7dda01fef",
+        "encoded_index": 300,
+        "original_sample_index": 300,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 12.076398000000001,
+            "actual_seconds": 12.09386,
+            "difference_ms": 17.462
+          }
+        ],
+        "independent_observation": "已进入下一次收起，内容隐藏；背景干净，折叠箭头单一。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00449.png",
+        "sha256": "d3e5af6368f45bc7882ed9105b3809aa534f73d17172388b66038299dcb7eed5",
+        "encoded_index": 449,
+        "original_sample_index": 449,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 18.347424,
+            "actual_seconds": 18.378238,
+            "difference_ms": 30.814
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00450.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 450,
+        "original_sample_index": 450,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.427424,
+            "actual_seconds": 18.440813,
+            "difference_ms": 13.389
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00451.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 451,
+        "original_sample_index": 451,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.487423999999997,
+            "actual_seconds": 18.487704,
+            "difference_ms": 0.28
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00452.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 452,
+        "original_sample_index": 452,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.507424,
+            "actual_seconds": 18.518951,
+            "difference_ms": 11.527
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.527424,
+            "actual_seconds": 18.518951,
+            "difference_ms": -8.473
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00453.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 453,
+        "original_sample_index": 453,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.547424,
+            "actual_seconds": 18.550124,
+            "difference_ms": 2.7
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.567424,
+            "actual_seconds": 18.550124,
+            "difference_ms": -17.3
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00615.png",
+        "sha256": "d3e5af6368f45bc7882ed9105b3809aa534f73d17172388b66038299dcb7eed5",
+        "encoded_index": 615,
+        "original_sample_index": 615,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 25.583528,
+            "actual_seconds": 25.603005,
+            "difference_ms": 19.477
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00616.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 616,
+        "original_sample_index": 616,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 25.663528,
+            "actual_seconds": 25.649711,
+            "difference_ms": -13.817
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00617.png",
+        "sha256": "d604a3ffed9b016313c2e887654a465dad95b8535c96f2355e8db3874db3744a",
+        "encoded_index": 617,
+        "original_sample_index": 617,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.723527999999998,
+            "actual_seconds": 25.712591,
+            "difference_ms": -10.937
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00618.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 618,
+        "original_sample_index": 618,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.743528,
+            "actual_seconds": 25.743864,
+            "difference_ms": 0.336
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.763528,
+            "actual_seconds": 25.743864,
+            "difference_ms": -19.664
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00619.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 619,
+        "original_sample_index": 619,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.783528,
+            "actual_seconds": 25.790603,
+            "difference_ms": 7.075
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.803528,
+            "actual_seconds": 25.790603,
+            "difference_ms": -12.925
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      }
+    ]
+  },
+  {
+    "report": "x64-dark-sftp-paint.json",
+    "files": [
+      {
+        "path": "x64-dark-sftp-paint-decoded-00006.png",
+        "sha256": "5d3b82ed662296236fbea3ce7ee7419204ee4c9eb7941fdb683fda498ff0797e",
+        "encoded_index": 6,
+        "original_sample_index": 6,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-000",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 0.36543200000000003,
+            "actual_seconds": 0.383921,
+            "difference_ms": 18.489
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00071.png",
+        "sha256": "b259682621e13c823a1bf14652f416df0790cabe8ae2ed6f30df5884ebea59d0",
+        "encoded_index": 71,
+        "original_sample_index": 71,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-024",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 2.84228,
+            "actual_seconds": 2.844664,
+            "difference_ms": 2.384
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00143.png",
+        "sha256": "2a3a88f005aeb777f850cdd40f0681eea0e06790c31f9127f596ab77055a7ed1",
+        "encoded_index": 143,
+        "original_sample_index": 143,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-049",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 5.604555,
+            "actual_seconds": 5.606497,
+            "difference_ms": 1.942
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00216.png",
+        "sha256": "b3625b77f134062997de00f22e3ae0144207a69edbac1b511066c81a5f4f706f",
+        "encoded_index": 216,
+        "original_sample_index": 216,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-074",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 8.38472,
+            "actual_seconds": 8.385913,
+            "difference_ms": 1.193
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00288.png",
+        "sha256": "33d268f553e99f52f3b8d8c6c38c30288fe027179b5a8859e247c41a589000e1",
+        "encoded_index": 288,
+        "original_sample_index": 288,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-099",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 11.159693,
+            "actual_seconds": 11.16188,
+            "difference_ms": 2.187
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00308.png",
+        "sha256": "f7a49be3ef471b3d808071394a47ab5d1baec3ed01141991a800f0b245e722c1",
+        "encoded_index": 308,
+        "original_sample_index": 308,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 12.005322999999999,
+            "actual_seconds": 11.993276,
+            "difference_ms": -12.047
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00310.png",
+        "sha256": "9c807493a54924e08b91d381da39d805689eb35d1050628b483155588e0631aa",
+        "encoded_index": 310,
+        "original_sample_index": 310,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 12.085322999999999,
+            "actual_seconds": 12.087071,
+            "difference_ms": 1.748
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00311.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 311,
+        "original_sample_index": 311,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 12.145323,
+            "actual_seconds": 12.134006,
+            "difference_ms": -11.317
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00312.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 312,
+        "original_sample_index": 312,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 12.165322999999999,
+            "actual_seconds": 12.180708,
+            "difference_ms": 15.385
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 12.185322999999999,
+            "actual_seconds": 12.180708,
+            "difference_ms": -4.615
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00313.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 313,
+        "original_sample_index": 313,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 12.205323,
+            "actual_seconds": 12.212067,
+            "difference_ms": 6.744
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 12.225323,
+            "actual_seconds": 12.212067,
+            "difference_ms": -13.256
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00454.png",
+        "sha256": "f7a49be3ef471b3d808071394a47ab5d1baec3ed01141991a800f0b245e722c1",
+        "encoded_index": 454,
+        "original_sample_index": 454,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 18.381517000000002,
+            "actual_seconds": 18.355868,
+            "difference_ms": -25.649
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00456.png",
+        "sha256": "f17162015276bc38b091dfa088435f5ef1667bd28fd575e713daefbdf1f67fc5",
+        "encoded_index": 456,
+        "original_sample_index": 456,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.461517,
+            "actual_seconds": 18.449644,
+            "difference_ms": -11.873
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00457.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 457,
+        "original_sample_index": 457,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.521517,
+            "actual_seconds": 18.496765,
+            "difference_ms": -24.752
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00458.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 458,
+        "original_sample_index": 458,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.541517000000002,
+            "actual_seconds": 18.559356,
+            "difference_ms": 17.839
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.561517000000002,
+            "actual_seconds": 18.559356,
+            "difference_ms": -2.161
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00459.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 459,
+        "original_sample_index": 459,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.581517,
+            "actual_seconds": 18.590478,
+            "difference_ms": 8.961
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.601517,
+            "actual_seconds": 18.590478,
+            "difference_ms": -11.039
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00615.png",
+        "sha256": "f7a49be3ef471b3d808071394a47ab5d1baec3ed01141991a800f0b245e722c1",
+        "encoded_index": 615,
+        "original_sample_index": 615,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 25.419283,
+            "actual_seconds": 25.407834,
+            "difference_ms": -11.449
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00617.png",
+        "sha256": "9c807493a54924e08b91d381da39d805689eb35d1050628b483155588e0631aa",
+        "encoded_index": 617,
+        "original_sample_index": 617,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 25.499283,
+            "actual_seconds": 25.502011,
+            "difference_ms": 2.728
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00618.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 618,
+        "original_sample_index": 618,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.559282999999997,
+            "actual_seconds": 25.54873,
+            "difference_ms": -10.553
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00619.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 619,
+        "original_sample_index": 619,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.579283,
+            "actual_seconds": 25.595827,
+            "difference_ms": 16.544
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.599283,
+            "actual_seconds": 25.595827,
+            "difference_ms": -3.456
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.619283,
+            "actual_seconds": 25.595827,
+            "difference_ms": -23.456
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00620.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 620,
+        "original_sample_index": 620,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.639283,
+            "actual_seconds": 25.658025,
+            "difference_ms": 18.742
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      }
+    ]
+  },
+  {
+    "report": "x64-light-desktop-paint.json",
+    "files": [
+      {
+        "path": "x64-light-desktop-paint-decoded-00006.png",
+        "sha256": "1159c7973e2aad3b9be1cb68fd594b1763280cf7979ffd284c10726bb8c11136",
+        "encoded_index": 6,
+        "original_sample_index": 6,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-000",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 0.368636,
+            "actual_seconds": 0.37547,
+            "difference_ms": 6.834
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00076.png",
+        "sha256": "0ed32247172b611b281cb51d910ef2fac167984a1240c78273d7211e27cf03b7",
+        "encoded_index": 76,
+        "original_sample_index": 76,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-024",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 2.998416,
+            "actual_seconds": 3.004113,
+            "difference_ms": 5.697
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00149.png",
+        "sha256": "4bed3ae279f99370125e77af8717d49964863276a95262c57683ee063d24c907",
+        "encoded_index": 149,
+        "original_sample_index": 149,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-049",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 5.612932,
+            "actual_seconds": 5.618896,
+            "difference_ms": 5.964
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00221.png",
+        "sha256": "e6ad318d301a27fcd23094df96e1ce107e946ca72c26293a29b1b66781812985",
+        "encoded_index": 221,
+        "original_sample_index": 221,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-074",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 8.304524,
+            "actual_seconds": 8.278818,
+            "difference_ms": -25.706
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00292.png",
+        "sha256": "59388f738c48328da5ab586b4962878309fb7150afc6883eb19eab6efcf7d913",
+        "encoded_index": 292,
+        "original_sample_index": 292,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-099",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 10.948726,
+            "actual_seconds": 10.955033,
+            "difference_ms": 6.307
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00312.png",
+        "sha256": "80f33319e2077e562ecad4ae02c5a59d6feae78b0612bc155249f1fca309890e",
+        "encoded_index": 312,
+        "original_sample_index": 312,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.774564999999999,
+            "actual_seconds": 11.787231,
+            "difference_ms": 12.666
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00314.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 314,
+        "original_sample_index": 314,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.854565,
+            "actual_seconds": 11.865455,
+            "difference_ms": 10.89
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00315.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 315,
+        "original_sample_index": 315,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.914565,
+            "actual_seconds": 11.927897,
+            "difference_ms": 13.332
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 11.934565,
+            "actual_seconds": 11.927897,
+            "difference_ms": -6.668
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00316.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 316,
+        "original_sample_index": 316,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 11.954564999999999,
+            "actual_seconds": 11.974849,
+            "difference_ms": 20.284
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 11.974565,
+            "actual_seconds": 11.974849,
+            "difference_ms": 0.284
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 11.994565,
+            "actual_seconds": 11.974849,
+            "difference_ms": -19.716
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00450.png",
+        "sha256": "7ba28fee0e5ca77444f55bd1fd1fd67166147281bed46627ba275a4be5e23f7f",
+        "encoded_index": 450,
+        "original_sample_index": 450,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 18.085857,
+            "actual_seconds": 18.054783,
+            "difference_ms": -31.074
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00452.png",
+        "sha256": "ac00f8bb9bbb20a3ece05769fbf18f0eff7211715c2027aa5025a0a47761c88b",
+        "encoded_index": 452,
+        "original_sample_index": 452,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.165857,
+            "actual_seconds": 18.164093,
+            "difference_ms": -1.764
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00454.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 454,
+        "original_sample_index": 454,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.225856999999998,
+            "actual_seconds": 18.241868,
+            "difference_ms": 16.011
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.245857,
+            "actual_seconds": 18.241868,
+            "difference_ms": -3.989
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00455.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 455,
+        "original_sample_index": 455,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.265857,
+            "actual_seconds": 18.289153,
+            "difference_ms": 23.296
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.285857,
+            "actual_seconds": 18.289153,
+            "difference_ms": 3.296
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00456.png",
+        "sha256": "d5fdd7f8c6490b7f1d93f3492c3b9559639e95f985f6f265e0cd994511e37eaa",
+        "encoded_index": 456,
+        "original_sample_index": 456,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.305857,
+            "actual_seconds": 18.320449,
+            "difference_ms": 14.592
+          }
+        ],
+        "independent_observation": "已进入下一次收起，内容隐藏；背景干净，折叠箭头单一。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00608.png",
+        "sha256": "797e59228faa74bd66792921d7d46dc8c3b764ec98c5f2b1a574a96d9eb42c3e",
+        "encoded_index": 608,
+        "original_sample_index": 608,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 25.092357,
+            "actual_seconds": 25.103962,
+            "difference_ms": 11.605
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00609.png",
+        "sha256": "ac00f8bb9bbb20a3ece05769fbf18f0eff7211715c2027aa5025a0a47761c88b",
+        "encoded_index": 609,
+        "original_sample_index": 609,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 25.172356999999998,
+            "actual_seconds": 25.16674,
+            "difference_ms": -5.617
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00610.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 610,
+        "original_sample_index": 610,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.232356999999997,
+            "actual_seconds": 25.213983,
+            "difference_ms": -18.374
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00611.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 611,
+        "original_sample_index": 611,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.252357,
+            "actual_seconds": 25.260128,
+            "difference_ms": 7.771
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.272357,
+            "actual_seconds": 25.260128,
+            "difference_ms": -12.229
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00612.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 612,
+        "original_sample_index": 612,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.292357,
+            "actual_seconds": 25.29171,
+            "difference_ms": -0.647
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.312357,
+            "actual_seconds": 25.29171,
+            "difference_ms": -20.647
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      }
+    ]
+  },
+  {
+    "report": "x64-light-sftp-paint.json",
+    "files": [
+      {
+        "path": "x64-light-sftp-paint-decoded-00006.png",
+        "sha256": "d728f4d400d4c38da9b0b1e0de69cc60744d708a8a1c91eaf6a90cd2505a7b3b",
+        "encoded_index": 6,
+        "original_sample_index": 6,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-000",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 0.35996100000000003,
+            "actual_seconds": 0.366297,
+            "difference_ms": 6.336
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00075.png",
+        "sha256": "8b2cfbe0faadc3a096ba162eef62b06ee97f2ace3af9415378ef0176b45ab433",
+        "encoded_index": 75,
+        "original_sample_index": 75,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-024",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 2.989171,
+            "actual_seconds": 2.994774,
+            "difference_ms": 5.603
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00145.png",
+        "sha256": "d97caf3606e821c91281d7a880da6a4a4cde43924e98238a588bbbd5f608d73b",
+        "encoded_index": 145,
+        "original_sample_index": 145,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-049",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 5.603376,
+            "actual_seconds": 5.609726,
+            "difference_ms": 6.35
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00215.png",
+        "sha256": "f6f1c396048b1165943ec24f205b4b6acd529f67d65a2ee5efc8894b08ab51a6",
+        "encoded_index": 215,
+        "original_sample_index": 215,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-074",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 8.20138,
+            "actual_seconds": 8.207548,
+            "difference_ms": 6.168
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00286.png",
+        "sha256": "d8e34e23913228cb741b979541f78c4a2d1068aa19d8a84cfc1710d054e1874d",
+        "encoded_index": 286,
+        "original_sample_index": 286,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-099",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 10.87717,
+            "actual_seconds": 10.883107,
+            "difference_ms": 5.937
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00306.png",
+        "sha256": "eaeb1884884cce381103eaa42c210ca76a48d746f3433f94eec62e7104e9de5c",
+        "encoded_index": 306,
+        "original_sample_index": 306,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.696977,
+            "actual_seconds": 11.713011,
+            "difference_ms": 16.034
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00307.png",
+        "sha256": "891f7dc11429a5aa7dafcb12dabaa54f4dfd7f5eb753dd31bf9d1b7fa857e7aa",
+        "encoded_index": 307,
+        "original_sample_index": 307,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.776977,
+            "actual_seconds": 11.776002,
+            "difference_ms": -0.975
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00309.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 309,
+        "original_sample_index": 309,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.836977000000001,
+            "actual_seconds": 11.854004,
+            "difference_ms": 17.027
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 11.856977,
+            "actual_seconds": 11.854004,
+            "difference_ms": -2.973
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 11.876977,
+            "actual_seconds": 11.854004,
+            "difference_ms": -22.973
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00310.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 310,
+        "original_sample_index": 310,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 11.896977000000001,
+            "actual_seconds": 11.90054,
+            "difference_ms": 3.563
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00311.png",
+        "sha256": "90981d8b3417e21bfa8de100c023a508dbc0bb1e069eec5d4acf17e0577c24b0",
+        "encoded_index": 311,
+        "original_sample_index": 311,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 11.916977000000001,
+            "actual_seconds": 11.93196,
+            "difference_ms": 14.983
+          }
+        ],
+        "independent_observation": "已进入下一次收起，内容隐藏；背景干净，折叠箭头单一。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00449.png",
+        "sha256": "c99ef4202c4b0a0b6e3763a1b328357df6e537e944804cc0bef4d962e43cd158",
+        "encoded_index": 449,
+        "original_sample_index": 449,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 17.96271,
+            "actual_seconds": 17.97896,
+            "difference_ms": 16.25
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00450.png",
+        "sha256": "03a0d59f780818e27a663668457cd55a4d7c4fdaffe71fa80bf92a9745d39fbb",
+        "encoded_index": 450,
+        "original_sample_index": 450,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.04271,
+            "actual_seconds": 18.026004,
+            "difference_ms": -16.706
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00452.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 452,
+        "original_sample_index": 452,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.10271,
+            "actual_seconds": 18.119612,
+            "difference_ms": 16.902
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.12271,
+            "actual_seconds": 18.119612,
+            "difference_ms": -3.098
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.14271,
+            "actual_seconds": 18.119612,
+            "difference_ms": -23.098
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00453.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 453,
+        "original_sample_index": 453,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.16271,
+            "actual_seconds": 18.166419,
+            "difference_ms": 3.709
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00454.png",
+        "sha256": "90981d8b3417e21bfa8de100c023a508dbc0bb1e069eec5d4acf17e0577c24b0",
+        "encoded_index": 454,
+        "original_sample_index": 454,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.18271,
+            "actual_seconds": 18.182163,
+            "difference_ms": -0.547
+          }
+        ],
+        "independent_observation": "已进入下一次收起，内容隐藏；背景干净，折叠箭头单一。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00608.png",
+        "sha256": "eaeb1884884cce381103eaa42c210ca76a48d746f3433f94eec62e7104e9de5c",
+        "encoded_index": 608,
+        "original_sample_index": 608,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 24.885645,
+            "actual_seconds": 24.901879,
+            "difference_ms": 16.234
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00609.png",
+        "sha256": "891f7dc11429a5aa7dafcb12dabaa54f4dfd7f5eb753dd31bf9d1b7fa857e7aa",
+        "encoded_index": 609,
+        "original_sample_index": 609,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 24.965645,
+            "actual_seconds": 24.948956,
+            "difference_ms": -16.689
+          }
+        ],
+        "independent_observation": "过渡中内容隐藏（可能有轮廓），无异常矩形/重复折叠箭头；此帧不单独证明按钮首次显示正常。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00611.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 611,
+        "original_sample_index": 611,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.025644999999997,
+            "actual_seconds": 25.028054,
+            "difference_ms": 2.409
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.045645,
+            "actual_seconds": 25.028054,
+            "difference_ms": -17.591
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00612.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 612,
+        "original_sample_index": 612,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.065645,
+            "actual_seconds": 25.090387,
+            "difference_ms": 24.742
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.085645,
+            "actual_seconds": 25.090387,
+            "difference_ms": 4.742
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.105645,
+            "actual_seconds": 25.090387,
+            "difference_ms": -15.258
+          }
+        ],
+        "independent_observation": "完整控件可见；主题一致，无六按钮白块/重复折叠箭头。"
+      }
+    ]
+  }
+]

@@ -1,0 +1,3848 @@
+[
+  {
+    "report": "x64-dark-desktop-paint.json",
+    "status": "PASS",
+    "video": "x64-dark-desktop-paint.mkv",
+    "video_sha256": "a673e4cb9c8287d0a88e0d8f4d60a81ec84e7d443d39593f8eccfe312bbf7483",
+    "decoded_frames": 623,
+    "original_pngs_pixel_identical_to_video": 8,
+    "independent_dark_white_patch_frames": [],
+    "extracted_original_pixel_frames": [
+      {
+        "path": "x64-dark-desktop-paint-decoded-00005.png",
+        "sha256": "9ad7802d9d4a73e27be4e27129fda590b36130f99bddd479651462826e7cc2e2",
+        "encoded_index": 5,
+        "original_sample_index": 5,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-000",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 0.41380500000000003,
+            "actual_seconds": 0.431918,
+            "difference_ms": 18.113
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00069.png",
+        "sha256": "be9382607e99e9a9473750941d0078625e36cd2e30ce0f3f09975f06e91da1fc",
+        "encoded_index": 69,
+        "original_sample_index": 69,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-024",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 2.952505,
+            "actual_seconds": 2.954118,
+            "difference_ms": 1.613
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00134.png",
+        "sha256": "87f33315d2ae548d8e5e4b83df71af4f48d3ed5a67cf05da4d923904f95fcaaa",
+        "encoded_index": 134,
+        "original_sample_index": 134,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-049",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 5.555093,
+            "actual_seconds": 5.556498,
+            "difference_ms": 1.405
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00204.png",
+        "sha256": "1f1984ce8fcf765f0c75eb05fec2b3f0405dba661ac36522c3c56f1ac5142bb0",
+        "encoded_index": 204,
+        "original_sample_index": 204,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-074",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 8.252896,
+            "actual_seconds": 8.253453,
+            "difference_ms": 0.557
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00274.png",
+        "sha256": "0344cefb893aedbb20f85a315e56d69acc4987c194c559028831d9deaac474d7",
+        "encoded_index": 274,
+        "original_sample_index": 274,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-099",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 11.029256,
+            "actual_seconds": 11.027565,
+            "difference_ms": -1.691
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00284.png",
+        "sha256": "40976555d7fc3f9c5994c696985088fea2a88865627b82aa5393e25bee2f6fc1",
+        "encoded_index": 284,
+        "original_sample_index": 284,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 11.447647,
+            "actual_seconds": 11.451162,
+            "difference_ms": 3.515
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00285.png",
+        "sha256": "d2c5c0129f941e0710cce62a5889a8d7d9354e4337a9ef70ebbb4a0f3231fbc7",
+        "encoded_index": 285,
+        "original_sample_index": 285,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.507647,
+            "actual_seconds": 11.497864,
+            "difference_ms": -9.783
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00287.png",
+        "sha256": "cdaecb8f5b62f7badd3643519556401fefd97308cc97bce6ee801f99967824cf",
+        "encoded_index": 287,
+        "original_sample_index": 287,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.587647,
+            "actual_seconds": 11.607697,
+            "difference_ms": 20.05
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00288.png",
+        "sha256": "cdaecb8f5b62f7badd3643519556401fefd97308cc97bce6ee801f99967824cf",
+        "encoded_index": 288,
+        "original_sample_index": 288,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.647647000000001,
+            "actual_seconds": 11.654157,
+            "difference_ms": 6.51
+          },
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 11.667647,
+            "actual_seconds": 11.654157,
+            "difference_ms": -13.49
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00289.png",
+        "sha256": "06e600b2940a72116f6691b4246893fc85e8b627dd92173fd74c45b44713a74e",
+        "encoded_index": 289,
+        "original_sample_index": 289,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 11.687647,
+            "actual_seconds": 11.685627,
+            "difference_ms": -2.02
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00290.png",
+        "sha256": "06e600b2940a72116f6691b4246893fc85e8b627dd92173fd74c45b44713a74e",
+        "encoded_index": 290,
+        "original_sample_index": 290,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 11.707647000000001,
+            "actual_seconds": 11.701384,
+            "difference_ms": -6.263
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00291.png",
+        "sha256": "d1b97b688e1ac768fb7207ae0438b5da5306d53bfe33973f6c19db9fb73cd308",
+        "encoded_index": 291,
+        "original_sample_index": 291,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 11.727647000000001,
+            "actual_seconds": 11.733354,
+            "difference_ms": 5.707
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00293.png",
+        "sha256": "f21ea2f62d2eba39c488dad708b0dda2ea1444b85a3d9c30e0a1180fbe84240a",
+        "encoded_index": 293,
+        "original_sample_index": 293,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 11.796398,
+            "actual_seconds": 11.796324,
+            "difference_ms": -0.074
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00295.png",
+        "sha256": "d3e5af6368f45bc7882ed9105b3809aa534f73d17172388b66038299dcb7eed5",
+        "encoded_index": 295,
+        "original_sample_index": 295,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.856398,
+            "actual_seconds": 11.875151,
+            "difference_ms": 18.753
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00296.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 296,
+        "original_sample_index": 296,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.936398,
+            "actual_seconds": 11.921814,
+            "difference_ms": -14.584
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00297.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 297,
+        "original_sample_index": 297,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.996398000000001,
+            "actual_seconds": 11.984513,
+            "difference_ms": -11.885
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00298.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 298,
+        "original_sample_index": 298,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 12.016398,
+            "actual_seconds": 12.015678,
+            "difference_ms": -0.72
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00299.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 299,
+        "original_sample_index": 299,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 12.036398,
+            "actual_seconds": 12.046983,
+            "difference_ms": 10.585
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 12.056398000000002,
+            "actual_seconds": 12.046983,
+            "difference_ms": -9.415
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00300.png",
+        "sha256": "7a9a4e8b0c19b2f2dacf23bc0a983383ef2a51298bbd8c62c3698cf7dda01fef",
+        "encoded_index": 300,
+        "original_sample_index": 300,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 12.076398000000001,
+            "actual_seconds": 12.09386,
+            "difference_ms": 17.462
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00438.png",
+        "sha256": "8c4689115bec54a69315a07fea0770b5d9310b8eb44197a21738329bce207216",
+        "encoded_index": 438,
+        "original_sample_index": 438,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 17.9198,
+            "actual_seconds": 17.923631,
+            "difference_ms": 3.831
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00439.png",
+        "sha256": "d2c5c0129f941e0710cce62a5889a8d7d9354e4337a9ef70ebbb4a0f3231fbc7",
+        "encoded_index": 439,
+        "original_sample_index": 439,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 17.9798,
+            "actual_seconds": 17.986461,
+            "difference_ms": 6.661
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00441.png",
+        "sha256": "cdaecb8f5b62f7badd3643519556401fefd97308cc97bce6ee801f99967824cf",
+        "encoded_index": 441,
+        "original_sample_index": 441,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.0598,
+            "actual_seconds": 18.064913,
+            "difference_ms": 5.113
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00442.png",
+        "sha256": "cdaecb8f5b62f7badd3643519556401fefd97308cc97bce6ee801f99967824cf",
+        "encoded_index": 442,
+        "original_sample_index": 442,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.119799999999998,
+            "actual_seconds": 18.111097,
+            "difference_ms": -8.703
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00443.png",
+        "sha256": "06e600b2940a72116f6691b4246893fc85e8b627dd92173fd74c45b44713a74e",
+        "encoded_index": 443,
+        "original_sample_index": 443,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.1398,
+            "actual_seconds": 18.142965,
+            "difference_ms": 3.165
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.1598,
+            "actual_seconds": 18.142965,
+            "difference_ms": -16.835
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00444.png",
+        "sha256": "06e600b2940a72116f6691b4246893fc85e8b627dd92173fd74c45b44713a74e",
+        "encoded_index": 444,
+        "original_sample_index": 444,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.1798,
+            "actual_seconds": 18.189716,
+            "difference_ms": 9.916
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.1998,
+            "actual_seconds": 18.189716,
+            "difference_ms": -10.084
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00447.png",
+        "sha256": "f8609de388079c2d94616166e28eeb11c0467aca062d3afcc74c21add9e4dc80",
+        "encoded_index": 447,
+        "original_sample_index": 447,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 18.287423999999998,
+            "actual_seconds": 18.28404,
+            "difference_ms": -3.384
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00449.png",
+        "sha256": "d3e5af6368f45bc7882ed9105b3809aa534f73d17172388b66038299dcb7eed5",
+        "encoded_index": 449,
+        "original_sample_index": 449,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 18.347424,
+            "actual_seconds": 18.378238,
+            "difference_ms": 30.814
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00450.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 450,
+        "original_sample_index": 450,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.427424,
+            "actual_seconds": 18.440813,
+            "difference_ms": 13.389
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00451.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 451,
+        "original_sample_index": 451,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.487423999999997,
+            "actual_seconds": 18.487704,
+            "difference_ms": 0.28
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00452.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 452,
+        "original_sample_index": 452,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.507424,
+            "actual_seconds": 18.518951,
+            "difference_ms": 11.527
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.527424,
+            "actual_seconds": 18.518951,
+            "difference_ms": -8.473
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00453.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 453,
+        "original_sample_index": 453,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.547424,
+            "actual_seconds": 18.550124,
+            "difference_ms": 2.7
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.567424,
+            "actual_seconds": 18.550124,
+            "difference_ms": -17.3
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00606.png",
+        "sha256": "bfc6ae066b0ae8c75a9844c827523b157e63dfda2cb47330b2634a82b2bee87f",
+        "encoded_index": 606,
+        "original_sample_index": 606,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 25.128881,
+            "actual_seconds": 25.149132,
+            "difference_ms": 20.251
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00607.png",
+        "sha256": "d2c5c0129f941e0710cce62a5889a8d7d9354e4337a9ef70ebbb4a0f3231fbc7",
+        "encoded_index": 607,
+        "original_sample_index": 607,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 25.188881000000002,
+            "actual_seconds": 25.180035,
+            "difference_ms": -8.846
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00609.png",
+        "sha256": "cdaecb8f5b62f7badd3643519556401fefd97308cc97bce6ee801f99967824cf",
+        "encoded_index": 609,
+        "original_sample_index": 609,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 25.268881,
+            "actual_seconds": 25.289403,
+            "difference_ms": 20.522
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00610.png",
+        "sha256": "06e600b2940a72116f6691b4246893fc85e8b627dd92173fd74c45b44713a74e",
+        "encoded_index": 610,
+        "original_sample_index": 610,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.328881,
+            "actual_seconds": 25.351271,
+            "difference_ms": 22.39
+          },
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.348881000000002,
+            "actual_seconds": 25.351271,
+            "difference_ms": 2.39
+          },
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.368881000000002,
+            "actual_seconds": 25.351271,
+            "difference_ms": -17.61
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00611.png",
+        "sha256": "06e600b2940a72116f6691b4246893fc85e8b627dd92173fd74c45b44713a74e",
+        "encoded_index": 611,
+        "original_sample_index": 611,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.388881,
+            "actual_seconds": 25.398926,
+            "difference_ms": 10.045
+          },
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.408881,
+            "actual_seconds": 25.398926,
+            "difference_ms": -9.955
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00613.png",
+        "sha256": "f21ea2f62d2eba39c488dad708b0dda2ea1444b85a3d9c30e0a1180fbe84240a",
+        "encoded_index": 613,
+        "original_sample_index": 613,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 25.523528,
+            "actual_seconds": 25.508854,
+            "difference_ms": -14.674
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00615.png",
+        "sha256": "d3e5af6368f45bc7882ed9105b3809aa534f73d17172388b66038299dcb7eed5",
+        "encoded_index": 615,
+        "original_sample_index": 615,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 25.583528,
+            "actual_seconds": 25.603005,
+            "difference_ms": 19.477
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00616.png",
+        "sha256": "4114229df2292c441308eadf4b9b9ce1d12517df215a3ae3c31b556c832d4508",
+        "encoded_index": 616,
+        "original_sample_index": 616,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 25.663528,
+            "actual_seconds": 25.649711,
+            "difference_ms": -13.817
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00617.png",
+        "sha256": "d604a3ffed9b016313c2e887654a465dad95b8535c96f2355e8db3874db3744a",
+        "encoded_index": 617,
+        "original_sample_index": 617,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.723527999999998,
+            "actual_seconds": 25.712591,
+            "difference_ms": -10.937
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00618.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 618,
+        "original_sample_index": 618,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.743528,
+            "actual_seconds": 25.743864,
+            "difference_ms": 0.336
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.763528,
+            "actual_seconds": 25.743864,
+            "difference_ms": -19.664
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-desktop-paint-decoded-00619.png",
+        "sha256": "ff8524490054ae0b02138777f693f2ae95dbff3d092018d1076a4b4be3118826",
+        "encoded_index": 619,
+        "original_sample_index": 619,
+        "capture_bounds": [
+          682,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.783528,
+            "actual_seconds": 25.790603,
+            "difference_ms": 7.075
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.803528,
+            "actual_seconds": 25.790603,
+            "difference_ms": -12.925
+          }
+        ]
+      }
+    ],
+    "method": "FFmpeg RGB24 lossless decode; PNG encoding only; no resizing, recoloring or reconstruction",
+    "limits": "Temporal sampling has recorded gaps; vectorized test only detects the specified large light rectangles; inspect originals visually."
+  },
+  {
+    "report": "x64-dark-sftp-paint.json",
+    "status": "PASS",
+    "video": "x64-dark-sftp-paint.mkv",
+    "video_sha256": "907e8df7e74b060a7ed6a55f753953cd82ae8862f8f6bd50cd0139ad2b3dba8f",
+    "decoded_frames": 622,
+    "original_pngs_pixel_identical_to_video": 8,
+    "independent_dark_white_patch_frames": [],
+    "extracted_original_pixel_frames": [
+      {
+        "path": "x64-dark-sftp-paint-decoded-00006.png",
+        "sha256": "5d3b82ed662296236fbea3ce7ee7419204ee4c9eb7941fdb683fda498ff0797e",
+        "encoded_index": 6,
+        "original_sample_index": 6,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-000",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 0.36543200000000003,
+            "actual_seconds": 0.383921,
+            "difference_ms": 18.489
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00071.png",
+        "sha256": "b259682621e13c823a1bf14652f416df0790cabe8ae2ed6f30df5884ebea59d0",
+        "encoded_index": 71,
+        "original_sample_index": 71,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-024",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 2.84228,
+            "actual_seconds": 2.844664,
+            "difference_ms": 2.384
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00143.png",
+        "sha256": "2a3a88f005aeb777f850cdd40f0681eea0e06790c31f9127f596ab77055a7ed1",
+        "encoded_index": 143,
+        "original_sample_index": 143,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-049",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 5.604555,
+            "actual_seconds": 5.606497,
+            "difference_ms": 1.942
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00216.png",
+        "sha256": "b3625b77f134062997de00f22e3ae0144207a69edbac1b511066c81a5f4f706f",
+        "encoded_index": 216,
+        "original_sample_index": 216,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-074",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 8.38472,
+            "actual_seconds": 8.385913,
+            "difference_ms": 1.193
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00288.png",
+        "sha256": "33d268f553e99f52f3b8d8c6c38c30288fe027179b5a8859e247c41a589000e1",
+        "encoded_index": 288,
+        "original_sample_index": 288,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-099",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 11.159693,
+            "actual_seconds": 11.16188,
+            "difference_ms": 2.187
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00299.png",
+        "sha256": "778385af8b461a5db7d63e5858e1077de1df1078db55c14a0dfcbc123643ee6a",
+        "encoded_index": 299,
+        "original_sample_index": 299,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 11.596288,
+            "actual_seconds": 11.601114,
+            "difference_ms": 4.826
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00300.png",
+        "sha256": "14537b40e8c3df72c78590ca912b28e10dcb430165f3d4376b3c8894dca60fc8",
+        "encoded_index": 300,
+        "original_sample_index": 300,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.656288,
+            "actual_seconds": 11.648381,
+            "difference_ms": -7.907
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00302.png",
+        "sha256": "25774f9f96c45b672adbea7537099a558f5e60cb5cc8fedc13f9543e6acc5969",
+        "encoded_index": 302,
+        "original_sample_index": 302,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.736288,
+            "actual_seconds": 11.741889,
+            "difference_ms": 5.601
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00303.png",
+        "sha256": "9fb7d0e87bce4dca75d10784a3d2ac218f5b9c772f72f3145b3c9073510af8ce",
+        "encoded_index": 303,
+        "original_sample_index": 303,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.796288,
+            "actual_seconds": 11.788449,
+            "difference_ms": -7.839
+          },
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 11.816288,
+            "actual_seconds": 11.788449,
+            "difference_ms": -27.839
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00304.png",
+        "sha256": "9fb7d0e87bce4dca75d10784a3d2ac218f5b9c772f72f3145b3c9073510af8ce",
+        "encoded_index": 304,
+        "original_sample_index": 304,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 11.836288,
+            "actual_seconds": 11.851739,
+            "difference_ms": 15.451
+          },
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 11.856288000000001,
+            "actual_seconds": 11.851739,
+            "difference_ms": -4.549
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00305.png",
+        "sha256": "e452dc621815c3af6f1396fe7b3965820efb3f3a0b7fdb2f52abf3e32a476f19",
+        "encoded_index": 305,
+        "original_sample_index": 305,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 11.876288,
+            "actual_seconds": 11.882762,
+            "difference_ms": 6.474
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00307.png",
+        "sha256": "e7daa4679c59305fda3186ced68d256ad235f0838f1c7271476e44ae39a8403e",
+        "encoded_index": 307,
+        "original_sample_index": 307,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 11.945322999999998,
+            "actual_seconds": 11.946138,
+            "difference_ms": 0.815
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00308.png",
+        "sha256": "f7a49be3ef471b3d808071394a47ab5d1baec3ed01141991a800f0b245e722c1",
+        "encoded_index": 308,
+        "original_sample_index": 308,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 12.005322999999999,
+            "actual_seconds": 11.993276,
+            "difference_ms": -12.047
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00310.png",
+        "sha256": "9c807493a54924e08b91d381da39d805689eb35d1050628b483155588e0631aa",
+        "encoded_index": 310,
+        "original_sample_index": 310,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 12.085322999999999,
+            "actual_seconds": 12.087071,
+            "difference_ms": 1.748
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00311.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 311,
+        "original_sample_index": 311,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 12.145323,
+            "actual_seconds": 12.134006,
+            "difference_ms": -11.317
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00312.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 312,
+        "original_sample_index": 312,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 12.165322999999999,
+            "actual_seconds": 12.180708,
+            "difference_ms": 15.385
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 12.185322999999999,
+            "actual_seconds": 12.180708,
+            "difference_ms": -4.615
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00313.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 313,
+        "original_sample_index": 313,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 12.205323,
+            "actual_seconds": 12.212067,
+            "difference_ms": 6.744
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 12.225323,
+            "actual_seconds": 12.212067,
+            "difference_ms": -13.256
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00444.png",
+        "sha256": "778385af8b461a5db7d63e5858e1077de1df1078db55c14a0dfcbc123643ee6a",
+        "encoded_index": 444,
+        "original_sample_index": 444,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 17.943714999999997,
+            "actual_seconds": 17.947842,
+            "difference_ms": 4.127
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00445.png",
+        "sha256": "14537b40e8c3df72c78590ca912b28e10dcb430165f3d4376b3c8894dca60fc8",
+        "encoded_index": 445,
+        "original_sample_index": 445,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 18.003715,
+            "actual_seconds": 17.995165,
+            "difference_ms": -8.55
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00447.png",
+        "sha256": "25774f9f96c45b672adbea7537099a558f5e60cb5cc8fedc13f9543e6acc5969",
+        "encoded_index": 447,
+        "original_sample_index": 447,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.083714999999998,
+            "actual_seconds": 18.089055,
+            "difference_ms": 5.34
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00449.png",
+        "sha256": "9fb7d0e87bce4dca75d10784a3d2ac218f5b9c772f72f3145b3c9073510af8ce",
+        "encoded_index": 449,
+        "original_sample_index": 449,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.143714999999997,
+            "actual_seconds": 18.166886,
+            "difference_ms": 23.171
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.163715,
+            "actual_seconds": 18.166886,
+            "difference_ms": 3.171
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.183715,
+            "actual_seconds": 18.166886,
+            "difference_ms": -16.829
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00450.png",
+        "sha256": "9fb7d0e87bce4dca75d10784a3d2ac218f5b9c772f72f3145b3c9073510af8ce",
+        "encoded_index": 450,
+        "original_sample_index": 450,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.203715,
+            "actual_seconds": 18.214262,
+            "difference_ms": 10.547
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.223715,
+            "actual_seconds": 18.214262,
+            "difference_ms": -9.453
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00453.png",
+        "sha256": "e7daa4679c59305fda3186ced68d256ad235f0838f1c7271476e44ae39a8403e",
+        "encoded_index": 453,
+        "original_sample_index": 453,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 18.321517,
+            "actual_seconds": 18.324482,
+            "difference_ms": 2.965
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00454.png",
+        "sha256": "f7a49be3ef471b3d808071394a47ab5d1baec3ed01141991a800f0b245e722c1",
+        "encoded_index": 454,
+        "original_sample_index": 454,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 18.381517000000002,
+            "actual_seconds": 18.355868,
+            "difference_ms": -25.649
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00456.png",
+        "sha256": "f17162015276bc38b091dfa088435f5ef1667bd28fd575e713daefbdf1f67fc5",
+        "encoded_index": 456,
+        "original_sample_index": 456,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.461517,
+            "actual_seconds": 18.449644,
+            "difference_ms": -11.873
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00457.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 457,
+        "original_sample_index": 457,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.521517,
+            "actual_seconds": 18.496765,
+            "difference_ms": -24.752
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00458.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 458,
+        "original_sample_index": 458,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.541517000000002,
+            "actual_seconds": 18.559356,
+            "difference_ms": 17.839
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.561517000000002,
+            "actual_seconds": 18.559356,
+            "difference_ms": -2.161
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00459.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 459,
+        "original_sample_index": 459,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.581517,
+            "actual_seconds": 18.590478,
+            "difference_ms": 8.961
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.601517,
+            "actual_seconds": 18.590478,
+            "difference_ms": -11.039
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00605.png",
+        "sha256": "778385af8b461a5db7d63e5858e1077de1df1078db55c14a0dfcbc123643ee6a",
+        "encoded_index": 605,
+        "original_sample_index": 605,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 24.978187,
+            "actual_seconds": 24.984405,
+            "difference_ms": 6.218
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00606.png",
+        "sha256": "14537b40e8c3df72c78590ca912b28e10dcb430165f3d4376b3c8894dca60fc8",
+        "encoded_index": 606,
+        "original_sample_index": 606,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 25.038187,
+            "actual_seconds": 25.031713,
+            "difference_ms": -6.474
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00608.png",
+        "sha256": "25774f9f96c45b672adbea7537099a558f5e60cb5cc8fedc13f9543e6acc5969",
+        "encoded_index": 608,
+        "original_sample_index": 608,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 25.118187,
+            "actual_seconds": 25.140939,
+            "difference_ms": 22.752
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00609.png",
+        "sha256": "9fb7d0e87bce4dca75d10784a3d2ac218f5b9c772f72f3145b3c9073510af8ce",
+        "encoded_index": 609,
+        "original_sample_index": 609,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.178186999999998,
+            "actual_seconds": 25.171875,
+            "difference_ms": -6.312
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00610.png",
+        "sha256": "9fb7d0e87bce4dca75d10784a3d2ac218f5b9c772f72f3145b3c9073510af8ce",
+        "encoded_index": 610,
+        "original_sample_index": 610,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.198187,
+            "actual_seconds": 25.219355,
+            "difference_ms": 21.168
+          },
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.218187,
+            "actual_seconds": 25.219355,
+            "difference_ms": 1.168
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00611.png",
+        "sha256": "9fb7d0e87bce4dca75d10784a3d2ac218f5b9c772f72f3145b3c9073510af8ce",
+        "encoded_index": 611,
+        "original_sample_index": 611,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.238187,
+            "actual_seconds": 25.250544,
+            "difference_ms": 12.357
+          },
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.258187,
+            "actual_seconds": 25.250544,
+            "difference_ms": -7.643
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00614.png",
+        "sha256": "e7daa4679c59305fda3186ced68d256ad235f0838f1c7271476e44ae39a8403e",
+        "encoded_index": 614,
+        "original_sample_index": 614,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 25.359282999999998,
+            "actual_seconds": 25.360965,
+            "difference_ms": 1.682
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00615.png",
+        "sha256": "f7a49be3ef471b3d808071394a47ab5d1baec3ed01141991a800f0b245e722c1",
+        "encoded_index": 615,
+        "original_sample_index": 615,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 25.419283,
+            "actual_seconds": 25.407834,
+            "difference_ms": -11.449
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00617.png",
+        "sha256": "9c807493a54924e08b91d381da39d805689eb35d1050628b483155588e0631aa",
+        "encoded_index": 617,
+        "original_sample_index": 617,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 25.499283,
+            "actual_seconds": 25.502011,
+            "difference_ms": 2.728
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00618.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 618,
+        "original_sample_index": 618,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.559282999999997,
+            "actual_seconds": 25.54873,
+            "difference_ms": -10.553
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00619.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 619,
+        "original_sample_index": 619,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.579283,
+            "actual_seconds": 25.595827,
+            "difference_ms": 16.544
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.599283,
+            "actual_seconds": 25.595827,
+            "difference_ms": -3.456
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.619283,
+            "actual_seconds": 25.595827,
+            "difference_ms": -23.456
+          }
+        ]
+      },
+      {
+        "path": "x64-dark-sftp-paint-decoded-00620.png",
+        "sha256": "0efeb0652d4984b5b7c9f021350d301c9458db46f12a540895860305be32b09f",
+        "encoded_index": 620,
+        "original_sample_index": 620,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.639283,
+            "actual_seconds": 25.658025,
+            "difference_ms": 18.742
+          }
+        ]
+      }
+    ],
+    "method": "FFmpeg RGB24 lossless decode; PNG encoding only; no resizing, recoloring or reconstruction",
+    "limits": "Temporal sampling has recorded gaps; vectorized test only detects the specified large light rectangles; inspect originals visually."
+  },
+  {
+    "report": "x64-light-desktop-paint.json",
+    "status": "PASS",
+    "video": "x64-light-desktop-paint.mkv",
+    "video_sha256": "5aeee3e051b5fbba36ddfc58c665b66f40ff06edb2a32e857de193f8ac8bce02",
+    "decoded_frames": 616,
+    "original_pngs_pixel_identical_to_video": 8,
+    "independent_dark_white_patch_frames": [],
+    "extracted_original_pixel_frames": [
+      {
+        "path": "x64-light-desktop-paint-decoded-00006.png",
+        "sha256": "1159c7973e2aad3b9be1cb68fd594b1763280cf7979ffd284c10726bb8c11136",
+        "encoded_index": 6,
+        "original_sample_index": 6,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-000",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 0.368636,
+            "actual_seconds": 0.37547,
+            "difference_ms": 6.834
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00076.png",
+        "sha256": "0ed32247172b611b281cb51d910ef2fac167984a1240c78273d7211e27cf03b7",
+        "encoded_index": 76,
+        "original_sample_index": 76,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-024",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 2.998416,
+            "actual_seconds": 3.004113,
+            "difference_ms": 5.697
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00149.png",
+        "sha256": "4bed3ae279f99370125e77af8717d49964863276a95262c57683ee063d24c907",
+        "encoded_index": 149,
+        "original_sample_index": 149,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-049",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 5.612932,
+            "actual_seconds": 5.618896,
+            "difference_ms": 5.964
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00221.png",
+        "sha256": "e6ad318d301a27fcd23094df96e1ce107e946ca72c26293a29b1b66781812985",
+        "encoded_index": 221,
+        "original_sample_index": 221,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-074",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 8.304524,
+            "actual_seconds": 8.278818,
+            "difference_ms": -25.706
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00292.png",
+        "sha256": "59388f738c48328da5ab586b4962878309fb7150afc6883eb19eab6efcf7d913",
+        "encoded_index": 292,
+        "original_sample_index": 292,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "rapid-099",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 10.948726,
+            "actual_seconds": 10.955033,
+            "difference_ms": 6.307
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00302.png",
+        "sha256": "e04e6a4d131b509832c5cbd618bee32a818d2f536538d764f1e348a18ed19393",
+        "encoded_index": 302,
+        "original_sample_index": 302,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 11.365305,
+            "actual_seconds": 11.378974,
+            "difference_ms": 13.669
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00303.png",
+        "sha256": "4c80586a41ac291e1eff829c5540ecbdfceccb1a09fb683076f9047e21954a7b",
+        "encoded_index": 303,
+        "original_sample_index": 303,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.425305,
+            "actual_seconds": 11.441943,
+            "difference_ms": 16.638
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00305.png",
+        "sha256": "b6514b8587c81bb30e6e2d658444870373d204c0f21612146c62039ea835eaa0",
+        "encoded_index": 305,
+        "original_sample_index": 305,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.505305,
+            "actual_seconds": 11.519523,
+            "difference_ms": 14.218
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00306.png",
+        "sha256": "abf46380b097c81e7e581f94e09d980e758c00ace5539552dc08e3c3694ea374",
+        "encoded_index": 306,
+        "original_sample_index": 306,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.565305,
+            "actual_seconds": 11.550707,
+            "difference_ms": -14.598
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00307.png",
+        "sha256": "abf46380b097c81e7e581f94e09d980e758c00ace5539552dc08e3c3694ea374",
+        "encoded_index": 307,
+        "original_sample_index": 307,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 11.585305,
+            "actual_seconds": 11.581947,
+            "difference_ms": -3.358
+          },
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 11.605305,
+            "actual_seconds": 11.581947,
+            "difference_ms": -23.358
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00308.png",
+        "sha256": "abf46380b097c81e7e581f94e09d980e758c00ace5539552dc08e3c3694ea374",
+        "encoded_index": 308,
+        "original_sample_index": 308,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 11.625305,
+            "actual_seconds": 11.629249,
+            "difference_ms": 3.944
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00309.png",
+        "sha256": "d786e092b895cc8417880b2e09960e65345c2e776ae61b8960d4bc290b4ce97d",
+        "encoded_index": 309,
+        "original_sample_index": 309,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 11.645305,
+            "actual_seconds": 11.66075,
+            "difference_ms": 15.445
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00311.png",
+        "sha256": "ed8e4b23d7c7fbda69ad5f75292e3ae8ba582d8e344f669368b2d75c453a0c91",
+        "encoded_index": 311,
+        "original_sample_index": 311,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 11.714564999999999,
+            "actual_seconds": 11.723868,
+            "difference_ms": 9.303
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00312.png",
+        "sha256": "80f33319e2077e562ecad4ae02c5a59d6feae78b0612bc155249f1fca309890e",
+        "encoded_index": 312,
+        "original_sample_index": 312,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.774564999999999,
+            "actual_seconds": 11.787231,
+            "difference_ms": 12.666
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00314.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 314,
+        "original_sample_index": 314,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.854565,
+            "actual_seconds": 11.865455,
+            "difference_ms": 10.89
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00315.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 315,
+        "original_sample_index": 315,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.914565,
+            "actual_seconds": 11.927897,
+            "difference_ms": 13.332
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 11.934565,
+            "actual_seconds": 11.927897,
+            "difference_ms": -6.668
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00316.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 316,
+        "original_sample_index": 316,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 11.954564999999999,
+            "actual_seconds": 11.974849,
+            "difference_ms": 20.284
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 11.974565,
+            "actual_seconds": 11.974849,
+            "difference_ms": 0.284
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 11.994565,
+            "actual_seconds": 11.974849,
+            "difference_ms": -19.716
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00441.png",
+        "sha256": "a63c21f56c4881c799b880d19bf941bc7fe11a6c7d351337647651d0d944bcbc",
+        "encoded_index": 441,
+        "original_sample_index": 441,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 17.665229,
+            "actual_seconds": 17.647716,
+            "difference_ms": -17.513
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00443.png",
+        "sha256": "4c80586a41ac291e1eff829c5540ecbdfceccb1a09fb683076f9047e21954a7b",
+        "encoded_index": 443,
+        "original_sample_index": 443,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 17.725229000000002,
+            "actual_seconds": 17.741653,
+            "difference_ms": 16.424
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00444.png",
+        "sha256": "423469f08db463fb3b8c681d0df088f22b928ff3bc3648b56c073d203093e128",
+        "encoded_index": 444,
+        "original_sample_index": 444,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 17.805229,
+            "actual_seconds": 17.804105,
+            "difference_ms": -1.124
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00445.png",
+        "sha256": "abf46380b097c81e7e581f94e09d980e758c00ace5539552dc08e3c3694ea374",
+        "encoded_index": 445,
+        "original_sample_index": 445,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 17.865229,
+            "actual_seconds": 17.851063,
+            "difference_ms": -14.166
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00446.png",
+        "sha256": "abf46380b097c81e7e581f94e09d980e758c00ace5539552dc08e3c3694ea374",
+        "encoded_index": 446,
+        "original_sample_index": 446,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 17.885229000000002,
+            "actual_seconds": 17.897283,
+            "difference_ms": 12.054
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 17.905229000000002,
+            "actual_seconds": 17.897283,
+            "difference_ms": -7.946
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00447.png",
+        "sha256": "abf46380b097c81e7e581f94e09d980e758c00ace5539552dc08e3c3694ea374",
+        "encoded_index": 447,
+        "original_sample_index": 447,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 17.925229,
+            "actual_seconds": 17.929154,
+            "difference_ms": 3.925
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 17.945229,
+            "actual_seconds": 17.929154,
+            "difference_ms": -16.075
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00449.png",
+        "sha256": "c8b88f2d85d002100e2983f3dd30f5d02add5f535ac0585584efe1a689897254",
+        "encoded_index": 449,
+        "original_sample_index": 449,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 18.025857,
+            "actual_seconds": 18.007981,
+            "difference_ms": -17.876
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00450.png",
+        "sha256": "7ba28fee0e5ca77444f55bd1fd1fd67166147281bed46627ba275a4be5e23f7f",
+        "encoded_index": 450,
+        "original_sample_index": 450,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 18.085857,
+            "actual_seconds": 18.054783,
+            "difference_ms": -31.074
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00452.png",
+        "sha256": "ac00f8bb9bbb20a3ece05769fbf18f0eff7211715c2027aa5025a0a47761c88b",
+        "encoded_index": 452,
+        "original_sample_index": 452,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.165857,
+            "actual_seconds": 18.164093,
+            "difference_ms": -1.764
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00454.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 454,
+        "original_sample_index": 454,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.225856999999998,
+            "actual_seconds": 18.241868,
+            "difference_ms": 16.011
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.245857,
+            "actual_seconds": 18.241868,
+            "difference_ms": -3.989
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00455.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 455,
+        "original_sample_index": 455,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.265857,
+            "actual_seconds": 18.289153,
+            "difference_ms": 23.296
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.285857,
+            "actual_seconds": 18.289153,
+            "difference_ms": 3.296
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00456.png",
+        "sha256": "d5fdd7f8c6490b7f1d93f3492c3b9559639e95f985f6f265e0cd994511e37eaa",
+        "encoded_index": 456,
+        "original_sample_index": 456,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.305857,
+            "actual_seconds": 18.320449,
+            "difference_ms": 14.592
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00599.png",
+        "sha256": "a63c21f56c4881c799b880d19bf941bc7fe11a6c7d351337647651d0d944bcbc",
+        "encoded_index": 599,
+        "original_sample_index": 599,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 24.698504,
+            "actual_seconds": 24.681113,
+            "difference_ms": -17.391
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00600.png",
+        "sha256": "e14337bb19e5c81ce5ce20a822025b37e691e9950dc1cf8a5281e397f14af444",
+        "encoded_index": 600,
+        "original_sample_index": 600,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 24.758504000000002,
+            "actual_seconds": 24.743805,
+            "difference_ms": -14.699
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00602.png",
+        "sha256": "423469f08db463fb3b8c681d0df088f22b928ff3bc3648b56c073d203093e128",
+        "encoded_index": 602,
+        "original_sample_index": 602,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 24.838504,
+            "actual_seconds": 24.837416,
+            "difference_ms": -1.088
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00603.png",
+        "sha256": "abf46380b097c81e7e581f94e09d980e758c00ace5539552dc08e3c3694ea374",
+        "encoded_index": 603,
+        "original_sample_index": 603,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 24.898504,
+            "actual_seconds": 24.900224,
+            "difference_ms": 1.72
+          },
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 24.918504000000002,
+            "actual_seconds": 24.900224,
+            "difference_ms": -18.28
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00604.png",
+        "sha256": "abf46380b097c81e7e581f94e09d980e758c00ace5539552dc08e3c3694ea374",
+        "encoded_index": 604,
+        "original_sample_index": 604,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 24.938504000000002,
+            "actual_seconds": 24.946661,
+            "difference_ms": 8.157
+          },
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 24.958504,
+            "actual_seconds": 24.946661,
+            "difference_ms": -11.843
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00605.png",
+        "sha256": "d786e092b895cc8417880b2e09960e65345c2e776ae61b8960d4bc290b4ce97d",
+        "encoded_index": 605,
+        "original_sample_index": 605,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 24.978504,
+            "actual_seconds": 24.978163,
+            "difference_ms": -0.341
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00606.png",
+        "sha256": "464d6c204e895f45553f9ced3b1693670c606b7a6b152612bd95b28b1cfd2c1b",
+        "encoded_index": 606,
+        "original_sample_index": 606,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 25.032356999999998,
+            "actual_seconds": 25.010355,
+            "difference_ms": -22.002
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00608.png",
+        "sha256": "797e59228faa74bd66792921d7d46dc8c3b764ec98c5f2b1a574a96d9eb42c3e",
+        "encoded_index": 608,
+        "original_sample_index": 608,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 25.092357,
+            "actual_seconds": 25.103962,
+            "difference_ms": 11.605
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00609.png",
+        "sha256": "ac00f8bb9bbb20a3ece05769fbf18f0eff7211715c2027aa5025a0a47761c88b",
+        "encoded_index": 609,
+        "original_sample_index": 609,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 25.172356999999998,
+            "actual_seconds": 25.16674,
+            "difference_ms": -5.617
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00610.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 610,
+        "original_sample_index": 610,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.232356999999997,
+            "actual_seconds": 25.213983,
+            "difference_ms": -18.374
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00611.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 611,
+        "original_sample_index": 611,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.252357,
+            "actual_seconds": 25.260128,
+            "difference_ms": 7.771
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.272357,
+            "actual_seconds": 25.260128,
+            "difference_ms": -12.229
+          }
+        ]
+      },
+      {
+        "path": "x64-light-desktop-paint-decoded-00612.png",
+        "sha256": "8496217eeaf5730e08825a716bd87c2290a377684b15927f8f2e000ba8ea3cc7",
+        "encoded_index": 612,
+        "original_sample_index": 612,
+        "capture_bounds": [
+          861,
+          157,
+          1208,
+          788
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.292357,
+            "actual_seconds": 25.29171,
+            "difference_ms": -0.647
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.312357,
+            "actual_seconds": 25.29171,
+            "difference_ms": -20.647
+          }
+        ]
+      }
+    ],
+    "method": "FFmpeg RGB24 lossless decode; PNG encoding only; no resizing, recoloring or reconstruction",
+    "limits": "Temporal sampling has recorded gaps; vectorized test only detects the specified large light rectangles; inspect originals visually."
+  },
+  {
+    "report": "x64-light-sftp-paint.json",
+    "status": "PASS",
+    "video": "x64-light-sftp-paint.mkv",
+    "video_sha256": "47206e105a8a21e9670609d442cb05e53e07b5cb927642689b350fbfe14ed07e",
+    "decoded_frames": 615,
+    "original_pngs_pixel_identical_to_video": 8,
+    "independent_dark_white_patch_frames": [],
+    "extracted_original_pixel_frames": [
+      {
+        "path": "x64-light-sftp-paint-decoded-00006.png",
+        "sha256": "d728f4d400d4c38da9b0b1e0de69cc60744d708a8a1c91eaf6a90cd2505a7b3b",
+        "encoded_index": 6,
+        "original_sample_index": 6,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-000",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 0.35996100000000003,
+            "actual_seconds": 0.366297,
+            "difference_ms": 6.336
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00075.png",
+        "sha256": "8b2cfbe0faadc3a096ba162eef62b06ee97f2ace3af9415378ef0176b45ab433",
+        "encoded_index": 75,
+        "original_sample_index": 75,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-024",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 2.989171,
+            "actual_seconds": 2.994774,
+            "difference_ms": 5.603
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00145.png",
+        "sha256": "d97caf3606e821c91281d7a880da6a4a4cde43924e98238a588bbbd5f608d73b",
+        "encoded_index": 145,
+        "original_sample_index": 145,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-049",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 5.603376,
+            "actual_seconds": 5.609726,
+            "difference_ms": 6.35
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00215.png",
+        "sha256": "f6f1c396048b1165943ec24f205b4b6acd529f67d65a2ee5efc8894b08ab51a6",
+        "encoded_index": 215,
+        "original_sample_index": 215,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-074",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 8.20138,
+            "actual_seconds": 8.207548,
+            "difference_ms": 6.168
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00286.png",
+        "sha256": "d8e34e23913228cb741b979541f78c4a2d1068aa19d8a84cfc1710d054e1874d",
+        "encoded_index": 286,
+        "original_sample_index": 286,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "rapid-099",
+            "requested_after_observed_release_ms": 16.0,
+            "desired_seconds": 10.87717,
+            "actual_seconds": 10.883107,
+            "difference_ms": 5.937
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00296.png",
+        "sha256": "e8ac46d3c15f10a44592709fdbcc9665be4b85f01906c53fb436b8430d8a50b2",
+        "encoded_index": 296,
+        "original_sample_index": 296,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 11.292185,
+            "actual_seconds": 11.306093,
+            "difference_ms": 13.908
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00297.png",
+        "sha256": "e7b4e7289f0d4cf313a80887406045efa9717956915afa7a65eb7fadbf3ac7f7",
+        "encoded_index": 297,
+        "original_sample_index": 297,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.352185,
+            "actual_seconds": 11.337148,
+            "difference_ms": -15.037
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00299.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 299,
+        "original_sample_index": 299,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.432185,
+            "actual_seconds": 11.431043,
+            "difference_ms": -1.142
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00300.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 300,
+        "original_sample_index": 300,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.492185000000001,
+            "actual_seconds": 11.477835,
+            "difference_ms": -14.35
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00301.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 301,
+        "original_sample_index": 301,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 11.512185,
+            "actual_seconds": 11.524329,
+            "difference_ms": 12.144
+          },
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 11.532185,
+            "actual_seconds": 11.524329,
+            "difference_ms": -7.856
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00302.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 302,
+        "original_sample_index": 302,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 11.552185000000001,
+            "actual_seconds": 11.556046,
+            "difference_ms": 3.861
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00303.png",
+        "sha256": "5ace29745793c4bc4ef6a93dd271cea56a4577b0b6757a7e2c71ccd9427dd23d",
+        "encoded_index": 303,
+        "original_sample_index": 303,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 11.572185000000001,
+            "actual_seconds": 11.58726,
+            "difference_ms": 15.075
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00304.png",
+        "sha256": "b0d7681105f8c9c79d27719ab2c55540e1ffa9ea9d5c72d4f24c6dac30b267ab",
+        "encoded_index": 304,
+        "original_sample_index": 304,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 11.636977,
+            "actual_seconds": 11.619652,
+            "difference_ms": -17.325
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00306.png",
+        "sha256": "eaeb1884884cce381103eaa42c210ca76a48d746f3433f94eec62e7104e9de5c",
+        "encoded_index": 306,
+        "original_sample_index": 306,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 11.696977,
+            "actual_seconds": 11.713011,
+            "difference_ms": 16.034
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00307.png",
+        "sha256": "891f7dc11429a5aa7dafcb12dabaa54f4dfd7f5eb753dd31bf9d1b7fa857e7aa",
+        "encoded_index": 307,
+        "original_sample_index": 307,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 11.776977,
+            "actual_seconds": 11.776002,
+            "difference_ms": -0.975
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00309.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 309,
+        "original_sample_index": 309,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 11.836977000000001,
+            "actual_seconds": 11.854004,
+            "difference_ms": 17.027
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 11.856977,
+            "actual_seconds": 11.854004,
+            "difference_ms": -2.973
+          },
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 11.876977,
+            "actual_seconds": 11.854004,
+            "difference_ms": -22.973
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00310.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 310,
+        "original_sample_index": 310,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 11.896977000000001,
+            "actual_seconds": 11.90054,
+            "difference_ms": 3.563
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00311.png",
+        "sha256": "90981d8b3417e21bfa8de100c023a508dbc0bb1e069eec5d4acf17e0577c24b0",
+        "encoded_index": 311,
+        "original_sample_index": 311,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-00",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 11.916977000000001,
+            "actual_seconds": 11.93196,
+            "difference_ms": 14.983
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00440.png",
+        "sha256": "7a77a0b6c61cf024e104a21327e9b0bacc62a99289bef924aba0ec764cda86df",
+        "encoded_index": 440,
+        "original_sample_index": 440,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 17.557944,
+            "actual_seconds": 17.571756,
+            "difference_ms": 13.812
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00441.png",
+        "sha256": "be0a8aeba16ea9d0026e2add361b5e7af937f36223afa76c3301f1fdb48b64da",
+        "encoded_index": 441,
+        "original_sample_index": 441,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 17.617944,
+            "actual_seconds": 17.618682,
+            "difference_ms": 0.738
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00442.png",
+        "sha256": "10d58e25cdc402110e4e64318583bcb85918a8c305faee0dd06444e75b9b1ed1",
+        "encoded_index": 442,
+        "original_sample_index": 442,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 17.697944,
+            "actual_seconds": 17.681368,
+            "difference_ms": -16.576
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00444.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 444,
+        "original_sample_index": 444,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 17.757944,
+            "actual_seconds": 17.759277,
+            "difference_ms": 1.333
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 17.777944,
+            "actual_seconds": 17.759277,
+            "difference_ms": -18.667
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00445.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 445,
+        "original_sample_index": 445,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 17.797944,
+            "actual_seconds": 17.806193,
+            "difference_ms": 8.249
+          },
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 17.817944,
+            "actual_seconds": 17.806193,
+            "difference_ms": -11.751
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00446.png",
+        "sha256": "5ace29745793c4bc4ef6a93dd271cea56a4577b0b6757a7e2c71ccd9427dd23d",
+        "encoded_index": 446,
+        "original_sample_index": 446,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 17.837944,
+            "actual_seconds": 17.853709,
+            "difference_ms": 15.765
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00447.png",
+        "sha256": "a02d2d4e774a218b8b8cbe0d8957fff9b3c27e174fa9129c56f23ff8aa998730",
+        "encoded_index": 447,
+        "original_sample_index": 447,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 17.90271,
+            "actual_seconds": 17.885361,
+            "difference_ms": -17.349
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00449.png",
+        "sha256": "c99ef4202c4b0a0b6e3763a1b328357df6e537e944804cc0bef4d962e43cd158",
+        "encoded_index": 449,
+        "original_sample_index": 449,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 17.96271,
+            "actual_seconds": 17.97896,
+            "difference_ms": 16.25
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00450.png",
+        "sha256": "03a0d59f780818e27a663668457cd55a4d7c4fdaffe71fa80bf92a9745d39fbb",
+        "encoded_index": 450,
+        "original_sample_index": 450,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 18.04271,
+            "actual_seconds": 18.026004,
+            "difference_ms": -16.706
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00452.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 452,
+        "original_sample_index": 452,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 18.10271,
+            "actual_seconds": 18.119612,
+            "difference_ms": 16.902
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 18.12271,
+            "actual_seconds": 18.119612,
+            "difference_ms": -3.098
+          },
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 18.14271,
+            "actual_seconds": 18.119612,
+            "difference_ms": -23.098
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00453.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 453,
+        "original_sample_index": 453,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 18.16271,
+            "actual_seconds": 18.166419,
+            "difference_ms": 3.709
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00454.png",
+        "sha256": "90981d8b3417e21bfa8de100c023a508dbc0bb1e069eec5d4acf17e0577c24b0",
+        "encoded_index": 454,
+        "original_sample_index": 454,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-09",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 18.18271,
+            "actual_seconds": 18.182163,
+            "difference_ms": -0.547
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00599.png",
+        "sha256": "4a9b5c0e712c97873eda6e7070fe52d8e9821100e79bbcb4b6e4006eb84171b2",
+        "encoded_index": 599,
+        "original_sample_index": 599,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 24.481098,
+            "actual_seconds": 24.494591,
+            "difference_ms": 13.493
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00600.png",
+        "sha256": "7148fba0ab880f544e61d79cd06563fe9cb664223ef4947f067b51b739da7ca6",
+        "encoded_index": 600,
+        "original_sample_index": 600,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 24.541098,
+            "actual_seconds": 24.557386,
+            "difference_ms": 16.288
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00601.png",
+        "sha256": "10d58e25cdc402110e4e64318583bcb85918a8c305faee0dd06444e75b9b1ed1",
+        "encoded_index": 601,
+        "original_sample_index": 601,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 24.621098,
+            "actual_seconds": 24.620155,
+            "difference_ms": -0.943
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00602.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 602,
+        "original_sample_index": 602,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 24.681098,
+            "actual_seconds": 24.650849,
+            "difference_ms": -30.249
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00603.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 603,
+        "original_sample_index": 603,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 24.701098,
+            "actual_seconds": 24.71368,
+            "difference_ms": 12.582
+          },
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 24.721098,
+            "actual_seconds": 24.71368,
+            "difference_ms": -7.418
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00604.png",
+        "sha256": "151eb6768809c93596279cb665db9b9d796ed2def02a01d16de5cb031a191ec0",
+        "encoded_index": 604,
+        "original_sample_index": 604,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 24.741098,
+            "actual_seconds": 24.74488,
+            "difference_ms": 3.782
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00605.png",
+        "sha256": "5ace29745793c4bc4ef6a93dd271cea56a4577b0b6757a7e2c71ccd9427dd23d",
+        "encoded_index": 605,
+        "original_sample_index": 605,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-collapse-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 24.761098,
+            "actual_seconds": 24.776106,
+            "difference_ms": 15.008
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00606.png",
+        "sha256": "b0d7681105f8c9c79d27719ab2c55540e1ffa9ea9d5c72d4f24c6dac30b267ab",
+        "encoded_index": 606,
+        "original_sample_index": 606,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 40.0,
+            "desired_seconds": 24.825644999999998,
+            "actual_seconds": 24.808096,
+            "difference_ms": -17.549
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00608.png",
+        "sha256": "eaeb1884884cce381103eaa42c210ca76a48d746f3433f94eec62e7104e9de5c",
+        "encoded_index": 608,
+        "original_sample_index": 608,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 100.0,
+            "desired_seconds": 24.885645,
+            "actual_seconds": 24.901879,
+            "difference_ms": 16.234
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00609.png",
+        "sha256": "891f7dc11429a5aa7dafcb12dabaa54f4dfd7f5eb753dd31bf9d1b7fa857e7aa",
+        "encoded_index": 609,
+        "original_sample_index": 609,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 180.0,
+            "desired_seconds": 24.965645,
+            "actual_seconds": 24.948956,
+            "difference_ms": -16.689
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00611.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 611,
+        "original_sample_index": 611,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 240.0,
+            "desired_seconds": 25.025644999999997,
+            "actual_seconds": 25.028054,
+            "difference_ms": 2.409
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 260.0,
+            "desired_seconds": 25.045645,
+            "actual_seconds": 25.028054,
+            "difference_ms": -17.591
+          }
+        ]
+      },
+      {
+        "path": "x64-light-sftp-paint-decoded-00612.png",
+        "sha256": "38c61125fe476fcc7211aac4217dacc3068e2e885c8099bc16e116ab5020ff0e",
+        "encoded_index": 612,
+        "original_sample_index": 612,
+        "capture_bounds": [
+          1003,
+          257,
+          1538,
+          888
+        ],
+        "selection": [
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 280.0,
+            "desired_seconds": 25.065645,
+            "actual_seconds": 25.090387,
+            "difference_ms": 24.742
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 300.0,
+            "desired_seconds": 25.085645,
+            "actual_seconds": 25.090387,
+            "difference_ms": 4.742
+          },
+          {
+            "phase": "normal-expand-19",
+            "requested_after_observed_release_ms": 320.0,
+            "desired_seconds": 25.105645,
+            "actual_seconds": 25.090387,
+            "difference_ms": -15.258
+          }
+        ]
+      }
+    ],
+    "method": "FFmpeg RGB24 lossless decode; PNG encoding only; no resizing, recoloring or reconstruction",
+    "limits": "Temporal sampling has recorded gaps; vectorized test only detects the specified large light rectangles; inspect originals visually."
+  }
+]

@@ -1,0 +1,1714 @@
+{
+  "status": "FAIL",
+  "mode": "desktop",
+  "prefix": "x64-light",
+  "pid": 6660,
+  "window": 131618,
+  "system": "Windows-2022Server-10.0.20348-SP0",
+  "python": "3.12.10",
+  "started_utc": "2026-10-16T05:14:59.550814+00:00",
+  "input": "SetCursorPos + mouse_event, dispatched by Windows",
+  "capture": "visible desktop GetDC(NULL) + BitBlt; no PrintWindow; hardware cursor excluded",
+  "scope": "production GUI with real CMD stdout",
+  "limitations": [
+    "Captured frames do not prove absence of flicker between frames.",
+    "Measured DPI only; this run does not establish other DPI values or Win7 compatibility."
+  ],
+  "operations": [],
+  "input_trace": [
+    {
+      "seconds": 0.70256,
+      "utc": "2026-10-16T05:15:00.194977+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 0.716136,
+      "utc": "2026-10-16T05:15:00.207508+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 0.724447,
+      "utc": "2026-10-16T05:15:00.216929+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 1.421114,
+      "utc": "2026-10-16T05:15:00.913533+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 1.437023,
+      "utc": "2026-10-16T05:15:00.928689+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 1.445356,
+      "utc": "2026-10-16T05:15:00.937775+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.141562,
+      "utc": "2026-10-16T05:15:01.633896+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 2.157896,
+      "utc": "2026-10-16T05:15:01.648928+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.166339,
+      "utc": "2026-10-16T05:15:01.658716+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 2.893707,
+      "utc": "2026-10-16T05:15:02.386043+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 2.909623,
+      "utc": "2026-10-16T05:15:02.401071+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 2.917973,
+      "utc": "2026-10-16T05:15:02.410390+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 3.615588,
+      "utc": "2026-10-16T05:15:03.108033+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 3.630583,
+      "utc": "2026-10-16T05:15:03.122057+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 3.638867,
+      "utc": "2026-10-16T05:15:03.131326+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 4.335669,
+      "utc": "2026-10-16T05:15:03.828073+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 4.351582,
+      "utc": "2026-10-16T05:15:03.843104+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 4.359912,
+      "utc": "2026-10-16T05:15:03.852305+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 5.056575,
+      "utc": "2026-10-16T05:15:04.549004+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 5.071315,
+      "utc": "2026-10-16T05:15:04.563033+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 5.079622,
+      "utc": "2026-10-16T05:15:04.572041+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 5.776679,
+      "utc": "2026-10-16T05:15:05.269115+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 5.792118,
+      "utc": "2026-10-16T05:15:05.283639+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 5.800436,
+      "utc": "2026-10-16T05:15:05.292825+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 6.497099,
+      "utc": "2026-10-16T05:15:05.989531+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 6.512413,
+      "utc": "2026-10-16T05:15:06.004056+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 6.52077,
+      "utc": "2026-10-16T05:15:06.013125+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 7.217528,
+      "utc": "2026-10-16T05:15:06.709929+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 7.233558,
+      "utc": "2026-10-16T05:15:06.724962+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 7.241884,
+      "utc": "2026-10-16T05:15:06.734276+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 7.93864,
+      "utc": "2026-10-16T05:15:07.430532+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 7.969371,
+      "utc": "2026-10-16T05:15:07.460859+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 7.977657,
+      "utc": "2026-10-16T05:15:07.470068+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 8.689881,
+      "utc": "2026-10-16T05:15:08.182280+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 8.705665,
+      "utc": "2026-10-16T05:15:08.196809+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 8.713967,
+      "utc": "2026-10-16T05:15:08.206400+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 9.410731,
+      "utc": "2026-10-16T05:15:08.903156+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 9.425973,
+      "utc": "2026-10-16T05:15:08.917688+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 9.434167,
+      "utc": "2026-10-16T05:15:08.926677+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 10.131513,
+      "utc": "2026-10-16T05:15:09.623882+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 10.147945,
+      "utc": "2026-10-16T05:15:09.639408+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 10.156272,
+      "utc": "2026-10-16T05:15:09.648663+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 10.853229,
+      "utc": "2026-10-16T05:15:10.345647+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 10.868386,
+      "utc": "2026-10-16T05:15:10.359675+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 10.87671,
+      "utc": "2026-10-16T05:15:10.369101+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 11.573285,
+      "utc": "2026-10-16T05:15:11.065397+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 11.589004,
+      "utc": "2026-10-16T05:15:11.080648+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 11.597343,
+      "utc": "2026-10-16T05:15:11.089714+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 12.29411,
+      "utc": "2026-10-16T05:15:11.786517+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 12.309946,
+      "utc": "2026-10-16T05:15:11.801549+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 12.318281,
+      "utc": "2026-10-16T05:15:11.810666+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 13.014889,
+      "utc": "2026-10-16T05:15:12.507295+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 13.030582,
+      "utc": "2026-10-16T05:15:12.521824+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 13.039127,
+      "utc": "2026-10-16T05:15:12.531587+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 13.736684,
+      "utc": "2026-10-16T05:15:13.229082+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 13.751905,
+      "utc": "2026-10-16T05:15:13.243112+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 13.760207,
+      "utc": "2026-10-16T05:15:13.252619+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 14.473107,
+      "utc": "2026-10-16T05:15:13.965518+00:00",
+      "event": "mouse_move",
+      "x": 1138,
+      "y": 67
+    },
+    {
+      "seconds": 14.487983,
+      "utc": "2026-10-16T05:15:13.979551+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 14.496325,
+      "utc": "2026-10-16T05:15:13.988685+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 14.808113,
+      "utc": "2026-10-16T05:15:14.293104+00:00",
+      "event": "mouse_move",
+      "x": 118,
+      "y": 708
+    },
+    {
+      "seconds": 14.942585,
+      "utc": "2026-10-16T05:15:14.434198+00:00",
+      "event": "left_down"
+    },
+    {
+      "seconds": 15.085451,
+      "utc": "2026-10-16T05:15:14.574987+00:00",
+      "event": "mouse_move",
+      "x": 285,
+      "y": 171
+    },
+    {
+      "seconds": 15.085666,
+      "utc": "2026-10-16T05:15:14.574987+00:00",
+      "event": "left_up"
+    },
+    {
+      "seconds": 15.197396,
+      "utc": "2026-10-16T05:15:14.684757+00:00",
+      "event": "left_up"
+    }
+  ],
+  "frames": [
+    {
+      "seconds": 0.087815,
+      "utc": "2026-10-16T05:14:59.566439+00:00",
+      "path": "x64-light-desktop-0000-theme-before-full-desktop.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        0,
+        0,
+        1180,
+        760
+      ],
+      "sidebar_toggle_bounds": [
+        1122,
+        133,
+        1150,
+        161
+      ],
+      "terminal_paint_sample": 100,
+      "terminal_paint_probe": 100,
+      "sha256": "713b9d09ec24bd9c5369cbd7e6da8903df3cc4bf09420aa1a75d9391a5ae79b0"
+    },
+    {
+      "seconds": 14.731163,
+      "utc": "2026-10-16T05:15:14.214984+00:00",
+      "path": "x64-light-desktop-0001-theme-after-unhovered-full-desktop.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        0,
+        0,
+        1180,
+        760
+      ],
+      "sidebar_toggle_bounds": [
+        1122,
+        133,
+        1150,
+        161
+      ],
+      "terminal_paint_sample": 1013,
+      "terminal_paint_probe": 923,
+      "sha256": "e67a02236f4bf0ebbcedb51e10072fd42741f661101bb023c13ef6c42d66a96e"
+    },
+    {
+      "seconds": 15.219812,
+      "utc": "2026-10-16T05:15:14.700428+00:00",
+      "path": "x64-light-desktop-0002-theme-failure-full-desktop.png",
+      "width": 1920,
+      "height": 1080,
+      "window_bounds": [
+        0,
+        0,
+        1180,
+        760
+      ],
+      "sidebar_toggle_bounds": [
+        1122,
+        133,
+        1150,
+        161
+      ],
+      "terminal_paint_sample": 1036,
+      "terminal_paint_probe": 946,
+      "sha256": "dca25efe566b7b025593d53090b4b4b54cd7757f4a30dd69f584d81dfc76a42c"
+    }
+  ],
+  "drag_evidence": [],
+  "behavior_failures": [],
+  "dpi": 96,
+  "desktop_bounds": [
+    0,
+    0,
+    1920,
+    1080
+  ],
+  "initial_theme_caption": "深色",
+  "purpose": "#29 theme changes without hovering the affected footer",
+  "color_samples": [
+    {
+      "seconds": 0.741016,
+      "utc": "2026-10-16T05:15:00.233503+00:00",
+      "path": "x64-light-theme-00-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 0.866502,
+      "utc": "2026-10-16T05:15:00.358992+00:00",
+      "path": "x64-light-theme-00-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 1.461892,
+      "utc": "2026-10-16T05:15:00.954342+00:00",
+      "path": "x64-light-theme-01-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 1.586548,
+      "utc": "2026-10-16T05:15:01.079043+00:00",
+      "path": "x64-light-theme-01-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.182855,
+      "utc": "2026-10-16T05:15:01.675303+00:00",
+      "path": "x64-light-theme-02-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.322956,
+      "utc": "2026-10-16T05:15:01.815419+00:00",
+      "path": "x64-light-theme-02-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 2.934498,
+      "utc": "2026-10-16T05:15:02.427008+00:00",
+      "path": "x64-light-theme-03-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.059919,
+      "utc": "2026-10-16T05:15:02.552401+00:00",
+      "path": "x64-light-theme-03-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.655407,
+      "utc": "2026-10-16T05:15:03.147890+00:00",
+      "path": "x64-light-theme-04-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 3.779879,
+      "utc": "2026-10-16T05:15:03.272346+00:00",
+      "path": "x64-light-theme-04-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 4.376374,
+      "utc": "2026-10-16T05:15:03.868872+00:00",
+      "path": "x64-light-theme-05-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 4.50136,
+      "utc": "2026-10-16T05:15:03.993817+00:00",
+      "path": "x64-light-theme-05-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.09613,
+      "utc": "2026-10-16T05:15:04.588597+00:00",
+      "path": "x64-light-theme-06-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.221151,
+      "utc": "2026-10-16T05:15:04.713574+00:00",
+      "path": "x64-light-theme-06-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.81692,
+      "utc": "2026-10-16T05:15:05.309405+00:00",
+      "path": "x64-light-theme-07-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 5.94196,
+      "utc": "2026-10-16T05:15:05.434380+00:00",
+      "path": "x64-light-theme-07-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 6.537265,
+      "utc": "2026-10-16T05:15:06.029717+00:00",
+      "path": "x64-light-theme-08-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 6.662259,
+      "utc": "2026-10-16T05:15:06.154709+00:00",
+      "path": "x64-light-theme-08-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 7.258416,
+      "utc": "2026-10-16T05:15:06.750848+00:00",
+      "path": "x64-light-theme-09-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 7.383347,
+      "utc": "2026-10-16T05:15:06.875822+00:00",
+      "path": "x64-light-theme-09-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 7.994172,
+      "utc": "2026-10-16T05:15:07.486628+00:00",
+      "path": "x64-light-theme-10-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.119293,
+      "utc": "2026-10-16T05:15:07.611685+00:00",
+      "path": "x64-light-theme-10-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.730493,
+      "utc": "2026-10-16T05:15:08.222968+00:00",
+      "path": "x64-light-theme-11-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 8.855545,
+      "utc": "2026-10-16T05:15:08.348010+00:00",
+      "path": "x64-light-theme-11-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 9.450782,
+      "utc": "2026-10-16T05:15:08.943259+00:00",
+      "path": "x64-light-theme-12-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 9.575797,
+      "utc": "2026-10-16T05:15:09.068293+00:00",
+      "path": "x64-light-theme-12-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.172909,
+      "utc": "2026-10-16T05:15:09.665232+00:00",
+      "path": "x64-light-theme-13-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.297742,
+      "utc": "2026-10-16T05:15:09.790198+00:00",
+      "path": "x64-light-theme-13-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 10.89327,
+      "utc": "2026-10-16T05:15:10.385681+00:00",
+      "path": "x64-light-theme-14-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.017723,
+      "utc": "2026-10-16T05:15:10.510154+00:00",
+      "path": "x64-light-theme-14-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.613841,
+      "utc": "2026-10-16T05:15:11.106291+00:00",
+      "path": "x64-light-theme-15-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 11.739812,
+      "utc": "2026-10-16T05:15:11.232279+00:00",
+      "path": "x64-light-theme-15-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 12.334839,
+      "utc": "2026-10-16T05:15:11.827241+00:00",
+      "path": "x64-light-theme-16-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 12.459293,
+      "utc": "2026-10-16T05:15:11.951728+00:00",
+      "path": "x64-light-theme-16-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.055365,
+      "utc": "2026-10-16T05:15:12.547830+00:00",
+      "path": "x64-light-theme-17-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.180056,
+      "utc": "2026-10-16T05:15:12.672468+00:00",
+      "path": "x64-light-theme-17-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.776785,
+      "utc": "2026-10-16T05:15:13.269243+00:00",
+      "path": "x64-light-theme-18-dark-early.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 13.916981,
+      "utc": "2026-10-16T05:15:13.409392+00:00",
+      "path": "x64-light-theme-18-dark-settled.png",
+      "sha256": "f8da276d5c8f77e41a295cc63fb6c32dadd1a8909c5cf059e82d77a897ef53e0",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "dark",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        44,
+        44,
+        46
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.512861,
+      "utc": "2026-10-16T05:15:14.005261+00:00",
+      "path": "x64-light-theme-19-light-early.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": false,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.637356,
+      "utc": "2026-10-16T05:15:14.129768+00:00",
+      "path": "x64-light-theme-19-light-settled.png",
+      "sha256": "de3e907da2692521abe747799242ad433c87a215e2c638368704b212424183b4",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 14.908453,
+      "utc": "2026-10-16T05:15:14.400877+00:00",
+      "path": "x64-light-theme-hover.png",
+      "sha256": "83e54b5441ae47fe6753d34e1c326427a0b8bbe187812fb780b4b63787aeb622",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "hover",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        229,
+        241,
+        255
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 15.043209,
+      "utc": "2026-10-16T05:15:14.535666+00:00",
+      "path": "x64-light-theme-pressed.png",
+      "sha256": "c53e5e120eb889a6cc0faf22edf40b446dc54e93686a2554cecdfdb462223f1c",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "pressed",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        229,
+        241,
+        255
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    },
+    {
+      "seconds": 15.186317,
+      "utc": "2026-10-16T05:15:14.678742+00:00",
+      "path": "x64-light-theme-cancelled-focused.png",
+      "sha256": "f9b7cd067e9273ed1a989fe34078c26c0014ab0b94feab9c8d8ef9797522a4e7",
+      "capture_bounds": [
+        36,
+        692,
+        201,
+        724
+      ],
+      "theme": "light",
+      "state": "idle",
+      "enabled": true,
+      "settled": true,
+      "expected_rgb": [
+        242,
+        242,
+        247
+      ],
+      "sampled_pixels": 656,
+      "matching_fraction": 1.0,
+      "caption": "全部断开"
+    }
+  ],
+  "theme_clicks": [
+    {
+      "seconds": 0.702474,
+      "utc": "2026-10-16T05:15:00.194977+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 1.421026,
+      "utc": "2026-10-16T05:15:00.913533+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 2.141423,
+      "utc": "2026-10-16T05:15:01.633896+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 2.893566,
+      "utc": "2026-10-16T05:15:02.386043+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 3.615519,
+      "utc": "2026-10-16T05:15:03.108033+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 4.335601,
+      "utc": "2026-10-16T05:15:03.828073+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 5.056505,
+      "utc": "2026-10-16T05:15:04.549004+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 5.776611,
+      "utc": "2026-10-16T05:15:05.269115+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 6.49703,
+      "utc": "2026-10-16T05:15:05.989531+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 7.217455,
+      "utc": "2026-10-16T05:15:06.709929+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 7.938298,
+      "utc": "2026-10-16T05:15:07.430532+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 8.689806,
+      "utc": "2026-10-16T05:15:08.182280+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 9.410662,
+      "utc": "2026-10-16T05:15:08.903156+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 10.131429,
+      "utc": "2026-10-16T05:15:09.623882+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 10.853163,
+      "utc": "2026-10-16T05:15:10.345647+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 11.573221,
+      "utc": "2026-10-16T05:15:11.065397+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 12.294041,
+      "utc": "2026-10-16T05:15:11.786517+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 13.014825,
+      "utc": "2026-10-16T05:15:12.507295+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 13.736621,
+      "utc": "2026-10-16T05:15:13.229082+00:00",
+      "before": "深色",
+      "after": "浅色",
+      "point": [
+        1138,
+        67
+      ]
+    },
+    {
+      "seconds": 14.473047,
+      "utc": "2026-10-16T05:15:13.965518+00:00",
+      "before": "浅色",
+      "after": "深色",
+      "point": [
+        1138,
+        67
+      ]
+    }
+  ],
+  "session_count": [
+    2,
+    0
+  ],
+  "stdout_marker": [
+    100,
+    946
+  ],
+  "error": "Cancelled footer press changed the session list",
+  "traceback": "Traceback (most recent call last):\n  File \"D:\\a\\SerialCtl\\SerialCtl\\tests\\integration\\gui_theme_user_actions.py\", line 161, in main\n    test.run()\n  File \"D:\\a\\SerialCtl\\SerialCtl\\tests\\integration\\gui_theme_user_actions.py\", line 142, in run\n    require(count_after == count_before, \"Cancelled footer press changed the session list\")\n  File \"D:\\a\\SerialCtl\\SerialCtl\\tests\\integration\\desktop_user_actions.py\", line 29, in require\n    raise AssertionError(message)\nAssertionError: Cancelled footer press changed the session list\n"
+}
