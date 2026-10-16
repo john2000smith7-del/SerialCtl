@@ -1385,6 +1385,11 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
 LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     (void)referenceData;
+    // DrawOwnerItem paints the whole button, including its rounded exterior.
+    // Native erasure would expose COLOR_BTNFACE before that themed paint runs.
+    if (message == WM_ERASEBKGND &&
+        (GetWindowLongPtrW(window, GWL_STYLE) & BS_TYPEMASK) == BS_OWNERDRAW)
+        return 1;
     // Owner-drawn buttons otherwise turn the second press into BN_DOUBLECLICKED.
     // Keep this toggle's normal release/cancel semantics for rapid reversal.
     if (GetDlgCtrlID(window) == IdRightPanelToggle && message == WM_LBUTTONDBLCLK)
@@ -1974,7 +1979,6 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             rightPanelAnimatedWidth_=rightPanelAnimationFrom_+static_cast<int>((rightPanelAnimationTo_-rightPanelAnimationFrom_)*ease);
             if(t>=1){KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;}
             RECT rect{};GetClientRect(window_,&rect);LayoutControls(rect.right,rect.bottom);
-            if(!rightPanelAnimating_)ShowSftpPanel(sftpPanelVisible_);
             InvalidateRect(window_,nullptr,FALSE);return 0;
         }
         if (wParam == StatusTimerId) {
@@ -2465,18 +2469,12 @@ void MainWindow::LayoutControls(int width, int height) {
     const int sftpContentWidth = std::max(1, rightInnerRight - rightInnerLeft);
     batch.Move(sftpPath_, rightInnerLeft, rightListTop, sftpContentWidth, Ui::CompactHeight, TRUE);
     const int sftpHeaderTop = rightListTop + Ui::CompactHeight + Ui::Space;
-    const bool showModifiedColumn = sftpContentWidth - Ui::OverlayScrollLaneWidth >= Ui::Scale(300);
     int nameWidth, sizeWidth, modifiedWidth;
     SftpColumnWidths(sftpContentWidth - Ui::OverlayScrollLaneWidth, nameWidth, sizeWidth, modifiedWidth);
     batch.Move(sftpNameHeader_, rightInnerLeft, sftpHeaderTop, nameWidth, Ui::CompactHeight, TRUE);
     batch.Move(sftpSizeHeader_, rightInnerLeft + nameWidth, sftpHeaderTop, sizeWidth, Ui::CompactHeight, TRUE);
     batch.Move(sftpModifiedHeader_, rightInnerLeft + nameWidth + sizeWidth, sftpHeaderTop, modifiedWidth,
                Ui::CompactHeight, TRUE);
-    batch.Show(sftpModifiedHeader_,
-               !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) &&
-                       sftpPanelVisible_ && showModifiedColumn
-                   ? SW_SHOW
-                   : SW_HIDE);
     const int sftpListTop = sftpHeaderTop + Ui::CompactHeight;
     const int transferListHeight = sftpTransferExpanded_ ? Ui::SftpTransferDrawerHeight : 0;
     const int transferHeaderTop = footerTop - Ui::Gap - Ui::CompactHeight -
@@ -2491,11 +2489,6 @@ void MainWindow::LayoutControls(int width, int height) {
                Ui::CompactHeight, TRUE);
     batch.Move(sftpTransferList_, rightInnerLeft, transferHeaderTop + Ui::CompactHeight + Ui::Gap, sftpContentWidth,
                transferListHeight, TRUE);
-    batch.Show(sftpTransferList_,
-               !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) &&
-                       sftpPanelVisible_ && sftpTransferExpanded_
-                   ? SW_SHOW
-                   : SW_HIDE);
     const int sftpWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 3) / 4;
     batch.Move(sftpUpButton_, rightInnerLeft, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
     batch.Move(sftpRefreshButton_, rightInnerLeft + sftpWidth + Ui::Space, footerTop, sftpWidth, Ui::CompactHeight,
@@ -2508,19 +2501,9 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(status_, leftInnerLeft,
                sideCardBottom - Ui::PanelPadding - Ui::CompactHeight - Ui::Space - statusHeight_,
                leftInnerRight - leftInnerLeft, statusHeight_, TRUE);
-    batch.Show(rightPanelToggleButton_, SW_SHOW);
-    if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) {
-        for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
-                 addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
-                 sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,
-                 sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_, sftpUploadButton_,
-                 sftpDownloadButton_})
-            batch.Show(control, SW_HIDE);
-    } else {
-        batch.Show(commandHeader_, SW_SHOW);
-        batch.Show(sftpTabButton_, SW_SHOW);
-        ShowSftpPanel(sftpPanelVisible_);
-    }
+    // Visibility and final geometry must be committed together. Showing a child
+    // here with ShowWindow would expose its old bounds before the batch applies.
+    QueueSidebarVisibility(batch, sftpContentWidth);
     batch.Commit();
     UpdateTerminalDimensions();
 }
@@ -3067,16 +3050,14 @@ void MainWindow::ApplyTheme() {
     SendMessageW(window_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(largeIcon));
     SendMessageW(window_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallIcon));
     SetWindowTextW(themeButton_, darkMode_ ? L"浅色" : L"深色");
-    for (HWND control : {window_, connectionHeader_, connectionList_, terminal_, status_, commandList_, sftpPath_, sftpList_, sftpTransferList_}) {
+    InvalidateRect(window_, nullptr, TRUE);
+    // Refresh every direct child, including the all-disconnect footer. A manual
+    // handle list can miss controls while WS_CLIPCHILDREN excludes them from the
+    // parent's paint. PowerPane::Theme handles its own descendants above.
+    for (HWND control = GetWindow(window_, GW_CHILD); control;
+         control = GetWindow(control, GW_HWNDNEXT)) {
         InvalidateRect(control, nullptr, TRUE);
     }
-    for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
-    for (HWND button : {themeButton_, disconnectButton_, saveCommandsButton_, commandHeader_, sftpTabButton_,
-             rightPanelToggleButton_, importButton_, exportButton_, addCommandButton_, deleteCommandButton_,
-             sftpNameHeader_, sftpSizeHeader_, sftpModifiedHeader_, sftpTransferToggleButton_,
-             sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_, sftpUploadButton_,
-             sftpDownloadButton_})
-        InvalidateRect(button, nullptr, TRUE);
     UpdateWindow(window_);
 }
 
@@ -4956,40 +4937,38 @@ void MainWindow::SetRightPanelCollapsed(bool collapsed) {
     }
     KillTimer(window_, SideAnimationTimerId);
     rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
-    LayoutControls(client.right,client.bottom);ShowSftpPanel(sftpPanelVisible_);
+    LayoutControls(client.right,client.bottom);
     InvalidateRect(window_,nullptr,FALSE);
 }
 
 void MainWindow::ShowSftpPanel(bool show) {
     if (show && (!connection_ || selectedMode_ != 0 || !SftpClient::IsAvailable())) show = false;
     sftpPanelVisible_ = show;
-    if (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) {
-        for (HWND control : {commandHeader_, sftpTabButton_, commandList_, importButton_, exportButton_,
-                 addCommandButton_, deleteCommandButton_, saveCommandsButton_, sftpPath_, sftpNameHeader_, sftpSizeHeader_,
-                 sftpModifiedHeader_, sftpList_, sftpTransferToggleButton_, sftpTransferList_,
-                 sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_, sftpUploadButton_,
-                 sftpDownloadButton_})
-            ShowWindow(control, SW_HIDE);
-        ShowWindow(rightPanelToggleButton_, SW_SHOW);
-        InvalidateRect(window_, nullptr, TRUE);
-        return;
-    }
+    RECT listRect{};
+    GetClientRect(sftpList_, &listRect);
+    UiLayoutBatch batch;
+    QueueSidebarVisibility(batch, listRect.right - listRect.left);
+    batch.Commit();
+    InvalidateRect(commandHeader_, nullptr, FALSE);
+    InvalidateRect(sftpTabButton_, nullptr, FALSE);
+    InvalidateRect(window_, nullptr, FALSE);
+}
 
-    ShowWindow(commandHeader_, SW_SHOW);
-    ShowWindow(sftpTabButton_, SW_SHOW);
+void MainWindow::QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth) {
+    const bool expanded = !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_);
+    const bool show = sftpPanelVisible_;
+    batch.Show(rightPanelToggleButton_, SW_SHOW);
+    batch.Show(commandHeader_, expanded ? SW_SHOW : SW_HIDE);
+    batch.Show(sftpTabButton_, expanded ? SW_SHOW : SW_HIDE);
     for (HWND control : {commandList_, importButton_, exportButton_, addCommandButton_, deleteCommandButton_, saveCommandsButton_})
-        ShowWindow(control, show ? SW_HIDE : SW_SHOW);
+        batch.Show(control, expanded && !show ? SW_SHOW : SW_HIDE);
     for (HWND control : {sftpPath_, sftpNameHeader_, sftpSizeHeader_, sftpList_,
              sftpTransferToggleButton_, sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_,
              sftpUploadButton_, sftpDownloadButton_})
-        ShowWindow(control, show ? SW_SHOW : SW_HIDE);
-    RECT listRect{};
-    GetClientRect(sftpList_, &listRect);
-    ShowWindow(sftpModifiedHeader_, show && listRect.right >= 300 ? SW_SHOW : SW_HIDE);
-    ShowWindow(sftpTransferList_, show && sftpTransferExpanded_ ? SW_SHOW : SW_HIDE);
-    InvalidateRect(commandHeader_, nullptr, TRUE);
-    InvalidateRect(sftpTabButton_, nullptr, TRUE);
-    InvalidateRect(window_, nullptr, TRUE);
+        batch.Show(control, expanded && show ? SW_SHOW : SW_HIDE);
+    const bool modifiedColumn = contentWidth - Ui::OverlayScrollLaneWidth >= Ui::Scale(300);
+    batch.Show(sftpModifiedHeader_, expanded && show && modifiedColumn ? SW_SHOW : SW_HIDE);
+    batch.Show(sftpTransferList_, expanded && show && sftpTransferExpanded_ ? SW_SHOW : SW_HIDE);
 }
 
 std::vector<size_t> MainWindow::SelectedSftpIndices() const {

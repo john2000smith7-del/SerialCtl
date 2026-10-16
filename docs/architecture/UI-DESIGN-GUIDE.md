@@ -64,6 +64,7 @@ Light theme:
 - Dialog actions placed beside a field use a compact text label, the same height as the field, and at least 32 dialog units of width. Do not use a lone oversized glyph when the action can be named clearly.
 - Field-adjacent actions must copy the reference field's final runtime pixel bounds after Windows applies its font and DPI metrics; equal resource values alone are not sufficient.
 - Disabled controls retain their shape but use muted content and a low-contrast border.
+- Owner-drawn buttons paint their entire background and content together; do not expose the native system button erase color before the themed draw. Theme changes invalidate every direct child, including footer actions.
 - Hover uses a slightly brighter surface; pressed uses a darker accent or accent surface; keyboard focus uses an accent border.
 - Form labels sit above their controls. Related fields may share a balanced two-column row.
 - Dropdowns and text fields must share height, radius, padding, border, focus treatment, and background.
@@ -105,6 +106,7 @@ Light theme:
 - The right panel uses the same segmented tab style for Commands and SFTP. The SFTP working directory uses the shared rounded field treatment and follows the active SSH shell directory when it can be identified from the prompt. SFTP transfer actions use compact secondary buttons and remain disabled while an operation is running.
 - The right panel has a borderless 12 px splitter interaction lane, supports a 260-650 px remembered width, and may collapse to a visible 48 px rail containing one centered 28 px icon action. The 12 px outer margin is additional to the rail width. Resizing must preserve at least 400 px for the center terminal at the minimum supported window size.
 - Keep the collapse/expand action anchored at the center of that final rightmost rail in every state, including expanded and reversing animation. The hit target must not move during a press; each released click, including the second click of a double-click, may reverse the animation. Adjacent header actions retain their shared 8 px gap.
+- Commit sidebar child visibility with final geometry in the same layout transaction. Newly visible actions must not be exposed at their previous bounds while the animation finishes.
 - Connection-list keyboard selection keeps focus in the list for consecutive navigation, including the power row. Mouse session selection and explicit connection activation retain their terminal-focus behavior.
 - The SFTP browser uses a clickable breadcrumb field followed by a compact 32 px table header. File rows use the standard 36 px control rhythm, keep folders before files for every sort order, and expose Name, Size, and Modified sorting without native ListView chrome.
 - SFTP supports extended multi-selection. Destructive remote actions remain in the SFTP context menu, display the exact affected remote paths, and require confirmation. Local-file drag-in queues uploads; remote drag-out is not implied by this rule.

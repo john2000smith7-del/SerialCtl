@@ -28,6 +28,8 @@
 
 namespace serialctl {
 
+class UiLayoutBatch;
+
 struct CommandItem {
     std::wstring name;
     std::vector<std::wstring> commands;
@@ -210,6 +212,7 @@ private:
     void SetRightPanelCollapsed(bool collapsed);
 
     void ShowSftpPanel(bool show);
+    void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
     void RefreshSftp(const std::wstring& directory = {});
     void EditSftpPath();
     void QueryTerminalDirectory(bool installHook);
