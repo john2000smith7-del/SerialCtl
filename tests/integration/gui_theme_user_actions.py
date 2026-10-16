@@ -27,6 +27,12 @@ class ThemeActions(DesktopActions):
                 "Cannot read real connection list count")
         return result.value
 
+    def footer_state(self):
+        result = c.c_size_t()
+        require(self.user.SendMessageTimeoutW(self.control(302), 0xf2, 0, 0, 2, 2000, c.byref(result)),
+                "Cannot read native button state")
+        return result.value
+
     def pixels(self, label, theme, state="idle", settled=True):
         bounds = self.rect(self.control(302))
         width, height = bounds[2] - bounds[0], bounds[3] - bounds[1]
@@ -129,8 +135,26 @@ class ThemeActions(DesktopActions):
         try:
             time.sleep(.10)
             self.pixels("pressed", theme, "pressed")
+            pressed = self.footer_state()
+            require(pressed & 4, "Native footer did not enter BST_PUSHED")
             outside = self.rect(self.control(107))
-            self.move_mouse((outside[0] + 40, outside[1] + 40))
+            outside_point = (outside[0] + 40, outside[1] + 40)
+            self.move_mouse(outside_point)
+            moved = time.perf_counter()
+            state = self.footer_state()
+            # SetCursorPos requests mouse motion asynchronously. A global
+            # cursor coordinate alone does not establish that BUTTON processed
+            # WM_MOUSEMOVE and cancelled its native pushed state before release.
+            while state & 4 and time.perf_counter() - moved < 1:
+                time.sleep(.005)
+                state = self.footer_state()
+            self.report["cancelled_press"] = {"pressed_state": pressed, "outside_state": state,
+                "native_cancel_wait_ms": round((time.perf_counter() - moved)*1000,3),
+                "outside_point": outside_point,
+                "outside_hit": int(self.user.WindowFromPoint(POINT(*outside_point)) or 0),
+                "session_count_before_release": self.session_count()}
+            require(not state & 4, "Native button did not cancel press after mouse moved outside")
+            require(self.session_count() == count_before, "Session list changed while button held outside")
         finally:
             self.button(False)
         time.sleep(.10)
