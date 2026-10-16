@@ -146,6 +146,7 @@ class DesktopActions:
             "BitBlt": ((w.HDC, c.c_int, c.c_int, c.c_int, c.c_int,
                          w.HDC, c.c_int, c.c_int, w.DWORD), w.BOOL),
             "GetDeviceCaps": ((w.HDC, c.c_int), c.c_int),
+            "GdiFlush": ((), w.BOOL),
         }
         for name, (arguments, result) in functions.items():
             function = getattr(self.gdi, name)
@@ -324,6 +325,7 @@ class DesktopActions:
             require(previous, "SelectObject failed")
             require(self.gdi.BitBlt(memory, 0, 0, width, height, dc, left, top, 0x40CC0020),
                     "BitBlt failed: desktop may be locked or inaccessible")
+            require(self.gdi.GdiFlush(), "Cannot synchronize captured DIB pixels")
             raw = c.string_at(pixels, width * height * 4)
         finally:
             if previous:

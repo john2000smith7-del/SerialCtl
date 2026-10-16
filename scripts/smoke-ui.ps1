@@ -449,9 +449,15 @@ foreach ($architecture in @('x64')) {
             & python (Join-Path $root 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() @streamOptions
             if ($LASTEXITCODE -ne 0) { throw 'Sustained CMD producer did not start.' }
             if ($ActualMouse) {
+                & python (Join-Path $root 'tests/integration/gui_theme_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme"
+                if ($LASTEXITCODE -eq 2) { $behaviorFailures.Add("$architecture-$theme footer theme pixels failed; see theme.json. Remaining cases continue.") }
+                elseif ($LASTEXITCODE -ne 0) { throw 'Actual theme-change screen test failed.' }
                 & python (Join-Path $root 'tests/integration/desktop_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --mode desktop
                 if ($LASTEXITCODE -eq 2) { $behaviorFailures.Add("$architecture-$theme desktop sidebar input failed; see user-actions.json. Remaining cases continue.") }
                 elseif ($LASTEXITCODE -ne 0) { throw 'Actual desktop mouse move/resize/panel test failed.' }
+                & python (Join-Path $root 'tests/integration/gui_paint_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --mode desktop --theme $theme
+                if ($LASTEXITCODE -eq 2) { $behaviorFailures.Add("$architecture-$theme desktop paint pixels failed; see paint.json and lossless recording. Remaining cases continue.") }
+                elseif ($LASTEXITCODE -ne 0) { throw 'Actual desktop paint recording failed.' }
             }
             [SerialCtlUiSmoke]::SetForegroundWindow($application.MainWindowHandle)|Out-Null
             $commandRect=New-Object SerialCtlUiSmoke+RECT
@@ -643,6 +649,9 @@ foreach ($architecture in @('x64')) {
                 & python (Join-Path $root 'tests/integration/desktop_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --mode sftp
                 if ($LASTEXITCODE -eq 2) { $behaviorFailures.Add("$architecture-$theme SFTP sidebar input failed; see user-actions.json. Remaining cases continue.") }
                 elseif ($LASTEXITCODE -ne 0) { throw 'Actual SFTP column/panel mouse test failed.' }
+                & python (Join-Path $root 'tests/integration/gui_paint_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --mode sftp --theme $theme
+                if ($LASTEXITCODE -eq 2) { $behaviorFailures.Add("$architecture-$theme SFTP paint pixels failed; see paint.json and lossless recording. Remaining cases continue.") }
+                elseif ($LASTEXITCODE -ne 0) { throw 'Actual SFTP paint recording failed.' }
             }
             Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 300
