@@ -132,6 +132,19 @@ public static class SerialCtlUiSmoke {
         if(Math.Abs(rect.Left-x)>2 || Math.Abs(rect.Top-y)>2 || Math.Abs(rect.Right-rect.Left-width)>2 || Math.Abs(rect.Bottom-rect.Top-height)>2)
             throw new Exception("Power geometry mismatch id="+id+" actual="+rect.Left+","+rect.Top+","+(rect.Right-rect.Left)+","+(rect.Bottom-rect.Top)+" expected="+x+","+y+","+width+","+height);
     }
+    public static void AssertPowerScrollLane(IntPtr pane) {
+        RECT client; GetClientRect(pane,out client);
+        IntPtr dc=GetDC(pane); int dpi=GetDeviceCaps(dc,88); ReleaseDC(pane,dc);
+        int laneLeft=client.Right-(16*dpi+48)/96;
+        string failure=null;
+        EnumChildWindows(pane,delegate(IntPtr child,IntPtr ignored) {
+            if(!IsWindowVisible(child)) return true;
+            RECT rect; GetWindowRect(child,out rect); MapWindowPoints(IntPtr.Zero,pane,ref rect,2);
+            if(rect.Right>laneLeft) failure="Power control overlaps required scrollbar lane: "+GetDlgCtrlID(child);
+            return failure==null;
+        },IntPtr.Zero);
+        if(failure!=null) throw new Exception(failure);
+    }
     public static IntPtr Dialog(uint processId, string title) {
         IntPtr found = IntPtr.Zero;
         EnumWindows(delegate(IntPtr window, IntPtr ignored) {
@@ -451,6 +464,9 @@ foreach ($architecture in @('x64')) {
                 Click-Control $powerPane $automation
                 Start-Sleep -Milliseconds 150
                 Test-GlobalControls $application.MainWindowHandle $powerPane $application.Id "$architecture-$theme-power-automation-$automation"
+                # This page exceeds the viewport at the established 1180x760
+                # fixture; native controls must stop before the overlay lane.
+                if ($automation -eq 114) { [SerialCtlUiSmoke]::AssertPowerScrollLane($powerPane) }
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-automation-$automation"
             }
             # The editor is visible only on the Steps category. A WM_COMMAND

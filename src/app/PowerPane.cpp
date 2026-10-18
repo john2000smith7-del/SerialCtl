@@ -706,16 +706,33 @@ void PowerPane::Layout() {
     GetClientRect(window_, &r);
     auto d = [this](int v) { return MulDiv(v, dpi_, 96); };
     int w = r.right;
-    cardColumns_ = w >= d(600) ? 3 : 1;
     cardTop_ = d(104);
     cardHeight_ = d(216);
     bool group = draftMode_ == 1 || draftMode_ == 2;
-    int rows = cardColumns_ == 3 ? 1 : group ? 2 : 3;
-    taskTop_ = cardTop_ + rows * (cardHeight_ + d(12)) + d(4);
-    detailsTop_ = taskTop_ + d(48);
-    contentHeight_ = detailsTop_ + d(201);
-    if (contentHeight_ > r.bottom)
+    auto measureCards = [&](int width) {
+        cardColumns_ = width >= d(600) ? 3 : 1;
+        const int rows = cardColumns_ == 3 ? 1 : group ? 2 : 3;
+        taskTop_ = cardTop_ + rows * (cardHeight_ + d(12)) + d(4);
+        detailsTop_ = taskTop_ + d(48);
+    };
+    for (auto item : controls_)
+        if (item.first >= 100 || (item.first >= 40 && item.first <= 44) || (item.first >= 70 && item.first <= 72))
+            batch.Show(item.second, SW_HIDE);
+    // Details can wrap or add rows. Calculate their final height before
+    // deciding the shared width for child controls and painted cards. These
+    // tentative moves stay deferred in the same batch and never flash onscreen.
+    measureCards(w);
+    DetailsLayout(w, detailsTop_);
+    if (contentHeight_ > r.bottom) {
         w -= d(16);
+        measureCards(w);
+        DetailsLayout(w, detailsTop_);
+    }
+    const int clampedScroll = std::clamp(scroll_, 0, std::max(0, contentHeight_ - static_cast<int>(r.bottom)));
+    if (scroll_ != clampedScroll) {
+        scroll_ = clampedScroll;
+        DetailsLayout(w, detailsTop_);
+    }
     cardWidth_ = (w - d(12) * (cardColumns_ - 1)) / cardColumns_;
     auto move = [&](HWND h, int x, int y, int width, int height) {
         batch.Move(h, x, y - scroll_, width, height);
@@ -757,14 +774,11 @@ void PowerPane::Layout() {
         move(Control(90 + i), x + d(2), taskTop_ + d(2), d(widths[i] - 4), d(28));
         x += d(widths[i]);
     }
-    for (auto item : controls_)
-        if (item.first >= 100 || (item.first >= 40 && item.first <= 44) || (item.first >= 70 && item.first <= 72))
-            batch.Show(item.second, SW_HIDE);
-    DetailsLayout(w, detailsTop_);
     currentLayout_=nullptr;batch.Commit();
 }
 void PowerPane::DetailsLayout(int width, int top) {
     auto d = [this](int v) { return MulDiv(v, dpi_, 96); };
+    contentHeight_ = top + d(201);
     auto move = [&](int id, int x, int y, int w, int h = 28) {
         HWND control = Control(id);
         wchar_t cls[24]{};

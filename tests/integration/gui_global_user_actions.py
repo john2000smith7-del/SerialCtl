@@ -552,7 +552,10 @@ class GlobalActions(DesktopActions):
         require(not result_file.exists(), 'Keyboard context-menu key pasted terminal input')
         self.check('keyboard context key opens Settings without pasting')
         self.click_window(self.user.GetDlgItem(dialog, 2007))
-        self.stdout_until(('\r\n' + token + '\r\n').encode('ascii'))
+        # cmd /Q can place stdout directly after its visible '>' prompt.
+        # The exact result file below proves execution and prevents an echoed
+        # input token from passing this check by itself.
+        self.stdout_until((token + '\r\n').encode('ascii'))
         expected = token.encode('ascii') + b'\r\n'
         self.wait(lambda: result_file.exists() and result_file.read_bytes() == expected,
                   'Settings Paste executes the actual command once')
