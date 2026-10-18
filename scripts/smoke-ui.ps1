@@ -415,7 +415,11 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,81,($powerWidth-312),52,104,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,12,($powerWidth-200),52,96,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,13,($powerWidth-96),52,96,36)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,90,2,338,92,28)
+            # Each rounded tab leaves a four-pixel peer gap; no enclosing double outline.
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,90,2,338,88,28)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,91,94,338,88,28)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,92,186,338,88,28)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,93,278,338,100,28)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,103,($powerWidth-248),384,72,28)
             # The approved views are captured from the real EXE with no hardware or fake measurements.
             foreach ($tab in @(91,92,93)) {

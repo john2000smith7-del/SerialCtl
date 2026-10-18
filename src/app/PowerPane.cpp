@@ -952,7 +952,6 @@ void PowerPane::Paint(HDC dc) {
         text(combined && draftMode_ == 1 ? L"总电流限值 (A)" : L"电流限值 (A)",
              {x + d(16), y + d(172), x + d(combined ? 116 : 92), y + d(200)}, c.muted);
     }
-    UiBox(dc, {0, taskTop_, d(384), taskTop_ + d(32)}, c.raised, c.border, d(10));
     std::wstring selected = L"已选";
     auto selection = Selection();
     for (auto ch : selection)
@@ -1255,7 +1254,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             const bool hovered = enabled && GetPropW(item.hwndItem, L"SerialCtl.PowerHover");
             const bool pressed = enabled && (item.itemState & ODS_SELECTED);
             const bool focused = enabled && (item.itemState & ODS_FOCUS);
-            HBRUSH background = CreateSolidBrush(mainTab ? c.raised : c.field);
+            HBRUSH background = CreateSolidBrush(c.field);
             FillRect(item.hDC, &item.rcItem, background);
             DeleteObject(background);
             const COLORREF fill = pressed || hovered ? c.accentSoft
