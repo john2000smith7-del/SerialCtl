@@ -2,34 +2,372 @@
 #include <algorithm>
 #include <commctrl.h>
 #include <map>
+#include <new>
 #include <string>
 #include <vector>
 #include <windows.h>
+#include <windowsx.h>
+// Windows SDK GDI+ declarations use COM/property interfaces.
+#include <objidl.h>
+#include <propidl.h>
+#include <gdiplus.h>
 namespace serialctl {
 struct UiColors {
-    COLORREF surface, raised, field, text, muted, border, accent, danger;
+    COLORREF surface, raised, field, text, muted, border, accent, danger, window, accentSoft;
 };
 inline UiColors UiTheme(bool dark) {
     return dark ? UiColors{RGB(36, 36, 38),    RGB(44, 44, 46), RGB(20, 20, 22),   RGB(245, 245, 247),
-                           RGB(152, 152, 157), RGB(58, 58, 60), RGB(10, 132, 255), RGB(255, 69, 58)}
+                           RGB(152, 152, 157), RGB(58, 58, 60), RGB(10, 132, 255), RGB(255, 69, 58),
+                           RGB(28, 28, 30), RGB(31, 55, 80)}
                 : UiColors{RGB(255, 255, 255), RGB(242, 242, 247), RGB(255, 255, 255), RGB(29, 29, 31),
-                           RGB(110, 110, 115), RGB(210, 210, 215), RGB(0, 122, 255),   RGB(255, 59, 48)};
+                           RGB(110, 110, 115), RGB(210, 210, 215), RGB(0, 122, 255),   RGB(255, 59, 48),
+                           RGB(245, 245, 247), RGB(229, 241, 255)};
+}
+inline Gdiplus::Color UiColor(COLORREF color) {
+    return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
 }
 inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius) {
-    HBRUSH brush = CreateSolidBrush(fill);
-    HPEN pen = CreatePen(PS_SOLID, 1, border);
-    auto oldBrush = SelectObject(dc, brush), oldPen = SelectObject(dc, pen);
-    RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius * 2, radius * 2);
-    SelectObject(dc, oldBrush);
-    SelectObject(dc, oldPen);
-    DeleteObject(brush);
-    DeleteObject(pen);
+    const float width = static_cast<float>(rect.right - rect.left - 1);
+    const float height = static_cast<float>(rect.bottom - rect.top - 1);
+    if (!dc || width <= 0 || height <= 0)
+        return;
+    // App.cpp owns GDI+ startup/shutdown. The path's 1 px stroke is entirely
+    // inside the supplied bounds; callers paint the surrounding surface first.
+    const float x = rect.left + 0.5f, y = rect.top + 0.5f;
+    const float diameter = std::min(static_cast<float>(std::max(0, radius) * 2), std::min(width, height));
+    Gdiplus::Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::GraphicsPath path;
+    if (diameter > 0) {
+        path.AddArc(x, y, diameter, diameter, 180, 90);
+        path.AddArc(x + width - diameter, y, diameter, diameter, 270, 90);
+        path.AddArc(x + width - diameter, y + height - diameter, diameter, diameter, 0, 90);
+        path.AddArc(x, y + height - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+    } else
+        path.AddRectangle(Gdiplus::RectF(x, y, width, height));
+    Gdiplus::SolidBrush brush(UiColor(fill));
+    Gdiplus::Pen pen(UiColor(border), 1.0f);
+    graphics.FillPath(&brush, &path);
+    graphics.DrawPath(&pen, &path);
+}
+inline void UiPolyline(HDC dc, const POINT *points, int count, COLORREF color, float width = 1.0f) {
+    if (!dc || !points || count < 2)
+        return;
+    Gdiplus::Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Pen pen(UiColor(color), width);
+    pen.SetStartCap(Gdiplus::LineCapRound);
+    pen.SetEndCap(Gdiplus::LineCapRound);
+    pen.SetLineJoin(Gdiplus::LineJoinRound);
+    Gdiplus::GraphicsPath path;
+    for (int i = 1; i < count; ++i)
+        path.AddLine(points[i - 1].x + 0.5f, points[i - 1].y + 0.5f, points[i].x + 0.5f, points[i].y + 0.5f);
+    graphics.DrawPath(&pen, &path);
 }
 struct UiFieldStyle {
     bool *dark;
     HFONT font;
     int dpi;
 };
+// Keep native COMBOBOX/ComboLBox windows, selection notifications, keyboard
+// handling and accessibility. Only painting and the scrollbar lane are shared.
+struct UiComboPopup {
+    HWND combo = nullptr;
+    UiFieldStyle *style = nullptr;
+    bool dragging = false;
+    int dragOffset = 0;
+    bool ownsCapture = false;
+    int wheelRemainder = 0;
+};
+struct UiComboScroll {
+    RECT lane{}, track{}, thumb{};
+    int top = 0, page = 0, maximum = 0;
+};
+inline bool UiComboMetrics(HWND list, const UiFieldStyle &style, UiComboScroll &scroll) {
+    RECT bounds{};
+    GetClientRect(list, &bounds);
+    const int count = static_cast<int>(SendMessageW(list, LB_GETCOUNT, 0, 0));
+    const int row = static_cast<int>(SendMessageW(list, LB_GETITEMHEIGHT, 0, 0));
+    if (count <= 0 || row <= 0 || bounds.bottom <= 0)
+        return false;
+    const int inset = std::max(1, MulDiv(4, style.dpi, 96));
+    scroll.page = std::max(1, static_cast<int>(bounds.bottom) / row);
+    scroll.maximum = std::max(0, count - scroll.page);
+    if (!scroll.maximum)
+        return false;
+    scroll.top = std::max(0, std::min(scroll.maximum, static_cast<int>(SendMessageW(list, LB_GETTOPINDEX, 0, 0))));
+    scroll.lane = {bounds.right - MulDiv(16, style.dpi, 96), 1, bounds.right - 1, bounds.bottom - 1};
+    scroll.track = {bounds.right - MulDiv(8, style.dpi, 96), inset,
+                    bounds.right - MulDiv(3, style.dpi, 96), bounds.bottom - inset};
+    const int trackHeight = std::max(1L, scroll.track.bottom - scroll.track.top);
+    const int thumbHeight = std::min(trackHeight, std::max(MulDiv(24, style.dpi, 96), trackHeight * scroll.page / count));
+    const int y = scroll.track.top + (trackHeight - thumbHeight) * scroll.top / scroll.maximum;
+    scroll.thumb = {scroll.track.left, y, scroll.track.right, y + thumbHeight};
+    return true;
+}
+inline void UiComboRegion(HWND list, int dpi) {
+    RECT bounds{};
+    GetWindowRect(list, &bounds);
+    const int radius = MulDiv(10, dpi, 96);
+    // The integer window region sits OUTSIDE the painted border. Clipping the
+    // antialiased curve to an identical integer region would restore jaggies.
+    HRGN region = CreateRoundRectRgn(-2, -2, bounds.right - bounds.left + 2,
+                                     bounds.bottom - bounds.top + 2, (radius + 2) * 2, (radius + 2) * 2);
+    if (region && !SetWindowRgn(list, region, FALSE))
+        DeleteObject(region);
+}
+inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool selected,
+                           const UiFieldStyle &style, const UiComboScroll *scroll = nullptr) {
+    const auto colors = UiTheme(*style.dark);
+    auto d = [&](int value) { return MulDiv(value, style.dpi, 96); };
+    HBRUSH background = CreateSolidBrush(colors.field);
+    FillRect(dc, &row, background);
+    DeleteObject(background);
+    row.left += d(2);
+    row.right = scroll ? scroll->lane.left : row.right - d(2);
+    if (selected) {
+        RECT highlight = row;
+        InflateRect(&highlight, 0, -1);
+        UiBox(dc, highlight, colors.accentSoft, colors.accentSoft, d(8));
+    }
+    const int length = static_cast<int>(SendMessageW(combo, CB_GETLBTEXTLEN, index, 0));
+    if (length < 0 || length > 65536)
+        return;
+    std::vector<wchar_t> text(static_cast<size_t>(length) + 1);
+    SendMessageW(combo, CB_GETLBTEXT, index, reinterpret_cast<LPARAM>(text.data()));
+    row.left += d(6);
+    row.right -= d(6);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, !IsWindowEnabled(combo) ? colors.muted : selected ? colors.accent : colors.text);
+    DrawTextW(dc, text.data(), length, &row, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+}
+inline void UiDrawComboItem(const DRAWITEMSTRUCT &item, const UiFieldStyle &style) {
+    // The entire collapsed control is drawn by UiFieldProc. Native selection
+    // changes still issue ODT_COMBOBOX here, but must not paint a second frame.
+    if (item.itemState & ODS_COMBOBOXEDIT)
+        return;
+    const int saved = SaveDC(item.hDC);
+    HFONT font = reinterpret_cast<HFONT>(SendMessageW(item.hwndItem, WM_GETFONT, 0, 0));
+    if (font)
+        SelectObject(item.hDC, font);
+    COMBOBOXINFO info{sizeof(info)};
+    UiComboScroll scroll;
+    const bool scrolling = GetComboBoxInfo(item.hwndItem, &info) && UiComboMetrics(info.hwndList, style, scroll);
+    UiPaintComboRow(item.hDC, item.hwndItem, static_cast<int>(item.itemID), item.rcItem,
+                    (item.itemState & ODS_SELECTED) != 0, style, scrolling ? &scroll : nullptr);
+    RestoreDC(item.hDC, saved);
+}
+inline void UiPaintComboPopup(HWND list, HDC target, const UiComboPopup &data) {
+    RECT bounds{};
+    GetClientRect(list, &bounds);
+    if (!target || bounds.right <= 0 || bounds.bottom <= 0)
+        return;
+    auto colors = UiTheme(*data.style->dark);
+    auto d = [&](int value) { return MulDiv(value, data.style->dpi, 96); };
+    HDC buffer = CreateCompatibleDC(target);
+    HBITMAP bitmap = buffer ? CreateCompatibleBitmap(target, bounds.right, bounds.bottom) : nullptr;
+    HGDIOBJ previousBitmap = bitmap ? SelectObject(buffer, bitmap) : nullptr;
+    HDC dc = bitmap ? buffer : target;
+    const int saved = SaveDC(dc);
+    HBRUSH background = CreateSolidBrush(colors.field);
+    FillRect(dc, &bounds, background);
+    DeleteObject(background);
+    UiComboScroll scroll;
+    const bool scrolling = UiComboMetrics(list, *data.style, scroll);
+    const int count = static_cast<int>(SendMessageW(data.combo, CB_GETCOUNT, 0, 0));
+    const int top = std::max(0, static_cast<int>(SendMessageW(list, LB_GETTOPINDEX, 0, 0)));
+    const int selected = static_cast<int>(SendMessageW(list, LB_GETCURSEL, 0, 0));
+    HFONT font = reinterpret_cast<HFONT>(SendMessageW(data.combo, WM_GETFONT, 0, 0));
+    if (font)
+        SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT);
+    for (int i = top; i < count; ++i) {
+        RECT row{};
+        if (SendMessageW(list, LB_GETITEMRECT, i, reinterpret_cast<LPARAM>(&row)) == LB_ERR || row.top >= bounds.bottom)
+            break;
+        if (row.bottom <= 0)
+            continue;
+        UiPaintComboRow(dc, data.combo, i, row, i == selected, *data.style, scrolling ? &scroll : nullptr);
+    }
+    if (scrolling)
+        UiBox(dc, scroll.thumb, colors.border, colors.border, d(3));
+    // Draw only the outline here: filling UiBox would cover the native rows.
+    {
+    Gdiplus::Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    const float x = 0.5f, y = 0.5f, width = bounds.right - 1.0f, height = bounds.bottom - 1.0f;
+    const float diameter = std::min(static_cast<float>(d(20)), std::min(width, height));
+    Gdiplus::GraphicsPath path;
+    path.AddArc(x, y, diameter, diameter, 180, 90);
+    path.AddArc(x + width - diameter, y, diameter, diameter, 270, 90);
+    path.AddArc(x + width - diameter, y + height - diameter, diameter, diameter, 0, 90);
+    path.AddArc(x, y + height - diameter, diameter, diameter, 90, 90);
+    path.CloseFigure();
+    Gdiplus::Pen pen(UiColor(colors.border), 1.0f);
+    graphics.DrawPath(&pen, &path);
+    }
+    RestoreDC(dc, saved);
+    if (bitmap) {
+        BitBlt(target, 0, 0, bounds.right, bounds.bottom, buffer, 0, 0, SRCCOPY);
+        SelectObject(buffer, previousBitmap);
+        DeleteObject(bitmap);
+    }
+    if (buffer)
+        DeleteDC(buffer);
+}
+inline LRESULT CALLBACK UiComboPopupProc(HWND list, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR reference) {
+    auto *data = reinterpret_cast<UiComboPopup *>(reference);
+    if (message == WM_NCCALCSIZE || message == WM_NCPAINT)
+        return 0;
+    if (message == WM_ERASEBKGND)
+        return 1;
+    if (message == WM_PAINT || message == WM_PRINT || message == WM_PRINTCLIENT) {
+        PAINTSTRUCT ps{};
+        HDC dc = message == WM_PAINT ? BeginPaint(list, &ps) : reinterpret_cast<HDC>(w);
+        UiPaintComboPopup(list, dc, *data);
+        if (message == WM_PAINT)
+            EndPaint(list, &ps);
+        return 0;
+    }
+    if (message == WM_STYLECHANGING && w == GWL_STYLE)
+        reinterpret_cast<STYLESTRUCT *>(l)->styleNew &= ~(WS_BORDER | WS_VSCROLL | WS_HSCROLL);
+    if (message == WM_WINDOWPOSCHANGING) {
+        auto &position = *reinterpret_cast<WINDOWPOS *>(l);
+        if (!(position.flags & SWP_NOSIZE)) {
+            const int count = static_cast<int>(SendMessageW(data->combo, CB_GETCOUNT, 0, 0));
+            const int row = static_cast<int>(SendMessageW(list, LB_GETITEMHEIGHT, 0, 0));
+            MONITORINFO monitor{sizeof(monitor)};
+            RECT combo{};
+            GetWindowRect(data->combo, &combo);
+            if (count > 0 && row > 0 && GetMonitorInfoW(MonitorFromWindow(data->combo, MONITOR_DEFAULTTONEAREST), &monitor)) {
+                const int below = std::max(0L, monitor.rcWork.bottom - combo.bottom);
+                const int above = std::max(0L, combo.top - monitor.rcWork.top);
+                const int available = std::max(below, above);
+                // Fixed built-in choices all fit; large dynamic lists use the
+                // shared overlay scrollbar and never leave the work area.
+                const int rows = std::max(1, std::min(count, std::max(1, (available - 2) / row)));
+                position.cy = std::min(available, rows * row + 2);
+                if (position.flags & SWP_NOMOVE) {
+                    RECT current{};
+                    GetWindowRect(list, &current);
+                    position.x = current.left;
+                }
+                position.y = position.cy <= below ? combo.bottom : combo.top - position.cy;
+                position.flags &= ~SWP_NOMOVE;
+            }
+        }
+    }
+    UiComboScroll scroll;
+    if (message == WM_MOUSEWHEEL && UiComboMetrics(list, *data->style, scroll)) {
+        data->wheelRemainder += GET_WHEEL_DELTA_WPARAM(w);
+        const int notches = data->wheelRemainder / WHEEL_DELTA;
+        data->wheelRemainder %= WHEEL_DELTA;
+        UINT lines = 3;
+        SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+        const int rows = lines == WHEEL_PAGESCROLL ? scroll.page : static_cast<int>(std::min(lines, 100u));
+        SendMessageW(list, LB_SETTOPINDEX,
+                     std::max(0, std::min(scroll.maximum, scroll.top - rows * notches)), 0);
+        InvalidateRect(list, nullptr, FALSE);
+        UpdateWindow(list);
+        return 0;
+    }
+    const POINT mouse{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+    if ((message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK) &&
+        UiComboMetrics(list, *data->style, scroll) && PtInRect(&scroll.lane, mouse)) {
+        data->dragging = true;
+        const int y = GET_Y_LPARAM(l);
+        data->dragOffset = y >= scroll.thumb.top && y < scroll.thumb.bottom
+                               ? y - scroll.thumb.top
+                               : (scroll.thumb.bottom - scroll.thumb.top) / 2;
+        // Keep the native combo's capture: stealing it may dismiss the list.
+        // UiFieldProc forwards an active drag if the combo owns capture.
+        data->ownsCapture = GetCapture() == nullptr;
+        if (data->ownsCapture)
+            SetCapture(list);
+        SendMessageW(list, WM_MOUSEMOVE, MK_LBUTTON, l);
+        return 0;
+    }
+    if (message == WM_MOUSEMOVE && data->dragging) {
+        if (UiComboMetrics(list, *data->style, scroll)) {
+            const int travel = std::max(1L, scroll.track.bottom - scroll.track.top - (scroll.thumb.bottom - scroll.thumb.top));
+            const int offset = std::max(0, std::min(travel, GET_Y_LPARAM(l) - data->dragOffset - static_cast<int>(scroll.track.top)));
+            SendMessageW(list, LB_SETTOPINDEX, offset * scroll.maximum / travel, 0);
+            InvalidateRect(list, nullptr, FALSE);
+            UpdateWindow(list);
+        }
+        return 0;
+    }
+    if (message == WM_LBUTTONUP && data->dragging) {
+        data->dragging = false;
+        const bool release = data->ownsCapture && GetCapture() == list;
+        data->ownsCapture = false;
+        if (release)
+            ReleaseCapture();
+        return 0;
+    }
+    if (message == WM_CAPTURECHANGED) {
+        data->dragging = false;
+        data->ownsCapture = false;
+    }
+    if (message == WM_NCDESTROY) {
+        RemoveWindowSubclass(list, UiComboPopupProc, id);
+        delete data;
+        return DefSubclassProc(list, message, w, l);
+    }
+    const LRESULT result = DefSubclassProc(list, message, w, l);
+    // A selection notification can close the owning dialog synchronously.
+    // Never dereference its popup data after the native procedure destroyed it.
+    DWORD_PTR current = 0;
+    if (!GetWindowSubclass(list, UiComboPopupProc, id, &current) || current != reference)
+        return result;
+    if (message == WM_SIZE || message == WM_WINDOWPOSCHANGED)
+        UiComboRegion(list, data->style->dpi);
+    if (message == WM_MOUSEMOVE || message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
+        message == WM_KEYDOWN || message == WM_CHAR || message == WM_VSCROLL || message == WM_MOUSEWHEEL ||
+        message == LB_SETTOPINDEX || message == LB_SETCURSEL || message == LB_ADDSTRING ||
+        message == LB_DELETESTRING || message == LB_RESETCONTENT || message == WM_SIZE || message == WM_SHOWWINDOW) {
+        // Native ComboLBox can draw changed rows synchronously, including
+        // owner-draw notifications. Replace that paint with the same palette.
+        InvalidateRect(list, nullptr, FALSE);
+        if (IsWindowVisible(list))
+            UpdateWindow(list);
+    }
+    return result;
+}
+inline void UiPrepareComboPopup(HWND combo, UiFieldStyle *style) {
+    COMBOBOXINFO info{sizeof(info)};
+    if (!GetComboBoxInfo(combo, &info) || !info.hwndList)
+        return;
+    DWORD_PTR reference = 0;
+    if (GetWindowSubclass(info.hwndList, UiComboPopupProc, 72, &reference)) {
+        reinterpret_cast<UiComboPopup *>(reference)->style = style;
+    } else {
+        auto *data = new (std::nothrow) UiComboPopup{combo, style};
+        if (!data)
+            return;
+        if (!SetWindowSubclass(info.hwndList, UiComboPopupProc, 72, reinterpret_cast<DWORD_PTR>(data))) {
+            delete data;
+            return;
+        }
+        SetWindowLongPtrW(info.hwndList, GWL_STYLE, GetWindowLongPtrW(info.hwndList, GWL_STYLE) & ~(WS_BORDER | WS_VSCROLL | WS_HSCROLL));
+        SetWindowLongPtrW(info.hwndList, GWL_EXSTYLE, GetWindowLongPtrW(info.hwndList, GWL_EXSTYLE) & ~(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+        SetWindowPos(info.hwndList, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+    HDC dc = GetDC(combo);
+    HFONT font = reinterpret_cast<HFONT>(SendMessageW(combo, WM_GETFONT, 0, 0));
+    HGDIOBJ previousFont = dc && font ? SelectObject(dc, font) : nullptr;
+    TEXTMETRICW metrics{};
+    if (dc)
+        GetTextMetricsW(dc, &metrics);
+    if (previousFont)
+        SelectObject(dc, previousFont);
+    if (dc)
+        ReleaseDC(combo, dc);
+    const int row = std::max(MulDiv(28, style->dpi, 96), static_cast<int>(metrics.tmHeight) + MulDiv(8, style->dpi, 96));
+    SendMessageW(combo, CB_SETITEMHEIGHT, 0, row);
+    UiComboRegion(info.hwndList, style->dpi);
+}
 inline void UiResizeDialog(HWND dialog, int dpi, int width, int height) {
     RECT bounds{0, 0, MulDiv(width, dpi, 96), MulDiv(height, dpi, 96)};
     AdjustWindowRectEx(&bounds, static_cast<DWORD>(GetWindowLongPtrW(dialog, GWL_STYLE)), FALSE,
@@ -38,6 +376,8 @@ inline void UiResizeDialog(HWND dialog, int dpi, int width, int height) {
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
+    if (message == WM_ERASEBKGND && (GetWindowLongPtrW(h, GWL_STYLE) & BS_TYPEMASK) == BS_OWNERDRAW)
+        return 1;
     if (message == WM_MOUSEMOVE && !GetPropW(h, L"SerialCtl.PowerHover")) {
         SetPropW(h, L"SerialCtl.PowerHover", reinterpret_cast<HANDLE>(1));
         TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, h, 0};
@@ -64,8 +404,33 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     bool edit = _wcsicmp(cls, L"EDIT") == 0;
     auto d = [style](int n) { return MulDiv(n, style->dpi, 96); };
     auto colors = UiTheme(*style->dark);
-    if (!edit && message == WM_NCCALCSIZE)
+    if (!edit && (message == WM_NCCALCSIZE || message == WM_NCPAINT))
         return 0;
+    if (!edit && message == WM_ERASEBKGND)
+        return 1;
+    if (!edit && (message == WM_MOUSEMOVE || message == WM_LBUTTONUP)) {
+        COMBOBOXINFO info{sizeof(info)};
+        DWORD_PTR popup = 0;
+        if (GetComboBoxInfo(h, &info) &&
+            GetWindowSubclass(info.hwndList, UiComboPopupProc, 72, &popup) &&
+            reinterpret_cast<UiComboPopup *>(popup)->dragging) {
+            POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            MapWindowPoints(h, info.hwndList, &point, 1);
+            return SendMessageW(info.hwndList, message, w, MAKELPARAM(point.x, point.y));
+        }
+    }
+    if (!edit && message == WM_MOUSEMOVE && !GetPropW(h, L"SerialCtl.FieldHover")) {
+        SetPropW(h, L"SerialCtl.FieldHover", reinterpret_cast<HANDLE>(1));
+        TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, h, 0};
+        TrackMouseEvent(&track);
+        InvalidateRect(h, nullptr, FALSE);
+    }
+    if (!edit && message == WM_MOUSELEAVE) {
+        RemovePropW(h, L"SerialCtl.FieldHover");
+        InvalidateRect(h, nullptr, FALSE);
+    }
+    if (!edit && (message == WM_LBUTTONDOWN || message == WM_KEYDOWN || (message == CB_SHOWDROPDOWN && w)))
+        UiPrepareComboPopup(h, style);
     if (edit && message == WM_NCCALCSIZE) {
         LRESULT result = DefSubclassProc(h, message, w, l);
         RECT *rect = w ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(l)->rgrc[0] : reinterpret_cast<RECT *>(l);
@@ -98,6 +463,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         (!edit && (message == WM_PAINT || message == WM_PRINT || message == WM_PRINTCLIENT))) {
         PAINTSTRUCT ps{};
         HDC dc = edit ? GetWindowDC(h) : message == WM_PAINT ? BeginPaint(h, &ps) : reinterpret_cast<HDC>(w);
+        const int saved = SaveDC(dc);
         RECT rect{};
         if (edit) {
             GetWindowRect(h, &rect);
@@ -108,7 +474,11 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         HBRUSH outside = CreateSolidBrush(outsideColor);
         FillRect(dc, &rect, outside);
         DeleteObject(outside);
-        UiBox(dc, rect, colors.field, GetFocus() == h ? colors.accent : colors.border, d(10));
+        const bool enabled = IsWindowEnabled(h) != FALSE;
+        const bool focused = enabled && (GetFocus() == h || (!edit && SendMessageW(h, CB_GETDROPPEDSTATE, 0, 0)));
+        const COLORREF border = focused ? colors.accent
+                                  : enabled && GetPropW(h, L"SerialCtl.FieldHover") ? colors.muted : colors.border;
+        UiBox(dc, rect, colors.field, border, d(10));
         if (!edit) {
             int selected = static_cast<int>(SendMessageW(h, CB_GETCURSEL, 0, 0));
             std::wstring text;
@@ -120,51 +490,56 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
                     text.assign(buffer.data());
                 }
             }
-            auto old = SelectObject(dc, style->font);
+            HFONT font = reinterpret_cast<HFONT>(SendMessageW(h, WM_GETFONT, 0, 0));
+            if (font || style->font)
+                SelectObject(dc, font ? font : style->font);
             SetBkMode(dc, TRANSPARENT);
-            SetTextColor(dc, IsWindowEnabled(h) ? colors.text : colors.muted);
+            SetTextColor(dc, enabled ? colors.text : colors.muted);
             RECT label = rect;
             label.left += d(8);
             label.right -= d(28);
-            DrawTextW(dc, text.c_str(), -1, &label, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
-            SelectObject(dc, old);
-            HPEN pen = CreatePen(PS_SOLID, d(2), colors.muted);
-            old = SelectObject(dc, pen);
+            DrawTextW(dc, text.c_str(), -1, &label, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
             int x = rect.right - d(14), y = rect.bottom / 2;
-            MoveToEx(dc, x - d(4), y - d(2), nullptr);
-            LineTo(dc, x, y + d(2));
-            LineTo(dc, x + d(4), y - d(2));
-            SelectObject(dc, old);
-            DeleteObject(pen);
+            const POINT chevron[]{{x - d(4), y - d(2)}, {x, y + d(2)}, {x + d(4), y - d(2)}};
+            UiPolyline(dc, chevron, 3, colors.muted, static_cast<float>(d(2)));
         }
+        RestoreDC(dc, saved);
         if (edit)
             ReleaseDC(h, dc);
         else if (message == WM_PAINT)
             EndPaint(h, &ps);
         return 0;
     }
-    LRESULT result = DefSubclassProc(h, message, w, l);
-    if (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE)
-        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
-    if (message == WM_SIZE) {
-        RECT bounds{};
-        GetWindowRect(h, &bounds);
-        SetWindowRgn(
-            h, CreateRoundRectRgn(0, 0, bounds.right - bounds.left + 1, bounds.bottom - bounds.top + 1, d(20), d(20)),
-            TRUE);
-    }
     if (message == WM_NCDESTROY) {
         RemovePropW(h, L"SerialCtl.FieldSurface");
+        RemovePropW(h, L"SerialCtl.FieldHover");
         RemoveWindowSubclass(h, UiFieldProc, id);
+        return DefSubclassProc(h, message, w, l);
     }
+    LRESULT result = DefSubclassProc(h, message, w, l);
+    DWORD_PTR current = 0;
+    if (!GetWindowSubclass(h, UiFieldProc, id, &current) || current != reference)
+        return result;
+    if (!edit && message == WM_SETFONT)
+        UiPrepareComboPopup(h, style);
+    if (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
+        message == WM_SETFONT || message == WM_SIZE || (!edit && (message == CB_SETCURSEL || message == CB_SHOWDROPDOWN)))
+        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
     return result;
 }
 inline void UiStyleField(HWND control, UiFieldStyle *style) {
     SetWindowLongPtrW(control, GWL_STYLE, GetWindowLongPtrW(control, GWL_STYLE) & ~WS_BORDER);
     SetWindowLongPtrW(control, GWL_EXSTYLE, GetWindowLongPtrW(control, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
     SetWindowSubclass(control, UiFieldProc, 71, reinterpret_cast<DWORD_PTR>(style));
+    // The inset native edit surface cannot cover the rounded border. Paint
+    // outside corners in the parent surface instead of clipping away AA pixels.
+    SetWindowRgn(control, nullptr, FALSE);
     SetWindowPos(control, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    wchar_t cls[32]{};
+    GetClassNameW(control, cls, 32);
+    if (_wcsicmp(cls, L"COMBOBOX") == 0)
+        UiPrepareComboPopup(control, style);
 }
 } // namespace serialctl
 
@@ -301,13 +676,9 @@ class UiLayoutBatch {
 inline void UiPlus(HDC dc, const RECT &r, COLORREF color, int dpi) {
     int half = MulDiv(7, dpi, 96), width = std::max(1, MulDiv(2, dpi, 96));
     int cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
-    HPEN pen = CreatePen(PS_SOLID, width, color);
-    auto old = SelectObject(dc, pen);
-    MoveToEx(dc, cx - half, cy, nullptr);
-    LineTo(dc, cx + half + 1, cy);
-    MoveToEx(dc, cx, cy - half, nullptr);
-    LineTo(dc, cx, cy + half + 1);
-    SelectObject(dc, old);
-    DeleteObject(pen);
+    const POINT horizontal[]{{cx - half, cy}, {cx + half, cy}};
+    const POINT vertical[]{{cx, cy - half}, {cx, cy + half}};
+    UiPolyline(dc, horizontal, 2, color, static_cast<float>(width));
+    UiPolyline(dc, vertical, 2, color, static_cast<float>(width));
 }
 } // namespace serialctl

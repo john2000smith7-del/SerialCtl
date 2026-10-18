@@ -974,6 +974,29 @@ std::wstring TerminalModel::CurrentLineText() const {
     return LineText(CursorDisplayLine());
 }
 
+std::wstring TerminalModel::SelectedText(size_t firstLine, int firstColumn,
+    size_t lastLine, int lastColumn) const {
+    const auto count = DisplayLineCount();
+    if (!count) return {};
+    if (firstLine > lastLine || (firstLine == lastLine && firstColumn > lastColumn)) {
+        std::swap(firstLine, lastLine);
+        std::swap(firstColumn, lastColumn);
+    }
+    firstLine = std::min(firstLine, count - 1);
+    lastLine = std::min(lastLine, count - 1);
+    std::wstring text;
+    for (size_t index = firstLine; index <= lastLine; ++index) {
+        const auto &line = DisplayLine(index);
+        const size_t used = std::min(line.used, line.cells.size());
+        const size_t begin = index == firstLine ? std::min(used, static_cast<size_t>(std::max(0, firstColumn))) : 0;
+        const size_t end = index == lastLine ? std::min(used, static_cast<size_t>(std::max(0, lastColumn)) + 1) : used;
+        for (size_t column = begin; column < end; ++column)
+            if (!line.cells[column].continuation) text += line.cells[column].character;
+        if (index < lastLine && !line.wrapped) text += L"\r\n";
+    }
+    return text;
+}
+
 std::wstring TerminalModel::PlainText(bool includeTimestamps) const {
     std::wstring text;
     const size_t count = DisplayLineCount();

@@ -7,6 +7,41 @@ namespace serialctl {
 class CmdLineEditor {
   public:
     enum class Key { Left, Right, Home, End, Backspace, Delete, Up, Down };
+    static constexpr size_t MaximumLineLength = 8191;
+    struct PastePlan {
+        std::wstring submitted, tail;
+        size_t cursor = 0;
+    };
+    // Prepare the complete insertion without mutating the draft or history.
+    // The caller must validate the encoded batch before sending any bytes.
+    bool PreparePaste(const std::wstring &paste, PastePlan &plan) const {
+        std::wstring combined = text_;
+        combined.insert(cursor_, paste);
+        size_t length = 0;
+        for (wchar_t c : combined) {
+            if (c == L'\r' || c == L'\n') length = 0;
+            else if ((c < 32 && c != L'\t') || c == 127 || ++length > MaximumLineLength)
+                return false;
+        }
+        const auto end = combined.find_last_of(L"\r\n");
+        PastePlan ready;
+        if (end == std::wstring::npos) {
+            ready.tail = std::move(combined);
+            ready.cursor = cursor_ + paste.size();
+        } else {
+            ready.submitted = combined.substr(0, end + 1);
+            ready.tail = combined.substr(end + 1);
+            const size_t caret = cursor_ + paste.size();
+            ready.cursor = caret > end ? std::min(ready.tail.size(), caret - end - 1) : 0;
+        }
+        plan = std::move(ready);
+        return true;
+    }
+    void CommitPaste(const PastePlan &plan) {
+        if (!plan.submitted.empty()) SubmittedBatch(plan.submitted);
+        text_ = plan.tail;
+        cursor_ = std::min(plan.cursor, text_.size());
+    }
     const std::wstring &Text() const {
         return text_;
     }
@@ -14,7 +49,7 @@ class CmdLineEditor {
         return cursor_;
     }
     bool Insert(const std::wstring &text) {
-        if (text_.size() + text.size() > 8191)
+        if (text.size() > MaximumLineLength - text_.size())
             return false;
         text_.insert(cursor_, text);
         cursor_ += text.size();

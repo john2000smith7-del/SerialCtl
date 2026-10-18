@@ -63,7 +63,7 @@ class PowerPane {
     int cardTop_ = 0, cardWidth_ = 0, cardHeight_ = 0, cardColumns_ = 1, taskTop_ = 0;
     bool scrolling_ = false;
     int tab_ = 0, automation_ = 0, settings_ = 0, draftMode_ = 0, independentSelection_ = 1;
-    int detailsTop_ = 0;
+    int detailsTop_ = 0, automationOffset_ = 0;
     UiLayoutBatch* currentLayout_ = nullptr;
     bool refreshRequired_ = true;
     bool paused_ = false, populated_ = false, reporting_ = false;

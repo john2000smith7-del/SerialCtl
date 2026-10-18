@@ -91,6 +91,9 @@ public:
     std::wstring LineText(size_t displayLine, bool trimRight = true) const;
     std::wstring CurrentLineText() const;
     std::wstring PlainText(bool includeTimestamps) const;
+    // Inclusive cell endpoints; preserve written spaces and hard line breaks,
+    // but omit unused padding and wide-character continuation cells.
+    std::wstring SelectedText(size_t firstLine, int firstColumn, size_t lastLine, int lastColumn) const;
 
 private:
     enum class ParserState {

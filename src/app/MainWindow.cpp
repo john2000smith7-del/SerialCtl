@@ -28,6 +28,7 @@
 #include <cwctype>
 #include <new>
 #include <sstream>
+#include <stdexcept>
 #include <vector>
 
 namespace serialctl {
@@ -100,7 +101,8 @@ enum ControlId {
     IdSaveCommands,
     IdCmd = 300,
     IdPower,
-    IdDisconnectAll
+    IdDisconnectAll,
+    IdSettings
 };
 
 enum TerminalMenuId {
@@ -124,6 +126,14 @@ enum LineEndingMenuId {
     IdMenuEndingLf,
     IdMenuEndingCrLf,
     IdMenuEndingNone
+};
+
+enum SettingsControlId {
+    IdSettingsEcho = 2501,
+    IdSettingsTimestamp,
+    IdSettingsRawTrace,
+    IdSettingsEncoding,
+    IdSettingsEnding
 };
 
 enum SftpMenuId {
@@ -157,6 +167,8 @@ int Space = 8;
 int Gap = 12;
 int OverlayScrollLaneWidth = 16;
 int OverlayScrollThumbWidth = 5;
+int TerminalPadding = 8;
+int TerminalTimestampWidth = 112;
 int Section = 16;
 int ToolbarHeight = 72;
 int ToolbarGroupWidth = 610;
@@ -192,6 +204,8 @@ void ScaleUiMetrics(HWND window) {
     Ui::Gap=Ui::Scale(Ui::Gap);
     Ui::OverlayScrollLaneWidth=Ui::Scale(Ui::OverlayScrollLaneWidth);
     Ui::OverlayScrollThumbWidth=Ui::Scale(Ui::OverlayScrollThumbWidth);
+    Ui::TerminalPadding=Ui::Scale(Ui::TerminalPadding);
+    Ui::TerminalTimestampWidth=Ui::Scale(Ui::TerminalTimestampWidth);
     Ui::Section=Ui::Scale(Ui::Section);
     Ui::ToolbarHeight=Ui::Scale(Ui::ToolbarHeight);
     Ui::ToolbarGroupWidth=Ui::Scale(Ui::ToolbarGroupWidth);
@@ -320,14 +334,9 @@ struct Palette {
 };
 
 Palette Colors(bool dark) {
-    if (dark) {
-        return {RGB(28, 28, 30), RGB(36, 36, 38), RGB(44, 44, 46), RGB(20, 20, 22),
-            RGB(58, 58, 60), RGB(245, 245, 247), RGB(152, 152, 157), RGB(10, 132, 255),
-            RGB(31, 55, 80), RGB(255, 69, 58)};
-    }
-    return {RGB(245, 245, 247), RGB(255, 255, 255), RGB(242, 242, 247), RGB(255, 255, 255),
-        RGB(210, 210, 215), RGB(29, 29, 31), RGB(110, 110, 115), RGB(0, 122, 255),
-        RGB(229, 241, 255), RGB(255, 59, 48)};
+    const auto colors = UiTheme(dark);
+    return {colors.window, colors.surface, colors.raised, colors.field,
+        colors.border, colors.text, colors.muted, colors.accent, colors.accentSoft, colors.danger};
 }
 
 std::wstring CurrentTerminalTimestamp() {
@@ -443,16 +452,13 @@ TerminalHorizontalScrollMetrics GetTerminalHorizontalScrollMetrics(
 }
 
 void DrawRoundedBox(HDC dc, const RECT& rect, int radius, COLORREF fill, COLORREF border) {
-    HBRUSH brush = CreateSolidBrush(fill);
-    HPEN pen = CreatePen(PS_SOLID, 1, border);
-    HBRUSH oldBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, brush));
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
-    // RoundRect expects the corner ellipse diameter, while the design token is a radius.
-    RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius * 2, radius * 2);
-    SelectObject(dc, oldBrush);
-    SelectObject(dc, oldPen);
-    DeleteObject(brush);
-    DeleteObject(pen);
+    UiBox(dc, rect, fill, border, radius);
+}
+
+RECT TerminalNewOutputRect(const RECT& client, bool horizontalScroll) {
+    const LONG bottom = client.bottom - (horizontalScroll ? Ui::OverlayScrollLaneWidth + Ui::Scale(4) : Ui::Space);
+    return {client.right - Ui::Scale(126), bottom - Ui::Scale(30),
+        client.right - Ui::OverlayScrollLaneWidth - Ui::Space, bottom};
 }
 
 void ApplyDarkTitleBar(HWND window, bool dark) {
@@ -497,125 +503,94 @@ void CenterOnOwner(HWND window, HWND owner) {
 }
 
 void DrawChevronDown(HDC dc, const RECT& rect, COLORREF color) {
-    HPEN pen = CreatePen(PS_SOLID, 2, color);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
     const int cx = (rect.left + rect.right) / 2;
     const int cy = (rect.top + rect.bottom) / 2;
-    MoveToEx(dc, cx - 4, cy - 2, nullptr);
-    LineTo(dc, cx, cy + 2);
-    LineTo(dc, cx + 4, cy - 2);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
+    const POINT points[] = {{cx - Ui::Scale(4), cy - Ui::Scale(2)},
+        {cx, cy + Ui::Scale(2)}, {cx + Ui::Scale(4), cy - Ui::Scale(2)}};
+    UiPolyline(dc, points, 3, color, static_cast<float>(Ui::Scale(2)));
 }
 
 void DrawChevronHorizontal(HDC dc, const RECT& rect, COLORREF color, bool right) {
-    HPEN pen = CreatePen(PS_SOLID, 2, color);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
     const int cx = (rect.left + rect.right) / 2;
     const int cy = (rect.top + rect.bottom) / 2;
     const int direction = right ? 1 : -1;
-    MoveToEx(dc, cx - 2 * direction, cy - 4, nullptr);
-    LineTo(dc, cx + 2 * direction, cy);
-    LineTo(dc, cx - 2 * direction, cy + 4);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
+    const POINT points[] = {{cx - Ui::Scale(2) * direction, cy - Ui::Scale(4)},
+        {cx + Ui::Scale(2) * direction, cy}, {cx - Ui::Scale(2) * direction, cy + Ui::Scale(4)}};
+    UiPolyline(dc, points, 3, color, static_cast<float>(Ui::Scale(2)));
 }
 
 void DrawSortChevron(HDC dc, const RECT& rect, COLORREF color, bool ascending) {
-    HPEN pen = CreatePen(PS_SOLID, 2, color);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
-    const int cx = rect.right - 12;
+    const int cx = rect.right - Ui::Scale(12);
     const int cy = (rect.top + rect.bottom) / 2;
     const int direction = ascending ? -1 : 1;
-    MoveToEx(dc, cx - 3, cy + direction * 2, nullptr);
-    LineTo(dc, cx, cy - direction * 2);
-    LineTo(dc, cx + 3, cy + direction * 2);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
+    const POINT points[] = {{cx - Ui::Scale(3), cy + direction * Ui::Scale(2)},
+        {cx, cy - direction * Ui::Scale(2)}, {cx + Ui::Scale(3), cy + direction * Ui::Scale(2)}};
+    UiPolyline(dc, points, 3, color, static_cast<float>(Ui::Scale(2)));
 }
 
 void DrawSftpEntryIcon(HDC dc, const RECT& rect, COLORREF color, bool directory, bool symlink) {
-    HPEN pen = CreatePen(PS_SOLID, 2, color);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
-    HBRUSH oldBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, GetStockObject(NULL_BRUSH)));
-    const int cx = (rect.left + rect.right) / 2;
-    const int cy = (rect.top + rect.bottom) / 2;
+    const int cx = (rect.left + rect.right) / 2, cy = (rect.top + rect.bottom) / 2;
+    auto point = [&](int x, int y) { return POINT{cx + Ui::Scale(x), cy + Ui::Scale(y)}; };
+    auto line = [&](const POINT* points, int count) {
+        UiPolyline(dc, points, count, color, static_cast<float>(Ui::Scale(2)));
+    };
     if (directory) {
-        POINT outline[] = {{cx - 8, cy - 5}, {cx - 2, cy - 5}, {cx, cy - 2},
-            {cx + 8, cy - 2}, {cx + 8, cy + 6}, {cx - 8, cy + 6}, {cx - 8, cy - 5}};
-        Polyline(dc, outline, static_cast<int>(std::size(outline)));
+        const POINT outline[] = {point(-8,-5), point(-2,-5), point(0,-2), point(8,-2),
+            point(8,6), point(-8,6), point(-8,-5)};
+        line(outline, static_cast<int>(std::size(outline)));
     } else {
-        POINT page[] = {{cx - 6, cy - 7}, {cx + 3, cy - 7}, {cx + 7, cy - 3},
-            {cx + 7, cy + 7}, {cx - 6, cy + 7}, {cx - 6, cy - 7}};
-        Polyline(dc, page, static_cast<int>(std::size(page)));
-        MoveToEx(dc, cx + 3, cy - 7, nullptr); LineTo(dc, cx + 3, cy - 3);
-        LineTo(dc, cx + 7, cy - 3);
+        const POINT page[] = {point(-6,-7), point(3,-7), point(7,-3), point(7,7), point(-6,7), point(-6,-7)};
+        const POINT fold[] = {point(3,-7), point(3,-3), point(7,-3)};
+        line(page, static_cast<int>(std::size(page)));
+        line(fold, static_cast<int>(std::size(fold)));
     }
     if (symlink) {
-        MoveToEx(dc, cx - 3, cy + 2, nullptr); LineTo(dc, cx + 4, cy + 2);
-        MoveToEx(dc, cx + 1, cy - 1, nullptr); LineTo(dc, cx + 4, cy + 2);
-        LineTo(dc, cx + 1, cy + 5);
+        const POINT shaft[] = {point(-3,2), point(4,2)};
+        const POINT arrow[] = {point(1,-1), point(4,2), point(1,5)};
+        line(shaft, 2);
+        line(arrow, 3);
     }
-    SelectObject(dc, oldBrush);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
 }
 
 void DrawPlusIcon(HDC dc, const RECT& rect, COLORREF color) {
-    UiPlus(dc, rect, color, Ui::Scale(96));
+    UiPlus(dc, rect, color, Ui::Dpi);
 }
 
 void DrawEditIcon(HDC dc, const RECT& rect, COLORREF color) {
-    HPEN pen = CreatePen(PS_SOLID, 2, color);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
-    const int cx = (rect.left + rect.right) / 2;
-    const int cy = (rect.top + rect.bottom) / 2;
-    MoveToEx(dc, cx - 6, cy + 6, nullptr);
-    LineTo(dc, cx - 4, cy + 1);
-    LineTo(dc, cx + 4, cy - 7);
-    LineTo(dc, cx + 7, cy - 4);
-    LineTo(dc, cx - 1, cy + 4);
-    LineTo(dc, cx - 6, cy + 6);
-    MoveToEx(dc, cx - 4, cy + 1, nullptr);
-    LineTo(dc, cx - 1, cy + 4);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
+    const int cx = (rect.left + rect.right) / 2, cy = (rect.top + rect.bottom) / 2;
+    auto point = [&](int x, int y) { return POINT{cx + Ui::Scale(x), cy + Ui::Scale(y)}; };
+    const POINT outline[] = {point(-6,6), point(-4,1), point(4,-7), point(7,-4), point(-1,4), point(-6,6)};
+    const POINT end[] = {point(-4,1), point(-1,4)};
+    UiPolyline(dc, outline, static_cast<int>(std::size(outline)), color, static_cast<float>(Ui::Scale(2)));
+    UiPolyline(dc, end, 2, color, static_cast<float>(Ui::Scale(2)));
+}
+
+void DrawStatusDot(HDC dc, const RECT& rect, COLORREF color) {
+    Gdiplus::Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::SolidBrush brush(UiColor(color));
+    graphics.FillEllipse(&brush, Gdiplus::RectF(static_cast<float>(rect.left), static_cast<float>(rect.top),
+        static_cast<float>(rect.right - rect.left), static_cast<float>(rect.bottom - rect.top)));
 }
 
 void DrawCommandProgress(HDC dc, const RECT& rect, size_t completed, size_t total,
     COLORREF trackColor, COLORREF progressColor) {
     RECT ring = rect;
-    InflateRect(&ring, -2, -2);
-    HPEN trackPen = CreatePen(PS_SOLID, 1, trackColor);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, trackPen));
-    HBRUSH oldBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, GetStockObject(NULL_BRUSH)));
-    Ellipse(dc, ring.left, ring.top, ring.right, ring.bottom);
-    SelectObject(dc, oldPen);
-    DeleteObject(trackPen);
-
+    InflateRect(&ring, -Ui::Scale(2), -Ui::Scale(2));
+    const float inset = static_cast<float>(Ui::Scale(1));
+    const Gdiplus::RectF bounds(ring.left + inset, ring.top + inset,
+        ring.right - ring.left - 2 * inset, ring.bottom - ring.top - 2 * inset);
+    Gdiplus::Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Pen track(UiColor(trackColor), 1.0f);
+    graphics.DrawEllipse(&track, bounds);
     if (total > 0 && completed > 0) {
-        constexpr double Pi = 3.14159265358979323846;
-        constexpr int FullCircleSegments = 48;
-        const double fraction = std::min(1.0,
-            static_cast<double>(completed) / static_cast<double>(total));
-        const int segments = std::max(1, static_cast<int>(FullCircleSegments * fraction));
-        const double centerX = (ring.left + ring.right) / 2.0;
-        const double centerY = (ring.top + ring.bottom) / 2.0;
-        const double radius = std::min(ring.right - ring.left, ring.bottom - ring.top) / 2.0 - 1.0;
-        std::vector<POINT> points;
-        points.reserve(static_cast<size_t>(segments) + 1);
-        for (int index = 0; index <= segments; ++index) {
-            const double angle = -Pi / 2.0 + 2.0 * Pi * index / FullCircleSegments;
-            points.push_back({static_cast<LONG>(std::lround(centerX + std::cos(angle) * radius)),
-                static_cast<LONG>(std::lround(centerY + std::sin(angle) * radius))});
-        }
-        HPEN progressPen = CreatePen(PS_SOLID, 2, progressColor);
-        oldPen = reinterpret_cast<HPEN>(SelectObject(dc, progressPen));
-        Polyline(dc, points.data(), static_cast<int>(points.size()));
-        SelectObject(dc, oldPen);
-        DeleteObject(progressPen);
+        Gdiplus::Pen progress(UiColor(progressColor), static_cast<float>(Ui::Scale(2)));
+        progress.SetStartCap(Gdiplus::LineCapRound);
+        progress.SetEndCap(Gdiplus::LineCapRound);
+        graphics.DrawArc(&progress, bounds, -90.0f,
+            360.0f * static_cast<float>(std::min(1.0, static_cast<double>(completed) / total)));
     }
-    SelectObject(dc, oldBrush);
 }
 
 void DrawTextSimple(HDC dc, const std::wstring& text, RECT rect, COLORREF color, HFONT font, UINT format) {
@@ -752,7 +727,7 @@ void MoveDialogItemDlu(HWND dialog, int id, int x, int y, int width, int height)
     if (frame) {
         MoveWindow(frame, rect.left, rect.top, pixelWidth, pixelHeight, TRUE);
         const int horizontalInset = Ui::Space;
-        const int verticalInset = 4;
+        const int verticalInset = Ui::Scale(4);
         MoveWindow(control, rect.left + horizontalInset, rect.top + verticalInset,
             std::max(1, pixelWidth - horizontalInset * 2),
             std::max(1, pixelHeight - verticalInset * 2), TRUE);
@@ -841,29 +816,6 @@ void DrawOverlayScrollbar(HWND list, bool darkMode) {
     ReleaseDC(list, dc);
 }
 
-bool IsComboDropList(HWND window) {
-    wchar_t className[32]{};
-    GetClassNameW(window, className, static_cast<int>(std::size(className)));
-    return _wcsicmp(className, L"ComboLBox") == 0;
-}
-
-void DrawOverlayListFrame(HWND list, bool darkMode) {
-    RECT windowRect{};
-    GetWindowRect(list, &windowRect);
-    RECT frame{0, 0, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top};
-    HDC dc = GetWindowDC(list);
-    if (!dc) return;
-    const Palette colors = Colors(darkMode);
-    HPEN pen = CreatePen(PS_SOLID, 1, colors.border);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
-    HBRUSH oldBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, GetStockObject(NULL_BRUSH)));
-    RoundRect(dc, frame.left, frame.top, frame.right, frame.bottom, Ui::Radius * 2, Ui::Radius * 2);
-    SelectObject(dc, oldBrush);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
-    ReleaseDC(list, dc);
-}
-
 void ResizeDialogClientDlu(HWND dialog, int width, int height) {
     RECT rect{0, 0, width, height};
     MapDialogRect(dialog, &rect);
@@ -871,27 +823,6 @@ void ResizeDialogClientDlu(HWND dialog, int width, int height) {
         static_cast<DWORD>(GetWindowLongPtrW(dialog, GWL_EXSTYLE)));
     SetWindowPos(dialog, nullptr, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-}
-
-void ApplyRoundedControlRegion(HWND control) {
-    RECT rect{};
-    GetWindowRect(control, &rect);
-    const int width = rect.right - rect.left;
-    const int height = rect.bottom - rect.top;
-    HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1,
-        Ui::Radius * 2, Ui::Radius * 2);
-    SetWindowRgn(control, region, TRUE);
-}
-
-void PrepareDialogField(HWND control) {
-    const LONG_PTR style = GetWindowLongPtrW(control, GWL_STYLE) & ~static_cast<LONG_PTR>(WS_BORDER);
-    const LONG_PTR exStyle = GetWindowLongPtrW(control, GWL_EXSTYLE) &
-        ~static_cast<LONG_PTR>(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
-    SetWindowLongPtrW(control, GWL_STYLE, style);
-    SetWindowLongPtrW(control, GWL_EXSTYLE, exStyle);
-    SetWindowPos(control, nullptr, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-    ApplyRoundedControlRegion(control);
 }
 
 std::wstring DirectoryOf(const std::wstring& path) {
@@ -1130,14 +1061,19 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
     }
     if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
         InvalidateRect(window, nullptr, FALSE);
+    } else if (message == WM_RBUTTONUP) {
+        SetFocus(window);
+        self->PasteToTerminal();
+        // Consume the mouse release: DefWindowProc would generate a second
+        // WM_CONTEXTMENU. Mouse context messages never submit another paste.
+        return 0;
+    } else if (message == WM_KEYUP && (wParam == VK_APPS || wParam == VK_F10)) {
+        // The context-menu key was handled on key-down. Its native key-up
+        // must not reopen the modal after the user has just dismissed it.
+        return 0;
     } else if (message == WM_CONTEXTMENU) {
-        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-        if (point.x == -1 && point.y == -1) {
-            RECT rect{};
-            GetWindowRect(window, &rect);
-            point = {rect.left + 32, rect.top + 32};
-        }
-        self->ShowTerminalContextMenu(point);
+        if (GET_X_LPARAM(lParam) == -1 && GET_Y_LPARAM(lParam) == -1)
+            self->ShowSettings();
         return 0;
     } else if (message == WM_COPY) {
         self->CopyTerminalSelection(false);
@@ -1164,6 +1100,10 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
         const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         const bool alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+        if (wParam == VK_APPS || (shift && wParam == VK_F10)) {
+            if (!(lParam & (1LL << 30))) self->ShowSettings();
+            return 0;
+        }
         if (control && shift && wParam == L'C') {
             self->CopyTerminalSelection(false);
             return 0;
@@ -1240,9 +1180,9 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         if (!self->activeSession_) return 0;
         POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         const TerminalModel& model = self->activeSession_->terminal;
-        const int timestampWidth = self->timestampEnabled_ && !model.AlternateScreen() ? 112 : 0;
+        const int timestampWidth = self->timestampEnabled_ && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
         const TerminalHorizontalScrollMetrics horizontalMetrics =
-            GetTerminalHorizontalScrollMetrics(window, 8 + timestampWidth,
+            GetTerminalHorizontalScrollMetrics(window, Ui::TerminalPadding + timestampWidth,
                 model.MaximumDisplayColumns(), self->terminalVisibleColumns_,
                 self->activeSession_->terminalHorizontalOffset);
         if (horizontalMetrics.visible && point.y >= horizontalMetrics.track.top &&
@@ -1274,8 +1214,8 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         }
         RECT client{};
         GetClientRect(window, &client);
-        if (self->activeSession_->terminalHasNewOutput &&
-            point.x >= client.right - 122 && point.y >= client.bottom - 40) {
+        if (self->activeSession_->terminalHasNewOutput && self->activeSession_->terminalScrollOffset > 0 &&
+            PointInRect(TerminalNewOutputRect(client, horizontalMetrics.visible), point)) {
             self->ScrollTerminalToBottom();
             return 0;
         }
@@ -1298,7 +1238,7 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
             if (columns <= 0) return 0;
             column = std::max(0, std::min(columns - 1, column));
             const auto wordCharacter = [](wchar_t character) {
-                return iswalnum(character) || wcschr(L"_./~:+-%@", character) != nullptr;
+                return character && (iswalnum(character) || wcschr(L"_./~:+-%@", character) != nullptr);
             };
             int first = column;
             int last = column;
@@ -1309,7 +1249,10 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
             self->terminalSelectionFocusLine_ = lineIndex;
             self->terminalSelectionFocusColumn_ = last;
             self->terminalSelectionActive_ = true;
+            self->terminalSelecting_ = false;
+            if (GetCapture() == window) ReleaseCapture();
             InvalidateRect(window, nullptr, FALSE);
+            self->CopyTerminalSelection(false);
         }
         return 0;
     }
@@ -1317,9 +1260,9 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         if (self->terminalHorizontalScrollbarDragging_) {
             const TerminalModel& model = self->activeSession_->terminal;
-            const int timestampWidth = self->timestampEnabled_ && !model.AlternateScreen() ? 112 : 0;
+            const int timestampWidth = self->timestampEnabled_ && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
             const TerminalHorizontalScrollMetrics metrics =
-                GetTerminalHorizontalScrollMetrics(window, 8 + timestampWidth,
+                GetTerminalHorizontalScrollMetrics(window, Ui::TerminalPadding + timestampWidth,
                     model.MaximumDisplayColumns(), self->terminalVisibleColumns_,
                     self->activeSession_->terminalHorizontalOffset);
             const int thumbWidth = static_cast<int>(metrics.thumb.right - metrics.thumb.left);
@@ -1363,12 +1306,14 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         }
     }
     if (message == WM_LBUTTONUP) {
+        const bool completedSelection = self->terminalSelecting_ && self->HasTerminalSelection();
         self->terminalSelecting_ = false;
         self->terminalScrollbarDragging_ = false;
         self->terminalScrollbarThumbOffset_ = 0;
         self->terminalHorizontalScrollbarDragging_ = false;
         self->terminalHorizontalScrollbarThumbOffset_ = 0;
         if (GetCapture() == window) ReleaseCapture();
+        if (completedSelection) self->CopyTerminalSelection(false);
         return 0;
     }
     if (message == WM_CAPTURECHANGED) {
@@ -1433,8 +1378,8 @@ void MainWindow::PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self
 
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
-    MoveWindow(edit, rect.left + Ui::Space, rect.top + 4,
-        std::max(1, width - Ui::Space * 2), std::max(1, height - 8), TRUE);
+    MoveWindow(edit, rect.left + Ui::Space, rect.top + Ui::Scale(4),
+        std::max(1, width - Ui::Space * 2), std::max(1, height - Ui::Scale(8)), TRUE);
     SetWindowPos(frame, edit, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     SetWindowPos(edit, nullptr, 0, 0, 0, 0,
@@ -1461,6 +1406,7 @@ LRESULT CALLBACK MainWindow::DialogFieldFrameSubclassProc(HWND window, UINT mess
         GetClientRect(window, &client);
         const Palette colors = Colors(self->darkMode_);
         const bool enabled = edit && IsWindowEnabled(edit);
+        FillRect(dc, &client, self->panelBrush_);
         DrawRoundedBox(dc, client, Ui::Radius,
             enabled ? colors.terminal : colors.panel,
             edit && GetFocus() == edit ? colors.accent : colors.border);
@@ -1475,53 +1421,13 @@ LRESULT CALLBACK MainWindow::DialogFieldFrameSubclassProc(HWND window, UINT mess
 }
 
 LRESULT CALLBACK MainWindow::DialogControlSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
-    UINT_PTR subclassId, DWORD_PTR referenceData) {
-    auto* self = reinterpret_cast<MainWindow*>(referenceData);
-    wchar_t className[32]{};
-    GetClassNameW(window, className, static_cast<int>(std::size(className)));
-    const bool editControl = _wcsicmp(className, L"Edit") == 0;
-    if (message == WM_PAINT && _wcsicmp(className, WC_COMBOBOXW) == 0) {
-        PAINTSTRUCT paint{};
-        HDC dc = BeginPaint(window, &paint);
-        RECT client{};
-        GetClientRect(window, &client);
-        const Palette colors = Colors(self->darkMode_);
-        const bool enabled = IsWindowEnabled(window) != FALSE;
-        DrawRoundedBox(dc, client, Ui::Radius, colors.terminal,
-            GetFocus() == window ? colors.accent : colors.border);
-        const int selected = static_cast<int>(SendMessageW(window, CB_GETCURSEL, 0, 0));
-        std::wstring value;
-        if (selected >= 0) {
-            const LRESULT length = SendMessageW(window, CB_GETLBTEXTLEN, selected, 0);
-            if (length >= 0) {
-                std::vector<wchar_t> buffer(static_cast<size_t>(length) + 1);
-                SendMessageW(window, CB_GETLBTEXT, selected, reinterpret_cast<LPARAM>(buffer.data()));
-                value.assign(buffer.data());
-            }
-        }
-        RECT textRect = client;
-        textRect.left += 10;
-        textRect.right -= 30;
-        DrawTextSimple(dc, value, textRect, enabled ? colors.text : colors.muted,
-            self->uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        HPEN arrowPen = CreatePen(PS_SOLID, 2, enabled ? colors.muted : colors.border);
-        HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, arrowPen));
-        const int cx = client.right - 14;
-        const int cy = client.bottom / 2;
-        MoveToEx(dc, cx - 4, cy - 2, nullptr); LineTo(dc, cx, cy + 2);
-        LineTo(dc, cx + 4, cy - 2);
-        SelectObject(dc, oldPen);
-        DeleteObject(arrowPen);
-        EndPaint(window, &paint);
-        return 0;
-    }
+    UINT_PTR subclassId, DWORD_PTR) {
     if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
         const LRESULT result = DefSubclassProc(window, message, wParam, lParam);
         HWND frame = reinterpret_cast<HWND>(GetPropW(window, Ui::FieldFrameProperty));
         InvalidateRect(frame ? frame : window, nullptr, TRUE);
         return result;
     }
-    if (message == WM_SIZE && !editControl) ApplyRoundedControlRegion(window);
     const LRESULT result = DefSubclassProc(window, message, wParam, lParam);
     if (message == WM_NCDESTROY) {
         RemovePropW(window, Ui::FieldFrameProperty);
@@ -1697,13 +1603,11 @@ LRESULT CALLBACK MainWindow::OverlayListSubclassProc(HWND window, UINT message, 
     self->connectionListKeyboardInput_ = previousKeyboardInput;
     if (message == WM_PAINT) {
         DrawOverlayScrollbar(window, self->darkMode_);
-        if (IsComboDropList(window)) DrawOverlayListFrame(window, self->darkMode_);
     } else if (message == WM_KEYDOWN || message == WM_SIZE || message == LB_SETTOPINDEX) {
         InvalidateRect(window, nullptr, FALSE);
     } else if (message == LB_ADDSTRING || message == LB_DELETESTRING || message == LB_RESETCONTENT) {
         InvalidateRect(window, nullptr, TRUE);
     }
-    if (message == WM_SIZE && IsComboDropList(window)) ApplyRoundedControlRegion(window);
     if (message == WM_NCDESTROY)
         RemoveWindowSubclass(window, OverlayListSubclassProc, subclassId);
     return result;
@@ -2034,13 +1938,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case WM_CONTEXTMENU:
         if (reinterpret_cast<HWND>(wParam) == terminal_) {
-            POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-            if (point.x == -1 && point.y == -1) {
-                RECT rect{};
-                GetWindowRect(terminal_, &rect);
-                point = {rect.left + 32, rect.top + 32};
-            }
-            ShowTerminalContextMenu(point);
+            if (GET_X_LPARAM(lParam) == -1 && GET_Y_LPARAM(lParam) == -1)
+                ShowSettings();
             return 0;
         }
         break;
@@ -2060,6 +1959,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 OpenConnectionDialog(id - IdSsh);
             }
             else if (id == IdTheme) { darkMode_ = !darkMode_; ApplyTheme(); }
+            else if (id == IdSettings) ShowSettings();
             else if (id == IdDisconnect) Disconnect();
             else if (id == IdDisconnectAll)
                 DisconnectAll();
@@ -2285,6 +2185,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 }
 
 HWND MainWindow::CreateChild(const wchar_t* type, const wchar_t* text, DWORD style, int id) {
+    if (_wcsicmp(type, L"BUTTON") == 0) style |= WS_TABSTOP;
     HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
         0, 0, 100, 24, window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), instance_, nullptr);
     SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(uiFont_), TRUE);
@@ -2301,6 +2202,8 @@ void MainWindow::CreateControls() {
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, uiFace);
     smallFont_ = CreateFontW(-Ui::Scale(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, uiFace);
+    dialogFieldStyle_.font = uiFont_;
+    dialogFieldStyle_.dpi = Ui::Dpi;
     titleFont_ = CreateFontW(-Ui::Scale(18), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, uiFace);
     terminalFont_ = CreateFontW(-terminalFontHeight_, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
@@ -2313,6 +2216,7 @@ void MainWindow::CreateControls() {
     cmdButton_ = CreateChild(L"BUTTON", L"CMD", BS_OWNERDRAW, IdCmd);
     powerButton_ = CreateChild(L"BUTTON", L"电源", BS_OWNERDRAW, IdPower);
     toolbarButtons_.push_back(cmdButton_); toolbarButtons_.push_back(powerButton_);
+    settingsButton_ = CreateChild(L"BUTTON", L"设置", BS_OWNERDRAW, IdSettings);
     themeButton_ = CreateChild(L"BUTTON", L"浅色", BS_OWNERDRAW, IdTheme);
     disconnectButton_ = CreateChild(L"BUTTON", L"断开", BS_OWNERDRAW, IdDisconnect);
 
@@ -2397,8 +2301,9 @@ void MainWindow::LayoutControls(int width, int height) {
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
         batch.Move(toolbarButtons_[index], x, toolbarButtonTop, Ui::Scale(buttonWidths[index]), Ui::StandardHeight,
                    TRUE);
-        x += Ui::Scale(buttonWidths[index] + 4);
+        x += Ui::Scale(buttonWidths[index]) + Ui::Space;
     }
+    batch.Move(settingsButton_, x, toolbarButtonTop, Ui::Scale(88), Ui::StandardHeight, TRUE);
     batch.Move(themeButton_, width - Ui::Space * 2 - Ui::StandardHeight, (Ui::ToolbarHeight - Ui::StandardHeight) / 2,
                Ui::StandardHeight, Ui::StandardHeight, TRUE);
 
@@ -2446,15 +2351,15 @@ void MainWindow::LayoutControls(int width, int height) {
     const int toggleLeft = width - Ui::Gap - Ui::CollapsedRightWidth +
         (Ui::CollapsedRightWidth - Ui::IconButtonSize) / 2;
     batch.Move(rightPanelToggleButton_, toggleLeft, headerTop + 2, Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
-    batch.Move(commandHeader_, rightInnerLeft + 2, headerTop + 2, Ui::SegmentWidth, Ui::SegmentHeight, TRUE);
-    batch.Move(sftpTabButton_, rightInnerLeft + 2 + Ui::SegmentWidth, headerTop + 2, Ui::SegmentWidth,
+    batch.Move(commandHeader_, rightInnerLeft, headerTop + Ui::Scale(2), Ui::SegmentWidth, Ui::SegmentHeight, TRUE);
+    batch.Move(sftpTabButton_, rightInnerLeft + Ui::SegmentWidth + Ui::Scale(4), headerTop + Ui::Scale(2), Ui::SegmentWidth,
                Ui::SegmentHeight, TRUE);
     const int addCommandRight = toggleLeft - Ui::Space;
-    const int addCommandLeftLimit = rightInnerLeft + 4 + Ui::SegmentWidth * 2 + Ui::Space;
+    const int addCommandLeftLimit = rightInnerLeft + Ui::Scale(4) + Ui::SegmentWidth * 2 + Ui::Space;
     const int addCommandWidth =
         std::max(Ui::IconButtonSize, std::min(Ui::Scale(104), addCommandRight - addCommandLeftLimit));
     SetWindowTextW(addCommandButton_, addCommandWidth >= Ui::Scale(80) ? L"添加命令" : L"");
-    batch.Move(addCommandButton_, addCommandRight - addCommandWidth, headerTop + 2, addCommandWidth, Ui::SegmentHeight,
+    batch.Move(addCommandButton_, addCommandRight - addCommandWidth, headerTop + Ui::Scale(2), addCommandWidth, Ui::SegmentHeight,
                TRUE);
     const int footerTop = sideCardBottom - Ui::PanelPadding - Ui::CompactHeight;
     const int listBottom = footerTop - Ui::Gap;
@@ -2526,12 +2431,6 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, colors.terminal, colors.border);
     DrawRoundedBox(dc, rightCard, Ui::CardRadius, colors.panel, colors.border);
-    if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
-        RECT segmentFrame{layout.rightLeft + Ui::PanelPadding, Ui::ToolbarHeight + Ui::Gap + Ui::PanelPadding,
-            layout.rightLeft + Ui::PanelPadding + 4 + Ui::SegmentWidth * 2,
-            Ui::ToolbarHeight + Ui::Gap + Ui::PanelPadding + Ui::StandardHeight};
-        DrawRoundedBox(dc, segmentFrame, Ui::Radius, colors.panelAlt, colors.border);
-    }
     HPEN pen = CreatePen(PS_SOLID, 1, colors.border);
     HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
     MoveToEx(dc, 0, Ui::ToolbarHeight, nullptr); LineTo(dc, client.right, Ui::ToolbarHeight);
@@ -2587,24 +2486,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
     }
 
     if (item.CtlType == ODT_COMBOBOX) {
-        HBRUSH background = CreateSolidBrush(selected ? colors.accentSoft : colors.terminal);
-        FillRect(dc, &rect, background);
-        DeleteObject(background);
-        int index = static_cast<int>(item.itemID);
-        if (index < 0) index = static_cast<int>(SendMessageW(item.hwndItem, CB_GETCURSEL, 0, 0));
-        std::wstring value;
-        if (index >= 0) {
-            const LRESULT length = SendMessageW(item.hwndItem, CB_GETLBTEXTLEN, index, 0);
-            if (length >= 0) {
-                std::vector<wchar_t> buffer(static_cast<size_t>(length) + 1);
-                SendMessageW(item.hwndItem, CB_GETLBTEXT, index, reinterpret_cast<LPARAM>(buffer.data()));
-                value.assign(buffer.data());
-            }
-        }
-        RECT textRect = rect;
-        textRect.left += 9;
-        textRect.right -= 27;
-        DrawTextSimple(dc, value, textRect, colors.text, uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        UiDrawComboItem(item, dialogFieldStyle_);
         return;
     }
 
@@ -2688,20 +2570,21 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         const bool hovered = GetPropW(item.hwndItem, Ui::HoverProperty) != nullptr;
         const bool focused = (item.itemState & ODS_FOCUS) != 0;
         COLORREF outside = colors.panel;
-        if (id == IdCommandTab || id == IdSftpTab) outside = colors.panelAlt;
+        if (id == IdCommandTab || id == IdSftpTab) outside = colors.panel;
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower) outside = colors.panel;
         HBRUSH outsideBrush = CreateSolidBrush(outside);
         FillRect(dc, &rect, outsideBrush);
         DeleteObject(outsideBrush);
-        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower) {
+        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdSettings) {
             const bool active = id == IdPower ? powerVisible_ :
-                (!powerVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
+                (id != IdSettings && !powerVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
             const bool inverse = darkMode_;
             const COLORREF ink = colors.text;
-            const COLORREF fill = active || hovered ? colors.panelAlt : colors.panel;
+            const COLORREF fill = active || hovered || pressed ? colors.panelAlt : colors.panel;
             DrawRoundedBox(dc, rect, Ui::Radius, fill,
-                focused ? colors.border : fill);
-            const ToolbarIcon icon = id == IdCmd ? ToolbarIcon::Cmd : id == IdPower ? ToolbarIcon::Power :
+                focused || active ? colors.text : colors.border);
+            const ToolbarIcon icon = id == IdSettings ? ToolbarIcon::Settings :
+                id == IdCmd ? ToolbarIcon::Cmd : id == IdPower ? ToolbarIcon::Power :
                 static_cast<ToolbarIcon>(id - IdSsh);
             const int size = Ui::Scale(24), top = (rect.top+rect.bottom-size)/2;
             RECT iconRect{rect.left+Ui::Scale(12), top, rect.left+Ui::Scale(12)+size, top+size};
@@ -2742,7 +2625,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
             const COLORREF fill = active ? colors.panel :
                 (hovered && enabled ? colors.accentSoft : colors.panelAlt);
             DrawRoundedBox(dc, rect, Ui::Radius, pressed ? colors.accentSoft : fill,
-                focused ? colors.accent : (active ? colors.border : fill));
+                focused || active ? colors.accent : colors.border);
             DrawTextSimple(dc, ControlText(item.hwndItem), rect,
                 active ? colors.accent : (enabled ? colors.text : colors.muted),
                 uiFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -2802,8 +2685,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
                 icon.right = icon.left + Ui::Scale(32);
             DrawPlusIcon(dc, icon, colors.accent);
             RECT textRect = rect;
-            textRect.left += 28;
-            textRect.right -= 8;
+            textRect.left += Ui::Scale(32);
+            textRect.right -= Ui::Space;
             DrawTextSimple(dc, ControlText(item.hwndItem), textRect, colors.accent,
                 uiFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
@@ -2841,12 +2724,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
                   rect.bottom - Ui::Scale(4)};
         DrawRoundedBox(dc, card, Ui::CardRadius, active ? colors.accentSoft : colors.panelAlt,
             active ? colors.accent : colors.panelAlt);
-        HBRUSH dot = CreateSolidBrush(connected ? colors.accent : colors.muted);
         RECT dotRect{card.left + Ui::Scale(14), card.top + Ui::Scale(17), card.left + Ui::Scale(22), card.top + Ui::Scale(25)};
-        HBRUSH oldDot = reinterpret_cast<HBRUSH>(SelectObject(dc, dot));
-        Ellipse(dc, dotRect.left, dotRect.top, dotRect.right, dotRect.bottom);
-        SelectObject(dc, oldDot);
-        DeleteObject(dot);
+        DrawStatusDot(dc, dotRect, connected ? colors.accent : colors.muted);
         RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(6), card.right - Ui::Scale(8), card.top + Ui::Scale(27)};
         RECT subtitle{card.left + Ui::Scale(32), card.top + Ui::Scale(27), card.right - Ui::Scale(8), card.bottom - Ui::Scale(4)};
         DrawTextSimple(dc, power ? L"IT6332A" : session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
@@ -2871,12 +2750,9 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
             selected ? colors.accent : colors.panelAlt);
         for (int row = 0; row < 3; ++row) {
             for (int col = 0; col < 2; ++col) {
-                HBRUSH dotBrush = CreateSolidBrush(colors.muted);
-                HBRUSH oldDotBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, dotBrush));
-                Ellipse(dc, card.left + Ui::Scale(12) + col * Ui::Scale(5), card.top + Ui::Scale(20) + row * Ui::Scale(5),
-                    card.left + Ui::Scale(14) + col * Ui::Scale(5), card.top + Ui::Scale(22) + row * Ui::Scale(5));
-                SelectObject(dc, oldDotBrush);
-                DeleteObject(dotBrush);
+                RECT dot{card.left + Ui::Scale(12) + col * Ui::Scale(5), card.top + Ui::Scale(20) + row * Ui::Scale(5),
+                    card.left + Ui::Scale(14) + col * Ui::Scale(5), card.top + Ui::Scale(22) + row * Ui::Scale(5)};
+                DrawStatusDot(dc, dot, colors.muted);
             }
         }
         const CommandActionRects actions = GetCommandActionRects(card);
@@ -2909,18 +2785,18 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         const int runCx = (actions.run.left + actions.run.right) / 2;
         const int runCy = (actions.run.top + actions.run.bottom) / 2;
         const COLORREF runColor = runnable ? colors.accent : colors.muted;
-        HBRUSH runBrush = CreateSolidBrush(runColor);
-        HPEN runPen = CreatePen(PS_SOLID, 1, runColor);
-        HBRUSH oldRunBrush = reinterpret_cast<HBRUSH>(SelectObject(dc, runBrush));
-        HPEN oldRunPen = reinterpret_cast<HPEN>(SelectObject(dc, runPen));
-        if (isRunning) {
-            Rectangle(dc, runCx - 4, runCy - 4, runCx + 5, runCy + 5);
-        } else {
-            POINT triangle[] = {{runCx - 4, runCy - 6}, {runCx + 6, runCy}, {runCx - 4, runCy + 6}};
-            Polygon(dc, triangle, 3);
+        {
+            Gdiplus::Graphics graphics(dc);
+            graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            Gdiplus::SolidBrush brush(UiColor(runColor));
+            if (isRunning) {
+                graphics.FillRectangle(&brush, runCx - Ui::Scale(4), runCy - Ui::Scale(4), Ui::Scale(8), Ui::Scale(8));
+            } else {
+                const Gdiplus::Point triangle[] = {{runCx - Ui::Scale(4), runCy - Ui::Scale(6)},
+                    {runCx + Ui::Scale(6), runCy}, {runCx - Ui::Scale(4), runCy + Ui::Scale(6)}};
+                graphics.FillPolygon(&brush, triangle, 3);
+            }
         }
-        SelectObject(dc, oldRunPen); SelectObject(dc, oldRunBrush);
-        DeleteObject(runPen); DeleteObject(runBrush);
         if (isRunning)
             DrawCommandProgress(dc, actions.run, runningCommandStep_, command.commands.size(),
                 colors.border, colors.accent);
@@ -2939,10 +2815,10 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         const bool showModified = contentWidth >= 300;
         int nameWidth, sizeWidth, modifiedWidth;
         SftpColumnWidths(contentWidth, nameWidth, sizeWidth, modifiedWidth);
-        RECT icon{row.left + Ui::Space, row.top, row.left + 32, row.bottom};
+        RECT icon{row.left + Ui::Space, row.top, row.left + Ui::Scale(32), row.bottom};
         DrawSftpEntryIcon(dc, icon, entry.directory ? colors.accent : colors.muted,
             entry.directory, entry.symlink);
-        RECT name{row.left + 36, row.top, row.left + nameWidth - Ui::Space, row.bottom};
+        RECT name{row.left + Ui::Scale(36), row.top, row.left + nameWidth - Ui::Space, row.bottom};
         DrawTextSimple(dc, entry.name, name, colors.text, uiFont_,
             DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         if (!entry.directory) {
@@ -3089,25 +2965,11 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             wchar_t className[32]{};
             GetClassNameW(child, className, static_cast<int>(std::size(className)));
             if (_wcsicmp(className, L"Edit") == 0 || _wcsicmp(className, WC_COMBOBOXW) == 0) {
-                if (_wcsicmp(className, L"Edit") == 0)
+                if (_wcsicmp(className, L"Edit") == 0) {
                     PrepareDialogEditField(dialog, child, self);
-                else
-                    PrepareDialogField(child);
-                SetWindowSubclass(child, DialogControlSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
-                if (_wcsicmp(className, WC_COMBOBOXW) == 0) {
-                    COMBOBOXINFO comboInfo{sizeof(comboInfo)};
-                    if (GetComboBoxInfo(child, &comboInfo) && comboInfo.hwndList) {
-                        const LONG_PTR listStyle = GetWindowLongPtrW(comboInfo.hwndList, GWL_STYLE) &
-                            ~static_cast<LONG_PTR>(WS_VSCROLL | WS_BORDER);
-                        const LONG_PTR listExStyle = GetWindowLongPtrW(comboInfo.hwndList, GWL_EXSTYLE) &
-                            ~static_cast<LONG_PTR>(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
-                        SetWindowLongPtrW(comboInfo.hwndList, GWL_STYLE, listStyle);
-                        SetWindowLongPtrW(comboInfo.hwndList, GWL_EXSTYLE, listExStyle);
-                        SetWindowSubclass(comboInfo.hwndList, OverlayListSubclassProc, 2,
-                            reinterpret_cast<DWORD_PTR>(self));
-                        ApplyRoundedControlRegion(comboInfo.hwndList);
-                    }
-                }
+                    SetWindowSubclass(child, DialogControlSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
+                } else
+                    UiStyleField(child, &self->dialogFieldStyle_);
                 SetWindowPos(child, nullptr, 0, 0, 0, 0,
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
             } else if (_wcsicmp(className, L"Button") == 0) {
@@ -3144,7 +3006,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         return TRUE;
     }
     if (message == WM_MEASUREITEM) {
-        reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = Ui::Scale(24);
+        reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = Ui::Scale(28);
         return TRUE;
     }
     if (message == WM_CONTEXTMENU && self->pendingMode_ == 3 && reinterpret_cast<HWND>(wParam) == GetDlgItem(dialog, IDC_SERIAL_REFRESH)) {
@@ -4146,24 +4008,30 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     if (logger_ && !text.empty()) logger_->WriteStatus(text);
 }
 
-void MainWindow::SaveCurrentLog() {
+void MainWindow::SaveCurrentLog(HWND owner) {
     if (!logger_ || logger_->Path().empty()) {
         AppendStatus(L"当前没有可保存的会话日志。", true);
         return;
     }
+    const auto sessionId = activeSession_ ? activeSession_->id : 0;
+    const auto originalPath = logger_->Path();
     wchar_t path[MAX_PATH] = L"SerialCtl-会话日志.log";
     const size_t slash = logger_->Path().find_last_of(L"\\/");
     const std::wstring fileName = slash == std::wstring::npos ? logger_->Path() : logger_->Path().substr(slash + 1);
     if (!fileName.empty() && fileName.size() < std::size(path)) wcscpy_s(path, fileName.c_str());
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = window_;
+    dialog.hwndOwner = owner ? owner : window_;
     dialog.lpstrFilter = L"日志文件 (*.log)\0*.log\0文本文件 (*.txt)\0*.txt\0所有文件 (*.*)\0*.*\0";
     dialog.lpstrFile = path;
     dialog.nMaxFile = static_cast<DWORD>(std::size(path));
     dialog.lpstrDefExt = L"log";
     dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
     if (!GetSaveFileNameW(&dialog)) return;
+    if (!activeSession_ || activeSession_->id != sessionId || !logger_ || logger_->Path() != originalPath) {
+        AppendStatus(L"原会话已切换或关闭，日志未保存；请重新选择会话", true);
+        return;
+    }
     std::wstring error;
     if (!logger_->SaveCopy(path, error)) {
         AppendStatus(error, true);
@@ -4172,11 +4040,11 @@ void MainWindow::SaveCurrentLog() {
     AppendStatus(L"日志已保存", false);
 }
 
-void MainWindow::SaveNetworkDiagnostics() {
+void MainWindow::SaveNetworkDiagnostics(HWND owner) {
     wchar_t path[MAX_PATH] = L"SerialCtl-network-diagnostics.json";
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = window_;
+    dialog.hwndOwner = owner ? owner : window_;
     dialog.lpstrFilter = L"JSON (*.json)\0*.json\0所有文件 (*.*)\0*.*\0";
     dialog.lpstrFile = path;
     dialog.nMaxFile = static_cast<DWORD>(std::size(path));
@@ -4202,60 +4070,198 @@ void MainWindow::SaveNetworkDiagnostics() {
     AppendStatus(ok ? L"网络连接诊断已保存" : L"网络连接诊断写入失败：" + error, !ok);
 }
 
-void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
-    HMENU menu = CreatePopupMenu();
-    if (!menu) return;
-    HBRUSH menuBrush = CreateSolidBrush(Colors(darkMode_).panel);
-    MENUINFO menuInfo{sizeof(menuInfo)};
-    menuInfo.fMask = MIM_BACKGROUND;
-    menuInfo.hbrBack = menuBrush;
-    SetMenuInfo(menu, &menuInfo);
+void MainWindow::ShowSettings() {
+    SettingsDialogState state{this, activeSession_ ? activeSession_->id : 0};
+    struct Template {
+        DLGTEMPLATE dialog;
+        WORD menu = 0, cls = 0, title = 0;
+    } data{};
+    data.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
+    data.dialog.cx = 238;
+    data.dialog.cy = 280;
+    UiDialogBoxIndirectOwned(instance_, &data.dialog, window_, SettingsDialogProc,
+        reinterpret_cast<LPARAM>(&state));
+}
 
-    static const wchar_t localEchoLabel[] = L"本地回显";
-    static const wchar_t timestampLabel[] = L"显示毫秒时间戳";
-    static const wchar_t saveLabel[] = L"保存当前日志…";
-    static const wchar_t clearLabel[] = L"清空终端";
-    static const wchar_t copyLabel[] = L"复制";
-    static const wchar_t pasteLabel[] = L"粘贴";
-    static const wchar_t selectAllLabel[] = L"全选";
-    static const wchar_t encodingUtf8Label[] = L"编码 · UTF-8";
-    static const wchar_t encodingGbkLabel[] = L"编码 · GBK";
-    static const wchar_t encodingGb2312Label[] = L"编码 · GB2312";
-    AppendMenuW(menu, MF_OWNERDRAW, IdMenuLocalEcho, localEchoLabel);
-    AppendMenuW(menu, MF_OWNERDRAW, IdMenuTimestamp, timestampLabel);
-    AppendMenuW(menu, MF_OWNERDRAW | (activeSession_ && activeSession_->rawTrace ? MF_CHECKED : 0), IdMenuRawTrace,
-                L"记录 RX/TX 原始字节（Base64）");
-    AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
-    AppendMenuW(menu, MF_OWNERDRAW | (!activeSession_ || activeSession_->mode != 4 ? MF_GRAYED : 0),
-                IdMenuEncodingCmdAuto, L"编码 · CMD 实际代码页");
-    AppendMenuW(menu, MF_OWNERDRAW, IdMenuEncodingUtf8, encodingUtf8Label);
-    AppendMenuW(menu, MF_OWNERDRAW, IdMenuEncodingGbk, encodingGbkLabel);
-    AppendMenuW(menu, MF_OWNERDRAW, IdMenuEncodingGb2312, encodingGb2312Label);
-    AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
-    AppendMenuW(menu, MF_OWNERDRAW | (!logger_ || logger_->Path().empty() ? MF_GRAYED : 0), IdMenuSaveLog, saveLabel);
-    AppendMenuW(menu, MF_OWNERDRAW, IdMenuNetworkDiagnostics, L"保存网络连接诊断…");
-    AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
-    AppendMenuW(menu, MF_OWNERDRAW | (!activeSession_ ? MF_GRAYED : 0), IdMenuClear, clearLabel);
-    AppendMenuW(menu, MF_OWNERDRAW | (!HasTerminalSelection() ? MF_GRAYED : 0), IdMenuCopy, copyLabel);
-    AppendMenuW(menu, MF_OWNERDRAW | (!connection_ || !connection_->IsConnected() || runningCommandIndex_ >= 0 || !IsClipboardFormatAvailable(CF_UNICODETEXT) ? MF_GRAYED : 0), IdMenuPaste, pasteLabel);
-    AppendMenuW(menu, MF_OWNERDRAW, IdMenuSelectAll, selectAllLabel);
-    AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
-    static const wchar_t* endings[] = {L"Enter · CR", L"Enter · LF", L"Enter · CRLF", L"Enter · 不追加换行"};
-    for (UINT index = 0; index < 4; ++index)
-        AppendMenuW(menu, MF_OWNERDRAW | (selectedMode_ == 0 ? MF_GRAYED : 0) | (lineEndingIndex_ == static_cast<int>(index) ? MF_CHECKED : 0), IdMenuEndingCr + index, endings[index]);
+INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam) {
+    auto* state = reinterpret_cast<SettingsDialogState*>(GetWindowLongPtrW(dialog, DWLP_USER));
+    if (message == WM_INITDIALOG) {
+        state = reinterpret_cast<SettingsDialogState*>(lParam);
+        SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(state));
+    }
+    if (!state || !state->owner) return FALSE;
+    auto* self = state->owner;
+    const bool hasSession = state->sessionId && self->activeSession_ &&
+        self->activeSession_->id == state->sessionId;
+    auto refresh = [&] {
+        const bool connected = hasSession && self->connection_ && self->connection_->IsConnected();
+        auto enable = [&](int id, bool enabled) {
+            HWND control = GetDlgItem(dialog, id);
+            if ((IsWindowEnabled(control) != FALSE) != enabled) EnableWindow(control, enabled);
+        };
+        enable(IdSettingsRawTrace, hasSession);
+        enable(IdSettingsEncoding, hasSession);
+        enable(IdSettingsEnding, hasSession && self->activeSession_->mode != 0 &&
+            self->activeSession_->mode != 4);
+        enable(IdMenuSaveLog, hasSession && self->logger_ && !self->logger_->Path().empty());
+        enable(IdMenuClear, hasSession);
+        enable(IdMenuSelectAll, hasSession && self->activeSession_->terminal.DisplayLineCount() > 0);
+        enable(IdMenuCopy, hasSession && self->HasTerminalSelection());
+        enable(IdMenuPaste, connected && self->runningCommandIndex_ < 0 &&
+            IsClipboardFormatAvailable(CF_UNICODETEXT));
+    };
+    if (message == WM_INITDIALOG) {
+        SetWindowTextW(dialog, L"设置");
+        ApplyDarkTitleBar(dialog, self->darkMode_);
+        UiResizeDialog(dialog, Ui::Dpi, 436, 480);
+        auto add = [&](const wchar_t* type, const wchar_t* text, int id, int x, int y,
+                       int width, int height, DWORD style = 0) {
+            HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
+                Ui::Scale(x), Ui::Scale(y), Ui::Scale(width), Ui::Scale(height), dialog,
+                reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), self->instance_, nullptr);
+            SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), TRUE);
+            if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
+                SetWindowSubclass(control, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
+            if (_wcsicmp(type, WC_COMBOBOXW) == 0)
+                UiStyleField(control, &self->dialogFieldStyle_);
+            return control;
+        };
+        const DWORD check = BS_AUTOCHECKBOX | WS_TABSTOP;
+        const DWORD button = BS_OWNERDRAW | WS_TABSTOP;
+        add(L"STATIC", L"全局 · 本窗口的所有终端", -1, 16, 12, 404, 24);
+        add(L"BUTTON", L"本地回显", IdSettingsEcho, 16, 36, 196, 28, check);
+        add(L"BUTTON", L"毫秒时间戳", IdSettingsTimestamp, 224, 36, 196, 28, check);
+        const auto sessionLabel = hasSession ? L"当前会话 · " + self->activeSession_->name :
+            std::wstring(L"当前会话 · 未选择终端");
+        add(L"STATIC", sessionLabel.c_str(), -1, 16, 76, 404, 24, SS_ENDELLIPSIS);
+        add(L"BUTTON", L"记录 RX/TX 原始字节（Base64）", IdSettingsRawTrace,
+            16, 104, 404, 28, check);
+        add(L"STATIC", L"收发编码", -1, 16, 144, 196, 24);
+        const wchar_t* endingLabel = hasSession && self->activeSession_->mode == 0 ? L"Enter（SSH 固定 CR）" :
+            hasSession && self->activeSession_->mode == 4 ? L"Enter（CMD 提交整行）" : L"Enter 换行方式";
+        add(L"STATIC", endingLabel, -1, 224, 144, 196, 24);
+        HWND encoding = add(WC_COMBOBOXW, L"", IdSettingsEncoding, 16, 168, 196, 180,
+            CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_TABSTOP | WS_VSCROLL);
+        for (auto value : {L"UTF-8", L"GBK", L"GB2312"})
+            SendMessageW(encoding, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+        int selectedEncoding = self->selectedCodePage_ == 936 ? 1 : self->selectedCodePage_ == 20936 ? 2 : 0;
+        if (hasSession && self->activeSession_->mode == 4) {
+            SendMessageW(encoding, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"CMD 实际代码页（自动）"));
+            if (self->connection_ && std::strcmp(self->connection_->CodePageSource(), "manual") != 0)
+                selectedEncoding = 3;
+        }
+        state->initialEncoding = selectedEncoding;
+        SendMessageW(encoding, CB_SETCURSEL, selectedEncoding, 0);
+        HWND ending = add(WC_COMBOBOXW, L"", IdSettingsEnding, 224, 168, 196, 180,
+            CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_TABSTOP | WS_VSCROLL);
+        for (auto value : {L"CR", L"LF", L"CRLF", L"不追加换行"})
+            SendMessageW(ending, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+        SendMessageW(ending, CB_SETCURSEL, hasSession && self->activeSession_->mode == 4 ? 2 :
+            hasSession && self->activeSession_->mode == 0 ? 0 : self->lineEndingIndex_, 0);
+        CheckDlgButton(dialog, IdSettingsEcho, self->localEchoEnabled_ ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(dialog, IdSettingsTimestamp, self->timestampEnabled_ ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(dialog, IdSettingsRawTrace,
+            hasSession && self->activeSession_->rawTrace ? BST_CHECKED : BST_UNCHECKED);
+        add(L"STATIC", L"会话操作 · 点击立即执行", -1, 16, 208, 404, 24);
+        add(L"BUTTON", L"保存当前日志…", IdMenuSaveLog, 16, 240, 196, 32, button);
+        add(L"BUTTON", L"清空终端", IdMenuClear, 224, 240, 196, 32, button);
+        add(L"BUTTON", L"复制", IdMenuCopy, 16, 280, 128, 32, button);
+        add(L"BUTTON", L"粘贴", IdMenuPaste, 156, 280, 128, 32, button);
+        add(L"BUTTON", L"全选", IdMenuSelectAll, 296, 280, 124, 32, button);
+        add(L"STATIC", L"本程序实例 · 网络诊断", -1, 16, 324, 404, 24);
+        add(L"BUTTON", L"保存网络连接诊断…", IdMenuNetworkDiagnostics, 16, 352, 404, 32, button);
+        HWND help = add(L"STATIC", L"保存/取消仅影响选项；操作立即执行。",
+            -1, 16, 396, 404, 24);
+        SendMessageW(help, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), TRUE);
+        add(L"BUTTON", L"取消", IDCANCEL, 220, 428, 96, 36, button);
+        add(L"BUTTON", L"保存", IDOK, 324, 428, 96, 36, button);
+        UiLayoutBatch layout;
+        layout.ComboVisibleHeight(encoding, Ui::Scale(28));
+        layout.ComboVisibleHeight(ending, Ui::Scale(28));
+        layout.Commit();
+        refresh();
+        CenterOnOwner(dialog, self->window_);
+        SetTimer(dialog, 1, 250, nullptr);
+        return TRUE;
+    }
+    if (message == WM_TIMER) {
+        refresh();
+        return TRUE;
+    }
+    if (message == WM_ERASEBKGND) {
+        RECT client{};
+        GetClientRect(dialog, &client);
+        FillRect(reinterpret_cast<HDC>(wParam), &client, self->panelBrush_);
+        return TRUE;
+    }
+    if (message == WM_CTLCOLORDLG || message == WM_CTLCOLORSTATIC || message == WM_CTLCOLORBTN ||
+        message == WM_CTLCOLORLISTBOX) {
+        const auto colors = Colors(self->darkMode_);
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, IsWindowEnabled(reinterpret_cast<HWND>(lParam)) ? colors.text : colors.muted);
+        SetBkColor(dc, colors.panel);
+        return reinterpret_cast<INT_PTR>(self->panelBrush_);
+    }
+    if (message == WM_MEASUREITEM) {
+        auto& item = *reinterpret_cast<MEASUREITEMSTRUCT*>(lParam);
+        if (item.CtlType == ODT_COMBOBOX) {
+            item.itemHeight = Ui::Scale(28);
+            return TRUE;
+        }
+    }
+    if (message == WM_DRAWITEM) {
+        self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam));
+        return TRUE;
+    }
+    if (message == WM_CLOSE || (message == WM_COMMAND && LOWORD(wParam) == IDCANCEL)) {
+        UiEndOwnedDialog(dialog, IDCANCEL);
+        return TRUE;
+    }
+    if (message == WM_DESTROY) {
+        KillTimer(dialog, 1);
+        return TRUE;
+    }
+    if (message == WM_COMMAND) {
+        const UINT id = LOWORD(wParam);
+        if (id == IDOK) {
+            const bool echo = IsDlgButtonChecked(dialog, IdSettingsEcho) == BST_CHECKED;
+            const bool timestamps = IsDlgButtonChecked(dialog, IdSettingsTimestamp) == BST_CHECKED;
+            if (self->localEchoEnabled_ != echo) self->ExecuteTerminalAction(IdMenuLocalEcho);
+            if (self->timestampEnabled_ != timestamps) self->ExecuteTerminalAction(IdMenuTimestamp);
+            if (hasSession) {
+                self->activeSession_->rawTrace = IsDlgButtonChecked(dialog, IdSettingsRawTrace) == BST_CHECKED;
+                const auto encoding = SendDlgItemMessageW(dialog, IdSettingsEncoding, CB_GETCURSEL, 0, 0);
+                // Do not freeze automatic CMD code pages merely by saving unrelated settings.
+                if (encoding != state->initialEncoding && encoding >= 0 && encoding <= 3)
+                    self->ExecuteTerminalAction(encoding == 3 ? IdMenuEncodingCmdAuto :
+                        IdMenuEncodingUtf8 + static_cast<UINT>(encoding));
+                if (IsWindowEnabled(GetDlgItem(dialog, IdSettingsEnding))) {
+                    const auto ending = SendDlgItemMessageW(dialog, IdSettingsEnding, CB_GETCURSEL, 0, 0);
+                    if (ending >= 0 && ending <= 3)
+                        self->ExecuteTerminalAction(IdMenuEndingCr + static_cast<UINT>(ending));
+                }
+            }
+            self->AppendStatus(state->sessionId && !hasSession ?
+                L"全局设置已保存；原会话已切换，请重新打开设置修改会话选项" : L"终端设置已保存", false);
+            UiEndOwnedDialog(dialog, IDOK);
+            return TRUE;
+        }
+        if (id == IdMenuNetworkDiagnostics || id == IdMenuSaveLog || id == IdMenuClear ||
+            id == IdMenuCopy || id == IdMenuPaste || id == IdMenuSelectAll) {
+            refresh();
+            if (IsWindowEnabled(GetDlgItem(dialog, id))) self->ExecuteTerminalAction(id, dialog);
+            refresh();
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
 
-    SetForegroundWindow(window_);
-    const UINT command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN,
-        screenPoint.x, screenPoint.y, 0, window_, nullptr);
-    DestroyMenu(menu);
-    DeleteObject(menuBrush);
-    PostMessageW(window_, WM_NULL, 0, 0);
-    InvalidateRect(terminal_, nullptr, TRUE);
-    InvalidateRect(window_, nullptr, FALSE);
-
+void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
     switch (command) {
     case IdMenuNetworkDiagnostics:
-        SaveNetworkDiagnostics();
+        SaveNetworkDiagnostics(owner);
         break;
     case IdMenuEncodingCmdAuto:
         if (activeSession_ && activeSession_->mode == 4 && connection_) {
@@ -4300,7 +4306,7 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
         break;
     }
     case IdMenuSaveLog:
-        SaveCurrentLog();
+        SaveCurrentLog(owner);
         break;
     case IdMenuClear:
         if (activeSession_) {
@@ -4331,36 +4337,70 @@ void MainWindow::ShowTerminalContextMenu(POINT screenPoint) {
 }
 
 void MainWindow::PasteToTerminal() {
-    if (runningCommandIndex_ >= 0 || !activeSession_) return;
-    if (!OpenClipboard(terminal_)) return;
+    if (runningCommandIndex_ >= 0 || !activeSession_ || !connection_ || !connection_->IsConnected()) return;
+    if (!OpenClipboard(terminal_)) {
+        AppendStatus(L"剪贴板正被其他程序使用，请重试粘贴", true);
+        return;
+    }
     HANDLE handle = GetClipboardData(CF_UNICODETEXT);
     const auto* value = handle ? static_cast<const wchar_t*>(GlobalLock(handle)) : nullptr;
     std::wstring pasted;
+    bool clipboardInvalid = false;
+    bool clipboardTooLarge = false;
+    bool clipboardAllocationFailed = false;
     if (value) {
-        pasted = value;
+        const size_t capacity = GlobalSize(handle) / sizeof(wchar_t);
+        const size_t maximumUnits = selectedMode_ == 4 ? 65536 : 4 * 1024 * 1024;
+        const size_t inspectedUnits = std::min(capacity, maximumUnits + 1);
+        const auto* end = std::find(value, value + inspectedUnits, L'\0');
+        if (end == value + inspectedUnits) {
+            clipboardTooLarge = capacity > maximumUnits;
+            clipboardInvalid = !clipboardTooLarge;
+        } else {
+            try { pasted.assign(value, end); }
+            catch (const std::bad_alloc&) { clipboardAllocationFailed = true; }
+        }
         GlobalUnlock(handle);
     }
     CloseClipboard();
+    if (clipboardTooLarge || clipboardInvalid || clipboardAllocationFailed) {
+        AppendStatus(clipboardTooLarge ? L"剪贴板文本超过粘贴上限；未发送，原草稿保留" :
+            clipboardInvalid ? L"剪贴板文本格式无效；未发送，原草稿保留" :
+            L"内存不足，无法粘贴；未发送，原草稿保留", true);
+        return;
+    }
     if (pasted.empty()) return;
 
     if (selectedMode_ == 4) {
-        ScrollTerminalToBottom();
         auto &editor = activeSession_->cmdEditor;
-        auto draft = editor.Text();
-        draft.insert(editor.Cursor(), pasted);
-        auto end = draft.find_last_of(L"\r\n");
-        if (end == std::wstring::npos) {
-            if (!editor.Insert(pasted))
-                AppendStatus(L"CMD 输入过长", true);
-        } else {
-            auto submitted = draft.substr(0, end + 1);
-            auto encoded = EncodeTerminalText(submitted);
-            if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), false)) {
-                editor.SubmittedBatch(submitted);
-                if (!editor.Insert(draft.substr(end + 1)))
-                    AppendStatus(L"CMD 尾行过长", true);
-            }
+        CmdLineEditor::PastePlan plan;
+        if (!editor.PreparePaste(pasted, plan)) {
+            AppendStatus(L"CMD 粘贴包含不支持的控制字符或超长行；未发送，原草稿保留", true);
+            return;
         }
+        // Validate ALL complete lines and the incomplete tail before enqueueing
+        // any command. A rejected tail must not leave an already executed prefix.
+        const auto combined = plan.submitted + plan.tail;
+        const auto encodedAll = EncodeTerminalText(combined);
+        if (encodedAll.empty()) return;
+        try {
+            Bytes validation(encodedAll.begin(), encodedAll.end());
+            if (!plan.tail.empty()) {
+                validation.push_back('\r');
+                validation.push_back('\n');
+            }
+            const auto normalized = SessionService::CmdBatch(validation);
+            if (normalized.size() > 65536) throw std::runtime_error("CMD paste batch is too large");
+        } catch (const std::exception&) {
+            AppendStatus(L"CMD 粘贴超过单行 8191 字节或批次 65536 字节限制；未发送，原草稿保留", true);
+            return;
+        }
+        if (!plan.submitted.empty()) {
+            const auto encoded = EncodeTerminalText(plan.submitted);
+            if (encoded.empty() || !SendBytesToActive(Bytes(encoded.begin(), encoded.end()), false)) return;
+        }
+        editor.CommitPaste(plan);
+        ScrollTerminalToBottom();
         ClearTerminalSelection();
         InvalidateRect(terminal_, nullptr, FALSE);
         return;
@@ -4371,9 +4411,10 @@ void MainWindow::PasteToTerminal() {
             std::wstring(1, 0x1b) + L"[201~";
     const std::string encoded = EncodeTerminalText(transmitted);
     if (!encoded.empty()) {
-        SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, pasted);
-        ScrollTerminalToBottom();
-        ClearTerminalSelection();
+        if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_, pasted)) {
+            ScrollTerminalToBottom();
+            ClearTerminalSelection();
+        }
     }
 }
 
@@ -4390,14 +4431,14 @@ void MainWindow::UpdateTerminalDimensions() {
     GetTextExtentPoint32W(dc, L"M", 1, &characterSize);
     SelectObject(dc, previous);
     ReleaseDC(terminal_, dc);
-    terminalCellWidth_ = std::max(7, static_cast<int>(characterSize.cx));
-    terminalLineHeight_ = std::max(15, static_cast<int>(metrics.tmHeight) + 2);
+    terminalCellWidth_ = std::max(Ui::Scale(7), static_cast<int>(characterSize.cx));
+    terminalLineHeight_ = std::max(Ui::Scale(15), static_cast<int>(metrics.tmHeight) + Ui::Scale(2));
     const bool showTimestamps = timestampEnabled_ && activeSession_ &&
         !activeSession_->terminal.AlternateScreen();
-    const int timestampWidth = showTimestamps ? 112 : 0;
+    const int timestampWidth = showTimestamps ? Ui::TerminalTimestampWidth : 0;
     const int contentWidth = std::max(1,
-        static_cast<int>(client.right) - 16 - timestampWidth - Ui::OverlayScrollLaneWidth);
-    const int contentHeight = std::max(1, static_cast<int>(client.bottom) - 16);
+        static_cast<int>(client.right) - Ui::TerminalPadding * 2 - timestampWidth - Ui::OverlayScrollLaneWidth);
+    const int contentHeight = std::max(1, static_cast<int>(client.bottom) - Ui::TerminalPadding * 2);
     const int oldColumns = terminalVisibleColumns_, oldRows = terminalVisibleRows_;
     terminalVisibleColumns_ = std::max(20, contentWidth / terminalCellWidth_);
     terminalVisibleRows_ = std::max(2, contentHeight / terminalLineHeight_);
@@ -4463,8 +4504,8 @@ void MainWindow::PaintTerminal(HDC dc) {
                                                        : model.DisplayLine(i);
         };
         const bool showTimestamps = timestampEnabled_ && !model.AlternateScreen();
-        const int padding = 8;
-        const int timestampWidth = showTimestamps ? 112 : 0;
+        const int padding = Ui::TerminalPadding;
+        const int timestampWidth = showTimestamps ? Ui::TerminalTimestampWidth : 0;
         const int textLeft = padding + timestampWidth;
         const size_t totalLines =
             (preview ? model.HistorySize() + preview->DisplayLineCount() : model.DisplayLineCount());
@@ -4484,6 +4525,13 @@ void MainWindow::PaintTerminal(HDC dc) {
                 activeSession_->terminalScrollOffset)
             : 0;
         if (measurePaint_) {
+            SetPropW(terminal_, L"SerialCtl.CellWidth", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalCellWidth_)));
+            SetPropW(terminal_, L"SerialCtl.LineHeight", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalLineHeight_)));
+            SetPropW(terminal_, L"SerialCtl.TextLeft", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(textLeft)));
+            SetPropW(terminal_, L"SerialCtl.TextTop", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(padding)));
+            SetPropW(terminal_, L"SerialCtl.VisibleColumns", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalVisibleColumns_)));
+            SetPropW(terminal_, L"SerialCtl.VisibleRows", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalVisibleRows_)));
+            SetPropW(terminal_, L"SerialCtl.CmdDraftLength", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->cmdEditor.Text().size()) + 1));
             const auto anchor = model.CaptureAnchor(topLine);
             SetPropW(terminal_, L"SerialCtl.ScrollOffset",
                      reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->terminalScrollOffset) + 1));
@@ -4514,7 +4562,7 @@ void MainWindow::PaintTerminal(HDC dc) {
             const TerminalLine &line = displayLine(lineIndex);
             const int y = padding + viewRow * terminalLineHeight_;
             if (showTimestamps && !line.timestamp.empty()) {
-                RECT timestampRect{padding, y, textLeft - 12, y + terminalLineHeight_};
+                RECT timestampRect{padding, y, textLeft - Ui::Gap, y + terminalLineHeight_};
                 DrawTextSimple(buffer, line.timestamp, timestampRect, colors.muted,
                     smallFont_, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
             }
@@ -4595,19 +4643,15 @@ void MainWindow::PaintTerminal(HDC dc) {
         const TerminalScrollMetrics scroll = GetTerminalScrollMetrics(terminal_,
             totalLines, terminalVisibleRows_, activeSession_->terminalScrollOffset);
         if (scroll.visible)
-            DrawRoundedBox(buffer, scroll.thumb, 3, colors.border, colors.border);
+            DrawRoundedBox(buffer, scroll.thumb, Ui::Scale(3), colors.border, colors.border);
         const TerminalHorizontalScrollMetrics horizontalScroll =
             GetTerminalHorizontalScrollMetrics(terminal_, textLeft, totalColumns,
                 terminalVisibleColumns_, activeSession_->terminalHorizontalOffset);
         if (horizontalScroll.visible)
-            DrawRoundedBox(buffer, horizontalScroll.thumb, 3, colors.border, colors.border);
+            DrawRoundedBox(buffer, horizontalScroll.thumb, Ui::Scale(3), colors.border, colors.border);
 
         if (activeSession_->terminalHasNewOutput && activeSession_->terminalScrollOffset > 0) {
-            const int bottom = horizontalScroll.visible
-                ? client.bottom - Ui::OverlayScrollLaneWidth - 4
-                : client.bottom - 8;
-            RECT notification{client.right - 126, bottom - 30,
-                client.right - Ui::OverlayScrollLaneWidth - 8, bottom};
+            const RECT notification = TerminalNewOutputRect(client, horizontalScroll.visible);
             DrawRoundedBox(buffer, notification, Ui::Radius, colors.accentSoft, colors.accent);
             DrawTextSimple(buffer, L"↓  新输出", notification, colors.accent,
                 smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -4682,8 +4726,8 @@ bool MainWindow::TerminalPointToCell(POINT point, size_t& line, int& column) con
     RECT client{};
     GetClientRect(terminal_, &client);
     const TerminalModel& model = activeSession_->terminal;
-    const int timestampWidth = timestampEnabled_ && !model.AlternateScreen() ? 112 : 0;
-    const int textLeft = 8 + timestampWidth;
+    const int timestampWidth = timestampEnabled_ && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
+    const int textLeft = Ui::TerminalPadding + timestampWidth;
     const size_t totalLines = model.DisplayLineCount();
     const size_t topLine = totalLines > static_cast<size_t>(terminalVisibleRows_ +
         activeSession_->terminalScrollOffset)
@@ -4691,7 +4735,7 @@ bool MainWindow::TerminalPointToCell(POINT point, size_t& line, int& column) con
             activeSession_->terminalScrollOffset)
         : 0;
     const int row = std::max(0, std::min(terminalVisibleRows_ - 1,
-        (static_cast<int>(point.y) - 8) / std::max(1, terminalLineHeight_)));
+        (static_cast<int>(point.y) - Ui::TerminalPadding) / std::max(1, terminalLineHeight_)));
     if (totalLines == 0 || point.x < textLeft ||
         point.x >= client.right - Ui::OverlayScrollLaneWidth) return false;
     line = std::min(totalLines - 1, topLine + static_cast<size_t>(row));
@@ -4701,6 +4745,7 @@ bool MainWindow::TerminalPointToCell(POINT point, size_t& line, int& column) con
         std::max(1, terminalCellWidth_);
     column = std::max(0, std::min(static_cast<int>(terminalLine.cells.size()) - 1,
         viewColumn + activeSession_->terminalHorizontalOffset));
+    if (column > 0 && terminalLine.cells[static_cast<size_t>(column)].continuation) --column;
     return true;
 }
 
@@ -4736,53 +4781,32 @@ std::wstring MainWindow::TerminalSelectionText(bool selectAll) const {
     if (selectAll) return model.PlainText(false);
     if (!terminalSelectionActive_) return {};
 
-    size_t startLine = terminalSelectionAnchorLine_;
-    size_t endLine = terminalSelectionFocusLine_;
-    int startColumn = terminalSelectionAnchorColumn_;
-    int endColumn = terminalSelectionFocusColumn_;
-    if (startLine > endLine || (startLine == endLine && startColumn > endColumn)) {
-        std::swap(startLine, endLine);
-        std::swap(startColumn, endColumn);
-    }
-    startLine = std::min(startLine, model.DisplayLineCount() - 1);
-    endLine = std::min(endLine, model.DisplayLineCount() - 1);
-    std::wstring text;
-    for (size_t lineIndex = startLine; lineIndex <= endLine; ++lineIndex) {
-        const TerminalLine& line = model.DisplayLine(lineIndex);
-        const int lineColumns = static_cast<int>(line.cells.size());
-        const int first = lineIndex == startLine ? std::max(0, startColumn) : 0;
-        const int last = lineIndex == endLine
-            ? std::min(lineColumns, endColumn + 1)
-            : lineColumns;
-        std::wstring row;
-        for (int column = std::min(first, lineColumns); column < last; ++column) {
-            const TerminalCell& cell = line.cells[static_cast<size_t>(column)];
-            if (!cell.continuation) row += cell.character;
-        }
-        while (!row.empty() && row.back() == L' ') row.pop_back();
-        text += row;
-        if (lineIndex < endLine && !line.wrapped) text += L"\r\n";
-    }
-    return text;
+    return model.SelectedText(terminalSelectionAnchorLine_, terminalSelectionAnchorColumn_,
+        terminalSelectionFocusLine_, terminalSelectionFocusColumn_);
 }
 
 void MainWindow::CopyTerminalSelection(bool selectAll) {
     const std::wstring text = TerminalSelectionText(selectAll);
-    if (text.empty() || !OpenClipboard(terminal_)) return;
-    EmptyClipboard();
+    if (text.empty()) return;
     const size_t bytes = (text.size() + 1) * sizeof(wchar_t);
     HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
-    if (memory) {
-        void* destination = GlobalLock(memory);
-        if (destination) {
-            memcpy(destination, text.c_str(), bytes);
-            GlobalUnlock(memory);
-            if (!SetClipboardData(CF_UNICODETEXT, memory)) GlobalFree(memory);
-        } else {
-            GlobalFree(memory);
-        }
+    void* destination = memory ? GlobalLock(memory) : nullptr;
+    if (!destination) {
+        if (memory) GlobalFree(memory);
+        AppendStatus(L"无法分配复制所需内存；原剪贴板未改动", true);
+        return;
     }
+    memcpy(destination, text.c_str(), bytes);
+    GlobalUnlock(memory);
+    if (!OpenClipboard(terminal_)) {
+        GlobalFree(memory);
+        AppendStatus(L"剪贴板正被其他程序使用，选区已保留，请重试复制", true);
+        return;
+    }
+    const bool copied = EmptyClipboard() && SetClipboardData(CF_UNICODETEXT, memory);
+    if (!copied) GlobalFree(memory);
     CloseClipboard();
+    if (!copied) AppendStatus(L"复制失败，选区已保留，请重试复制", true);
 }
 
 std::string MainWindow::EncodeTerminalText(const std::wstring &text) {

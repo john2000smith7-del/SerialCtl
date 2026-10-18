@@ -35,7 +35,7 @@ Before changing the project, read:
 - New buttons must use an existing button role: primary, secondary, text, icon, or danger. Extend the design guide first if a new role is genuinely required.
 - New dialogs must use the shared compact grid, the same field styling, the same footer alignment, and content-dependent height.
 - Both dark and light themes are required. Verify hover, pressed, focus, checked, and disabled states.
-- Keep terminal utility actions in the terminal context menu unless they must remain permanently visible.
+- Terminal selection copies on completion and mouse right-click pastes once. Keep terminal utility actions in the top Settings entry, with global and current-session scope clearly labeled; preserve SFTP and text-edit context menus.
 
 ## Tests and release safety
 

@@ -13,7 +13,8 @@ enum class ToolbarIcon
     Cmd,
     Power,
     Moon,
-    Sun
+    Sun,
+    Settings
 };
 class ToolbarIcons
 {

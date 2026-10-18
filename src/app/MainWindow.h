@@ -55,6 +55,12 @@ private:
     enum class SftpMutationKind { CreateDirectory, Rename, Delete, ChangeMode };
     enum class SftpInputPurpose { Name, Mode, Path, Port };
 
+    struct SettingsDialogState {
+        MainWindow* owner = nullptr;
+        std::uint64_t sessionId = 0;
+        int initialEncoding = 0;
+    };
+
     struct SftpTransferItem {
         std::uint64_t id = 0;
         std::uint64_t sessionId = 0;
@@ -146,6 +152,7 @@ private:
     static INT_PTR CALLBACK ConnectionDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static INT_PTR CALLBACK CommandDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static INT_PTR CALLBACK SftpInputDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
+    static INT_PTR CALLBACK SettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static void PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     void StopStartupUpdate();
@@ -198,9 +205,10 @@ private:
     std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
     void SyncSftpDirectoryFromTerminal(SessionState& session);
     void AppendStatus(const std::wstring& text, bool isError);
-    void SaveCurrentLog();
-    void SaveNetworkDiagnostics();
-    void ShowTerminalContextMenu(POINT screenPoint);
+    void SaveCurrentLog(HWND owner = nullptr);
+    void SaveNetworkDiagnostics(HWND owner = nullptr);
+    void ShowSettings();
+    void ExecuteTerminalAction(UINT command, HWND owner = nullptr);
     UINT SelectedCodePage() const;
     std::string EncodeTerminalText(const std::wstring &);
     std::wstring SelectedLineEnding() const;
@@ -291,6 +299,7 @@ private:
     UINT selectedCodePage_ = CP_UTF8;
     bool localEchoEnabled_ = false;
     bool timestampEnabled_ = true;
+    UiFieldStyle dialogFieldStyle_{&darkMode_, nullptr, 96};
 
     std::vector<HWND> toolbarButtons_;
     ApiServer apiServer_;
@@ -303,6 +312,7 @@ private:
     HWND cmdButton_ = nullptr, powerButton_ = nullptr;
     ToolbarIcons toolbarIcons_;
     HWND themeButton_ = nullptr;
+    HWND settingsButton_ = nullptr;
     HWND disconnectButton_ = nullptr;
     HWND connectionHeader_ = nullptr;
     HWND connectionList_ = nullptr;

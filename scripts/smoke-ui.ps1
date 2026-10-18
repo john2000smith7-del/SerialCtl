@@ -184,6 +184,21 @@ function Click-Control([IntPtr]$Parent, [int]$Id) {
     [ordered]@{ utc=[DateTime]::UtcNow.ToString('o'); parent=$Parent.ToInt64(); control=$control.ToInt64(); id=$Id; x=$point.X; y=$point.Y; foregroundBefore=$before; input='system mouse_event down/up; target hit tested; behavior is not WM_COMMAND' } |
         ConvertTo-Json -Compress | Add-Content (Join-Path $OutputDirectory 'actual-clicks.jsonl') -Encoding UTF8
 }
+function Test-GlobalControls([IntPtr]$MainWindow, [IntPtr]$Parent, [int]$ProcessId, [string]$Name) {
+    if (-not $ActualMouse) { return }
+    & python (Join-Path (Get-SerialCtlRepositoryRoot) 'tests/integration/gui_global_user_actions.py') --window $MainWindow.ToInt64() --root $Parent.ToInt64() --pid $ProcessId --output $OutputDirectory --prefix $Name --mode controls
+    if ($LASTEXITCODE -ne 0) { throw "Actual rounded dropdown / keyboard regression failed: $Name" }
+}
+function Select-ControlOption([IntPtr]$MainWindow, [IntPtr]$Parent, [int]$ProcessId, [int]$Id, [int]$Index, [string]$Name) {
+    if ($ActualMouse) {
+        & python (Join-Path (Get-SerialCtlRepositoryRoot) 'tests/integration/gui_global_user_actions.py') --window $MainWindow.ToInt64() --root $Parent.ToInt64() --pid $ProcessId --output $OutputDirectory --prefix $Name --mode select-combo --control-id $Id --selection $Index
+        if ($LASTEXITCODE -ne 0) { throw "Actual dropdown selection failed: $Name" }
+    } else {
+        # Fast layout inspection remains separate from actual user input evidence.
+        [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($Parent,$Id),0x14E,[IntPtr]$Index,[IntPtr]0) | Out-Null
+        [SerialCtlUiSmoke]::PostMessage($Parent,0x111,[IntPtr]((1 -shl 16) -bor $Id),[IntPtr]::Zero) | Out-Null
+    }
+}
 function Capture-Desktop([string]$Name) {
     $size=[Drawing.Size]::new([SerialCtlUiSmoke]::GetSystemMetrics(0),[SerialCtlUiSmoke]::GetSystemMetrics(1))
     $screen = New-Object Drawing.Bitmap($size.Width,$size.Height)
@@ -283,6 +298,18 @@ foreach ($architecture in @('x64')) {
             Set-Content -LiteralPath (Join-Path $OutputDirectory 'startup.txt') -Value $diagnostic
             throw $diagnostic
         }
+        if ($ActualMouse) {
+            foreach ($startupTheme in @('light','dark')) {
+                if ($startupTheme -eq 'dark') {
+                    Click-Control $application.MainWindowHandle 104
+                    Start-Sleep -Milliseconds 200
+                }
+                & python (Join-Path $root 'tests/integration/gui_global_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-startup-$startupTheme" --mode no-session
+                if ($LASTEXITCODE -ne 0) { throw "Settings without a terminal session failed: $startupTheme" }
+            }
+            Click-Control $application.MainWindowHandle 104
+            Start-Sleep -Milliseconds 200
+        }
         foreach ($theme in @('light','dark')) {
             if ($theme -eq 'dark') {
                 Click-Control $application.MainWindowHandle 104
@@ -303,6 +330,7 @@ foreach ($architecture in @('x64')) {
                 $dialog = Wait-Dialog $application.Id $titles[$mode]
                 Start-Sleep -Milliseconds 300
                 [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
+                Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-connection-$mode"
                 Capture-Window $dialog "$architecture-$theme-connection-$mode"
                 if ($mode -eq 3) {
                     if ($ActualMouse) {
@@ -354,11 +382,12 @@ foreach ($architecture in @('x64')) {
             Click-Control $powerPane 10
             $dialog = Wait-Dialog $application.Id '连接电源'
             Start-Sleep -Milliseconds 200
+            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-connect"
             Capture-Window $dialog "$architecture-$theme-power-usb"
-            [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($dialog,100),0x14E,[IntPtr]1,[IntPtr]0) | Out-Null
-            [SerialCtlUiSmoke]::PostMessage($dialog,0x111,[IntPtr]((1 -shl 16) -bor 100),[IntPtr]::Zero) | Out-Null
+            Select-ControlOption $application.MainWindowHandle $dialog $application.Id 100 1 "$architecture-$theme-power-select-rs232"
             Start-Sleep -Milliseconds 200
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
+            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-connect-rs232"
             Capture-Window $dialog "$architecture-$theme-power-serial"
             $methodCount = [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($dialog,100),0x146,[IntPtr]0,[IntPtr]0).ToInt32()
             if ($methodCount -ne 2) { throw 'Power connection must expose only USB and RS232.' }
@@ -370,6 +399,7 @@ foreach ($architecture in @('x64')) {
             }
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,1180,760,$true) | Out-Null
             Start-Sleep -Milliseconds 250
+            Test-GlobalControls $application.MainWindowHandle $powerPane $application.Id "$architecture-$theme-power-monitor"
             Capture-Window $application.MainWindowHandle "$architecture-$theme-power-layout"
             $ch1=New-Object SerialCtlUiSmoke+RECT; $ch2=New-Object SerialCtlUiSmoke+RECT; $ch3=New-Object SerialCtlUiSmoke+RECT
             [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($powerPane,20),[ref]$ch1)|Out-Null
@@ -399,12 +429,12 @@ foreach ($architecture in @('x64')) {
             foreach ($category in @(191,192,193)) {
                 Click-Control $powerPane $category
                 Start-Sleep -Milliseconds 150
+                Test-GlobalControls $application.MainWindowHandle $powerPane $application.Id "$architecture-$theme-power-settings-$category"
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-settings-$category"
             }
             Click-Control $powerPane 90
             foreach ($mode in @(1,2,3,0)) {
-                [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($powerPane,80),0x14E,[IntPtr]$mode,[IntPtr]0)|Out-Null
-                [SerialCtlUiSmoke]::PostMessage($powerPane,0x111,[IntPtr]((1 -shl 16) -bor 80),[IntPtr]::Zero)|Out-Null
+                Select-ControlOption $application.MainWindowHandle $powerPane $application.Id 80 $mode "$architecture-$theme-power-select-mode-$mode"
                 Start-Sleep -Milliseconds 200
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-mode-$mode"
                 if ($mode -eq 1 -or $mode -eq 2) {
@@ -416,6 +446,7 @@ foreach ($architecture in @('x64')) {
             foreach ($automation in @(111,112,113,114,110)) {
                 Click-Control $powerPane $automation
                 Start-Sleep -Milliseconds 150
+                Test-GlobalControls $application.MainWindowHandle $powerPane $application.Id "$architecture-$theme-power-automation-$automation"
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-automation-$automation"
             }
             # The editor is visible only on the Steps category. A WM_COMMAND
@@ -424,6 +455,7 @@ foreach ($architecture in @('x64')) {
             Start-Sleep -Milliseconds 100
             Click-Control $powerPane 123
             $dialog=Wait-Dialog $application.Id '编辑电源步骤'
+            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-sequence-editor"
             Capture-Window $dialog "$architecture-$theme-power-sequence-editor"
             Click-Control $dialog 2
             Start-Sleep -Milliseconds 150
@@ -436,13 +468,18 @@ foreach ($architecture in @('x64')) {
             Click-Control $application.MainWindowHandle 300
             Start-Sleep -Milliseconds 700
             Capture-Window $application.MainWindowHandle "$architecture-$theme-cmd"
-            if ([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,303) -ne [IntPtr]::Zero) { throw 'Obsolete API toolbar entry exists.' }
+            $settingsControl = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,303)
+            $settingsCaption = New-Object Text.StringBuilder(64)
+            [SerialCtlUiSmoke]::GetWindowText($settingsControl,$settingsCaption,64) | Out-Null
+            if ($settingsControl -eq [IntPtr]::Zero -or $settingsCaption.ToString() -ne '设置') { throw 'Top navigation Settings entry is missing.' }
             # The exact packaged GUI starts its fixed-scope service automatically.
             & python (Join-Path (Get-SerialCtlRepositoryRoot) 'tests/integration/gui_gateway_smoke.py') $native $application.MainWindowHandle.ToInt64() (Join-Path $OutputDirectory ("$architecture-$theme-display.json"))
             if ($LASTEXITCODE -ne 0) { throw 'Unified gateway / real GUI CMD key editing failed.' }
             if ($ActualMouse) {
                 & python (Join-Path $root 'tests/integration/gui_cmd_user_input.py') --native-dir $native --hwnd $application.MainWindowHandle.ToInt64() --pid $application.Id --output-json (Join-Path $OutputDirectory "$architecture-$theme-cmd-real-input.json")
                 if ($LASTEXITCODE -ne 0) { throw 'Real CMD SendInput keyboard execution failed.' }
+                & python (Join-Path $root 'tests/integration/gui_global_user_actions.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --output $OutputDirectory --prefix "$architecture-$theme" --native-dir $native --mode terminal
+                if ($LASTEXITCODE -ne 0) { throw 'Actual terminal selection/copy/right-paste/Settings regression failed.' }
             }
             $streamOptions = @('--start-stream')
             if ($ActualMouse) { $streamOptions += '--long-stream' }
@@ -503,6 +540,7 @@ foreach ($architecture in @('x64')) {
                 Start-Sleep -Milliseconds 70
             }
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
+            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-command-ten"
             Capture-Window $dialog "$architecture-$theme-macro-ten"
             Click-Control $dialog 2
             Start-Sleep -Milliseconds 200

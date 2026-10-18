@@ -13,7 +13,7 @@ SerialCtl uses an Apple-inspired desktop design language adapted to native Win32
 - Standard button height: 36 px.
 - Compact dialog fields and icon buttons use a shared 28 px height; dropdowns and text fields must remain visually equal at the active DPI.
 - Compact utility button height: 32 px.
-- Terminal fills the center card; there is no bottom composer. Paste and per-session CR/LF/CRLF settings belong in its context menu. SSH Enter stays CR.
+- Terminal fills the center card; there is no bottom composer. Mouse right-click pastes once; per-session CR/LF/CRLF settings belong in the top Settings entry. SSH Enter stays CR.
 - Avoid one-off measurements. Add a shared metric before adding a new value.
 
 ## Color tokens
@@ -74,7 +74,8 @@ Light theme:
 - Overlay scrollbars reserve a 16 px interaction lane at the right edge. Cards and rows stop before this lane, so the scrollbar never covers content or copy actions.
 - Overlay scrollbars have no permanent track. Their rounded thumb uses the standard border token so it recedes into the surrounding surface instead of becoming a bright visual divider. The entire lane alongside the thumb may start a drag, and mouse wheel, keyboard, track paging, and direct thumb dragging must work in both palettes.
 - When scrolling is required, every scrollbar redraw first restores the complete interaction lane with the owning list surface color, then draws the current thumb. When all content fits, the lane is not painted at all, so full-width card backgrounds and rounded corners remain intact. Content-count changes request a background erase to remove any former thumb.
-- Opened combo-box lists use the same rounded region and border tokens as their collapsed fields. System-owned file dialogs keep native Windows controls.
+- Opened combo-box lists use the same rounded outline, theme, row padding and overlay scrollbar as their collapsed fields. Both main-window and power controls use the shared implementation. System-owned file dialogs keep native Windows controls.
+- All application rounded surfaces use the shared antialiased renderer. Align strokes to physical pixels, scale radii and internal insets with DPI, paint the surrounding surface, and keep window-region clipping outside the antialiased border.
 - `RoundRect` receives an ellipse diameter, so drawing code must apply the radius token as `radius * 2`; control regions use the same rule.
 - Rounded control regions must be calculated from the full window bounds, not the inset edit client area, otherwise the lower border is clipped.
 
@@ -82,15 +83,15 @@ Light theme:
 
 - Connection methods form one evenly spaced segmented toolbar.
 - The connection-method track uses the standard 12 px horizontal inset and 16 px vertical inset. Keep the 72 px toolbar height so the track does not visually merge with the title bar or the content divider.
-- Content segmented controls use one raised-surface outer track and an inset selected pill; the main toolbar uses only individual selection/hover pills. Adjacent segments do not create separate competing borders.
-- The top navigation uses six items (SSH, serial, Telnet, remote serial, CMD, power), 24 px icon bounds, consistent 40 px text inset and one shared track; no API item. Default theme is light. Selected navigation uses the existing raised-surface pill and normal foreground; it does not use the content accent color.
-- The toolbar merges into the existing surface without an enclosing border or separate track. Only selected and hover items have a raised-surface pill.
+- Selection bars use the shared rounded-rectangle outline and explicit selected, hover, pressed and keyboard-focus states. Apply this to top navigation, Commands/SFTP, power main pages, automation pages and device-setting groups; underline-only tabs are not used. Keep consistent gaps and avoid overlapping outlines.
+- The top navigation retains six connection/page items (SSH, serial, Telnet, remote serial, CMD, power), plus a separate Settings action. Settings is not a connection type. Use 24 px monochrome icons and the shared label inset; no API item. Default theme is light. Selected navigation uses the raised surface and normal foreground rather than the content accent color.
+- Navigation items have a subtle rounded-rectangle boundary in their idle state, with a stronger monochrome selected border. The toolbar retains its existing surface and height.
 - The title-bar application icon follows the active theme: dark artwork in dark mode and the matching light artwork in light mode.
 - Left connection list, center terminal, and right command collection are separate rounded surfaces; avoid strong full-height divider lines.
 - The side columns scale within shared minimum and maximum widths. The terminal receives remaining space; maximizing the window must not leave both side panels visually undersized.
 - Do not add a separate title card above the terminal. The left connection list owns session identity and disconnect actions; the center column is reserved for terminal content.
 - Shared serial sessions are directly writable by every connected client; the connection heading keeps only the disconnect action.
-- Terminal utility settings belong in the terminal right-click menu: local echo, millisecond timestamps, save log, clear, copy, and select all.
+- The top Settings entry contains all terminal utility actions: local echo, millisecond timestamps, raw RX/TX tracing, encoding, Enter policy, save log, save network diagnostics, clear, copy, paste and select all. Clearly distinguish whole-window options from current-session options and instance diagnostics. Missing sessions disable only session-dependent actions.
 - Terminal output starts empty. Connection guidance and status text belong in the status UI and must not be injected into terminal output.
 - Terminal timestamps occupy a separate gutter and never become part of terminal cells, selection, command history, or data sent back to the remote session.
 - The terminal uses a cell-based VT renderer. Primary scrollback retains up to 20,000 logical lines or 1.6 million occupied cells at the default 80-column initial grid (larger initial grids scale the cell budget). New output evicts the oldest content when this budget fills; resizing alone never evicts retained text, and visual soft-wrap rows do not count as new logical lines. Mouse wheel, overlay-thumb dragging, Shift+PageUp/PageDown, Shift+Home, and Shift+End navigate history without moving the remote cursor.
@@ -98,7 +99,7 @@ Light theme:
 - Primary-screen logical lines reflow to the current grid; hard line breaks, cell attributes, wide characters, cursor and reading/selection anchors are preserved. The existing bottom overlay scrollbar remains available for preserved VT grid content where needed.
 - New output must not force the view to the bottom while the user is reviewing history. Show the compact accent `新输出` action inside the terminal until the user returns to the live view.
 - Alternate-screen applications such as `vi`, `vim`, `top`, and `less` use the full terminal surface without the timestamp gutter or primary scrollback. Entering or leaving the alternate screen recalculates and reports the available PTY size; leaving it restores the primary screen and its scroll position.
-- Terminal selection is cell-based: drag selects a range, double-click selects a word, `Ctrl+Shift+C` copies, and `Ctrl+Shift+V` pastes. Bracketed paste is honored when requested by the remote application.
+- Terminal selection is cell-based: completing a nonempty drag or double-clicking a word copies it once, retaining the highlight and history-reading position. An empty click or scrollbar drag does not replace the clipboard. Mouse right-click pastes once and returns to the live position without appending Enter. Clipboard line breaks retain the session's normal semantics; CMD submits complete lines and retains an incomplete trailing draft. `Ctrl+Shift+C`, selection-aware `Ctrl+C`, `Ctrl+Shift+V`, and `Shift+Insert` remain available. The keyboard context-menu key opens Settings and never pastes. Bracketed paste is honored when requested by the remote application. Text fields, password fields and SFTP retain their own editing/file-operation semantics.
 - Command cards use the same card radius and vertical rhythm as connection cards.
 - Every command card has matching 28 px Run and Edit icon actions separated by 8 px. Run is disabled when the session is not writable; double-click remains a shortcut for Run.
 - Multi-command macros keep the standard command-card size. While a macro runs, its Run action becomes Stop and draws a determinate progress ring inside the same 28 px bounds; other structural command actions remain disabled until the macro completes or stops.

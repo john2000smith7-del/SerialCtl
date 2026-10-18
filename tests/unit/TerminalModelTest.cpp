@@ -226,6 +226,38 @@ void TestReflowAtScrollbackCapacity() {
            "continuous output during capacity-bound reflow preserves admitted characters");
 }
 void TestCmdEditor() {
+    using Plan = serialctl::CmdLineEditor::PastePlan;
+    serialctl::CmdLineEditor transactional;
+    transactional.Insert(L"echo original");
+    Plan invalid;
+    Expect(!transactional.PreparePaste(L"\r\necho prefix\r\n" + std::wstring(8192, L'x'), invalid),
+           "overlong clipboard tail rejects the entire multi-command paste before submission");
+    Expect(transactional.Text() == L"echo original" && transactional.Cursor() == 13,
+           "rejected multi-line paste preserves the original draft and caret");
+    Expect(!transactional.PreparePaste(L"\r\nvalid\r\n\x1b[A", invalid),
+           "interactive control in the tail rejects complete commands too");
+    Expect(!transactional.PreparePaste(std::wstring(8192, L'x') + L"\r\nshort", invalid),
+           "overlong completed line is rejected before submission");
+    transactional.Clear();
+    transactional.Insert(L"abcd");
+    transactional.Edit(serialctl::CmdLineEditor::Key::Left);
+    transactional.Edit(serialctl::CmdLineEditor::Key::Left);
+    Plan valid;
+    Expect(transactional.PreparePaste(L"first\r\nsecond", valid) &&
+               valid.submitted == L"abfirst\r\n" && valid.tail == L"secondcd" && valid.cursor == 6,
+           "multi-line paste at caret keeps suffix and correct incomplete-tail caret");
+    Expect(transactional.Text() == L"abcd" && transactional.Cursor() == 2,
+           "preflight does not change a draft while send has not succeeded");
+    transactional.CommitPaste(valid);
+    Expect(transactional.Text() == L"secondcd" && transactional.Cursor() == 6,
+           "successful submission commits trailing draft exactly once");
+    transactional.Edit(serialctl::CmdLineEditor::Key::Up);
+    Expect(transactional.Text() == L"abfirst", "only completed paste line enters history");
+    transactional.Edit(serialctl::CmdLineEditor::Key::Down);
+    Expect(transactional.Text() == L"secondcd", "history restores pasted draft after submission");
+    transactional.Clear();
+    Expect(transactional.PreparePaste(std::wstring(8191, L'x'), valid) && valid.submitted.empty(),
+           "maximum-length paste without newline remains a draft and adds no Enter");
     serialctl::CmdLineEditor pasted;
     pasted.SubmittedBatch(L"echo first\r\necho 中文\n");
     pasted.Insert(L"unsubmitted tail");
@@ -262,6 +294,17 @@ void TestCmdEditor() {
 } // namespace
 
 int main() {
+    serialctl::TerminalModel selection(5, 5);
+    selection.Feed(L"abc  def\r\n中 x ", L"timestamp");
+    Expect(selection.SelectedText(0, 0, 1, 2) == L"abc  def",
+           "copy preserves real spaces at a soft wrap without adding a hard newline");
+    Expect(selection.SelectedText(2, 4, 0, 0) == L"abc  def\r\n中 x ",
+           "reverse selection preserves written trailing spaces and skips wide continuation cells");
+    Expect(selection.SelectedText(1, 3, 1, 4).empty(),
+           "selection of unwritten padding has no clipboard content");
+    selection.Feed(L"\x1b[?1049hAB  C\r\nD", L"");
+    Expect(selection.SelectedText(0, 0, 1, 0) == L"AB  C\r\nD",
+           "alternate-screen selection preserves grid hard breaks and spaces");
     serialctl::TerminalModel osc;
     auto cwd = osc.Feed(L"\x1b]7;file://host/tmp/a%20b/%E4%B8%AD\a", L"");
     Expect(cwd.workingDirectory == L"/tmp/a b/中", "OSC7 percent UTF8 working directory");

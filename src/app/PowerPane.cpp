@@ -566,7 +566,7 @@ std::string PowerPane::Mode() const {
     return modes[std::clamp(draftMode_, 0, 3)];
 }
 HWND PowerPane::Combo(int id, const std::vector<std::wstring> &items, int selected) {
-    HWND h = Child(L"COMBOBOX", L"", id, CBS_DROPDOWNLIST | WS_VSCROLL);
+    HWND h = Child(L"COMBOBOX", L"", id, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS);
     for (const auto &s : items)
         SendMessageW(h, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s.c_str()));
     SendMessageW(h, CB_SETCURSEL, selected, 0);
@@ -754,7 +754,7 @@ void PowerPane::Layout() {
     const int widths[] = {92, 92, 92, 104};
     int x = 0;
     for (int i = 0; i < 4; ++i) {
-        move(Control(90 + i), x + d(2), taskTop_ + d(2), d(widths[i]), d(28));
+        move(Control(90 + i), x + d(2), taskTop_ + d(2), d(widths[i] - 4), d(28));
         x += d(widths[i]);
     }
     for (auto item : controls_)
@@ -784,11 +784,25 @@ void PowerPane::DetailsLayout(int width, int top) {
     }
     if (tab_ == 1) {
         int x = 0;
+        automationOffset_ = 0;
+        HDC dc = GetDC(window_);
+        auto old = SelectObject(dc, smallFont_);
         for (int i = 0; i < 5; ++i) {
-            int size = i == 3 || i == 4 ? 65 : 52;
-            move(110 + i, x, 0, size);
-            x += size + 12;
+            const auto label = Text(Control(110 + i));
+            SIZE extent{};
+            GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &extent);
+            const int size = MulDiv(extent.cx, 96, dpi_) + 8;
+            if (x && x + size > w) {
+                x = 0;
+                automationOffset_ += 36;
+            }
+            move(110 + i, x, automationOffset_, size);
+            x += size + 8;
         }
+        SelectObject(dc, old);
+        ReleaseDC(window_, dc);
+        top += d(automationOffset_);
+        contentHeight_ += d(automationOffset_);
         int field = (w - 24) / 3;
         const int ids[5][3] = {{70, 71, 72}, {120, 121, 122}, {123, 0, 0}, {124, 125, 0}, {126, 127, 128}};
         for (int i = 0; i < 3; ++i)
@@ -1025,6 +1039,7 @@ void PowerPane::PaintDetails(HDC dc, int width, int top) {
         }
     }
     if (tab_ == 1) {
+        top += d(automationOffset_);
         static const wchar_t *labels[5][3] = {{L"加电时长 (秒)", L"掉电时长 (秒)", L"循环次数"},
                                               {L"开始时间", L"掉电时间", L"重复"},
                                               {L"步骤序列", L"", L""},
@@ -1180,6 +1195,13 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (m == WM_ERASEBKGND)
         return 1;
+    if (m == WM_MEASUREITEM) {
+        auto &item = *reinterpret_cast<MEASUREITEMSTRUCT *>(l);
+        if (item.CtlType == ODT_COMBOBOX) {
+            item.itemHeight = MulDiv(28, self->dpi_, 96);
+            return TRUE;
+        }
+    }
     if (m == WM_PAINT) {
         PAINTSTRUCT ps{};
         HDC dc = BeginPaint(h, &ps);
@@ -1216,6 +1238,10 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (m == WM_DRAWITEM) {
         auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
+        if (item.CtlType == ODT_COMBOBOX) {
+            UiDrawComboItem(item, self->fieldStyle_);
+            return TRUE;
+        }
         auto c = UiTheme(self->dark_);
         bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start;
         bool mainTab = item.CtlID >= 90 && item.CtlID <= 93, subTab = item.CtlID >= 110 && item.CtlID <= 114,
@@ -1225,29 +1251,29 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                       : groupTab ? item.CtlID == 190 + self->settings_
                                  : false;
         if (mainTab || subTab || groupTab) {
+            const bool enabled = !(item.itemState & ODS_DISABLED);
+            const bool hovered = enabled && GetPropW(item.hwndItem, L"SerialCtl.PowerHover");
+            const bool pressed = enabled && (item.itemState & ODS_SELECTED);
+            const bool focused = enabled && (item.itemState & ODS_FOCUS);
             HBRUSH background = CreateSolidBrush(mainTab ? c.raised : c.field);
             FillRect(item.hDC, &item.rcItem, background);
             DeleteObject(background);
-            if (mainTab || groupTab)
-                UiBox(item.hDC, item.rcItem, active ? (mainTab ? c.surface : c.raised) : (mainTab ? c.raised : c.field),
-                      active && mainTab ? c.border : (mainTab ? c.raised : c.field), MulDiv(10, self->dpi_, 96));
-            else if (active) {
-                RECT underline = item.rcItem;
-                underline.top = underline.bottom - MulDiv(2, self->dpi_, 96);
-                HBRUSH accent = CreateSolidBrush(c.accent);
-                FillRect(item.hDC, &underline, accent);
-                DeleteObject(accent);
-            }
+            const COLORREF fill = pressed || hovered ? c.accentSoft
+                                  : active ? c.surface : mainTab ? c.raised : c.field;
+            UiBox(item.hDC, item.rcItem, fill, focused ? c.accent : active ? c.muted : c.border,
+                  MulDiv(10, self->dpi_, 96));
             SetBkMode(item.hDC, TRANSPARENT);
-            SetTextColor(item.hDC, active ? c.accent : c.muted);
+            SetTextColor(item.hDC, !enabled ? c.muted : active ? c.accent : c.text);
             auto old = SelectObject(item.hDC, self->smallFont_);
             auto label = self->Text(item.hwndItem);
             RECT rect = item.rcItem;
-            DrawTextW(item.hDC, label.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            DrawTextW(item.hDC, label.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
             SelectObject(item.hDC, old);
             return TRUE;
         }
-        HBRUSH outside = CreateSolidBrush(c.field);
+        wchar_t parentClass[32]{};
+        GetClassNameW(GetParent(item.hwndItem), parentClass, 32);
+        HBRUSH outside = CreateSolidBrush(_wcsicmp(parentClass, L"#32770") == 0 ? c.surface : c.field);
         FillRect(item.hDC, &item.rcItem, outside);
         DeleteObject(outside);
         UiBox(item.hDC, item.rcItem,
@@ -1294,6 +1320,9 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         UiResizeDialog(h, dpi, 436, 400);
         auto add = [&](const wchar_t *cls, const wchar_t *text, int id, int x, int y, int width, DWORD style = 0,
                        int height = 28) {
+            const bool combo = _wcsicmp(cls, L"COMBOBOX") == 0;
+            if (combo)
+                style |= CBS_OWNERDRAWFIXED | CBS_HASSTRINGS;
             auto c =
                 CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, d(x), d(y), d(width), d(height), h,
                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
@@ -1302,6 +1331,13 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 UiStyleButton(c);
             if (_wcsicmp(cls, L"EDIT") == 0 || _wcsicmp(cls, L"COMBOBOX") == 0)
                 UiStyleField(c, &data->pane->fieldStyle_);
+            if (combo) {
+                RECT bounds{};
+                GetWindowRect(c, &bounds);
+                const int current = static_cast<int>(SendMessageW(c, CB_GETITEMHEIGHT, static_cast<WPARAM>(-1), 0));
+                SendMessageW(c, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1),
+                             std::max(1, current + d(28) - static_cast<int>(bounds.bottom - bounds.top)));
+            }
             return c;
         };
         add(L"STATIC", L"连接方式", -1, 16, 12, 200);
@@ -1342,14 +1378,21 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (!data)
         return FALSE;
-    if (m == WM_DRAWITEM)
+    if (m == WM_DRAWITEM || m == WM_MEASUREITEM)
         return Proc(data->pane->window_, m, w, l);
     if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORLISTBOX ||
         m == WM_CTLCOLORBTN) {
         auto c = UiTheme(data->dark);
         SetTextColor(reinterpret_cast<HDC>(w), c.text);
-        SetBkColor(reinterpret_cast<HDC>(w), c.field);
-        return reinterpret_cast<INT_PTR>(data->pane->brush_);
+        const bool field = m == WM_CTLCOLOREDIT || m == WM_CTLCOLORLISTBOX;
+        SetBkColor(reinterpret_cast<HDC>(w), field ? c.field : c.surface);
+        return reinterpret_cast<INT_PTR>(field ? data->pane->brush_ : data->pane->surfaceBrush_);
+    }
+    if (m == WM_ERASEBKGND) {
+        RECT rect{};
+        GetClientRect(h, &rect);
+        FillRect(reinterpret_cast<HDC>(w), &rect, data->pane->surfaceBrush_);
+        return TRUE;
     }
     if (m == WM_COMMAND) {
         int id = LOWORD(w);
@@ -1717,7 +1760,7 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT) {
         SetTextColor(reinterpret_cast<HDC>(w), c.text);
         SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : c.surface);
-        return reinterpret_cast<INT_PTR>(pane->surfaceBrush_);
+        return reinterpret_cast<INT_PTR>(m == WM_CTLCOLOREDIT ? pane->brush_ : pane->surfaceBrush_);
     }
     if (m == WM_ERASEBKGND) {
         RECT rect{};
@@ -1727,10 +1770,16 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (m == WM_DRAWITEM) {
         auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
-        UiBox(item.hDC, item.rcItem, item.CtlID == IDOK ? c.accent : c.raised,
+        FillRect(item.hDC, &item.rcItem, pane->surfaceBrush_);
+        const bool enabled = !(item.itemState & ODS_DISABLED);
+        const bool primary = item.CtlID == IDOK && enabled;
+        const COLORREF fill = enabled && (item.itemState & ODS_SELECTED) ? c.border
+                                : primary ? c.accent
+                                : enabled && GetPropW(item.hwndItem, L"SerialCtl.PowerHover") ? c.accentSoft : c.raised;
+        UiBox(item.hDC, item.rcItem, fill,
               item.itemState & ODS_FOCUS ? c.accent : c.border, MulDiv(10, pane->dpi_, 96));
         SetBkMode(item.hDC, TRANSPARENT);
-        SetTextColor(item.hDC, item.CtlID == IDOK ? RGB(255, 255, 255) : c.text);
+        SetTextColor(item.hDC, !enabled ? c.muted : primary ? RGB(255, 255, 255) : c.text);
         auto old = SelectObject(item.hDC, pane->font_);
         auto text = pane->Text(item.hwndItem);
         DrawTextW(item.hDC, text.c_str(), -1, &item.rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
