@@ -417,6 +417,31 @@ class GlobalActions(DesktopActions):
                     'reason': 'hidden/disabled; no device state is fabricated to enable this field'})
                 continue
             self.combo(window)
+        # Only the isolated, disconnected power fixture is used here. Preserve
+        # every channel selection while checking real native mouse/Space input.
+        checkbox_ids = (20, 21, 22) if self.args.prefix.endswith('-power-monitor') else ()
+        if '-power-settings-' in self.args.prefix:
+            checkbox_ids += (201, 231, 232)
+        for identifier in checkbox_ids:
+            checkbox = self.user.GetDlgItem(root, identifier)
+            if not checkbox or not self.user.IsWindowVisible(checkbox):
+                continue
+            if not self.user.IsWindowEnabled(checkbox):
+                self.report['skipped_controls'].append({'id': identifier,
+                    'reason': 'disabled without a connected power device; theme captured, input not fabricated'})
+                continue
+            before = self.query(checkbox, 0xf0)
+            require(before in (0, 1), 'Power checkbox has unexpected initial state')
+            self.click_window(checkbox)
+            self.wait(lambda: self.focus_state()['focus'] == checkbox and
+                      self.query(checkbox, 0xf0) == 1 - before,
+                      'power checkbox mouse click toggles native state once')
+            self.screenshot('checkbox-' + str(identifier) + '-clicked')
+            self.key(0x20)
+            self.wait(lambda: self.query(checkbox, 0xf0) == before,
+                      'power checkbox Space restores original native state')
+            self.check('power checkbox mouse and Space retain native state',
+                       id=identifier, before=before, after_click=1 - before, restored=before)
         self.screenshot('controls-final')
         self.report['combo_count_examined'] = len(children)
 

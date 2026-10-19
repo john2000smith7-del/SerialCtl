@@ -443,6 +443,7 @@ foreach ($architecture in @('x64')) {
                 if($tab -eq 92) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,202,132,451,[int](($powerWidth-144)/2),28) }
             }
             Click-Control $powerPane 92
+            Test-GlobalControls $application.MainWindowHandle $powerPane $application.Id "$architecture-$theme-power-settings-190"
             foreach ($category in @(191,192,193)) {
                 Click-Control $powerPane $category
                 Start-Sleep -Milliseconds 150
