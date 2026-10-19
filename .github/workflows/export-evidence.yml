@@ -34,18 +34,20 @@ jobs:
               assert archive.testzip() is None, 'Original artifact ZIP CRC mismatch'
           parts = []
           with original.open('rb') as source:
-              for index in range(2):
+              for index in range(4):
                   content = source.read(300 * 1024 * 1024)
-                  assert content, 'Expected an artifact between 300 and 600 MiB'
+                  if not content:
+                      break
                   folder = pathlib.Path('part-' + str(index))
                   folder.mkdir()
                   name = 'original.zip.part-' + str(index)
                   (folder / name).write_bytes(content)
                   parts.append({'name': name, 'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest()})
-              assert not source.read(1), 'Artifact exceeds supported 600 MiB export size'
+              assert not source.read(1), 'Artifact exceeds supported 1200 MiB export size'
+          assert parts, 'Artifact is empty'
           receipt = {'originalArtifact': metadata, 'originalZipSha256': digest,
-                     'parts': parts, 'method': 'Binary split only; concatenate parts 0 then 1 to recover the exact original ZIP'}
-          for index in range(2):
+                     'parts': parts, 'method': 'Binary split only; concatenate parts in numeric order to recover the exact original ZIP'}
+          for index in range(len(parts)):
               pathlib.Path('part-' + str(index), 'split-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
           print('Verified original SHA-256:', digest)
           print('Original files, screenshots and test records were not modified.')
@@ -58,9 +60,26 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-1/*') != '' }}
         with:
           name: SerialCtl-evidence-part-1
           path: part-1/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-2/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-2
+          path: part-2/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-3/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-3
+          path: part-3/
           compression-level: 0
           if-no-files-found: error
           retention-days: 30
