@@ -104,6 +104,8 @@ HWND PowerPane::Child(const wchar_t *type, const wchar_t *text, int id, DWORD st
         SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), FALSE);
     if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
         UiStyleButton(h);
+    if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_AUTOCHECKBOX)
+        UiStyleCheckBox(h, &fieldStyle_, id >= 20 && id <= 22);
     if (_wcsicmp(type, L"EDIT") == 0)
         UiStyleField(h, &fieldStyle_);
     return h;
@@ -842,7 +844,7 @@ void PowerPane::DetailsLayout(int width, int top) {
         const int x = 132, cw = w - x, half = (cw - 12) / 2;
         if (settings_ == 0) {
             move(200, x + 38, 0, 96);
-            move(201, w - 100, 0, 100);
+            move(201, w - 112, 0, 112);
             for (int i = 0; i < 4; ++i)
                 move(202 + i, x + (i % 2) * (half + 12), 67 + (i / 2) * 67, half);
             move(206, w - 256, 174, 80);

@@ -397,6 +397,129 @@ inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, U
 inline void UiStyleButton(HWND h) {
     SetWindowSubclass(h, UiButtonProc, 81, 0);
 }
+inline void UiPaintCheckBox(HWND h, HDC target, const UiFieldStyle &style) {
+    RECT bounds{};
+    GetClientRect(h, &bounds);
+    if (!target || bounds.right <= 0 || bounds.bottom <= 0)
+        return;
+    const auto colors = UiTheme(*style.dark);
+    auto d = [&](int value) { return MulDiv(value, style.dpi, 96); };
+    HDC buffer = CreateCompatibleDC(target);
+    HBITMAP bitmap = buffer ? CreateCompatibleBitmap(target, bounds.right, bounds.bottom) : nullptr;
+    HGDIOBJ previousBitmap = bitmap ? SelectObject(buffer, bitmap) : nullptr;
+    HDC dc = bitmap ? buffer : target;
+    const int saved = SaveDC(dc);
+    const COLORREF outside = GetPropW(h, L"SerialCtl.CheckSurface") ? colors.surface : colors.field;
+    HBRUSH background = CreateSolidBrush(outside);
+    FillRect(dc, &bounds, background);
+    DeleteObject(background);
+    const bool enabled = IsWindowEnabled(h) != FALSE;
+    const auto state = SendMessageW(h, BM_GETSTATE, 0, 0);
+    const auto checked = SendMessageW(h, BM_GETCHECK, 0, 0);
+    const auto uiState = SendMessageW(h, WM_QUERYUISTATE, 0, 0);
+    const bool focused = enabled && (state & BST_FOCUS) && !(uiState & UISF_HIDEFOCUS);
+    const bool pressed = enabled && (state & BST_PUSHED);
+    const bool hovered = enabled && GetPropW(h, L"SerialCtl.CheckHover");
+    const int size = std::min(d(16), static_cast<int>(bounds.bottom));
+    RECT mark{0, (bounds.bottom - size) / 2, size, (bounds.bottom + size) / 2};
+    const COLORREF border = !enabled ? colors.border : focused ? colors.accent : hovered ? colors.muted : colors.border;
+    const COLORREF fill = !enabled ? colors.raised : pressed ? colors.accentSoft :
+        checked != BST_UNCHECKED ? colors.accent : hovered ? colors.raised : colors.field;
+    UiBox(dc, mark, fill, checked != BST_UNCHECKED && enabled && !pressed ? colors.accent : border, d(2));
+    const COLORREF ink = enabled && !pressed ? RGB(255, 255, 255) : colors.muted;
+    if (checked == BST_CHECKED) {
+        const POINT tick[]{{mark.left + d(4), mark.top + d(8)},
+                           {mark.left + d(7), mark.top + d(11)},
+                           {mark.left + d(12), mark.top + d(5)}};
+        UiPolyline(dc, tick, 3, ink, static_cast<float>(std::max(1, d(2))));
+    } else if (checked == BST_INDETERMINATE) {
+        const POINT dash[]{{mark.left + d(4), mark.top + d(8)}, {mark.right - d(4), mark.top + d(8)}};
+        UiPolyline(dc, dash, 2, ink, static_cast<float>(std::max(1, d(2))));
+    }
+    HFONT font = reinterpret_cast<HFONT>(SendMessageW(h, WM_GETFONT, 0, 0));
+    if (font || style.font)
+        SelectObject(dc, font ? font : style.font);
+    wchar_t label[512]{};
+    GetWindowTextW(h, label, static_cast<int>(std::size(label)));
+    RECT textBounds = bounds;
+    textBounds.left = mark.right + d(8);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, enabled ? colors.text : colors.muted);
+    const UINT format = DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
+        ((uiState & UISF_HIDEACCEL) ? DT_HIDEPREFIX : 0);
+    // DrawText, unlike the native disabled BUTTON painter, does not add a
+    // light embossed shadow that becomes conspicuous on the dark surface.
+    DrawTextW(dc, label, -1, &textBounds, format);
+    if (focused) {
+        RECT focus = textBounds;
+        DrawTextW(dc, label, -1, &focus, DT_SINGLELINE | DT_CALCRECT |
+            ((uiState & UISF_HIDEACCEL) ? DT_HIDEPREFIX : 0));
+        const int height = focus.bottom - focus.top;
+        focus.top = (bounds.bottom - height) / 2;
+        focus.bottom = focus.top + height;
+        focus.right = std::min(focus.right + d(2), bounds.right);
+        SetBkColor(dc, outside);
+        DrawFocusRect(dc, &focus);
+    }
+    RestoreDC(dc, saved);
+    if (bitmap) {
+        BitBlt(target, 0, 0, bounds.right, bounds.bottom, buffer, 0, 0, SRCCOPY);
+        SelectObject(buffer, previousBitmap);
+        DeleteObject(bitmap);
+    }
+    if (buffer)
+        DeleteDC(buffer);
+}
+inline LRESULT CALLBACK UiCheckBoxProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR reference) {
+    auto *style = reinterpret_cast<UiFieldStyle *>(reference);
+    if (message == WM_ERASEBKGND)
+        return 1;
+    if (message == WM_PAINT || message == WM_PRINT || message == WM_PRINTCLIENT) {
+        PAINTSTRUCT ps{};
+        HDC dc = message == WM_PAINT ? BeginPaint(h, &ps) : reinterpret_cast<HDC>(w);
+        UiPaintCheckBox(h, dc, *style);
+        if (message == WM_PAINT)
+            EndPaint(h, &ps);
+        return 0;
+    }
+    if (message == WM_MOUSEMOVE && !GetPropW(h, L"SerialCtl.CheckHover")) {
+        SetPropW(h, L"SerialCtl.CheckHover", reinterpret_cast<HANDLE>(1));
+        TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, h, 0};
+        TrackMouseEvent(&track);
+    }
+    if (message == WM_MOUSELEAVE)
+        RemovePropW(h, L"SerialCtl.CheckHover");
+    if (message == WM_NCDESTROY) {
+        RemovePropW(h, L"SerialCtl.CheckHover");
+        RemovePropW(h, L"SerialCtl.CheckSurface");
+        RemoveWindowSubclass(h, UiCheckBoxProc, id);
+        return DefSubclassProc(h, message, w, l);
+    }
+    // The native BS_AUTOCHECKBOX still owns check state, keyboard/mouse input,
+    // focus, BN_CLICKED and accessibility; never toggle a second time here.
+    const LRESULT result = DefSubclassProc(h, message, w, l);
+    DWORD_PTR current = 0;
+    if (!GetWindowSubclass(h, UiCheckBoxProc, id, &current) || current != reference)
+        return result; // A native notification may have destroyed its dialog.
+    if (message == BM_SETCHECK || message == BM_SETSTATE || message == BM_CLICK ||
+        message == WM_ENABLE || message == WM_SETTEXT || message == WM_SETFONT ||
+        message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_SIZE ||
+        message == WM_MOUSEMOVE || message == WM_MOUSELEAVE || message == WM_LBUTTONDOWN ||
+        message == WM_LBUTTONUP || message == WM_KEYDOWN || message == WM_KEYUP ||
+        message == WM_CAPTURECHANGED || message == WM_CANCELMODE || message == WM_UPDATEUISTATE ||
+        message == WM_THEMECHANGED || message == WM_SYSCOLORCHANGE)
+        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    return result;
+}
+inline void UiStyleCheckBox(HWND control, UiFieldStyle *style, bool surface) {
+    if (!SetWindowSubclass(control, UiCheckBoxProc, 82, reinterpret_cast<DWORD_PTR>(style)))
+        return;
+    if (surface)
+        SetPropW(control, L"SerialCtl.CheckSurface", reinterpret_cast<HANDLE>(1));
+    else
+        RemovePropW(control, L"SerialCtl.CheckSurface");
+    InvalidateRect(control, nullptr, FALSE);
+}
 inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR reference) {
     auto *style = reinterpret_cast<UiFieldStyle *>(reference);
     wchar_t cls[32]{};

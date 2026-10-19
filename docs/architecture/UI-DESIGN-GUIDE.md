@@ -64,6 +64,7 @@ Light theme:
 - Dialog actions placed beside a field use a compact text label, the same height as the field, and at least 32 dialog units of width. Do not use a lone oversized glyph when the action can be named clearly.
 - Field-adjacent actions must copy the reference field's final runtime pixel bounds after Windows applies its font and DPI metrics; equal resource values alone are not sufficient.
 - Disabled controls retain their shape but use muted content and a low-contrast border.
+- Checkboxes keep native automatic state, keyboard operation and accessibility while sharing the themed painter. Use a 16 px indicator, 2 px indicator radius and 8 px label gap, scaled with DPI. Disabled labels use one muted text pass without the native embossed shadow; paint the complete parent surface, and retain the native keyboard-focus cue.
 - Owner-drawn buttons paint their entire background and content together; do not expose the native system button erase color before the themed draw. Theme changes invalidate every direct child, including footer actions.
 - Hover uses a slightly brighter surface; pressed uses a darker accent or accent surface; keyboard focus uses an accent border.
 - Form labels sit above their controls. Related fields may share a balanced two-column row.

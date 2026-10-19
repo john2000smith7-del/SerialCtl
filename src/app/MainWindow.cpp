@@ -4122,6 +4122,8 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), TRUE);
             if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
                 SetWindowSubclass(control, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
+            if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_AUTOCHECKBOX)
+                UiStyleCheckBox(control, &self->dialogFieldStyle_, true);
             if (_wcsicmp(type, WC_COMBOBOXW) == 0)
                 UiStyleField(control, &self->dialogFieldStyle_);
             return control;
@@ -4146,7 +4148,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             SendMessageW(encoding, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
         int selectedEncoding = self->selectedCodePage_ == 936 ? 1 : self->selectedCodePage_ == 20936 ? 2 : 0;
         if (hasSession && self->activeSession_->mode == 4) {
-            SendMessageW(encoding, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"CMD 实际代码页（自动）"));
+            SendMessageW(encoding, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"自动（CMD 代码页）"));
             if (self->connection_ && std::strcmp(self->connection_->CodePageSource(), "manual") != 0)
                 selectedEncoding = 3;
         }

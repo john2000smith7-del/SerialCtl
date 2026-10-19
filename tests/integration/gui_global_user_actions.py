@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import sys
 import time
 import traceback
@@ -65,6 +66,8 @@ class GlobalActions(DesktopActions):
         self.report['websocket_events'] = []
         self.report['files'] = []
         self.report['skipped_controls'] = []
+        self.report['dialog_presentation'] = []
+        self.report['save_dialog_controls'] = []
         self.raw = bytearray()
         self._declare_extra()
         require(c.sizeof(Input) == (40 if c.sizeof(c.c_void_p) == 8 else 28),
@@ -90,6 +93,7 @@ class GlobalActions(DesktopActions):
             'GetWindow': ((w.HWND, w.UINT), w.HWND),
             'GetParent': ((w.HWND,), w.HWND),
             'IsChild': ((w.HWND, w.HWND), w.BOOL),
+            'GetUpdateRect': ((w.HWND, c.POINTER(RECT), w.BOOL), w.BOOL),
             'GetWindowLongPtrW': ((w.HWND, c.c_int), c.c_ssize_t),
             'FindWindowW': ((w.LPCWSTR, w.LPCWSTR), w.HWND),
             'SendInput': ((w.UINT, c.POINTER(Input), c.c_int), w.UINT),
@@ -117,12 +121,30 @@ class GlobalActions(DesktopActions):
         self.gdi.CreateRectRgn.restype = w.HRGN
         self.gdi.PtInRegion.argtypes = (w.HRGN, c.c_int, c.c_int)
         self.gdi.PtInRegion.restype = w.BOOL
+        self.dwm = None
+        with contextlib.suppress(OSError, AttributeError):
+            dwm = c.WinDLL('dwmapi', use_last_error=True)
+            dwm.DwmIsCompositionEnabled.argtypes = (c.POINTER(w.BOOL),)
+            dwm.DwmIsCompositionEnabled.restype = c.c_long
+            dwm.DwmFlush.argtypes = ()
+            dwm.DwmFlush.restype = c.c_long
+            self.dwm = dwm
 
     def query(self, window, message, wp=0, lp=0):
         result = c.c_size_t()
         require(self.user.SendMessageTimeoutW(window, message, wp, lp, 2, 2000, c.byref(result)),
                 'Read-only state query timed out: ' + hex(message))
         return c.c_ssize_t(result.value).value
+
+    def native_control_text(self, window):
+        # GetWindowTextW does not reliably retrieve another process's Edit
+        # contents. WM_GETTEXT is a system message: Windows marshals its buffer
+        # across processes, and this query never changes the control.
+        length = self.query(window, 0x0e)  # WM_GETTEXTLENGTH
+        require(0 <= length <= 32768, 'Native control text exceeds observation bound')
+        buffer = c.create_unicode_buffer(length + 1)
+        self.query(window, 0x0d, len(buffer), c.addressof(buffer))  # WM_GETTEXT
+        return buffer.value
 
     @staticmethod
     def wait(predicate, description, timeout=5):
@@ -189,6 +211,85 @@ class GlobalActions(DesktopActions):
     def screenshot(self, label):
         self.capture(label)
         self.flush_frames()
+
+    def observe_dialog_presentation(self, dialog, label, anchors, timeout=5):
+        """Retain first pixels, then observe real paint/presentation without redrawing.
+
+        A visible HWND can precede its first WM_PAINT or DWM presentation. This
+        observes update regions and the desktop pixels of several text controls;
+        it neither calls PrintWindow/UpdateWindow nor declares flicker absent.
+        """
+        started = time.perf_counter()
+        observation = {'dialog': int(dialog), 'label': label,
+                       'start': self.timestamp(), 'samples': [],
+                       'method': 'visible desktop BitBlt + GetUpdateRect(FALSE); optional DwmFlush'}
+        self.report['dialog_presentation'].append(observation)
+        sample_index = 0
+        while True:
+            require(self.user.IsWindow(dialog) and self.user.GetForegroundWindow() == dialog,
+                    'Dialog disappeared or lost foreground while observing presentation')
+            pending = []
+            children = [dialog]
+            @self.enum_callback
+            def inspect(window, _):
+                if self.user.IsWindowVisible(window):
+                    children.append(window)
+                return True
+            self.user.EnumChildWindows(dialog, inspect, 0)
+            for window in children:
+                if self.user.GetUpdateRect(window, None, False):
+                    pending.append(int(window))
+            # The initial frame is deliberately captured without waiting on DWM.
+            # A subsequent flush waits for composition; it cannot force app paint.
+            dwm_result = None
+            if sample_index and not pending and self.dwm:
+                enabled = w.BOOL()
+                if self.dwm.DwmIsCompositionEnabled(c.byref(enabled)) == 0 and enabled.value:
+                    dwm_result = self.dwm.DwmFlush()
+            self.capture(label + ('-initial' if not sample_index else '-presented-' + str(sample_index)))
+            frame, raw = self.pending_pixels[-1]
+            desktop_left, desktop_top, desktop_right, desktop_bottom = self.desktop_rect()
+            width = frame['width']
+            rendered = []
+            for identifier in anchors:
+                control = self.user.GetDlgItem(dialog, identifier)
+                sample = {'id': identifier, 'hwnd': int(control or 0), 'nonuniform_pixels': False}
+                if control and self.user.IsWindowVisible(control):
+                    bounds = self.rect(control)
+                    sample['bounds'] = bounds
+                    inset = max(2, round(4 * self.scale))
+                    left, top = max(desktop_left, bounds[0] + inset), max(desktop_top, bounds[1] + inset)
+                    right, bottom = min(desktop_right, bounds[2] - inset), min(desktop_bottom, bounds[3] - inset)
+                    colors = set()
+                    for y in range(top, bottom):
+                        start = ((y - desktop_top) * width + left - desktop_left) * 4
+                        row = raw[start:start + max(0, right - left) * 4]
+                        colors.update(row[x:x + 3] for x in range(0, len(row), 4))
+                        if len(colors) > 1:
+                            break
+                    sample['nonuniform_pixels'] = len(colors) > 1
+                rendered.append(sample)
+            elapsed = round((time.perf_counter() - started) * 1000, 3)
+            sample = {'frame': frame['path'], 'elapsed_ms': elapsed,
+                      'pending_updates': pending, 'dwm_flush_hresult': dwm_result,
+                      'anchors': rendered}
+            observation['samples'].append(sample)
+            # Always retain a subsequent presented frame, even when the initial
+            # frame was already complete. Contrast proves visible content, not
+            # that every glyph is correct; the raw frames remain review evidence.
+            ready = sample_index > 0 and not pending and all(a['nonuniform_pixels'] for a in rendered)
+            if not pending and all(a['nonuniform_pixels'] for a in rendered):
+                observation.setdefault('first_observed_content_ms', elapsed)
+            self.flush_frames()
+            if ready:
+                observation.update(status='PRESENTED', ready_observed_ms=elapsed,
+                                   frame=frame['path'])
+                return
+            if time.perf_counter() - started >= timeout:
+                observation.update(status='TIMEOUT')
+                raise AssertionError('Dialog text controls were not visibly presented within timeout: ' + label)
+            sample_index += 1
+            time.sleep(.05)
 
     def clipboard(self):
         self.wait(lambda: self.user.OpenClipboard(self.window), 'read clipboard')
@@ -349,7 +450,7 @@ class GlobalActions(DesktopActions):
         require(not self.user.IsWindowEnabled(self.window), 'Modal Settings did not disable its owner')
         require(not (self.user.GetWindowLongPtrW(dialog, -20) & 8), 'Settings must not become globally topmost')
         self.wait(lambda: self.user.GetForegroundWindow() == dialog, 'Settings obtains initial focus')
-        self.screenshot('settings-opened')
+        self.observe_dialog_presentation(dialog, 'settings-opened', (2501, 1, 2))
         return dialog
 
     def close_settings(self, dialog, accept=False):
@@ -414,6 +515,28 @@ class GlobalActions(DesktopActions):
         dialog = self.open_settings()
         before = self.settings_state(dialog)
         self.report['settings_initial_state'] = before
+        checkbox = self.user.GetDlgItem(dialog, 2501)
+        initial_check = self.query(checkbox, 0xf0)
+        self.click_window(checkbox)
+        self.wait(lambda: self.focus_state()['focus'] == checkbox and
+                  self.query(checkbox, 0xf0) == 1 - initial_check,
+                  'actual checkbox click focuses and toggles native state once')
+        self.screenshot('settings-checkbox-mouse-focused')
+        self.key(0x20)
+        self.wait(lambda: self.query(checkbox, 0xf0) == initial_check,
+                  'Space toggles the focused native checkbox once')
+        self.screenshot('settings-checkbox-space-toggled')
+        self.key(0x20)
+        self.wait(lambda: self.query(checkbox, 0xf0) == 1 - initial_check,
+                  'second Space restores the clicked checkbox state')
+        # Restore the pre-test draft via another real key before save/cancel checks.
+        self.key(0x20)
+        self.wait(lambda: self.query(checkbox, 0xf0) == initial_check,
+                  'third Space restores the original Settings draft')
+        self.check('native checkbox mouse focus and Space toggle retain keyboard semantics',
+                   id=2501, initial=initial_check, clicked=1 - initial_check,
+                   after_space=initial_check, after_second_space=1 - initial_check,
+                   restored=self.query(checkbox, 0xf0), focus=self.focus_state())
         # CMD submits complete lines with CRLF; its Enter control is deliberately
         # disabled. Do not turn a fixed protocol rule into a fake configurable test.
         identifiers = (2501, 2502, 2503, 2504) if session else (2501, 2502)
@@ -473,27 +596,71 @@ class GlobalActions(DesktopActions):
         require(not (self.user.GetWindowLongPtrW(dialog, -20) & 8), 'Save As became globally topmost')
         self.args.root = dialog
         self.screenshot(name + '-save-dialog')
-        # The native common dialog uses edt1, or the Edit child of cmb13.
-        # Resolve actual controls; never use CDM_SETCONTROLTEXT/WM_SETTEXT to fill it.
-        edits = []
-        @self.enum_callback
-        def inspect(window, _):
-            class_name = c.create_unicode_buffer(64)
+        # Explorer's Save As HWND is visible before its filename edit exists.
+        # Retain that early screenshot, then wait for the actual populated field.
+        # Known edt1/cmb13 IDs are useful evidence, but are not assumed across
+        # Windows versions. Match the unique prefilled export filename, allowing
+        # the shell's hidden extension, rather than guessing the first Edit or
+        # using a locale-dependent Alt+N accelerator.
+        started = time.perf_counter()
+        resolution = {'dialog': int(dialog), 'name': name, 'samples': []}
+        self.report['save_dialog_controls'].append(resolution)
+        default_name = (r'SerialCtl-network-diagnostics(?:\.json)?' if identifier == 2206 else
+                        r'(?:\d{8}-\d{6}(?:-\d{1,3})?|SerialCtl-会话日志)(?:\.log)?')
+        filename = 0
+
+        def describe(window):
+            class_name = c.create_unicode_buffer(128)
             self.user.GetClassNameW(window, class_name, len(class_name))
-            if (class_name.value.lower() == 'edit' and self.user.IsWindowVisible(window)
-                    and self.user.IsWindowEnabled(window)):
-                control_id = self.user.GetDlgCtrlID(window)
-                parent_id = self.user.GetDlgCtrlID(self.user.GetParent(window))
-                if control_id == 0x480 or (control_id == 1001 and parent_id == 0x47c):
-                    edits.append(window)
+            return {'hwnd': int(window), 'class': class_name.value,
+                    'id': self.user.GetDlgCtrlID(window),
+                    'text': (self.native_control_text(window) if class_name.value.lower() == 'edit'
+                             else self.caption(window)),
+                    'visible': bool(self.user.IsWindowVisible(window)),
+                    'enabled': bool(self.user.IsWindowEnabled(window)),
+                    'bounds': self.rect(window)}
+
+        def locate_filename():
+            nonlocal filename
+            edits = []
+            @self.enum_callback
+            def inspect(window, _):
+                details = describe(window)
+                if details['class'].lower() == 'edit':
+                    details['ancestors'] = []
+                    parent = self.user.GetParent(window)
+                    for _ in range(8):
+                        if not parent:
+                            break
+                        details['ancestors'].append(describe(parent))
+                        if parent == dialog:
+                            break
+                        parent = self.user.GetParent(parent)
+                    edits.append(details)
+                return True
+            self.user.EnumChildWindows(dialog, inspect, 0)
+            if not resolution['samples'] or resolution['samples'][-1]['edits'] != edits:
+                resolution['samples'].append({'elapsed_ms': round((time.perf_counter() - started) * 1000, 3),
+                                              'edits': edits})
+            matches = [edit for edit in edits if edit['visible'] and edit['enabled'] and
+                       re.fullmatch(default_name, edit['text'], flags=re.IGNORECASE)]
+            if len(matches) != 1:
+                return False
+            filename = matches[0]['hwnd']
+            resolution.update(selected=matches[0], matched_by='unique prefilled export filename')
             return True
-        self.user.EnumChildWindows(dialog, inspect, 0)
-        require(len(edits) == 1, 'Cannot uniquely identify native Save As filename edit')
+
+        self.wait(locate_filename, 'unique usable native Save As filename edit; see saved Edit/ancestor inventory', 15)
+        self.screenshot(name + '-save-dialog-ready')
         path = self.output.resolve() / (self.args.prefix + '-' + name)
         require(not path.exists(), 'Refusing to overwrite a previous Settings evidence file: ' + str(path))
-        self.click_window(edits[0])
+        self.click_window(filename)
+        self.wait(lambda: self.focus_state()['focus'] == filename, 'actual click focuses native filename edit')
         self.chord(0x11, 0x41)  # Ctrl+A in the filename edit, never in terminal.
         self.text(str(path))
+        self.wait(lambda: self.native_control_text(filename) == str(path),
+                  'native filename edit contains actual typed export path')
+        self.screenshot(name + '-save-dialog-typed')
         self.key(0x0d)
         self.wait(lambda: not self.user.IsWindow(dialog), 'Native Save As closes after saving', 10)
         self.args.root = settings
