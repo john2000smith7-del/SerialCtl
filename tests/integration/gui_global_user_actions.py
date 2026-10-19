@@ -328,12 +328,26 @@ class GlobalActions(DesktopActions):
         finally:
             if not transferred:
                 self.kernel.GlobalFree(memory)
+        self.fixture_clipboard_sequence = self.user.GetClipboardSequenceNumber()
 
     def assert_clipboard(self, expected, label):
-        self.wait(lambda: self.clipboard() == expected, label)
-        actual = self.clipboard()
-        self.report['clipboard_observations'].append({**self.timestamp(), 'label': label,
-            'expected': expected, 'actual': actual, 'sequence': self.user.GetClipboardSequenceNumber()})
+        before = self.fixture_clipboard_sequence
+        observation = {**self.timestamp(), 'label': label, 'expected': expected,
+                       'sequence_before': before, 'actual': None}
+        self.report['clipboard_observations'].append(observation)
+        try:
+            # mouse_event queues mouse-up. Opening the clipboard immediately
+            # can prevent the application's copy from opening it. Observe the
+            # sequence without acquiring the clipboard until the writer acts.
+            self.wait(lambda: self.user.GetClipboardSequenceNumber() != before, label)
+            actual = self.clipboard()
+            observation.update(actual=actual, sequence=self.user.GetClipboardSequenceNumber())
+            require(actual == expected, label + ': clipboard differs; see exact observed text')
+        except Exception:
+            observation.update(sequence=self.user.GetClipboardSequenceNumber())
+            with contextlib.suppress(Exception):
+                observation['actual'] = self.clipboard()
+            raise
         self.check(label, expected=expected, actual=actual)
 
     def combo(self, window):
