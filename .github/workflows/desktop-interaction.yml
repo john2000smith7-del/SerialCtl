@@ -81,3 +81,25 @@ jobs:
             ${{ runner.temp }}/serialctl-ui/program-*-sha256.json
           if-no-files-found: error
           retention-days: 30
+      - name: Preserve compact original review evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-desktop-review
+          path: |
+            ${{ runner.temp }}/serialctl-ui/*.json
+            ${{ runner.temp }}/serialctl-ui/*.jsonl
+            ${{ runner.temp }}/serialctl-ui/*.txt
+            ${{ runner.temp }}/serialctl-ui/*.log
+            ${{ runner.temp }}/serialctl-ui/*.mkv
+            ${{ runner.temp }}/serialctl-ui/*sidebar-splitter-2-*.png
+            ${{ runner.temp }}/serialctl-ui/*sftp-column-boundary-2-*.png
+            ${{ runner.temp }}/serialctl-ui/*resize-round-3-minimum-*.png
+            ${{ runner.temp }}/serialctl-ui/*controls-final.png
+            ${{ runner.temp }}/serialctl-ui/*drag-soft-wrap-preserves-written-spaces.png
+            ${{ runner.temp }}/serialctl-ui/*right-paste-executed.png
+            ${{ runner.temp }}/serialctl-ui/*0009-settings-opened-presented-1.png
+            ${{ runner.temp }}/serialctl-ui/*paint*settled-final.png
+            ${{ runner.temp }}/serialctl-ui/gui-connections-drag-*.png
+          if-no-files-found: error
+          retention-days: 30

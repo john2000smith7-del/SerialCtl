@@ -2438,9 +2438,16 @@ void MainWindow::PaintWindow(HDC dc) {
     DeleteObject(pen);
 }
 
-void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
+void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
+    if (source.CtlType == ODT_COMBOBOX) {
+        UiDrawComboItem(source, dialogFieldStyle_);
+        return;
+    }
+    auto item = source;
     if (item.itemID == static_cast<UINT>(-1) && item.CtlType != ODT_BUTTON &&
         item.CtlType != ODT_COMBOBOX && item.CtlType != ODT_MENU) return;
+    UiBufferedPaint paint(item.hDC, item.rcItem);
+    item.hDC = paint.Dc();
     const Palette colors = Colors(darkMode_);
     HDC dc = item.hDC;
     RECT rect = item.rcItem;
@@ -2482,11 +2489,6 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& item) {
         DrawTextSimple(dc, label ? label : L"", textRect,
             (item.itemState & ODS_DISABLED) ? colors.muted : menuText,
             uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-        return;
-    }
-
-    if (item.CtlType == ODT_COMBOBOX) {
-        UiDrawComboItem(item, dialogFieldStyle_);
         return;
     }
 

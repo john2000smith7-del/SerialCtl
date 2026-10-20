@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <commctrl.h>
+#include <climits>
 #include <map>
 #include <new>
 #include <string>
@@ -26,6 +27,79 @@ inline UiColors UiTheme(bool dark) {
 inline Gdiplus::Color UiColor(COLORREF color) {
     return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
 }
+// Build a complete owner-drawn item off screen, then publish it with one blit.
+// Keep the caller's logical coordinates (list rows need not start at 0,0).
+// The destination DC retains its native update/visibility clip on the final blit.
+class UiBufferedPaint {
+  public:
+    UiBufferedPaint(HDC target, const RECT &bounds) : target_(target), bounds_(bounds) {
+        if (!target_)
+            return;
+        savedTarget_ = SaveDC(target_);
+        const auto width = static_cast<long long>(bounds.right) - bounds.left;
+        const auto height = static_cast<long long>(bounds.bottom) - bounds.top;
+        // These painters use pixel coordinates. Preserve the original direct
+        // drawing path for an unusual mapped/transformed DC or allocation failure.
+        if (width <= 0 || height <= 0 || width > INT_MAX || height > INT_MAX ||
+            GetMapMode(target_) != MM_TEXT || GetGraphicsMode(target_) != GM_COMPATIBLE ||
+            GetLayout(target_) != 0)
+            return;
+        width_ = static_cast<int>(width);
+        height_ = static_cast<int>(height);
+        buffer_ = CreateCompatibleDC(target_);
+        if (!buffer_)
+            return;
+        bitmap_ = CreateCompatibleBitmap(target_, width_, height_);
+        if (!bitmap_)
+            return;
+        previousBitmap_ = SelectObject(buffer_, bitmap_);
+        if (!previousBitmap_ || previousBitmap_ == HGDI_ERROR)
+            return;
+        if (!SetWindowOrgEx(buffer_, bounds.left, bounds.top, nullptr))
+            return;
+        // Preserve untouched pixels for callbacks which only draw a focus state.
+        if (!BitBlt(buffer_, bounds.left, bounds.top, width_, height_,
+                    target_, bounds.left, bounds.top, SRCCOPY))
+            return;
+        SelectObject(buffer_, GetCurrentObject(target_, OBJ_FONT));
+        SelectObject(buffer_, GetCurrentObject(target_, OBJ_PEN));
+        SelectObject(buffer_, GetCurrentObject(target_, OBJ_BRUSH));
+        SetTextColor(buffer_, GetTextColor(target_));
+        SetBkColor(buffer_, GetBkColor(target_));
+        SetBkMode(buffer_, GetBkMode(target_));
+        SetTextAlign(buffer_, GetTextAlign(target_));
+        SetPolyFillMode(buffer_, GetPolyFillMode(target_));
+        SetROP2(buffer_, GetROP2(target_));
+        SetStretchBltMode(buffer_, GetStretchBltMode(target_));
+        ready_ = true;
+    }
+    UiBufferedPaint(const UiBufferedPaint &) = delete;
+    UiBufferedPaint &operator=(const UiBufferedPaint &) = delete;
+    HDC Dc() const {
+        return ready_ ? buffer_ : target_;
+    }
+    ~UiBufferedPaint() {
+        if (ready_)
+            BitBlt(target_, bounds_.left, bounds_.top, width_, height_,
+                   buffer_, bounds_.left, bounds_.top, SRCCOPY);
+        if (previousBitmap_ && previousBitmap_ != HGDI_ERROR)
+            SelectObject(buffer_, previousBitmap_);
+        if (bitmap_)
+            DeleteObject(bitmap_);
+        if (buffer_)
+            DeleteDC(buffer_);
+        if (savedTarget_)
+            RestoreDC(target_, savedTarget_);
+    }
+
+  private:
+    HDC target_ = nullptr, buffer_ = nullptr;
+    RECT bounds_{};
+    HBITMAP bitmap_ = nullptr;
+    HGDIOBJ previousBitmap_ = nullptr;
+    int savedTarget_ = 0, width_ = 0, height_ = 0;
+    bool ready_ = false;
+};
 inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius) {
     const float width = static_cast<float>(rect.right - rect.left - 1);
     const float height = static_cast<float>(rect.bottom - rect.top - 1);
@@ -142,11 +216,14 @@ inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool select
     SetTextColor(dc, !IsWindowEnabled(combo) ? colors.muted : selected ? colors.accent : colors.text);
     DrawTextW(dc, text.data(), length, &row, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
-inline void UiDrawComboItem(const DRAWITEMSTRUCT &item, const UiFieldStyle &style) {
+inline void UiDrawComboItem(const DRAWITEMSTRUCT &source, const UiFieldStyle &style) {
+    auto item = source;
     // The entire collapsed control is drawn by UiFieldProc. Native selection
     // changes still issue ODT_COMBOBOX here, but must not paint a second frame.
     if (item.itemState & ODS_COMBOBOXEDIT)
         return;
+    UiBufferedPaint paint(item.hDC, item.rcItem);
+    item.hDC = paint.Dc();
     const int saved = SaveDC(item.hDC);
     HFONT font = reinterpret_cast<HFONT>(SendMessageW(item.hwndItem, WM_GETFONT, 0, 0));
     if (font)
@@ -745,6 +822,16 @@ class UiLayoutBatch {
                     r.bottom = v.rect.bottom;
                 if (!EqualRect(&r, &v.rect)) {
                     flags &= ~(SWP_NOMOVE | SWP_NOSIZE);
+                    // An owner-drawn control's rounded exterior depends on its
+                    // final dimensions. Do not copy old edge pixels into the new
+                    // rectangle while the full repaint is pending.
+                    wchar_t className[16]{};
+                    GetClassNameW(h, className, 16);
+                    const auto style = GetWindowLongPtrW(h, GWL_STYLE);
+                    if ((_wcsicmp(className, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW) ||
+                        (_wcsicmp(className, L"LISTBOX") == 0 &&
+                         (style & (LBS_OWNERDRAWFIXED | LBS_OWNERDRAWVARIABLE))))
+                        flags |= SWP_NOCOPYBITS;
                     different = true;
                 }
             }

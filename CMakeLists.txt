@@ -187,6 +187,11 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(ui_buffered_paint_test tests/unit/UiBufferedPaintTest.cpp)
+    serialctl_configure_native_target(ui_buffered_paint_test CONSOLE)
+    target_link_libraries(ui_buffered_paint_test PRIVATE gdiplus gdi32 user32 comctl32)
+    add_test(NAME ui_buffered_paint COMMAND ui_buffered_paint_test)
+    set_tests_properties(ui_buffered_paint PROPERTIES TIMEOUT 30)
     add_executable(update_client_test tests/integration/UpdateClientTest.cpp
         src/update/UpdateClient.cpp src/update/UpdateManifest.cpp)
     serialctl_configure_native_target(update_client_test CONSOLE)

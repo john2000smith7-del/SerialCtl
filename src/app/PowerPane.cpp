@@ -1252,11 +1252,13 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                                                               : self->fieldBrush_);
     }
     if (m == WM_DRAWITEM) {
-        auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
+        auto item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
         if (item.CtlType == ODT_COMBOBOX) {
             UiDrawComboItem(item, self->fieldStyle_);
             return TRUE;
         }
+        UiBufferedPaint paint(item.hDC, item.rcItem);
+        item.hDC = paint.Dc();
         auto c = UiTheme(self->dark_);
         bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start;
         bool mainTab = item.CtlID >= 90 && item.CtlID <= 93, subTab = item.CtlID >= 110 && item.CtlID <= 114,
@@ -1784,7 +1786,9 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return TRUE;
     }
     if (m == WM_DRAWITEM) {
-        auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
+        auto item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
+        UiBufferedPaint paint(item.hDC, item.rcItem);
+        item.hDC = paint.Dc();
         FillRect(item.hDC, &item.rcItem, pane->surfaceBrush_);
         const bool enabled = !(item.itemState & ODS_DISABLED);
         const bool primary = item.CtlID == IDOK && enabled;
