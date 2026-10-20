@@ -1,12 +1,12 @@
 #pragma once
 #include <algorithm>
-#include <commctrl.h>
 #include <climits>
 #include <map>
 #include <new>
 #include <string>
 #include <vector>
 #include <windows.h>
+#include <commctrl.h>
 #include <windowsx.h>
 // Windows SDK GDI+ declarations use COM/property interfaces.
 #include <objidl.h>

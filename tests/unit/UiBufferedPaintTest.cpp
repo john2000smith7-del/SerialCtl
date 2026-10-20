@@ -17,6 +17,8 @@ struct Surface {
     HGDIOBJ previous = nullptr;
     void *pixels = nullptr;
     Surface() {
+        if (!dc)
+            return;
         BITMAPINFO info{};
         info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
         info.bmiHeader.biWidth = Width;
@@ -25,7 +27,11 @@ struct Surface {
         info.bmiHeader.biBitCount = 32;
         info.bmiHeader.biCompression = BI_RGB;
         bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+        if (!bitmap || !pixels)
+            return;
         previous = SelectObject(dc, bitmap);
+        if (!Valid())
+            return;
         RECT bounds{0, 0, Width, Height};
         HBRUSH brush = CreateSolidBrush(RGB(36, 36, 38));
         FillRect(dc, &bounds, brush);
@@ -34,12 +40,20 @@ struct Surface {
         SetTextColor(dc, RGB(245, 245, 247));
         SetBkMode(dc, TRANSPARENT);
     }
+    bool Valid() const {
+        return dc && bitmap && pixels && previous && previous != HGDI_ERROR;
+    }
     ~Surface() {
-        SelectObject(dc, previous);
-        DeleteObject(bitmap);
-        DeleteDC(dc);
+        if (previous && previous != HGDI_ERROR)
+            SelectObject(dc, previous);
+        if (bitmap)
+            DeleteObject(bitmap);
+        if (dc)
+            DeleteDC(dc);
     }
     std::vector<DWORD> Pixels() const {
+        if (!Valid())
+            return {};
         GdiFlush();
         const auto *data = static_cast<const DWORD *>(pixels);
         std::vector<DWORD> result(data, data + Width * Height);
@@ -79,6 +93,9 @@ void Configure(HDC dc, bool offset) {
 }
 void TestItem(RECT bounds, bool offset) {
     Surface direct, buffered;
+    Expect(direct.Valid() && buffered.Valid(), "test DIB surfaces are available");
+    if (!direct.Valid() || !buffered.Valid())
+        return;
     Configure(direct.dc, offset);
     Configure(buffered.dc, offset);
     const auto before = buffered.Pixels();
@@ -99,6 +116,9 @@ void TestItem(RECT bounds, bool offset) {
 }
 void TestFallback() {
     Surface surface;
+    Expect(surface.Valid(), "fallback test DIB is available");
+    if (!surface.Valid())
+        return;
     auto color = GetTextColor(surface.dc);
     {
         serialctl::UiBufferedPaint paint(surface.dc, RECT{0, 0, 0, 0});
@@ -130,6 +150,10 @@ int main() {
     const auto before = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
     for (int i = 0; i < 100; ++i) {
         Surface surface;
+        if (!surface.Valid()) {
+            Expect(false, "resource-lifetime test DIB is available");
+            break;
+        }
         serialctl::UiBufferedPaint paint(surface.dc, RECT{0, 0, 160, 128});
         Paint(paint.Dc(), RECT{0, 0, 160, 128});
     }
