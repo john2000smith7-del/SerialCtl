@@ -16,6 +16,9 @@ class PowerPane {
     }
     void Theme(bool dark);
     void ShowConnection();
+    using LogExportHandler = std::function<void(bool, const std::wstring &, SessionLogger::ExportPoint)>;
+    void SetLogExportHandler(LogExportHandler handler) { logExportHandler_ = std::move(handler); }
+    void SetLogExportBusy(bool busy);
     Json SelectedChannels() {
         return Selection();
     }
@@ -72,6 +75,8 @@ class PowerPane {
     Json steps_ = Json::array({Json{{"voltage", 0.0}, {"current", 0.0}, {"durationMs", 5000}, {"enabled", true}}});
     std::map<int, HWND> controls_;
     PowerService *service_ = nullptr;
+    LogExportHandler logExportHandler_;
+    bool logExportBusy_ = false;
     std::array<HWND, 3> check_{}, voltage_{}, current_{}, apply_{};
     std::array<HWND, 4> buttons_{};
     HWND protectionButton_ = nullptr;

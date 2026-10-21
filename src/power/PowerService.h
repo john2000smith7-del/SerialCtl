@@ -20,6 +20,10 @@ class PowerService {
     static bool VisaAvailable();
     void Shutdown();
     bool ExportLog(bool csv, const std::wstring &path, std::wstring &error);
+    SessionLogger::ExportPoint CaptureLogExportPoint(bool csv);
+    bool ExportLog(bool csv, const std::wstring &path, SessionLogger::ExportPoint point,
+                   std::wstring &error, const std::atomic<bool> *cancel,
+                   const SessionLogger::ExportProgress &progress);
 
   private:
 #ifdef SERIALCTL_POWER_TESTING

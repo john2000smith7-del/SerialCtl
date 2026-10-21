@@ -625,7 +625,7 @@ class GlobalActions(DesktopActions):
         require(len(found) <= 1, 'Multiple visible modal children of Settings')
         return found[0] if found else 0
 
-    def save_from_settings(self, settings, identifier, name, expected=None):
+    def save_from_settings(self, settings, identifier, name, expected=None, before_accept=None):
         self.click_window(self.user.GetDlgItem(settings, identifier))
         self.wait(lambda: self.owned_dialog(settings), 'Settings opens a native Save As dialog')
         dialog = self.owned_dialog(settings)
@@ -700,6 +700,8 @@ class GlobalActions(DesktopActions):
         self.wait(lambda: self.native_control_text(filename) == str(path),
                   'native filename edit contains actual typed export path')
         self.screenshot(name + '-save-dialog-typed')
+        if before_accept is not None:
+            before_accept(path)
         self.key(0x0d)
         self.wait(lambda: not self.user.IsWindow(dialog), 'Native Save As closes after saving', 10)
         self.args.root = settings

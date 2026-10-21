@@ -1037,6 +1037,15 @@ void PowerService::Shutdown() {
 bool PowerService::ExportLog(bool csv, const std::wstring &path, std::wstring &error) {
     return csv ? measurements_.SaveCopy(path, error) : log_.SaveCopy(path, error);
 }
+SessionLogger::ExportPoint PowerService::CaptureLogExportPoint(bool csv) {
+    return csv ? measurements_.CaptureExportPoint() : log_.CaptureExportPoint();
+}
+bool PowerService::ExportLog(bool csv, const std::wstring &path, SessionLogger::ExportPoint point,
+                             std::wstring &error, const std::atomic<bool> *cancel,
+                             const SessionLogger::ExportProgress &progress) {
+    return csv ? measurements_.SaveCopy(path, std::move(point), error, cancel, progress) :
+                 log_.SaveCopy(path, std::move(point), error, cancel, progress);
+}
 void PowerService::CheckScpi() {
     auto error = Query("SYST:ERR?");
     std::istringstream in(error);

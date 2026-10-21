@@ -33,6 +33,11 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
             New-Item -ItemType Directory -Path $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
             $testLog=Join-Path $buildDirectory 'Testing/Temporary/LastTest.log'
             if(Test-Path -LiteralPath $testLog){Copy-Item $testLog (Join-Path $env:SERIALCTL_EVIDENCE_DIR ('ctest-'+$item+'.txt')) -Force}
+            $loggerEvidence=Join-Path $env:SERIALCTL_EVIDENCE_DIR 'logger-export-native.json'
+            if(Test-Path -LiteralPath $loggerEvidence){
+                $observation=Get-Content -LiteralPath $loggerEvidence -Raw -Encoding UTF8 | ConvertFrom-Json | ConvertTo-Json -Depth 10 -Compress
+                Write-Host ('::notice title=Native logger export evidence::'+$observation)
+            }
         }
     }
 

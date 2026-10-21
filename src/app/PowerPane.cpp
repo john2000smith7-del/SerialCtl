@@ -543,9 +543,9 @@ void PowerPane::Refresh() {
         EnableWindow(Control(id), connected && !running);
     EnableWindow(Control(224), !running);
     EnableWindow(Control(225), !running);
-    EnableWindow(Control(241), state_.contains("logPath"));
-    EnableWindow(Control(101), state_.contains("csvPath"));
-    EnableWindow(Control(240), state_.contains("csvPath"));
+    EnableWindow(Control(241), !logExportBusy_ && state_.contains("logPath"));
+    EnableWindow(Control(101), !logExportBusy_ && state_.contains("csvPath"));
+    EnableWindow(Control(240), !logExportBusy_ && state_.contains("csvPath"));
     if (connected && !paused_) {
         auto stamp = state_["channels"][0]["timestamp"];
         if (stamp.is_string() && stamp.get<std::string>() != sampleStamp_) {
@@ -1523,17 +1523,28 @@ std::wstring PowerPane::ChooseFile(bool save, const wchar_t *filter, const wchar
     file.Flags = OFN_EXPLORER | OFN_NOCHANGEDIR | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
     return (save ? GetSaveFileNameW(&file) : GetOpenFileNameW(&file)) ? path : L"";
 }
-void PowerPane::Export(bool csv) {
-    const auto key = csv ? "csvPath" : "logPath";
-    if (!state_.contains(key))
-        throw std::runtime_error("尚无日志文件");
-    auto path = ChooseFile(true, csv ? L"CSV 文件\0*.csv\0\0" : L"日志文件\0*.log\0\0", csv ? L"csv" : L"log");
-    if (path.empty())
-        return;
-    std::wstring error;
-    if (!service_->ExportLog(csv, path, error))
-        throw std::runtime_error(WideToMultiByte(error, CP_UTF8));
+void PowerPane::SetLogExportBusy(bool busy) {
+    logExportBusy_ = busy;
+    EnableWindow(Control(241), !busy && state_.contains("logPath"));
+    EnableWindow(Control(101), !busy && state_.contains("csvPath"));
+    EnableWindow(Control(240), !busy && state_.contains("csvPath"));
 }
+void PowerPane::Export(bool csv) {
+    if (logExportBusy_) throw std::runtime_error("已有日志正在导出，可在设置中取消");
+    if (!logExportHandler_) throw std::runtime_error("后台日志导出不可用");
+    const auto key = csv ? "csvPath" : "logPath";
+    if (!state_.contains(key)) throw std::runtime_error("尚无日志文件");
+    const auto before = service_->CaptureLogExportPoint(csv);
+    if (before.root.empty() || WideToMultiByte(before.root, CP_UTF8) != state_[key].get<std::string>())
+        throw std::runtime_error("原电源日志已变化，请刷新后重新导出");
+    auto path = ChooseFile(true, csv ? L"CSV 文件\0*.csv\0\0" : L"日志文件\0*.log\0\0", csv ? L"csv" : L"log");
+    if (path.empty()) return;
+    auto point = service_->CaptureLogExportPoint(csv);
+    if (point.generation != before.generation || point.root != before.root)
+        throw std::runtime_error("原电源日志已切换，未导出");
+    logExportHandler_(csv, path, std::move(point));
+}
+
 namespace {
 Json ReadPowerFile(const std::wstring &path) {
     std::ifstream file(std::filesystem::path(path), std::ios::binary);

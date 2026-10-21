@@ -12,6 +12,7 @@
 #include "CmdLineEditor.h"
 #include "ToolbarIcons.h"
 #include <future>
+#include <functional>
 #include <deque>
 
 #include <atomic>
@@ -59,7 +60,17 @@ private:
         MainWindow* owner = nullptr;
         std::uint64_t sessionId = 0;
         int initialEncoding = 0;
+        wchar_t exportTip[2048]{};
     };
+
+    struct LogExportJob {
+        std::atomic<bool> cancel{false}, done{false}, copying{false};
+        std::atomic<std::uint64_t> copied{0}, total{0};
+        std::wstring source, destination, error;
+        bool success = false;
+    };
+    using LogExportTask = std::function<bool(std::wstring &, const std::atomic<bool> *,
+                                            const SessionLogger::ExportProgress &)>;
 
     struct SftpTransferItem {
         std::uint64_t id = 0;
@@ -95,7 +106,7 @@ private:
         int mode = -1;
         std::wstring name;
         std::shared_ptr<IConnection> connection;
-        std::unique_ptr<SessionLogger> logger;
+        std::shared_ptr<SessionLogger> logger;
         TerminalModel terminal;
         int terminalScrollOffset = 0;
         int terminalHorizontalOffset = 0;
@@ -207,6 +218,10 @@ private:
     void SyncSftpDirectoryFromTerminal(SessionState& session);
     void AppendStatus(const std::wstring& text, bool isError);
     void SaveCurrentLog(HWND owner = nullptr);
+    void StartLogExport(const std::wstring &, const std::wstring &, std::uint64_t, LogExportTask);
+    void PollLogExport();
+    void CancelLogExport();
+    void StopLogExport();
     void SaveNetworkDiagnostics(HWND owner = nullptr);
     void ShowSettings();
     void ExecuteTerminalAction(UINT command, HWND owner = nullptr);
@@ -356,6 +371,10 @@ private:
     SessionState* activeSession_ = nullptr;
     IConnection* connection_ = nullptr;
     SessionLogger* logger_ = nullptr;
+    std::shared_ptr<LogExportJob> logExportJob_;
+    std::thread logExportThread_;
+    std::wstring logExportNotice_;
+    std::wstring logExportMainStatus_;
     std::uint64_t nextSessionId_ = 1;
     std::wstring activeConnectionName_;
     std::vector<CommandItem> commands_;

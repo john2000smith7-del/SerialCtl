@@ -46,6 +46,7 @@ constexpr UINT MessageHostKey = WM_APP + 6;
 constexpr UINT MessageDiscovery = WM_APP + 7;
 constexpr UINT MessageApi = WM_APP + 8;
 constexpr UINT MessageUpdate = WM_APP + 20;
+constexpr UINT MessageLogExport = WM_APP + 21;
 
 void DiscardUpdate(update::UpdateResult& result) {
     if (!result.stagingDirectory.empty()) {
@@ -61,6 +62,7 @@ constexpr int IdSharedAutoPort = 9011;
 constexpr UINT_PTR StatusTimerId = 4001;
 constexpr UINT_PTR CommandTimerId = 4002;
 constexpr UINT_PTR SideAnimationTimerId = 4003;
+constexpr UINT_PTR LogExportTimerId = 4004;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
 constexpr std::uint32_t MaximumCommandIntervalMs = 60000;
 constexpr size_t MaximumCommandSteps = 10;
@@ -118,7 +120,8 @@ enum TerminalMenuId {
     IdMenuEncodingGb2312,
     IdMenuRawTrace,
     IdMenuEncodingCmdAuto,
-    IdMenuNetworkDiagnostics
+    IdMenuNetworkDiagnostics,
+    IdMenuCancelLogExport
 };
 
 enum LineEndingMenuId {
@@ -133,7 +136,8 @@ enum SettingsControlId {
     IdSettingsTimestamp,
     IdSettingsRawTrace,
     IdSettingsEncoding,
-    IdSettingsEnding
+    IdSettingsEnding,
+    IdSettingsExportNote
 };
 
 enum SftpMenuId {
@@ -988,7 +992,10 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
 }
 
 MainWindow::~MainWindow() {
+    if (logExportJob_) logExportJob_->cancel.store(true);
     StopStartupUpdate();
+    powerService_.Shutdown();
+    StopLogExport();
 }
 
 void MainWindow::StartStartupUpdate() {
@@ -1025,7 +1032,7 @@ bool MainWindow::CanInstallStartupUpdate() const {
     // PowerPageOpened also excludes a queued connect/task that has not yet
     // appeared in the service snapshot. A modal owner and mouse capture exclude
     // edits and ongoing gestures. A busy startup defers for the entire run.
-    return !closing_.load() && !startupUpdateDeferred_ && sessions_.empty() && !pendingSession_ &&
+    return !closing_.load() && !startupUpdateDeferred_ && !logExportJob_ && sessions_.empty() && !pendingSession_ &&
         !powerPageOpened_ && !powerVisible_ && !disconnectAllPending_ && !disconnectAllInProgress_ &&
         !commandsDirty_ && runningCommandIndex_ < 0 && !sftpBusy_ && !activeSftpTransferId_ &&
         !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ && draggingCommandIndex_ < 0 &&
@@ -1880,7 +1887,11 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         rightPanelDragging_ = false;
         UpdateTerminalDimensions();
         break;
+    case MessageLogExport:
+        PollLogExport();
+        return 0;
     case WM_TIMER:
+        if (wParam == LogExportTimerId) { PollLogExport(); return 0; }
         if(wParam==SideAnimationTimerId) {
             if (!rightPanelAnimating_) return 0; // A canceled timer may already have a queued message.
             const double t=std::min(1.0,static_cast<double>(GetTickCount64()-rightPanelAnimationAt_)/200.0);
@@ -2138,6 +2149,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         discoveryCancel_ = true;
         if (discoveryThread_.joinable()) discoveryThread_.join();
         closing_ = true;
+        if (logExportJob_) logExportJob_->cancel.store(true);
+        if (logExportThread_.joinable())
+            CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
         StopStartupUpdate();
         apiServer_.Stop();
         powerService_.Shutdown();
@@ -2157,6 +2171,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         SaveUiState();
         if (sftpThread_.joinable()) sftpThread_.join();
         if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
+        // Device shutdown and transport cleanup take precedence over waiting
+        // for a canceled export to finish destination filesystem I/O.
+        StopLogExport();
         {
             MSG pending{};
             while (PeekMessageW(&pending, window_, MessageApi, MessageApi, PM_REMOVE)) delete reinterpret_cast<ApiRequestMessage*>(pending.lParam);
@@ -2239,6 +2256,16 @@ void MainWindow::CreateControls() {
     SetWindowSubclass(terminal_, TerminalSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 
     powerPane_.Create(window_, uiFont_, darkMode_, &powerService_);
+    powerPane_.SetLogExportHandler([this](bool csv, const std::wstring &path, SessionLogger::ExportPoint point) {
+        const auto slash = point.root.find_last_of(L"\\/");
+        const auto name = point.root.substr(slash == std::wstring::npos ? 0 : slash + 1);
+        const auto source = (csv ? std::wstring(L"电源测量 CSV · ") : std::wstring(L"电源日志 · ")) + name;
+        StartLogExport(source, path, point.bytes,
+            [service = &powerService_, csv, path, point = std::move(point)](
+                std::wstring &error, const std::atomic<bool> *cancel, const SessionLogger::ExportProgress &progress) {
+                return service->ExportLog(csv, path, point, error, cancel, progress);
+            });
+    });
     status_ = CreateChild(L"STATIC", L"", SS_LEFT, IdStatus);
     SendMessageW(status_, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), TRUE);
     ShowWindow(status_, SW_HIDE);
@@ -3337,7 +3364,7 @@ void MainWindow::ConnectFromDialog() {
     session->username = pendingUsername_;
     session->password = pendingPassword_;
     session->port = pendingPort_;
-    session->logger = std::make_unique<SessionLogger>();
+    session->logger = std::make_shared<SessionLogger>();
     const std::uint64_t sessionId = session->id;
 
     session->connection = std::make_shared<QueuedConnection>(std::move(connection));
@@ -3893,6 +3920,9 @@ void MainWindow::AppendInput(const ReceivedItem &item) {
             L"输入来源 " +
             MultiByteToWide(reinterpret_cast<const std::uint8_t *>(item.source.data()), item.source.size(), CP_UTF8) +
             L" · " + std::to_wstring(item.data.size()) + L" 字节");
+    if (measurePaint_ && session == activeSession_ && session->logger)
+        SetPropW(window_, L"SerialCtl.LogAcceptedBytes", reinterpret_cast<HANDLE>(
+            static_cast<UINT_PTR>(session->logger->CaptureExportPoint().bytes)));
 }
 
 void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError) {
@@ -4053,7 +4083,118 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     if (logger_ && !text.empty()) logger_->WriteStatus(text);
 }
 
+void MainWindow::StartLogExport(const std::wstring &source, const std::wstring &destination,
+                                std::uint64_t total, LogExportTask task) {
+    PollLogExport();
+    if (logExportJob_) {
+        if (!statusIsError_ && runningCommandIndex_ < 0)
+            AppendStatus(L"已有日志正在导出，可在设置中取消", false);
+        return;
+    }
+    auto job = std::make_shared<LogExportJob>();
+    job->source = source;
+    job->destination = destination;
+    job->total.store(total);
+    logExportJob_ = job;
+    if (measurePaint_) {
+        SetPropW(window_, L"SerialCtl.LogExportBusy", reinterpret_cast<HANDLE>(1));
+        SetPropW(window_, L"SerialCtl.LogExportCutoff", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(total)));
+    }
+    logExportNotice_ = L"正在准备日志快照 · " + source;
+    powerPane_.SetLogExportBusy(true);
+    logExportMainStatus_.clear();
+    if (!statusIsError_ && runningCommandIndex_ < 0) {
+        AppendStatus(logExportNotice_, false);
+        logExportMainStatus_ = logExportNotice_;
+    }
+    try {
+        const HWND wakeWindow = window_;
+        logExportThread_ = std::thread([job, task = std::move(task), wakeWindow]() mutable {
+            try {
+                job->success = task(job->error, &job->cancel,
+                    [job](std::uint64_t copied, std::uint64_t length) {
+                        job->total.store(length);
+                        job->copied.store(copied);
+                        job->copying.store(true);
+                    });
+            } catch (...) { job->error = L"日志导出失败，原目标文件未替换"; }
+            // Release source ownership before done: UI completion must not join
+            // a thread whose last logger destructor is still stopping a writer.
+            task = {};
+            job->done.store(true, std::memory_order_release);
+            PostMessageW(wakeWindow, MessageLogExport, 0, 0); // no owning message payload
+        });
+        SetTimer(window_, LogExportTimerId, 200, nullptr);
+    } catch (...) {
+        logExportJob_.reset();
+        if (measurePaint_) RemovePropW(window_, L"SerialCtl.LogExportBusy");
+        powerPane_.SetLogExportBusy(false);
+        logExportNotice_ = L"无法启动后台日志导出，原目标文件未替换";
+        if (!statusIsError_ && runningCommandIndex_ < 0) AppendStatus(logExportNotice_, true);
+    }
+}
+
+void MainWindow::PollLogExport() {
+    auto job = logExportJob_;
+    if (!job) return;
+    std::wstring notice;
+    bool failed = false;
+    if (job->done.load(std::memory_order_acquire)) {
+        if (logExportThread_.joinable()) logExportThread_.join();
+        failed = !job->success && !job->cancel.load();
+        notice = job->success ? L"日志已保存：" + job->destination + L" · " + job->source :
+            job->error + L" · " + job->source;
+        logExportJob_.reset();
+        if (measurePaint_) RemovePropW(window_, L"SerialCtl.LogExportBusy");
+        powerPane_.SetLogExportBusy(false);
+        KillTimer(window_, LogExportTimerId);
+    } else if (job->cancel.load()) {
+        if (logExportThread_.joinable())
+            CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
+        notice = L"正在取消日志导出 · " + job->source;
+    } else if (!job->copying.load()) {
+        notice = L"正在准备日志快照 · " + job->source;
+    } else {
+        const auto total = job->total.load(), copied = std::min(job->copied.load(), total);
+        const auto percent = total ? static_cast<unsigned>(static_cast<long double>(copied) * 100 / total) : 100;
+        notice = L"日志复制 " + std::to_wstring(percent) + L"%（" +
+            std::to_wstring(copied / (1024 * 1024)) + L"/" + std::to_wstring(total / (1024 * 1024)) +
+            L" MiB）" + (copied == total ? L"，正在完成 · " : L" · ") + job->source;
+    }
+    if (notice != logExportNotice_) {
+        logExportNotice_ = std::move(notice);
+        // Export feedback must not hide a device fault or an unknown macro
+        // outcome. The instance note in Settings always retains this feedback.
+        if (!statusIsError_ && runningCommandIndex_ < 0 &&
+            (statusText_.empty() || statusText_ == logExportMainStatus_)) {
+            AppendStatus(logExportNotice_, failed);
+            logExportMainStatus_ = logExportNotice_;
+        }
+    }
+}
+
+void MainWindow::CancelLogExport() {
+    PollLogExport();
+    if (!logExportJob_) return;
+    logExportJob_->cancel.store(true);
+    PollLogExport();
+}
+
+void MainWindow::StopLogExport() {
+    if (logExportJob_) logExportJob_->cancel.store(true);
+    if (logExportThread_.joinable()) {
+        const HANDLE thread = reinterpret_cast<HANDLE>(logExportThread_.native_handle());
+        while (WaitForSingleObject(thread, 50) == WAIT_TIMEOUT)
+            CancelSynchronousIo(thread);
+        logExportThread_.join();
+    }
+    if (window_) KillTimer(window_, LogExportTimerId);
+    logExportJob_.reset();
+}
+
 void MainWindow::SaveCurrentLog(HWND owner) {
+    PollLogExport();
+    if (logExportJob_) return;
     if (!logger_ || logger_->Path().empty()) {
         AppendStatus(L"当前没有可保存的会话日志。", true);
         return;
@@ -4077,12 +4218,14 @@ void MainWindow::SaveCurrentLog(HWND owner) {
         AppendStatus(L"原会话已切换或关闭，日志未保存；请重新选择会话", true);
         return;
     }
-    std::wstring error;
-    if (!logger_->SaveCopy(path, error)) {
-        AppendStatus(error, true);
-        return;
-    }
-    AppendStatus(L"日志已保存", false);
+    auto logger = activeSession_->logger;
+    const auto point = logger->CaptureExportPoint();
+    const std::wstring destination = path;
+    StartLogExport(L"会话日志 · " + activeSession_->name, destination, point.bytes,
+        [logger, point, destination](std::wstring &error, const std::atomic<bool> *cancel,
+                                     const SessionLogger::ExportProgress &progress) {
+            return logger->SaveCopy(destination, point, error, cancel, progress);
+        });
 }
 
 void MainWindow::SaveNetworkDiagnostics(HWND owner) {
@@ -4139,6 +4282,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
     const bool hasSession = state->sessionId && self->activeSession_ &&
         self->activeSession_->id == state->sessionId;
     auto refresh = [&] {
+        self->PollLogExport();
         const bool connected = hasSession && self->connection_ && self->connection_->IsConnected();
         auto enable = [&](int id, bool enabled) {
             HWND control = GetDlgItem(dialog, id);
@@ -4148,7 +4292,21 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         enable(IdSettingsEncoding, hasSession);
         enable(IdSettingsEnding, hasSession && self->activeSession_->mode != 0 &&
             self->activeSession_->mode != 4);
-        enable(IdMenuSaveLog, hasSession && self->logger_ && !self->logger_->Path().empty());
+        enable(IdMenuSaveLog, hasSession && self->logger_ && !self->logger_->Path().empty() &&
+            !self->logExportJob_);
+        enable(IdMenuCancelLogExport, self->logExportJob_ && !self->logExportJob_->cancel.load());
+        const auto note = self->logExportNotice_.empty() ?
+            std::wstring(L"保存/取消仅影响选项；操作立即执行。") : self->logExportNotice_;
+        HWND help = GetDlgItem(dialog, IdSettingsExportNote);
+        if (help && ControlText(help) != note) {
+            SetWindowTextW(help, note.c_str());
+            wcsncpy_s(state->exportTip, note.c_str(), _TRUNCATE);
+            TOOLINFOW tool{sizeof(tool)};
+            tool.hwnd = dialog;
+            tool.uId = reinterpret_cast<UINT_PTR>(help);
+            tool.lpszText = state->exportTip;
+            SendMessageW(self->statusTip_, TTM_UPDATETIPTEXTW, 0, reinterpret_cast<LPARAM>(&tool));
+        }
         enable(IdMenuClear, hasSession);
         enable(IdMenuSelectAll, hasSession && self->activeSession_->terminal.DisplayLineCount() > 0);
         enable(IdMenuCopy, hasSession && self->HasTerminalSelection());
@@ -4215,10 +4373,16 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         add(L"BUTTON", L"复制", IdMenuCopy, 16, 280, 128, 32, button);
         add(L"BUTTON", L"粘贴", IdMenuPaste, 156, 280, 128, 32, button);
         add(L"BUTTON", L"全选", IdMenuSelectAll, 296, 280, 124, 32, button);
-        add(L"STATIC", L"本程序实例 · 网络诊断", -1, 16, 324, 404, 24);
-        add(L"BUTTON", L"保存网络连接诊断…", IdMenuNetworkDiagnostics, 16, 352, 404, 32, button);
-        HWND help = add(L"STATIC", L"保存/取消仅影响选项；操作立即执行。",
-            -1, 16, 396, 404, 24);
+        add(L"STATIC", L"本程序实例 · 诊断与日志导出", -1, 16, 324, 404, 24);
+        add(L"BUTTON", L"保存网络连接诊断…", IdMenuNetworkDiagnostics, 16, 352, 196, 32, button);
+        add(L"BUTTON", L"取消日志导出", IdMenuCancelLogExport, 224, 352, 196, 32, button);
+        HWND help = add(L"STATIC", L"", IdSettingsExportNote, 16, 396, 404, 24, SS_ENDELLIPSIS);
+        TOOLINFOW tool{sizeof(tool)};
+        tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        tool.hwnd = dialog;
+        tool.uId = reinterpret_cast<UINT_PTR>(help);
+        tool.lpszText = state->exportTip;
+        SendMessageW(self->statusTip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
         SendMessageW(help, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), TRUE);
         add(L"BUTTON", L"取消", IDCANCEL, 220, 428, 96, 36, button);
         add(L"BUTTON", L"保存", IDOK, 324, 428, 96, 36, button);
@@ -4267,6 +4431,10 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
     }
     if (message == WM_DESTROY) {
         KillTimer(dialog, 1);
+        TOOLINFOW tool{sizeof(tool)};
+        tool.hwnd = dialog;
+        tool.uId = reinterpret_cast<UINT_PTR>(GetDlgItem(dialog, IdSettingsExportNote));
+        SendMessageW(self->statusTip_, TTM_DELTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
         return TRUE;
     }
     if (message == WM_COMMAND) {
@@ -4294,7 +4462,8 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             UiEndOwnedDialog(dialog, IDOK);
             return TRUE;
         }
-        if (id == IdMenuNetworkDiagnostics || id == IdMenuSaveLog || id == IdMenuClear ||
+        if (id == IdMenuNetworkDiagnostics || id == IdMenuCancelLogExport ||
+            id == IdMenuSaveLog || id == IdMenuClear ||
             id == IdMenuCopy || id == IdMenuPaste || id == IdMenuSelectAll) {
             refresh();
             if (IsWindowEnabled(GetDlgItem(dialog, id))) self->ExecuteTerminalAction(id, dialog);
@@ -4307,6 +4476,9 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
 
 void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
     switch (command) {
+    case IdMenuCancelLogExport:
+        CancelLogExport();
+        break;
     case IdMenuNetworkDiagnostics:
         SaveNetworkDiagnostics(owner);
         break;
