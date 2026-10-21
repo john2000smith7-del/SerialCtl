@@ -64,7 +64,14 @@ PowerServiceTest新增6个场景：4种满ON队列安全调用、非取消积压
 累计读取次数注入未命中单通道OFF读回，实际收到confirmed/completed。
 测试随后改为仅在测试目标启用的精确CHAN:OUTP?超时注入，原失败/unknown要求保留；
 改后整组PowerServiceTest在该模型中返回0。该结果不冒充Windows原生或真实设备通过。
-生产Submit与c9f03ae保持逐字一致。Windows原生复跑结果另行记录。
+生产Submit与c9f03ae保持逐字一致。Windows原生复跑 [39526391816](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39526391816)
+已于2026-10-21成功完成，对应源码/测试提交60616269ad4aa978f6ef5a8af13eaa2ac222964c。
+标准流程强制BUILD_TESTING=ON，当前17项CTest包含上述新增场景，并执行PE兼容与发布包重开检查、
+应用启动冒烟、更新异常场景及Python回归。此处依据匹配提交的工作流最终成功状态及其强制步骤；
+原始Windows日志和当前EXE摘要尚未下载，不虚构逐项运行耗时或原始日志内容。
+main已快进到同一6061626；[主分支流水线39527088549](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39527088549)
+也已成功完成，2026-10-21 01:31 UTC复核。修复前后受控复现、原生测试新增断言和匹配提交的两次成功流程
+共同支持关闭#2的软件队列缺陷；原始Windows日志/EXE摘要获取限制仍保留，不将下述现场项目算作已验收。
 
 真实Windows 7、IT6332A USB/RS232、物理拔线、真实GUI满载点击和真实WebSocket故障场景：**未运行**。
 CI受控后端与Linux提取程序不能替代它们。兼容平台、/MT、PE6.01、YY-Thunks、PuTTY和NI-VISA输入未更改。

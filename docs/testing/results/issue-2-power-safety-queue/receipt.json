@@ -8,7 +8,7 @@
   "after_failed": 0,
   "checks": 32,
   "windows_run": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39525281696",
-  "windows_status": "failure",
+  "windows_status": "failure_preserved",
   "hardware": "not_run",
   "files": [
     {
@@ -41,5 +41,18 @@
     "initial_failure": "Read-count injection did not hit the OFF readback; received confirmed/completed",
     "correction": "Test-only precise CHAN:OUTP? timeout injection; production Submit unchanged",
     "corrected_model_exit": 0
+  },
+  "successful_windows_run": {
+    "id": "39526391816",
+    "source_sha": "60616269ad4aa978f6ef5a8af13eaa2ac222964c",
+    "status": "success",
+    "observation": "Public GitHub workflow status and mandatory source-matched steps; raw Windows logs not downloaded"
+  },
+  "main_windows_run": {
+    "id": "39527088549",
+    "source_sha": "60616269ad4aa978f6ef5a8af13eaa2ac222964c",
+    "status": "success",
+    "observed_utc": "2026-10-21T01:31:09Z",
+    "observation": "Public GitHub workflow status and mandatory source-matched steps; raw Windows logs not downloaded"
   }
 }
