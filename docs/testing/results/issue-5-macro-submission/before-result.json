@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "accepted": 2,
+      "active": false,
+      "case": "submitted_not_executed",
+      "error": false,
+      "passed": false,
+      "status": "宏“probe”执行完成。"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "stop_keeps_accepted_prevents_future",
+      "error": false,
+      "passed": false,
+      "status": "宏“probe”已停止。"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "disconnected_no_resend",
+      "error": false,
+      "passed": false,
+      "status": "正在执行宏“probe”（1/2）：slow"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "rejected_count_and_reason_retained",
+      "error": true,
+      "passed": false,
+      "status": "queue full"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "timer_failure_after_acceptance",
+      "error": true,
+      "passed": false,
+      "status": "无法继续执行宏，计时器创建失败。"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "single_command_also_only_submitted",
+      "error": false,
+      "passed": false,
+      "status": "已发送命令：one"
+    }
+  ],
+  "checks": 6,
+  "executed_by_model": 0,
+  "failed": 6
+}

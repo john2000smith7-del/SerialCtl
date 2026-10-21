@@ -1,0 +1,24 @@
+{
+  "base_sha": "119ad6086624b2bfd8c9516ad36401fdf4eb1ff1",
+  "version": "V1.0.8",
+  "model_scope": "Exact extracted SendCommand, SendNextCommandStep and StopCommandSequence; non-consuming queue, timer/UI/ASCII-encoding substitutes; no Win32/CMD/hardware locally",
+  "before_failed": 6,
+  "after_failed": 0,
+  "checks": 6,
+  "native_gui_status": "pending",
+  "win7_and_devices": "not_run",
+  "files": [
+    {
+      "path": "after-result.json",
+      "sha256": "154280a3c3a6dda48b9f1711b5c822e5456c6d0ef9fd340fb91537f7b235cdde"
+    },
+    {
+      "path": "before-result.json",
+      "sha256": "5f64f311a1d2c1e6bb9c111444025c64ee41899ba31561669445350656f56bbc"
+    },
+    {
+      "path": "run_macro_probe.py",
+      "sha256": "e0442f931f2cc37c9988e668d0a5a3745ba726f1ff965ac129475e98fc2576c1"
+    }
+  ]
+}

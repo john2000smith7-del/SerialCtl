@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "accepted": 2,
+      "active": false,
+      "case": "submitted_not_executed",
+      "error": false,
+      "passed": true,
+      "status": "宏“probe”已提交 2/2 条；执行结果见输出。"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "stop_keeps_accepted_prevents_future",
+      "error": false,
+      "passed": true,
+      "status": "宏“probe”已停止后续提交（1/2）；已提交内容可能继续执行，结果见输出。"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "disconnected_no_resend",
+      "error": true,
+      "passed": true,
+      "status": "宏“probe”后续提交已中断（1/2）：连接或当前会话已变化；已提交内容执行状态未知，请检查连接和输出，不自动重发。"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "rejected_count_and_reason_retained",
+      "error": true,
+      "passed": true,
+      "status": "宏“probe”后续提交已中断（1/2）：queue full；已提交内容执行状态未知，请检查连接和输出，不自动重发。"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "timer_failure_after_acceptance",
+      "error": true,
+      "passed": true,
+      "status": "宏“probe”后续提交已中断（1/2）：计时器创建失败；已提交内容执行状态未知，请检查连接和输出，不自动重发。"
+    },
+    {
+      "accepted": 1,
+      "active": false,
+      "case": "single_command_also_only_submitted",
+      "error": false,
+      "passed": true,
+      "status": "已提交命令；执行结果见输出：one"
+    }
+  ],
+  "checks": 6,
+  "executed_by_model": 0,
+  "failed": 0
+}

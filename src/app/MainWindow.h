@@ -196,7 +196,8 @@ private:
     void CopyTerminalSelection(bool selectAll);
     void SendCommand(size_t index);
     void SendNextCommandStep();
-    void StopCommandSequence(bool showStatus);
+    enum class CommandSequenceEnd { Silent, Submitted, UserStopped, Interrupted };
+    void StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail = {});
     void PostData(std::uint64_t sessionId, const Bytes& data);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
     void AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage = 0, LONGLONG arrival = 0);
@@ -362,7 +363,7 @@ private:
     int hoveredCommandIndex_ = -1;
     int hoveredCommandAction_ = 0;
     int runningCommandIndex_ = -1;
-    size_t runningCommandStep_ = 0;
+    size_t submittedCommandSteps_ = 0;
     std::uint64_t runningCommandSessionId_ = 0;
     UINT runningCommandCodePage_ = CP_UTF8;
     std::wstring runningCommandLineEnding_;

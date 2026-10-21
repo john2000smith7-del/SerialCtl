@@ -1460,7 +1460,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             self->UpdateCommandActions();
             if (PointInRect(actions.run, point)) {
                 if (self->runningCommandIndex_ == index) {
-                    self->StopCommandSequence(true);
+                    self->StopCommandSequence(CommandSequenceEnd::UserStopped);
                     return 0;
                 }
                 const bool writable = self->connection_ && self->connection_->IsConnected();
@@ -2137,7 +2137,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (pendingSession_) pendingSession_->connection->CancelStart();
         if (connectionThread_.joinable()) connectionThread_.join();
         pendingSession_.reset();
-        StopCommandSequence(false);
+        StopCommandSequence(CommandSequenceEnd::Silent);
         sftpOperationCancel_.store(true);
         sftpTransferCancel_.store(true);
         while (!sessions_.empty()) {
@@ -2800,7 +2800,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             }
         }
         if (isRunning)
-            DrawCommandProgress(dc, actions.run, runningCommandStep_, command.commands.size(),
+            DrawCommandProgress(dc, actions.run, submittedCommandSteps_, command.commands.size(),
                 colors.border, colors.accent);
         DrawEditIcon(dc, actions.edit,
             editable ? (hoverEdit ? colors.accent : colors.muted) : colors.border);
@@ -3421,7 +3421,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
 
 void MainWindow::Disconnect() {
     if (!activeSession_) return;
-    StopCommandSequence(false);
+    StopCommandSequence(CommandSequenceEnd::Silent);
     const std::uint64_t disconnectedSessionId = activeSession_->id;
     if (sftpOperationSessionId_ == disconnectedSessionId)
         sftpOperationCancel_.store(true);
@@ -3465,7 +3465,7 @@ void MainWindow::Disconnect() {
 
 void MainWindow::DisconnectAll() {
     disconnectAllInProgress_ = true;
-    StopCommandSequence(false);
+    StopCommandSequence(CommandSequenceEnd::Silent);
     connectionCancel_ = true;
     if (pendingSession_) {
         pendingSession_->connection->CancelStart();
@@ -3538,7 +3538,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (index >= sessions_.size()) return;
     powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE); ShowWindow(terminal_, SW_SHOW);
     if (activeSession_ && activeSession_ != sessions_[index].get())
-        StopCommandSequence(false);
+        StopCommandSequence(CommandSequenceEnd::Silent);
     activeSession_ = sessions_[index].get();
     connection_ = activeSession_->connection.get();
     logger_ = activeSession_->logger.get();
@@ -3729,12 +3729,12 @@ void MainWindow::SendCommand(size_t index) {
         const std::wstring text = command.commands.front() + SelectedLineEnding();
         const std::string encoded = EncodeTerminalText(text);
         if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text))
-            AppendStatus(L"已发送命令：" + command.commands.front(), false);
+            AppendStatus(L"已提交命令；执行结果见输出：" + command.commands.front(), false);
         return;
     }
 
     runningCommandIndex_ = static_cast<int>(index);
-    runningCommandStep_ = 0;
+    submittedCommandSteps_ = 0;
     runningCommandSessionId_ = activeSession_->id;
     runningCommandCodePage_ = SelectedCodePage();
     runningCommandLineEnding_ = SelectedLineEnding();
@@ -3747,52 +3747,62 @@ void MainWindow::SendNextCommandStep() {
     if (runningCommandIndex_ < 0 || runningCommandIndex_ >= static_cast<int>(commands_.size())) return;
     const CommandItem& command = commands_[static_cast<size_t>(runningCommandIndex_)];
     if (!activeSession_ || activeSession_->id != runningCommandSessionId_ || !connection_ ||
-        !connection_->IsConnected() || runningCommandStep_ >= command.commands.size()) {
-        StopCommandSequence(false);
+        !connection_->IsConnected() || submittedCommandSteps_ >= command.commands.size()) {
+        StopCommandSequence(CommandSequenceEnd::Interrupted, L"连接或当前会话已变化");
         return;
     }
 
-    const std::wstring& step = command.commands[runningCommandStep_];
+    const std::wstring& step = command.commands[submittedCommandSteps_];
     const std::wstring text = step + runningCommandLineEnding_;
     const std::string encoded =
         selectedMode_ == 4 ? EncodeTerminalText(text) : WideToMultiByte(text, runningCommandCodePage_);
     if (!SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text)) {
-        StopCommandSequence(false);
+        StopCommandSequence(CommandSequenceEnd::Interrupted, statusText_);
         return;
     }
 
-    ++runningCommandStep_;
+    ++submittedCommandSteps_;
     InvalidateRect(commandList_, nullptr, FALSE);
-    if (runningCommandStep_ >= command.commands.size()) {
-        const std::wstring name = command.name;
-        StopCommandSequence(false);
-        AppendStatus(L"宏“" + name + L"”执行完成。", false);
+    if (submittedCommandSteps_ >= command.commands.size()) {
+        StopCommandSequence(CommandSequenceEnd::Submitted);
         return;
     }
 
-    AppendStatus(L"正在执行宏“" + command.name + L"”（" +
-        std::to_wstring(runningCommandStep_) + L"/" + std::to_wstring(command.commands.size()) +
-        L"）：" + step, false);
+    AppendStatus(L"宏“" + command.name + L"”已提交 " +
+        std::to_wstring(submittedCommandSteps_) + L"/" + std::to_wstring(command.commands.size()) +
+        L" 条，等待下一次提交；执行结果见输出。", false);
     KillTimer(window_, StatusTimerId);
     if (!SetTimer(window_, CommandTimerId, command.intervalMs, nullptr)) {
-        StopCommandSequence(false);
-        AppendStatus(L"无法继续执行宏，计时器创建失败。", true);
+        StopCommandSequence(CommandSequenceEnd::Interrupted, L"计时器创建失败");
     }
 }
 
-void MainWindow::StopCommandSequence(bool showStatus) {
+void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail) {
     if (runningCommandIndex_ < 0) return;
     std::wstring name;
-    if (runningCommandIndex_ < static_cast<int>(commands_.size()))
+    size_t total = submittedCommandSteps_;
+    if (runningCommandIndex_ < static_cast<int>(commands_.size())) {
         name = commands_[static_cast<size_t>(runningCommandIndex_)].name;
+        total = commands_[static_cast<size_t>(runningCommandIndex_)].commands.size();
+    }
+    const auto count = std::to_wstring(submittedCommandSteps_) + L"/" + std::to_wstring(total);
+    // detail can alias statusText_; snapshot it before AppendStatus replaces it.
+    const std::wstring reason = detail;
     KillTimer(window_, CommandTimerId);
     runningCommandIndex_ = -1;
-    runningCommandStep_ = 0;
+    submittedCommandSteps_ = 0;
     runningCommandSessionId_ = 0;
     runningCommandLineEnding_.clear();
     UpdateCommandActions();
     InvalidateRect(commandList_, nullptr, FALSE);
-    if (showStatus) AppendStatus(L"宏“" + name + L"”已停止。", false);
+    if (end == CommandSequenceEnd::Submitted)
+        AppendStatus(L"宏“" + name + L"”已提交 " + count + L" 条；执行结果见输出。", false);
+    else if (end == CommandSequenceEnd::UserStopped)
+        AppendStatus(L"宏“" + name + L"”已停止后续提交（" + count +
+                     L"）；已提交内容可能继续执行，结果见输出。", false);
+    else if (end == CommandSequenceEnd::Interrupted)
+        AppendStatus(L"宏“" + name + L"”后续提交已中断（" + count + L"）：" + reason +
+                     L"；已提交内容执行状态未知，请检查连接和输出，不自动重发。", true);
 }
 
 void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data) {
