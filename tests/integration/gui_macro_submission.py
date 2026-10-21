@@ -67,6 +67,7 @@ class MacroActions(GlobalActions):
                 state = {'status': self.status(), 'accepted_inputs': self.inputs, 'cmd': self.cmd,
                          'selected_command': self.query(self.control(112), 0x188),
                          'clicks': self.report.get('macro_clicks', []),
+                         'fields': self.report.get('macro_fields', []),
                          'recent_events': [{**{k: e.get(k) for k in ('resource', 'kind', 'source', 'seq')},
                                             'data_prefix_base64': e.get('data', '')[:512]}
                                            for e in self.report['websocket_events'][-6:]],
@@ -84,8 +85,17 @@ class MacroActions(GlobalActions):
         edit = self.user.GetDlgItem(dialog, identifier)
         require(edit, 'Missing macro field ' + str(identifier))
         self.click_window(edit)
-        self.chord(0x11, 0x41)
+        # Classic numeric EDIT controls do not consistently implement Ctrl+A.
+        # All macro fields are single-line: select their full native text with
+        # Home + Shift+End, then verify the real value before accepting a draft.
+        before = self.native_control_text(edit)
+        self.key(0x24)
+        self.chord(0x10, 0x23)
         self.text(text)
+        actual = self.native_control_text(edit)
+        self.report.setdefault('macro_fields', []).append(
+            {'id': identifier, 'before': before, 'expected': text, 'actual': actual})
+        require(actual == text, 'Macro field ' + str(identifier) + ' differs: ' + repr(actual) + ' != ' + repr(text))
 
     def add_macro(self, first, second, interval):
         before = self.query(self.control(112), 0x18b)

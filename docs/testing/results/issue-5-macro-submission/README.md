@@ -43,6 +43,11 @@ JSON保存实际输入事件、状态、时间、程序SHA-256、DPI和原屏截
 生产宏函数未因此更改。[第二次Windows运行39543689697](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39543689697)
 的构建/19项CTest再次通过，但专项报`Timed out: two GUI steps accepted`。进一步保留实际状态、输入事件、
 选中行、物理点击坐标和程序摘要到失败annotation，以区分测试命中与生产路径，未放宽断言。
+[第三次Windows运行39544648858](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39544648858)
+公开原始失败现场保存在windows-14df501-observation.json：物理点击命中第5行、首批GUI输入已接受、
+连接正常、状态仍为1/2。此前脚本未读回输入框实际值，特别是数字EDIT不应假设Ctrl+A一定全选。
+改为真实Home+Shift+End选择单行，并对命令、名称和间隔逐项读回断言，禁止测试在错误间隔下继续；
+未改生产宏函数或放宽三秒断言。是否为根因由下一次原生运行确认。
 Windows专项、截图复审：**待运行/复核**。
 Linux仅做Python语法检查和上述受控模型。
 原始Actions产物下载仍受当前会话api.github.com网络策略限制，不能冒充已经看过截图。

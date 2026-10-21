@@ -1,0 +1,63 @@
+{
+  "run": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39544648858",
+  "source": "14df501b50556a1a3d3bb6e28fab6fcdba5d7e41",
+  "result": "FAIL",
+  "observation": {
+    "status": "宏“宏提交验收 d1d71264”已提交 1/2 条，等待下一次提交；执行结果见输出。",
+    "accepted_inputs": [
+      {
+        "seconds": 3.881283,
+        "utc": "2026-10-21T04:39:10.267431+00:00",
+        "data_base64": "cGluZyAtbiA3IDEyNy4wLjAuMSA+bnVsICYgZWNobyBTQ01fZDFkNzEyNjRfXlNMT1cNCg=="
+      }
+    ],
+    "cmd": "session-1",
+    "selected_command": 5,
+    "clicks": [
+      {
+        "seconds": 3.786749,
+        "utc": "2026-10-21T04:39:10.172643+00:00",
+        "index": 5,
+        "row": [
+          0,
+          330,
+          216,
+          396
+        ],
+        "client": [
+          0,
+          0,
+          216,
+          509
+        ],
+        "lane": 0,
+        "screen_point": [
+          1086,
+          534
+        ],
+        "dpi": 96,
+        "status_before": "CMD 行提交模式不支持全屏终端查询；未向控制台发送控制序列"
+      }
+    ],
+    "recent_events": [
+      {
+        "resource": "session-1",
+        "kind": "input",
+        "source": "gui",
+        "seq": 469,
+        "data_prefix_base64": "cGluZyAtbiA3IDEyNy4wLjAuMSA+bnVsICYgZWNobyBTQ01fZDFkNzEyNjRfXlNMT1cNCg=="
+      }
+    ],
+    "program_sha256": "ebfeeecacde5bfa1f38bae68e232b9dd5a7315a4fdcda75aaaddd83407bc593d",
+    "connection": {
+      "codePage": 65001,
+      "codePageSource": "console",
+      "connected": true,
+      "id": "session-1",
+      "inputCodePage": 65001,
+      "kind": "cmd",
+      "name": "本地 CMD #1",
+      "outputCodePage": 65001
+    }
+  }
+}
