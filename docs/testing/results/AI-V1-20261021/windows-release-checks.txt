@@ -1,0 +1,33 @@
+2026-10-21T11:46:48.7897374Z  1/22 Test  #1: ai_protocol ......................   Passed    0.02 sec
+2026-10-21T11:46:49.3343201Z  2/22 Test  #2: ai_client ........................   Passed    0.54 sec
+2026-10-21T11:46:50.6241380Z  3/22 Test  #3: ai_pane ..........................   Passed    1.29 sec
+2026-10-21T11:46:50.7242456Z  4/22 Test  #4: ui_buffered_paint ................   Passed    0.10 sec
+2026-10-21T11:47:20.4757516Z  5/22 Test  #5: update_client ....................   Passed   29.75 sec
+2026-10-21T11:47:26.1296251Z  6/22 Test  #6: update_installer .................   Passed    5.65 sec
+2026-10-21T11:47:27.6170461Z  7/22 Test  #7: session_logger ...................   Passed    1.49 sec
+2026-10-21T11:47:30.9761972Z  8/22 Test  #8: power_service ....................   Passed    3.36 sec
+2026-10-21T11:47:31.1175718Z  9/22 Test  #9: cmd_connection ...................   Passed    0.14 sec
+2026-10-21T11:47:34.4173900Z 10/22 Test #10: api_server .......................   Passed    3.30 sec
+2026-10-21T11:47:34.4496725Z 11/22 Test #11: api_response .....................   Passed    0.03 sec
+2026-10-21T11:47:34.5463227Z 12/22 Test #12: shared_serial_protocol ...........   Passed    0.10 sec
+2026-10-21T11:47:34.5573538Z 13/22 Test #13: tcp_connection ...................   Passed    0.01 sec
+2026-10-21T11:47:34.5686984Z 14/22 Test #14: terminal_model ...................   Passed    0.01 sec
+2026-10-21T11:47:34.7117899Z 15/22 Test #15: putty_host_key ...................   Passed    0.14 sec
+2026-10-21T11:47:45.7112672Z 16/22 Test #16: serial_share_backpressure ........   Passed   11.00 sec
+2026-10-21T11:47:46.7324246Z 17/22 Test #17: multi_serial .....................   Passed    1.02 sec
+2026-10-21T11:47:46.9944675Z 18/22 Test #18: shared_terminal_response .........   Passed    0.26 sec
+2026-10-21T11:47:48.2913484Z 19/22 Test #19: api_client .......................   Passed    1.30 sec
+2026-10-21T11:47:56.7685549Z 20/22 Test #20: linux_gateway_client .............   Passed    8.48 sec
+2026-10-21T11:47:56.7911389Z 21/22 Test #21: terminal_decoder .................   Passed    0.02 sec
+2026-10-21T11:47:56.7991875Z 22/22 Test #22: sftp_model .......................   Passed    0.01 sec
+2026-10-21T11:47:56.7999009Z 100% tests passed, 0 tests failed out of 22
+2026-10-21T11:48:07.2648681Z [PASS] Binary compatibility checks completed: All / Release
+2026-10-21T11:48:28.3987268Z [PASS] Candidate archive was reopened and verified: D:\a\SerialCtl\SerialCtl\build\release\out\SerialCtl-V1.0.9-Win7-x64.zip
+2026-10-21T11:48:28.3996859Z [PASS] Candidate SHA-256: a09e8e0565b3c724b207e283c6027d6ea680913b3b0d8bf468dac00ff065bbc0
+2026-10-21T11:54:58.6515863Z [PASS] Executed assertions for packaged startup/shutdown, theme/dialog layout, controlled CMD, panel geometry, drafts, and isolated SFTP UI. See per-case JSON for input method and scope.
+2026-10-21T11:55:01.0481582Z [PASS] updater production GUI missing
+2026-10-21T11:55:02.2640699Z [PASS] updater production GUI empty
+2026-10-21T11:55:03.1879621Z [PASS] updater production GUI url-a-404
+2026-10-21T11:55:03.8462816Z [PASS] updater production GUI url-b-invalid-signature
+2026-10-21T11:55:04.5331836Z [PASS] updater production GUI slowheaders
+2026-10-21T11:55:05.4653930Z [PASS] updater production GUI slowbody

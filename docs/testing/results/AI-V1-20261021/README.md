@@ -1,6 +1,6 @@
 # AI V1 开发验证记录 · 2026-10-21
 
-基线：`6e443fe7e6e06c807e9cf6b624961bc4687b2a71`。实现位于本地 `feature/ai-assistant-v1` 分支；此记录不是正式发布验收。
+基线：`6e443fe7e6e06c807e9cf6b624961bc4687b2a71`。实现位于本地 `feature/ai-assistant-v1` 分支；此记录不是正式发布验收。后续 Windows 正式构建及 V1.0.9 发布结果见 [Windows 发布验证](WINDOWS-RELEASE-V1.0.9.md)。
 
 ## 执行环境与范围
 
