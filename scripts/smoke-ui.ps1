@@ -499,6 +499,8 @@ foreach ($architecture in @('x64')) {
             if ($LASTEXITCODE -ne 0) { throw 'Unified gateway / real GUI CMD key editing failed.' }
             & python (Join-Path $root 'tests/integration/gui_macro_submission.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --native-dir $native --output $OutputDirectory --prefix "$architecture-$theme-macro"
             if ($LASTEXITCODE -ne 0) { throw 'Real GUI/CMD macro submission, Stop and interruption semantics failed.' }
+            & python (Join-Path $root 'tests/integration/gui_cmd_paste.py') --window $application.MainWindowHandle.ToInt64() --pid $application.Id --native-dir $native --output $OutputDirectory --prefix "$architecture-$theme-paste"
+            if ($LASTEXITCODE -ne 0) { throw 'Real CMD clipboard preflight semantics failed.' }
             if ($ActualMouse) {
                 & python (Join-Path $root 'tests/integration/gui_cmd_user_input.py') --native-dir $native --hwnd $application.MainWindowHandle.ToInt64() --pid $application.Id --output-json (Join-Path $OutputDirectory "$architecture-$theme-cmd-real-input.json")
                 if ($LASTEXITCODE -ne 0) { throw 'Real CMD SendInput keyboard execution failed.' }

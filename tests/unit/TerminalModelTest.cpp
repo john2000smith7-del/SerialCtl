@@ -256,6 +256,49 @@ void TestReflowAtScrollbackCapacity() {
     Expect(live.PlainText(false) == std::wstring(60, L'x') + L"中Y",
            "continuous output during capacity-bound reflow preserves admitted characters");
 }
+void TestCmdPasteBoundaryMatrix() {
+    using Editor = serialctl::CmdLineEditor;
+    for (const std::wstring newline : {L"\r", L"\n", L"\r\n"}) {
+        for (const size_t caret : {size_t(0), size_t(2), size_t(4)}) {
+            for (const size_t tailLength : {size_t(8190), size_t(8191), size_t(8192)}) {
+                Editor editor;
+                editor.Insert(L"abcd");
+                editor.Edit(Editor::Key::Home);
+                for (size_t i = 0; i < caret; ++i) editor.Edit(Editor::Key::Right);
+                const std::wstring suffix = std::wstring(L"abcd").substr(caret);
+                const std::wstring insertedTail(tailLength - suffix.size(), L'x');
+                Editor::PastePlan plan;
+                const bool accepted = editor.PreparePaste(L"first" + newline + insertedTail, plan);
+                Expect(accepted == (tailLength <= 8191),
+                       "CR/LF/CRLF and all caret positions enforce the complete tail boundary");
+                Expect(editor.Text() == L"abcd" && editor.Cursor() == caret,
+                       "every preflight leaves the original draft and caret unchanged");
+                if (!accepted) continue;
+                const std::wstring line = std::wstring(L"abcd").substr(0, caret) + L"first";
+                Expect(plan.submitted == line + newline && plan.tail == insertedTail + suffix &&
+                           plan.cursor == insertedTail.size(),
+                       "valid boundary paste retains the suffix, caret and exact clipboard newline");
+                editor.CommitPaste(plan);
+                Expect(editor.Text().size() == tailLength && editor.Cursor() == insertedTail.size(),
+                       "accepted boundary paste commits its incomplete draft without adding Enter");
+                editor.Edit(Editor::Key::Up);
+                Expect(editor.Text() == line, "only the completed line becomes command history");
+                editor.Edit(Editor::Key::Down);
+                Expect(editor.Text() == insertedTail + suffix, "history restores the boundary draft");
+            }
+        }
+    }
+    for (const wchar_t control : {wchar_t(0), wchar_t(8), wchar_t(27), wchar_t(127)}) {
+        Editor editor;
+        editor.Insert(L"keep");
+        editor.Edit(Editor::Key::Left);
+        Editor::PastePlan plan;
+        Expect(!editor.PreparePaste(L"safe\r\n" + std::wstring(1, control), plan) &&
+                   editor.Text() == L"keep" && editor.Cursor() == 3,
+               "a forbidden control in a later line rejects the prefix and preserves the draft");
+    }
+}
+
 void TestCmdEditor() {
     using Plan = serialctl::CmdLineEditor::PastePlan;
     serialctl::CmdLineEditor transactional;
@@ -359,6 +402,7 @@ int main() {
     TestHardLineAnchorsAndEditingReflow();
     TestReflowAtScrollbackCapacity();
     TestCmdEditor();
+    TestCmdPasteBoundaryMatrix();
     TestUntrustedParameters();
     TestCarriageReturnAndHistoryRecall();
     TestScrollback();

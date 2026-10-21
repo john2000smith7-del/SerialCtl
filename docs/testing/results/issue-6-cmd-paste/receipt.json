@@ -1,0 +1,26 @@
+{
+  "source_sha": "b945afec626393becb007936cef2d1d18af59681",
+  "scope": "Exact production CMD PasteToTerminal branch, CmdLineEditor and CmdBatch; UI, non-consuming sender and UTF8 encoder controlled substitutes. No Win32, clipboard, actual CMD or hardware proof locally.",
+  "results": {
+    "before": {
+      "failed": 1,
+      "checks": 1,
+      "exit": 1
+    },
+    "after": {
+      "failed": 0,
+      "checks": 41,
+      "exit": 0
+    },
+    "mutation_no_encoded_preflight": {
+      "failed": 3,
+      "checks": 41,
+      "exit": 1
+    }
+  },
+  "source_hashes": {
+    "paste_branch": "6afdebfaf1150f530905fe6d1c3d880210d6bd99a4634a0e32856f36aadb78a3",
+    "editor": "5403cb7fc0a660cdc66c39d1a79fa25ac43a4fdc67c9ab3264a2d786191b25a2",
+    "CmdBatch": "3383080bd9d6ae2c549abb2de3a54b1b3a11f605cf51dee502ad8e233723bbfc"
+  }
+}

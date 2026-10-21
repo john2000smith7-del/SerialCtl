@@ -1,0 +1,416 @@
+{
+  "cases": [
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 14,
+      "case": "original_8192_tail_no_prefix",
+      "draft_units": 14,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 7,
+      "attempted": 1,
+      "caret": 8186,
+      "case": "tail_8190_newline_units_1_first_13_caret_0",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 7,
+      "attempted": 1,
+      "caret": 8187,
+      "case": "tail_8191_newline_units_1_first_13_caret_0",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 0,
+      "case": "tail_8192_newline_units_1_first_13_caret_0",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 9,
+      "attempted": 1,
+      "caret": 8188,
+      "case": "tail_8190_newline_units_1_first_13_caret_2",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 9,
+      "attempted": 1,
+      "caret": 8189,
+      "case": "tail_8191_newline_units_1_first_13_caret_2",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 2,
+      "case": "tail_8192_newline_units_1_first_13_caret_2",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 11,
+      "attempted": 1,
+      "caret": 8190,
+      "case": "tail_8190_newline_units_1_first_13_caret_4",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 11,
+      "attempted": 1,
+      "caret": 8191,
+      "case": "tail_8191_newline_units_1_first_13_caret_4",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 4,
+      "case": "tail_8192_newline_units_1_first_13_caret_4",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 7,
+      "attempted": 1,
+      "caret": 8186,
+      "case": "tail_8190_newline_units_1_first_10_caret_0",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 7,
+      "attempted": 1,
+      "caret": 8187,
+      "case": "tail_8191_newline_units_1_first_10_caret_0",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 0,
+      "case": "tail_8192_newline_units_1_first_10_caret_0",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 9,
+      "attempted": 1,
+      "caret": 8188,
+      "case": "tail_8190_newline_units_1_first_10_caret_2",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 9,
+      "attempted": 1,
+      "caret": 8189,
+      "case": "tail_8191_newline_units_1_first_10_caret_2",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 2,
+      "case": "tail_8192_newline_units_1_first_10_caret_2",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 11,
+      "attempted": 1,
+      "caret": 8190,
+      "case": "tail_8190_newline_units_1_first_10_caret_4",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 11,
+      "attempted": 1,
+      "caret": 8191,
+      "case": "tail_8191_newline_units_1_first_10_caret_4",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 4,
+      "case": "tail_8192_newline_units_1_first_10_caret_4",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 7,
+      "attempted": 1,
+      "caret": 8186,
+      "case": "tail_8190_newline_units_2_first_13_caret_0",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 7,
+      "attempted": 1,
+      "caret": 8187,
+      "case": "tail_8191_newline_units_2_first_13_caret_0",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 0,
+      "case": "tail_8192_newline_units_2_first_13_caret_0",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 9,
+      "attempted": 1,
+      "caret": 8188,
+      "case": "tail_8190_newline_units_2_first_13_caret_2",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 9,
+      "attempted": 1,
+      "caret": 8189,
+      "case": "tail_8191_newline_units_2_first_13_caret_2",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 2,
+      "case": "tail_8192_newline_units_2_first_13_caret_2",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 11,
+      "attempted": 1,
+      "caret": 8190,
+      "case": "tail_8190_newline_units_2_first_13_caret_4",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 11,
+      "attempted": 1,
+      "caret": 8191,
+      "case": "tail_8191_newline_units_2_first_13_caret_4",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 4,
+      "case": "tail_8192_newline_units_2_first_13_caret_4",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 3,
+      "case": "forbidden_control_0",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 3,
+      "case": "forbidden_control_8",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 3,
+      "case": "forbidden_control_27",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 3,
+      "case": "forbidden_control_127",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 8190,
+      "case": "no_enter_8190",
+      "draft_units": 8190,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 8191,
+      "case": "no_enter_8191",
+      "draft_units": 8191,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 0,
+      "case": "no_enter_8192",
+      "draft_units": 0,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 0,
+      "caret": 3,
+      "case": "encoder_refuses_whole_plan",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 9,
+      "attempted": 1,
+      "caret": 2731,
+      "case": "utf8_tail_8193_bytes",
+      "draft_units": 2732,
+      "errors": 0,
+      "passed": false
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 1,
+      "caret": 4,
+      "case": "prefix_queue_rejection_keeps_draft_caret_history",
+      "draft_units": 4,
+      "errors": 1,
+      "passed": true
+    },
+    {
+      "accepted_batches": 1,
+      "accepted_bytes": 65536,
+      "attempted": 1,
+      "caret": 0,
+      "case": "normalized_batch_65536",
+      "draft_units": 0,
+      "errors": 0,
+      "passed": true
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 1,
+      "caret": 0,
+      "case": "normalized_batch_65537",
+      "draft_units": 0,
+      "errors": 1,
+      "passed": false
+    },
+    {
+      "accepted_batches": 0,
+      "accepted_bytes": 0,
+      "attempted": 1,
+      "caret": 0,
+      "case": "normalized_batch_65544",
+      "draft_units": 0,
+      "errors": 1,
+      "passed": false
+    }
+  ],
+  "checks": 41,
+  "failed": 3
+}
