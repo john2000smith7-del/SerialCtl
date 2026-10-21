@@ -63,7 +63,18 @@ class MacroActions(GlobalActions):
             self.pump()
             if predicate():
                 return
-            require(time.monotonic() < deadline, 'Timed out: ' + description)
+            if time.monotonic() >= deadline:
+                state = {'status': self.status(), 'accepted_inputs': self.inputs, 'cmd': self.cmd,
+                         'selected_command': self.query(self.control(112), 0x188),
+                         'clicks': self.report.get('macro_clicks', []),
+                         'recent_events': [{**{k: e.get(k) for k in ('resource', 'kind', 'source', 'seq')},
+                                            'data_prefix_base64': e.get('data', '')[:512]}
+                                           for e in self.report['websocket_events'][-6:]],
+                         'program_sha256': self.report['program_sha256']}
+                try: state['connection'] = self.client.request('session.get', self.cmd)
+                except Exception as error: state['connection_error'] = str(error)
+                self.report['failed_observation'] = state
+                raise AssertionError('Timed out: ' + description + '; observed=' + json.dumps(state, ensure_ascii=False))
             time.sleep(.01)
 
     def status(self):
@@ -108,6 +119,9 @@ class MacroActions(GlobalActions):
         lane = round(16 * self.scale) if count * height > client.bottom else 0
         point = POINT(row.right - lane - round(58 * self.scale), (row.top + row.bottom) // 2)
         require(self.user.ClientToScreen(listing, c.byref(point)), 'macro action screen position unavailable')
+        self.report.setdefault('macro_clicks', []).append({**self.timestamp(), 'index': index,
+            'row': [row.left, row.top, row.right, row.bottom], 'client': [client.left, client.top, client.right, client.bottom],
+            'lane': lane, 'screen_point': [point.x, point.y], 'dpi': self.dpi, 'status_before': self.status()})
         self.click_window(listing, (point.x, point.y))
 
     def remove_macro(self, index):

@@ -28,5 +28,13 @@
     "gui_status": "failure",
     "observed_error": "CLIENT_RECEIVE_QUEUE_FULL: consumer stopped reading; connection closed",
     "correction": "Test starts from explicit current cursor, preserving 128-event client bound; production macro code unchanged"
+  },
+  "second_windows_run": {
+    "id": "39543689697",
+    "source_sha": "c93ca057efc90cb7479cfee787fde29cc0a3815f",
+    "build_ctest": "success",
+    "gui_status": "failure",
+    "observed_error": "Timed out: two GUI steps accepted",
+    "next_step": "Preserve actual native status, input events, selected row, physical click geometry and binary SHA-256 in failure annotation; no weakened assertions or production changes"
   }
 }
