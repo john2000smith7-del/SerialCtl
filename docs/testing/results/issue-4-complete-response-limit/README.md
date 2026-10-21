@@ -43,7 +43,12 @@ GatewayHistoryBoundary通过生产Publish生成6份正常事件，每份原始�
 3. 原生还检查冲突requestId拒绝；已有未知请求、伪造资源、0–255及多客户端回归保留。
 4. 测试fixture的history-boundary/clear history命令仅存在于测试程序stdin，不进入生产协议。
 
-Windows：**待运行**。标准入口scripts/build.ps1、scripts/test.ps1、scripts/check.ps1，当前配置19项CTest。
-运行后附匹配提交的结果；当前会话原始Actions日志与EXE摘要下载仍受api.github.com策略限制。
+修复提交：`928b8ff23a46d0aae36eb6006aca9fd6778e0eb3`，已在唯一main。
+[main Windows验证39530389096](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39530389096)
+于2026-10-21 02:06 UTC确认成功。标准流程强制运行上述19项CTest，包括api_response、
+带新增原生边界用例的api_server和Python/C++端到端linux_gateway_client；随后完成兼容/打包重开检查、
+真实窗口启动和更新异常冒烟。本地逐场景模型/解帧日志、反向断言及匹配源码的强制流程共同支持关闭软件缺陷，
+不是只凭测试总PASS推断。公开状态不提供逐条原始输出；原始Actions日志与EXE摘要仍受当前会话api.github.com
+策略限制未下载，不冒充已读取原始日志。
 真实Win7、现场客户端/物理串口与长时测试：**未运行**。兼容目标、/MT、PE6.01、YY-Thunks、
 固定PuTTY、许可证和NI-VISA输入未更改。

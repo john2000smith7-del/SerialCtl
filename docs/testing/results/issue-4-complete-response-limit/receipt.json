@@ -8,7 +8,7 @@
   "portable_unit_exit": 0,
   "removed_envelope_bound_unit_exit": 1,
   "python_wire_following_frames_passed": 9,
-  "native_windows_status": "pending",
+  "native_windows_status": "success",
   "hardware": "not_run",
   "scope": "Production response factory and Python Wire parser with prepared complete frames; local run has no socket, handshake or Windows",
   "files": [
@@ -41,5 +41,14 @@
       "sha256": "80005dcdf2cc51732cb5bb51fd99e2ea665146d17730dd4f86ce3951df5672cb"
     }
   ],
-  "production_header_sha256": "e41e98af0d1cc77f9c52523cc3d906012bf8e913366f7b9a3c03b69937f87513"
+  "production_header_sha256": "e41e98af0d1cc77f9c52523cc3d906012bf8e913366f7b9a3c03b69937f87513",
+  "fix_sha": "928b8ff23a46d0aae36eb6006aca9fd6778e0eb3",
+  "windows_run": {
+    "id": "39530389096",
+    "source_sha": "928b8ff23a46d0aae36eb6006aca9fd6778e0eb3",
+    "branch": "main",
+    "status": "success",
+    "observed_utc": "2026-10-21T02:06:12Z",
+    "scope": "Public source-matched workflow and mandatory 19 CTests including native/Python socket boundaries; raw Windows logs/EXE SHA-256 not downloaded"
+  }
 }
