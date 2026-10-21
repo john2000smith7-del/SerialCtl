@@ -94,7 +94,8 @@ class PasteActions(GlobalActions):
 
     def record(self, case, **details):
         self.report['paste_observations'].append({**self.timestamp(), 'case': case,
-            'gui_bytes': sum(map(len, self.gui_chunks)), 'gui_event_chunks': len(self.gui_chunks), **details})
+            'gui_bytes': sum(map(len, self.gui_chunks)), 'gui_event_chunks': len(self.gui_chunks),
+            'gui_sha256': hashlib.sha256(b''.join(self.gui_chunks)).hexdigest(), **details})
 
     def set_page(self, page):
         self.client.input(self.resource, ('chcp ' + str(page) + '\r\n').encode())
@@ -191,7 +192,16 @@ class PasteActions(GlobalActions):
         self.record('utf8-tail-8190-bytes', tail_characters=2730, encoded_tail_bytes=8190)
         def batch(last):
             return '\n'.join(('rem ' + 'x' * ((last if i == 7 else 8191) - 4)) for i in range(8)) + '\n'
-        self.rejected(batch(8184), '65536 字节', caret=0, label='normalized-batch-65537')
+        self.begin()
+        rejected = batch(8184)
+        require(len(rejected.replace('\n', '\r\n').encode()) == 65537, 'reject exactly one byte above normalized boundary')
+        self.paste(rejected)
+        self.observe(lambda: '65536 字节' in self.status(), 'normalized batch rejected before any prefix')
+        self.barrier()
+        self.assert_gui(b'')
+        require(self.draft_length() == 0, 'over-limit batch leaves empty draft unchanged')
+        self.record('normalized-batch-65537', raw_clipboard_units=len(rejected),
+                    normalized_bytes=65537, rejected_gui_bytes=0, rejection_status=self.status())
         self.begin()
         clipboard = batch(8183)
         expected = clipboard.replace('\n', '\r\n').encode()
