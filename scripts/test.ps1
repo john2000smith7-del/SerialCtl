@@ -13,6 +13,10 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Get-SerialCtlRepositoryRoot
 $ctestPath = Get-RequiredCommandPath -Name 'ctest.exe'
+# Native tests write observations during CTest, before the finally block.
+if ($env:SERIALCTL_EVIDENCE_DIR) {
+    New-Item -ItemType Directory -Path $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
+}
 
 foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture)) {
     $buildDirectory = Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot

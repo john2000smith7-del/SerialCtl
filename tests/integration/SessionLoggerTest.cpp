@@ -8,6 +8,7 @@ using Json = nlohmann::json;
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 
 using namespace serialctl;
@@ -201,6 +202,11 @@ int main() {
         if (length < 32768) {
             std::ofstream file(fs::path(evidenceDirectory) / L"logger-export-native.json", std::ios::binary);
             file << evidence.dump(2);
+            file.close();
+            if (!file) {
+                std::cerr << "Failed to retain native logger export evidence\n";
+                exitCode = 2;
+            }
         }
     }
     std::cout << evidence.dump() << '\n';

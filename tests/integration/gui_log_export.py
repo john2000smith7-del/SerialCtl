@@ -98,12 +98,12 @@ class ExportActions(GlobalActions):
             try:
                 while not self.monitor_stop.is_set():
                     busy = bool(self.prop('LogExportBusy'))
-                    started = time.monotonic()
+                    started = time.perf_counter()
                     self.query(self.window, 0)  # WM_NULL; actual UI message pump roundtrip
-                    ui_ms = round((time.monotonic() - started) * 1000, 3)
-                    started = time.monotonic()
+                    ui_ms = round((time.perf_counter() - started) * 1000, 3)
+                    started = time.perf_counter()
                     resources = self.healthy.resources()
-                    api_ms = round((time.monotonic() - started) * 1000, 3)
+                    api_ms = round((time.perf_counter() - started) * 1000, 3)
                     require(any(r['id'] == self.resource for r in resources['resources']), 'healthy client retains source resource')
                     self.report['health_observations'].append({'busy_at_start': busy, 'ui_ms': ui_ms, 'api_ms': api_ms})
                     if busy:
