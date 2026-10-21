@@ -106,9 +106,16 @@ class MacroActions(GlobalActions):
         self.key(0x24)
         self.chord(0x10, 0x23)
         self.text(text)
-        actual = self.native_control_text(edit)
+        initial = self.native_control_text(edit)
+        # SendInput queues keyboard events; a synchronous WM_GETTEXT can run
+        # before the last queued characters. Observe delivery without retyping.
+        deadline = time.monotonic() + 5
+        actual = initial
+        while actual != text and time.monotonic() < deadline:
+            time.sleep(.01)
+            actual = self.native_control_text(edit)
         self.report.setdefault('macro_fields', []).append(
-            {'id': identifier, 'before': before, 'expected': text, 'actual': actual})
+            {'id': identifier, 'before': before, 'expected': text, 'initial_read': initial, 'actual': actual})
         require(actual == text, 'Macro field ' + str(identifier) + ' differs: ' + repr(actual) + ' != ' + repr(text))
 
     def add_macro(self, first, second, interval):
