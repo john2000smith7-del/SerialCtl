@@ -1,0 +1,64 @@
+[
+  {
+    "program_sha256": "9fc70364c36ec4e83fb3721cc8bf3003d63494b51ee3d25770bfac4e1f16e121",
+    "source": {
+      "batches": 895,
+      "accepted_bytes": 68158155,
+      "elapsed_seconds": 89.781,
+      "event_count": 17897
+    },
+    "export": {
+      "cutoff": 68159388,
+      "bytes": 68159388,
+      "sha256": "96dd25666565f350e4659a61d416ab8ed4e63d12f314a13c21c22b95cdfa9fee",
+      "source_prefix_sha256": "96dd25666565f350e4659a61d416ab8ed4e63d12f314a13c21c22b95cdfa9fee",
+      "parts_read": 2,
+      "observed_busy_samples": 5,
+      "ui_max_ms": 31.0,
+      "api_max_ms": 0.0,
+      "normal_speed_only": true
+    },
+    "settings_note": "日志已保存：D:\\a\\_temp\\serialctl-ui\\x64-dark-export-large-background.log · 会话日志 · 本地 CMD #8",
+    "preserved_warning": "CMD 粘贴包含不支持的控制字符或超长行；未发送，原草稿保留",
+    "dpi": 96,
+    "scope": "Actual packaged GUI, Settings/native Save As, real CMD REM input, normal-speed local Win32 file export",
+    "not_run": [
+      "actual slow/failed SMB",
+      "physical disk full",
+      "Win7 hardware",
+      "non-default DPI",
+      "independent screenshot visual review"
+    ]
+  },
+  {
+    "program_sha256": "9fc70364c36ec4e83fb3721cc8bf3003d63494b51ee3d25770bfac4e1f16e121",
+    "source": {
+      "batches": 896,
+      "accepted_bytes": 68220597,
+      "elapsed_seconds": 89.297,
+      "event_count": 17902
+    },
+    "export": {
+      "cutoff": 68221830,
+      "bytes": 68221830,
+      "sha256": "18e69be2c80546188210121beb2da9e8f621bd1679203cfa21286c33806a625e",
+      "source_prefix_sha256": "18e69be2c80546188210121beb2da9e8f621bd1679203cfa21286c33806a625e",
+      "parts_read": 2,
+      "observed_busy_samples": 5,
+      "ui_max_ms": 63.0,
+      "api_max_ms": 0.0,
+      "normal_speed_only": true
+    },
+    "settings_note": "日志已保存：D:\\a\\_temp\\serialctl-ui\\x64-light-export-large-background.log · 会话日志 · 本地 CMD #4",
+    "preserved_warning": "CMD 粘贴包含不支持的控制字符或超长行；未发送，原草稿保留",
+    "dpi": 96,
+    "scope": "Actual packaged GUI, Settings/native Save As, real CMD REM input, normal-speed local Win32 file export",
+    "not_run": [
+      "actual slow/failed SMB",
+      "physical disk full",
+      "Win7 hardware",
+      "non-default DPI",
+      "independent screenshot visual review"
+    ]
+  }
+]

@@ -1,0 +1,83 @@
+{
+  "run": 39555034537,
+  "url": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39555034537",
+  "validated_source": "2671ab3d83b3fc0129d7c0e96f753b2c2ee09c42",
+  "production_fix": "7fe37d30c782fb99b8cf75831841e332efe247cf",
+  "program_sha256": "ef3387afa5e3dc815d6ecfaf171141605ca621c296c0cbdf11626e27e4c59233",
+  "steps": [
+    {
+      "data-name": "Set up job",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:22:51Z"
+    },
+    {
+      "data-name": "Run actions/checkout@v4",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:23:00Z"
+    },
+    {
+      "data-name": "Cache pinned official VISA offline installer",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:23:03Z"
+    },
+    {
+      "data-name": "Build, test and verify x64 Win7 portable bundle",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:27:50Z"
+    },
+    {
+      "data-name": "Launch packaged applications and capture UI",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:33:49Z"
+    },
+    {
+      "data-name": "Exercise packaged update startup in real windows",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:33:55Z"
+    },
+    {
+      "data-name": "Python Linux AI client protocol tests",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:33:56Z"
+    },
+    {
+      "data-name": "Signed update feed tool regression tests",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:33:58Z"
+    },
+    {
+      "data-name": "Upload verified portable bundle",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:34:03Z"
+    },
+    {
+      "data-name": "Upload UI evidence",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:34:13Z"
+    },
+    {
+      "data-name": "Post Cache pinned official VISA offline installer",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:34:13Z"
+    },
+    {
+      "data-name": "Post Run actions/checkout@v4",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:34:15Z"
+    },
+    {
+      "data-name": "Complete job",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T06:34:15Z"
+    }
+  ],
+  "native_evidence": "Native SessionLogger controlled local Win32 files; gated copy and injected write failure; no physical disk-full/SMB/Win7 claim",
+  "visual_review": "NOT RUN: original screenshot artifacts cannot be downloaded in this session",
+  "not_run": [
+    "actual slow/failed SMB",
+    "physical disk full",
+    "Win7 hardware",
+    "non-default DPI",
+    "independent screenshot visual review"
+  ]
+}

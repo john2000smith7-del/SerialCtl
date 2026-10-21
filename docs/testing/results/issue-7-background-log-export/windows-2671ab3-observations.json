@@ -1,0 +1,100 @@
+{
+  "native": {
+    "cases": [
+      {
+        "bytes": 68157440,
+        "later_bytes_excluded": 1048576,
+        "name": "65 MiB rotation, controlled slow copy, concurrent producer and Stop",
+        "producer_ms": 0,
+        "progress_final": 68157440,
+        "sha256": "293ac2ec51c4b810c496f147ebba14e5916f360a27cab012e7d8eccd1946f8ef",
+        "stop_while_copy_blocked": true
+      },
+      {
+        "name": "source root/current/future rotation protected"
+      },
+      {
+        "cancel_after_bytes": 65536,
+        "name": "cancel after partial copy; target preserved; temporary removed"
+      },
+      {
+        "name": "controlled ERROR_DISK_FULL after 64 KiB; target preserved; logger healthy"
+      },
+      {
+        "name": "actual readonly replacement and missing-directory failures; target preserved"
+      },
+      {
+        "name": "truncated source rejects incomplete snapshot; no old-target replacement"
+      },
+      {
+        "name": "stale generation rejects; empty CSV and later fresh export succeed"
+      }
+    ],
+    "scope": "Native SessionLogger controlled local Win32 files; gated copy and injected write failure; no physical disk-full/SMB/Win7 claim",
+    "success": true
+  },
+  "gui": [
+    {
+      "program_sha256": "ef3387afa5e3dc815d6ecfaf171141605ca621c296c0cbdf11626e27e4c59233",
+      "source": {
+        "batches": 896,
+        "accepted_bytes": 68189595,
+        "elapsed_seconds": 74.078,
+        "event_count": 17804
+      },
+      "export": {
+        "cutoff": 68190828,
+        "bytes": 68190828,
+        "sha256": "6bac534cc2fa46405238560b2bae5acedf7f23017fc6c19f3a3d3ade332cfea1",
+        "source_prefix_sha256": "6bac534cc2fa46405238560b2bae5acedf7f23017fc6c19f3a3d3ade332cfea1",
+        "parts_read": 2,
+        "observed_busy_samples": 28,
+        "ui_max_ms": 15.052,
+        "api_max_ms": 3.551,
+        "normal_speed_only": true
+      },
+      "settings_note": "日志已保存：D:\\a\\_temp\\serialctl-ui\\x64-dark-export-large-background.log · 会话日志 · 本地 CMD #8",
+      "preserved_warning": "CMD 粘贴包含不支持的控制字符或超长行；未发送，原草稿保留",
+      "dpi": 96,
+      "scope": "Actual packaged GUI, Settings/native Save As, real CMD REM input, normal-speed local Win32 file export",
+      "not_run": [
+        "actual slow/failed SMB",
+        "physical disk full",
+        "Win7 hardware",
+        "non-default DPI",
+        "independent screenshot visual review"
+      ]
+    },
+    {
+      "program_sha256": "ef3387afa5e3dc815d6ecfaf171141605ca621c296c0cbdf11626e27e4c59233",
+      "source": {
+        "batches": 896,
+        "accepted_bytes": 68173996,
+        "elapsed_seconds": 73.828,
+        "event_count": 17812
+      },
+      "export": {
+        "cutoff": 68175163,
+        "bytes": 68175163,
+        "sha256": "aab675bbc91d98b58aedbff5ccacee64a5d6896076cf55a3f19d29651d53db74",
+        "source_prefix_sha256": "aab675bbc91d98b58aedbff5ccacee64a5d6896076cf55a3f19d29651d53db74",
+        "parts_read": 2,
+        "observed_busy_samples": 22,
+        "ui_max_ms": 36.382,
+        "api_max_ms": 0.988,
+        "normal_speed_only": true
+      },
+      "settings_note": "日志已保存：D:\\a\\_temp\\serialctl-ui\\x64-light-export-large-background.log · 会话日志 · 本地 CMD #4",
+      "preserved_warning": "CMD 粘贴包含不支持的控制字符或超长行；未发送，原草稿保留",
+      "dpi": 96,
+      "scope": "Actual packaged GUI, Settings/native Save As, real CMD REM input, normal-speed local Win32 file export",
+      "not_run": [
+        "actual slow/failed SMB",
+        "physical disk full",
+        "Win7 hardware",
+        "non-default DPI",
+        "independent screenshot visual review"
+      ]
+    }
+  ]
+}
