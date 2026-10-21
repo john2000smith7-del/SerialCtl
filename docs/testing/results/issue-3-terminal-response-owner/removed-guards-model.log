@@ -1,0 +1,8 @@
+FAILED: two differently sized live viewers produce no automatic input
+FAILED: resized/reset viewer and history RIS never regain response ownership
+FAILED: split query never creates viewer response
+FAILED: split query never creates viewer response
+FAILED: split query never creates viewer response
+FAILED: split query never creates viewer response
+FAILED: split query never creates viewer response
+FAILED: split query never creates viewer response

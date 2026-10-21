@@ -1,0 +1,5 @@
+owner_reply_bytes=27
+first_viewer_reply_bytes=0
+second_viewer_reply_bytes=0
+resized_reset_RIS_replay_reply_bytes=0
+PASS: production models, owner-only replies; not a GUI, socket or hardware run.

@@ -60,8 +60,12 @@ struct TerminalFeedResult {
 
 class TerminalModel {
 public:
+    enum class ResponseRole { Owner, Viewer };
     explicit TerminalModel(int columns = 80, int rows = 24, size_t maximumScrollback = 20000);
 
+    // The connection owner answers device queries. Shared live/history viewers
+    // only render them; Reset, Clear and remote RIS must not change ownership.
+    void SetResponseRole(ResponseRole role) { responseRole_ = role; }
     TerminalFeedResult Feed(const std::wstring& text, const std::wstring& timestamp);
     void Resize(int columns, int rows);
     struct Anchor {
@@ -167,6 +171,7 @@ private:
     Screen primary_;
     Screen alternate_;
     bool alternateScreen_ = false;
+    ResponseRole responseRole_ = ResponseRole::Owner;
     bool cursorVisible_ = true;
     bool applicationCursorKeys_ = false;
     bool bracketedPaste_ = false;

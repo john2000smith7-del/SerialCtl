@@ -262,6 +262,12 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(multi_serial_test CONSOLE)
     target_link_libraries(multi_serial_test PRIVATE ws2_32 advapi32)
     add_test(NAME multi_serial COMMAND multi_serial_test)
+    add_executable(shared_terminal_response_test tests/integration/SharedTerminalResponseTest.cpp
+        src/terminal/TerminalModel.cpp ${GATEWAY_TEST_SOURCES})
+    serialctl_configure_native_target(shared_terminal_response_test CONSOLE)
+    target_link_libraries(shared_terminal_response_test PRIVATE ws2_32 advapi32)
+    add_test(NAME shared_terminal_response COMMAND shared_terminal_response_test)
+    set_tests_properties(shared_terminal_response PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME api_client COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/test_api_client.py")

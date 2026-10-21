@@ -1,0 +1,6 @@
+owner_response_hex=1b5b306e1b5b313b31521b5b3f313b32631b5b383b32343b383074
+remote_response_hex=1b5b306e1b5b313b31521b5b3f313b32631b5b383b33303b31303074
+two_models_total_reply_bytes=55
+historical_output_replay_response_hex=1b5b306e1b5b313b31521b5b3f313b32631b5b383b33303b31303074
+PASS: production models both reply, different grids report different sizes, replay replies again.
+LIMIT: no MainWindow, network, driver, or real device executed by this harness.

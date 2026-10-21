@@ -1,0 +1,38 @@
+{
+  "base_sha": "9e70765a7e637f76fdcadfead4fddf6ba137b156",
+  "version": "V1.0.8",
+  "scope": "Linux g++ C++17 production TerminalModel only; no GUI, socket or hardware in local execution",
+  "before_shared_reply_bytes": 28,
+  "before_replay_reply_bytes": 28,
+  "after_owner_reply_bytes": 27,
+  "after_first_viewer_reply_bytes": 0,
+  "after_second_viewer_reply_bytes": 0,
+  "after_resized_reset_RIS_replay_reply_bytes": 0,
+  "new_unit_test_exit": 0,
+  "removed_ownership_guards_unit_exit": 1,
+  "removed_ownership_guards_failed_assertions": 8,
+  "native_windows_status": "pending",
+  "physical_uart": "not_run",
+  "files": [
+    {
+      "path": "after-model.log",
+      "sha256": "db9dd51d1cf581f782f30254dc42d1c5dd069d2e3e1ae1308df2d9d0cf84fbe1"
+    },
+    {
+      "path": "after-probe.cpp",
+      "sha256": "1cc08f33b974c88f4e2ec8b5a2dea7d8bfe926e177f818b624df3abe3a2758d9"
+    },
+    {
+      "path": "before-model.log",
+      "sha256": "7b6bd3abcd8eb156fcac59fc8c861620541766dbf638e546e5ad07512d63c8e9"
+    },
+    {
+      "path": "removed-guards-model.log",
+      "sha256": "c0ed61f0943aeb7d0b9a64112fe67bb1546bbf3b46a985e86b6c4e810a94c2e0"
+    },
+    {
+      "path": "unit-model.log",
+      "sha256": "2a3187da75f9ab8cfb56d47abcffa8b855d63cd8b0ea4efd04a0740da8b01cdb"
+    }
+  ]
+}

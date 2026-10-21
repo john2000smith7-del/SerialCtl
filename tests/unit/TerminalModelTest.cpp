@@ -22,6 +22,37 @@ void ExpectLine(const serialctl::TerminalModel& model, size_t line,
     ++failures;
 }
 
+void TestSharedResponseOwnership() {
+    using Model = serialctl::TerminalModel;
+    const std::wstring query = L"\x1b[5n\x1b[6n\x1b[c\x1b[>c\x1b[18t\x1b[19t";
+    const std::string expected = "\x1b[0n\x1b[1;1R\x1b[?1;2c\x1b[>0;136;0c\x1b[8;24;80t\x1b[8;24;80t";
+    Model owner(80, 24), first(100, 30), second(120, 40);
+    first.SetResponseRole(Model::ResponseRole::Viewer);
+    second.SetResponseRole(Model::ResponseRole::Viewer);
+    Expect(owner.Feed(query, L"").response == expected, "owner alone answers DSR, DA and size queries");
+    Expect(first.Feed(query, L"").response.empty() && second.Feed(query, L"").response.empty(),
+           "two differently sized live viewers produce no automatic input");
+    first.Resize(132, 50);
+    first.Clear();
+    first.ClearScrollback();
+    first.Reset();
+    // Includes remote RIS and alternate-screen changes: remote output cannot
+    // grant ownership to a viewing model, even inside one Feed call.
+    const auto replay = first.Feed(std::wstring(L"\x1b") + L"c\x1b[?1049h" + query +
+                                      L"\x1b[?1049lhello", L"");
+    Expect(replay.response.empty(), "resized/reset viewer and history RIS never regain response ownership");
+    ExpectLine(first, 0, L"hello", "viewer still renders after reset and alternate-screen replay");
+    Expect(replay.logText == L"hello", "query suppression preserves ordinary log output");
+    for (wchar_t c : query)
+        Expect(second.Feed(std::wstring(1, c), L"").response.empty(), "split query never creates viewer response");
+    Model ssh(90, 28), telnet(70, 20);
+    Expect(ssh.Feed(query, L"").response.find("\x1b[8;28;90t") != std::string::npos,
+           "independent SSH model retains its own terminal geometry replies");
+    telnet.Feed(L"\x1b[?1049h\x1b[3;4H", L"");
+    Expect(telnet.Feed(L"\x1b[6n", L"").response == "\x1b[3;4R",
+           "independent Telnet alternate screen retains cursor replies");
+}
+
 void TestCarriageReturnAndHistoryRecall() {
     serialctl::TerminalModel model(40, 4);
     model.Feed(L"# ifconfig", L"[10:00:00.001]");
@@ -294,6 +325,7 @@ void TestCmdEditor() {
 } // namespace
 
 int main() {
+    TestSharedResponseOwnership();
     serialctl::TerminalModel selection(5, 5);
     selection.Feed(L"abc  def\r\n中 x ", L"timestamp");
     Expect(selection.SelectedText(0, 0, 1, 2) == L"abc  def",

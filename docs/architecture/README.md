@@ -27,6 +27,12 @@ MainWindow::PostData
 
 本地串口/CMD 的终端输入、粘贴、命令宏和网络输入直接进入 SessionService，再进入同一 QueuedConnection 有界 FIFO。原始串口字节不经文本解码；CMD 本地 Unicode 草稿按回车提交，网络也只提交完整命令行，代码页按真实控制台状态或本地显式编码选择处理。SSH/Telnet 保留各自的终端键盘规则。拖动期间批量移动控件，结束后提交最终终端网格；通过 Telnet NAWS 或定制 Plink 通道通知远端。
 
+共享串口的终端自动回复仅由打开该COM的本地桌面模型负责。远程共享会话在创建、接收任何输出之前设为
+TerminalModel::ResponseRole::Viewer；实时输出和历史回放均只解析显示，不生成DSR、DA或尺寸回复。
+该所有权不随Clear、Reset、远程RIS、备用屏切换或Resize改变。SSH/Telnet仍各自拥有协议回复，
+CMD保留原有不发送控制序列的提示。此约束只涉及合成回复，不过滤用户/AI主动发送的二进制输入，
+不改变共享服务的认证边界或多人写入行为。
+
 ## 兼容边界
 
 - 最低系统版本为 Windows 7 SP1。

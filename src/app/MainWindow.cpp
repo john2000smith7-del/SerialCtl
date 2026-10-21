@@ -3316,6 +3316,12 @@ void MainWindow::ConnectFromDialog() {
     session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
     session->id = nextSessionId_++;
     session->mode = pendingMode_;
+    // Only the desktop that owns the local COM answers terminal queries.
+    // A shared viewer receives live output and history through the same Feed
+    // path, so neither may synthesize additional device input. SSH/Telnet keep
+    // their own replies; CMD retains its existing unsupported-query warning.
+    session->terminal.SetResponseRole(session->mode == 3 ? TerminalModel::ResponseRole::Viewer
+                                                       : TerminalModel::ResponseRole::Owner);
     if (pendingMode_ == 4) { session->codePage = GetOEMCP(); session->lineEndingIndex = 2; }
     session->lineEndingIndex = pendingMode_ == 0 ? 1 : (pendingMode_ == 4 ? 2 : 0);
     session->name = sessionName + (pendingMode_ == 4 ? L" #" + std::to_wstring(session->id) : L"");

@@ -590,6 +590,7 @@ void TerminalModel::ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& resul
         }
         break;
     case L'n':
+        if (responseRole_ != ResponseRole::Owner) break;
         if (parameters[0] == 5) result.response += "\x1b[0n";
         else if (parameters[0] == 6) {
             result.response += "\x1b[" + std::to_string(screen.cursorRow + 1) + ";" +
@@ -597,9 +598,11 @@ void TerminalModel::ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& resul
         }
         break;
     case L'c':
+        if (responseRole_ != ResponseRole::Owner) break;
         result.response += prefix == L'>' ? "\x1b[>0;136;0c" : "\x1b[?1;2c";
         break;
     case L't':
+        if (responseRole_ != ResponseRole::Owner) break;
         if (parameters[0] == 18 || parameters[0] == 19)
             result.response += "\x1b[8;" + std::to_string(rows_) + ";" +
                 std::to_string(columns_) + "t";
