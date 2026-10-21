@@ -215,6 +215,28 @@ class PasteActions(GlobalActions):
         self.screenshot('paste-acceptance-finished')
 
 
+def compact_evidence(report, dpi):
+    observations = report['paste_observations']
+    matrix = [o for o in observations if o['case'].startswith('tail-')]
+    ordinary = [o for o in observations if o['case'].startswith('ordinary-')]
+    limits = [o for o in observations if o not in matrix and o not in ordinary]
+    # GitHub's public annotation view truncates message text at ~4 KiB.
+    # Keep every case outcome observable, retaining full events/frames in JSON.
+    return {'prefix': report['prefix'], 'program_sha256': report['program_sha256'], 'dpi': dpi,
+            'case_count': len(observations), 'status': report['status'],
+            'matrix_columns': ['case', 'gui_bytes', 'rejected_gui_bytes', 'caret'],
+            'matrix': [[o['case'], o['gui_bytes'], o.get('rejected_gui_bytes'),
+                        o.get('preserved_caret', o.get('original_caret'))] for o in matrix],
+            'ordinary': [[o['case'], o['gui_bytes'], o['async_stdout_preserves_draft'],
+                          o['explicit_enter_required']] for o in ordinary],
+            'limits': [{k: o[k] for k in ('case', 'gui_bytes', 'gui_event_chunks', 'gui_sha256',
+                        'rejected_gui_bytes', 'preserved_caret', 'tail_characters', 'encoded_tail_bytes',
+                        'raw_clipboard_units', 'normalized_bytes') if k in o} for o in limits],
+            'preserved_draft_sample': next({k: o[k] for k in ('case', 'rejected_gui_bytes',
+                'original_draft_units', 'preserved_caret', 'later_enter_base64')} for o in matrix
+                if o.get('preserved_caret') == 5)}
+
+
 def main():
     parser = argparse.ArgumentParser()
     for name in ('window', 'pid'): parser.add_argument('--' + name, type=int, required=True)
@@ -247,9 +269,9 @@ def main():
     finally:
         test.client.close()
         test.flush_frames()
-    evidence = {'prefix': args.prefix, 'program_sha256': test.report['program_sha256'], 'dpi': test.dpi,
-                'observations': test.report['paste_observations']}
-    print('::notice title=CMD paste evidence::' + json.dumps(evidence, ensure_ascii=False).replace('%', '%25'), flush=True)
+    evidence = json.dumps(compact_evidence(test.report, test.dpi), ensure_ascii=False, separators=(',', ':'))
+    require(len(evidence.encode('utf-8')) <= 3800, 'native evidence must fit the public annotation bound')
+    print('::notice title=CMD paste evidence::' + evidence.replace('%', '%25'), flush=True)
 
 
 if __name__ == '__main__':
