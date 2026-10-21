@@ -1,10 +1,12 @@
 #include "GatewayFixture.h"
+#include "GatewayHistoryBoundary.h"
 #include "SharedSerialConnection.h"
 using namespace test;
 int stage = 0;
 int main() {
     Wsa wsa;
     try {
+        TestHistoryMessageBoundaries();
         Fixture f;
         Peer p(f.server.Port());
         int seq = 0;

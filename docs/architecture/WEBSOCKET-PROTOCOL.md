@@ -11,6 +11,11 @@ hello：`{"type":"hello","version":1,"instance":"...","maxClients":128,"maxInput
 请求：`{"type":"request","version":1,"instance":"...","requestId":"unique-id","op":"input","resource":"session-3","params":{"data":"AAH/"}}`。
 响应：同一 requestId，type=response，version/instance，ok=true + result；失败 ok=false + error={code,message}。请求 ID 长 1–128 字节；op 最长 32 字节；resource 最长 128 字节。拒绝未知字段、非法类型、未知 op、伪造/越权 resource，再调用设备。每连接缓存请求响应，最多 256 个且请求与响应 JSON 合计不超过 1 MiB（任一上限到达时淘汰最旧记录），重复相同请求不再执行，参数冲突返回 REQUEST_ID_CONFLICT。缓存不是跨重连输入幂等承诺。
 
+128 KiB上限按完整响应JSON序列化后的UTF-8字节数计算，包含外层字段、requestId及转义开销；恰好上限可接收。
+events完整响应超限时返回小型HISTORY_TOO_LARGE错误，提示使用subscribe逐事件读取，不截断JSON、不静默丢历史，
+健康连接可继续查询或订阅。其他操作的超大结果/错误详情返回RESPONSE_TOO_LARGE；这只表示结果无法在一条消息中返回，
+不撤销已经接受的输入或设备操作，也不能据此自动重试。缓存保存实际有界响应，重复请求得到相同结果或错误。
+
 | op | resource | params | 意义 |
 |---|---|---|---|
 | resources | 省略 | {} | 本机现有 local serial/CMD 和 power-1 |

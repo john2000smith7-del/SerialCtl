@@ -1,0 +1,69 @@
+{
+  "scope": "Production MakeApiResponse output into production Python Wire.receive, preloaded complete frames; no socket/handshake/Windows/hardware",
+  "cases": [
+    {
+      "idBytes": 1,
+      "escaped": false,
+      "candidateBytes": 131071,
+      "emittedBytes": 131071,
+      "followingFrame": "pass"
+    },
+    {
+      "idBytes": 1,
+      "escaped": false,
+      "candidateBytes": 131072,
+      "emittedBytes": 131072,
+      "followingFrame": "pass"
+    },
+    {
+      "idBytes": 1,
+      "escaped": false,
+      "candidateBytes": 131073,
+      "emittedBytes": 196,
+      "followingFrame": "pass"
+    },
+    {
+      "idBytes": 128,
+      "escaped": false,
+      "candidateBytes": 131071,
+      "emittedBytes": 131071,
+      "followingFrame": "pass"
+    },
+    {
+      "idBytes": 128,
+      "escaped": false,
+      "candidateBytes": 131072,
+      "emittedBytes": 131072,
+      "followingFrame": "pass"
+    },
+    {
+      "idBytes": 128,
+      "escaped": false,
+      "candidateBytes": 131073,
+      "emittedBytes": 323,
+      "followingFrame": "pass"
+    },
+    {
+      "idBytes": 128,
+      "escaped": true,
+      "candidateBytes": 131071,
+      "emittedBytes": 131071,
+      "followingFrame": "pass"
+    },
+    {
+      "idBytes": 128,
+      "escaped": true,
+      "candidateBytes": 131072,
+      "emittedBytes": 131072,
+      "followingFrame": "pass"
+    },
+    {
+      "idBytes": 128,
+      "escaped": true,
+      "candidateBytes": 131073,
+      "emittedBytes": 451,
+      "followingFrame": "pass"
+    }
+  ],
+  "unbounded_rejected": true
+}

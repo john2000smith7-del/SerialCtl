@@ -1,4 +1,5 @@
 #include "ApiServer.h"
+#include "ApiResponse.h"
 #include "Win32Helpers.h"
 #include <algorithm>
 #include <ws2tcpip.h>
@@ -393,12 +394,8 @@ void ApiServer::SetSessions(const std::vector<std::string> &list) {
 }
 void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
     if (!j.is_object()) {
-        Queue(c, Json{{"type", "response"},
-                      {"ok", false},
-                      {"version", 1},
-                      {"instance", instance_},
-                      {"requestId", ""},
-                      {"error", {{"code", "INVALID_REQUEST"}, {"message", "JSON object required"}}}});
+        Queue(c, MakeApiResponse(instance_, "", Failure("INVALID_REQUEST", "JSON object required"), "",
+                                 ws::MaxMessage));
         return;
     }
     std::string id = Text(j, "requestId") ? j["requestId"].get<std::string>() : "";
@@ -470,8 +467,7 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
                     else {
                         c->subscriptions.insert(target);
                         result = {{"cursor", history["cursor"]}, {"subscribed", target}};
-                        Json reply = {{"type", "response"}, {"version", 1}, {"instance", instance_},
-                                      {"requestId", id},    {"ok", true},   {"result", result}};
+                        Json reply = MakeApiResponse(instance_, id, result, op, ws::MaxMessage);
                         Queue(c, reply);
                         for (const auto &event : history["events"])
                             Queue(c, event);
@@ -496,19 +492,10 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
         } catch (const std::exception &e) {
             result = Failure("INVALID_PARAMETERS", e.what());
         }
-    Json reply = {{"type", "response"},
-                  {"version", 1},
-                  {"instance", instance_},
-                  {"requestId", id},
-                  {"ok", !result.contains("error")}};
-    if (result.contains("error")) {
-        const auto &error = result["error"];
-        reply["error"] = error.is_object() ? error : Json{{"code", "BACKEND_REJECTED"}, {"message", error}};
-        if (!reply["error"].contains("message"))
-            reply["error"]["message"] = reply["error"].value("code", "Backend error");
+    Json reply = MakeApiResponse(instance_, id, result, op, ws::MaxMessage);
+    if (!reply.at("ok").get<bool>()) {
         Trace(c, "request_rejected", target + " op=" + op + " requestId=" + id + " " + reply["error"].dump());
-    } else
-        reply["result"] = result;
+    }
     Queue(c, reply);
     if (!id.empty() && !c->responses.count(id))
         CacheResponse(c, id, j, reply);

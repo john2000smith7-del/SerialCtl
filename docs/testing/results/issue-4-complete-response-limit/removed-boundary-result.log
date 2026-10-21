@@ -1,0 +1,3 @@
+id_bytes=1 escaped=0 candidate_wire_bytes=131071 emitted_wire_bytes=131071 ok=true
+id_bytes=1 escaped=0 candidate_wire_bytes=131072 emitted_wire_bytes=131072 ok=true
+complete bounded envelope and ID

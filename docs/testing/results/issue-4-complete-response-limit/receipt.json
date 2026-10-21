@@ -1,0 +1,45 @@
+{
+  "base_sha": "a0cbf46182156ee9ca878b7f08a5695df9cf8228",
+  "version": "V1.0.8",
+  "before_result_bytes": 131069,
+  "before_wire_bytes": 131309,
+  "limit": 131072,
+  "portable_cases": 9,
+  "portable_unit_exit": 0,
+  "removed_envelope_bound_unit_exit": 1,
+  "python_wire_following_frames_passed": 9,
+  "native_windows_status": "pending",
+  "hardware": "not_run",
+  "scope": "Production response factory and Python Wire parser with prepared complete frames; local run has no socket, handshake or Windows",
+  "files": [
+    {
+      "path": "before-probe.cpp",
+      "sha256": "e9582a62d6db8529b29433df9f2f1c0cf47f0caa8b07ff21e7f01fc61a34ddaa"
+    },
+    {
+      "path": "before-result.json",
+      "sha256": "83d09f77c697c155885c759a6ca2be9731e2df6f16af649a781e61350becd03c"
+    },
+    {
+      "path": "removed-boundary-result.log",
+      "sha256": "d680f14ae13ec1ad4a383b6de0ea4386ee7d474c4532ed30e3edeb4498819fc5"
+    },
+    {
+      "path": "response-model.log",
+      "sha256": "ce1633e2da3c176566551c6cf4d5fe5104c870e84fa9e9fd8ba5272c40212e75"
+    },
+    {
+      "path": "verify-wire.py",
+      "sha256": "39431718eb86f011b64e828800b26a399844e39428e5c9a9906b0d2161d9fa15"
+    },
+    {
+      "path": "wire-probe.cpp",
+      "sha256": "21f12e4448abdce75b53817e55af8af85ddcb6f017b332ee0ec6afe97209599a"
+    },
+    {
+      "path": "wire-result.json",
+      "sha256": "80005dcdf2cc51732cb5bb51fd99e2ea665146d17730dd4f86ce3951df5672cb"
+    }
+  ],
+  "production_header_sha256": "e41e98af0d1cc77f9c52523cc3d906012bf8e913366f7b9a3c03b69937f87513"
+}

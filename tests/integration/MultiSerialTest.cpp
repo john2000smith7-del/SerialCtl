@@ -1,4 +1,5 @@
 #include "GatewayFixture.h"
+#include "GatewayHistoryBoundary.h"
 #include "SharedSerialConnection.h"
 using namespace test;
 int main(int argc, char **) {
@@ -18,6 +19,18 @@ int main(int argc, char **) {
                     for (int i = 0; i < 1100; ++i)
                         f.server.Publish("session-5", Bytes{9});
                     std::cout << "overflow COM5" << std::endl;
+                } else if (line == "clear history") {
+                    f.server.SetSessions({});
+                    f.server.SetSessions(f.service.Ids());
+                    std::cout << "history cleared" << std::endl;
+                } else if (line.rfind("history-boundary ", 0) == 0) {
+                    const auto split = line.find(' ', 17);
+                    const auto wireBytes = std::stoull(line.substr(17, split - 17));
+                    const auto idBytes = std::stoull(line.substr(split + 1));
+                    const std::string id(idBytes, 'r');
+                    auto history = PrepareHistoryBoundary(f, wireBytes, id);
+                    std::cout << Json{{"wireBytes", wireBytes}, {"events", history.at("events").size()},
+                                      {"cursor", history.at("cursor")}}.dump() << std::endl;
                 }
             }
             return 0;

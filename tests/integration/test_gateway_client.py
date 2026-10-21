@@ -1,5 +1,6 @@
 """Python clients against the production C++ gateway with labelled echo transports."""
 import base64
+import json
 import pathlib
 import queue
 import subprocess
@@ -14,6 +15,50 @@ fixture = subprocess.Popen([sys.argv[1], '--serve'], stdin=subprocess.PIPE, stdo
 clients = []
 try:
     port = int(fixture.stdout.readline())
+    for id_bytes in (1, 128):
+        for wire_bytes in (131071, 131072, 131073):
+            fixture.stdin.write('history-boundary %d %d\n' % (wire_bytes, id_bytes))
+            fixture.stdin.flush()
+            prepared = json.loads(fixture.stdout.readline())
+            assert prepared == {'wireBytes': wire_bytes, 'events': 6, 'cursor': 6}
+            with Client('127.0.0.1', port=port) as boundary:
+                def request_history():
+                    try:
+                        result = boundary.request('events', 'session-5', {'after': 0}, request_id='r' * id_bytes)
+                    except ProtocolError as error:
+                        assert wire_bytes > 131072, str(error)
+                        assert json.loads(str(error))['code'] == 'HISTORY_TOO_LARGE'
+                        return None
+                    assert wire_bytes <= 131072
+                    assert len(result['events']) == 6 and result['gap'] is False
+                    return result
+                result = request_history()
+                assert request_history() == result  # cached success or cached bounded error
+                assert boundary.resources()['resources']
+                assert boundary.subscribe('session-5')['cursor'] == 6
+                history = [boundary.next_event('session-5', timeout=5) for _ in range(6)]
+                assert [e['seq'] for e in history] == list(range(1, 7))
+                if result is not None:
+                    assert history == result['events']
+                for index, event in enumerate(history, 1):
+                    data = base64.b64decode(event['data'], validate=True)
+                    assert data == bytes([index]) * len(data)
+                    assert 1 <= len(data) <= 16384
+                    if index <= 5:
+                        assert len(data) == 16384
+                assert history[-1]['source'].startswith('设备')
+                boundary.input('session-5', b'LIVE_AFTER_HISTORY_BOUNDARY')
+                while True:
+                    event = boundary.next_event('session-5', timeout=5)
+                    if event['kind'] == 'output':
+                        assert base64.b64decode(event['data']) == b'LIVE_AFTER_HISTORY_BOUNDARY'
+                        break
+                print('Python/C++ history: id_bytes=%d candidate_wire_bytes=%d continued_query_and_subscribe=PASS' %
+                      (id_bytes, wire_bytes))
+    # Boundary fixtures replace caches; start the remaining scenarios afresh.
+    fixture.stdin.write('clear history\n')
+    fixture.stdin.flush()
+    assert fixture.stdout.readline().strip() == 'history cleared'
     c = Client('127.0.0.1', port=port)
     clients.append(c)
     assert c.resources()['resources'][0]['kind'] == 'serial'

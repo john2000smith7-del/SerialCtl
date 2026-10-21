@@ -1,0 +1,10 @@
+id_bytes=1 escaped=0 candidate_wire_bytes=131071 emitted_wire_bytes=131071 ok=true
+id_bytes=1 escaped=0 candidate_wire_bytes=131072 emitted_wire_bytes=131072 ok=true
+id_bytes=1 escaped=0 candidate_wire_bytes=131073 emitted_wire_bytes=196 ok=false
+id_bytes=128 escaped=0 candidate_wire_bytes=131071 emitted_wire_bytes=131071 ok=true
+id_bytes=128 escaped=0 candidate_wire_bytes=131072 emitted_wire_bytes=131072 ok=true
+id_bytes=128 escaped=0 candidate_wire_bytes=131073 emitted_wire_bytes=323 ok=false
+id_bytes=128 escaped=1 candidate_wire_bytes=131071 emitted_wire_bytes=131071 ok=true
+id_bytes=128 escaped=1 candidate_wire_bytes=131072 emitted_wire_bytes=131072 ok=true
+id_bytes=128 escaped=1 candidate_wire_bytes=131073 emitted_wire_bytes=451 ok=false
+PASS: exact limit-1/limit/limit+1; ID 1/128/escaped; UTF-8; ordinary/oversize error envelopes.
