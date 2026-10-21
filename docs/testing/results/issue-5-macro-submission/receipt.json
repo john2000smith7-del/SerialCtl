@@ -20,5 +20,13 @@
       "path": "run_macro_probe.py",
       "sha256": "e0442f931f2cc37c9988e668d0a5a3745ba726f1ff965ac129475e98fc2576c1"
     }
-  ]
+  ],
+  "initial_windows_run": {
+    "id": "39532042684",
+    "source_sha": "a7fd6df71411df44c7c73ad5ba56c6eb7e41a521",
+    "build_ctest": "success",
+    "gui_status": "failure",
+    "observed_error": "CLIENT_RECEIVE_QUEUE_FULL: consumer stopped reading; connection closed",
+    "correction": "Test starts from explicit current cursor, preserving 128-event client bound; production macro code unchanged"
+  }
 }

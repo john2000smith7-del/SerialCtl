@@ -29,7 +29,14 @@ class MacroActions(GlobalActions):
         self.client = Client('127.0.0.1')
         self.cmd = [r['id'] for r in self.client.resources()['resources']
                     if r['kind'] == 'cmd' and r['connected']][-1]
-        self.client.subscribe(self.cmd)
+        # The earlier GUI smoke produced hundreds of benchmark events. This
+        # test observes new macro input, so explicitly query a gap/current cursor
+        # without replaying that unrelated history into the 128-event client
+        # queue while real keyboard input fills the macro dialog.
+        snapshot = self.client.events_since(self.cmd, (1 << 64) - 1)
+        require(snapshot['gap'] is True and not snapshot['events'], 'current-cursor snapshot is explicit')
+        self.client.subscribe(self.cmd, snapshot['cursor'])
+        self.report['subscribe_start_cursor'] = snapshot['cursor']
         self.raw_output = bytearray()
         self.inputs = []
         self.token = ''

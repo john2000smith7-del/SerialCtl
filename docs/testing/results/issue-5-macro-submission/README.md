@@ -35,6 +35,12 @@
 JSON保存实际输入事件、状态、时间、程序SHA-256、DPI和原屏截图摘要；截图由可见桌面BitBlt取得，不使用PrintWindow。
 测试结果还输出GitHub notice，便于在无法下载artifact时读取实际状态观测，不只依赖绿色结论。
 
-Windows专项、截图复审：**待运行/复核**。Linux仅做Python语法检查和上述受控模型。
+[首次Windows运行39532042684](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39532042684)
+的构建/19项CTest通过，窗口专项失败，公开原始annotation为
+`CLIENT_RECEIVE_QUEUE_FULL: consumer stopped reading; connection closed`。
+测试曾从after=0回放此前100轮绘制基准的历史，并在真实键盘填写宏时暂停消费，触发公共客户端128事件上限。
+专项修正为显式查询gap/current cursor后订阅新事件，记录起点游标；不扩大接收队列、不忽略测试期间事件。
+生产宏函数未因此更改。修正后Windows专项、截图复审：**待运行/复核**。
+Linux仅做Python语法检查和上述受控模型。
 原始Actions产物下载仍受当前会话api.github.com网络策略限制，不能冒充已经看过截图。
 Win7真机、物理串口/电源、其他DPI和长时测试：**未运行**。/MT、PE6.01、YY-Thunks及固定依赖输入未更改。
