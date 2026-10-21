@@ -8,7 +8,7 @@
   "after_failed": 0,
   "checks": 32,
   "windows_run": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39525281696",
-  "windows_status": "in_progress",
+  "windows_status": "failure",
   "hardware": "not_run",
   "files": [
     {
@@ -35,5 +35,11 @@
       "path": "before-result.json",
       "sha256": "cb425886cdf0e0911a0f2aa78ea71d78b7ff173a46c1653422c7ea0d0b239d9c"
     }
-  ]
+  ],
+  "diagnosis": {
+    "scope": "Linux controlled full simulation/worker model, Windows time/encoding and file logging substituted",
+    "initial_failure": "Read-count injection did not hit the OFF readback; received confirmed/completed",
+    "correction": "Test-only precise CHAN:OUTP? timeout injection; production Submit unchanged",
+    "corrected_model_exit": 0
+  }
 }

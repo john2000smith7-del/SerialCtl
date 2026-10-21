@@ -86,6 +86,9 @@ struct PowerService::Transport {
     Vi rm = 0, device = 0;
     HANDLE serial = INVALID_HANDLE_VALUE;
     bool simulated = false;
+#ifdef SERIALCTL_POWER_TESTING
+    bool testFailOutputReadback = false;
+#endif
     int failAfter = -1;
     Json simulation =
         Json::array({Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}, {"ovp", 30.0}, {"ovpEnabled", false}},
@@ -195,6 +198,12 @@ struct PowerService::Transport {
     }
     std::string Query(std::string command) {
         if (simulated) {
+#ifdef SERIALCTL_POWER_TESTING
+            if (testFailOutputReadback && command == "CHAN:OUTP?") {
+                testFailOutputReadback = false;
+                throw std::runtime_error("Simulated output readback timeout");
+            }
+#endif
             if (failAfter == 0)
                 throw std::runtime_error("Simulated communication timeout");
             if (failAfter > 0)
@@ -958,6 +967,13 @@ void PowerService::Poll() {
     if (!log_.Error().empty())
         state_["logError"] = WideToMultiByte(log_.Error(), CP_UTF8);
 }
+#ifdef SERIALCTL_POWER_TESTING
+void PowerService::FailNextOutputReadbackForTest() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Require(testWorkerPaused_ && transport_ && transport_->simulated, "Pause the simulation before fault injection");
+    transport_->testFailOutputReadback = true;
+}
+#endif
 void PowerService::Run() {
     for (;;) {
         std::pair<std::string, Json> job;

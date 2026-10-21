@@ -56,8 +56,15 @@ PowerServiceTest新增6个场景：4种满ON队列安全调用、非取消积压
 断连及注入OFF读回失败时输出保持unknown，失败不被写成已确认关闭；暂停状态的Shutdown仍可退出。
 
 执行入口：scripts/build.ps1、scripts/test.ps1、scripts/check.ps1。
-[本次Windows流水线](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39525281696)当前在运行，
-尚未把编译、原生测试或发布包检查记为通过。
+[首次Windows流水线](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39525281696)失败。
+公开网页仅显示构建/测试步骤exit 1，当前会话无法下载原始Windows日志。
+
+在Linux受控诊断模型中，保留生产队列、工作线程、执行、simulation及原测试逻辑，
+仅替代Win32时间/编码、未使用的硬件后端和文件日志。模型复现了新增读回断言失败：
+累计读取次数注入未命中单通道OFF读回，实际收到confirmed/completed。
+测试随后改为仅在测试目标启用的精确CHAN:OUTP?超时注入，原失败/unknown要求保留；
+改后整组PowerServiceTest在该模型中返回0。该结果不冒充Windows原生或真实设备通过。
+生产Submit与c9f03ae保持逐字一致。Windows原生复跑结果另行记录。
 
 真实Windows 7、IT6332A USB/RS232、物理拔线、真实GUI满载点击和真实WebSocket故障场景：**未运行**。
 CI受控后端与Linux提取程序不能替代它们。兼容平台、/MT、PE6.01、YY-Thunks、PuTTY和NI-VISA输入未更改。

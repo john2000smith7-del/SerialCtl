@@ -23,6 +23,9 @@ struct PowerServiceTestAccess {
         std::lock_guard<std::mutex> lock(power.mutex_);
         return power.queue_.size();
     }
+    static void FailNextOutputReadback(PowerService &power) {
+        power.FailNextOutputReadbackForTest();
+    }
 };
 } // namespace serialctl
 using namespace serialctl;
@@ -143,12 +146,12 @@ void TestSafetyReserveAndCoalescing() {
 
 void TestSafetyReadbackFailureAtCapacity() {
     PowerService power;
-    auto ready = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"},
-                                          {"testFailAfterReads", 33}}));
+    auto ready = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}));
     Expect(ready.value("state", "") == "completed", "readback fault starts after initial identification");
     const bool paused = PowerServiceTestAccess::Pause(power);
     Expect(paused, "readback fault worker pauses before saturation");
     if (!paused) return;
+    PowerServiceTestAccess::FailNextOutputReadback(power);
     for (int i = 0; i < 128; ++i)
         Expect(!power.Submit({{"type", "output"}, {"channels", {2}}, {"enabled", true}}).contains("error"),
                "readback fault test fills all ordinary slots");

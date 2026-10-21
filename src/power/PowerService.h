@@ -26,6 +26,7 @@ class PowerService {
     friend struct PowerServiceTestAccess;
     bool testPauseRequested_ = false;
     bool testWorkerPaused_ = false;
+    void FailNextOutputReadbackForTest();
 #endif
     struct Transport;
     void Run();
