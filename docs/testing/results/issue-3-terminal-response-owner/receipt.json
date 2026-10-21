@@ -11,7 +11,7 @@
   "new_unit_test_exit": 0,
   "removed_ownership_guards_unit_exit": 1,
   "removed_ownership_guards_failed_assertions": 8,
-  "native_windows_status": "pending",
+  "native_windows_status": "success",
   "physical_uart": "not_run",
   "files": [
     {
@@ -34,5 +34,22 @@
       "path": "unit-model.log",
       "sha256": "2a3187da75f9ab8cfb56d47abcffa8b855d63cd8b0ea4efd04a0740da8b01cdb"
     }
-  ]
+  ],
+  "fix_sha": "2fa1b16a874c1995b39b9f76d6e13ef7f184194c",
+  "windows_runs": [
+    {
+      "id": "39528620147",
+      "branch": "feat/fix-shared-terminal-responses (deleted after merge)",
+      "source_sha": "2fa1b16a874c1995b39b9f76d6e13ef7f184194c",
+      "status": "success"
+    },
+    {
+      "id": "39529293613",
+      "branch": "main",
+      "source_sha": "2fa1b16a874c1995b39b9f76d6e13ef7f184194c",
+      "status": "success",
+      "observed_utc": "2026-10-21T01:54:28Z"
+    }
+  ],
+  "windows_evidence_scope": "Public source-matched workflow/mandatory steps; raw native logs and EXE SHA-256 not downloaded; controlled COM clients are not GUI/hardware"
 }

@@ -37,8 +37,14 @@ SharedSerialConnection和TerminalModel，通过回环WebSocket连接两个观看
    再严格比较完整TX；不以短暂sleep未观察到额外字节作为通过依据。
 5. 两AI及两观看客户端的0–255、FF、CRLF和显式查询字节完整进入设备，证明没有用字节过滤掩盖问题。
 
-Windows结果：**待运行**。标准构建入口为scripts/build.ps1、scripts/test.ps1、scripts/check.ps1，
-本次配置共18项CTest。当前会话无法通过api.github.com下载原始Actions日志/产物，不能虚构原始测试日志。
+修复提交：`2fa1b16a874c1995b39b9f76d6e13ef7f184194c`，已进入main。
+[分支验证39528620147](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39528620147)和
+[main复验39529293613](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39529293613)均成功完成，
+对应相同修复SHA。main于2026-10-21 01:54 UTC确认成功。标准流程强制执行BUILD_TESTING=ON、
+上述18项CTest、兼容/打包重开验证、实际窗口启动与更新异常冒烟。
+这是公开工作流步骤/状态加匹配源码的验证；本地实际模型日志及反向断言记录附在此目录，
+不能把公开绿色状态独立当作UART或双GUI验证。原始Windows日志和EXE SHA-256仍因当前会话
+api.github.com策略限制未下载，不虚构日志内容。关闭本项的软件所有权缺陷，现场未运行范围继续保留。
 
 ## 未运行范围
 
