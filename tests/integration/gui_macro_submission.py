@@ -40,16 +40,29 @@ class MacroActions(GlobalActions):
         self.raw_output = bytearray()
         self.inputs = []
         self.token = ''
+        self.expect_resource_gone = self.resource_gone = False
         self.report['scope'] = 'Packaged production GUI, actual mouse/SendInput and real CMD; no device ACK claim'
         self.report['program_sha256'] = hashlib.sha256((Path(args.native_dir) / 'serialctl.exe').read_bytes()).hexdigest()
         self.report['macro_observations'] = []
 
     def pump(self):
+        if self.resource_gone:
+            return
         while True:
             try:
                 event = self.client.next_event(self.cmd, timeout=.001)
             except queue.Empty:
                 return
+            except ConnectionError as error:
+                # Explicit UI disconnect is required to remove this resource.
+                # Accept exactly that terminal event, never a failed socket or
+                # receive overflow. Its arrival is asserted by the test below.
+                if self.expect_resource_gone and str(error) == 'TARGET_GONE: ' + self.cmd:
+                    self.resource_gone = True
+                    self.report.setdefault('resource_removals', []).append(
+                        {**self.timestamp(), 'resource': self.cmd, 'event': str(error)})
+                    return
+                raise
             self.report['websocket_events'].append({**self.timestamp(), **event})
             data = base64.b64decode(event.get('data', ''))
             if event.get('kind') == 'output':
@@ -145,6 +158,7 @@ class MacroActions(GlobalActions):
         self.token = uuid.uuid4().hex[:8]
         self.raw_output.clear()
         self.inputs.clear()
+        self.expect_resource_gone = self.resource_gone = False
 
     def completed_submission(self):
         self.begin_case()
@@ -221,6 +235,7 @@ class MacroActions(GlobalActions):
                     if r['kind'] == 'cmd' and r['connected'] and r['id'] not in before]
         self.wait(fresh, 'restore fresh CMD for later smoke tests')
         self.cmd = fresh()[-1]
+        self.expect_resource_gone = self.resource_gone = False
         snapshot = self.client.events_since(self.cmd, (1 << 64) - 1)
         self.client.subscribe(self.cmd, snapshot['cursor'])
 
@@ -230,8 +245,9 @@ class MacroActions(GlobalActions):
                                'echo UNSENT_' + self.token, 5000)
         self.run_or_stop(index)
         self.observe(lambda: len(self.inputs) == 1, 'first step accepted before explicit disconnect')
+        self.expect_resource_gone = True
         self.click_window(self.control(302 if all_sessions else 105))
-        self.observe(lambda: '后续提交已中断（1/2）' in self.status(), 'explicit disconnect retains macro outcome', 3)
+        self.observe(lambda: self.resource_gone and '后续提交已中断（1/2）' in self.status(), 'explicit disconnect retains macro outcome', 3)
         status = self.status()
         require('执行状态未知' in status and '不自动重发' in status and len(self.inputs) == 1,
                 'explicit disconnect retains accepted count and unknown execution state')
