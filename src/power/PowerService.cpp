@@ -507,7 +507,7 @@ Json PowerService::Submit(const Json &command) {
             }
         }
         std::lock_guard<std::mutex> lock(mutex_);
-        Require(!stopping_ && queue_.size() < 128, "Power command queue full or shutting down");
+        Require(!stopping_, "Power service is shutting down");
         if (command.contains("requestId")) {
             Require(command["requestId"].is_string() && command["requestId"].get<std::string>().size() <= 128,
                     "Invalid request ID");
@@ -517,19 +517,34 @@ Json PowerService::Submit(const Json &command) {
                     return action.second;
                 }
         }
+        // Validated safety commands have nine possible scopes: stop,
+        // disconnect, and the seven nonempty OFF channel sets. Keep at most
+        // one pending command per scope, reserving bounded capacity beyond the
+        // 128 ordinary slots even when none of that backlog can be canceled.
+        const auto safetyScope = [](const Json &item) {
+            const auto t = item.at("type").get<std::string>();
+            if (t == "stop") return 1;
+            if (t == "disconnect") return 2;
+            if (t != "output" || item.at("enabled").get<bool>()) return 0;
+            int mask = 0;
+            for (const auto &channel : item.at("channels"))
+                mask |= 1 << (channel.get<int>() - 1);
+            return 2 + mask;
+        };
+        const int scope = safetyScope(command);
+        const bool priority = scope != 0;
+        Require(priority || queue_.size() < 128, "Power command queue full");
         std::string id = "power-action-" + std::to_string(next_++);
         Json action = {{"id", id},
                        {"state", "queued"},
                        {"command", command},
                        {"requestId", command.value("requestId", std::string())}};
         actions_[id] = action;
-        const bool priority =
-            type == "stop" || type == "disconnect" || (type == "output" && !command["enabled"].get<bool>());
         if (priority) {
             for (auto it = queue_.begin(); it != queue_.end();) {
                 const auto t = it->second.value("type", std::string());
                 if (t == "task" || t == "sequence" || t == "schedule" ||
-                    (t == "output" && it->second.value("enabled", false))) {
+                    (t == "output" && it->second.value("enabled", false)) || safetyScope(it->second) == scope) {
                     actions_[it->first]["state"] = "canceled";
                     it = queue_.erase(it);
                 } else
@@ -948,7 +963,21 @@ void PowerService::Run() {
         std::pair<std::string, Json> job;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            wake_.wait_for(lock, std::chrono::milliseconds(50), [this] { return stopping_ || !queue_.empty(); });
+            wake_.wait_for(lock, std::chrono::milliseconds(50), [this] {
+                bool ready = stopping_ || !queue_.empty();
+#ifdef SERIALCTL_POWER_TESTING
+                ready = ready || testPauseRequested_;
+#endif
+                return ready;
+            });
+#ifdef SERIALCTL_POWER_TESTING
+            if (testPauseRequested_) {
+                testWorkerPaused_ = true;
+                wake_.notify_all();
+                wake_.wait(lock, [this] { return stopping_ || !testPauseRequested_; });
+                testWorkerPaused_ = false;
+            }
+#endif
             if (stopping_)
                 break;
             if (!queue_.empty()) {

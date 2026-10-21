@@ -3,6 +3,28 @@
 #include <cmath>
 #include <iostream>
 #include <thread>
+#include <vector>
+namespace serialctl {
+// Stop the real worker at its queue boundary, without sleeping to guess its state.
+// Only the test target compiles this seam; the production GUI has no pause API.
+struct PowerServiceTestAccess {
+    static bool Pause(PowerService &power) {
+        std::unique_lock<std::mutex> lock(power.mutex_);
+        power.testPauseRequested_ = true;
+        power.wake_.notify_all();
+        return power.wake_.wait_for(lock, std::chrono::seconds(2), [&] { return power.testWorkerPaused_; });
+    }
+    static void Resume(PowerService &power) {
+        std::lock_guard<std::mutex> lock(power.mutex_);
+        power.testPauseRequested_ = false;
+        power.wake_.notify_all();
+    }
+    static size_t Depth(PowerService &power) {
+        std::lock_guard<std::mutex> lock(power.mutex_);
+        return power.queue_.size();
+    }
+};
+} // namespace serialctl
 using namespace serialctl;
 int failures = 0;
 void Expect(bool ok, const char *message) {
@@ -22,7 +44,131 @@ Json Wait(PowerService &power, Json action) {
     }
     return {{"error", "Timeout"}};
 }
+
+void TestSafetyAtCapacity(Json safety) {
+    PowerService power;
+    Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
+           "capacity test connects the production simulated backend");
+    Wait(power, power.Submit({{"type", "output"}, {"channels", {3}}, {"enabled", true}}));
+    Wait(power, power.Submit({{"type", "task"}, {"channels", {1}},
+                             {"onMs", 10000}, {"offMs", 10000}, {"count", 10}}));
+    const bool paused = PowerServiceTestAccess::Pause(power);
+    Expect(paused, "worker acknowledges pause before the queue is filled");
+    if (!paused) return;
+
+    std::vector<std::string> pending;
+    for (int i = 0; i < 128; ++i) {
+        auto action = power.Submit({{"type", "output"}, {"channels", {2}}, {"enabled", true},
+                                    {"requestId", "capacity-on-" + std::to_string(i)}});
+        Expect(!action.contains("error"), "all 128 pending ON commands are accepted");
+        if (!action.contains("error")) pending.push_back(action["id"]);
+    }
+    Expect(PowerServiceTestAccess::Depth(power) == 128, "test reaches the actual queue capacity");
+    auto invalid = power.Submit({{"type", "output"}, {"channels", {4}}, {"enabled", false}});
+    Expect(invalid.contains("error") && PowerServiceTestAccess::Depth(power) == 128,
+           "invalid safety request does not cancel queued work");
+    auto conflict = power.Submit({{"type", "output"}, {"channels", {2}}, {"enabled", false},
+                                  {"requestId", "capacity-on-0"}});
+    Expect(conflict.contains("error") && PowerServiceTestAccess::Depth(power) == 128,
+           "conflicting request ID does not cancel queued work");
+
+    auto accepted = power.Submit(safety);
+    Expect(!accepted.contains("error") && accepted.value("state", "") == "queued",
+           "OFF/stop/disconnect at capacity is accepted as queued, not completed");
+    Expect(PowerServiceTestAccess::Depth(power) == 1, "safety command replaces the pending ON backlog");
+    for (const auto &id : pending)
+        Expect(power.Action(id).value("state", "") == "canceled", "every stale pending ON is canceled");
+    PowerServiceTestAccess::Resume(power);
+
+    auto result = Wait(power, accepted);
+    Expect(result.value("state", "") == "completed", "accepted safety command executes on the real worker");
+    auto state = power.State();
+    if (safety["type"] == "disconnect") {
+        Expect(!state.value("connected", true) && state["channels"][0]["output"].is_null(),
+               "disconnect does not report a known output after losing the transport");
+    } else {
+        Expect(state["channels"][0]["output"] == false && state["channels"][1]["output"] == false &&
+                   state["channels"][2]["output"] == true,
+               "selected/owned CH1 is off, canceled CH2 ON never executes, unselected CH3 stays on");
+    }
+}
+
+void TestSafetyReserveAndCoalescing() {
+    PowerService power;
+    const bool paused = PowerServiceTestAccess::Pause(power);
+    Expect(paused, "worker pause is deterministic for reserve testing");
+    if (!paused) return;
+    Json first = {{"type", "parameters"}, {"channels", {1}}, {"voltage", 1}, {"current", 1},
+                  {"requestId", "ordinary-0"}};
+    auto original = power.Submit(first);
+    for (int i = 1; i < 128; ++i) {
+        auto command = first;
+        command["requestId"] = "ordinary-" + std::to_string(i);
+        Expect(!power.Submit(command).contains("error"), "noncancelable backlog reaches 128");
+    }
+    Expect(power.Submit(first).value("id", "") == original.value("id", "missing"),
+           "identical request is returned without reenqueueing even when full");
+    auto extra = first;
+    extra["requestId"] = "ordinary-overflow";
+    Expect(power.Submit(extra).contains("error"), "ordinary overflow is still rejected");
+    Json previous = Json::array();
+
+    // Seven nonempty channel sets, stop and disconnect: at most nine safety slots.
+    // Reverse channel order to check semantic scope, not JSON array ordering.
+    for (int repeat = 0; repeat < 40; ++repeat) {
+        for (int mask = 1; mask < 8; ++mask) {
+            Json channels = Json::array();
+            for (int channel = 3; channel >= 1; --channel)
+                if (mask & (1 << (channel - 1))) channels.push_back(channel);
+            if (repeat % 2) std::reverse(channels.begin(), channels.end());
+            auto off = power.Submit({{"type", "output"}, {"channels", channels}, {"enabled", false},
+                                      {"source", repeat % 2 ? "local" : "network"}});
+            Expect(!off.contains("error"), "each OFF scope has reserved capacity");
+            if (repeat == 0) previous.push_back(off);
+            if (repeat == 1 && !previous[mask - 1].contains("error"))
+                Expect(power.Action(previous[mask - 1]["id"]).value("state", "") == "canceled",
+                       "coalescing reports superseded OFF as canceled, never completed");
+            Expect(PowerServiceTestAccess::Depth(power) <= 137, "repeated OFF cannot grow the queue without bound");
+        }
+        Expect(!power.Submit({{"type", "stop"}}).contains("error"), "stop has reserved capacity");
+        Expect(!power.Submit({{"type", "disconnect"}}).contains("error"), "disconnect has reserved capacity");
+        Expect(PowerServiceTestAccess::Depth(power) == 137, "all safety scopes coexist in a bounded queue");
+    }
+    Expect(power.Action(original["id"]).value("state", "") == "queued",
+           "safety reserve does not evict unrelated ordinary work");
+    power.Shutdown(); // Must wake a paused worker and reject all further work.
+    Expect(power.Submit({{"type", "stop"}}).contains("error") && PowerServiceTestAccess::Depth(power) == 0,
+           "shutdown remains authoritative and drains the test queue");
+}
+
+void TestSafetyReadbackFailureAtCapacity() {
+    PowerService power;
+    auto ready = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"},
+                                          {"testFailAfterReads", 33}}));
+    Expect(ready.value("state", "") == "completed", "readback fault starts after initial identification");
+    const bool paused = PowerServiceTestAccess::Pause(power);
+    Expect(paused, "readback fault worker pauses before saturation");
+    if (!paused) return;
+    for (int i = 0; i < 128; ++i)
+        Expect(!power.Submit({{"type", "output"}, {"channels", {2}}, {"enabled", true}}).contains("error"),
+               "readback fault test fills all ordinary slots");
+    auto off = power.Submit({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "network"}});
+    Expect(!off.contains("error"), "OFF is admitted before the readback fault occurs");
+    PowerServiceTestAccess::Resume(power);
+    auto failed = Wait(power, off);
+    const auto state = power.State();
+    Expect(failed.value("state", "") == "failed" && failed.contains("error") &&
+               !state.value("connected", true) && state["channels"][0]["output"].is_null(),
+           "failed OFF readback remains failed/unknown, never confirmed off");
+}
+
 int main() {
+    TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "local"}});
+    TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "network"}});
+    TestSafetyAtCapacity({{"type", "stop"}, {"source", "local"}});
+    TestSafetyAtCapacity({{"type", "disconnect"}, {"source", "local"}});
+    TestSafetyReserveAndCoalescing();
+    TestSafetyReadbackFailureAtCapacity();
     PowerService power;
     Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
            "simulation identification and readback");

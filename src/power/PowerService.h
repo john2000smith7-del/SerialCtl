@@ -22,6 +22,11 @@ class PowerService {
     bool ExportLog(bool csv, const std::wstring &path, std::wstring &error);
 
   private:
+#ifdef SERIALCTL_POWER_TESTING
+    friend struct PowerServiceTestAccess;
+    bool testPauseRequested_ = false;
+    bool testWorkerPaused_ = false;
+#endif
     struct Transport;
     void Run();
     void Execute(const std::string &id, const Json &command);
