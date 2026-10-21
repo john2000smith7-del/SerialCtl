@@ -1,0 +1,39 @@
+{
+  "base_sha": "c02bf611cbe88dc3b2fc50f1925ab7abdd8d23f4",
+  "fix_sha": "c9f03ae2b2bab6d786409c834a7e3f1b3e6397c5",
+  "version": "V1.0.8",
+  "compiler": "g++ (Debian 14.2.0-19) 14.2.0",
+  "scope": "Exact production Submit and ValidateChannels compiled with non-consuming controlled queue; not a Windows, GUI, live WebSocket or hardware run",
+  "before_failed": 15,
+  "after_failed": 0,
+  "checks": 32,
+  "windows_run": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39525281696",
+  "windows_status": "in_progress",
+  "hardware": "not_run",
+  "files": [
+    {
+      "path": "after-manifest.json",
+      "sha256": "c767c112d65cb0cb5d87d4adf3c42c1ec45f733dc42db5e6cbcdc08131260c03"
+    },
+    {
+      "path": "after-probe.cpp",
+      "sha256": "7ec4eff785c341d8fdfe8646f34136251a94ed569f8bce65cf180add648ae50f"
+    },
+    {
+      "path": "after-result.json",
+      "sha256": "5db683d7c5700bfcc8d26f82ec8f169154d848bea810249faf56b7f0b1d3c0d2"
+    },
+    {
+      "path": "before-manifest.json",
+      "sha256": "91675a174d712e230c4b093f799adb8c7ccf5a67e3595c9697feedaf2ce06b95"
+    },
+    {
+      "path": "before-probe.cpp",
+      "sha256": "23d5cb8622ad98245f2930182f8b3d46773fbc18bdd4ea47afb4d01fb2dc3c36"
+    },
+    {
+      "path": "before-result.json",
+      "sha256": "cb425886cdf0e0911a0f2aa78ea71d78b7ff173a46c1653422c7ea0d0b239d9c"
+    }
+  ]
+}

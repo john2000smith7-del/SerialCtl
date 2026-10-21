@@ -1,0 +1,7 @@
+{
+  "source_ref": "c9f03ae2b2bab6d786409c834a7e3f1b3e6397c5",
+  "scope": "Exact production Submit and channel validation; controlled non-consuming scheduler; no Win32, GUI, network or hardware",
+  "source_sha256": "152ba663f349e8c5cb94422da53af76967e7ff9a8383cb51188b027bff9646be",
+  "extracted_sha256": "7ec4eff785c341d8fdfe8646f34136251a94ed569f8bce65cf180add648ae50f",
+  "exit": 0
+}

@@ -1,0 +1,133 @@
+{
+  "failures": 15,
+  "results": [
+    {
+      "passed": true,
+      "test": "128 ON queued"
+    },
+    {
+      "passed": true,
+      "test": "invalid safety has no side effects"
+    },
+    {
+      "passed": true,
+      "test": "conflicting request ID has no side effects"
+    },
+    {
+      "passed": false,
+      "test": "safety accepted at capacity, not claimed completed"
+    },
+    {
+      "passed": false,
+      "test": "stale ON backlog removed"
+    },
+    {
+      "passed": false,
+      "test": "all pending ON canceled"
+    },
+    {
+      "passed": true,
+      "test": "128 ON queued"
+    },
+    {
+      "passed": true,
+      "test": "invalid safety has no side effects"
+    },
+    {
+      "passed": true,
+      "test": "conflicting request ID has no side effects"
+    },
+    {
+      "passed": false,
+      "test": "safety accepted at capacity, not claimed completed"
+    },
+    {
+      "passed": false,
+      "test": "stale ON backlog removed"
+    },
+    {
+      "passed": false,
+      "test": "all pending ON canceled"
+    },
+    {
+      "passed": true,
+      "test": "128 ON queued"
+    },
+    {
+      "passed": true,
+      "test": "invalid safety has no side effects"
+    },
+    {
+      "passed": true,
+      "test": "conflicting request ID has no side effects"
+    },
+    {
+      "passed": false,
+      "test": "safety accepted at capacity, not claimed completed"
+    },
+    {
+      "passed": false,
+      "test": "stale ON backlog removed"
+    },
+    {
+      "passed": false,
+      "test": "all pending ON canceled"
+    },
+    {
+      "passed": true,
+      "test": "128 ON queued"
+    },
+    {
+      "passed": true,
+      "test": "invalid safety has no side effects"
+    },
+    {
+      "passed": true,
+      "test": "conflicting request ID has no side effects"
+    },
+    {
+      "passed": false,
+      "test": "safety accepted at capacity, not claimed completed"
+    },
+    {
+      "passed": false,
+      "test": "stale ON backlog removed"
+    },
+    {
+      "passed": false,
+      "test": "all pending ON canceled"
+    },
+    {
+      "passed": true,
+      "test": "128 noncancelable commands queued"
+    },
+    {
+      "passed": false,
+      "test": "dedup at full queue"
+    },
+    {
+      "passed": true,
+      "test": "ordinary overflow rejected"
+    },
+    {
+      "passed": false,
+      "test": "900 safety requests accepted over noncancelable backlog"
+    },
+    {
+      "passed": false,
+      "test": "queue <=137 and action history <=256 under repeated safety requests"
+    },
+    {
+      "passed": true,
+      "test": "retained superseded OFF reported canceled"
+    },
+    {
+      "passed": true,
+      "test": "unrelated ordinary work retained"
+    },
+    {
+      "passed": true,
+      "test": "shutdown rejects safety without queue mutation"
+    }
+  ]
+}
