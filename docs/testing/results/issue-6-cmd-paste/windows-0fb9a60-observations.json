@@ -1,0 +1,613 @@
+{
+  "run": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39549514414",
+  "validation_source_sha": "0fb9a60fdd4f4392a732012d9ece401e6715137a",
+  "production_fix_sha": "8ecf183ba8fb87be69ce9e16925f7b77daaeda81",
+  "version": "V1.0.8",
+  "workflow_conclusion": "SUCCESS",
+  "evidence_source": "Complete bounded public Actions annotations, independently decoded and checked against expected bytes/hashes; full event logs and visible screenshots remain in artifact",
+  "retrieved_utc": "2026-10-21T05:36:28.085285+00:00",
+  "run_html_sha256": "a5a9542c33b86f07f46544a4ab1ba6f6f9d1d333615f6edc6ce25ec6fd3a024e",
+  "themes": [
+    {
+      "prefix": "x64-dark-paste",
+      "program_sha256": "3563f434ceca7f13659c55e00f200990f4432a2129cd65eb3a1a8d60df15e8a4",
+      "dpi": 96,
+      "case_count": 37,
+      "status": "PASS",
+      "matrix_columns": [
+        "case",
+        "gui_bytes",
+        "rejected_gui_bytes",
+        "caret"
+      ],
+      "matrix": [
+        [
+          "tail-8190-nl-0d-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8191-nl-0d-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8192-nl-0d-caret-0",
+          28,
+          0,
+          0
+        ],
+        [
+          "tail-8190-nl-0d-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8191-nl-0d-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8192-nl-0d-caret-5",
+          28,
+          0,
+          5
+        ],
+        [
+          "tail-8190-nl-0d-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8191-nl-0d-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8192-nl-0d-caret-22",
+          28,
+          0,
+          22
+        ],
+        [
+          "tail-8190-nl-0a-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8191-nl-0a-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8192-nl-0a-caret-0",
+          28,
+          0,
+          0
+        ],
+        [
+          "tail-8190-nl-0a-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8191-nl-0a-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8192-nl-0a-caret-5",
+          28,
+          0,
+          5
+        ],
+        [
+          "tail-8190-nl-0a-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8191-nl-0a-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8192-nl-0a-caret-22",
+          28,
+          0,
+          22
+        ],
+        [
+          "tail-8190-nl-0d0a-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8191-nl-0d0a-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8192-nl-0d0a-caret-0",
+          28,
+          0,
+          0
+        ],
+        [
+          "tail-8190-nl-0d0a-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8191-nl-0d0a-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8192-nl-0d0a-caret-5",
+          28,
+          0,
+          5
+        ],
+        [
+          "tail-8190-nl-0d0a-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8191-nl-0d0a-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8192-nl-0d0a-caret-22",
+          28,
+          0,
+          22
+        ]
+      ],
+      "ordinary": [
+        [
+          "ordinary-0d",
+          61,
+          true,
+          true
+        ],
+        [
+          "ordinary-0a",
+          61,
+          true,
+          true
+        ],
+        [
+          "ordinary-0d0a",
+          65,
+          true,
+          true
+        ]
+      ],
+      "limits": [
+        {
+          "case": "utf8-encoded-tail-over-limit",
+          "gui_bytes": 28,
+          "gui_event_chunks": 1,
+          "gui_sha256": "7efc6b463022c845f64ab38a5a929fd83761070e6e6501fa3ab8f50a89f69d53",
+          "rejected_gui_bytes": 0,
+          "preserved_caret": 5
+        },
+        {
+          "case": "clipboard-units-over-limit",
+          "gui_bytes": 28,
+          "gui_event_chunks": 1,
+          "gui_sha256": "7efc6b463022c845f64ab38a5a929fd83761070e6e6501fa3ab8f50a89f69d53",
+          "rejected_gui_bytes": 0,
+          "preserved_caret": 5
+        },
+        {
+          "case": "control-in-tail",
+          "gui_bytes": 28,
+          "gui_event_chunks": 1,
+          "gui_sha256": "7efc6b463022c845f64ab38a5a929fd83761070e6e6501fa3ab8f50a89f69d53",
+          "rejected_gui_bytes": 0,
+          "preserved_caret": 5
+        },
+        {
+          "case": "unrepresentable-cp437-tail",
+          "gui_bytes": 28,
+          "gui_event_chunks": 1,
+          "gui_sha256": "7efc6b463022c845f64ab38a5a929fd83761070e6e6501fa3ab8f50a89f69d53",
+          "rejected_gui_bytes": 0,
+          "preserved_caret": 5
+        },
+        {
+          "case": "utf8-tail-8190-bytes",
+          "gui_bytes": 12,
+          "gui_event_chunks": 1,
+          "gui_sha256": "453afe30a5e4ba80b9989254dc49dda19519c6ac884707664ecc90202cba9c99",
+          "tail_characters": 2730,
+          "encoded_tail_bytes": 8190
+        },
+        {
+          "case": "normalized-batch-65537",
+          "gui_bytes": 0,
+          "gui_event_chunks": 0,
+          "gui_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "rejected_gui_bytes": 0,
+          "raw_clipboard_units": 65529,
+          "normalized_bytes": 65537
+        },
+        {
+          "case": "normalized-batch-65536",
+          "gui_bytes": 65536,
+          "gui_event_chunks": 4,
+          "gui_sha256": "e0a6455abc1f62d782195e3f659a0cfe44b044e20dfa6c89e014895db609fc08",
+          "raw_clipboard_units": 65528,
+          "normalized_bytes": 65536
+        }
+      ],
+      "preserved_draft_sample": {
+        "case": "tail-8192-nl-0d-caret-5",
+        "rejected_gui_bytes": 0,
+        "original_draft_units": 22,
+        "preserved_caret": 5,
+        "later_enter_base64": "ZWNobyBLRVBUT1JJR185OTUzYzljZF9FTkQNCg=="
+      }
+    },
+    {
+      "prefix": "x64-light-paste",
+      "program_sha256": "3563f434ceca7f13659c55e00f200990f4432a2129cd65eb3a1a8d60df15e8a4",
+      "dpi": 96,
+      "case_count": 37,
+      "status": "PASS",
+      "matrix_columns": [
+        "case",
+        "gui_bytes",
+        "rejected_gui_bytes",
+        "caret"
+      ],
+      "matrix": [
+        [
+          "tail-8190-nl-0d-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8191-nl-0d-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8192-nl-0d-caret-0",
+          28,
+          0,
+          0
+        ],
+        [
+          "tail-8190-nl-0d-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8191-nl-0d-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8192-nl-0d-caret-5",
+          28,
+          0,
+          5
+        ],
+        [
+          "tail-8190-nl-0d-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8191-nl-0d-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8192-nl-0d-caret-22",
+          28,
+          0,
+          22
+        ],
+        [
+          "tail-8190-nl-0a-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8191-nl-0a-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8192-nl-0a-caret-0",
+          28,
+          0,
+          0
+        ],
+        [
+          "tail-8190-nl-0a-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8191-nl-0a-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8192-nl-0a-caret-5",
+          28,
+          0,
+          5
+        ],
+        [
+          "tail-8190-nl-0a-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8191-nl-0a-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8192-nl-0a-caret-22",
+          28,
+          0,
+          22
+        ],
+        [
+          "tail-8190-nl-0d0a-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8191-nl-0d0a-caret-0",
+          21,
+          null,
+          0
+        ],
+        [
+          "tail-8192-nl-0d0a-caret-0",
+          28,
+          0,
+          0
+        ],
+        [
+          "tail-8190-nl-0d0a-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8191-nl-0d0a-caret-5",
+          26,
+          null,
+          5
+        ],
+        [
+          "tail-8192-nl-0d0a-caret-5",
+          28,
+          0,
+          5
+        ],
+        [
+          "tail-8190-nl-0d0a-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8191-nl-0d0a-caret-22",
+          43,
+          null,
+          22
+        ],
+        [
+          "tail-8192-nl-0d0a-caret-22",
+          28,
+          0,
+          22
+        ]
+      ],
+      "ordinary": [
+        [
+          "ordinary-0d",
+          61,
+          true,
+          true
+        ],
+        [
+          "ordinary-0a",
+          61,
+          true,
+          true
+        ],
+        [
+          "ordinary-0d0a",
+          65,
+          true,
+          true
+        ]
+      ],
+      "limits": [
+        {
+          "case": "utf8-encoded-tail-over-limit",
+          "gui_bytes": 28,
+          "gui_event_chunks": 1,
+          "gui_sha256": "825d2b7758686df2151eb30978ed6912fb6ef6f7bc06cda3b4904832b9a81524",
+          "rejected_gui_bytes": 0,
+          "preserved_caret": 5
+        },
+        {
+          "case": "clipboard-units-over-limit",
+          "gui_bytes": 28,
+          "gui_event_chunks": 1,
+          "gui_sha256": "825d2b7758686df2151eb30978ed6912fb6ef6f7bc06cda3b4904832b9a81524",
+          "rejected_gui_bytes": 0,
+          "preserved_caret": 5
+        },
+        {
+          "case": "control-in-tail",
+          "gui_bytes": 28,
+          "gui_event_chunks": 1,
+          "gui_sha256": "825d2b7758686df2151eb30978ed6912fb6ef6f7bc06cda3b4904832b9a81524",
+          "rejected_gui_bytes": 0,
+          "preserved_caret": 5
+        },
+        {
+          "case": "unrepresentable-cp437-tail",
+          "gui_bytes": 28,
+          "gui_event_chunks": 1,
+          "gui_sha256": "825d2b7758686df2151eb30978ed6912fb6ef6f7bc06cda3b4904832b9a81524",
+          "rejected_gui_bytes": 0,
+          "preserved_caret": 5
+        },
+        {
+          "case": "utf8-tail-8190-bytes",
+          "gui_bytes": 12,
+          "gui_event_chunks": 1,
+          "gui_sha256": "453afe30a5e4ba80b9989254dc49dda19519c6ac884707664ecc90202cba9c99",
+          "tail_characters": 2730,
+          "encoded_tail_bytes": 8190
+        },
+        {
+          "case": "normalized-batch-65537",
+          "gui_bytes": 0,
+          "gui_event_chunks": 0,
+          "gui_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "rejected_gui_bytes": 0,
+          "raw_clipboard_units": 65529,
+          "normalized_bytes": 65537
+        },
+        {
+          "case": "normalized-batch-65536",
+          "gui_bytes": 65536,
+          "gui_event_chunks": 4,
+          "gui_sha256": "e0a6455abc1f62d782195e3f659a0cfe44b044e20dfa6c89e014895db609fc08",
+          "raw_clipboard_units": 65528,
+          "normalized_bytes": 65536
+        }
+      ],
+      "preserved_draft_sample": {
+        "case": "tail-8192-nl-0d-caret-5",
+        "rejected_gui_bytes": 0,
+        "original_draft_units": 22,
+        "preserved_caret": 5,
+        "later_enter_base64": "ZWNobyBLRVBUT1JJR18yM2I2NDAxZV9FTkQNCg=="
+      }
+    }
+  ],
+  "job_steps": [
+    {
+      "data-name": "Set up job",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:26:00Z"
+    },
+    {
+      "data-name": "Run actions/checkout@v4",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:26:09Z"
+    },
+    {
+      "data-name": "Cache pinned official VISA offline installer",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:26:11Z"
+    },
+    {
+      "data-name": "Build, test and verify x64 Win7 portable bundle",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:31:26Z"
+    },
+    {
+      "data-name": "Launch packaged applications and capture UI",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:34:35Z"
+    },
+    {
+      "data-name": "Exercise packaged update startup in real windows",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:34:44Z"
+    },
+    {
+      "data-name": "Python Linux AI client protocol tests",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:34:45Z"
+    },
+    {
+      "data-name": "Signed update feed tool regression tests",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:34:47Z"
+    },
+    {
+      "data-name": "Upload verified portable bundle",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:34:51Z"
+    },
+    {
+      "data-name": "Upload UI evidence",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:34:59Z"
+    },
+    {
+      "data-name": "Post Cache pinned official VISA offline installer",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:34:59Z"
+    },
+    {
+      "data-name": "Post Run actions/checkout@v4",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:35:01Z"
+    },
+    {
+      "data-name": "Complete job",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T05:35:01Z"
+    }
+  ],
+  "not_run": [
+    "Actual GUI sender queue saturation (controlled sender rejection tested separately)",
+    "Win7 physical machine",
+    "Physical serial/power hardware",
+    "Other DPI values",
+    "Long-duration reliability"
+  ],
+  "screenshots": "Captured with visible desktop BitBlt in artifact, not downloaded or independently visually reviewed"
+}

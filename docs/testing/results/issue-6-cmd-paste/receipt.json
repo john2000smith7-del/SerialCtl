@@ -22,5 +22,20 @@
     "paste_branch": "6afdebfaf1150f530905fe6d1c3d880210d6bd99a4634a0e32856f36aadb78a3",
     "editor": "5403cb7fc0a660cdc66c39d1a79fa25ac43a4fdc67c9ab3264a2d786191b25a2",
     "CmdBatch": "3383080bd9d6ae2c549abb2de3a54b1b3a11f605cf51dee502ad8e233723bbfc"
+  },
+  "native_validation_source": "0fb9a60fdd4f4392a732012d9ece401e6715137a",
+  "native_gui": {
+    "status": "PASS",
+    "themes": 2,
+    "cases_per_theme": 37,
+    "dpi": [
+      96,
+      96
+    ],
+    "run": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39549514414",
+    "program_sha256": "3563f434ceca7f13659c55e00f200990f4432a2129cd65eb3a1a8d60df15e8a4",
+    "observations": "windows-0fb9a60-observations.json",
+    "queue_rejection_scope": "controlled extraction only; actual GUI queue saturation not run",
+    "screenshots_visually_reviewed": false
   }
 }
