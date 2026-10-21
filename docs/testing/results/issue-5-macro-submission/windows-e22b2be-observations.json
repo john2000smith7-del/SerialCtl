@@ -1,0 +1,188 @@
+{
+  "run": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39545985046",
+  "validation_source_sha": "e22b2bec1eb0e20c74f10a48acc67c2dce5f5368",
+  "production_commits": [
+    "a7fd6df71411df44c7c73ad5ba56c6eb7e41a521",
+    "e59478c8730dfd8437068ee4fa5e93b1e0e334f3"
+  ],
+  "workflow_conclusion": "SUCCESS",
+  "evidence_source": "Raw public GitHub Actions annotations and job step metadata; screenshots not downloaded or visually reviewed",
+  "retrieved_utc": "2026-10-21T04:55:56.483650+00:00",
+  "run_html_sha256": "7f1a8fbd0dd4684c123fe5746043027336bf11635637bac0f57cc773513dc09b",
+  "themes": [
+    {
+      "prefix": "x64-dark-macro",
+      "program_sha256": "d3a3ff3bdd018c5c5efd71e8898b1cd5404fb913f11335626c75cc0183eb6e1a",
+      "observations": [
+        {
+          "seconds": 3.99502,
+          "utc": "2026-10-21T04:53:19.937793+00:00",
+          "case": "submitted_before_execution",
+          "status": "宏“宏提交验收 66526eab”已提交 2/2 条；执行结果见输出。",
+          "accepted_steps": 2,
+          "completion_stdout_present": false,
+          "execution_output_observed": {
+            "seconds": 9.921148,
+            "utc": "2026-10-21T04:53:25.864320+00:00"
+          }
+        },
+        {
+          "seconds": 12.589074,
+          "utc": "2026-10-21T04:53:28.531930+00:00",
+          "case": "stop_after_one",
+          "status": "宏“宏提交验收 c092c4da”已停止后续提交（1/2）；已提交内容可能继续执行，结果见输出。",
+          "accepted_steps_at_stop": 1,
+          "click_interval_ms": 115.96699999999949,
+          "system_double_click_ms": 500
+        },
+        {
+          "seconds": 19.920244,
+          "utc": "2026-10-21T04:53:35.863413+00:00",
+          "case": "interrupted",
+          "status": "宏“宏提交验收 c627ed1a”后续提交已中断（1/2）：CMD 已结束；已提交内容执行状态未知，请检查连接和输出，不自动重发。",
+          "accepted_steps": 1
+        },
+        {
+          "seconds": 22.452409,
+          "utc": "2026-10-21T04:53:38.394893+00:00",
+          "case": "disconnect_current",
+          "status": "宏“宏提交验收 46ecdb19”后续提交已中断（1/2）：用户断开当前连接；已提交内容执行状态未知，请检查连接和输出，不自动重发。",
+          "accepted_steps": 1,
+          "resource_removed": true
+        },
+        {
+          "seconds": 24.970195,
+          "utc": "2026-10-21T04:53:40.912870+00:00",
+          "case": "disconnect_all",
+          "status": "全部连接已断开并清空；宏“宏提交验收 a904c4cc”后续提交已中断（1/2）：用户断开全部连接；已提交内容执行状态未知，请检查连接和输出，不自动重发。",
+          "accepted_steps": 1,
+          "resource_removed": true
+        }
+      ]
+    },
+    {
+      "prefix": "x64-light-macro",
+      "program_sha256": "d3a3ff3bdd018c5c5efd71e8898b1cd5404fb913f11335626c75cc0183eb6e1a",
+      "observations": [
+        {
+          "seconds": 3.981025,
+          "utc": "2026-10-21T04:52:32.562731+00:00",
+          "case": "submitted_before_execution",
+          "status": "宏“宏提交验收 604aedb7”已提交 2/2 条；执行结果见输出。",
+          "accepted_steps": 2,
+          "completion_stdout_present": false,
+          "execution_output_observed": {
+            "seconds": 9.932181,
+            "utc": "2026-10-21T04:52:38.514172+00:00"
+          }
+        },
+        {
+          "seconds": 12.606702,
+          "utc": "2026-10-21T04:52:41.188483+00:00",
+          "case": "stop_after_one",
+          "status": "宏“宏提交验收 c44498a4”已停止后续提交（1/2）；已提交内容可能继续执行，结果见输出。",
+          "accepted_steps_at_stop": 1,
+          "click_interval_ms": 115.97900000000116,
+          "system_double_click_ms": 500
+        },
+        {
+          "seconds": 19.939227,
+          "utc": "2026-10-21T04:52:48.521204+00:00",
+          "case": "interrupted",
+          "status": "宏“宏提交验收 06ab671e”后续提交已中断（1/2）：CMD 已结束；已提交内容执行状态未知，请检查连接和输出，不自动重发。",
+          "accepted_steps": 1
+        },
+        {
+          "seconds": 22.487409,
+          "utc": "2026-10-21T04:52:51.068731+00:00",
+          "case": "disconnect_current",
+          "status": "宏“宏提交验收 4eed1e0f”后续提交已中断（1/2）：用户断开当前连接；已提交内容执行状态未知，请检查连接和输出，不自动重发。",
+          "accepted_steps": 1,
+          "resource_removed": true
+        },
+        {
+          "seconds": 25.042433,
+          "utc": "2026-10-21T04:52:53.623790+00:00",
+          "case": "disconnect_all",
+          "status": "全部连接已断开并清空；宏“宏提交验收 a0e8f5fa”后续提交已中断（1/2）：用户断开全部连接；已提交内容执行状态未知，请检查连接和输出，不自动重发。",
+          "accepted_steps": 1,
+          "resource_removed": true
+        }
+      ]
+    }
+  ],
+  "job_steps": [
+    {
+      "data-name": "Set up job",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:47:49Z"
+    },
+    {
+      "data-name": "Run actions/checkout@v4",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:47:56Z"
+    },
+    {
+      "data-name": "Cache pinned official VISA offline installer",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:47:58Z"
+    },
+    {
+      "data-name": "Build, test and verify x64 Win7 portable bundle",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:52:03Z"
+    },
+    {
+      "data-name": "Launch packaged applications and capture UI",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:08Z"
+    },
+    {
+      "data-name": "Exercise packaged update startup in real windows",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:14Z"
+    },
+    {
+      "data-name": "Python Linux AI client protocol tests",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:14Z"
+    },
+    {
+      "data-name": "Signed update feed tool regression tests",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:16Z"
+    },
+    {
+      "data-name": "Upload verified portable bundle",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:20Z"
+    },
+    {
+      "data-name": "Upload UI evidence",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:25Z"
+    },
+    {
+      "data-name": "Post Cache pinned official VISA offline installer",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:25Z"
+    },
+    {
+      "data-name": "Post Run actions/checkout@v4",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:27Z"
+    },
+    {
+      "data-name": "Complete job",
+      "data-conclusion": "success",
+      "data-completed-at": "2026-10-21T04:54:27Z"
+    }
+  ],
+  "screenshots": "Visible desktop BitBlt images and JSON retained in SerialCtl-UI-evidence artifact; visual review blocked by api.github.com policy",
+  "not_run": [
+    "Win7 physical machine",
+    "Physical serial and power hardware",
+    "Other DPI values",
+    "Long-duration reliability"
+  ]
+}

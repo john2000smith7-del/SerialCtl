@@ -5,7 +5,7 @@
   "before_failed": 6,
   "after_failed": 0,
   "checks": 6,
-  "native_gui_status": "pending",
+  "native_gui_status": "PASS: two themes, five real GUI/CMD scenarios each",
   "win7_and_devices": "not_run",
   "files": [
     {
@@ -36,5 +36,19 @@
     "gui_status": "failure",
     "observed_error": "Timed out: two GUI steps accepted",
     "next_step": "Preserve actual native status, input events, selected row, physical click geometry and binary SHA-256 in failure annotation; no weakened assertions or production changes"
+  },
+  "latest_validation_source": "e22b2bec1eb0e20c74f10a48acc67c2dce5f5368",
+  "latest_windows_run": {
+    "id": "39545985046",
+    "conclusion": "SUCCESS",
+    "program_sha256": "d3a3ff3bdd018c5c5efd71e8898b1cd5404fb913f11335626c75cc0183eb6e1a",
+    "observations": "windows-e22b2be-observations.json",
+    "screenshots_visually_reviewed": false
+  },
+  "extra_native_failure": {
+    "id": "39545866709",
+    "source": "e59478c8730dfd8437068ee4fa5e93b1e0e334f3",
+    "observed_error": "TARGET_GONE: session-2",
+    "correction": "Test now requires the exact resource removal notification plus native unknown outcome; all other ConnectionError paths still fail; production unchanged"
   }
 }
