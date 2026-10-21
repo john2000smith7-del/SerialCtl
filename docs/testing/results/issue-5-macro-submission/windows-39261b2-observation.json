@@ -1,0 +1,196 @@
+{
+  "run": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/39545328399",
+  "source": "39261b252192e4466e32550ed9098a1f9097d9a7",
+  "result": "FAIL",
+  "observation": {
+    "status": "宏“宏提交验收 7c604574”已提交 1/2 条，等待下一次提交；执行结果见输出。",
+    "accepted_inputs": [
+      {
+        "seconds": 12.370756,
+        "utc": "2026-10-21T04:45:12.768214+00:00",
+        "data_base64": "cGluZyAtbiA0IDEyNy4wLjAuMSA+bnVsICYgZWNobyBTQ01fN2M2MDQ1NzRfXkZJUlNUDQo="
+      }
+    ],
+    "cmd": "session-1",
+    "selected_command": 5,
+    "clicks": [
+      {
+        "seconds": 3.783642,
+        "utc": "2026-10-21T04:45:04.180720+00:00",
+        "index": 5,
+        "row": [
+          0,
+          330,
+          216,
+          396
+        ],
+        "client": [
+          0,
+          0,
+          216,
+          509
+        ],
+        "lane": 0,
+        "screen_point": [
+          1086,
+          534
+        ],
+        "dpi": 96,
+        "status_before": "CMD 行提交模式不支持全屏终端查询；未向控制台发送控制序列"
+      },
+      {
+        "seconds": 12.276502,
+        "utc": "2026-10-21T04:45:12.673809+00:00",
+        "index": 5,
+        "row": [
+          0,
+          330,
+          216,
+          396
+        ],
+        "client": [
+          0,
+          0,
+          216,
+          509
+        ],
+        "lane": 0,
+        "screen_point": [
+          1086,
+          534
+        ],
+        "dpi": 96,
+        "status_before": ""
+      },
+      {
+        "seconds": 12.377392,
+        "utc": "2026-10-21T04:45:12.774744+00:00",
+        "index": 5,
+        "row": [
+          0,
+          330,
+          216,
+          396
+        ],
+        "client": [
+          0,
+          0,
+          216,
+          509
+        ],
+        "lane": 0,
+        "screen_point": [
+          1086,
+          534
+        ],
+        "dpi": 96,
+        "status_before": "宏“宏提交验收 7c604574”已提交 1/2 条，等待下一次提交；执行结果见输出。"
+      }
+    ],
+    "fields": [
+      {
+        "id": 1101,
+        "before": "",
+        "expected": "宏提交验收 3495925c",
+        "actual": "宏提交验收 3495925c"
+      },
+      {
+        "id": 1102,
+        "before": "",
+        "expected": "ping -n 7 127.0.0.1 >nul & echo SCM_3495925c_^SLOW",
+        "actual": "ping -n 7 127.0.0.1 >nul & echo SCM_3495925c_^SLOW"
+      },
+      {
+        "id": 1301,
+        "before": "",
+        "expected": "echo SCM_3495925c_^DONE",
+        "actual": "echo SCM_3495925c_^DONE"
+      },
+      {
+        "id": 1106,
+        "before": "500",
+        "expected": "100",
+        "actual": "100"
+      },
+      {
+        "id": 1101,
+        "before": "",
+        "expected": "宏提交验收 7c604574",
+        "actual": "宏提交验收 7c604574"
+      },
+      {
+        "id": 1102,
+        "before": "",
+        "expected": "ping -n 4 127.0.0.1 >nul & echo SCM_7c604574_^FIRST",
+        "actual": "ping -n 4 127.0.0.1 >nul & echo SCM_7c604574_^FIRST"
+      },
+      {
+        "id": 1301,
+        "before": "",
+        "expected": "echo SCM_7c604574_^SECOND",
+        "actual": "echo SCM_7c604574_^SECOND"
+      },
+      {
+        "id": 1106,
+        "before": "500",
+        "expected": "5000",
+        "actual": "5000"
+      }
+    ],
+    "recent_events": [
+      {
+        "resource": "session-1",
+        "kind": "output",
+        "source": "device",
+        "seq": 462,
+        "data_prefix_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+"
+      },
+      {
+        "resource": "session-1",
+        "kind": "output",
+        "source": "device",
+        "seq": 463,
+        "data_prefix_base64": "U0NNXzM0OTU5MjVjX0RPTkUNCg=="
+      },
+      {
+        "resource": "session-1",
+        "kind": "output",
+        "source": "device",
+        "seq": 464,
+        "data_prefix_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+"
+      },
+      {
+        "resource": "session-1",
+        "kind": "input",
+        "source": "gui",
+        "seq": 465,
+        "data_prefix_base64": "cGluZyAtbiA0IDEyNy4wLjAuMSA+bnVsICYgZWNobyBTQ01fN2M2MDQ1NzRfXkZJUlNUDQo="
+      },
+      {
+        "resource": "session-1",
+        "kind": "output",
+        "source": "device",
+        "seq": 466,
+        "data_prefix_base64": "U0NNXzdjNjA0NTc0X0ZJUlNUDQo="
+      },
+      {
+        "resource": "session-1",
+        "kind": "output",
+        "source": "device",
+        "seq": 467,
+        "data_prefix_base64": "DQpEOlxhXFNlcmlhbEN0bFxTZXJpYWxDdGw+"
+      }
+    ],
+    "program_sha256": "5365629c547bde0c641bb05a1fadba93f4bec70eafb1282a298a6970ca484bfe",
+    "connection": {
+      "codePage": 65001,
+      "codePageSource": "console",
+      "connected": true,
+      "id": "session-1",
+      "inputCodePage": 65001,
+      "kind": "cmd",
+      "name": "本地 CMD #1",
+      "outputCodePage": 65001
+    }
+  }
+}

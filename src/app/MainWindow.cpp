@@ -1439,7 +1439,7 @@ LRESULT CALLBACK MainWindow::DialogControlSubclassProc(HWND window, UINT message
 LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     auto* self = reinterpret_cast<MainWindow*>(referenceData);
-    if (message == WM_LBUTTONDOWN) {
+    if (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK) {
         const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         RECT client{};
         GetClientRect(window, &client);
@@ -1468,6 +1468,11 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
                     self->SendCommand(static_cast<size_t>(index));
                 return 0;
             }
+            // A rapid Run -> Stop click arrives as WM_LBUTTONDBLCLK. Handle
+            // the action above, but preserve the list's row double-click Run
+            // shortcut everywhere outside that button.
+            if (message == WM_LBUTTONDBLCLK)
+                return DefSubclassProc(window, message, wParam, lParam);
             if (PointInRect(actions.edit, point)) {
                 if (self->runningCommandIndex_ < 0)
                     self->EditCommand(static_cast<size_t>(index));
@@ -2053,9 +2058,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         std::unique_ptr<StatusMessage> status(reinterpret_cast<StatusMessage*>(lParam));
         if (status) {
             SessionState* session = FindSession(status->sessionId);
-            if (session == activeSession_) {
+            if (session && session == activeSession_) {
                 SetConnectedUi(connection_ && connection_->IsConnected());
-                AppendStatus(status->text, status->isError);
+                if (runningCommandIndex_ >= 0 && (!connection_ || !connection_->IsConnected()))
+                    StopCommandSequence(CommandSequenceEnd::Interrupted, status->text);
+                else
+                    AppendStatus(status->text, status->isError);
             } else if (session && session->logger) {
                 session->logger->WriteStatus(status->text);
             }
@@ -3401,7 +3409,9 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     const std::uint64_t id = pendingSession_->id;
     sessions_.push_back(std::move(pendingSession_));
     RefreshConnectionList();
+    const bool interruptedMacro = runningCommandIndex_ >= 0;
     SwitchSession(sessions_.size() - 1);
+    const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     for (const auto &item : pendingConnectionData_) {
         if (item.source.empty())
             AppendData(id, item.data, item.codePage, item.arrival);
@@ -3410,7 +3420,11 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     }
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
-    if (activeSession_->mode == 1) {
+    // A new connection switches the active session. Do not replace a macro's
+    // unknown execution outcome with the ordinary connection success message.
+    if (interruptedMacro) {
+        AppendStatus(macroStatus, true);
+    } else if (activeSession_->mode == 1) {
         AppendStatus(activeSession_->port
                          ? L"已连接：" + activeSession_->name + L" · WebSocket " + std::to_wstring(activeSession_->port)
                          : L"本地串口已连接；7000–7015 均不可用，网络服务未启用",
@@ -3421,7 +3435,10 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
 
 void MainWindow::Disconnect() {
     if (!activeSession_) return;
-    StopCommandSequence(CommandSequenceEnd::Silent);
+    const bool interruptedMacro = runningCommandIndex_ >= 0 && !closing_;
+    StopCommandSequence(interruptedMacro ? CommandSequenceEnd::Interrupted : CommandSequenceEnd::Silent,
+                        L"用户断开当前连接");
+    const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     const std::uint64_t disconnectedSessionId = activeSession_->id;
     if (sftpOperationSessionId_ == disconnectedSessionId)
         sftpOperationCancel_.store(true);
@@ -3460,12 +3477,15 @@ void MainWindow::Disconnect() {
         sftpDirectory_ = L".";
         SetConnectedUi(false);
     }
-    AppendStatus(L"已断开", false);
+    AppendStatus(interruptedMacro ? macroStatus : L"已断开", interruptedMacro);
 }
 
 void MainWindow::DisconnectAll() {
     disconnectAllInProgress_ = true;
-    StopCommandSequence(CommandSequenceEnd::Silent);
+    const bool interruptedMacro = runningCommandIndex_ >= 0 && !closing_;
+    StopCommandSequence(interruptedMacro ? CommandSequenceEnd::Interrupted : CommandSequenceEnd::Silent,
+                        L"用户断开全部连接");
+    const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     connectionCancel_ = true;
     if (pendingSession_) {
         pendingSession_->connection->CancelStart();
@@ -3499,7 +3519,8 @@ void MainWindow::DisconnectAll() {
     if (powerService_.State().value("connected", false)) {
         auto action = powerService_.Submit({{"type", "disconnect"}, {"source", "local"}});
         if (action.contains("error")) {
-            AppendStatus(L"电源断开请求失败；输出状态未知", true);
+            AppendStatus(L"电源断开请求失败；输出状态未知" +
+                         (interruptedMacro ? L"；" + macroStatus : L""), true);
             return;
         }
         disconnectAllPending_ = true;
@@ -3511,7 +3532,9 @@ void MainWindow::DisconnectAll() {
     RECT r{};
     GetClientRect(window_, &r);
     LayoutControls(r.right, r.bottom);
-    AppendStatus(disconnectAllPending_ ? L"会话已断开；电源任务收尾与掉电确认处理中" : L"全部连接已断开并清空", false);
+    const std::wstring disconnected = disconnectAllPending_ ?
+        L"会话已断开；电源任务收尾与掉电确认处理中" : L"全部连接已断开并清空";
+    AppendStatus(disconnected + (interruptedMacro ? L"；" + macroStatus : L""), interruptedMacro);
 }
 
 MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
@@ -3537,8 +3560,11 @@ void MainWindow::ShowPowerPage() {
 void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (index >= sessions_.size()) return;
     powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE); ShowWindow(terminal_, SW_SHOW);
-    if (activeSession_ && activeSession_ != sessions_[index].get())
-        StopCommandSequence(CommandSequenceEnd::Silent);
+    const bool interruptedMacro = runningCommandIndex_ >= 0 &&
+        activeSession_ && activeSession_ != sessions_[index].get();
+    if (interruptedMacro)
+        StopCommandSequence(CommandSequenceEnd::Interrupted, L"用户切换当前会话");
+    const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     activeSession_ = sessions_[index].get();
     connection_ = activeSession_->connection.get();
     logger_ = activeSession_->logger.get();
@@ -3572,6 +3598,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     InvalidateRect(window_, nullptr, TRUE);
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
     if (focus == SessionFocus::Terminal) SetFocus(terminal_);
+    if (interruptedMacro) AppendStatus(macroStatus, true);
 }
 
 bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText) {

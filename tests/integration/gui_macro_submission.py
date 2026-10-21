@@ -68,6 +68,7 @@ class MacroActions(GlobalActions):
                          'selected_command': self.query(self.control(112), 0x188),
                          'clicks': self.report.get('macro_clicks', []),
                          'fields': self.report.get('macro_fields', []),
+                         'completed_observations': self.report['macro_observations'],
                          'recent_events': [{**{k: e.get(k) for k in ('resource', 'kind', 'source', 'seq')},
                                             'data_prefix_base64': e.get('data', '')[:512]}
                                            for e in self.report['websocket_events'][-6:]],
@@ -176,11 +177,17 @@ class MacroActions(GlobalActions):
         self.observe(lambda: len(self.inputs) == 1, 'first macro step accepted')
         first_at = time.monotonic()
         self.run_or_stop(index)
+        clicks = self.report['macro_clicks']
+        click_interval_ms = (clicks[-1]['seconds'] - clicks[-2]['seconds']) * 1000
+        double_click_ms = self.user.GetDoubleClickTime()
+        require(click_interval_ms < double_click_ms, 'rapid Run/Stop must exercise the native double-click window')
         self.observe(lambda: '已停止后续提交（1/2）' in self.status(), 'stop explains its exact scope', 3)
         status = self.status()
         require('已提交内容可能继续执行' in status, 'stop must not claim cancellation of accepted work')
         self.report['macro_observations'].append({**self.timestamp(), 'case': 'stop_after_one', 'status': status,
-                                                  'accepted_steps_at_stop': len(self.inputs)})
+                                                  'accepted_steps_at_stop': len(self.inputs),
+                                                  'click_interval_ms': click_interval_ms,
+                                                  'system_double_click_ms': double_click_ms})
         self.screenshot('stopped-future-submission')
         self.observe(lambda: first_done in self.raw_output, 'already accepted command continues after Stop')
         while time.monotonic() - first_at < 5.5:
@@ -204,10 +211,40 @@ class MacroActions(GlobalActions):
                                                   'accepted_steps': len(self.inputs)})
         self.screenshot('interrupted-unknown')
         self.remove_macro(index)
-        old = self.cmd
+        self.restore_cmd()
+
+    def restore_cmd(self):
+        before = {r['id'] for r in self.client.resources()['resources']}
         self.click_window(self.control(300))
-        self.wait(lambda: any(r['kind'] == 'cmd' and r['connected'] and r['id'] != old
-                             for r in self.client.resources()['resources']), 'restore fresh CMD for later smoke tests')
+        def fresh():
+            return [r['id'] for r in self.client.resources()['resources']
+                    if r['kind'] == 'cmd' and r['connected'] and r['id'] not in before]
+        self.wait(fresh, 'restore fresh CMD for later smoke tests')
+        self.cmd = fresh()[-1]
+        snapshot = self.client.events_since(self.cmd, (1 << 64) - 1)
+        self.client.subscribe(self.cmd, snapshot['cursor'])
+
+    def explicit_disconnect(self, all_sessions=False):
+        self.begin_case()
+        index = self.add_macro('ping -n 7 127.0.0.1 >nul & rem ' + self.token,
+                               'echo UNSENT_' + self.token, 5000)
+        self.run_or_stop(index)
+        self.observe(lambda: len(self.inputs) == 1, 'first step accepted before explicit disconnect')
+        self.click_window(self.control(302 if all_sessions else 105))
+        self.observe(lambda: '后续提交已中断（1/2）' in self.status(), 'explicit disconnect retains macro outcome', 3)
+        status = self.status()
+        require('执行状态未知' in status and '不自动重发' in status and len(self.inputs) == 1,
+                'explicit disconnect retains accepted count and unknown execution state')
+        resources = self.client.resources()['resources']
+        require(not any(r['id'] == self.cmd for r in resources), 'disconnected CMD resource removed')
+        if all_sessions:
+            require(not any(r['kind'] == 'cmd' and r['connected'] for r in resources), 'all CMD sessions removed')
+        self.report['macro_observations'].append({**self.timestamp(),
+            'case': 'disconnect_all' if all_sessions else 'disconnect_current', 'status': status,
+            'accepted_steps': len(self.inputs), 'resource_removed': True})
+        self.screenshot('disconnect-all-unknown' if all_sessions else 'disconnect-current-unknown')
+        self.remove_macro(index)
+        self.restore_cmd()
 
 
 def main():
@@ -226,6 +263,8 @@ def main():
         test.completed_submission()
         test.stopped_submission()
         test.interrupted_submission()
+        test.explicit_disconnect()
+        test.explicit_disconnect(all_sessions=True)
         test.report['status'] = 'PASS'
     except BaseException as error:
         test.report['status'] = 'FAIL'
