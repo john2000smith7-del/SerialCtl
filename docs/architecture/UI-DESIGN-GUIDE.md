@@ -85,7 +85,7 @@ Light theme:
 - Connection methods form one evenly spaced segmented toolbar.
 - The connection-method track uses the standard 12 px horizontal inset and 16 px vertical inset. Keep the 72 px toolbar height so the track does not visually merge with the title bar or the content divider.
 - Selection bars use the shared rounded-rectangle outline and explicit selected, hover, pressed and keyboard-focus states. Apply this to top navigation, Commands/SFTP, power main pages, automation pages and device-setting groups; underline-only tabs are not used. Keep consistent gaps and avoid overlapping outlines.
-- The top navigation retains six connection/page items (SSH, serial, Telnet, remote serial, CMD, power), plus a separate Settings action. Settings is not a connection type. Use 24 px monochrome icons and the shared label inset; no API item. Default theme is light. Selected navigation uses the raised surface and normal foreground rather than the content accent color.
+- The top navigation retains seven connection/page items (SSH, serial, Telnet, remote serial, CMD, power, AI), plus a separate Settings action. Settings is not a connection type. Use 24 px monochrome icons and the shared label inset; no API item. Default theme is light. Existing navigation uses the raised surface and normal foreground. The AI selected page uses the existing accent/accent-surface tokens, matching its message frames and send action.
 - Navigation items have a subtle rounded-rectangle boundary in their idle state, with a stronger monochrome selected border. The toolbar retains its existing surface and height.
 - The title-bar application icon follows the active theme: dark artwork in dark mode and the matching light artwork in light mode.
 - Left connection list, center terminal, and right command collection are separate rounded surfaces; avoid strong full-height divider lines.
@@ -115,6 +115,15 @@ Light theme:
 - SFTP supports extended multi-selection. Destructive remote actions remain in the SFTP context menu, display the exact affected remote paths, and require confirmation. Local-file drag-in queues uploads; remote drag-out is not implied by this rule.
 - The SFTP transfer drawer uses a 32 px text-button header and 48 px transfer rows. It is collapsible, never overlays the file list, and shows queued, running, completed, failed, and canceled states. Determinate progress uses the accent token; unknown progress remains visually indeterminate without inventing a percentage.
 - SFTP table, transfer, and context-menu actions use existing secondary, text, icon, and danger roles. Long names remain single-line with ellipsis, while the complete remote path is available from the context menu and copy action.
+
+## AI page
+
+- AI replaces the center content using the existing page mechanism; it is not a Commands/SFTP tab. The right sidebar stays collapsed as on the power page, without changing terminal sidebar preferences.
+- The center card contains an independently scrollable transcript and a fixed compact multiline composer inside its bottom edge. Model and explicitly selected serial target belong in that composer; do not default to a local serial session.
+- Offer remote-IP discovery through the existing remote-serial connection dialog. The operator selects the returned port, and the AI turn pins that exact session identity.
+- User messages align right on the existing accent surface. Each AI reply uses one complete rounded message frame, including source, code/log blocks and copy action; use the shared accent border and card radius.
+- History reading keeps its pixel position when a reply streams. Show a compact return-to-latest action, a 5 px overlay thumb with a reserved 16 px lane, and support wheel, keys and dragging. The composer never scrolls with messages.
+- Reuse the compact connection dialog, standard field/button roles and both palettes. Only verified service state is displayed as connected; examples and test fixtures never populate production conversation content.
 
 ## Dialogs
 

@@ -1,0 +1,17 @@
+Test project /workspace/SerialCtl/build/ai-cross
+    Start 10: api_server
+1/6 Test #10: api_server .......................   Passed   34.42 sec
+    Start 12: shared_serial_protocol
+2/6 Test #12: shared_serial_protocol ...........   Passed    5.41 sec
+    Start 13: tcp_connection
+3/6 Test #13: tcp_connection ...................   Passed    5.33 sec
+    Start 17: multi_serial
+4/6 Test #17: multi_serial .....................   Passed    6.37 sec
+    Start 18: shared_terminal_response
+5/6 Test #18: shared_terminal_response .........   Passed    5.50 sec
+    Start 19: api_client
+6/6 Test #19: api_client .......................   Passed    0.11 sec
+
+100% tests passed out of 6
+
+Total Test time (real) =  57.14 sec

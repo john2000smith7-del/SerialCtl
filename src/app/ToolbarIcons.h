@@ -14,7 +14,8 @@ enum class ToolbarIcon
     Power,
     Moon,
     Sun,
-    Settings
+    Settings,
+    Ai
 };
 class ToolbarIcons
 {

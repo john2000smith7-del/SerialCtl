@@ -104,7 +104,9 @@ enum ControlId {
     IdCmd = 300,
     IdPower,
     IdDisconnectAll,
-    IdSettings
+    IdSettings,
+    IdAi,
+    IdSendSelectionToAi
 };
 
 enum TerminalMenuId {
@@ -992,6 +994,7 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
 }
 
 MainWindow::~MainWindow() {
+    aiPane_.Shutdown();
     if (logExportJob_) logExportJob_->cancel.store(true);
     StopStartupUpdate();
     powerService_.Shutdown();
@@ -1033,7 +1036,7 @@ bool MainWindow::CanInstallStartupUpdate() const {
     // appeared in the service snapshot. A modal owner and mouse capture exclude
     // edits and ongoing gestures. A busy startup defers for the entire run.
     return !closing_.load() && !startupUpdateDeferred_ && !logExportJob_ && sessions_.empty() && !pendingSession_ &&
-        !powerPageOpened_ && !powerVisible_ && !disconnectAllPending_ && !disconnectAllInProgress_ &&
+        !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ && !disconnectAllPending_ && !disconnectAllInProgress_ &&
         !commandsDirty_ && runningCommandIndex_ < 0 && !sftpBusy_ && !activeSftpTransferId_ &&
         !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ && draggingCommandIndex_ < 0 &&
         !sftpColumnDragging_ && !GetCapture() && IsWindowEnabled(window_);
@@ -1710,6 +1713,7 @@ LRESULT CALLBACK MainWindow::SftpPathSubclassProc(HWND window, UINT message, WPA
 }
 
 bool MainWindow::PreTranslate(MSG& message) {
+    if (aiVisible_ && aiPane_.PreTranslate(message)) return true;
     if (message.message == WM_KEYDOWN || message.message == WM_SYSKEYDOWN ||
         message.message == WM_LBUTTONDOWN || message.message == WM_RBUTTONDOWN ||
         message.message == WM_MBUTTONDOWN || message.message == WM_MOUSEWHEEL)
@@ -1717,6 +1721,11 @@ bool MainWindow::PreTranslate(MSG& message) {
     if (message.hwnd != terminal_) { return message.message == WM_KEYDOWN && message.wParam == VK_TAB && IsDialogMessageW(window_, &message); }
     if (message.message != WM_KEYDOWN) return false;
     const WPARAM key = message.wParam;
+    if (key == 'A' && (GetKeyState(VK_CONTROL) & 0x8000) && (GetKeyState(VK_SHIFT) & 0x8000) && HasTerminalSelection() && activeSession_) {
+        auto selection = TerminalSelectionText(false);
+        const auto id = "session-" + std::to_string(activeSession_->id);
+        ShowAiPage(false); aiPane_.AttachSelection(selection, id); return true;
+    }
     const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
     const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
     const bool claimed = (ctrl && shift && (key == 'C' || key == 'V')) ||
@@ -1734,6 +1743,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     // messages. Once work has begun, never surprise the user with a later restart.
     if (message == WM_COMMAND || message == WM_ENTERSIZEMOVE) startupUpdateDeferred_ = true;
     switch (message) {
+    case AiStateChanged:
+        RefreshConnectionList();
+        EnableWindow(disconnectButton_, aiVisible_ ? aiPane_.Busy() : activeSession_ != nullptr);
+        return 0;
     case MessageUpdate: {
         std::unique_ptr<update::UpdateResult> result(reinterpret_cast<update::UpdateResult*>(lParam));
         if (!result) return 0;
@@ -1817,14 +1830,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         UpdateWindow(window_);
         return 0;
     case WM_SETCURSOR:
-        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && LOWORD(lParam) == HTCLIENT) {
+        if (!(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && LOWORD(lParam) == HTCLIENT) {
             POINT point{};
             GetCursorPos(&point);
             ScreenToClient(window_, &point);
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
                 return TRUE;
@@ -1832,12 +1845,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_LBUTTONDOWN:
-        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
+        if (!(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
             const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelDragging_ = true;
                 SetCapture(window_);
@@ -1846,12 +1859,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_LBUTTONDBLCLK:
-        if (!(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
+        if (!(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
             const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelWidth_ = 360;
                 LayoutControls(client.right, client.bottom);
@@ -1960,6 +1973,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_COMMAND:
+        if (LOWORD(wParam) == IdAi && HIWORD(wParam) == BN_CLICKED) { ShowAiPage(); return 0; }
         if (LOWORD(wParam) == IdCmd && HIWORD(wParam) == BN_CLICKED) {
             if (pendingSession_) { AppendStatus(L"请等待当前连接完成", true); return 0; }
             if (connectionThread_.joinable()) connectionThread_.join();
@@ -1971,12 +1985,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         const int id = LOWORD(wParam);
         const int notification = HIWORD(wParam);
         if (notification == BN_CLICKED) {
-            if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower) {
+            if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) {
                 OpenConnectionDialog(id - IdSsh);
             }
             else if (id == IdTheme) { darkMode_ = !darkMode_; ApplyTheme(); }
             else if (id == IdSettings) ShowSettings();
-            else if (id == IdDisconnect) Disconnect();
+            else if (id == IdDisconnect) { if (aiVisible_) aiPane_.Disconnect(); else Disconnect(); }
             else if (id == IdDisconnectAll)
                 DisconnectAll();
             else if (id == IdSaveCommands) SaveCommands();
@@ -2016,7 +2030,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (id == IdConnectionList && notification == LBN_SELCHANGE) {
             const LRESULT selected = SendMessageW(connectionList_, LB_GETCURSEL, 0, 0);
             if (selected != LB_ERR) {
-                if (static_cast<size_t>(selected) == sessions_.size() && powerPageOpened_)
+                if (aiPageOpened_ && static_cast<size_t>(selected) == sessions_.size() + (powerPageOpened_ ? 1 : 0))
+                    ShowAiPage(false);
+                else if (static_cast<size_t>(selected) == sessions_.size() && powerPageOpened_)
                     ShowPowerPage();
                 else SwitchSession(static_cast<size_t>(selected), connectionListKeyboardInput_
                     ? SessionFocus::Preserve : SessionFocus::Terminal);
@@ -2069,6 +2085,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         std::unique_ptr<StatusMessage> status(reinterpret_cast<StatusMessage*>(lParam));
         if (status) {
             SessionState* session = FindSession(status->sessionId);
+            auto* aiSession = session ? session : pendingSession_ && pendingSession_->id == status->sessionId ? pendingSession_.get() : nullptr;
+            if (aiSession && (aiSession->mode == 1 || aiSession->mode == 3)) {
+                if (status->isError || status->text.find(L"HISTORY_GAP") != std::wstring::npos)
+                    aiSession->aiTransportNotice = WideToMultiByte(status->text.substr(0, 512), CP_UTF8);
+                if (status->text.find(L"HISTORY_GAP") != std::wstring::npos) aiSession->aiTruncated = true;
+            }
             if (session && session == activeSession_) {
                 SetConnectedUi(connection_ && connection_->IsConnected());
                 if (runningCommandIndex_ >= 0 && (!connection_ || !connection_->IsConnected()))
@@ -2149,6 +2171,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         discoveryCancel_ = true;
         if (discoveryThread_.joinable()) discoveryThread_.join();
         closing_ = true;
+        aiPane_.Shutdown();
         if (logExportJob_) logExportJob_->cancel.store(true);
         if (logExportThread_.joinable())
             CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
@@ -2241,6 +2264,8 @@ void MainWindow::CreateControls() {
     cmdButton_ = CreateChild(L"BUTTON", L"CMD", BS_OWNERDRAW, IdCmd);
     powerButton_ = CreateChild(L"BUTTON", L"电源", BS_OWNERDRAW, IdPower);
     toolbarButtons_.push_back(cmdButton_); toolbarButtons_.push_back(powerButton_);
+    aiButton_ = CreateChild(L"BUTTON", L"AI", BS_OWNERDRAW, IdAi);
+    toolbarButtons_.push_back(aiButton_);
     settingsButton_ = CreateChild(L"BUTTON", L"设置", BS_OWNERDRAW, IdSettings);
     themeButton_ = CreateChild(L"BUTTON", L"浅色", BS_OWNERDRAW, IdTheme);
     disconnectButton_ = CreateChild(L"BUTTON", L"断开", BS_OWNERDRAW, IdDisconnect);
@@ -2255,6 +2280,7 @@ void MainWindow::CreateControls() {
     SendMessageW(terminal_, WM_SETFONT, reinterpret_cast<WPARAM>(terminalFont_), TRUE);
     SetWindowSubclass(terminal_, TerminalSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 
+    aiPane_.Create(window_, uiFont_, darkMode_, [this](const std::string& method, const Json& params) { return AiDeviceRequest(method, params); });
     powerPane_.Create(window_, uiFont_, darkMode_, &powerService_);
     powerPane_.SetLogExportHandler([this](bool csv, const std::wstring &path, SessionLogger::ExportPoint point) {
         const auto slash = point.root.find_last_of(L"\\/");
@@ -2332,7 +2358,7 @@ void MainWindow::LayoutControls(int width, int height) {
     rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth + Ui::MinCenterWidth + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
     int x = Ui::Space * 2;
-    const int buttonWidths[] = {89, 88, 98, 118, 92, 88};
+    const int buttonWidths[] = {89, 88, 98, 118, 92, 88, 80};
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
         batch.Move(toolbarButtons_[index], x, toolbarButtonTop, Ui::Scale(buttonWidths[index]), Ui::StandardHeight,
                    TRUE);
@@ -2344,7 +2370,7 @@ void MainWindow::LayoutControls(int width, int height) {
 
     const int contentTop = Ui::ToolbarHeight;
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        width, height, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+        width, height, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
     const int cardTop = contentTop + Ui::Gap;
     const int centerCardBottom = layout.contentBottom;
     const int sideCardBottom = height - Ui::Gap;
@@ -2371,14 +2397,19 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(powerPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
                layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
                centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
-    batch.Show(terminal_, powerVisible_ ? SW_HIDE : SW_SHOW);
+    batch.Move(aiPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
+               layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
+               centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
+    batch.Show(aiPane_.Handle(), aiVisible_ ? SW_SHOW : SW_HIDE);
+    batch.Show(terminal_, (powerVisible_ || aiVisible_) ? SW_HIDE : SW_SHOW);
     batch.Show(powerPane_.Handle(), powerVisible_ ? SW_SHOW : SW_HIDE);
-    batch.Show(disconnectButton_, activeSession_ && !powerVisible_ ? SW_SHOW : SW_HIDE);
-    EnableWindow(rightPanelToggleButton_,!powerVisible_);
+    batch.Show(disconnectButton_, (aiVisible_ || (activeSession_ && !powerVisible_)) ? SW_SHOW : SW_HIDE);
+    if (aiVisible_) EnableWindow(disconnectButton_, aiPane_.Busy());
+    EnableWindow(rightPanelToggleButton_,!powerVisible_ && !aiVisible_);
     const int rightLeft = layout.rightLeft;
     const int rightInnerLeft = rightLeft + Ui::PanelPadding;
     const int actualRightInnerRight = width - Ui::Gap - Ui::PanelPadding;
-    const int rightInnerRight = (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)
+    const int rightInnerRight = (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)
         ? rightInnerLeft + Ui::MinRightWidth - Ui::PanelPadding * 2
         : actualRightInnerRight;
     // The final rail is fixed at the right edge. Keep its button stationary even
@@ -2457,14 +2488,14 @@ void MainWindow::PaintWindow(HDC dc) {
     FillRect(dc, &toolbar, panelBrush_);
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        client.right, client.bottom, rightPanelWidth_, (powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+        client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
     RECT leftCard{Ui::Gap, Ui::ToolbarHeight + Ui::Gap, layout.leftWidth, client.bottom - Ui::Gap};
     RECT terminalFrame{layout.centerLeft, Ui::ToolbarHeight + Ui::Gap,
         layout.centerRight, layout.contentBottom};
     RECT rightCard{layout.rightLeft, Ui::ToolbarHeight + Ui::Gap,
         client.right - Ui::Gap, client.bottom - Ui::Gap};
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
-    DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, colors.terminal, colors.border);
+    DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, aiVisible_ ? colors.panel : colors.terminal, colors.border);
     DrawRoundedBox(dc, rightCard, Ui::CardRadius, colors.panel, colors.border);
     HPEN pen = CreatePen(PS_SOLID, 1, colors.border);
     HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
@@ -2608,20 +2639,20 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool focused = (item.itemState & ODS_FOCUS) != 0;
         COLORREF outside = colors.panel;
         if (id == IdCommandTab || id == IdSftpTab) outside = colors.panel;
-        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower) outside = colors.panel;
+        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) outside = colors.panel;
         HBRUSH outsideBrush = CreateSolidBrush(outside);
         FillRect(dc, &rect, outsideBrush);
         DeleteObject(outsideBrush);
-        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdSettings) {
-            const bool active = id == IdPower ? powerVisible_ :
-                (id != IdSettings && !powerVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
+        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi || id == IdSettings) {
+            const bool active = id == IdAi ? aiVisible_ : id == IdPower ? powerVisible_ :
+                (id != IdSettings && !powerVisible_ && !aiVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
             const bool inverse = darkMode_;
-            const COLORREF ink = colors.text;
-            const COLORREF fill = active || hovered || pressed ? colors.panelAlt : colors.panel;
+            const COLORREF ink = id == IdAi && active ? colors.accent : colors.text;
+            const COLORREF fill = id == IdAi && active ? colors.accentSoft : active || hovered || pressed ? colors.panelAlt : colors.panel;
             DrawRoundedBox(dc, rect, Ui::Radius, fill,
-                focused || active ? colors.text : colors.border);
+                id == IdAi && active ? colors.accent : focused || active ? colors.text : colors.border);
             const ToolbarIcon icon = id == IdSettings ? ToolbarIcon::Settings :
-                id == IdCmd ? ToolbarIcon::Cmd : id == IdPower ? ToolbarIcon::Power :
+                id == IdAi ? ToolbarIcon::Ai : id == IdCmd ? ToolbarIcon::Cmd : id == IdPower ? ToolbarIcon::Power :
                 static_cast<ToolbarIcon>(id - IdSsh);
             const int size = Ui::Scale(24), top = (rect.top+rect.bottom-size)/2;
             RECT iconRect{rect.left+Ui::Scale(12), top, rect.left+Ui::Scale(12)+size, top+size};
@@ -2645,7 +2676,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 pressed ? colors.accentSoft : (hovered ? colors.accentSoft : colors.panelAlt),
                 focused ? colors.accent : colors.border);
             DrawChevronHorizontal(dc, rect, enabled ? colors.text : colors.muted,
-                powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_);
+                powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_);
             return;
         }
         if (id == IdDisconnect || id == IdDisconnectAll) {
@@ -2752,9 +2783,10 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool valid = item.itemID < sessions_.size();
         const SessionState* session = valid ? sessions_[item.itemID].get() : nullptr;
         const bool power=item.itemID==sessions_.size()&&powerPageOpened_;
-        const bool connected=power?powerService_.State().value("connected",false):
+        const bool ai=item.itemID==sessions_.size()+(powerPageOpened_?1:0)&&aiPageOpened_;
+        const bool connected=ai?aiPane_.Connected():power?powerService_.State().value("connected",false):
             session&&session->connection&&session->connection->IsConnected();
-        const bool active=power?powerVisible_:!powerVisible_&&session==activeSession_;
+        const bool active=ai?aiVisible_:power?powerVisible_:!powerVisible_&&!aiVisible_&&session==activeSession_;
         OverlayScrollMetrics scrollMetrics;
         RECT card{rect.left, rect.top + Ui::Scale(4),
                   rect.right - (GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ? Ui::OverlayScrollLaneWidth : 0),
@@ -2765,7 +2797,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         DrawStatusDot(dc, dotRect, connected ? colors.accent : colors.muted);
         RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(6), card.right - Ui::Scale(8), card.top + Ui::Scale(27)};
         RECT subtitle{card.left + Ui::Scale(32), card.top + Ui::Scale(27), card.right - Ui::Scale(8), card.bottom - Ui::Scale(4)};
-        DrawTextSimple(dc, power ? L"IT6332A" : session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, ai ? L"AI 助手" : power ? L"IT6332A" : session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         std::wstring state = connected ? L"● 已连接" : L"○ 已断开";
         COLORREF stateColor = colors.muted;
         if (connected) {
@@ -2947,6 +2979,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
 
 void MainWindow::ApplyTheme() {
     powerPane_.Theme(darkMode_);
+    aiPane_.Theme(darkMode_);
     const Palette colors = Colors(darkMode_);
     if (windowBrush_) DeleteObject(windowBrush_);
     if (panelBrush_) DeleteObject(panelBrush_);
@@ -3186,7 +3219,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     const wchar_t* titles[] = {L"新建 SSH 连接", L"新建串口连接", L"新建 Telnet 连接", L"连接共享串口"};
     SetWindowTextW(dialog, titles[pendingMode_]);
     ShowWindow(GetDlgItem(dialog, IDC_DIALOG_NOTE), SW_HIDE);
-    SetDlgItemTextW(dialog, IDC_HOST, L"127.0.0.1");
+    SetDlgItemTextW(dialog, IDC_HOST, aiRemoteConnect_ ? L"" : L"127.0.0.1");
     SetDlgItemTextW(dialog, IDC_PORT, pendingMode_ == 0 ? L"22" : pendingMode_ == 2 ? L"23" : L"7000");
     SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"");
 
@@ -3361,6 +3394,7 @@ void MainWindow::ConnectFromDialog() {
     session->lineEndingIndex = pendingMode_ == 0 ? 1 : (pendingMode_ == 4 ? 2 : 0);
     session->name = sessionName + (pendingMode_ == 4 ? L" #" + std::to_wstring(session->id) : L"");
     session->host = pendingHost_;
+    if (session->mode == 3) session->remoteCom = pendingRemoteSerial_;
     session->username = pendingUsername_;
     session->password = pendingPassword_;
     session->port = pendingPort_;
@@ -3423,6 +3457,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     if (connectionThread_.joinable()) connectionThread_.join();
     if (!pendingSession_) return;
     if (!success || closing_ || connectionCancel_.load()) {
+        aiRemoteConnect_ = false;
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
         apiServer_.SetSessions(sessionService_.Ids());
         pendingSession_.reset();
@@ -3457,7 +3492,11 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
                          : L"本地串口已连接；7000–7015 均不可用，网络服务未启用",
                      activeSession_->port == 0);
     } else AppendStatus(L"已连接：" + activeSession_->name, false);
-    SetFocus(terminal_);
+    if (aiRemoteConnect_) {
+        aiRemoteConnect_ = false;
+        aiPane_.SelectTarget("session-" + std::to_string(id));
+        ShowAiPage(false);
+    } else SetFocus(terminal_);
 }
 
 void MainWindow::Disconnect() {
@@ -3508,6 +3547,8 @@ void MainWindow::Disconnect() {
 }
 
 void MainWindow::DisconnectAll() {
+    aiPane_.Disconnect();
+    aiVisible_ = false; aiPageOpened_ = false;
     disconnectAllInProgress_ = true;
     const bool interruptedMacro = runningCommandIndex_ >= 0 && !closing_;
     StopCommandSequence(interruptedMacro ? CommandSequenceEnd::Interrupted : CommandSequenceEnd::Silent,
@@ -3570,7 +3611,96 @@ MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
     return found == sessions_.end() ? nullptr : found->get();
 }
 
+void MainWindow::ShowAiPage(bool connect) {
+    KillTimer(window_, SideAnimationTimerId);
+    rightPanelAnimating_ = false; rightPanelAnimatedWidth_ = -1;
+    powerVisible_ = false; aiVisible_ = true; aiPageOpened_ = true;
+    RefreshConnectionList();
+    RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
+    InvalidateRect(window_, nullptr, TRUE);
+    for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
+    if (connect && !aiPane_.Connected()) aiPane_.ShowConnection();
+}
+
+Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) {
+    auto error = [](const std::string& text) -> Json { return {{"error", text}}; };
+    if (method == "connectRemote") {
+        if (pendingSession_) return error("Another connection is being established");
+        aiRemoteConnect_ = true;
+        OpenConnectionDialog(3);
+        if (!pendingSession_) aiRemoteConnect_ = false;
+        return {{"pending", pendingSession_ != nullptr}};
+    }
+    if (method == "sessions") {
+        Json result = Json::array();
+        for (const auto& session : sessions_)
+            if ((session->mode == 1 || session->mode == 3) && session->connection && session->connection->IsConnected())
+                result.push_back({{"id", "session-" + std::to_string(session->id)},
+                    {"name", WideToMultiByte(session->name, CP_UTF8)}, {"codePage", session->codePage},
+                    {"remoteIp", WideToMultiByte(session->host, CP_UTF8)}, {"remoteCom", WideToMultiByte(session->remoteCom, CP_UTF8)},
+                    {"commandSupported", true}});
+        return result;
+    }
+    const auto id = params.value("sessionId", std::string());
+    if (method == "release") return {{"released", true}};
+    SessionState* session = nullptr;
+    for (const auto& candidate : sessions_) if (id == "session-" + std::to_string(candidate->id)) { session = candidate.get(); break; }
+    if (!session || (session->mode != 1 && session->mode != 3) || !session->connection || !session->connection->IsConnected())
+        return error("Associated serial session is not open; no device was opened automatically");
+    if (method == "read") {
+        const auto after = params.value("after", std::uint64_t(0));
+        const int lines = std::clamp(params.value("lines", 200), 1, 500);
+        std::string text, first, last;
+        for (const auto& chunk : session->aiOutput) if (!after || chunk.seq > after) {
+            if (first.empty()) first = WideToMultiByte(chunk.timestamp, CP_UTF8);
+            last = WideToMultiByte(chunk.timestamp, CP_UTF8); text += chunk.text;
+        }
+        bool limited = false;
+        int count = 0;
+        for (size_t i = text.size(); i > 0; --i) if (text[i - 1] == '\n' && i < text.size() && ++count >= lines) {
+            text.erase(0, i); limited = true; break;
+        }
+        const bool gap = after && (after > session->aiCursor ||
+            (!session->aiOutput.empty() && after + 1 < session->aiOutput.front().seq));
+        return {{"sessionId", id}, {"name", WideToMultiByte(session->name, CP_UTF8)},
+            {"text", text}, {"source", "device-output"}, {"encoding", "UTF-8"}, {"sourceCodePage", session->codePage},
+            {"firstReceivedAt", first}, {"lastReceivedAt", last}, {"timestampBasis", "local-decoded-receive-time"},
+            {"cursor", session->aiCursor}, {"gap", gap}, {"truncated", limited || session->aiTruncated},
+            {"transportNotice", session->aiTransportNotice},
+            {"maximumBytes", 65536}, {"maximumLines", lines}, {"bytes", text.size()}};
+    }
+    if (method == "command") {
+        if (runningCommandIndex_ >= 0) return error("A command macro is in progress; stop it before approving an AI command");
+        const auto command = params.value("command", std::string());
+        if (!ai::ValidCommand(command)) return error("Invalid single-line diagnostic command");
+        // Never use the current visible session: the explicit ID was pinned at
+        // turn start and shown in the approval message before this callback.
+        const auto wide = MultiByteToWide(reinterpret_cast<const uint8_t*>(command.data()), command.size(), CP_UTF8);
+        const wchar_t* endings[] = {L"\r", L"\n", L"\r\n", L""};
+        const auto outgoing = wide + endings[std::clamp(session->lineEndingIndex, 0, 3)];
+        const UINT page = session->codePage == 20936 && !IsValidCodePage(20936) ? 936 : session->codePage;
+        BOOL replacement = FALSE;
+        auto used = page == CP_UTF8 ? nullptr : &replacement;
+        const DWORD flags = page == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
+        const int bytes = WideCharToMultiByte(page, flags, outgoing.data(), static_cast<int>(outgoing.size()), nullptr, 0, nullptr, used);
+        if (bytes <= 0 || replacement) return error("The selected serial encoding cannot represent this command exactly");
+        std::string encoded(bytes, '\0');
+        WideCharToMultiByte(page, flags, outgoing.data(), static_cast<int>(outgoing.size()), encoded.data(), bytes, nullptr, used);
+        if (replacement) return error("Serial command encoding would replace characters; nothing was submitted");
+        if (session->mode == 1)
+            return sessionService_.Input(id, Bytes(encoded.begin(), encoded.end()), "ai:desktop");
+        std::wstring sendError;
+        if (!session->connection->Send(Bytes(encoded.begin(), encoded.end()), sendError))
+            return error(WideToMultiByte(sendError, CP_UTF8));
+        return {{"accepted", encoded.size()}, {"state", "queued"}, {"execution", "unknown"},
+            {"scope", "existing-remote-serial-connection"}, {"automaticRetry", false}};
+    }
+
+    return error("Unknown bounded SerialCtl operation");
+}
+
 void MainWindow::ShowPowerPage() {
+    aiVisible_ = false;
     KillTimer(window_, SideAnimationTimerId);
     rightPanelAnimating_ = false;
     rightPanelAnimatedWidth_ = -1;
@@ -3586,6 +3716,7 @@ void MainWindow::ShowPowerPage() {
 
 void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (index >= sessions_.size()) return;
+    aiVisible_ = false; ShowWindow(aiPane_.Handle(), SW_HIDE);
     powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE); ShowWindow(terminal_, SW_SHOW);
     const bool interruptedMacro = runningCommandIndex_ >= 0 &&
         activeSession_ && activeSession_ != sessions_[index].get();
@@ -3967,6 +4098,24 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
     const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
     const bool wasAlternateScreen = session->terminal.AlternateScreen();
     const TerminalFeedResult result = session->terminal.Feed(decoded, timestamp);
+    if ((session->mode == 1 || session->mode == 3) && !decoded.empty()) {
+        // Bound the additional AI copy before conversion even if the terminal
+        // received a large coalesced batch. Serial receive never waits on AI.
+        size_t first = decoded.size() > 32768 ? decoded.size() - 32768 : 0;
+        if (first && decoded[first] >= 0xdc00 && decoded[first] <= 0xdfff) ++first;
+        if (first) session->aiTruncated = true;
+        auto output = WideToMultiByte(decoded.substr(first), CP_UTF8);
+        if (output.size() > 65536) {
+            size_t start = output.size() - 65536;
+            while (start < output.size() && (static_cast<unsigned char>(output[start]) & 0xc0) == 0x80) ++start;
+            output.erase(0, start); session->aiTruncated = true;
+        }
+        session->aiBytes += output.size();
+        session->aiOutput.push_back({++session->aiCursor, CurrentTerminalTimestamp(), std::move(output)});
+        while (session->aiBytes > 65536 || session->aiOutput.size() > 256) {
+            session->aiBytes -= session->aiOutput.front().text.size(); session->aiOutput.pop_front(); session->aiTruncated = true;
+        }
+    }
     if (session->logger && !result.logText.empty()) session->logger->WriteText(result.logText);
     if (!result.response.empty() && session->connection && session->connection->IsConnected()) {
         if (session->mode == 4) {
@@ -4065,7 +4214,7 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     SetWindowTextW(status_, text.c_str());
     if (status_) {
         RECT client{}; GetClientRect(window_, &client);
-        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_),rightPanelAnimatedWidth_);
+        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_),rightPanelAnimatedWidth_);
         HDC dc=GetDC(status_); auto old=SelectObject(dc,smallFont_);
         RECT measured{0,0,layout.leftWidth-Ui::Gap-Ui::PanelPadding*2,0};
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
@@ -4310,13 +4459,14 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         enable(IdMenuClear, hasSession);
         enable(IdMenuSelectAll, hasSession && self->activeSession_->terminal.DisplayLineCount() > 0);
         enable(IdMenuCopy, hasSession && self->HasTerminalSelection());
+        enable(IdSendSelectionToAi, hasSession && self->HasTerminalSelection());
         enable(IdMenuPaste, connected && self->runningCommandIndex_ < 0 &&
             IsClipboardFormatAvailable(CF_UNICODETEXT));
     };
     if (message == WM_INITDIALOG) {
         SetWindowTextW(dialog, L"设置");
         ApplyDarkTitleBar(dialog, self->darkMode_);
-        UiResizeDialog(dialog, Ui::Dpi, 436, 480);
+        UiResizeDialog(dialog, Ui::Dpi, 436, 520);
         auto add = [&](const wchar_t* type, const wchar_t* text, int id, int x, int y,
                        int width, int height, DWORD style = 0) {
             HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
@@ -4373,10 +4523,11 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         add(L"BUTTON", L"复制", IdMenuCopy, 16, 280, 128, 32, button);
         add(L"BUTTON", L"粘贴", IdMenuPaste, 156, 280, 128, 32, button);
         add(L"BUTTON", L"全选", IdMenuSelectAll, 296, 280, 124, 32, button);
-        add(L"STATIC", L"本程序实例 · 诊断与日志导出", -1, 16, 324, 404, 24);
-        add(L"BUTTON", L"保存网络连接诊断…", IdMenuNetworkDiagnostics, 16, 352, 196, 32, button);
-        add(L"BUTTON", L"取消日志导出", IdMenuCancelLogExport, 224, 352, 196, 32, button);
-        HWND help = add(L"STATIC", L"", IdSettingsExportNote, 16, 396, 404, 24, SS_ENDELLIPSIS);
+        add(L"BUTTON", L"发送选中内容到 AI", IdSendSelectionToAi, 16, 320, 404, 32, button);
+        add(L"STATIC", L"本程序实例 · 诊断与日志导出", -1, 16, 364, 404, 24);
+        add(L"BUTTON", L"保存网络连接诊断…", IdMenuNetworkDiagnostics, 16, 392, 196, 32, button);
+        add(L"BUTTON", L"取消日志导出", IdMenuCancelLogExport, 224, 392, 196, 32, button);
+        HWND help = add(L"STATIC", L"", IdSettingsExportNote, 16, 436, 404, 24, SS_ENDELLIPSIS);
         TOOLINFOW tool{sizeof(tool)};
         tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
         tool.hwnd = dialog;
@@ -4384,8 +4535,8 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         tool.lpszText = state->exportTip;
         SendMessageW(self->statusTip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
         SendMessageW(help, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), TRUE);
-        add(L"BUTTON", L"取消", IDCANCEL, 220, 428, 96, 36, button);
-        add(L"BUTTON", L"保存", IDOK, 324, 428, 96, 36, button);
+        add(L"BUTTON", L"取消", IDCANCEL, 220, 468, 96, 36, button);
+        add(L"BUTTON", L"保存", IDOK, 324, 468, 96, 36, button);
         UiLayoutBatch layout;
         layout.ComboVisibleHeight(encoding, Ui::Scale(28));
         layout.ComboVisibleHeight(ending, Ui::Scale(28));
@@ -4460,6 +4611,15 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             self->AppendStatus(state->sessionId && !hasSession ?
                 L"全局设置已保存；原会话已切换，请重新打开设置修改会话选项" : L"终端设置已保存", false);
             UiEndOwnedDialog(dialog, IDOK);
+            return TRUE;
+        }
+        if (id == IdSendSelectionToAi) {
+            if (hasSession && self->HasTerminalSelection()) {
+                const auto text = self->TerminalSelectionText(false);
+                const auto target = "session-" + std::to_string(self->activeSession_->id);
+                UiEndOwnedDialog(dialog, IDCANCEL);
+                self->ShowAiPage(false); self->aiPane_.AttachSelection(text, target);
+            }
             return TRUE;
         }
         if (id == IdMenuNetworkDiagnostics || id == IdMenuCancelLogExport ||
@@ -5065,8 +5225,8 @@ std::wstring MainWindow::SelectedLineEnding() const {
 }
 
 void MainWindow::SetConnectedUi(bool connected) {
-    ShowWindow(disconnectButton_, activeSession_ && !powerVisible_ ? SW_SHOW : SW_HIDE);
-    EnableWindow(disconnectButton_, activeSession_ != nullptr);
+    ShowWindow(disconnectButton_, (aiVisible_ || (activeSession_ && !powerVisible_)) ? SW_SHOW : SW_HIDE);
+    EnableWindow(disconnectButton_, aiVisible_ ? aiPane_.Busy() : activeSession_ != nullptr);
 
     EnableWindow(sftpTabButton_, connected && selectedMode_ == 0 && SftpClient::IsAvailable());
 
@@ -5097,6 +5257,7 @@ void MainWindow::RefreshConnectionList() {
         ids.push_back(session->id);
     if (powerPageOpened_)
         ids.push_back(0);
+    if (aiPageOpened_) ids.push_back(UINT64_MAX - 1);
     bool same = ids == connectionListIds_ &&
                 SendMessageW(connectionList_, LB_GETCOUNT, 0, 0) == static_cast<LRESULT>(ids.size());
     if (same)
@@ -5116,14 +5277,17 @@ void MainWindow::RefreshConnectionList() {
             SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(session->name.c_str()));
         if (powerPageOpened_)
             SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"IT6332A"));
+        if (aiPageOpened_) SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"AI 助手"));
         auto found = std::find(ids.begin(), ids.end(), topId);
         const auto anchored = found == ids.end() ? top : static_cast<LRESULT>(std::distance(ids.begin(), found));
         SendMessageW(connectionList_, LB_SETTOPINDEX, anchored, 0);
         SendMessageW(connectionList_, WM_SETREDRAW, TRUE, 0);
     }
     connectionListIds_ = std::move(ids);
+    aiPane_.RefreshTargets();
     if(powerVisible_)selectedIndex=sessions_.size();
-    if (!sessions_.empty() || powerPageOpened_) {
+    if(aiVisible_)selectedIndex=sessions_.size()+(powerPageOpened_?1:0);
+    if (!sessions_.empty() || powerPageOpened_ || aiPageOpened_) {
         auto keepTop = SendMessageW(connectionList_, LB_GETTOPINDEX, 0, 0);
         SendMessageW(connectionList_, LB_SETCURSEL, selectedIndex, 0);
         SendMessageW(connectionList_, LB_SETTOPINDEX, keepTop, 0);
@@ -5163,7 +5327,7 @@ void MainWindow::SaveUiState() const {
 }
 
 void MainWindow::SetRightPanelCollapsed(bool collapsed) {
-    if (powerVisible_ || (rightPanelCollapsed_ == collapsed && !rightPanelAnimating_)) return;
+    if (powerVisible_ || aiVisible_ || (rightPanelCollapsed_ == collapsed && !rightPanelAnimating_)) return;
     RECT client{}; GetClientRect(window_, &client);
     const auto before = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,
         rightPanelCollapsed_ || rightPanelAutoCollapsed_, rightPanelAnimatedWidth_);
@@ -5198,7 +5362,7 @@ void MainWindow::ShowSftpPanel(bool show) {
 }
 
 void MainWindow::QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth) {
-    const bool expanded = !(powerVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_);
+    const bool expanded = !(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_);
     const bool show = sftpPanelVisible_;
     batch.Show(rightPanelToggleButton_, SW_SHOW);
     batch.Show(commandHeader_, expanded ? SW_SHOW : SW_HIDE);

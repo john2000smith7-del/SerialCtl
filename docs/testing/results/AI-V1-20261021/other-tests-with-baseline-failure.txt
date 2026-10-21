@@ -1,0 +1,25 @@
+Test project /workspace/SerialCtl/build/ai-cross
+    Start  7: session_logger
+1/4 Test  #7: session_logger ...................***Failed    7.58 sec
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+readonly target protected
+{"cases":[{"bytes":68157440,"later_bytes_excluded":1048576,"name":"65 MiB rotation, controlled slow copy, concurrent producer and Stop","producer_ms":0,"progress_final":68157440,"sha256":"293ac2ec51c4b810c496f147ebba14e5916f360a27cab012e7d8eccd1946f8ef","stop_while_copy_blocked":true},{"name":"source root/current/future rotation protected"},{"cancel_after_bytes":65536,"name":"cancel after partial copy; target preserved; temporary removed"},{"name":"controlled ERROR_DISK_FULL after 64 KiB; target preserved; logger healthy"}],"error":"readonly target protected","scope":"Native SessionLogger controlled local Win32 files; gated copy and injected write failure; no physical disk-full/SMB/Win7 claim","success":false}
+
+    Start  8: power_service
+2/4 Test  #8: power_service ....................   Passed    9.70 sec
+    Start  9: cmd_connection
+3/4 Test  #9: cmd_connection ...................   Passed    9.46 sec
+    Start 16: serial_share_backpressure
+4/4 Test #16: serial_share_backpressure ........   Passed   21.00 sec
+
+75% tests passed, 1 tests failed out of 4
+
+Total Test time (real) =  47.74 sec
+
+The following tests FAILED:
+	  7 - session_logger (Failed)
+Errors while running CTest

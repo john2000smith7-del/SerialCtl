@@ -1,6 +1,7 @@
 #include "PuttyHostKey.h"
 
 #include "ChildProcess.h"
+#include "PasswordPipe.h"
 #include "Win32Helpers.h"
 
 #include <windows.h>
@@ -67,7 +68,12 @@ std::wstring Decode(const std::string& bytes) {
 bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uint16_t port,
     const std::wstring& username, const std::wstring& password, const std::wstring& hostKey,
     DWORD& exitCode, std::wstring& output, std::wstring& error,
-    const std::atomic_bool* cancel) {
+    const std::atomic_bool* cancel, bool securePassword) {
+    PasswordPipe passwordPipe;
+    if (securePassword && !password.empty() && !passwordPipe.Open(password, error)) {
+        if (error.empty()) error = L"无法创建安全密码通道";
+        return false;
+    }
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
     HANDLE outputRead = nullptr;
     HANDLE outputWrite = nullptr;
@@ -92,7 +98,8 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
 
     std::wstring command = QuoteCommandLineArgument(executable) + L" -batch -ssh -P " +
         std::to_wstring(port) + L" -l " + QuoteCommandLineArgument(username);
-    if (!password.empty()) command += L" -pw " + QuoteCommandLineArgument(password);
+    if (!password.empty()) command += securePassword ? L" -pwfile " + QuoteCommandLineArgument(passwordPipe.Name()) :
+        L" -pw " + QuoteCommandLineArgument(password);
     if (!hostKey.empty()) command += L" -hostkey " + QuoteCommandLineArgument(hostKey);
     command += L" " + QuoteCommandLineArgument(host) + L" exit";
     std::vector<wchar_t> buffer(command.begin(), command.end());
@@ -124,6 +131,7 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
     bool timedOut = false;
     bool cancelled = false;
     for (;;) {
+        if (securePassword) passwordPipe.Poll();
         DWORD available = 0;
         while (PeekNamedPipe(outputRead, nullptr, 0, nullptr, &available, nullptr) && available) {
             DWORD read = 0;
@@ -184,7 +192,7 @@ std::wstring ExtractFingerprint(const std::wstring& output) {
 bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& host,
     std::uint16_t port, const std::wstring& username, const std::wstring& password,
     std::wstring& hostKey, std::wstring& error, const std::atomic_bool* cancel,
-    const HostKeyConfirmation& confirm) {
+    const HostKeyConfirmation& confirm, bool securePassword) {
     const std::wstring cacheKey = host + L":" + std::to_wstring(port);
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
@@ -202,7 +210,7 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
     DWORD exitCode = 1;
     std::wstring output;
     if (!RunProbe(executable, host, port, username, password, hostKey,
-            exitCode, output, error, cancel)) return false;
+            exitCode, output, error, cancel, securePassword)) return false;
     if (exitCode == 0) {
         // PuTTY already knows and has validated this host through its persisted
         // host-key cache. Remember that state in-process too; callers must omit
@@ -227,7 +235,7 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
         hostKey = discovered;
         output.clear();
         if (!RunProbe(executable, host, port, username, password, hostKey,
-                exitCode, output, error, cancel)) return false;
+                exitCode, output, error, cancel, securePassword)) return false;
         if (exitCode == 0) {
             std::lock_guard<std::mutex> lock(cacheMutex);
             hostKeyCache[cacheKey] = hostKey;

@@ -91,6 +91,7 @@ set_source_files_properties("${YY_THUNKS_OBJECT}" PROPERTIES EXTERNAL_OBJECT TRU
 
 set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/app"
+    "${SERIALCTL_SOURCE_DIR}/ai"
     "${SERIALCTL_SOURCE_DIR}/connections"
     "${SERIALCTL_SOURCE_DIR}/logging"
     "${SERIALCTL_SOURCE_DIR}/platform"
@@ -129,6 +130,9 @@ add_executable(serialctl WIN32
     src/app/MainWindow.cpp
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
+    src/app/AiPane.cpp
+    src/ai/CodexClient.cpp
+    src/connections/PasswordPipe.cpp
     src/update/UpdateClient.cpp
     src/update/UpdateManifest.cpp
     src/update/UpdateInstaller.cpp
@@ -187,6 +191,28 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(ai_protocol_test tests/unit/AiProtocolTest.cpp)
+    serialctl_configure_native_target(ai_protocol_test CONSOLE)
+    add_test(NAME ai_protocol COMMAND ai_protocol_test)
+    set_tests_properties(ai_protocol PROPERTIES TIMEOUT 30)
+    add_executable(ai_fake_plink tests/integration/AiFakePlink.cpp)
+    serialctl_configure_native_target(ai_fake_plink CONSOLE)
+    set_target_properties(ai_fake_plink PROPERTIES OUTPUT_NAME plink RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ai-fixture")
+    add_executable(ai_client_test tests/integration/AiClientTest.cpp src/ai/CodexClient.cpp
+        src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
+    serialctl_configure_native_target(ai_client_test CONSOLE)
+    target_link_libraries(ai_client_test PRIVATE advapi32 ole32)
+    set_target_properties(ai_client_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ai-fixture")
+    add_dependencies(ai_client_test ai_fake_plink)
+    add_test(NAME ai_client COMMAND ai_client_test)
+    set_tests_properties(ai_client PROPERTIES TIMEOUT 45)
+    add_executable(ai_pane_test tests/integration/AiPaneTest.cpp src/app/AiPane.cpp src/ai/CodexClient.cpp
+        src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
+    serialctl_configure_native_target(ai_pane_test CONSOLE)
+    target_compile_definitions(ai_pane_test PRIVATE SERIALCTL_AI_TESTING)
+    target_link_libraries(ai_pane_test PRIVATE advapi32 ole32 comctl32 gdiplus gdi32 user32)
+    add_test(NAME ai_pane COMMAND ai_pane_test)
+    set_tests_properties(ai_pane PROPERTIES TIMEOUT 45)
     add_executable(ui_buffered_paint_test tests/unit/UiBufferedPaintTest.cpp)
     serialctl_configure_native_target(ui_buffered_paint_test CONSOLE)
     target_link_libraries(ui_buffered_paint_test PRIVATE gdiplus gdi32 user32 comctl32)
@@ -253,9 +279,9 @@ if(BUILD_TESTING)
     add_test(NAME terminal_model COMMAND terminal_model_test)
 
     add_executable(putty_host_key_test tests/integration/PuttyHostKeyTest.cpp
-        src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
+        src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp src/connections/PasswordPipe.cpp)
     serialctl_configure_native_target(putty_host_key_test CONSOLE)
-    target_link_libraries(putty_host_key_test PRIVATE advapi32)
+    target_link_libraries(putty_host_key_test PRIVATE advapi32 ole32)
     add_test(NAME putty_host_key COMMAND putty_host_key_test)
 
     add_executable(serial_share_backpressure_test tests/integration/SerialShareBackpressureTest.cpp ${GATEWAY_TEST_SOURCES})

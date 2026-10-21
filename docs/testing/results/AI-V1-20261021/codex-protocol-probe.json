@@ -1,0 +1,18 @@
+[
+  {
+    "method": "initialize",
+    "ok": true,
+    "error": null
+  },
+  {
+    "method": "model/list",
+    "ok": true,
+    "count": 8,
+    "error": null
+  },
+  {
+    "method": "thread/start with dynamicTools",
+    "ok": true,
+    "error": null
+  }
+]

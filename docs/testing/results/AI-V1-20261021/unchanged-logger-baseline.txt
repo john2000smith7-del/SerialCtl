@@ -1,0 +1,7 @@
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+readonly target protected
+{"cases":[{"bytes":68157440,"later_bytes_excluded":1048576,"name":"65 MiB rotation, controlled slow copy, concurrent producer and Stop","producer_ms":0,"progress_final":68157440,"sha256":"293ac2ec51c4b810c496f147ebba14e5916f360a27cab012e7d8eccd1946f8ef","stop_while_copy_blocked":true},{"name":"source root/current/future rotation protected"},{"cancel_after_bytes":65536,"name":"cancel after partial copy; target preserved; temporary removed"},{"name":"controlled ERROR_DISK_FULL after 64 KiB; target preserved; logger healthy"}],"error":"readonly target protected","scope":"Native SessionLogger controlled local Win32 files; gated copy and injected write failure; no physical disk-full/SMB/Win7 claim","success":false}

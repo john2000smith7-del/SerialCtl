@@ -1,0 +1,21 @@
+Test project /workspace/SerialCtl/build/ai-cross
+    Start  1: ai_protocol
+1/8 Test  #1: ai_protocol ......................   Passed    5.29 sec
+    Start  2: ai_client
+2/8 Test  #2: ai_client ........................   Passed    5.62 sec
+    Start  3: ui_buffered_paint
+3/8 Test  #3: ui_buffered_paint ................   Passed    5.40 sec
+    Start 10: api_response
+4/8 Test #10: api_response .....................   Passed    5.30 sec
+    Start 13: terminal_model
+5/8 Test #13: terminal_model ...................   Passed    5.27 sec
+    Start 14: putty_host_key
+6/8 Test #14: putty_host_key ...................   Passed    5.85 sec
+    Start 20: terminal_decoder
+7/8 Test #20: terminal_decoder .................   Passed    5.28 sec
+    Start 21: sftp_model
+8/8 Test #21: sftp_model .......................   Passed    5.33 sec
+
+100% tests passed out of 8
+
+Total Test time (real) =  43.35 sec

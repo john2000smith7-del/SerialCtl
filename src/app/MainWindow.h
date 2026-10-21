@@ -11,6 +11,7 @@
 #include "SessionService.h"
 #include "CmdLineEditor.h"
 #include "ToolbarIcons.h"
+#include "AiPane.h"
 #include <future>
 #include <functional>
 #include <deque>
@@ -102,6 +103,12 @@ private:
         LONGLONG arrival = 0;
     };
     struct SessionState {
+        struct AiOutput { std::uint64_t seq; std::wstring timestamp; std::string text; };
+        std::deque<AiOutput> aiOutput;
+        std::uint64_t aiCursor = 0;
+        size_t aiBytes = 0;
+        bool aiTruncated = false;
+        std::string aiTransportNotice;
         std::uint64_t id = 0;
         int mode = -1;
         std::wstring name;
@@ -123,6 +130,7 @@ private:
         INT_PTR paintProbe = 0;
         LONGLONG pendingProbeArrival = 0;
         std::wstring host;
+        std::wstring remoteCom;
         std::wstring username;
         std::wstring password;
         std::uint16_t port = 0;
@@ -134,7 +142,6 @@ private:
         std::wstring pendingSftpDirectory;
         std::vector<SftpEntry> sftpEntries;
     };
-
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK TerminalSubclassProc(
         HWND window, UINT message, WPARAM wParam, LPARAM lParam,
@@ -188,6 +195,8 @@ private:
     void DisconnectAll();
     void SwitchSession(size_t index, SessionFocus focus = SessionFocus::Terminal);
     void ShowPowerPage();
+    void ShowAiPage(bool connect = true);
+    Json AiDeviceRequest(const std::string&, const Json&);
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
     void SendTerminalCharacter(wchar_t character);
@@ -323,6 +332,10 @@ private:
     SessionService sessionService_;
     PowerService powerService_;
     PowerPane powerPane_;
+    AiPane aiPane_;
+    bool aiVisible_ = false, aiPageOpened_ = false;
+    bool aiRemoteConnect_ = false;
+    HWND aiButton_ = nullptr;
     bool powerVisible_ = false;
     bool powerPageOpened_ = false;
     HWND cmdButton_ = nullptr, powerButton_ = nullptr;
