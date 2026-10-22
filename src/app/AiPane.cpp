@@ -960,10 +960,11 @@ void AiPane::Event(const Json &e) {
         }
         const auto &result = e.at("result");
         if (purpose == "interrupt") {
-            Event({{"event", "taskFinished"},
-                   {"conversationId", thread_},
-                   {"taskId", requestTurn},
-                   {"status", "interrupted"}});
+            if (!requestTurn.empty() && requestTurn == turn_)
+                Event({{"event", "taskFinished"},
+                       {"conversationId", thread_},
+                       {"taskId", requestTurn},
+                       {"status", "interrupted"}});
         } else if (purpose == "start") {
             thread_ = result.at("conversationId").get<std::string>();
             RememberThread(thread_, messages_.empty() ? L"新会话" : messages_.front().text.substr(0, 40));

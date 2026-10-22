@@ -164,6 +164,9 @@ struct AiPaneTestAccess {
                     {"taskId", "turn-direct"},
                     {"status", "completed"}});
         require(pane.busy_ && pane.turn_ == "next-turn", "Late completion ended the following task");
+        pane.requests_[999] = {"interrupt", "turn-direct"};
+        pane.Event({{"event", "response"}, {"token", 999}, {"result", ai::Json::object()}});
+        require(pane.busy_ && pane.turn_ == "next-turn", "Late interrupt acknowledgement ended the following task");
         pane.Event({{"event", "serviceError"},
                     {"conversationId", "fixture"},
                     {"taskId", "next-turn"},
