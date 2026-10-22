@@ -14,4 +14,25 @@
 - 检查实际应用的[浅色](wine-light.png)和[深色](wine-dark.png)可见桌面截图。截图裁出真实客户区；环境为无窗口管理器的 Wine/Xvfb，不是设计重绘，不代表真实 Windows 物理鼠标或其他 DPI 验收。
 - PowerShell C# 正式窗口烟测扩展编译通过；SourceOnly 版本/依赖及 24 项 Python 发布工具回归通过。Linux 下 git.exe 来源检查未运行，由正式 Windows 构建补足。
 
-正式 Windows 构建、原生按钮像素检查、签名发布和下载回读结果随后记录。尚未验证用户内网站点、真实 Win7/10/11、实体设备或长时间运行。
+## 正式 Windows 构建与发布
+
+- 源码 `acc269256650e57db882fcf0e391a486aade331e`，[Windows Server 2022 构建 39735381642](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39735381642) 成功。23 项 CTest、MSVC x64、/MT 和 YY-Thunks 配置、PE 子系统 6.01 与 Win7 导入检查、打包白名单、完整 ZIP 重开验证通过。
+- 正式 ZIP 提取出的程序在深浅主题下通过新增导航边界、独立主题按钮、12 像素等间距，以及原生鼠标消息、空格、BM_CLICK 之后圆角和底部按钮配色检查，焦点保留。既有弹窗布局、受控 CMD、侧栏、隔离 SFTP 和自动更新启动烟测也通过；10 项 Python 客户端及 24 项签名工具测试通过。见 [windows-build-summary.txt](windows-build-summary.txt)。
+- [发布流程 39737006241](https://github.com/john2000smith7-del/SerialCtl/actions/runs/39737006241) 重新取得上述构建的精确 ZIP，核对 SHA-256 并验证内嵌签名 JSON 完全描述该 ZIP 后发布。[正式版本 v2.0.1](https://github.com/john2000smith7-del/SerialCtl/releases/tag/v2.0.1) 设为最新，标签指向上述源码，资产恰好两个。见 [publish-summary.txt](publish-summary.txt)。
+
+| 文件 | 大小 | SHA-256 |
+|---|---:|---|
+| SerialCtl-V2.0.1-Win7-x64.zip | 130,238,010 字节 | `48a4cd76a9562c464d658efa76fb7c977c3c2ce3adfb821db651dbe7e61efcd1` |
+| update.json | 4,470 字节 | `67d056c9c3979735a2cb5129c15badd0c9cf1b4f071c236d38e33d84dd1167bf` |
+
+## 发布文件独立回读
+
+从正式 Release 重新下载两个文件，验证内嵌签名和完整 ZIP 摘要；重开全部 322 条目验证 CRC、每项 SHA256SUMS、VERSION、干净源码提交、三份 x64/6.01 PE。serialctl.exe 中编译的公钥与源码和签名身份相同；update.ini 确认预填用户批准的网址，包内无私钥、开发源文件、PDB/OBJ 或任意本地配置。见 [published-zip-verification.json](published-zip-verification.json)。验证后的同一组下载文件放入 bin，原 V2.0.0 两文件移入工作目录备份。
+
+沿用用户授权的 V2.0.0 密钥，没有重新生成。公钥 SPKI SHA-256 为 `196b703ac1274da483936513794f0c03eb7be806c302db4d932b30378a78a21a`，私钥保持在仓库外，未上传 CI 或发布包；[production-signing.json](production-signing.json) 仅含公开回执。
+
+实际发布的 JSON 和 ZIP 还交由无测试宏、无外部公钥覆盖的生产验签/提取/暂存代码验证，LLVM-MinGW/Wine 下通过：内置原公钥接受真实签名，只提取 24 个运行文件，不提取驱动或 update.ini，删除 ZIP 后再次核对暂存文件；改变签名一个十六进制字符被拒绝。未执行包内程序或安装更新。见 [native-production-trust.txt](native-production-trust.txt)，保留 Wine 缺少 winedevice 服务的环境提示，不将该补充检查称为实机 Windows 验证。
+
+用户在 `/external/serial/` 先上传完整 ZIP，再替换配套 update.json；不解压或改名。V2.0.0 配置正确网址后可自动升级，原 INI 按既有保护规则保留，空白或旧网址须改一次；更早协议的客户端需手动安装 V2 系列一次。
+
+未验证用户内网站点、正式签名的现场在线安装、真实 Win7/10/11、实体串口/电源、真实 SSH/Gateway、其他 DPI 或长时间运行。受控 CI、原生消息和 Wine 验证不代替这些现场验收。

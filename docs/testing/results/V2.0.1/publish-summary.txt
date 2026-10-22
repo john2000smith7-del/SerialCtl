@@ -1,0 +1,10 @@
+Publish: https://github.com/john2000smith7-del/SerialCtl/actions/runs/39737006241
+Job: 119684948754
+Source: acc269256650e57db882fcf0e391a486aade331e
+Build: 39735381642
+
+2026-10-22T06:55:36.5169067Z true
+2026-10-22T06:55:41.3063069Z bin/SerialCtl-V2.0.1-Win7-x64.zip: OK
+2026-10-22T06:55:41.6027251Z   "archive_sha256": "48a4cd76a9562c464d658efa76fb7c977c3c2ce3adfb821db651dbe7e61efcd1",
+2026-10-22T06:55:41.6028389Z   "verified": true
+2026-10-22T06:55:49.9599621Z https://github.com/john2000smith7-del/SerialCtl/releases/tag/v2.0.1

@@ -1,0 +1,20 @@
+{
+  "archive": "SerialCtl-V2.0.1-Win7-x64.zip",
+  "size": 130238010,
+  "sha256": "48a4cd76a9562c464d658efa76fb7c977c3c2ce3adfb821db651dbe7e61efcd1",
+  "files": 322,
+  "zipCrc": "passed",
+  "sha256sums": "passed",
+  "manifestVersion": "V2.0.1",
+  "sourceCommit": "acc269256650e57db882fcf0e391a486aade331e",
+  "machine": "0x8664",
+  "subsystemVersion": [
+    6,
+    1
+  ],
+  "embeddedSignature": "verified against source trust root",
+  "compiledPublicKey": "matches source and signing identity",
+  "privateKeysAndLocalConfig": "absent; update.ini is the user-approved non-secret site template",
+  "metadataSha256": "67d056c9c3979735a2cb5129c15badd0c9cf1b4f071c236d38e33d84dd1167bf",
+  "scope": "Independent readback of both published release files; no hardware or field update claim."
+}

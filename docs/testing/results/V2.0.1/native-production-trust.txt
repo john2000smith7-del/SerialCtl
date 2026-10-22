@@ -1,0 +1,17 @@
+Production code trust check, unchanged V2.0.0 embedded public key. LLVM-MinGW x64/Wine; no test trust override.
+No archived program executed; no user installation modified.
+
+[PASS] Production embedded trust verified actual signed V2.0.1 release and staged 24 runtime files; no archived program executed
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+
+Tampered actual signature, one hex character changed (test-only copy): exit 1
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+Rejected: Update manifest signature is invalid
