@@ -216,12 +216,64 @@ inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool select
     SetTextColor(dc, !IsWindowEnabled(combo) ? colors.muted : selected ? colors.accent : colors.text);
     DrawTextW(dc, text.data(), length, &row, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
+inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style) {
+    RECT bounds{};
+    GetClientRect(combo, &bounds);
+    if (!target || bounds.right <= 0 || bounds.bottom <= 0)
+        return;
+    UiBufferedPaint paint(target, bounds);
+    HDC dc = paint.Dc();
+    const int saved = SaveDC(dc);
+    const auto colors = UiTheme(*style.dark);
+    auto d = [&](int value) { return MulDiv(value, style.dpi, 96); };
+    wchar_t parentClass[32]{};
+    GetClassNameW(GetParent(combo), parentClass, 32);
+    const COLORREF outsideColor = GetPropW(combo, L"SerialCtl.FieldSurface") || _wcsicmp(parentClass, L"#32770") == 0
+                                      ? colors.surface
+                                      : colors.field;
+    HBRUSH outside = CreateSolidBrush(outsideColor);
+    FillRect(dc, &bounds, outside);
+    DeleteObject(outside);
+    const bool enabled = IsWindowEnabled(combo) != FALSE;
+    const bool focused = enabled && (GetFocus() == combo || SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0));
+    const COLORREF border = focused                                               ? colors.accent
+                            : enabled && GetPropW(combo, L"SerialCtl.FieldHover") ? colors.muted
+                                                                                  : colors.border;
+    UiBox(dc, bounds, colors.field, border, d(10));
+    const int selected = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));
+    std::wstring text;
+    if (selected >= 0) {
+        const int length = static_cast<int>(SendMessageW(combo, CB_GETLBTEXTLEN, selected, 0));
+        if (length >= 0 && length < 65536) {
+            std::vector<wchar_t> buffer(length + 1);
+            SendMessageW(combo, CB_GETLBTEXT, selected, reinterpret_cast<LPARAM>(buffer.data()));
+            text.assign(buffer.data());
+        }
+    }
+    HFONT font = reinterpret_cast<HFONT>(SendMessageW(combo, WM_GETFONT, 0, 0));
+    if (font || style.font)
+        SelectObject(dc, font ? font : style.font);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, enabled ? colors.text : colors.muted);
+    RECT label = bounds;
+    label.left += d(8);
+    label.right -= d(28);
+    DrawTextW(dc, text.c_str(), -1, &label, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+    const int x = bounds.right - d(14), y = bounds.bottom / 2;
+    const POINT chevron[]{{x - d(4), y - d(2)}, {x, y + d(2)}, {x + d(4), y - d(2)}};
+    UiPolyline(dc, chevron, 3, colors.muted, static_cast<float>(d(2)));
+    RestoreDC(dc, saved);
+}
 inline void UiDrawComboItem(const DRAWITEMSTRUCT &source, const UiFieldStyle &style) {
     auto item = source;
-    // The entire collapsed control is drawn by UiFieldProc. Native selection
-    // changes still issue ODT_COMBOBOX here, but must not paint a second frame.
-    if (item.itemState & ODS_COMBOBOXEDIT)
+    // Selection/focus changes can paint synchronously outside WM_PAINT. Native
+    // code may already have filled the rectangular selection area. Use the same
+    // field geometry on its supplied DC, preserving native clipping/printing.
+    // UiFieldProc restores the full field after the native transition returns.
+    if (item.itemState & ODS_COMBOBOXEDIT) {
+        UiPaintComboField(item.hwndItem, item.hDC, style);
         return;
+    }
     UiBufferedPaint paint(item.hDC, item.rcItem);
     item.hDC = paint.Dc();
     const int saved = SaveDC(item.hDC);
@@ -602,12 +654,21 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     wchar_t cls[32]{};
     GetClassNameW(h, cls, 32);
     bool edit = _wcsicmp(cls, L"EDIT") == 0;
+    bool hoverChanged = false;
     auto d = [style](int n) { return MulDiv(n, style->dpi, 96); };
     auto colors = UiTheme(*style->dark);
     if (!edit && (message == WM_NCCALCSIZE || message == WM_NCPAINT))
         return 0;
     if (!edit && message == WM_ERASEBKGND)
         return 1;
+    if (!edit && (message == WM_PAINT || message == WM_PRINT || message == WM_PRINTCLIENT)) {
+        PAINTSTRUCT ps{};
+        HDC dc = message == WM_PAINT ? BeginPaint(h, &ps) : reinterpret_cast<HDC>(w);
+        UiPaintComboField(h, dc, *style);
+        if (message == WM_PAINT)
+            EndPaint(h, &ps);
+        return 0;
+    }
     if (!edit && (message == WM_MOUSEMOVE || message == WM_LBUTTONUP)) {
         COMBOBOXINFO info{sizeof(info)};
         DWORD_PTR popup = 0;
@@ -620,16 +681,19 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         }
     }
     if (!edit && message == WM_MOUSEMOVE && !GetPropW(h, L"SerialCtl.FieldHover")) {
+        hoverChanged = true;
         SetPropW(h, L"SerialCtl.FieldHover", reinterpret_cast<HANDLE>(1));
         TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, h, 0};
         TrackMouseEvent(&track);
         InvalidateRect(h, nullptr, FALSE);
     }
     if (!edit && message == WM_MOUSELEAVE) {
+        hoverChanged = GetPropW(h, L"SerialCtl.FieldHover") != nullptr;
         RemovePropW(h, L"SerialCtl.FieldHover");
         InvalidateRect(h, nullptr, FALSE);
     }
-    if (!edit && (message == WM_LBUTTONDOWN || message == WM_KEYDOWN || (message == CB_SHOWDROPDOWN && w)))
+    if (!edit && (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK || message == WM_KEYDOWN ||
+                 (message == CB_SHOWDROPDOWN && w)))
         UiPrepareComboPopup(h, style);
     if (edit && message == WM_NCCALCSIZE) {
         LRESULT result = DefSubclassProc(h, message, w, l);
@@ -659,55 +723,23 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         RestoreDC(dc, saved);
         return 0;
     }
-    if ((edit && message == WM_NCPAINT) ||
-        (!edit && (message == WM_PAINT || message == WM_PRINT || message == WM_PRINTCLIENT))) {
-        PAINTSTRUCT ps{};
-        HDC dc = edit ? GetWindowDC(h) : message == WM_PAINT ? BeginPaint(h, &ps) : reinterpret_cast<HDC>(w);
+    if (edit && message == WM_NCPAINT) {
+        HDC dc = GetWindowDC(h);
         const int saved = SaveDC(dc);
         RECT rect{};
-        if (edit) {
-            GetWindowRect(h, &rect);
-            OffsetRect(&rect, -rect.left, -rect.top);
-            ExcludeClipRect(dc, d(8), d(4), rect.right - d(8), rect.bottom - d(4));
-        } else
-            GetClientRect(h, &rect);
+        GetWindowRect(h, &rect);
+        OffsetRect(&rect, -rect.left, -rect.top);
+        ExcludeClipRect(dc, d(8), d(4), rect.right - d(8), rect.bottom - d(4));
         HBRUSH outside = CreateSolidBrush(outsideColor);
         FillRect(dc, &rect, outside);
         DeleteObject(outside);
         const bool enabled = IsWindowEnabled(h) != FALSE;
-        const bool focused = enabled && (GetFocus() == h || (!edit && SendMessageW(h, CB_GETDROPPEDSTATE, 0, 0)));
+        const bool focused = enabled && GetFocus() == h;
         const COLORREF border = focused ? colors.accent
                                   : enabled && GetPropW(h, L"SerialCtl.FieldHover") ? colors.muted : colors.border;
         UiBox(dc, rect, colors.field, border, d(10));
-        if (!edit) {
-            int selected = static_cast<int>(SendMessageW(h, CB_GETCURSEL, 0, 0));
-            std::wstring text;
-            if (selected >= 0) {
-                int length = static_cast<int>(SendMessageW(h, CB_GETLBTEXTLEN, selected, 0));
-                if (length >= 0 && length < 1024) {
-                    std::vector<wchar_t> buffer(length + 1);
-                    SendMessageW(h, CB_GETLBTEXT, selected, reinterpret_cast<LPARAM>(buffer.data()));
-                    text.assign(buffer.data());
-                }
-            }
-            HFONT font = reinterpret_cast<HFONT>(SendMessageW(h, WM_GETFONT, 0, 0));
-            if (font || style->font)
-                SelectObject(dc, font ? font : style->font);
-            SetBkMode(dc, TRANSPARENT);
-            SetTextColor(dc, enabled ? colors.text : colors.muted);
-            RECT label = rect;
-            label.left += d(8);
-            label.right -= d(28);
-            DrawTextW(dc, text.c_str(), -1, &label, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
-            int x = rect.right - d(14), y = rect.bottom / 2;
-            const POINT chevron[]{{x - d(4), y - d(2)}, {x, y + d(2)}, {x + d(4), y - d(2)}};
-            UiPolyline(dc, chevron, 3, colors.muted, static_cast<float>(d(2)));
-        }
         RestoreDC(dc, saved);
-        if (edit)
-            ReleaseDC(h, dc);
-        else if (message == WM_PAINT)
-            EndPaint(h, &ps);
+        ReleaseDC(h, dc);
         return 0;
     }
     if (message == WM_NCDESTROY) {
@@ -722,8 +754,19 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         return result;
     if (!edit && message == WM_SETFONT)
         UiPrepareComboPopup(h, style);
-    if (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
-        message == WM_SETFONT || message == WM_SIZE || (!edit && (message == CB_SETCURSEL || message == CB_SHOWDROPDOWN)))
+    if (!edit && (hoverChanged || message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
+                  message == WM_SETFONT || message == WM_SIZE || message == WM_KEYDOWN || message == WM_KEYUP ||
+                  message == WM_CHAR || message == WM_COMMAND || message == WM_MOUSEWHEEL ||
+                  message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_LBUTTONDBLCLK ||
+                  message == WM_CAPTURECHANGED || message == WM_CANCELMODE || message == WM_UPDATEUISTATE ||
+                  message == WM_THEMECHANGED || message == WM_SYSCOLORCHANGE || message == CB_SETCURSEL ||
+                  message == CB_SELECTSTRING || message == CB_SHOWDROPDOWN || message == CB_RESETCONTENT ||
+                  message == CB_DELETESTRING || (message == CB_SETITEMHEIGHT && static_cast<int>(w) == -1))) {
+        // Native keyboard/list notifications also redraw through GetDC. Commit
+        // one complete themed field before returning, not only after focus loss.
+        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    } else if (edit && (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
+                        message == WM_SETFONT || message == WM_SIZE))
         RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
     return result;
 }
