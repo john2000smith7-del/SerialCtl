@@ -1,0 +1,9 @@
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+[PASS] Production embedded trust verified actual signed V2.0.0 release and staged 24 runtime files; no archived program executed
+Rejected: Update manifest signature is invalid
+[PASS] Actual released metadata signed by the new production identity is accepted; changed signature is rejected
+Scope: production verifier/extractor/staging code compiled with its embedded key; LLVM-MinGW/Wine, no external key override, no archived application executed. Not a real Win7 or field-server update.

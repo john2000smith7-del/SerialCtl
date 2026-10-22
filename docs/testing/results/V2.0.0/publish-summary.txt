@@ -1,0 +1,5 @@
+2026-10-22T06:12:21.2447978Z bin/SerialCtl-V2.0.0-Win7-x64.zip: OK
+2026-10-22T06:12:21.7183867Z   "version": "V2.0.0",
+2026-10-22T06:12:21.7184377Z   "archive_sha256": "133667c90c50b4da8f63614cb725ed96aaf11b7f93d03fb5ce8eda7eeb9c2aa8",
+2026-10-22T06:12:21.7184887Z   "verified": true
+2026-10-22T06:12:29.2671661Z https://github.com/john2000smith7-del/SerialCtl/releases/tag/v2.0.0
