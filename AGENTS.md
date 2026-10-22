@@ -45,3 +45,10 @@ Before changing the project, read:
 - A release must use an explicit package allowlist, be reopened and verified after compression, and contain no development source (except the explicitly allowlisted Python runtime client), PDB, OBJ, CMake cache, test executable, local configuration, secret, or Git metadata.
 - The portable ZIP has no enclosing directory; the x64 executables and runtime documentation are directly at its root; each `serialctl.exe` must remain beside the matching `plink.exe` and `psftp.exe`.
 - Do not create a remote repository, push, publish a release, or alter remote state without explicit user confirmation.
+
+## Required future release delivery
+
+- The user requires every future version delivery to include exactly two deployable files: the verified full `SerialCtl-V<version>-Win7-x64.zip` and its matching `update.json`, with the digital signature embedded in that JSON. The user uploads these two files to the existing static update directory. Do not ask the user to generate metadata, run Python, unpack a deployment bundle, or maintain a separate `.sig`/`files` tree.
+- Preserve startup automatic checking/downloading and the existing `[update] url=` configuration in `update.ini`. A new settings page or manual update button is not part of this request. Preserve idle installation, data/config/driver protection and failure recovery.
+- This is an accepted delivery requirement, not a claim that V1.10.0 supports the new format. Implement and test the ZIP-based signed format in the client and release tooling before claiming it works. The first supporting client requires manual deployment once.
+- Before any future release, verify that a matching signing key is available to the authorized signing process without exposing its contents. Deliver a genuinely signed `update.json` generated from the exact verified ZIP, and give both download links. A checksum sidecar or unsigned JSON does not satisfy the signature requirement. If signing is unavailable, report the concrete blocker rather than publishing an incomplete or falsely signed two-file delivery.
