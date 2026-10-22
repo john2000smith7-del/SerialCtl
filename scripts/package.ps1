@@ -178,8 +178,8 @@ $manifest = [ordered]@{
     }
     auto_update = [ordered]@{
         configuration = 'update.ini beside serialctl.exe; blank URL disables checks'
-        transport = 'Win7 WinHTTP HTTP/HTTPS; no redirects; relative same-origin files'
-        trust = 'embedded RSA-2048 public key; detached SHA-256 PKCS1 signature; per-file SHA-256'
+        transport = 'Win7 WinHTTP HTTP/HTTPS; no redirects; relative same-origin full release ZIP'
+        trust = 'embedded RSA-2048 public key; embedded RSA-SHA256 signed metadata; full ZIP and per-file SHA-256'
         install = 'idle startup only; reject other same-directory instances; backup and attempt rollback on failure'
         preserved = @('update.ini', 'user configuration', 'commands', 'logs', 'NI-VISA driver')
         signing_key = 'never included in package or HTTP server'
