@@ -153,7 +153,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
 
     $testPrograms = @{
         'ai_protocol_test.exe' = @('KERNEL32.dll')
-        'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'WINHTTP.dll')
+        'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'COMDLG32.dll', 'GDI32.dll', 'OLE32.dll', 'SHELL32.dll')
         'ui_buffered_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll')
         'ui_combo_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll')
         'update_client_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'WINHTTP.dll', 'WS2_32.dll')

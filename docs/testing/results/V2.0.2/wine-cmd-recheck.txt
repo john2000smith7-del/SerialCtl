@@ -1,0 +1,7 @@
+Test project /workspace/SerialCtl/build/ai-cross
+    Start 11: cmd_connection
+1/1 Test #11: cmd_connection ...................   Passed    5.88 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =   5.88 sec

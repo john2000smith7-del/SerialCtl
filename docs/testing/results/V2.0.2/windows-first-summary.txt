@@ -1,0 +1,7 @@
+2026-10-22T07:58:00.0085379Z  4/24 Test  #4: ai_device ........................   Passed    0.14 sec
+2026-10-22T07:59:09.4113113Z 100% tests passed, 0 tests failed out of 24
+2026-10-22T07:59:16.2381153Z Unexpected DLL import set for D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\ai_device_test.exe. Unexpected: 
+2026-10-22T07:59:16.2381836Z [COMDLG32.DLL, GDI32.DLL, OLE32.DLL, SHELL32.DLL]. Missing: [WINHTTP.DLL]
+2026-10-22T07:59:16.2382611Z +         throw ("Unexpected DLL import set for {0}. Unexpected: [{1}]. ...
+2026-10-22T07:59:16.2384051Z     + FullyQualifiedErrorId : Unexpected DLL import set for D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\a 
+2026-10-22T07:59:16.2384672Z    i_device_test.exe. Unexpected: [COMDLG32.DLL, GDI32.DLL, OLE32.DLL, SHELL32.DLL]. Missing: [WINHTTP.DLL]
