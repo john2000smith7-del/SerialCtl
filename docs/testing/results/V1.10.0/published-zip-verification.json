@@ -1,0 +1,15 @@
+{
+  "archive": "SerialCtl-V1.10.0-Win7-x64.zip",
+  "size": 130221861,
+  "sha256": "dfb6525b37e94a045b48aeca3a95c22f1b939447abbf3b73b8bb56ea71470f63",
+  "files": 321,
+  "zipCrc": "passed",
+  "sha256sums": "passed",
+  "manifestVersion": "V1.10.0",
+  "machine": "0x8664",
+  "subsystemVersion": [
+    6,
+    1
+  ],
+  "scope": "Independent readback of the published release ZIP; Windows build and import checks are recorded separately."
+}

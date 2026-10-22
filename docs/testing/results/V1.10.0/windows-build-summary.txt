@@ -1,0 +1,60 @@
+2026-10-22T03:11:26.3108684Z [PASS] Source/version/dependency checks: V1.10.0
+2026-10-22T03:11:26.8169010Z [PASS] Source-only checks completed
+2026-10-22T03:15:31.0682738Z [PASS] SerialCtl build completed: All / Release
+2026-10-22T03:16:40.6194024Z 100% tests passed, 0 tests failed out of 23
+2026-10-22T03:16:40.6801195Z [PASS] SerialCtl tests completed: All / Release
+2026-10-22T03:16:41.2421688Z [PASS] Source/version/dependency checks: V1.10.0
+2026-10-22T03:16:45.0490437Z [PASS] x64 / GUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serialctl.exe
+2026-10-22T03:16:45.3013471Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\plink.exe
+2026-10-22T03:16:45.5550603Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\psftp.exe
+2026-10-22T03:16:45.8071318Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\cmd_connection_test.exe
+2026-10-22T03:16:46.0533184Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serial_share_backpressure_test.exe
+2026-10-22T03:16:46.2942149Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\sftp_model_test.exe
+2026-10-22T03:16:46.5357260Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\putty_host_key_test.exe
+2026-10-22T03:16:46.7815958Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\power_service_test.exe
+2026-10-22T03:16:47.0183641Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\ai_protocol_test.exe
+2026-10-22T03:16:47.2636206Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\api_server_test.exe
+2026-10-22T03:16:47.4998038Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\session_logger_test.exe
+2026-10-22T03:16:47.7420731Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\ui_buffered_paint_test.exe
+2026-10-22T03:16:47.9885250Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\ui_combo_paint_test.exe
+2026-10-22T03:16:48.2288940Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\update_installer_test.exe
+2026-10-22T03:16:48.4566878Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_decoder_test.exe
+2026-10-22T03:16:48.6964488Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\multi_serial_test.exe
+2026-10-22T03:16:48.9371657Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\update_client_test.exe
+2026-10-22T03:16:49.1671937Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_model_test.exe
+2026-10-22T03:16:49.4082125Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\shared_serial_protocol_test.exe
+2026-10-22T03:16:49.6593524Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\tcp_connection_test.exe
+2026-10-22T03:16:49.9046903Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\ai-fixture\Release\ai_client_test.exe
+2026-10-22T03:16:50.1812107Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\ai-fixture\Release\ai_pane_test.exe
+2026-10-22T03:16:50.4232125Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\ai-fixture\Release\plink.exe
+2026-10-22T03:16:50.4243832Z [PASS] Binary compatibility checks completed: All / Release
+2026-10-22T03:16:50.4253988Z [NOT RUN] Windows 7 SP1 hardware/VM, serial adapter, SSH/SFTP server, and long-running field tests
+2026-10-22T03:17:11.1083397Z [PASS] x64 / GUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\serialctl.exe
+2026-10-22T03:17:11.3618949Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\plink.exe
+2026-10-22T03:17:11.6087974Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\psftp.exe
+2026-10-22T03:17:11.7649366Z [PASS] Candidate archive was reopened and verified: D:\a\SerialCtl\SerialCtl\build\release\out\SerialCtl-V1.10.0-Win7-x64.zip
+2026-10-22T03:17:11.7658661Z [PASS] Candidate SHA-256: dfb6525b37e94a045b48aeca3a95c22f1b939447abbf3b73b8bb56ea71470f63
+2026-10-22T03:17:12.3912168Z [NOT RUN] Windows 7 SP1 real-machine/VM and physical serial-device acceptance
+2026-10-22T03:17:41.1462355Z PASS: packaged GUI unified WebSocket scope, CMD stdout, GUI sequential line editing, persistent state; outputs visible/local logged
+2026-10-22T03:20:39.0009856Z PASS: packaged GUI unified WebSocket scope, CMD stdout, GUI sequential line editing, persistent state; outputs visible/local logged
+2026-10-22T03:23:40.1419720Z [PASS] Executed assertions for packaged startup/shutdown, theme/dialog layout, controlled CMD, panel geometry, drafts, and isolated SFTP UI. See per-case JSON for input method and scope.
+2026-10-22T03:23:40.1429332Z [NOT RUN] Actual Windows 7 hardware and field server tests
+2026-10-22T03:23:47.1741086Z [NOT RUN] Production-signed successful upgrade, real Win7, real intranet server and hardware; see separate native installer/client tests and manual acceptance.
+2026-10-22T03:23:47.9031293Z Ran 10 tests in 0.003s
+2026-10-22T03:23:49.1231684Z test_allowlist_matches_client (__main__.FeedTests.test_allowlist_matches_client) ... ok
+2026-10-22T03:23:49.2213672Z test_bom_and_noncanonical_versions (__main__.FeedTests.test_bom_and_noncanonical_versions) ... ok
+2026-10-22T03:23:49.3460670Z test_crlf_version (__main__.FeedTests.test_crlf_version) ... ok
+2026-10-22T03:23:49.3756947Z test_duplicate_checksum (__main__.FeedTests.test_duplicate_checksum) ... ok
+2026-10-22T03:23:49.4141263Z test_empty_payload (__main__.FeedTests.test_empty_payload) ... ok
+2026-10-22T03:23:49.4297161Z test_existing_output_preserved (__main__.FeedTests.test_existing_output_preserved) ... ok
+2026-10-22T03:23:49.4455271Z test_key_inside_output_or_input (__main__.FeedTests.test_key_inside_output_or_input) ... ok
+2026-10-22T03:23:49.4611324Z test_output_inside_package (__main__.FeedTests.test_output_inside_package) ... ok
+2026-10-22T03:23:49.5236437Z test_oversized_payload (__main__.FeedTests.test_oversized_payload) ... ok
+2026-10-22T03:23:49.5584932Z test_required_file_missing (__main__.FeedTests.test_required_file_missing) ... ok
+2026-10-22T03:23:49.6824680Z test_signed_round_trip_and_allowlist (__main__.FeedTests.test_signed_round_trip_and_allowlist) ... ok
+2026-10-22T03:23:49.7131314Z test_tampered_manifest (__main__.FeedTests.test_tampered_manifest) ... ok
+2026-10-22T03:23:49.7449229Z test_tampered_payload (__main__.FeedTests.test_tampered_payload) ... ok
+2026-10-22T03:23:49.7801732Z test_unverified_package (__main__.FeedTests.test_unverified_package) ... ok
+2026-10-22T03:23:49.8590078Z test_wrong_product_and_malformed_manifest (__main__.FeedTests.test_wrong_product_and_malformed_manifest) ... ok
+2026-10-22T03:23:49.8910413Z test_wrong_signing_key (__main__.FeedTests.test_wrong_signing_key) ... ok
+2026-10-22T03:23:49.8919588Z Ran 16 tests in 1.585s
