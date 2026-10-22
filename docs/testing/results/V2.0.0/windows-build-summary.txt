@@ -1,0 +1,45 @@
+2026-10-22T04:33:09.5827414Z [PASS] Git provenance: 7adbbad23f297d306a16597b000c3a8b5552e517
+2026-10-22T04:37:12.5798702Z  1/23 Test  #1: ai_protocol ......................   Passed    0.03 sec
+2026-10-22T04:37:13.1077180Z  2/23 Test  #2: ai_client ........................   Passed    0.53 sec
+2026-10-22T04:37:14.5018378Z  3/23 Test  #3: ai_pane ..........................   Passed    1.39 sec
+2026-10-22T04:37:14.5939703Z  4/23 Test  #4: ui_buffered_paint ................   Passed    0.09 sec
+2026-10-22T04:37:16.3067113Z  5/23 Test  #5: ui_combo_paint ...................   Passed    1.71 sec
+2026-10-22T04:37:46.4266201Z  6/23 Test  #6: update_client ....................   Passed   30.12 sec
+2026-10-22T04:37:52.2540930Z  7/23 Test  #7: update_installer .................   Passed    5.83 sec
+2026-10-22T04:37:53.8036505Z  8/23 Test  #8: session_logger ...................   Passed    1.55 sec
+2026-10-22T04:37:57.1568336Z  9/23 Test  #9: power_service ....................   Passed    3.35 sec
+2026-10-22T04:37:57.2982739Z 10/23 Test #10: cmd_connection ...................   Passed    0.14 sec
+2026-10-22T04:38:00.5359659Z 11/23 Test #11: api_server .......................   Passed    3.24 sec
+2026-10-22T04:38:00.5679304Z 12/23 Test #12: api_response .....................   Passed    0.03 sec
+2026-10-22T04:38:00.6485422Z 13/23 Test #13: shared_serial_protocol ...........   Passed    0.08 sec
+2026-10-22T04:38:00.6578946Z 14/23 Test #14: tcp_connection ...................   Passed    0.01 sec
+2026-10-22T04:38:00.6682153Z 15/23 Test #15: terminal_model ...................   Passed    0.01 sec
+2026-10-22T04:38:00.8039848Z 16/23 Test #16: putty_host_key ...................   Passed    0.14 sec
+2026-10-22T04:38:11.7475573Z 17/23 Test #17: serial_share_backpressure ........   Passed   10.94 sec
+2026-10-22T04:38:12.6592908Z 18/23 Test #18: multi_serial .....................   Passed    0.91 sec
+2026-10-22T04:38:12.9215505Z 19/23 Test #19: shared_terminal_response .........   Passed    0.26 sec
+2026-10-22T04:38:14.1571470Z 20/23 Test #20: api_client .......................   Passed    1.23 sec
+2026-10-22T04:38:22.5031460Z 21/23 Test #21: linux_gateway_client .............   Passed    8.35 sec
+2026-10-22T04:38:22.5239519Z 22/23 Test #22: terminal_decoder .................   Passed    0.02 sec
+2026-10-22T04:38:22.5310987Z 23/23 Test #23: sftp_model .......................   Passed    0.01 sec
+2026-10-22T04:38:22.5318040Z 100% tests passed, 0 tests failed out of 23
+2026-10-22T04:38:22.7926730Z [PASS] Git provenance: 7adbbad23f297d306a16597b000c3a8b5552e517
+2026-10-22T04:38:32.2473329Z [PASS] Binary compatibility checks completed: All / Release
+2026-10-22T04:38:32.2482373Z [NOT RUN] Windows 7 SP1 hardware/VM, serial adapter, SSH/SFTP server, and long-running field tests
+2026-10-22T04:38:52.8571622Z [PASS] Candidate archive was reopened and verified: D:\a\SerialCtl\SerialCtl\build\release\out\SerialCtl-V2.0.0-Win7-x64.zip
+2026-10-22T04:38:52.8581062Z [PASS] Candidate SHA-256: aa7695d290b822e38cfbde0f9448a3a220f6229eb5ed8533dc4dd5c84139f1a3
+2026-10-22T04:38:56.2755168Z [PASS] real full release ZIP extracts only signed runtime without drivers or configuration
+2026-10-22T04:38:56.2755875Z Real release archive round trip passed: V2.0.0 / 24 runtime files
+2026-10-22T04:38:56.7811393Z [PASS] Local release ready: D:\a\SerialCtl\SerialCtl\bin\SerialCtl-V2.0.0-Win7-x64.zip
+2026-10-22T04:38:56.7820492Z [PASS] SHA-256: aa7695d290b822e38cfbde0f9448a3a220f6229eb5ed8533dc4dd5c84139f1a3
+2026-10-22T04:38:56.7828677Z [NOT RUN] Windows 7 SP1 real-machine/VM and physical serial-device acceptance
+2026-10-22T04:45:22.4572949Z [PASS] Executed assertions for packaged startup/shutdown, theme/dialog layout, controlled CMD, panel geometry, drafts, and isolated SFTP UI. See per-case JSON for input method and scope.
+2026-10-22T04:45:22.4582006Z [NOT RUN] Actual Windows 7 hardware and field server tests
+2026-10-22T04:45:24.8062831Z [PASS] updater production GUI missing
+2026-10-22T04:45:25.9964969Z [PASS] updater production GUI empty
+2026-10-22T04:45:26.9831545Z [PASS] updater production GUI url-a-404
+2026-10-22T04:45:27.6725798Z [PASS] updater production GUI url-b-invalid-signature
+2026-10-22T04:45:28.3764253Z [PASS] updater production GUI slowheaders
+2026-10-22T04:45:29.3397429Z [PASS] updater production GUI slowbody
+2026-10-22T04:45:29.9846118Z Ran 10 tests in 0.002s
+2026-10-22T04:45:31.9077754Z Ran 24 tests in 1.535s

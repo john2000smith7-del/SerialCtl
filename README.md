@@ -127,10 +127,11 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 .\scripts\release.ps1
 ```
 
-发布流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中只保留：
+构建流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中保留完整 ZIP；正式签名完成后，交付其配套 `update.json`：
 
 ```text
 SerialCtl-V2.0.0-Win7-x64.zip
+update.json
 ```
 
 压缩包根目录直接包含 x64 的 `serialctl.exe`、`plink.exe` 和 `psftp.exe`，解压后保持三者位于同一目录。

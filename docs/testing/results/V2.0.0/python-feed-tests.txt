@@ -1,0 +1,29 @@
+test_allowlist_matches_client (__main__.FeedTests.test_allowlist_matches_client) ... ok
+test_archive_checksum_mismatch (__main__.FeedTests.test_archive_checksum_mismatch) ... ok
+test_archive_requires_verified_release (__main__.FeedTests.test_archive_requires_verified_release) ... ok
+test_archive_substitution (__main__.FeedTests.test_archive_substitution) ... ok
+test_archive_symlink (__main__.FeedTests.test_archive_symlink) ... ok
+test_archive_traversal_and_duplicate_names (__main__.FeedTests.test_archive_traversal_and_duplicate_names) ... ok
+test_archive_wrong_key (__main__.FeedTests.test_archive_wrong_key) ... ok
+test_bom_and_noncanonical_versions (__main__.FeedTests.test_bom_and_noncanonical_versions) ... ok
+test_crlf_version (__main__.FeedTests.test_crlf_version) ... ok
+test_duplicate_checksum (__main__.FeedTests.test_duplicate_checksum) ... ok
+test_embedded_signature_tamper (__main__.FeedTests.test_embedded_signature_tamper) ... ok
+test_empty_payload (__main__.FeedTests.test_empty_payload) ... ok
+test_existing_output_preserved (__main__.FeedTests.test_existing_output_preserved) ... ok
+test_key_inside_output_or_input (__main__.FeedTests.test_key_inside_output_or_input) ... ok
+test_output_inside_package (__main__.FeedTests.test_output_inside_package) ... ok
+test_oversized_payload (__main__.FeedTests.test_oversized_payload) ... ok
+test_required_file_missing (__main__.FeedTests.test_required_file_missing) ... ok
+test_signed_round_trip_and_allowlist (__main__.FeedTests.test_signed_round_trip_and_allowlist) ... ok
+test_tampered_manifest (__main__.FeedTests.test_tampered_manifest) ... ok
+test_tampered_payload (__main__.FeedTests.test_tampered_payload) ... ok
+test_two_file_archive_round_trip (__main__.FeedTests.test_two_file_archive_round_trip) ... ok
+test_unverified_package (__main__.FeedTests.test_unverified_package) ... ok
+test_wrong_product_and_malformed_manifest (__main__.FeedTests.test_wrong_product_and_malformed_manifest) ... ok
+test_wrong_signing_key (__main__.FeedTests.test_wrong_signing_key) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 0.369s
+
+OK

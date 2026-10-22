@@ -1,0 +1,42 @@
+Test project /workspace/SerialCtl/build/ai-cross
+    Start 6: update_client
+1/2 Test #6: update_client ....................   Passed   30.58 sec
+    Start 7: update_installer
+2/2 Test #7: update_installer .................***Failed    5.94 sec
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+[PASS] real Win32 files replaced before health confirmation
+[PASS] all original bytes restored
+[PASS] newly added file removed by rollback
+[PASS] configuration and driver bytes preserved
+[PASS] rollback removes completed journal
+[PASS] replacement fault injected after two files
+[PASS] partial transaction has durable recovery journal
+[PASS] all original bytes restored
+[PASS] newly added file removed by rollback
+[PASS] configuration and driver bytes preserved
+[PASS] real Windows deny-delete file handle blocks replacement
+[PASS] locked target fails preflight before any transaction starts
+[PASS] all original bytes restored
+[PASS] newly added file removed by rollback
+[PASS] configuration and driver bytes preserved
+[PASS] recovery integrity fixture created
+[PASS] damaged backup rejects recovery before any restoration
+[PASS] failed recovery retains journal and current executable
+[PASS] forged journal cannot target configuration or traverse directories
+[PASS] all original bytes restored
+[PASS] newly added file removed by rollback
+[PASS] configuration and driver bytes preserved
+FAIL: signed worker validates and parent exits normally
+
+
+50% tests passed, 1 tests failed out of 2
+
+Total Test time (real) =  36.52 sec
+
+The following tests FAILED:
+	  7 - update_installer (Failed)
+Errors while running CTest

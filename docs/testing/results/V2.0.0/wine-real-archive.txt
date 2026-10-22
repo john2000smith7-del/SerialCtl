@@ -1,0 +1,8 @@
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+[PASS] real full release ZIP extracts only signed runtime without drivers or configuration
+Real release archive round trip passed: V1.10.0 / 23 runtime files
+Full release ZIP/native extraction passed using isolated ephemeral test credentials
