@@ -111,7 +111,7 @@ enum ControlId {
 
 bool IsToolbarButton(int id) {
     return (id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower ||
-        id == IdAi || id == IdSettings || id == IdTheme;
+        id == IdAi || id == IdSettings;
 }
 
 enum TerminalMenuId {
@@ -182,7 +182,8 @@ int TerminalPadding = 8;
 int TerminalTimestampWidth = 112;
 int Section = 16;
 int ToolbarHeight = 72;
-int ToolbarGroupWidth = 610;
+constexpr int ToolbarButtonWidths[] = {89, 88, 98, 118, 92, 88, 80};
+constexpr int SettingsButtonWidth = 88;
 int StandardHeight = 36;
 int CompactHeight = 32;
 int SegmentHeight = 32;
@@ -219,7 +220,6 @@ void ScaleUiMetrics(HWND window) {
     Ui::TerminalTimestampWidth=Ui::Scale(Ui::TerminalTimestampWidth);
     Ui::Section=Ui::Scale(Ui::Section);
     Ui::ToolbarHeight=Ui::Scale(Ui::ToolbarHeight);
-    Ui::ToolbarGroupWidth=Ui::Scale(Ui::ToolbarGroupWidth);
     Ui::StandardHeight=Ui::Scale(Ui::StandardHeight);
     Ui::CompactHeight=Ui::Scale(Ui::CompactHeight);
     Ui::SegmentHeight=Ui::Scale(Ui::SegmentHeight);
@@ -247,6 +247,18 @@ struct MainLayoutMetrics {
     int centerRight;
     int contentBottom;
 };
+
+RECT NavigationFrame() {
+    int right = Ui::Gap + Ui::Space;
+    for (int width : Ui::ToolbarButtonWidths) right += Ui::Scale(width) + Ui::Space;
+    right += Ui::Scale(Ui::SettingsButtonWidth) + Ui::Space;
+    return {Ui::Gap, Ui::Section, right, Ui::ToolbarHeight - Ui::Section};
+}
+
+int MainCardTop() {
+    // Match the horizontal card/splitter gaps, measuring from the visible bar.
+    return NavigationFrame().bottom + Ui::Gap;
+}
 
 MainLayoutMetrics GetMainLayoutMetrics(
     int width, int height, int preferredRightWidth, bool rightPanelCollapsed, int animationWidth = -1) {
@@ -2162,6 +2174,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         HandleSftpProgress(lParam);
         return 0;
     case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORBTN:
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLORLISTBOX: {
         const Palette colors = Colors(darkMode_);
@@ -2169,6 +2182,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         HWND control = reinterpret_cast<HWND>(lParam);
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, colors.text);
+        if (control == themeButton_) {
+            SetBkColor(dc, colors.window);
+            return reinterpret_cast<LRESULT>(windowBrush_);
+        }
         if (control == terminal_) {
             SetBkColor(dc, colors.terminal);
             return reinterpret_cast<LRESULT>(terminalBrush_);
@@ -2375,20 +2392,18 @@ void MainWindow::LayoutControls(int width, int height) {
     rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth + Ui::MinCenterWidth + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
     int x = Ui::Gap + Ui::Space;
-    const int buttonWidths[] = {89, 88, 98, 118, 92, 88, 80};
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
-        batch.Move(toolbarButtons_[index], x, toolbarButtonTop, Ui::Scale(buttonWidths[index]), Ui::StandardHeight,
+        batch.Move(toolbarButtons_[index], x, toolbarButtonTop, Ui::Scale(Ui::ToolbarButtonWidths[index]), Ui::StandardHeight,
                    TRUE);
-        x += Ui::Scale(buttonWidths[index]) + Ui::Space;
+        x += Ui::Scale(Ui::ToolbarButtonWidths[index]) + Ui::Space;
     }
-    batch.Move(settingsButton_, x, toolbarButtonTop, Ui::Scale(88), Ui::StandardHeight, TRUE);
-    batch.Move(themeButton_, width - Ui::Gap - Ui::Space - Ui::StandardHeight, (Ui::ToolbarHeight - Ui::StandardHeight) / 2,
+    batch.Move(settingsButton_, x, toolbarButtonTop, Ui::Scale(Ui::SettingsButtonWidth), Ui::StandardHeight, TRUE);
+    batch.Move(themeButton_, width - Ui::Gap - Ui::StandardHeight, toolbarButtonTop,
                Ui::StandardHeight, Ui::StandardHeight, TRUE);
 
-    const int contentTop = Ui::ToolbarHeight;
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
         width, height, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
-    const int cardTop = contentTop + Ui::Gap;
+    const int cardTop = MainCardTop();
     const int centerCardBottom = layout.contentBottom;
     const int sideCardBottom = height - Ui::Gap;
     const int leftInnerLeft = Ui::Gap + Ui::PanelPadding;
@@ -2501,17 +2516,18 @@ void MainWindow::PaintWindow(HDC dc) {
     GetClientRect(window_, &client);
     const Palette colors = Colors(darkMode_);
     FillRect(dc, &client, windowBrush_);
-    RECT toolbar{Ui::Gap, Ui::Section, client.right - Ui::Gap, Ui::ToolbarHeight - Ui::Section};
+    const RECT toolbar = NavigationFrame();
     const HWND focus = GetFocus();
     const bool toolbarFocused = focus && GetParent(focus) == window_ && IsToolbarButton(GetDlgCtrlID(focus));
     DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, toolbarFocused ? colors.accent : colors.border);
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
         client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
-    RECT leftCard{Ui::Gap, Ui::ToolbarHeight + Ui::Gap, layout.leftWidth, client.bottom - Ui::Gap};
-    RECT terminalFrame{layout.centerLeft, Ui::ToolbarHeight + Ui::Gap,
+    const int cardTop = MainCardTop();
+    RECT leftCard{Ui::Gap, cardTop, layout.leftWidth, client.bottom - Ui::Gap};
+    RECT terminalFrame{layout.centerLeft, cardTop,
         layout.centerRight, layout.contentBottom};
-    RECT rightCard{layout.rightLeft, Ui::ToolbarHeight + Ui::Gap,
+    RECT rightCard{layout.rightLeft, cardTop,
         client.right - Ui::Gap, client.bottom - Ui::Gap};
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, aiVisible_ ? colors.panel : colors.terminal, colors.border);
@@ -2651,7 +2667,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
         const bool hovered = GetPropW(item.hwndItem, Ui::HoverProperty) != nullptr;
         const bool focused = (item.itemState & ODS_FOCUS) != 0;
-        COLORREF outside = colors.panel;
+        COLORREF outside = id == IdTheme ? colors.window : colors.panel;
         if (id == IdCommandTab || id == IdSftpTab) outside = colors.panel;
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) outside = colors.panel;
         HBRUSH outsideBrush = CreateSolidBrush(outside);
@@ -2680,8 +2696,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         }
         if (id == IdTheme) {
             const COLORREF fill = pressed ? colors.accentSoft : hovered || focused ? colors.panelAlt : colors.panel;
-            if (fill != colors.panel)
-                DrawRoundedBox(dc, rect, Ui::Radius, fill, fill);
+            DrawRoundedBox(dc, rect, Ui::Radius, fill, focused ? colors.accent : colors.border);
             RECT iconRect=rect; InflateRect(&iconRect,-Ui::Scale(6),-Ui::Scale(6));
             toolbarIcons_.Draw(dc,darkMode_?ToolbarIcon::Sun:ToolbarIcon::Moon,iconRect,darkMode_);
             return;

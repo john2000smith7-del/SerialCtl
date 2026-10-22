@@ -1,4 +1,4 @@
-# SerialCtl V2.0.0
+# SerialCtl V2.0.1
 
 Win7 SP1 x64 原生便携程序。解压后 serialctl.exe、固定 plink.exe 与 psftp.exe 保持同目录；Windows 主程序不需要 Python、.NET 或另外安装 VC Runtime。NI-VISA 18 完整离线驱动保持 drivers 目录，仅电源 USB 访问需要相应驱动。
 
@@ -35,6 +35,6 @@ CMD 支持本地左右移动、Backspace/Delete/Home/End、历史、中文、复
 
 ## 内网自动更新
 
-编辑程序旁 `update.ini` 的 `[update]` / `url=`，填入服务器完整 `update.json` 地址；默认留空，不预设尚未确定的服务器路径。V2.0.0 起服务器只放完整 ZIP 和内嵌签名 update.json 两个文件。每次启动后台检查，发现更高版本并验证签名后下载完整 ZIP，在没有会话、连接建立或任务时更新并重启。服务器不可达、下载失败或校验失败不妨碍当前版本运行。更新保留 `update.ini`、用户命令、日志和 NI-VISA 驱动。详细操作、日志和恢复办法见 `AUTO-UPDATE.md`。
+编辑程序旁 `update.ini` 的 `[update]` / `url=`，填入服务器完整 `update.json` 地址；V2.0.1 已默认填写 http://172.16.3.188/external/serial/update.json；旧安装若保留了空白或其他地址，需手动修改一次。V2.0.0 起服务器只放完整 ZIP 和内嵌签名 update.json 两个文件。每次启动后台检查，发现更高版本并验证签名后下载完整 ZIP，在没有会话、连接建立或任务时更新并重启。服务器不可达、下载失败或校验失败不妨碍当前版本运行。更新保留 `update.ini`、用户命令、日志和 NI-VISA 驱动。详细操作、日志和恢复办法见 `AUTO-UPDATE.md`。
 
 V1.10.0 及以前首次切换双文件格式需手动部署 V2.0.0；后续版本可按签名清单自动更新。更新功能没有修复本次独立审核登记的全部历史问题。

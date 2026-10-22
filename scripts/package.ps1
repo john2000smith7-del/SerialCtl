@@ -88,8 +88,8 @@ foreach ($architecture in @('x64')) {
 # Always check the template even when release.ps1 already ran check.ps1.
 $updateTemplateLines = @(Get-Content -LiteralPath (Join-Path $repositoryRoot 'docs/package/update.ini') -Encoding UTF8 |
     ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith(';') })
-if (($updateTemplateLines -join "`n") -cne "[update]`nurl=") {
-    throw 'Refusing to package a configured update.ini; only the blank URL template is permitted'
+if (($updateTemplateLines -join "`n") -cne "[update]`nurl=http://172.16.3.188/external/serial/update.json") {
+    throw 'Refusing to package an unapproved update.ini; only the user-approved update URL is permitted'
 }
 
 $copyMap = [ordered]@{

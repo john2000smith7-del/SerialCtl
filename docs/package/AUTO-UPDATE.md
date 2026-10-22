@@ -6,7 +6,7 @@
 
 ```text
 update.json
-SerialCtl-V2.0.0-Win7-x64.zip
+SerialCtl-V2.0.1-Win7-x64.zip
 ```
 
 `update.json` 内含版本、完整 ZIP 的文件名、大小、SHA-256、运行文件清单及数字签名。使用随版本配套提供的文件，不要手动修改 JSON、重新压缩 ZIP 或把普通 SHA-256 文本当作签名。服务器无需 Python、解压工具或额外服务，也不需要 `update.json.sig` / `files` 目录。先上传完整 ZIP，完成后替换 `update.json`；保持二者在同一静态目录。
@@ -19,10 +19,10 @@ V1.10.0 及更旧客户端不支持这个双文件格式，第一次切换到 V2
 
 ```ini
 [update]
-url=
+url=http://172.16.3.188/external/serial/update.json
 ```
 
-在 `url=` 后填写服务器完整 `update.json` 地址。例如管理员确认发布目录为 `/SerialCtl/` 后，可填写 `http://172.16.2.188/SerialCtl/update.json`；此处只是路径示例，正式包默认地址留空。已有地址仍指向该清单时，无需修改。不要填 ZIP 地址或网页首页。留空停用检查，保存后下次启动生效。
+V2.0.1 已按用户确认预填上述地址。ZIP 和 update.json 同放在服务器的 `/external/serial/` 网站目录，不解压 ZIP，不改文件名。自动更新会保留已有 INI，旧安装若仍是空白或其他网址，需要手动改成上述地址一次；已正确填写则无需修改。不要填 ZIP 地址或网页首页。留空停用检查，保存后下次启动生效。
 
 ## 启动自动更新
 

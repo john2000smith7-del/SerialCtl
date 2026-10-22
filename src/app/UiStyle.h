@@ -509,7 +509,8 @@ inline bool UiButtonNeedsRestore(UINT message) {
     // parent (which may have just changed the palette). Restore that state with
     // the complete owner painter before returning to the message loop.
     return message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
-           message == WM_SETTEXT || message == WM_UPDATEUISTATE || message == BM_SETSTATE ||
+           message == WM_SETTEXT || message == WM_UPDATEUISTATE || message == WM_CHANGEUISTATE ||
+           message == BM_SETSTATE || message == BM_CLICK ||
            message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_LBUTTONDBLCLK ||
            message == WM_KEYDOWN || message == WM_KEYUP || message == WM_CAPTURECHANGED ||
            message == WM_CANCELMODE || message == WM_THEMECHANGED;

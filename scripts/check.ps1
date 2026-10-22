@@ -77,11 +77,11 @@ foreach ($token in @('@SERIALCTL_FILE_VERSION_COMMA@', '@SERIALCTL_SEMVER@', '@S
         -Message "The resource template is missing the version token $token"
 }
 
-# The only INI allowed in a release is this disabled, non-secret template.
+# Only the versioned, user-approved non-secret update URL is allowed in a release.
 $updateTemplateLines = @(Get-Content -LiteralPath (Join-Path $repositoryRoot 'docs/package/update.ini') -Encoding UTF8 |
     ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith(';') })
-Assert-SerialCtlCondition -Condition (($updateTemplateLines -join "`n") -ceq "[update]`nurl=") `
-    -Message 'The packaged update.ini must contain only [update] and a blank url; deployment settings must remain local'
+Assert-SerialCtlCondition -Condition (($updateTemplateLines -join "`n") -ceq "[update]`nurl=http://172.16.3.188/external/serial/update.json") `
+    -Message 'The packaged update.ini must contain only [update] and the user-approved update URL'
 
 # V2.0.0 is now an explicitly requested production version. Version consistency
 # is checked above; historical version mentions are legitimate documentation.

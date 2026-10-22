@@ -1,0 +1,2 @@
+gaps left=12 top=12 right=12
+[PASS] Native theme mouse/Space/BM_CLICK: independent rounded button and footer current palette with focus retained

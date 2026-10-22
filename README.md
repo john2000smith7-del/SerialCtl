@@ -2,7 +2,7 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-当前正式版本：`V2.0.0`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
+本轮修复版本：`V2.0.1`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
 
 ## 主要功能
 
@@ -68,7 +68,7 @@ SSH 登录成功后，右侧 `SFTP` 页会自动读取目录。路径面包屑�
 
 ## 内网自动更新
 
-编辑 `serialctl.exe` 旁的 `update.ini`，在 `[update]` 下填写 `url=完整的 update.json 网址`。默认留空，确定服务器 `172.16.2.188` 的实际发布目录后填写；后续地址变化只改这个文件。程序每次启动读取配置，服务器不可达时继续使用当前版本。正在使用的设备和任务不会为更新而被强制断开。
+编辑 `serialctl.exe` 旁的 `update.ini`，在 `[update]` 下填写 `url=完整的 update.json 网址`。V2.0.1 默认填入用户确认的 `http://172.16.3.188/external/serial/update.json`；后续地址变化只改这个文件。程序每次启动读取配置，服务器不可达时继续使用当前版本。正在使用的设备和任务不会为更新而被强制断开。
 
 V2.0.0 起，每次交付两个文件：完整发布 ZIP 和内嵌数字签名的 `update.json`。管理员直接上传到同一静态目录，无需生成签名、拆分运行文件或维护额外 `.sig`。程序启动自动检查，验证后下载整个 ZIP，只替换批准的运行文件，保留配置、日志和驱动；旧版首次切换需要手动部署一次 V2.0.0。使用步骤见 [AUTO-UPDATE.md](docs/package/AUTO-UPDATE.md)，签名封装及发布门槛见 [架构说明](docs/architecture/AUTO-UPDATE.md)。
 
@@ -130,7 +130,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 构建流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中保留完整 ZIP；正式签名完成后，交付其配套 `update.json`：
 
 ```text
-SerialCtl-V2.0.0-Win7-x64.zip
+SerialCtl-V2.0.1-Win7-x64.zip
 update.json
 ```
 

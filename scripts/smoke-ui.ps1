@@ -79,6 +79,90 @@ public static class SerialCtlUiSmoke {
     [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern int GetTextFace(IntPtr dc, int count, StringBuilder face);
     [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr CreateFont(int height, int width, int escapement, int orientation, int weight, uint italic, uint underline, uint strikeout, uint charset, uint output, uint clip, uint quality, uint pitch, string face);
     [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll")] public static extern uint GetPixel(IntPtr dc, int x, int y);
+    [DllImport("dwmapi.dll")] static extern int DwmFlush();
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint from, uint to, bool attach);
+    static uint WindowColor(IntPtr window) {
+        var text = new StringBuilder(32);
+        ReadText(GetDlgItem(window,104),13,new IntPtr(text.Capacity),text);
+        return text.ToString()=="浅色" ? 0x001e1c1cu : 0x00f7f5f5u;
+    }
+    public static void AssertThemeCorners(IntPtr window) {
+        // Read visible desktop pixels: control DCs may clip exterior corners.
+        // Synchronize composition, without forcing any application repaint.
+        DwmFlush();
+        IntPtr theme=GetDlgItem(window,104); RECT r; GetWindowRect(theme,out r);
+        IntPtr dc=GetDC(IntPtr.Zero);
+        try {
+            foreach(var point in new[]{new[]{r.Left,r.Top},new[]{r.Right-1,r.Top},new[]{r.Left,r.Bottom-1},new[]{r.Right-1,r.Bottom-1}})
+                if(GetPixel(dc,point[0],point[1])!=WindowColor(window))
+                    throw new Exception("Theme button has rectangular/stale exterior pixels after native input");
+        } finally { ReleaseDC(IntPtr.Zero,dc); }
+        IntPtr footer=GetDlgItem(window,302); GetWindowRect(footer,out r);
+        bool dark=WindowColor(window)==0x001e1c1cu;
+        uint panel=dark ? 0x00262424u : 0x00ffffffu;
+        bool active=IsWindowEnabled(footer);
+        bool highlighted=(Send(footer,0xf2,IntPtr.Zero,IntPtr.Zero).ToInt64()&4)!=0 ||
+            (active && GetProp(footer,"SerialCtl.ButtonHover")!=IntPtr.Zero);
+        uint fill=highlighted ? (dark ? 0x0050371fu : 0x00fff1e5u) :
+            active ? (dark ? 0x002e2c2cu : 0x00f7f2f2u) : panel;
+        dc=GetDC(IntPtr.Zero);
+        try {
+            if(GetPixel(dc,r.Left,r.Bottom-1)!=panel || GetPixel(dc,r.Right-1,r.Bottom-1)!=panel ||
+                GetPixel(dc,(r.Left+r.Right)/2,r.Bottom-(int)Math.Round(5*(r.Bottom-r.Top)/32.0))!=fill)
+                throw new Exception("Theme change left rectangular/stale bottom action pixels");
+        } finally { ReleaseDC(IntPtr.Zero,dc); }
+    }
+    public static void AssertToolbar(IntPtr window) {
+        SetForegroundWindow(window); DwmFlush();
+        RECT ssh,settings,theme,terminal,left,right,client;
+        GetWindowRect(GetDlgItem(window,100),out ssh); GetWindowRect(GetDlgItem(window,303),out settings);
+        GetWindowRect(GetDlgItem(window,104),out theme); GetWindowRect(GetDlgItem(window,107),out terminal);
+        GetWindowRect(GetDlgItem(window,106),out left); GetWindowRect(GetDlgItem(window,112),out right);
+        GetClientRect(window,out client); MapWindowPoints(window,IntPtr.Zero,ref client,2);
+        double scale=(theme.Bottom-theme.Top)/36.0;
+        int padding=(int)Math.Round(16*scale), gap=(int)Math.Round(12*scale);
+        int horizontal=terminal.Left-padding-left.Right-padding;
+        int vertical=terminal.Top-padding-ssh.Bottom-(int)Math.Round(2*scale);
+        int other=right.Left-padding-terminal.Right-padding;
+        if(Math.Abs(horizontal-gap)>1 || Math.Abs(vertical-gap)>1 || Math.Abs(other-gap)>1)
+            throw new Exception("Unequal main card gaps: left="+horizontal+" top="+vertical+" right="+other);
+        if(theme.Left<settings.Right+gap || Math.Abs(client.Right-theme.Right-gap)>1)
+            throw new Exception("Theme action overlaps navigation or has an incorrect outer inset");
+        IntPtr dc=GetDC(IntPtr.Zero);
+        try {
+            int x=(settings.Right+(int)Math.Round(8*scale)+theme.Left)/2;
+            if(GetPixel(dc,x,(theme.Top+theme.Bottom)/2)!=WindowColor(window))
+                throw new Exception("Navigation container still stretches behind the theme action");
+        } finally { ReleaseDC(IntPtr.Zero,dc); }
+        AssertThemeCorners(window);
+        Console.WriteLine("[PASS] Toolbar ends after Settings; detached theme and equal card gaps: "+gap);
+    }
+    public static void ExerciseNativeTheme(IntPtr window) {
+        IntPtr theme=GetDlgItem(window,104); uint pid, target=GetWindowThreadProcessId(theme,out pid);
+        RECT button; GetWindowRect(theme,out button);
+        SetForegroundWindow(window); SetCursorPos((button.Left+button.Right)/2,(button.Top+button.Bottom)/2);
+        uint caller=GetCurrentThreadId(); bool attached=AttachThreadInput(caller,target,true);
+        if(!attached) throw new Exception("Cannot attach to native theme focus");
+        try { SetFocus(theme); } finally { AttachThreadInput(caller,target,false); }
+        for(int i=0;i<2;i++) {
+            uint before=WindowColor(window);
+            Send(theme,0x201,new IntPtr(1),new IntPtr(0x00100010)); AssertThemeCorners(window);
+            Send(theme,0x202,IntPtr.Zero,new IntPtr(0x00100010)); AssertThemeCorners(window);
+            if(WindowColor(window)==before) throw new Exception("Native theme mouse release did not switch palette");
+            before=WindowColor(window);
+            Send(theme,0x100,new IntPtr(32),IntPtr.Zero); AssertThemeCorners(window);
+            Send(theme,0x101,new IntPtr(32),IntPtr.Zero); AssertThemeCorners(window);
+            if(WindowColor(window)==before) throw new Exception("Native theme Space release did not switch palette");
+            before=WindowColor(window);
+            Send(theme,0xf5,IntPtr.Zero,IntPtr.Zero); AssertThemeCorners(window);
+            if(WindowColor(window)==before) throw new Exception("Native BM_CLICK did not switch palette");
+        }
+        if((Send(theme,0xf2,IntPtr.Zero,IntPtr.Zero).ToInt64()&8)==0)
+            throw new Exception("Native theme regression failed to retain button focus");
+        Console.WriteLine("[PASS] Theme corner pixels survive native mouse, Space and BM_CLICK with focus retained");
+    }
     public static void AssertLabels(IntPtr dialog, string expectedFace) {
         // HFONT handles are process-local. Measure the design font in this process,
         // rather than silently selecting the stock System font with a foreign handle.
@@ -252,6 +336,9 @@ $root = Get-SerialCtlRepositoryRoot
 $version = Get-SerialCtlVersion
 $extract = Join-Path $OutputDirectory 'payload'
 Expand-Archive -LiteralPath (Join-Path $root ('bin/' + (Get-SerialCtlArchiveName))) -DestinationPath $extract -Force
+# Keep the published, user-approved INI in the archive. Only this isolated GUI
+# fixture disables network updates; it must never contact the private site.
+Set-Content -LiteralPath (Join-Path $extract 'update.ini') -Value "[update]`r`nurl=" -Encoding ASCII
 if ($ActualMouse) {
     # Record the exact untouched program before any fixture or final cleanup.
     @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Get-FileHash (Join-Path $extract $_) -Algorithm SHA256 } |
@@ -331,6 +418,8 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle, 0, 0, 980, 620, $true) | Out-Null
             Start-Sleep -Milliseconds 300
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
+            [SerialCtlUiSmoke]::AssertToolbar($application.MainWindowHandle)
+            [SerialCtlUiSmoke]::ExerciseNativeTheme($application.MainWindowHandle)
             Capture-Window $application.MainWindowHandle "$architecture-packaged-$theme"
             Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 300
