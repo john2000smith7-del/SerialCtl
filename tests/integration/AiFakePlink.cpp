@@ -51,7 +51,8 @@ int wmain(int argc, wchar_t **argv) {
         const auto id = message.value("id", Json());
         if (method == "initialize")
             Send({{"id", id}, {"result", {{"userAgent", "offline-fixture"}}}});
-        else if (method == "model/list")
+        else if (method == "model/list") {
+            Send({{"method", "remoteControl/status/changed"}, {"params", {{"status", "disabled"}}}});
             Send({{"id", id},
                   {"result",
                    {{"data",
@@ -61,11 +62,19 @@ int wmain(int argc, wchar_t **argv) {
                                    {"isDefault", true},
                                    {"supportedReasoningEfforts", Json::array({{{"reasoningEffort", "high"}}})}}})},
                     {"nextCursor", nullptr}}}});
-        else if (method == "config/read")
+        } else if (method == "config/read")
             Send({{"id", id}, {"result", {{"config", {{"model", "fixture"}}}}}});
         else if (method == "thread/start") {
             if (message["params"].value("dynamicTools", Json::array()).size() != 4)
                 return 44;
+            if (message["params"].contains("config") &&
+                message["params"]["config"].value("web_search", Json()) != "disabled") {
+                Send(
+                    {{"id", id},
+                     {"error",
+                      {{"code", -32600}, {"message", "failed to load configuration: expected string in web_search"}}}});
+                continue;
+            }
             Send({{"id", id}, {"result", {{"thread", {{"id", "fixture-thread"}}}}}});
         } else if (method == "turn/start") {
             Send({{"id", id}, {"result", {{"turn", {{"id", "fixture-turn"}}}}}});
@@ -81,6 +90,15 @@ int wmain(int argc, wchar_t **argv) {
                 std::cout.put(byte);
                 std::cout.flush();
             }
+            Send({{"method", "item/completed"},
+                  {"params",
+                   {{"threadId", "fixture-thread"},
+                    {"turnId", "fixture-turn"},
+                    {"item",
+                     {{"type", "agentMessage"},
+                      {"id", "reply"},
+                      {"text", u8"读取真实串口日志。"},
+                      {"phase", nullptr}}}}}});
             Send({{"id", 501},
                   {"method", "item/tool/call"},
                   {"params",

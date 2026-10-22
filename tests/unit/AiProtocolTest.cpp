@@ -61,6 +61,33 @@ int main() {
         Require(create["method"] == "thread/start" && create["params"]["dynamicTools"].size() == 4 &&
                     create["params"]["model"] == "fixture",
                 "Presentation adapter lost fixed role/model/tool configuration");
+        Require(create["params"]["config"]["web_search"] == "disabled" && create["params"]["approvalPolicy"] == "never",
+                "Thread configuration must use the server enum and direct serial operation policy");
+        const auto resumed = MakeRequest(Operation::RestoreConversation, 78, {{"conversationId", "t"}});
+        Require(resumed["params"]["config"]["web_search"] == "disabled" &&
+                    resumed["params"]["approvalPolicy"] == "never",
+                "Resumed threads must retain the current serial policy");
+        Require(DecodeResponse(Operation::NewConversation, {{"thread", {{"id", "nested-id"}}}})["conversationId"] ==
+                    "nested-id",
+                "Thread ID must come from result.thread.id");
+        Require(DecodeNotification({{"method", "remoteControl/status/changed"}, {"params", {{"status", "disabled"}}}})
+                    .is_null(),
+                "Unrelated notification must not be treated as a response");
+        const auto complete = DecodeNotification(
+            {{"method", "item/completed"},
+             {"params",
+              {{"threadId", "t"},
+               {"turnId", "u"},
+               {"item", {{"type", "agentMessage"}, {"id", "m"}, {"text", u8"完整回复"}, {"phase", nullptr}}}}}});
+        Require(complete["event"] == "textComplete" && complete["final"] == true && complete["taskId"] == "u",
+                "Gateway final agentMessage without turn/completed must be recognized");
+        Require(DecodeNotification(
+                    {{"method", "item/completed"},
+                     {"params", {{"item", {{"type", "agentMessage"}, {"phase", "commentary"}}}}}})["final"] == false,
+                "Intermediate commentary must not finish a task");
+        Require(ExplainServiceError("Missing environment variable: `CONTAINER_APIKEY`.").find("~/.profile") !=
+                    std::string::npos,
+                "Missing server environment must have an actionable diagnosis");
         const auto delta = DecodeNotification(
             {{"method", "item/agentMessage/delta"},
              {"params", {{"threadId", "t"}, {"turnId", "u"}, {"itemId", "m"}, {"delta", u8"串口"}}}});

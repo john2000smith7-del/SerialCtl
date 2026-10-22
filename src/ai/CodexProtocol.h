@@ -22,12 +22,13 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
         break;
     case Operation::NewConversation:
         method = "thread/start";
-        params = {{"baseInstructions", EngineerInstructions()},
-                  {"developerInstructions", u8"始终遵守 SerialCtl 逐次串口授权；只使用 serialctl_ 动态工具。"},
-                  {"sandbox", "read-only"},
-                  {"approvalPolicy", "untrusted"},
-                  {"dynamicTools", SerialTools()},
-                  {"config", policy}};
+        params = {
+            {"baseInstructions", EngineerInstructions()},
+            {"developerInstructions", u8"用户已允许直接读写本次选定的串口，无需逐条确认；只使用 serialctl_ 动态工具。"},
+            {"sandbox", "read-only"},
+            {"approvalPolicy", "never"},
+            {"dynamicTools", SerialTools()},
+            {"config", policy}};
         if (!data.value("modelId", std::string()).empty())
             params["model"] = data["modelId"];
         break;
@@ -46,8 +47,9 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
         method = "thread/resume";
         params = {{"threadId", data.at("conversationId")},
                   {"sandbox", "read-only"},
-                  {"approvalPolicy", "untrusted"},
+                  {"approvalPolicy", "never"},
                   {"baseInstructions", EngineerInstructions()},
+                  {"developerInstructions", u8"用户已允许直接读写本次选定的串口，无需逐条确认；只使用 serialctl_ 动态工具。"},
                   {"config", policy}};
         break;
     }
@@ -105,6 +107,13 @@ inline Json DecodeNotification(const Json &wire) {
     if (wire.contains("event"))
         return wire; // transport state from CodexClient
     const auto method = wire.value("method", std::string());
+    // Ignore unrelated notifications before inspecting their arbitrary params.
+    // Presence/order of these notifications does not consume a request ID.
+    if (!wire.contains("id") && method != "item/agentMessage/delta" && method != "item/completed" &&
+        method != "item/started" && method != "item/reasoning/textDelta" &&
+        method != "item/reasoning/summaryTextDelta" && method != "turn/started" && method != "turn/completed" &&
+        method != "error")
+        return Json();
     const auto p = wire.value("params", Json::object());
     if (wire.contains("id")) {
         if (method != "item/tool/call")
@@ -130,6 +139,10 @@ inline Json DecodeNotification(const Json &wire) {
         event["event"] = "textComplete";
         event["messageId"] = item.value("id", std::string());
         event["text"] = item.value("text", std::string());
+        event["final"] = !item.contains("phase") || item["phase"].is_null() || item["phase"] == "final_answer";
+    } else if (method == "item/started" || method == "item/reasoning/textDelta" ||
+               method == "item/reasoning/summaryTextDelta") {
+        event["event"] = "taskActivity";
     } else if (method == "turn/started") {
         event["event"] = "taskStarted";
         event["taskId"] = p.at("turn").value("id", std::string());
@@ -142,7 +155,10 @@ inline Json DecodeNotification(const Json &wire) {
         event["message"] = error.is_object() ? error.value("message", std::string()) : std::string();
     } else if (method == "error") {
         event["event"] = "serviceError";
-        event["message"] = p.value("error", Json::object()).value("message", std::string("Service error"));
+        const auto error = p.value("error", Json::object());
+        event["message"] =
+            error.is_object() ? error.value("message", std::string("Service error")) : std::string("Service error");
+        event["willRetry"] = p.value("willRetry", false);
     } else
         return Json();
     return event;

@@ -169,3 +169,5 @@ Power and local CMD share the center card. Power uses three checked channel card
 - Trend grids use the existing border token at 50% opacity over the surface. Native WM_PRINT rendering must match normal field/combobox painting; disabled edit clients retain the same field fill and muted text.
 
 The left connection card keeps the existing per-session Disconnect action and one compact danger-text “全部断开” footer action. It stops real transports, CMD process trees, SFTP transfers and power-task ownership before removing entries. No remote disconnect permission is implied. CMD drafts render within the terminal; no composer is added.
+
+AI chat bubbles use alignment and accent fill to identify the speaker; omit role/status headings and the Enter/Shift+Enter footer hint. The composer and all its rounded fields restore exterior corners using the parent surface in both palettes. Owner-drawn theme buttons restore their full current-palette rendering after native focus/press transitions; a theme toggle synchronously invalidates the complete visible child tree.

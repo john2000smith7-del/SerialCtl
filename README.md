@@ -2,7 +2,7 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-本轮候选版本：`V1.0.9`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
+本轮候选版本：`V1.10.0`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
 
 ## 主要功能
 
@@ -28,7 +28,7 @@ SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具�
 
 顶部 AI 页面使用中间原终端区域进行对话，底部内部提供模型选择、多行输入与发送/停止；回复以蓝色强调的独立消息框显示，支持上下滚动查看历史。连接 Linux Codex 服务器后复用其模型配置，无需在 Windows 安装 Codex 或重复填写网关密钥。
 
-关联串口由用户明确选择。可在输入栏选择“连接远程串口…”，填写远程 IP、查询并选择该主机已经开放的串口；不默认选择本机 COM。AI 可以读取日志，并在用户逐次确认后通过现有串口连接提交诊断命令，执行结果以设备回显为准。当前范围不新增多客户端写入仲裁。
+关联串口由用户明确选择。可在输入栏选择“连接远程串口…”，填写远程 IP、查询并选择该主机已经开放的串口；不默认选择本机 COM。AI 可以读取日志，并直接通过现有串口连接提交诊断命令，不再逐条二次确认，执行结果以设备回显为准。当前范围不新增多客户端写入仲裁。
 
 实现、凭据与兼容边界见 [AI 架构说明](docs/architecture/AI-ASSISTANT.md)，正式发布前需完成 [AI 验收](docs/testing/AI-ASSISTANT-ACCEPTANCE.md)。本段不代表已通过现场 SSH、模型网关或 Win7 硬件验收。
 
@@ -130,7 +130,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 发布流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中只保留：
 
 ```text
-SerialCtl-V1.0.9-Win7-x64.zip
+SerialCtl-V1.10.0-Win7-x64.zip
 ```
 
 压缩包根目录直接包含 x64 的 `serialctl.exe`、`plink.exe` 和 `psftp.exe`，解压后保持三者位于同一目录。
@@ -165,6 +165,6 @@ SerialCtl-V1.0.9-Win7-x64.zip
 
 推送 main、feat/*、feature/* 或手动运行 Actions 的 `Windows Win7 release build` 会构建并验证 x64。正式程序包可在仓库 Releases 下载；Actions 的 `SerialCtl-Win7-portable` 为构建产物（保留 30 天）。CI 使用 Windows Server 2022，不替代真实 Win7 SP1 与硬件验收。
 
-V1.0.9 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
+V1.10.0 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
 
 统一协议和客户端说明见 [WEBSOCKET-PROTOCOL.md](docs/architecture/WEBSOCKET-PROTOCOL.md)，本轮状态见 [V1.0.6-ACCEPTANCE.md](docs/testing/V1.0.6-ACCEPTANCE.md)。

@@ -80,7 +80,6 @@ class AiPane {
     void Add(std::wstring role, std::wstring text, std::string item = {});
     void SetStatus(const std::wstring &);
     void UpdateActions();
-    void ResolveCommand(bool);
     void ShowHistory();
     void RememberThread(const std::string &, const std::wstring &);
     Json History() const;
@@ -114,8 +113,12 @@ class AiPane {
     int thumbGrab_ = 0, wheelRemainder_ = 0, layoutWidth_ = 0;
     size_t selectedMessage_ = SIZE_MAX;
     std::uint64_t nextRequest_ = 1;
-    std::map<std::uint64_t, std::string> requests_;
+    struct PendingRequest {
+        std::string purpose, turn;
+    };
+    std::map<std::uint64_t, PendingRequest> requests_;
     std::set<std::string> seenToolCalls_;
+    std::set<std::string> finishedTurns_;
     std::string thread_, turn_, target_, turnTarget_, serverDefaultModel_;
     std::vector<std::string> targets_, modelIds_;
     std::vector<bool> reasoningModels_;
@@ -123,7 +126,7 @@ class AiPane {
     std::string attachmentTarget_;
     bool busy_ = false, stopRequested_ = false, observedTool_ = false, dialogEnter_ = false, connectionError_ = false;
     size_t messageBytes_ = 0;
-    Json pendingCommand_, pendingObservation_;
-    ULONGLONG observeDeadline_ = 0, commandDeadline_ = 0, turnStarted_ = 0;
+    Json pendingObservation_;
+    ULONGLONG observeDeadline_ = 0, completionDeadline_ = 0, turnStarted_ = 0;
 };
 } // namespace serialctl

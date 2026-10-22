@@ -173,7 +173,6 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
 
     $testPrograms = @{
         'ai_protocol_test.exe' = @('KERNEL32.dll')
-        'ai_pane_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll')
         'ui_buffered_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll')
         'ui_combo_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll')
         'update_client_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'WINHTTP.dll', 'WS2_32.dll')
@@ -200,6 +199,8 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     $fixtureDirectory = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "ai-fixture\$Configuration"
     & $binaryVerifier -Path (Join-Path $fixtureDirectory 'ai_client_test.exe') -Architecture $item `
         -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll')
+    & $binaryVerifier -Path (Join-Path $fixtureDirectory 'ai_pane_test.exe') -Architecture $item `
+        -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll')
     & $binaryVerifier -Path (Join-Path $fixtureDirectory 'plink.exe') -Architecture $item `
         -Subsystem CUI -AllowedDll @('KERNEL32.dll')
 }

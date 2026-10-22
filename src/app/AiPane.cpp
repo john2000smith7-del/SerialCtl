@@ -19,8 +19,6 @@ enum {
     New,
     Connect,
     Bottom,
-    Approve,
-    Reject,
     Host = 200,
     Port,
     Username,
@@ -128,12 +126,14 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     Child(L"BUTTON", L"新建会话", New, BS_OWNERDRAW | WS_TABSTOP);
     auto input = Child(L"EDIT", L"", Input, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_TABSTOP);
     SendMessageW(input, EM_SETLIMITTEXT, 32768, 0);
+    SetPropW(input, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
     UiStyleField(input, &style_);
     SendMessageW(input, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"输入消息，或让 AI 分析当前串口…"));
     SetWindowSubclass(input, InputProc, 1, reinterpret_cast<DWORD_PTR>(this));
     for (int id : {Model, Target}) {
         auto c = Child(WC_COMBOBOXW, L"", id,
                        CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
+        SetPropW(c, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
         UiStyleField(c, &style_);
     }
     Child(L"BUTTON", L"刷新", Refresh, BS_OWNERDRAW | WS_TABSTOP);
@@ -141,8 +141,6 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     Child(L"BUTTON", L"分析当前日志", Analyze, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"持续观察", Observe, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"返回最新消息", Bottom, BS_OWNERDRAW | WS_TABSTOP);
-    Child(L"BUTTON", L"确认发送", Approve, BS_OWNERDRAW | WS_TABSTOP);
-    Child(L"BUTTON", L"拒绝", Reject, BS_OWNERDRAW | WS_TABSTOP);
     modelIds_ = {settings_.model};
     reasoningModels_ = {true};
     SendMessageW(Control(Model), CB_ADDSTRING, 0,
@@ -253,7 +251,7 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const auto c = UiTheme(self->dark_);
         FillRect(dc, &item.rcItem, self->surfaceBrush_);
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
-        const bool primary = item.CtlID == Send || item.CtlID == Approve || item.CtlID == IDOK;
+        const bool primary = item.CtlID == Send || item.CtlID == IDOK;
         const bool hover = GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr;
         UiBox(dc, item.rcItem,
               primary && enabled ? c.accent : (hover || (item.itemState & ODS_SELECTED) ? c.accentSoft : c.raised),
@@ -286,9 +284,9 @@ void AiPane::Layout() {
     RECT r{};
     GetClientRect(window_, &r);
     const int width = r.right, height = r.bottom;
-    const int composerHeight = D(128), footer = D(24), top = D(64), gap = D(8);
+    const int composerHeight = D(128), footer = D(8), top = D(64), gap = D(8);
     const int composerTop = std::max(top + D(64), height - composerHeight - footer);
-    const int contextTop = composerTop - D(pendingCommand_.is_null() ? 40 : 76);
+    const int contextTop = composerTop - D(40);
     UiLayoutBatch b;
     const int historyLeft = std::max(D(160), width - D(280));
     b.Move(Control(Connect), historyLeft, D(4), D(88), D(28));
@@ -302,12 +300,6 @@ void AiPane::Layout() {
     b.Move(Control(Bottom), std::max(left, left + cw - D(136)), contextTop, D(136), D(32));
     b.Show(Control(Bottom), scroll_.unread ? SW_SHOW : SW_HIDE);
     b.Show(Control(Observe), scroll_.unread ? SW_HIDE : SW_SHOW);
-    if (!pendingCommand_.is_null()) {
-        b.Move(Control(Reject), std::max(left, left + cw - D(192)), contextTop + D(36), D(80), D(32));
-        b.Move(Control(Approve), std::max(left, left + cw - D(104)), contextTop + D(36), D(104), D(32));
-    }
-    b.Show(Control(Approve), pendingCommand_.is_null() ? SW_HIDE : SW_SHOW);
-    b.Show(Control(Reject), pendingCommand_.is_null() ? SW_HIDE : SW_SHOW);
     b.Move(Control(Input), left + D(8), composerTop + D(8), std::max(D(100), cw - D(16)), D(64));
     const int modelWidth = std::max(D(100), std::min(D(200), cw - D(348)));
     b.Move(Control(Model), left + D(8), composerTop + D(84), modelWidth, D(220));
@@ -336,16 +328,6 @@ void AiPane::Paint(HDC target) {
     MapWindowPoints(HWND_DESKTOP, window_, reinterpret_cast<POINT *>(&input), 2);
     RECT composer{input.left - D(8), input.top - D(8), input.right + D(8), input.top + D(120)};
     UiBox(dc, composer, c.surface, c.accent, D(12));
-    if (composer.right - composer.left > D(620))
-        Draw(dc, L"只读 · 写入需逐次确认",
-             {composer.right - D(224), composer.bottom - D(44), composer.right - D(80), composer.bottom - D(12)},
-             smallFont_, c.muted);
-    Draw(dc, L"Enter 发送 · Shift+Enter 换行", {composer.left, composer.bottom, r.right, r.bottom}, smallFont_,
-         c.muted);
-    if (!pendingCommand_.is_null())
-        Draw(dc, L"等待本次串口命令授权",
-             {0, composer.top - D(40), std::max<LONG>(D(64), r.right - D(208)), composer.top - D(8)}, smallFont_,
-             c.accent);
 }
 void AiPane::Reflow(bool appended) {
     if (!transcript_)
@@ -364,8 +346,7 @@ void AiPane::Reflow(bool appended) {
         if (message.measuredWidth != w || message.measuredLength != message.text.size()) {
             message.paragraphs.clear();
             int inner = D(16);
-            message.paragraphs.push_back({{D(16), inner, w - D(16), inner + D(24)}, message.role, 3});
-            inner += D(32);
+
             std::wistringstream stream(message.text);
             std::wstring line;
             bool code = false;
@@ -662,7 +643,7 @@ bool AiPane::Request(ai::Operation operation, Json params, const std::string &pu
         SetStatus(L"AI 连接不可用或发送队列已满");
         return false;
     }
-    requests_[id] = purpose;
+    requests_[id] = {purpose, turn_};
     return true;
 }
 void AiPane::Reply(const Json &id, Json result, bool success) {
@@ -710,6 +691,8 @@ void AiPane::SendPrompt(std::wstring text) {
     Add(L"我", text);
     SetWindowTextW(Control(Input), L"");
     busy_ = true;
+    turn_.clear();
+    completionDeadline_ = 0;
     stopRequested_ = false;
     observedTool_ = false;
     turnStarted_ = GetTickCount64();
@@ -727,7 +710,7 @@ void AiPane::StartTurn() {
     Json params = {{"conversationId", thread_},
                    {"modelId", settings_.model},
                    {"text", Utf8(pendingPrompt_) + "\n\n[SerialCtl associated serial session: " + turnTarget_ +
-                                "; default read-only]"}};
+                                "; selected session read/write enabled; no per-command confirmation]"}};
     if (!Request(ai::Operation::StartTask, params, "turn")) {
         busy_ = false;
         pendingPrompt_.clear();
@@ -736,7 +719,7 @@ void AiPane::StartTurn() {
 }
 void AiPane::Stop() {
     stopRequested_ = true;
-    ResolveCommand(false);
+    completionDeadline_ = 0;
     if (!pendingObservation_.is_null()) {
         Reply(pendingObservation_["requestId"], {{"error", "User stopped observation"}}, false);
         pendingObservation_ = nullptr;
@@ -756,6 +739,7 @@ void AiPane::NewConversation() {
         return;
     thread_.clear();
     turn_.clear();
+    finishedTurns_.clear();
     messages_.clear();
     selectedMessage_ = SIZE_MAX;
     messageBytes_ = 0;
@@ -783,11 +767,7 @@ void AiPane::Action(int id) {
     else if (id == Bottom) {
         scroll_.Bottom();
         Scroll(0);
-    } else if (id == Approve)
-        ResolveCommand(true);
-    else if (id == Reject)
-        ResolveCommand(false);
-    else if (id == Analyze || id == Observe) {
+    } else if (id == Analyze || id == Observe) {
         RefreshTargets();
         if (target_.empty()) {
             SetStatus(L"请先打开并选择串口会话");
@@ -808,13 +788,12 @@ void AiPane::Action(int id) {
             size_t start = attachment_.size() - 16384;
             if (attachment_[start] >= 0xdc00 && attachment_[start] <= 0xdfff)
                 ++start;
-            attachment_ =
-                L"[已截取所选串口最近 16K 字符，完整数据可由只读日志工具继续获取]\n" + attachment_.substr(start);
+            attachment_ = L"[已截取所选串口最近 16K 字符，完整数据可由日志工具继续获取]\n" + attachment_.substr(start);
         }
         attachmentTarget_ = target_;
-        SendPrompt(id == Analyze
-                       ? L"请分析当前串口日志，引用实际证据，说明事实、可能原因与下一步诊断。"
-                       : L"请持续观察当前关联串口的新输出；使用有界观察工具，发现变化后分析，未经我确认不要写入。");
+        SendPrompt(id == Analyze ? L"请分析当前串口日志，引用实际证据，说明事实、可能原因与下一步诊断。"
+                                 : L"请持续观察当前关联串口的新输出；使用有界观察工具，发现变化后分析；需要诊断时可直接"
+                                   L"在关联串口输入命令并读取反馈。");
     }
 }
 void AiPane::Disconnect() {
@@ -824,7 +803,7 @@ void AiPane::Disconnect() {
     turn_.clear();
     pendingPrompt_.clear();
     requests_.clear();
-    pendingCommand_ = nullptr;
+    completionDeadline_ = 0;
     pendingObservation_ = nullptr;
     SetStatus(L"AI 已断开；原有串口和电源不受影响");
     UpdateActions();
@@ -885,9 +864,10 @@ void AiPane::Poll() {
             Event(e);
         } catch (const std::exception &) {
             if (e.is_object() && e.contains("requestId"))
-                Reply(e["requestId"], {{"error", "Invalid or unsupported tool parameters; no device write performed"}},
+                Reply(e["requestId"], {{"error", "Client could not process the tool event; do not retry device commands automatically"}},
                       false);
-            SetStatus(L"Codex 返回了不支持的协议内容；该请求未执行设备操作");
+            SetStatus(L"无法处理 Codex 的 " + Wide(e.value("event", std::string("unknown"))) +
+                      L" 事件，请检查服务端返回格式；设备命令不自动重发");
         }
     }
     if (!pendingObservation_.is_null() && (GetTickCount64() >= observeDeadline_ || stopRequested_)) {
@@ -899,8 +879,11 @@ void AiPane::Poll() {
         Reply(request["requestId"], result, !result.contains("error"));
         Add(L"工具", L"持续观察完成 · " + Wide(result.dump()));
     }
-    if (!pendingCommand_.is_null() && GetTickCount64() > commandDeadline_)
-        ResolveCommand(false);
+    // Some compatible gateways omit turn/completed. A final agent item can
+    // finish after a short quiet interval; any subsequent activity cancels it.
+    if (busy_ && completionDeadline_ && GetTickCount64() >= completionDeadline_ && pendingObservation_.is_null() &&
+        requests_.empty())
+        Event({{"event", "taskFinished"}, {"conversationId", thread_}, {"taskId", turn_}, {"status", "completed"}});
     if (busy_ && turnStarted_ && GetTickCount64() - turnStarted_ > 10 * 60 * 1000) {
         Stop();
         client_.Disconnect();
@@ -937,7 +920,7 @@ void AiPane::Event(const Json &e) {
         busy_ = false;
         turn_.clear();
         requests_.clear();
-        pendingCommand_ = nullptr;
+        completionDeadline_ = 0;
         pendingObservation_ = nullptr;
         pendingPrompt_.clear();
         if (devices_)
@@ -951,10 +934,11 @@ void AiPane::Event(const Json &e) {
         auto found = requests_.find(e.at("token").get<std::uint64_t>());
         if (found == requests_.end())
             return;
-        auto purpose = found->second;
+        auto purpose = found->second.purpose;
+        const auto requestTurn = found->second.turn;
         requests_.erase(found);
         if (e.contains("error")) {
-            SetStatus(L"Codex 请求失败：" + Wide(e.at("error").get<std::string>()).substr(0, 512));
+            SetStatus(Wide(ai::ExplainServiceError(e.at("error").get<std::string>())));
             Add(L"状态", status_);
             if (purpose == "start" || purpose == "turn" || purpose == "resume") {
                 busy_ = false;
@@ -975,7 +959,12 @@ void AiPane::Event(const Json &e) {
             return;
         }
         const auto &result = e.at("result");
-        if (purpose == "start") {
+        if (purpose == "interrupt") {
+            Event({{"event", "taskFinished"},
+                   {"conversationId", thread_},
+                   {"taskId", requestTurn},
+                   {"status", "interrupted"}});
+        } else if (purpose == "start") {
             thread_ = result.at("conversationId").get<std::string>();
             RememberThread(thread_, messages_.empty() ? L"新会话" : messages_.front().text.substr(0, 40));
             if (stopRequested_) {
@@ -1052,6 +1041,13 @@ void AiPane::Event(const Json &e) {
     }
     if (!e.value("conversationId", std::string()).empty() && e["conversationId"] != thread_)
         return;
+    const auto task = e.value("taskId", std::string());
+    if (!task.empty() && finishedTurns_.count(task))
+        return;
+    if (!task.empty() && !turn_.empty() && task != turn_)
+        return;
+    if (event == "taskActivity" || event == "serialToolRequest" || event == "textDelta")
+        completionDeadline_ = 0;
     if ((event == "textDelta" || event == "textComplete") && !stopRequested_) {
         const auto id = e.value("messageId", std::string());
         const auto text = Wide(e.value("text", std::string()));
@@ -1074,6 +1070,8 @@ void AiPane::Event(const Json &e) {
                 Reflow(true);
             }
         }
+        if (event == "textComplete" && busy_ && e.value("final", false))
+            completionDeadline_ = GetTickCount64() + 1000;
     } else if (event == "taskStarted") {
         if (busy_) {
             turn_ = e.value("taskId", std::string());
@@ -1082,25 +1080,45 @@ void AiPane::Event(const Json &e) {
         }
     } else if (event == "taskFinished") {
         const auto state = e.value("status", std::string());
+        if (!turn_.empty()) {
+            if (finishedTurns_.size() >= 1000)
+                finishedTurns_.clear();
+            finishedTurns_.insert(turn_);
+        }
         busy_ = false;
         turn_.clear();
-        pendingCommand_ = nullptr;
+        completionDeadline_ = 0;
         pendingObservation_ = nullptr;
         if (devices_)
             devices_("release", {{"sessionId", turnTarget_}});
         if (state == "failed") {
-            Add(L"状态", L"模型调用失败：" + Wide(e.value("message", std::string())));
-            SetStatus(L"模型调用失败；该模型能力未验证");
+            Add(L"状态", Wide(ai::ExplainServiceError(e.value("message", std::string()))));
+            SetStatus(Wide(ai::ExplainServiceError(e.value("message", std::string()))));
         } else
             SetStatus(stopRequested_  ? L"任务已停止；已提交命令的执行结果仍需设备回显确认"
                       : observedTool_ ? L"回复完成 · 已验证串口工具调用"
                                       : L"回复完成 · 推理已响应，工具能力待实际调用验证");
         RefreshTargets();
         UpdateActions();
-    } else if (event == "serviceError")
-        Add(L"状态", L"AI 异常：" + Wide(e.value("message", std::string())));
+    } else if (event == "serviceError") {
+        const auto explanation = Wide(ai::ExplainServiceError(e.value("message", std::string())));
+        Add(L"状态", explanation);
+        SetStatus(explanation);
+        if (!e.value("willRetry", false)) {
+            busy_ = false;
+            completionDeadline_ = 0;
+            if (!turn_.empty())
+                finishedTurns_.insert(turn_);
+            turn_.clear();
+            pendingObservation_ = nullptr;
+            if (devices_)
+                devices_("release", {{"sessionId", turnTarget_}});
+            UpdateActions();
+        }
+    }
 }
 void AiPane::ServerRequest(const Json &e) {
+    completionDeadline_ = 0;
     if (e.value("event", std::string()) == "unsupportedRequest") {
         client_.Reject(e.at("requestId"), e.value("approval", false));
         return;
@@ -1112,7 +1130,7 @@ void AiPane::ServerRequest(const Json &e) {
     const auto &p = e;
     const auto tool = p.value("tool", std::string());
     auto args = p.value("arguments", Json::object());
-    if (p.value("conversationId", std::string()) != thread_ ||
+    if (p.value("conversationId", std::string()) != thread_ || finishedTurns_.count(p.value("taskId", std::string())) ||
         (!turn_.empty() && p.value("taskId", std::string()) != turn_)) {
         Reply(e["requestId"], {{"error", "Tool request belongs to another thread or turn"}}, false);
         return;
@@ -1161,44 +1179,22 @@ void AiPane::ServerRequest(const Json &e) {
         const int seconds = std::clamp(args.value("seconds", 3), 1, 10);
         observeDeadline_ = GetTickCount64() + seconds * 1000;
         observedTool_ = true;
-        Add(L"工具", L"正在只读观察 " + Wide(turnTarget_) + L" · 最多 " + std::to_wstring(seconds) + L" 秒 / 64 KiB");
+        Add(L"工具", L"正在观察 " + Wide(turnTarget_) + L" · 最多 " + std::to_wstring(seconds) + L" 秒 / 64 KiB");
     } else if (tool == "serialctl_command") {
         const auto command = args.value("command", std::string());
-        if (!ai::ValidCommand(command) || !pendingCommand_.is_null()) {
-            Reply(e["requestId"], {{"error", "Command invalid or another approval is pending"}}, false);
+        if (!ai::ValidCommand(command)) {
+            Reply(e["requestId"], {{"error", "Invalid single-line serial command"}}, false);
             return;
         }
-        pendingCommand_ = e;
-        pendingCommand_["arguments"] = args;
-        commandDeadline_ = GetTickCount64() + 60000;
-        Add(L"待确认命令",
-            L"目标：" + turnTargetLabel_ + L"（" + Wide(turnTarget_) + L"）\n原因：" +
-                Wide(args.value("reason", std::string())).substr(0, 1024) + L"\n```\n" + Wide(command) +
-                L"\n```\n仅本次授权 · 60 秒后失效 · 不自动重发\n提交成功不等于设备执行成功，仍需读取回显。");
-        Layout();
+        Add(L"工具",
+            L"目标：" + turnTargetLabel_ + L"（" + Wide(turnTarget_) + L"）\n```\n" + Wide(command) + L"\n```");
+        const auto result = devices_("command", args);
+        observedTool_ = true;
+        Add(L"工具", result.contains("error") ? L"命令未提交：" + Wide(result.dump())
+                                              : L"命令已提交；继续读取设备回显确认结果，不自动重发");
+        Reply(e["requestId"], result, !result.contains("error"));
     } else
         Reply(e["requestId"], {{"error", "Unknown SerialCtl tool"}}, false);
-}
-void AiPane::ResolveCommand(bool approve) {
-    if (pendingCommand_.is_null())
-        return;
-    auto request = pendingCommand_;
-    pendingCommand_ = nullptr;
-    auto args = request["arguments"];
-    Json result;
-    if (approve && !stopRequested_ && busy_ && client_.Ready() &&
-        args.value("sessionId", std::string()) == turnTarget_) {
-        result = devices_("command", args);
-        observedTool_ = true;
-
-        Add(L"工具", result.contains("error") ? L"命令未提交：" + Wide(result.dump())
-                                              : L"命令已提交 · 设备执行结果未知；继续读取串口回显，不自动重发");
-    } else {
-        result = {{"error", "User denied or approval expired; nothing sent"}};
-        Add(L"工具", L"本次命令未获授权，未发送");
-    }
-    Reply(request["requestId"], result, !result.contains("error"));
-    Layout();
 }
 void AiPane::RefreshModels() {
     if (client_.Ready())
@@ -1221,12 +1217,6 @@ void AiPane::SelectModel() {
         settings_.model = Utf8(value);
         RefreshModels();
     } else {
-        if (!reasoningModels_[i]) {
-            SetStatus(L"该模型未声明推理能力，请选择支持 Codex 的模型");
-            auto old = std::find(modelIds_.begin(), modelIds_.end(), settings_.model);
-            SendMessageW(Control(Model), CB_SETCURSEL, old == modelIds_.end() ? 0 : old - modelIds_.begin(), 0);
-            return;
-        }
         settings_.model = modelIds_[i];
     }
     observedTool_ = false;

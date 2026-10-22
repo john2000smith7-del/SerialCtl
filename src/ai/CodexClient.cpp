@@ -228,7 +228,9 @@ void CodexClient::Run(ServerSettings settings, HostKeyConfirmation confirm) {
         command += L" -hostkey " + QuoteCommandLineArgument(fingerprint);
     // Constant command; no host/user/model text is interpolated into a shell.
     command += L" " + QuoteCommandLineArgument(settings.host) + L" " +
-               QuoteCommandLineArgument(L"sh -lc 'command -v codex >/dev/null 2>&1 || { echo SERIALCTL_CODEX_NOT_FOUND "
+               QuoteCommandLineArgument(L"sh -lc 'if [ -r \"$HOME/.config/serialctl/codex-env.sh\" ]; then "
+                                        L". \"$HOME/.config/serialctl/codex-env.sh\" 1>&2; fi; "
+                                        L"command -v codex >/dev/null 2>&1 || { echo SERIALCTL_CODEX_NOT_FOUND "
                                         L">&2; exit 127; }; exec codex app-server --listen stdio://'");
     std::vector<wchar_t> buffer(command.begin(), command.end());
     buffer.push_back(0);

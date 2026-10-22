@@ -504,6 +504,16 @@ inline void UiResizeDialog(HWND dialog, int dpi, int width, int height) {
     SetWindowPos(dialog, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
+inline bool UiButtonNeedsRestore(UINT message) {
+    // Native BUTTON can update its state synchronously after notifying its
+    // parent (which may have just changed the palette). Restore that state with
+    // the complete owner painter before returning to the message loop.
+    return message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
+           message == WM_SETTEXT || message == WM_UPDATEUISTATE || message == BM_SETSTATE ||
+           message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_LBUTTONDBLCLK ||
+           message == WM_KEYDOWN || message == WM_KEYUP || message == WM_CAPTURECHANGED ||
+           message == WM_CANCELMODE || message == WM_THEMECHANGED;
+}
 inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
     if (message == WM_ERASEBKGND && (GetWindowLongPtrW(h, GWL_STYLE) & BS_TYPEMASK) == BS_OWNERDRAW)
         return 1;
@@ -521,7 +531,12 @@ inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, U
         RemovePropW(h, L"SerialCtl.PowerHover");
         RemoveWindowSubclass(h, UiButtonProc, id);
     }
-    return DefSubclassProc(h, message, w, l);
+    const auto result = DefSubclassProc(h, message, w, l);
+    DWORD_PTR reference = 0;
+    if (GetWindowSubclass(h, UiButtonProc, id, &reference) && UiButtonNeedsRestore(message) &&
+        (GetWindowLongPtrW(h, GWL_STYLE) & BS_TYPEMASK) == BS_OWNERDRAW)
+        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    return result;
 }
 inline void UiStyleButton(HWND h) {
     SetWindowSubclass(h, UiButtonProc, 81, 0);

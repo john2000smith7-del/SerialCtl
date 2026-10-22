@@ -17,11 +17,11 @@ AI 不默认关联本地串口。输入栏明确显示“请选择串口”，�
 3. 用户选择具体串口后连接，明确关联该 IP/串口；实例变化或串口不可达时沿用现有错误处理。
 4. AI 任务启动时固定关联会话 ID。切换主窗口页面不会将正在分析的任务重定向到别的串口。
 
-按当前 V1 范围，不增加客户端间写入锁、租约或新网关协议。AI 在对话内显示目标及命令，用户逐次确认后，通过现有本地 SessionService 或已有远程串口的 QueuedConnection 提交。提交仅代表进入发送队列，执行状态仍未知；以实际设备回显判断结果，不自动重发。共享串口原有多人写入语义保持不变，操作者需要避免同时输入。
+按当前 V1 范围，不增加客户端间写入锁、租约或新网关协议。AI 在对话内显示目标及命令，直接通过现有本地 SessionService 或已有远程串口的 QueuedConnection 提交。无需逐条二次确认；用户发送任务时固定本次目标，模型不能自行换口。提交仅代表进入发送队列，执行状态仍未知；以实际设备回显判断结果，不自动重发。共享串口原有多人写入语义保持不变，操作者需要避免同时输入。
 
 ## 客户端与协议边界
 
-- `src/app/AiPane`：原生 Win32 控件、消息框绘制、滚动、输入、模型/串口选择、逐次命令批准、会话索引。
+- `src/app/AiPane`：原生 Win32 控件、消息框绘制、滚动、输入、模型/串口选择、选定串口直接操作、会话索引。
 - `src/ai/CodexSession` / `CodexProtocol`：请求关联和协议适配，把模型、对话、任务及串口工具转换为界面事件；App Server 方法名、参数和历史消息结构集中于适配层，窗口不处理 JSON-RPC。
 - `src/ai/CodexClient`：独立工作线程，使用随包 Plink 的 `-T -batch` 启动 Linux `codex app-server --listen stdio://`，分别读取 stdout JSONL 和 stderr。UI 不直接读写进程管道。
 - `src/ai/AiProtocol`：有界 UTF-8 JSONL 拆帧、滚动状态、固定工程师指导和四个动态串口工具。
@@ -30,7 +30,7 @@ AI 不默认关联本地串口。输入栏明确显示“请选择串口”，�
 
 服务器和模型选择保存在当前用户注册表。密码默认不保存；勾选记住密码时使用 Windows Credential Manager（Win7 提供的 API），不写入 INI、日志或仓库。Linux Codex 使用该 SSH 用户已有模型和认证配置，Windows 不维护网关密钥，也不安装模型或独立 Bridge。
 
-初始化后查询 `model/list` 和 `config/read`。模型列表失败可手动填写 ID；模型是否支持推理参考服务返回元数据，真实调用和工具请求到达前不标记为验证通过。JSON-RPC 的动态工具属于 Codex 实验接口，已用本开发环境 Codex CLI 0.163.0 检查协议形状；更旧或自定义 App Server 必须实际联调，不假定兼容。
+初始化后查询 `model/list` 和 `config/read`。模型列表失败可手动填写 ID；模型推理元数据仅用于提示，缺少声明不阻止选择；能否使用以实际调用为准，真实调用和工具请求到达前不标记为验证通过。JSON-RPC 的动态工具属于 Codex 实验接口，已用本开发环境 Codex CLI 0.163.0 检查协议形状；更旧或自定义 App Server 必须实际联调，不假定兼容。
 
 客户端会话仅提供 `serialctl_sessions`、`serialctl_read`、`serialctl_observe`、`serialctl_command`。每次操作都检查明确关联的串口，不允许模型改成别的目标。内置 shell/文件权限请求不会在客户端自动批准。固定工程师指导随会话传入；可选的服务器 Skills 见 `skills/serialctl-embedded-debugging/SKILL.md`，安装由服务器管理员按既有 Codex Skills 方式完成，不改写服务器认证配置。
 
@@ -38,10 +38,16 @@ AI 不默认关联本地串口。输入栏明确显示“请选择串口”，�
 
 每个串口保存最近至多 64 KiB 已解码设备输出和 256 个接收片段，保留原编码编号、来源、接收时间范围和序列游标。AI 每次最多读取 500 行；观察每次最多 10 秒。截断、游标缺口和断线明确返回。命令输入、状态提示和本地回显不混入设备证据。
 
-JSONL 单帧上限 4 MiB；SSH 发送队列、UI 事件队列和对话显示均有上限。任务支持停止，连接有启动超时及健康检查。网络失败不触发设备命令重试。历史只在客户端保存服务器/用户范围内的线程 ID 和短标题，真实对话由 App Server 保存和恢复；恢复历史本身不授权串口写入。
+JSONL 单帧上限 4 MiB；SSH 发送队列、UI 事件队列和对话显示均有上限。任务支持停止，连接有启动超时及健康检查。网络失败不触发设备命令重试。历史只在客户端保存服务器/用户范围内的线程 ID 和短标题，真实对话由 App Server 保存和恢复；恢复历史本身不执行串口写入；新任务只可读写用户明确关联的串口。
 
 ## 验证边界
 
 正式构建仍使用 `scripts/build.ps1`、`scripts/test.ps1` 和 `scripts/check.ps1` 的 MSVC x64、`/MT`、6.01 子系统与 YY-Thunks 路径。Linux 交叉构建和 Wine 测试仅为补充检查，不能代替 Windows 7/10/11 运行验收。
 
 不得将离线 Plink 进程替身测试、合成 UI 消息或协议初始化成功等同于真实 SSH、网关推理、实体串口或电源验收；现场步骤见 `docs/testing/AI-ASSISTANT-ACCEPTANCE.md`。
+
+## App Server 兼容与服务器环境
+
+`thread/start` 和 `thread/resume` 使用 `web_search: "disabled"` 字符串配置，线程 ID 从 `result.thread.id` 取得。响应按请求 ID 关联，无关通知不参与响应排队。原生 `turn/completed` 优先处理；对缺少该通知的网关，在最终 `item/completed`（`agentMessage`，phase 为 null/缺省/final_answer）后静默 1 秒且无待处理请求/观察时完成。后续推理、工具或流式活动取消该兼容计时，commentary 不触发完成；迟到的已完成回合事件不能结束新任务。自定义网关若把中间回复标为最终并在 1 秒后继续工作，仍需修正网关的结束语义。
+
+SSH 以 `sh -lc` 启动，加载该 SSH 用户的登录环境；随后可选加载 `~/.config/serialctl/codex-env.sh`，其输出与 stderr 一起隔离，不进入 JSONL。只配置在交互式 `.bashrc` 的变量可能不可见。遇到 `Missing environment variable: CONTAINER_APIKEY`，应由服务器管理员将对应 export 放在该用户 `~/.profile` 或权限 600 的 `~/.config/serialctl/codex-env.sh`，再重新连接。Windows 不接收或保存模型网关密钥。客户端不能推断缺失密钥的值，也不自动改写远端 shell 配置。

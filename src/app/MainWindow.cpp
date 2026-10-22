@@ -1374,7 +1374,13 @@ LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARA
         RemovePropW(window, Ui::HoverProperty);
         RemoveWindowSubclass(window, ButtonSubclassProc, subclassId);
     }
-    return DefSubclassProc(window, message, wParam, lParam);
+    const auto result = DefSubclassProc(window, message, wParam, lParam);
+    DWORD_PTR current = 0;
+    if (GetWindowSubclass(window, ButtonSubclassProc, subclassId, &current) && current == referenceData &&
+        UiButtonNeedsRestore(message) &&
+        (GetWindowLongPtrW(window, GWL_STYLE) & BS_TYPEMASK) == BS_OWNERDRAW)
+        RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    return result;
 }
 
 void MainWindow::PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self) {
@@ -3005,15 +3011,11 @@ void MainWindow::ApplyTheme() {
     SendMessageW(window_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(largeIcon));
     SendMessageW(window_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallIcon));
     SetWindowTextW(themeButton_, darkMode_ ? L"浅色" : L"深色");
-    InvalidateRect(window_, nullptr, TRUE);
-    // Refresh every direct child, including the all-disconnect footer. A manual
-    // handle list can miss controls while WS_CLIPCHILDREN excludes them from the
-    // parent's paint. PowerPane::Theme handles its own descendants above.
-    for (HWND control = GetWindow(window_, GW_CHILD); control;
-         control = GetWindow(control, GW_HWNDNEXT)) {
-        InvalidateRect(control, nullptr, TRUE);
-    }
-    UpdateWindow(window_);
+    // Theme changes can occur inside the theme button's native notification.
+    // Commit parent and children together; do not leave the pressed/focused
+    // button or an inset edit frame using the previous palette until focus loss.
+    RedrawWindow(window_, nullptr, nullptr,
+        RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
 }
 
 void MainWindow::OpenConnectionDialog(int mode) {
@@ -3679,11 +3681,11 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
             {"maximumBytes", 65536}, {"maximumLines", lines}, {"bytes", text.size()}};
     }
     if (method == "command") {
-        if (runningCommandIndex_ >= 0) return error("A command macro is in progress; stop it before approving an AI command");
+        if (runningCommandIndex_ >= 0) return error("A command macro is in progress; stop it before sending an AI command");
         const auto command = params.value("command", std::string());
         if (!ai::ValidCommand(command)) return error("Invalid single-line diagnostic command");
         // Never use the current visible session: the explicit ID was pinned at
-        // turn start and shown in the approval message before this callback.
+        // turn start and displayed in the tool message before this callback.
         const auto wide = MultiByteToWide(reinterpret_cast<const uint8_t*>(command.data()), command.size(), CP_UTF8);
         const wchar_t* endings[] = {L"\r", L"\n", L"\r\n", L""};
         const auto outgoing = wide + endings[std::clamp(session->lineEndingIndex, 0, 3)];

@@ -1,4 +1,5 @@
 #include "AiPane.h"
+#include <chrono>
 #include <gdiplus.h>
 #include <iostream>
 #include <stdexcept>
@@ -71,6 +72,112 @@ struct AiPaneTestAccess {
         }
         pane.Action(20);
         require(pane.scroll_.offset == pane.scroll_.Maximum(), "Return-to-latest button failed");
+        for (const auto &message : pane.messages_)
+            for (const auto &paragraph : message.paragraphs)
+                require(paragraph.style != 3, "Message role/status labels must not appear inside bubbles");
+        // The edit's full-window print includes its nonclient rounded corners.
+        // Dark theme previously filled those corners with terminal black.
+        RECT inputBounds{};
+        GetWindowRect(pane.Control(10), &inputBounds);
+        auto screen = GetDC(pane.Control(10));
+        auto buffer = CreateCompatibleDC(screen);
+        auto bitmap =
+            CreateCompatibleBitmap(screen, inputBounds.right - inputBounds.left, inputBounds.bottom - inputBounds.top);
+        auto old = SelectObject(buffer, bitmap);
+        SendMessageW(pane.Control(10), WM_PRINT, reinterpret_cast<WPARAM>(buffer), PRF_CLIENT | PRF_NONCLIENT);
+        const auto corner = GetPixel(buffer, 0, 0);
+        SelectObject(buffer, old);
+        DeleteObject(bitmap);
+        DeleteDC(buffer);
+        ReleaseDC(pane.Control(10), screen);
+        require(corner == UiTheme(true).surface, "Dark composer exposed a black rectangular exterior");
+
+        ai::ServerSettings server;
+        server.host = L"serialctl-pane-" + std::to_wstring(GetCurrentProcessId()) + L".invalid";
+        server.username = L"fixture";
+        server.password = L"fixture-only-π";
+        require(pane.client_.Connect(
+                    server, [](ai::Json) {},
+                    [](const std::wstring &, std::uint16_t, const std::wstring &) { return true; }),
+                "Cannot connect offline process fixture");
+        const auto deadline = GetTickCount64() + 10000;
+        while (!pane.client_.Ready() && GetTickCount64() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        require(pane.client_.Ready(), "Offline process fixture did not become ready");
+        unsigned writes = 0;
+        pane.devices_ = [&](const std::string &operation, const ai::Json &args) {
+            if (operation == "command") {
+                require(args.at("sessionId") == "session-7", "Command escaped selected serial target");
+                ++writes;
+                return ai::Json{{"accepted", 12}, {"execution", "unknown"}};
+            }
+            return ai::Json::array();
+        };
+        pane.busy_ = true;
+        pane.turn_ = "turn-direct";
+        pane.turnTarget_ = "session-7";
+        ai::Json command = {
+            {"event", "serialToolRequest"},
+            {"requestId", 900},
+            {"conversationId", "fixture"},
+            {"taskId", "turn-direct"},
+            {"callId", "once"},
+            {"tool", "serialctl_command"},
+            {"arguments", {{"sessionId", "session-7"}, {"command", "dmesg | tail"}, {"reason", "diagnosis"}}}};
+        pane.Event(command);
+        require(writes == 1, "Selected serial command must execute directly without second confirmation");
+        pane.Event(command);
+        require(writes == 1, "Duplicate tool call resubmitted a serial command");
+        command["callId"] = "other-target";
+        command["arguments"]["sessionId"] = "session-other";
+        pane.Event(command);
+        require(writes == 1, "AI wrote another serial target");
+        command["callId"] = "stopped";
+        command["arguments"]["sessionId"] = "session-7";
+        pane.stopRequested_ = true;
+        pane.Event(command);
+        require(writes == 1, "Stopped task still wrote the serial port");
+        pane.stopRequested_ = false;
+
+        pane.Event({{"event", "textComplete"},
+                    {"conversationId", "fixture"},
+                    {"taskId", "turn-direct"},
+                    {"messageId", "final"},
+                    {"text", "Done"},
+                    {"final", true}});
+        require(pane.completionDeadline_ != 0 && pane.busy_, "Final item did not arm compatible completion");
+        pane.Event({{"event", "taskActivity"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"}});
+        require(pane.completionDeadline_ == 0 && pane.busy_, "Subsequent activity did not cancel early completion");
+        pane.Event({{"event", "textComplete"},
+                    {"conversationId", "fixture"},
+                    {"taskId", "turn-direct"},
+                    {"messageId", "final"},
+                    {"text", "Done"},
+                    {"final", true}});
+        pane.completionDeadline_ = GetTickCount64() - 1;
+        pane.Poll();
+        require(!pane.busy_, "Gateway without turn/completed left the conversation stuck");
+        pane.busy_ = true;
+        pane.turn_ = "next-turn";
+        pane.Event({{"event", "taskFinished"},
+                    {"conversationId", "fixture"},
+                    {"taskId", "turn-direct"},
+                    {"status", "completed"}});
+        require(pane.busy_ && pane.turn_ == "next-turn", "Late completion ended the following task");
+        pane.Event({{"event", "serviceError"},
+                    {"conversationId", "fixture"},
+                    {"taskId", "next-turn"},
+                    {"message", "Missing environment variable: `CONTAINER_APIKEY`."},
+                    {"willRetry", false}});
+        require(!pane.busy_ && pane.status_.find(L"CONTAINER_APIKEY") != std::wstring::npos,
+                "Missing server environment did not release busy state with its actual cause");
+        pane.client_.Shutdown();
+        HKEY key = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\TrustedHostKeys", 0, KEY_SET_VALUE, &key) ==
+            ERROR_SUCCESS) {
+            RegDeleteValueW(key, (server.host + L":22").c_str());
+            RegCloseKey(key);
+        }
     }
 };
 } // namespace serialctl

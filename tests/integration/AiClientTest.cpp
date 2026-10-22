@@ -107,6 +107,10 @@ int main() {
             return e.value("event", std::string()) == "textDelta" && e["text"] == u8"读取真实串口日志。";
         });
         wait([](const Json &e) {
+            return e.value("event", std::string()) == "textComplete" && e["final"] == true &&
+                   e["text"] == u8"读取真实串口日志。";
+        });
+        wait([](const Json &e) {
             return e.value("event", std::string()) == "serialToolRequest" && e["requestId"] == 501 &&
                    e["tool"] == "serialctl_read" && e["arguments"]["sessionId"] == "session-7";
         });
