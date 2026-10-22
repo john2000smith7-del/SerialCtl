@@ -65,7 +65,7 @@ int wmain(int argc, wchar_t **argv) {
         } else if (method == "config/read")
             Send({{"id", id}, {"result", {{"config", {{"model", "fixture"}}}}}});
         else if (method == "thread/start") {
-            if (message["params"].value("dynamicTools", Json::array()).size() != 4)
+            if (message["params"].value("dynamicTools", Json::array()).size() != 7)
                 return 44;
             if (message["params"].contains("config") &&
                 message["params"]["config"].value("web_search", Json()) != "disabled") {

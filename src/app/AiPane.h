@@ -127,6 +127,7 @@ class AiPane {
     bool busy_ = false, stopRequested_ = false, observedTool_ = false, dialogEnter_ = false, connectionError_ = false;
     size_t messageBytes_ = 0;
     Json pendingObservation_;
+    Json powerContext_;
     ULONGLONG observeDeadline_ = 0, completionDeadline_ = 0, turnStarted_ = 0;
 };
 } // namespace serialctl

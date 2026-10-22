@@ -52,13 +52,15 @@ int main() {
         Require(!ValidCommand(std::string("echo x\0reboot", 13)), "embedded NUL serial write accepted");
         Require(!ValidCommand(std::string(4097, 'x')), "oversized serial write accepted");
         const auto tools = SerialTools();
-        Require(tools.size() == 4, "unexpected tool scope");
+        Require(tools.size() == 7, "terminal and bounded power tools missing");
+        Require(tools[5]["inputSchema"]["properties"].contains("enabled") &&
+                    !tools[5]["inputSchema"]["properties"].contains("channels"), "Model must not override GUI channel selection");
         for (const auto &tool : tools)
             Require(tool["inputSchema"]["additionalProperties"] == false, "unbounded tool argument schema");
         const auto reply = ToolResult({{"accepted", 5}, {"execution", "unknown"}});
         Require(reply["contentItems"][0]["type"] == "inputText", "app-server dynamic tool result format invalid");
         const auto create = MakeRequest(Operation::NewConversation, 77, {{"modelId", "fixture"}});
-        Require(create["method"] == "thread/start" && create["params"]["dynamicTools"].size() == 4 &&
+        Require(create["method"] == "thread/start" && create["params"]["dynamicTools"].size() == 7 &&
                     create["params"]["model"] == "fixture",
                 "Presentation adapter lost fixed role/model/tool configuration");
         Require(create["params"]["config"]["web_search"] == "disabled" && create["params"]["approvalPolicy"] == "never",

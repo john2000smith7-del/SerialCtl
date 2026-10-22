@@ -1,0 +1,46 @@
+Test project /workspace/SerialCtl/build/ai-cross
+    Start  1: ai_protocol
+1/7 Test  #1: ai_protocol ......................   Passed    5.30 sec
+    Start  2: ai_client
+2/7 Test  #2: ai_client ........................   Passed    5.80 sec
+    Start  3: ai_pane
+3/7 Test  #3: ai_pane ..........................***Failed    5.31 sec
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+Cannot create native AI pane
+
+    Start  4: ai_device
+4/7 Test  #4: ai_device ........................***Failed    5.36 sec
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+Cannot create real power pane
+
+    Start 10: power_service
+5/7 Test #10: power_service ....................   Passed    8.13 sec
+    Start 11: cmd_connection
+6/7 Test #11: cmd_connection ...................***Failed    7.81 sec
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+CMD failed stage=3 connected=0 inputCP=437 outputCP=437 error= output=
+
+    Start 15: tcp_connection
+7/7 Test #15: tcp_connection ...................   Passed    5.28 sec
+
+57% tests passed, 3 tests failed out of 7
+
+Total Test time (real) =  42.99 sec
+
+The following tests FAILED:
+	  3 - ai_pane (Failed)
+	  4 - ai_device (Failed)
+	 11 - cmd_connection (Failed)
+Errors while running CTest

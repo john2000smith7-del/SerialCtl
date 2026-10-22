@@ -24,7 +24,7 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
         method = "thread/start";
         params = {
             {"baseInstructions", EngineerInstructions()},
-            {"developerInstructions", u8"用户已允许直接读写本次选定的串口，无需逐条确认；只使用 serialctl_ 动态工具。"},
+            {"developerInstructions", u8"直接读写本次选定终端；用户明确要求时控制 GUI 勾选的已连接电源输出，无需二次弹窗。只使用 serialctl_ 工具，依据真实输出和 action 回读判断结果。"},
             {"sandbox", "read-only"},
             {"approvalPolicy", "never"},
             {"dynamicTools", SerialTools()},
@@ -49,7 +49,7 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
                   {"sandbox", "read-only"},
                   {"approvalPolicy", "never"},
                   {"baseInstructions", EngineerInstructions()},
-                  {"developerInstructions", u8"用户已允许直接读写本次选定的串口，无需逐条确认；只使用 serialctl_ 动态工具。"},
+                  {"developerInstructions", u8"直接读写本次选定终端；用户明确要求时控制 GUI 勾选的已连接电源输出，无需二次弹窗。只使用已注册的 serialctl_ 工具；历史缺少电源工具时请新建会话。"},
                   {"config", policy}};
         break;
     }

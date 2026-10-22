@@ -128,7 +128,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     SendMessageW(input, EM_SETLIMITTEXT, 32768, 0);
     SetPropW(input, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
     UiStyleField(input, &style_);
-    SendMessageW(input, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"输入消息，或让 AI 分析当前串口…"));
+    SendMessageW(input, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"输入消息，分析终端或控制已连接电源…"));
     SetWindowSubclass(input, InputProc, 1, reinterpret_cast<DWORD_PTR>(this));
     for (int id : {Model, Target}) {
         auto c = Child(WC_COMBOBOXW, L"", id,
@@ -408,9 +408,9 @@ void AiPane::PaintTranscript(HDC target) {
     const auto c = UiTheme(dark_);
     FillRect(dc, &r, surfaceBrush_);
     if (messages_.empty()) {
-        Draw(dc, L"有什么串口问题需要一起排查？", {D(16), D(48), r.right - D(16), D(88)}, titleFont_, c.text,
+        Draw(dc, L"有什么设备问题需要一起排查？", {D(16), D(48), r.right - D(16), D(88)}, titleFont_, c.text,
              DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        Draw(dc, L"连接 Codex 后输入问题，或选择串口分析当前日志。", {D(16), D(96), r.right - D(16), D(128)}, font_,
+        Draw(dc, L"选择串口、CMD、Telnet 或 SSH 分析日志；也可控制已连接电源。", {D(16), D(96), r.right - D(16), D(128)}, font_,
              c.muted, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         return;
     }
@@ -602,7 +602,7 @@ void AiPane::RefreshTargets() {
         return;
     targets_ = ids;
     SendMessageW(Control(Target), CB_RESETCONTENT, 0, 0);
-    SendMessageW(Control(Target), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"请选择串口…"));
+    SendMessageW(Control(Target), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"请选择终端…"));
     for (const auto &s : result)
         SendMessageW(Control(Target), CB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(Wide(s.value("name", s.value("id", std::string()))).c_str()));
@@ -680,6 +680,7 @@ void AiPane::SendPrompt(std::wstring text) {
         return;
     }
     pendingPrompt_ = text;
+    powerContext_ = nullptr;
     turnTarget_ = target_;
     turnTargetLabel_ = Text(Control(Target));
     if (!attachment_.empty()) {
@@ -709,8 +710,11 @@ void AiPane::SendPrompt(std::wstring text) {
 void AiPane::StartTurn() {
     Json params = {{"conversationId", thread_},
                    {"modelId", settings_.model},
-                   {"text", Utf8(pendingPrompt_) + "\n\n[SerialCtl associated serial session: " + turnTarget_ +
-                                "; selected session read/write enabled; no per-command confirmation]"}};
+                   {"text", Utf8(pendingPrompt_) + "\n\n[SerialCtl associated terminal session: " + turnTarget_ +
+                                "; label: " + Utf8(turnTargetLabel_) +
+                                "; selected session read/write enabled; no per-command confirmation. "
+                                "Power tools independently address the connected IT6332A GUI-selected channels; "
+                                "call serialctl_power_get first and only switch output when the user asks.]"}};
     if (!Request(ai::Operation::StartTask, params, "turn")) {
         busy_ = false;
         pendingPrompt_.clear();
@@ -770,7 +774,7 @@ void AiPane::Action(int id) {
     } else if (id == Analyze || id == Observe) {
         RefreshTargets();
         if (target_.empty()) {
-            SetStatus(L"请先打开并选择串口会话");
+            SetStatus(L"请先打开并选择终端会话");
             return;
         }
         auto log = devices_("read", {{"sessionId", target_}, {"lines", 200}});
@@ -788,12 +792,12 @@ void AiPane::Action(int id) {
             size_t start = attachment_.size() - 16384;
             if (attachment_[start] >= 0xdc00 && attachment_[start] <= 0xdfff)
                 ++start;
-            attachment_ = L"[已截取所选串口最近 16K 字符，完整数据可由日志工具继续获取]\n" + attachment_.substr(start);
+            attachment_ = L"[已截取所选终端最近 16K 字符，完整数据可由日志工具继续获取]\n" + attachment_.substr(start);
         }
         attachmentTarget_ = target_;
-        SendPrompt(id == Analyze ? L"请分析当前串口日志，引用实际证据，说明事实、可能原因与下一步诊断。"
-                                 : L"请持续观察当前关联串口的新输出；使用有界观察工具，发现变化后分析；需要诊断时可直接"
-                                   L"在关联串口输入命令并读取反馈。");
+        SendPrompt(id == Analyze ? L"请分析当前终端日志，先识别连接类型和系统，再引用实际证据，说明事实、可能原因与下一步诊断。"
+                                 : L"请持续观察当前关联终端的新输出；使用有界观察工具，发现变化后分析；需要诊断时可直接"
+                                   L"在关联终端输入匹配其系统的命令并读取反馈，不自行上下电。");
     }
 }
 void AiPane::Disconnect() {
@@ -1097,7 +1101,7 @@ void AiPane::Event(const Json &e) {
             SetStatus(Wide(ai::ExplainServiceError(e.value("message", std::string()))));
         } else
             SetStatus(stopRequested_  ? L"任务已停止；已提交命令的执行结果仍需设备回显确认"
-                      : observedTool_ ? L"回复完成 · 已验证串口工具调用"
+                      : observedTool_ ? L"回复完成 · 已处理设备工具调用"
                                       : L"回复完成 · 推理已响应，工具能力待实际调用验证");
         RefreshTargets();
         UpdateActions();
@@ -1154,15 +1158,62 @@ void AiPane::ServerRequest(const Json &e) {
         observedTool_ = true;
         return;
     }
+    if (tool == "serialctl_power_get") {
+        powerContext_ = devices_("power.get", Json::object());
+        Reply(e["requestId"], powerContext_, !powerContext_.contains("error"));
+        observedTool_ = true;
+        Add(L"工具", L"读取电源状态\n" + Wide(powerContext_.dump()));
+        return;
+    }
+    if (tool == "serialctl_power_action") {
+        const auto id = args.value("id", std::string());
+        if (id.empty() || id.size() > 128) {
+            Reply(e["requestId"], {{"error", "Invalid power action ID"}}, false);
+            return;
+        }
+        auto result = devices_("power.action", {{"id", id}});
+        Reply(e["requestId"], result, !result.contains("error"));
+        observedTool_ = true;
+        Add(L"工具", L"查询电源执行结果\n" + Wide(result.dump()));
+        return;
+    }
+    if (tool == "serialctl_power_output") {
+        if (args.size() != 2 || !args.contains("enabled") || !args["enabled"].is_boolean() ||
+            !args.contains("reason") || !args["reason"].is_string() ||
+            args["reason"].get_ref<const std::string&>().empty() || args["reason"].get_ref<const std::string&>().size() > 1024 ||
+            !powerContext_.is_object() || !powerContext_.value("connected", false) ||
+            !powerContext_.contains("selectedChannels") || powerContext_["selectedChannels"].empty()) {
+            Reply(e["requestId"], {{"error", "Query the connected power supply and GUI-selected channels first; only enabled/reason are accepted"}}, false);
+            return;
+        }
+        GUID guid{};
+        wchar_t unique[40]{};
+        if (FAILED(CoCreateGuid(&guid)) || !StringFromGUID2(guid, unique, 40)) {
+            Reply(e["requestId"], {{"error", "Cannot allocate power request identity; nothing submitted"}}, false);
+            return;
+        }
+        const bool enabled = args["enabled"].get<bool>();
+        Add(L"工具", L"电源 IT6332A · 通道 " + Wide(powerContext_["selectedChannels"].dump()) +
+            (enabled ? L" · ON\n" : L" · OFF\n") + Wide(args["reason"].get<std::string>()));
+        auto result = devices_("power.output", {{"enabled", enabled}, {"channels", powerContext_["selectedChannels"]},
+            {"identity", powerContext_.value("identity", std::string())},
+            {"mode", powerContext_.value("mode", std::string())}, {"requestId", "ai:" + Utf8(unique)}});
+        powerContext_ = nullptr; // A later write must read current selection/state again.
+        Reply(e["requestId"], result, !result.contains("error"));
+        observedTool_ = true;
+        Add(L"工具", result.contains("error") ? L"电源操作未提交：" + Wide(result.dump())
+            : L"电源操作已提交；需查询 action ID 核对各通道回读，不自动重发\n" + Wide(result.dump()));
+        return;
+    }
     if (args.value("sessionId", std::string()) != turnTarget_ || turnTarget_.empty()) {
-        Reply(e["requestId"], {{"error", "Tool target must match the explicitly associated serial session"}}, false);
+        Reply(e["requestId"], {{"error", "Tool target must match the explicitly associated terminal session"}}, false);
         return;
     }
     if (tool == "serialctl_read") {
         auto r = devices_("read", args);
         Reply(e["requestId"], r, !r.contains("error"));
         observedTool_ = true;
-        Add(L"工具", L"读取串口日志 · " + Wide(turnTarget_) + L" · " + (r.contains("error") ? L"失败" : L"完成") +
+        Add(L"工具", L"读取终端日志 · " + Wide(turnTarget_) + L" · " + (r.contains("error") ? L"失败" : L"完成") +
                          L"\n" + Wide(r.dump()).substr(0, 200));
     } else if (tool == "serialctl_observe") {
         if (!pendingObservation_.is_null()) {

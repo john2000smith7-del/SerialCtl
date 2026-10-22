@@ -22,3 +22,5 @@ with Client('192.168.6.86') as client:
 ```
 
 电源相同 requestId 的原有 action 语义保留；断线后先 query action.get，不能自动重发状态不明的操作。终端输入的响应缓存只在当前连接内最近256次有效。额外权限一律 OPERATION_DENIED，软件启动不需要授权页或 API 开关。手册协议详见源码 docs/architecture/WEBSOCKET-PROTOCOL.md。
+
+V2.0.2 顶部内置 AI 对话另接入本程序已连接的 CMD/Telnet/SSH/串口及电源工具。此 WebSocket 外部接口的公开资源范围仍为本地串口、CMD 和电源，不因此暴露 SSH/Telnet 终端。内置 AI 升级后需新建会话加载新增电源工具。

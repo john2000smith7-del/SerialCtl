@@ -1,0 +1,9 @@
+Test project /workspace/SerialCtl/build/ai-cross
+    Start 3: ai_pane
+1/2 Test #3: ai_pane ..........................   Passed    8.56 sec
+    Start 4: ai_device
+2/2 Test #4: ai_device ........................   Passed    6.46 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =  15.03 sec

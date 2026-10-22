@@ -2115,7 +2115,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (status) {
             SessionState* session = FindSession(status->sessionId);
             auto* aiSession = session ? session : pendingSession_ && pendingSession_->id == status->sessionId ? pendingSession_.get() : nullptr;
-            if (aiSession && (aiSession->mode == 1 || aiSession->mode == 3)) {
+            if (aiSession && *ai::TerminalKind(aiSession->mode)) {
                 if (status->isError || status->text.find(L"HISTORY_GAP") != std::wstring::npos)
                     aiSession->aiTransportNotice = WideToMultiByte(status->text.substr(0, 512), CP_UTF8);
                 if (status->text.find(L"HISTORY_GAP") != std::wstring::npos) aiSession->aiTruncated = true;
@@ -3660,19 +3660,44 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
     if (method == "sessions") {
         Json result = Json::array();
         for (const auto& session : sessions_)
-            if ((session->mode == 1 || session->mode == 3) && session->connection && session->connection->IsConnected())
+            if (*ai::TerminalKind(session->mode) && session->connection && session->connection->IsConnected())
                 result.push_back({{"id", "session-" + std::to_string(session->id)},
-                    {"name", WideToMultiByte(session->name, CP_UTF8)}, {"codePage", session->codePage},
-                    {"remoteIp", WideToMultiByte(session->host, CP_UTF8)}, {"remoteCom", WideToMultiByte(session->remoteCom, CP_UTF8)},
+                    {"name", std::string("[") + ai::TerminalKind(session->mode) + "] " + WideToMultiByte(session->name, CP_UTF8)},
+                    {"kind", ai::TerminalKind(session->mode)}, {"codePage", session->connection->OutputCodePage() ? session->connection->OutputCodePage() : session->codePage},
+                    {"inputCodePage", session->connection->InputCodePage() ? session->connection->InputCodePage() : session->codePage},
+                    {"remoteIp", session->mode == 0 || session->mode == 2 || session->mode == 3 ? WideToMultiByte(session->host, CP_UTF8) : ""},
+                    {"remotePort", session->mode == 0 || session->mode == 2 || session->mode == 3 ? session->port : 0},
+                    {"remoteCom", WideToMultiByte(session->remoteCom, CP_UTF8)},
                     {"commandSupported", true}});
         return result;
     }
+    if (method == "power.get") {
+        const auto state = powerService_.State();
+        Json result = {{"id", "power-1"}, {"selectedChannels", powerPane_.SelectedChannels()}};
+        for (const char* key : {"connected", "model", "identity", "simulation", "mode", "channels", "task", "error"})
+            if (state.contains(key)) result[key] = state[key];
+        return result;
+    }
+    if (method == "power.output") {
+        if (!params.contains("enabled") || !params["enabled"].is_boolean() || !params.contains("channels") ||
+            params["channels"] != powerPane_.SelectedChannels())
+            return error("Power channel selection changed; query power state again. Nothing submitted");
+        const auto state = powerService_.State();
+        if (!state.value("connected", false)) return error("Power supply is not connected");
+        if (params.value("identity", std::string()) != state.value("identity", std::string()) ||
+            params.value("mode", std::string()) != state.value("mode", std::string()))
+            return error("Power identity/mode changed; query state again. Nothing submitted");
+        return powerService_.Submit({{"type", "output"}, {"source", "ai:desktop"},
+            {"channels", params["channels"]}, {"enabled", params["enabled"]},
+            {"requestId", params.at("requestId")}});
+    }
+    if (method == "power.action") return powerService_.Action(params.at("id").get<std::string>());
     const auto id = params.value("sessionId", std::string());
     if (method == "release") return {{"released", true}};
     SessionState* session = nullptr;
     for (const auto& candidate : sessions_) if (id == "session-" + std::to_string(candidate->id)) { session = candidate.get(); break; }
-    if (!session || (session->mode != 1 && session->mode != 3) || !session->connection || !session->connection->IsConnected())
-        return error("Associated serial session is not open; no device was opened automatically");
+    if (!session || !*ai::TerminalKind(session->mode) || !session->connection || !session->connection->IsConnected())
+        return error("Associated terminal session is not open; no connection was opened automatically");
     if (method == "read") {
         const auto after = params.value("after", std::uint64_t(0));
         const int lines = std::clamp(params.value("lines", 200), 1, 500);
@@ -3689,7 +3714,8 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
         const bool gap = after && (after > session->aiCursor ||
             (!session->aiOutput.empty() && after + 1 < session->aiOutput.front().seq));
         return {{"sessionId", id}, {"name", WideToMultiByte(session->name, CP_UTF8)},
-            {"text", text}, {"source", "device-output"}, {"encoding", "UTF-8"}, {"sourceCodePage", session->codePage},
+            {"text", text}, {"source", "device-output"}, {"kind", ai::TerminalKind(session->mode)},
+            {"encoding", "UTF-8"}, {"sourceCodePage", session->connection->OutputCodePage() ? session->connection->OutputCodePage() : session->codePage},
             {"firstReceivedAt", first}, {"lastReceivedAt", last}, {"timestampBasis", "local-decoded-receive-time"},
             {"cursor", session->aiCursor}, {"gap", gap}, {"truncated", limited || session->aiTruncated},
             {"transportNotice", session->aiTransportNotice},
@@ -3703,23 +3729,24 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
         // turn start and displayed in the tool message before this callback.
         const auto wide = MultiByteToWide(reinterpret_cast<const uint8_t*>(command.data()), command.size(), CP_UTF8);
         const wchar_t* endings[] = {L"\r", L"\n", L"\r\n", L""};
-        const auto outgoing = wide + endings[std::clamp(session->lineEndingIndex, 0, 3)];
-        const UINT page = session->codePage == 20936 && !IsValidCodePage(20936) ? 936 : session->codePage;
+        const auto outgoing = wide + endings[session->mode == 4 ? 2 : std::clamp(session->lineEndingIndex, 0, 3)];
+        const UINT selectedPage = session->connection->InputCodePage() ? session->connection->InputCodePage() : session->codePage;
+        const UINT page = selectedPage == 20936 && !IsValidCodePage(20936) ? 936 : selectedPage;
         BOOL replacement = FALSE;
         auto used = page == CP_UTF8 ? nullptr : &replacement;
         const DWORD flags = page == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
         const int bytes = WideCharToMultiByte(page, flags, outgoing.data(), static_cast<int>(outgoing.size()), nullptr, 0, nullptr, used);
-        if (bytes <= 0 || replacement) return error("The selected serial encoding cannot represent this command exactly");
+        if (bytes <= 0 || replacement) return error("The selected terminal encoding cannot represent this command exactly");
         std::string encoded(bytes, '\0');
         WideCharToMultiByte(page, flags, outgoing.data(), static_cast<int>(outgoing.size()), encoded.data(), bytes, nullptr, used);
-        if (replacement) return error("Serial command encoding would replace characters; nothing was submitted");
-        if (session->mode == 1)
+        if (replacement) return error("Terminal command encoding would replace characters; nothing was submitted");
+        if (session->mode == 1 || session->mode == 4)
             return sessionService_.Input(id, Bytes(encoded.begin(), encoded.end()), "ai:desktop");
         std::wstring sendError;
         if (!session->connection->Send(Bytes(encoded.begin(), encoded.end()), sendError))
             return error(WideToMultiByte(sendError, CP_UTF8));
         return {{"accepted", encoded.size()}, {"state", "queued"}, {"execution", "unknown"},
-            {"scope", "existing-remote-serial-connection"}, {"automaticRetry", false}};
+            {"scope", "existing-selected-terminal-connection"}, {"automaticRetry", false}};
     }
 
     return error("Unknown bounded SerialCtl operation");
@@ -4124,7 +4151,7 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
     const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
     const bool wasAlternateScreen = session->terminal.AlternateScreen();
     const TerminalFeedResult result = session->terminal.Feed(decoded, timestamp);
-    if ((session->mode == 1 || session->mode == 3) && !decoded.empty()) {
+    if (*ai::TerminalKind(session->mode) && !decoded.empty()) {
         // Bound the additional AI copy before conversion even if the terminal
         // received a large coalesced batch. Serial receive never waits on AI.
         size_t first = decoded.size() > 32768 ? decoded.size() - 32768 : 0;

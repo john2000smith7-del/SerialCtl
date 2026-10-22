@@ -51,6 +51,9 @@ public:
     HWND Handle() const { return window_; }
 
 private:
+#ifdef SERIALCTL_AI_TESTING
+    friend struct AiDeviceTestAccess;
+#endif
     enum class SessionFocus { Terminal, Preserve };
     enum class SftpTransferDirection { Upload, Download };
     enum class SftpTransferState { Queued, Running, Completed, Failed, Canceled };

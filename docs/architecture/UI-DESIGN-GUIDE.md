@@ -121,7 +121,7 @@ Light theme:
 ## AI page
 
 - AI replaces the center content using the existing page mechanism; it is not a Commands/SFTP tab. The right sidebar stays collapsed as on the power page, without changing terminal sidebar preferences.
-- The center card contains an independently scrollable transcript and a fixed compact multiline composer inside its bottom edge. Model and explicitly selected serial target belong in that composer; do not default to a local serial session.
+- The center card contains an independently scrollable transcript and a fixed compact multiline composer inside its bottom edge. Model and explicitly selected terminal target (serial, remote serial, CMD, Telnet or SSH) belong in that composer; label each connection type and do not select a target by default. Power ON/OFF uses the existing power page connection and checked channels; show its exact scope and action/readback status in the transcript without adding a workspace or second confirmation dialog.
 - Offer remote-IP discovery through the existing remote-serial connection dialog. The operator selects the returned port, and the AI turn pins that exact session identity.
 - User messages align right on the existing accent surface. Each AI reply uses one complete rounded message frame, including source, code/log blocks and copy action; use the shared accent border and card radius.
 - History reading keeps its pixel position when a reply streams. Show a compact return-to-latest action, a 5 px overlay thumb with a reserved 16 px lane, and support wheel, keys and dragging. The composer never scrolls with messages.

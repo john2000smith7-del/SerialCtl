@@ -105,11 +105,25 @@ struct AiPaneTestAccess {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         require(pane.client_.Ready(), "Offline process fixture did not become ready");
         unsigned writes = 0;
+        unsigned powerWrites = 0, powerActions = 0;
         pane.devices_ = [&](const std::string &operation, const ai::Json &args) {
             if (operation == "command") {
                 require(args.at("sessionId") == "session-7", "Command escaped selected serial target");
                 ++writes;
                 return ai::Json{{"accepted", 12}, {"execution", "unknown"}};
+            }
+            if (operation == "power.get")
+                return ai::Json{{"connected", true}, {"identity", "offline power fixture"},
+                    {"mode", "independent"}, {"selectedChannels", {1, 3}}};
+            if (operation == "power.output") {
+                require(args.at("channels") == ai::Json::array({1,3}), "Power escaped GUI-selected channels");
+                require(args.at("requestId").get<std::string>().rfind("ai:",0) == 0, "Power lacks unique request identity");
+                ++powerWrites;
+                return ai::Json{{"id", "power-action-fixture"}, {"state", "queued"}};
+            }
+            if (operation == "power.action") {
+                ++powerActions;
+                return ai::Json{{"id", args.at("id")}, {"state", "failed"}, {"channels", {{{"state", "unknown"}}}}};
             }
             return ai::Json::array();
         };
@@ -138,6 +152,35 @@ struct AiPaneTestAccess {
         pane.Event(command);
         require(writes == 1, "Stopped task still wrote the serial port");
         pane.stopRequested_ = false;
+
+        // Power calls work without selecting a terminal, but require a current
+        // read of the GUI-selected channels and the same active-turn checks.
+        pane.turnTarget_.clear();
+        ai::Json power = command;
+        power["tool"] = "serialctl_power_output";
+        power["callId"] = "power-without-state";
+        power["arguments"] = {{"enabled", true}, {"reason", "User requested ON"}};
+        pane.Event(power);
+        require(powerWrites == 0, "Power output bypassed its current channel query");
+        auto query = power;
+        query["tool"] = "serialctl_power_get"; query["callId"] = "power-state"; query["arguments"] = ai::Json::object();
+        pane.Event(query);
+        power["callId"] = "power-on";
+        pane.Event(power); pane.Event(power);
+        require(powerWrites == 1, "Power was not direct or duplicate invocation was resubmitted");
+        power["callId"] = "power-needs-fresh-state";
+        pane.Event(power);
+        require(powerWrites == 1, "A second power write used stale channel selection");
+        query["callId"] = "power-state-again"; pane.Event(query);
+        power["callId"] = "power-override"; power["arguments"]["channels"] = {2}; pane.Event(power);
+        require(powerWrites == 1, "Model overrode GUI-selected power channels");
+        auto action = power;
+        action["tool"] = "serialctl_power_action"; action["callId"] = "power-result";
+        action["arguments"] = {{"id", "power-action-fixture"}}; pane.Event(action);
+        require(powerActions == 1, "Power readback action not routed");
+        power["arguments"].erase("channels"); power["callId"] = "power-stopped";
+        pane.stopRequested_ = true; pane.Event(power); pane.stopRequested_ = false;
+        require(powerWrites == 1, "Stopped task still changed power output");
 
         pane.Event({{"event", "textComplete"},
                     {"conversationId", "fixture"},
