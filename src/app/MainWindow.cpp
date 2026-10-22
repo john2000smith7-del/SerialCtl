@@ -109,6 +109,11 @@ enum ControlId {
     IdSendSelectionToAi
 };
 
+bool IsToolbarButton(int id) {
+    return (id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower ||
+        id == IdAi || id == IdSettings || id == IdTheme;
+}
+
 enum TerminalMenuId {
     IdMenuLocalEcho = 2001,
     IdMenuTimestamp,
@@ -1339,7 +1344,6 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
 
 LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
-    (void)referenceData;
     // DrawOwnerItem paints the whole button, including its rounded exterior.
     // Native erasure would expose COLOR_BTNFACE before that themed paint runs.
     if (message == WM_ERASEBKGND &&
@@ -1359,6 +1363,13 @@ LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARA
         InvalidateRect(window, nullptr, TRUE);
     } else if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
         InvalidateRect(window, nullptr, TRUE);
+        auto* self = reinterpret_cast<MainWindow*>(referenceData);
+        if (self && GetParent(window) == self->window_ && IsToolbarButton(GetDlgCtrlID(window))) {
+            RECT toolbar{};
+            GetClientRect(self->window_, &toolbar);
+            toolbar.bottom = Ui::ToolbarHeight;
+            InvalidateRect(self->window_, &toolbar, FALSE);
+        }
     } else if (message == WM_NCDESTROY) {
         RemovePropW(window, Ui::HoverProperty);
         RemoveWindowSubclass(window, ButtonSubclassProc, subclassId);
@@ -2357,7 +2368,7 @@ void MainWindow::LayoutControls(int width, int height) {
     if (width <= 0 || height <= 0) return;
     rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth + Ui::MinCenterWidth + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
-    int x = Ui::Space * 2;
+    int x = Ui::Gap + Ui::Space;
     const int buttonWidths[] = {89, 88, 98, 118, 92, 88, 80};
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
         batch.Move(toolbarButtons_[index], x, toolbarButtonTop, Ui::Scale(buttonWidths[index]), Ui::StandardHeight,
@@ -2365,7 +2376,7 @@ void MainWindow::LayoutControls(int width, int height) {
         x += Ui::Scale(buttonWidths[index]) + Ui::Space;
     }
     batch.Move(settingsButton_, x, toolbarButtonTop, Ui::Scale(88), Ui::StandardHeight, TRUE);
-    batch.Move(themeButton_, width - Ui::Space * 2 - Ui::StandardHeight, (Ui::ToolbarHeight - Ui::StandardHeight) / 2,
+    batch.Move(themeButton_, width - Ui::Gap - Ui::Space - Ui::StandardHeight, (Ui::ToolbarHeight - Ui::StandardHeight) / 2,
                Ui::StandardHeight, Ui::StandardHeight, TRUE);
 
     const int contentTop = Ui::ToolbarHeight;
@@ -2484,8 +2495,10 @@ void MainWindow::PaintWindow(HDC dc) {
     GetClientRect(window_, &client);
     const Palette colors = Colors(darkMode_);
     FillRect(dc, &client, windowBrush_);
-    RECT toolbar{0, 0, client.right, Ui::ToolbarHeight};
-    FillRect(dc, &toolbar, panelBrush_);
+    RECT toolbar{Ui::Gap, Ui::Section, client.right - Ui::Gap, Ui::ToolbarHeight - Ui::Section};
+    const HWND focus = GetFocus();
+    const bool toolbarFocused = focus && GetParent(focus) == window_ && IsToolbarButton(GetDlgCtrlID(focus));
+    DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, toolbarFocused ? colors.accent : colors.border);
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
         client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
@@ -2497,11 +2510,6 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, aiVisible_ ? colors.panel : colors.terminal, colors.border);
     DrawRoundedBox(dc, rightCard, Ui::CardRadius, colors.panel, colors.border);
-    HPEN pen = CreatePen(PS_SOLID, 1, colors.border);
-    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(dc, pen));
-    MoveToEx(dc, 0, Ui::ToolbarHeight, nullptr); LineTo(dc, client.right, Ui::ToolbarHeight);
-    SelectObject(dc, oldPen);
-    DeleteObject(pen);
 }
 
 void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
@@ -2647,10 +2655,11 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             const bool active = id == IdAi ? aiVisible_ : id == IdPower ? powerVisible_ :
                 (id != IdSettings && !powerVisible_ && !aiVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
             const bool inverse = darkMode_;
-            const COLORREF ink = id == IdAi && active ? colors.accent : colors.text;
-            const COLORREF fill = id == IdAi && active ? colors.accentSoft : active || hovered || pressed ? colors.panelAlt : colors.panel;
-            DrawRoundedBox(dc, rect, Ui::Radius, fill,
-                id == IdAi && active ? colors.accent : focused || active ? colors.text : colors.border);
+            const COLORREF ink = !enabled ? colors.muted : active ? colors.accent : colors.text;
+            const COLORREF fill = active || (pressed && enabled) ? colors.accentSoft :
+                enabled && (hovered || focused) ? colors.panelAlt : colors.panel;
+            if (fill != colors.panel)
+                DrawRoundedBox(dc, rect, Ui::Radius, fill, fill);
             const ToolbarIcon icon = id == IdSettings ? ToolbarIcon::Settings :
                 id == IdAi ? ToolbarIcon::Ai : id == IdCmd ? ToolbarIcon::Cmd : id == IdPower ? ToolbarIcon::Power :
                 static_cast<ToolbarIcon>(id - IdSsh);
@@ -2664,9 +2673,9 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             return;
         }
         if (id == IdTheme) {
-            DrawRoundedBox(dc, rect, Ui::Radius,
-                pressed ? colors.accentSoft : (hovered ? colors.panelAlt : colors.panel),
-                focused ? colors.accent : colors.border);
+            const COLORREF fill = pressed ? colors.accentSoft : hovered || focused ? colors.panelAlt : colors.panel;
+            if (fill != colors.panel)
+                DrawRoundedBox(dc, rect, Ui::Radius, fill, fill);
             RECT iconRect=rect; InflateRect(&iconRect,-Ui::Scale(6),-Ui::Scale(6));
             toolbarIcons_.Draw(dc,darkMode_?ToolbarIcon::Sun:ToolbarIcon::Moon,iconRect,darkMode_);
             return;
