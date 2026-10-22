@@ -1,4 +1,5 @@
 #include "AiPane.h"
+#include "AiHistory.h"
 #include "Win32Helpers.h"
 #include <chrono>
 #include <sstream>
@@ -1247,24 +1248,15 @@ AiPane::Json AiPane::History() const {
         if (RegQueryValueExW(key, L"Threads", nullptr, &type, reinterpret_cast<BYTE *>(bytes.data()), &size) ==
             ERROR_SUCCESS) {
             auto parsed = Json::parse(bytes, nullptr, false);
-            if (parsed.is_array())
-                out = parsed;
+            out = ai::NormalizeHistory(parsed);
         }
     }
     RegCloseKey(key);
     return out;
 }
 void AiPane::RememberThread(const std::string &id, const std::wstring &title) {
-    auto entries = History();
     const auto profile = Utf8(Profile(settings_));
-    for (auto it = entries.begin(); it != entries.end();)
-        if (it->value("id", std::string()) == id)
-            it = entries.erase(it);
-        else
-            ++it;
-    entries.insert(entries.begin(), {{"id", id}, {"title", Utf8(title.substr(0, 40))}, {"profile", profile}});
-    while (entries.size() > 100)
-        entries.erase(entries.end() - 1);
+    const auto entries = ai::RememberHistory(History(), id, Utf8(title.substr(0, 40)), profile);
     HKEY key = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\AI", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key,
                         nullptr) == ERROR_SUCCESS) {

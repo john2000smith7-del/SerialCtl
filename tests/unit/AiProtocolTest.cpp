@@ -1,4 +1,5 @@
 #include "AiProtocol.h"
+#include "AiHistory.h"
 #include "CodexProtocol.h"
 #include <iostream>
 #include <stdexcept>
@@ -68,6 +69,36 @@ int main() {
         const auto models = DecodeResponse(
             Operation::Models, {{"data", Json::array({{{"id", "m"}, {"supportedReasoningEfforts", Json::array()}}})}});
         Require(models["models"][0]["reasoning"] == false, "Adapter assumed reasoning support without server metadata");
+        // Exercise persisted history across successive conversations. The old
+        // initializer-list insert wrote pair arrays, then value() threw on them.
+        auto history = RememberHistory(Json::array(), "first", "hello", "server-a/user");
+        history = Json::parse(history.dump());
+        Require(history.size() == 1 && history[0].is_object(), "History record must persist as one object");
+        history = RememberHistory(history, "second", "again", "server-a/user");
+        Require(history.size() == 2 && history[0]["id"] == "second",
+                "Second conversation could not read persisted history");
+        history = RememberHistory(history, "first", "updated", "server-b/user");
+        Require(history.size() == 3, "Same ID on another SSH profile must retain its history");
+        history = RememberHistory(history, "first", "renamed", "server-a/user");
+        Require(history.size() == 3 && history[0]["title"] == "renamed", "History replacement lost its profile scope");
+        const Json legacy = Json::array({Json::array({"id", "old"}), Json::array({"title", "old title"}),
+                                         Json::array({"profile", "server-a/user"})});
+        auto migrated = NormalizeHistory(legacy);
+        Require(migrated.size() == 1 && migrated[0]["id"] == "old", "V1.0.9 pair-array history was not recovered");
+        migrated = RememberHistory(migrated, "new", "new title", "server-a/user");
+        Require(migrated.size() == 2 && migrated[1].is_object(), "Migrated history failed on next conversation");
+        Json damaged = legacy;
+        damaged.push_back(nullptr);
+        damaged.push_back(7);
+        damaged.push_back({{"id", 1}, {"title", "bad"}, {"profile", "server-a/user"}});
+        damaged.push_back(Json::array({"id", "incomplete"}));
+        Require(NormalizeHistory(damaged) == NormalizeHistory(legacy),
+                "Damaged history rows must not block valid history");
+        Require(NormalizeHistory(Json()).empty(), "Invalid history root must be ignored");
+        for (int i = 0; i < 110; ++i)
+            migrated = RememberHistory(migrated, std::to_string(i), "title", "server-a/user");
+        Require(migrated.size() == 100 && migrated[0]["id"] == "109",
+                "History must retain only the latest 100 records");
         std::cout
             << "AiProtocol: framing, UTF-8, bounds, scroll anchoring, tool output and command validation passed\n";
     } catch (const std::exception &e) {
