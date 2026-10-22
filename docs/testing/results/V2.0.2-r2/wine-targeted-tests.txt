@@ -1,0 +1,19 @@
+Test project /workspace/SerialCtl/build/ai-cross
+    Start  1: ai_protocol
+1/7 Test  #1: ai_protocol ......................   Passed    5.47 sec
+    Start  2: ai_client
+2/7 Test  #2: ai_client ........................   Passed    6.31 sec
+    Start  3: ai_pane
+3/7 Test  #3: ai_pane ..........................   Passed    8.51 sec
+    Start  4: ai_device
+4/7 Test  #4: ai_device ........................   Passed   10.25 sec
+    Start  5: ui_buffered_paint
+5/7 Test  #5: ui_buffered_paint ................   Passed    5.50 sec
+    Start  6: ui_combo_paint
+6/7 Test  #6: ui_combo_paint ...................   Passed   15.36 sec
+    Start 11: cmd_connection
+7/7 Test #11: cmd_connection ...................   Passed    6.23 sec
+
+100% tests passed out of 7
+
+Total Test time (real) =  57.64 sec

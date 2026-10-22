@@ -11,6 +11,10 @@ struct AiPaneTestAccess {
             if (!value)
                 throw std::runtime_error(error);
         };
+        wchar_t modelClass[32]{};
+        GetClassNameW(pane.Control(12), modelClass, 32);
+        require(_wcsicmp(modelClass, L"Static") == 0 && !pane.Control(13),
+                "Model must be read-only server default without refresh/manual controls");
         require(pane.target_.empty(), "AI must not select a local serial port by default");
         require(SendMessageW(pane.Control(14), CB_GETCOUNT, 0, 0) == 3,
                 "Target picker must offer explicit selection plus remote-IP discovery");
@@ -52,7 +56,7 @@ struct AiPaneTestAccess {
         require(pane.scroll_.offset == 0, "Dragging the scrollbar to the top failed");
         for (bool dark : {false, true}) {
             pane.Theme(dark);
-            for (int width : {400, 900}) {
+            for (int width : {368, 400, 900}) {
                 SetWindowPos(pane.Handle(), nullptr, 0, 0, width, 600, SWP_NOZORDER);
                 pane.Layout();
                 RECT input{}, outer{}, canvas{}, target{}, send{};
@@ -90,7 +94,7 @@ struct AiPaneTestAccess {
         DeleteObject(bitmap);
         DeleteDC(buffer);
         ReleaseDC(pane.Control(10), screen);
-        require(corner == UiTheme(true).surface, "Dark composer exposed a black rectangular exterior");
+        require(corner == UiAiTheme(true).surface, "Dark composer exposed a black rectangular exterior");
 
         ai::ServerSettings server;
         server.host = L"serialctl-pane-" + std::to_wstring(GetCurrentProcessId()) + L".invalid";
@@ -128,6 +132,7 @@ struct AiPaneTestAccess {
             return ai::Json::array();
         };
         pane.busy_ = true;
+        pane.taskAuthorized_ = true;
         pane.turn_ = "turn-direct";
         pane.turnTarget_ = "session-7";
         ai::Json command = {
@@ -138,6 +143,10 @@ struct AiPaneTestAccess {
             {"callId", "once"},
             {"tool", "serialctl_command"},
             {"arguments", {{"sessionId", "session-7"}, {"command", "dmesg | tail"}, {"reason", "diagnosis"}}}};
+        pane.taskAuthorized_ = false;
+        pane.Event(command);
+        require(writes == 0, "History restore accepted a new device command");
+        pane.taskAuthorized_ = true;
         pane.Event(command);
         require(writes == 1, "Selected serial command must execute directly without second confirmation");
         pane.Event(command);
@@ -182,6 +191,23 @@ struct AiPaneTestAccess {
         pane.stopRequested_ = true; pane.Event(power); pane.stopRequested_ = false;
         require(powerWrites == 1, "Stopped task still changed power output");
 
+        pane.Event({{"event", "serverTool"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
+                    {"messageId", "server:running"}, {"completed", false}, {"text", "make test"}});
+        pane.Event({{"event", "serverToolDelta"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
+                    {"messageId", "server:running"}, {"text", "ACTUAL_PROGRESS"}});
+        pane.completionDeadline_ = GetTickCount64() - 1;
+        pane.Poll();
+        require(pane.busy_ && pane.nativeItems_.count("server:running"),
+                "Compatibility completion interrupted an active native command");
+        pane.Event({{"event", "serverTool"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
+                    {"messageId", "server:running"}, {"completed", true}, {"appendStream", true}, {"text", "exit 2: ACTUAL_FAILURE"}});
+        require(pane.nativeItems_.empty(), "Completed native command stayed pending");
+        size_t commandCards = 0;
+        for (const auto& message : pane.messages_) if (message.item == "server:running") {
+            ++commandCards;
+            require(message.text == L"exit 2: ACTUAL_FAILURE\nACTUAL_PROGRESS", "Native result did not replace its progress");
+        }
+        require(commandCards == 1, "Native tool stream duplicated its message frame");
         pane.Event({{"event", "textComplete"},
                     {"conversationId", "fixture"},
                     {"taskId", "turn-direct"},

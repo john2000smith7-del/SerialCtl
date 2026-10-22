@@ -9,10 +9,9 @@
 
 namespace serialctl::ai {
 struct ServerSettings {
-    std::wstring host, username, password;
+    std::wstring host, username, password, workingDirectory;
     unsigned port = 22;
     bool rememberPassword = false;
-    std::string model;
 };
 bool ValidateServer(const ServerSettings &, std::wstring &error);
 ServerSettings LoadServerSettings();

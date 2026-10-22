@@ -1,0 +1,3 @@
+[PASS] Source/version/dependency checks: V2.0.2
+[NOT RUN] Git provenance: SerialCtl is not yet an independent repository
+[PASS] Source-only checks completed

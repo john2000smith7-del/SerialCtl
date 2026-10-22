@@ -39,6 +39,9 @@ bool ValidateServer(const ServerSettings &s, std::wstring &error) {
         error = L"请输入有效的 SSH 用户名";
     else if (s.password.empty() || s.password.size() > 1024 || s.password.find_first_of(L"\r\n") != std::wstring::npos)
         error = L"请输入 SSH 密码（不支持换行）";
+    else if (s.workingDirectory.size() > 4096 || (!s.workingDirectory.empty() && s.workingDirectory.front() != L'/') ||
+             s.workingDirectory.find_first_of(L"\r\n") != std::wstring::npos || s.workingDirectory.find(L'\0') != std::wstring::npos)
+        error = L"项目目录请填写 Linux 绝对路径，或留空使用服务器默认目录";
     else
         return true;
     return false;
@@ -50,7 +53,7 @@ ServerSettings LoadServerSettings() {
         return s;
     s.host = ReadString(key, L"Host");
     s.username = ReadString(key, L"Username");
-    s.model = WideToMultiByte(ReadString(key, L"Model"), CP_UTF8);
+    s.workingDirectory = ReadString(key, L"WorkingDirectory");
     DWORD port = 22, size = sizeof(port), type = REG_DWORD;
     RegQueryValueExW(key, L"Port", nullptr, &type, reinterpret_cast<BYTE *>(&port), &size);
     s.port = port > 0 && port <= 65535 ? port : 22;
@@ -78,7 +81,7 @@ bool SaveServerSettings(const ServerSettings &s, std::wstring &error) {
         };
         set(L"Host", s.host);
         set(L"Username", s.username);
-        set(L"Model", MultiByteToWide(reinterpret_cast<const uint8_t *>(s.model.data()), s.model.size(), CP_UTF8));
+        set(L"WorkingDirectory", s.workingDirectory);
         DWORD port = s.port;
         if (result == ERROR_SUCCESS)
             result = RegSetValueExW(key, L"Port", 0, REG_DWORD, reinterpret_cast<const BYTE *>(&port), sizeof(port));

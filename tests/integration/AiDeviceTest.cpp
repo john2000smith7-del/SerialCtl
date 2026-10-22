@@ -33,6 +33,12 @@ Json Wait(PowerService& power, Json action) {
 struct AiDeviceTestAccess {
     static void Run(HWND parent) {
         MainWindow main;
+        main.window_ = parent;
+        main.instance_ = GetModuleHandleW(nullptr);
+        main.CreateControls();
+        ShowWindow(parent, SW_SHOW);
+        main.rightPanelWidth_ = 320;
+        main.rightPanelCollapsed_ = false;
         std::vector<std::shared_ptr<Transport>> transports;
         for (int mode = 0; mode <= 4; ++mode) {
             auto session = std::make_unique<MainWindow::SessionState>();
@@ -66,6 +72,44 @@ struct AiDeviceTestAccess {
             auto expected = WideToMultiByte((mode == 4 ? L"echo 中文" : L"echo evidence") + ending, transports[mode]->input);
             Require(transports[mode]->sent == Bytes(expected.begin(), expected.end()), "AI wrote wrong target, encoding or line ending");
         }
+        // Reuse the real terminal HWND and session model, not a copied AI log.
+        main.ShowAiPage(false);
+        main.aiPane_.SelectTarget("session-2");
+        main.SyncAiTerminal();
+        Require(main.aiVisible_ && main.activeSession_ == main.sessions_[1].get(),
+            "AI target binding left the conversation page or selected wrong terminal");
+        main.LayoutControls(1400, 850);
+        Require(!IsWindowVisible(main.terminal_), "Collapsed AI monitor exposed terminal");
+        main.aiMonitorCollapsed_ = false;
+        main.aiMonitorWidth_ = 420;
+        main.LayoutControls(1400, 850);
+        RECT ai{}, terminal{}, header{};
+        GetWindowRect(main.aiPane_.Handle(), &ai);
+        GetWindowRect(main.terminal_, &terminal);
+        GetWindowRect(main.aiTerminalHeader_, &header);
+        Require(IsWindowVisible(main.terminal_) && terminal.left > ai.right && terminal.top >= header.bottom,
+            "Expanded monitor did not place actual terminal beside chat under its header");
+        Require(main.rightPanelWidth_ == 320 && !main.rightPanelCollapsed_,
+            "AI monitor changed terminal sidebar preference");
+        main.aiMonitorWidth_ = 520;
+        main.LayoutControls(1400, 850);
+        RECT resized{}; GetWindowRect(main.terminal_, &resized);
+        Require(resized.right - resized.left > terminal.right - terminal.left,
+            "Monitor width change did not resize real terminal");
+        main.aiPane_.SelectTarget("session-5"); main.SyncAiTerminal();
+        Require(main.aiVisible_ && main.activeSession_ == main.sessions_[4].get(),
+            "Changing AI terminal target failed to bind actual CMD session");
+        const std::string live = "LIVE_MONITOR_EVIDENCE\n";
+        main.AppendData(5, Bytes(live.begin(), live.end()), CP_UTF8, 0);
+        Require(main.AiDeviceRequest("read", {{"sessionId", "session-5"}, {"lines", 1}})["text"] == live,
+            "Monitor receive did not share the AI device data source");
+        main.aiPane_.SelectTarget(""); main.SyncAiTerminal();
+        Require(!IsWindowVisible(main.terminal_), "Missing AI target exposed another session output");
+        main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
+        main.LayoutControls(1400, 850);
+        GetWindowRect(main.terminal_, &terminal); GetWindowRect(main.aiPane_.Handle(), &ai);
+        Require(!main.aiVisible_ && IsWindowVisible(main.terminal_) && terminal.left == ai.left &&
+            main.rightPanelWidth_ == 320, "Leaving AI failed to restore original terminal layout");
         const auto before = transports[4]->sent;
         Require(main.AiDeviceRequest("command", {{"sessionId", "session-5"}, {"command", "a\nb"}}).contains("error"), "Multiline command bypassed validation");
         Require(transports[4]->sent == before, "Rejected command partially wrote");
@@ -73,7 +117,7 @@ struct AiDeviceTestAccess {
         Require(main.AiDeviceRequest("sessions", {}).size() == 4, "Disconnected terminal still offered");
         Require(main.AiDeviceRequest("read", {{"sessionId", "session-1"}}).contains("error"), "Disconnected terminal read accepted");
 
-        Require(main.powerPane_.Create(parent, static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT)), false, &main.powerService_), "Cannot create real power pane");
+        Require(main.powerPane_.Handle() != nullptr, "Cannot create real power pane");
         for (int i = 0; i < 3; ++i)
             SendMessageW(GetDlgItem(main.powerPane_.Handle(), 20 + i), BM_SETCHECK, i == 1 ? BST_UNCHECKED : BST_CHECKED, 0);
         Require(Wait(main.powerService_, main.powerService_.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed", "Controlled power backend not connected");
@@ -96,7 +140,9 @@ struct AiDeviceTestAccess {
         Require(main.powerService_.State()["channels"][0]["output"] == false && main.powerService_.State()["channels"][2]["output"] == false, "Power OFF readback incorrect");
         Require(main.AiDeviceRequest("power.parameters", {{"voltage", 30}}).contains("error"), "AI gained unrequested parameter operation");
         main.powerService_.Shutdown();
-        DestroyWindow(main.powerPane_.Handle());
+        main.aiPane_.Shutdown();
+        DestroyWindow(parent);
+        for (auto font : {main.uiFont_, main.smallFont_, main.titleFont_, main.terminalFont_}) DeleteObject(font);
     }
 };
 }
@@ -105,7 +151,7 @@ int main() {
     Gdiplus::GdiplusStartupInput startup; ULONG_PTR token{}; Gdiplus::GdiplusStartup(&token, &startup, nullptr);
     HWND parent = CreateWindowExW(0,L"STATIC",L"AI device callback fixture",WS_OVERLAPPEDWINDOW,0,0,1000,700,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     int result = 0;
-    try { serialctl::AiDeviceTestAccess::Run(parent); std::cout << "[PASS] Actual desktop AI callback: five terminal types, received evidence, target/encoding/CRLF, power ON/OFF readback and unchanged selection; controlled transports, no physical devices\n"; }
+    try { serialctl::AiDeviceTestAccess::Run(parent); std::cout << "[PASS] Actual desktop AI callback: five terminal types, received evidence, target/encoding/CRLF, adjustable live AI monitor and original sidebar, power ON/OFF readback and unchanged selection; controlled transports, no physical devices\n"; }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; result = 1; }
     DestroyWindow(parent); Gdiplus::GdiplusShutdown(token); return result;
 }

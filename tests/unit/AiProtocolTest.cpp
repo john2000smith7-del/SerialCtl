@@ -59,12 +59,46 @@ int main() {
             Require(tool["inputSchema"]["additionalProperties"] == false, "unbounded tool argument schema");
         const auto reply = ToolResult({{"accepted", 5}, {"execution", "unknown"}});
         Require(reply["contentItems"][0]["type"] == "inputText", "app-server dynamic tool result format invalid");
-        const auto create = MakeRequest(Operation::NewConversation, 77, {{"modelId", "fixture"}});
+        const auto create = MakeRequest(Operation::NewConversation, 77, {{"defaultModel", "fixture"}, {"cwd", "/srv/project with spaces"}, {"modelId", "obsolete-model"}});
         Require(create["method"] == "thread/start" && create["params"]["dynamicTools"].size() == 7 &&
                     create["params"]["model"] == "fixture",
                 "Presentation adapter lost fixed role/model/tool configuration");
         Require(create["params"]["config"]["web_search"] == "disabled" && create["params"]["approvalPolicy"] == "never",
                 "Thread configuration must use the server enum and direct serial operation policy");
+        Require(create["params"]["sandbox"] == "danger-full-access" &&
+                    create["params"]["config"]["features.shell_tool"] == true &&
+                    create["params"]["cwd"] == "/srv/project with spaces",
+                "Server native tools or JSON project directory missing");
+        Require(!MakeRequest(Operation::NewConversation, 79, {{"modelId", "obsolete"}})["params"].contains("model"),
+                "Old user model preference must not override server default");
+        const auto task = MakeRequest(Operation::StartTask, 80,
+            {{"conversationId", "t"}, {"text", "inspect"}, {"defaultModel", "server-default"}, {"cwd", "/srv/code"}});
+        Require(task["params"]["model"] == "server-default" && task["params"]["cwd"] == "/srv/code" &&
+            task["params"]["sandboxPolicy"]["type"] == "dangerFullAccess", "Turn lost server tool policy");
+        Json commandItem = {{"id", "cmd-1"}, {"type", "commandExecution"}, {"command", "make test"},
+            {"cwd", "/srv/code"}, {"status", "completed"}, {"exitCode", 2}, {"aggregatedOutput", "ACTUAL_FAILED_TEST"}};
+        const auto commandEvent = DecodeNotification({{"method", "item/completed"},
+            {"params", {{"threadId", "t"}, {"turnId", "u"}, {"item", commandItem}}}});
+        Require(commandEvent["event"] == "serverTool" && commandEvent["completed"] == true &&
+            commandEvent["messageId"] == "server:cmd-1" &&
+            commandEvent["text"].get<std::string>().find("ACTUAL_FAILED_TEST") != std::string::npos &&
+            commandEvent["text"].get<std::string>().find(u8"退出码 2") != std::string::npos,
+            "Native command result lost actual output or exit status");
+        const auto serverDelta = DecodeNotification({{"method", "item/commandExecution/outputDelta"},
+            {"params", {{"threadId", "t"}, {"turnId", "u"}, {"itemId", "cmd-1"}, {"delta", "stream"}}}});
+        Require(serverDelta["event"] == "serverToolDelta" && serverDelta["messageId"] == "server:cmd-1" &&
+            serverDelta["text"] == "stream", "Native command output delta not adapted");
+        const Json fileItem = {{"id", "patch-1"}, {"type", "fileChange"}, {"status", "completed"},
+            {"changes", {{{"path", "/srv/code/main.c"}, {"diff", "-old\n+fixed"}, {"kind", {{"type", "update"}}}}}}};
+        const auto restored = DecodeResponse(Operation::RestoreConversation,
+            {{"thread", {{"id", "t"}, {"turns", {{{"items", {commandItem, fileItem}}}}}}}});
+        Require(restored["messages"].size() == 2 &&
+            restored["messages"][1]["text"].get<std::string>().find("/srv/code/main.c") != std::string::npos &&
+            restored["messages"][1]["text"].get<std::string>().find("+fixed") != std::string::npos,
+            "Restored native tool evidence missing");
+        Require(DecodeNotification({{"id", 90}, {"method", "item/fileChange/requestApproval"},
+            {"params", {{"threadId", "t"}, {"turnId", "u"}}}})["event"] == "serverApproval",
+            "Native approval request not associated with active turn");
         const auto resumed = MakeRequest(Operation::RestoreConversation, 78, {{"conversationId", "t"}});
         Require(resumed["params"]["config"]["web_search"] == "disabled" &&
                     resumed["params"]["approvalPolicy"] == "never",

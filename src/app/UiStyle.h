@@ -24,6 +24,13 @@ inline UiColors UiTheme(bool dark) {
                            RGB(110, 110, 115), RGB(210, 210, 215), RGB(0, 122, 255),   RGB(255, 59, 48),
                            RGB(245, 245, 247), RGB(229, 241, 255)};
 }
+// AI uses the existing softer surfaces; regular terminal/dialog palettes stay independent.
+inline UiColors UiAiTheme(bool dark) {
+    auto c = UiTheme(dark);
+    c.surface = dark ? c.raised : c.window;
+    c.field = UiTheme(dark).surface;
+    return c;
+}
 inline Gdiplus::Color UiColor(COLORREF color) {
     return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
 }
@@ -143,7 +150,9 @@ struct UiFieldStyle {
     bool *dark;
     HFONT font;
     int dpi;
+    bool ai = false;
 };
+inline UiColors UiFieldColors(const UiFieldStyle& style) { return style.ai ? UiAiTheme(*style.dark) : UiTheme(*style.dark); }
 // Keep native COMBOBOX/ComboLBox windows, selection notifications, keyboard
 // handling and accessibility. Only painting and the scrollbar lane are shared.
 struct UiComboPopup {
@@ -193,7 +202,7 @@ inline void UiComboRegion(HWND list, int dpi) {
 }
 inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool selected,
                            const UiFieldStyle &style, const UiComboScroll *scroll = nullptr) {
-    const auto colors = UiTheme(*style.dark);
+    const auto colors = UiFieldColors(style);
     auto d = [&](int value) { return MulDiv(value, style.dpi, 96); };
     HBRUSH background = CreateSolidBrush(colors.field);
     FillRect(dc, &row, background);
@@ -224,7 +233,7 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
     UiBufferedPaint paint(target, bounds);
     HDC dc = paint.Dc();
     const int saved = SaveDC(dc);
-    const auto colors = UiTheme(*style.dark);
+    const auto colors = UiFieldColors(style);
     auto d = [&](int value) { return MulDiv(value, style.dpi, 96); };
     wchar_t parentClass[32]{};
     GetClassNameW(GetParent(combo), parentClass, 32);
@@ -292,7 +301,7 @@ inline void UiPaintComboPopup(HWND list, HDC target, const UiComboPopup &data) {
     GetClientRect(list, &bounds);
     if (!target || bounds.right <= 0 || bounds.bottom <= 0)
         return;
-    auto colors = UiTheme(*data.style->dark);
+    auto colors = UiFieldColors(*data.style);
     auto d = [&](int value) { return MulDiv(value, data.style->dpi, 96); };
     HDC buffer = CreateCompatibleDC(target);
     HBITMAP bitmap = buffer ? CreateCompatibleBitmap(target, bounds.right, bounds.bottom) : nullptr;
@@ -547,7 +556,7 @@ inline void UiPaintCheckBox(HWND h, HDC target, const UiFieldStyle &style) {
     GetClientRect(h, &bounds);
     if (!target || bounds.right <= 0 || bounds.bottom <= 0)
         return;
-    const auto colors = UiTheme(*style.dark);
+    const auto colors = UiFieldColors(style);
     auto d = [&](int value) { return MulDiv(value, style.dpi, 96); };
     HDC buffer = CreateCompatibleDC(target);
     HBITMAP bitmap = buffer ? CreateCompatibleBitmap(target, bounds.right, bounds.bottom) : nullptr;
@@ -672,7 +681,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     bool edit = _wcsicmp(cls, L"EDIT") == 0;
     bool hoverChanged = false;
     auto d = [style](int n) { return MulDiv(n, style->dpi, 96); };
-    auto colors = UiTheme(*style->dark);
+    auto colors = UiFieldColors(*style);
     if (!edit && (message == WM_NCCALCSIZE || message == WM_NCPAINT))
         return 0;
     if (!edit && message == WM_ERASEBKGND)

@@ -1844,6 +1844,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
               }, error)) AppendStatus(error, true);
         }
         return 0;
+    case AiTargetChanged:
+        SyncAiTerminal();
+        return 0;
     case WM_ENTERSIZEMOVE:
         windowResizing_ = true;
         return 0;
@@ -1859,14 +1862,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         UpdateWindow(window_);
         return 0;
     case WM_SETCURSOR:
-        if (!(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_) && LOWORD(lParam) == HTCLIENT) {
+        if (!SidebarCollapsed() && LOWORD(lParam) == HTCLIENT) {
             POINT point{};
             GetCursorPos(&point);
             ScreenToClient(window_, &point);
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
                 return TRUE;
@@ -1874,12 +1877,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_LBUTTONDOWN:
-        if (!(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
+        if (!SidebarCollapsed()) {
             const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelDragging_ = true;
                 SetCapture(window_);
@@ -1888,14 +1891,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_LBUTTONDBLCLK:
-        if (!(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)) {
+        if (!SidebarCollapsed()) {
             const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
-                rightPanelWidth_ = 360;
+                (aiVisible_ ? aiMonitorWidth_ : rightPanelWidth_) = 360;
                 LayoutControls(client.right, client.bottom);
                 InvalidateRect(window_, nullptr, TRUE);
                 return 0;
@@ -1908,8 +1911,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             GetClientRect(window_, &client);
             const int newWidth = std::max(
                 Ui::MinRightWidth, std::min(Ui::MaxRightWidth, static_cast<int>(client.right) - GET_X_LPARAM(lParam)));
-            if (newWidth != rightPanelWidth_) {
-                rightPanelWidth_ = newWidth;
+            if (newWidth != SidebarWidth()) {
+                (aiVisible_ ? aiMonitorWidth_ : rightPanelWidth_) = newWidth;
                 LayoutControls(client.right, client.bottom);
                 InvalidateRect(window_, nullptr, FALSE);
             }
@@ -2029,7 +2032,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             else if (id == IdDeleteCommand) DeleteSelectedCommand();
             else if (id == IdCommandTab) ShowSftpPanel(false);
             else if (id == IdSftpTab) { ShowSftpPanel(true); RefreshSftp(); }
-            else if (id == IdRightPanelToggle) SetRightPanelCollapsed(!rightPanelCollapsed_);
+            else if (id == IdRightPanelToggle) SetRightPanelCollapsed(!(aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_));
             else if (id == IdSftpNameHeader) SetSftpSort(SftpSortColumn::Name);
             else if (id == IdSftpSizeHeader) SetSftpSort(SftpSortColumn::Size);
             else if (id == IdSftpModifiedHeader) SetSftpSort(SftpSortColumn::Modified);
@@ -2310,6 +2313,7 @@ void MainWindow::CreateControls() {
     connectionList_ = CreateChild(L"LISTBOX", L"", LBS_OWNERDRAWFIXED | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, IdConnectionList);
 
     SetWindowSubclass(connectionList_, OverlayListSubclassProc, 2, reinterpret_cast<DWORD_PTR>(this));
+    aiTerminalHeader_ = CreateChild(L"STATIC", L"终端实时输出", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS, 305);
     terminal_ = CreateChild(L"STATIC", L"终端", SS_NOTIFY | WS_TABSTOP, IdTerminal);
     SendMessageW(terminal_, WM_SETFONT, reinterpret_cast<WPARAM>(terminalFont_), TRUE);
     SetWindowSubclass(terminal_, TerminalSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
@@ -2402,7 +2406,7 @@ void MainWindow::LayoutControls(int width, int height) {
                Ui::StandardHeight, Ui::StandardHeight, TRUE);
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        width, height, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+        width, height, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
     const int cardTop = MainCardTop();
     const int centerCardBottom = layout.contentBottom;
     const int sideCardBottom = height - Ui::Gap;
@@ -2422,9 +2426,19 @@ void MainWindow::LayoutControls(int width, int height) {
 
     batch.Move(disconnectAllButton_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - Ui::CompactHeight,
                leftInnerRight - leftInnerLeft, Ui::CompactHeight, FALSE);
-    batch.Move(terminal_, layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
-               layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
-               centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
+    const bool monitor = aiVisible_ && !SidebarCollapsed();
+    if (monitor)
+        batch.Move(terminal_, layout.rightLeft + Ui::PanelPadding, headerTop + Ui::StandardHeight + Ui::Space,
+            std::max(Ui::Scale(80), width - Ui::Gap - layout.rightLeft - Ui::PanelPadding * 2),
+            std::max(Ui::Scale(48), sideCardBottom - Ui::PanelPadding - headerTop - Ui::StandardHeight - Ui::Space), TRUE);
+    else if (!aiVisible_)
+        batch.Move(terminal_, layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
+            layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
+            centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
+    batch.Move(aiTerminalHeader_, layout.rightLeft + Ui::PanelPadding, headerTop + 2,
+        std::max(Ui::Scale(80), width - Ui::Gap - layout.rightLeft - Ui::PanelPadding * 2 - Ui::CollapsedRightWidth),
+        Ui::CompactHeight, TRUE);
+    batch.Show(aiTerminalHeader_, monitor ? SW_SHOW : SW_HIDE);
 
     batch.Move(powerPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
                layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
@@ -2433,15 +2447,15 @@ void MainWindow::LayoutControls(int width, int height) {
                layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
                centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
     batch.Show(aiPane_.Handle(), aiVisible_ ? SW_SHOW : SW_HIDE);
-    batch.Show(terminal_, (powerVisible_ || aiVisible_) ? SW_HIDE : SW_SHOW);
+    batch.Show(terminal_, aiVisible_ ? (monitor && activeSession_ && aiPane_.AssociatedTarget() == "session-" + std::to_string(activeSession_->id) ? SW_SHOW : SW_HIDE) : powerVisible_ ? SW_HIDE : SW_SHOW);
     batch.Show(powerPane_.Handle(), powerVisible_ ? SW_SHOW : SW_HIDE);
     batch.Show(disconnectButton_, (aiVisible_ || (activeSession_ && !powerVisible_)) ? SW_SHOW : SW_HIDE);
     if (aiVisible_) EnableWindow(disconnectButton_, aiPane_.Busy());
-    EnableWindow(rightPanelToggleButton_,!powerVisible_ && !aiVisible_);
+    EnableWindow(rightPanelToggleButton_, !powerVisible_);
     const int rightLeft = layout.rightLeft;
     const int rightInnerLeft = rightLeft + Ui::PanelPadding;
     const int actualRightInnerRight = width - Ui::Gap - Ui::PanelPadding;
-    const int rightInnerRight = (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_)
+    const int rightInnerRight = SidebarCollapsed()
         ? rightInnerLeft + Ui::MinRightWidth - Ui::PanelPadding * 2
         : actualRightInnerRight;
     // The final rail is fixed at the right edge. Keep its button stationary even
@@ -2522,7 +2536,7 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, toolbarFocused ? colors.accent : colors.border);
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        client.right, client.bottom, rightPanelWidth_, (powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_), rightPanelAnimatedWidth_);
+        client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
     const int cardTop = MainCardTop();
     RECT leftCard{Ui::Gap, cardTop, layout.leftWidth, client.bottom - Ui::Gap};
     RECT terminalFrame{layout.centerLeft, cardTop,
@@ -2530,7 +2544,7 @@ void MainWindow::PaintWindow(HDC dc) {
     RECT rightCard{layout.rightLeft, cardTop,
         client.right - Ui::Gap, client.bottom - Ui::Gap};
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
-    DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, aiVisible_ ? colors.panel : colors.terminal, colors.border);
+    DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, aiVisible_ ? UiAiTheme(darkMode_).surface : colors.terminal, colors.border);
     DrawRoundedBox(dc, rightCard, Ui::CardRadius, colors.panel, colors.border);
 }
 
@@ -2706,7 +2720,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 pressed ? colors.accentSoft : (hovered ? colors.accentSoft : colors.panelAlt),
                 focused ? colors.accent : colors.border);
             DrawChevronHorizontal(dc, rect, enabled ? colors.text : colors.muted,
-                powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_);
+                powerVisible_ || (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_);
             return;
         }
         if (id == IdDisconnect || id == IdDisconnectAll) {
@@ -3645,6 +3659,7 @@ void MainWindow::ShowAiPage(bool connect) {
     RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
     InvalidateRect(window_, nullptr, TRUE);
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
+    SyncAiTerminal();
     if (connect && !aiPane_.Connected()) aiPane_.ShowConnection();
 }
 
@@ -3769,8 +3784,15 @@ void MainWindow::ShowPowerPage() {
 
 void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (index >= sessions_.size()) return;
-    aiVisible_ = false; ShowWindow(aiPane_.Handle(), SW_HIDE);
-    powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE); ShowWindow(terminal_, SW_SHOW);
+    if (focus != SessionFocus::AiPreview) {
+        KillTimer(window_, SideAnimationTimerId);
+        rightPanelAnimating_ = false;
+        rightPanelAnimatedWidth_ = -1;
+        aiVisible_ = false;
+        ShowWindow(aiPane_.Handle(), SW_HIDE);
+    }
+    powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE);
+    if (!aiVisible_) ShowWindow(terminal_, SW_SHOW);
     const bool interruptedMacro = runningCommandIndex_ >= 0 &&
         activeSession_ && activeSession_ != sessions_[index].get();
     if (interruptedMacro)
@@ -3797,7 +3819,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     SendMessageW(connectionList_, LB_SETCURSEL, index, 0);
     SendMessageW(connectionList_, LB_SETTOPINDEX, listTop, 0);
     SetConnectedUi(connection_ && connection_->IsConnected());
-    if (selectedMode_ == 0 && SftpClient::IsAvailable()) {
+    if (focus != SessionFocus::AiPreview && selectedMode_ == 0 && SftpClient::IsAvailable()) {
         ShowSftpPanel(true);
         RefreshSftpList();
         if (!sftpBusy_) RefreshSftp();
@@ -4267,7 +4289,7 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     SetWindowTextW(status_, text.c_str());
     if (status_) {
         RECT client{}; GetClientRect(window_, &client);
-        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_),rightPanelAnimatedWidth_);
+        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,SidebarWidth(),SidebarCollapsed(),rightPanelAnimatedWidth_);
         HDC dc=GetDC(status_); auto old=SelectObject(dc,smallFont_);
         RECT measured{0,0,layout.leftWidth-Ui::Gap-Ui::PanelPadding*2,0};
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
@@ -5348,6 +5370,24 @@ void MainWindow::RefreshConnectionList() {
     InvalidateRect(connectionList_, nullptr, TRUE);
 }
 
+bool MainWindow::SidebarCollapsed() const {
+    return powerVisible_ || (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_ || rightPanelAnimating_;
+}
+int MainWindow::SidebarWidth() const { return aiVisible_ ? aiMonitorWidth_ : rightPanelWidth_; }
+void MainWindow::SyncAiTerminal() {
+    if (!aiVisible_) return;
+    const auto& id = aiPane_.AssociatedTarget();
+    for (size_t i = 0; i < sessions_.size(); ++i)
+        if (id == "session-" + std::to_string(sessions_[i]->id)) {
+            if (activeSession_ != sessions_[i].get()) SwitchSession(i, SessionFocus::AiPreview);
+            SetWindowTextW(aiTerminalHeader_, (L"实时终端 · " + sessions_[i]->name).c_str());
+            RECT r{}; GetClientRect(window_, &r); LayoutControls(r.right, r.bottom);
+            return;
+        }
+    SetWindowTextW(aiTerminalHeader_, L"选择关联终端后显示实时输出");
+    ShowWindow(terminal_, SW_HIDE);
+}
+
 void MainWindow::LoadUiState() {
     std::wstring directory = DirectoryOf(DefaultCommandsPath());
     if (directory.empty()) {
@@ -5360,6 +5400,8 @@ void MainWindow::LoadUiState() {
         std::min(Ui::MaxRightWidth, static_cast<int>(GetPrivateProfileIntW(
             L"Layout", L"RightPanelWidth", 360, path.c_str()))));
     sftpNameWidth_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"SftpNameWidth", 180, path.c_str())), 80, 600);
+    aiMonitorWidth_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"AiMonitorWidth", 360, path.c_str())), Ui::MinRightWidth, Ui::MaxRightWidth);
+    aiMonitorCollapsed_ = GetPrivateProfileIntW(L"Layout", L"AiMonitorCollapsed", 1, path.c_str()) != 0;
     rightPanelCollapsed_ = GetPrivateProfileIntW(
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
 }
@@ -5372,6 +5414,8 @@ void MainWindow::SaveUiState() const {
         directory = DirectoryOf(modulePath);
     }
     const std::wstring path = JoinLocalPath(directory, L"settings.ini");
+    WritePrivateProfileStringW(L"Layout", L"AiMonitorWidth", std::to_wstring(aiMonitorWidth_).c_str(), path.c_str());
+    WritePrivateProfileStringW(L"Layout", L"AiMonitorCollapsed", aiMonitorCollapsed_ ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"Layout", L"SftpNameWidth", std::to_wstring(sftpNameWidth_).c_str(), path.c_str());
     WritePrivateProfileStringW(L"Layout", L"RightPanelWidth",
         std::to_wstring(rightPanelWidth_).c_str(), path.c_str());
@@ -5380,13 +5424,13 @@ void MainWindow::SaveUiState() const {
 }
 
 void MainWindow::SetRightPanelCollapsed(bool collapsed) {
-    if (powerVisible_ || aiVisible_ || (rightPanelCollapsed_ == collapsed && !rightPanelAnimating_)) return;
+    if (powerVisible_ || ((aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) == collapsed && !rightPanelAnimating_)) return;
     RECT client{}; GetClientRect(window_, &client);
-    const auto before = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,
-        rightPanelCollapsed_ || rightPanelAutoCollapsed_, rightPanelAnimatedWidth_);
-    rightPanelCollapsed_ = collapsed;
-    const auto after = GetMainLayoutMetrics(client.right,client.bottom,rightPanelWidth_,
-        rightPanelCollapsed_ || rightPanelAutoCollapsed_);
+    const auto before = GetMainLayoutMetrics(client.right,client.bottom,SidebarWidth(),
+        (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_, rightPanelAnimatedWidth_);
+    (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) = collapsed;
+    const auto after = GetMainLayoutMetrics(client.right,client.bottom,SidebarWidth(),
+        (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_);
     SetWindowTextW(rightPanelToggleButton_, collapsed ? L"展开侧栏" : L"折叠侧栏");
     rightPanelAnimationFrom_=before.rightWidth; rightPanelAnimationTo_=after.rightWidth;
     rightPanelAnimatedWidth_=before.rightWidth; rightPanelAnimationAt_=GetTickCount64();
@@ -5415,7 +5459,7 @@ void MainWindow::ShowSftpPanel(bool show) {
 }
 
 void MainWindow::QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth) {
-    const bool expanded = !(powerVisible_ || aiVisible_ || rightPanelCollapsed_ || rightPanelAutoCollapsed_ || rightPanelAnimating_);
+    const bool expanded = !aiVisible_ && !SidebarCollapsed();
     const bool show = sftpPanelVisible_;
     batch.Show(rightPanelToggleButton_, SW_SHOW);
     batch.Show(commandHeader_, expanded ? SW_SHOW : SW_HIDE);

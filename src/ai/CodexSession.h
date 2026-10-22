@@ -81,6 +81,9 @@ class CodexSession {
             client_.Send({{"id", requestId},
                           {"error", {{"code", -32601}, {"message", "Only bounded SerialCtl tools are supported"}}}});
     }
+    void Approve(const Json &requestId) {
+        client_.Send({{"id", requestId}, {"result", {{"decision", "accept"}}}});
+    }
     void Disconnect() {
         client_.Disconnect();
     }

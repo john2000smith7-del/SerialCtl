@@ -9,6 +9,7 @@
 
 namespace serialctl {
 inline constexpr UINT AiStateChanged = WM_APP + 22;
+inline constexpr UINT AiTargetChanged = WM_APP + 23;
 class AiPane {
   public:
     using Json = ai::Json;
@@ -30,6 +31,7 @@ class AiPane {
     }
     void RefreshTargets();
     void SelectTarget(const std::string &id);
+    const std::string& AssociatedTarget() const { return busy_ ? turnTarget_ : target_; }
     void AttachSelection(const std::wstring &text, const std::string &sessionId);
     bool PreTranslate(MSG &);
 
@@ -43,7 +45,7 @@ class AiPane {
         int style;
     };
     struct Message {
-        std::wstring role, text;
+        std::wstring role, text, streamedOutput;
         std::string item;
         RECT bounds{};
         std::vector<Paragraph> paragraphs;
@@ -83,8 +85,6 @@ class AiPane {
     void ShowHistory();
     void RememberThread(const std::string &, const std::wstring &);
     Json History() const;
-    void RefreshModels();
-    void SelectModel();
     void Copy(const std::wstring &);
     bool PromptValue(const std::wstring &, std::wstring &);
     HWND Control(int id) const {
@@ -119,12 +119,13 @@ class AiPane {
     std::map<std::uint64_t, PendingRequest> requests_;
     std::set<std::string> seenToolCalls_;
     std::set<std::string> finishedTurns_;
+    std::set<std::string> nativeItems_;
     std::string thread_, turn_, target_, turnTarget_, serverDefaultModel_;
-    std::vector<std::string> targets_, modelIds_;
-    std::vector<bool> reasoningModels_;
+    std::vector<std::string> targets_;
     std::wstring status_ = L"AI 未连接", pendingPrompt_, attachment_, valueTitle_, valueDraft_, turnTargetLabel_;
     std::string attachmentTarget_;
     bool busy_ = false, stopRequested_ = false, observedTool_ = false, dialogEnter_ = false, connectionError_ = false;
+    bool taskAuthorized_ = false, restoreOnConfig_ = false;
     size_t messageBytes_ = 0;
     Json pendingObservation_;
     Json powerContext_;

@@ -54,7 +54,7 @@ private:
 #ifdef SERIALCTL_AI_TESTING
     friend struct AiDeviceTestAccess;
 #endif
-    enum class SessionFocus { Terminal, Preserve };
+    enum class SessionFocus { Terminal, Preserve, AiPreview };
     enum class SftpTransferDirection { Upload, Download };
     enum class SftpTransferState { Queued, Running, Completed, Failed, Canceled };
     enum class SftpMutationKind { CreateDirectory, Rename, Delete, ChangeMode };
@@ -246,6 +246,9 @@ private:
     void LoadUiState();
     void SaveUiState() const;
     void SetRightPanelCollapsed(bool collapsed);
+    bool SidebarCollapsed() const;
+    int SidebarWidth() const;
+    void SyncAiTerminal();
 
     void ShowSftpPanel(bool show);
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
@@ -337,6 +340,9 @@ private:
     PowerPane powerPane_;
     AiPane aiPane_;
     bool aiVisible_ = false, aiPageOpened_ = false;
+    bool aiMonitorCollapsed_ = true;
+    int aiMonitorWidth_ = 360;
+    HWND aiTerminalHeader_ = nullptr;
     bool aiRemoteConnect_ = false;
     HWND aiButton_ = nullptr;
     bool powerVisible_ = false;

@@ -8,7 +8,7 @@ enum class Operation { Models, Defaults, NewConversation, StartTask, StopTask, R
 inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &data) {
     Json params = Json::object();
     const char *method = "";
-    const Json policy = {{"features.shell_tool", false}, {"features.multi_agent", false}, {"web_search", "disabled"}};
+    const Json policy = {{"features.shell_tool", true}, {"features.multi_agent", false}, {"web_search", "disabled"}};
     switch (operation) {
     case Operation::Models:
         method = "model/list";
@@ -24,20 +24,17 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
         method = "thread/start";
         params = {
             {"baseInstructions", EngineerInstructions()},
-            {"developerInstructions", u8"直接读写本次选定终端；用户明确要求时控制 GUI 勾选的已连接电源输出，无需二次弹窗。只使用 serialctl_ 工具，依据真实输出和 action 回读判断结果。"},
-            {"sandbox", "read-only"},
+            {"developerInstructions", u8"可使用 Codex 原生工具读取、修改服务器项目代码并执行服务器命令，权限限于 SSH 登录用户。Windows 内的终端和电源只通过 serialctl_ 工具访问；显示实际路径、命令、输出和文件修改结果，不混淆服务器与板端。"},
+            {"sandbox", "danger-full-access"},
             {"approvalPolicy", "never"},
             {"dynamicTools", SerialTools()},
             {"config", policy}};
-        if (!data.value("modelId", std::string()).empty())
-            params["model"] = data["modelId"];
         break;
     case Operation::StartTask:
         method = "turn/start";
         params = {{"threadId", data.at("conversationId")},
                   {"input", Json::array({{{"type", "text"}, {"text", data.at("text")}}})}};
-        if (!data.value("modelId", std::string()).empty())
-            params["model"] = data["modelId"];
+        params["sandboxPolicy"] = {{"type", "dangerFullAccess"}};
         break;
     case Operation::StopTask:
         method = "turn/interrupt";
@@ -46,14 +43,38 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
     case Operation::RestoreConversation:
         method = "thread/resume";
         params = {{"threadId", data.at("conversationId")},
-                  {"sandbox", "read-only"},
+                  {"sandbox", "danger-full-access"},
                   {"approvalPolicy", "never"},
                   {"baseInstructions", EngineerInstructions()},
-                  {"developerInstructions", u8"直接读写本次选定终端；用户明确要求时控制 GUI 勾选的已连接电源输出，无需二次弹窗。只使用已注册的 serialctl_ 工具；历史缺少电源工具时请新建会话。"},
+                  {"developerInstructions", u8"服务器项目可用 Codex 原生文件及命令工具；终端和电源仍用已注册的 serialctl_ 工具。权限沿用 SSH 用户，不将容器命令误当成板端命令。"},
                   {"config", policy}};
         break;
     }
+    if (operation == Operation::NewConversation || operation == Operation::RestoreConversation || operation == Operation::StartTask) {
+        if (!data.value("cwd", std::string()).empty()) params["cwd"] = data["cwd"];
+        // This value comes from config/read, never a user model selector or old registry preference.
+        if (!data.value("defaultModel", std::string()).empty()) params["model"] = data["defaultModel"];
+    }
     return {{"id", token}, {"method", method}, {"params", params}};
+}
+inline std::string NativeItemText(const Json& item, bool completed) {
+    std::string text;
+    if (item.value("type", "") == "commandExecution") {
+        text = u8"服务器命令 · " + item.value("cwd", std::string()) + "\n```\n" + item.value("command", std::string()) + "\n```\n";
+        text += completed ? u8"状态：" + item.value("status", std::string("unknown")) : u8"执行中\n";
+        if (item.contains("exitCode") && item["exitCode"].is_number_integer()) text += u8" · 退出码 " + item["exitCode"].dump();
+        if (item.contains("aggregatedOutput") && item["aggregatedOutput"].is_string()) text += "\n" + item["aggregatedOutput"].get<std::string>();
+    } else {
+        text = u8"服务器文件修改 · " + item.value("status", std::string("unknown"));
+        for (const auto& change : item.value("changes", Json::array()))
+            text += "\n" + change.value("path", std::string()) + "\n```\n" + change.value("diff", std::string()) + "\n```";
+    }
+    if (text.size() > 65536) {
+        size_t end = 65536;
+        while (end && (static_cast<unsigned char>(text[end]) & 0xc0) == 0x80) --end;
+        text.resize(end); text += u8"\n[服务器工具输出已截断]";
+    }
+    return text;
 }
 inline Json DecodeResponse(Operation operation, const Json &result) {
     switch (operation) {
@@ -89,6 +110,9 @@ inline Json DecodeResponse(Operation operation, const Json &result) {
                     messages.push_back({{"role", "AI"},
                                         {"text", item.value("text", std::string())},
                                         {"messageId", item.value("id", std::string())}});
+                else if (type == "commandExecution" || type == "fileChange")
+                    messages.push_back({{"role", u8"工具"}, {"text", NativeItemText(item, true)},
+                        {"messageId", "server:" + item.value("id", std::string())}});
                 else if (type == "userMessage") {
                     std::string text;
                     for (const auto &part : item.value("content", Json::array()))
@@ -112,10 +136,13 @@ inline Json DecodeNotification(const Json &wire) {
     if (!wire.contains("id") && method != "item/agentMessage/delta" && method != "item/completed" &&
         method != "item/started" && method != "item/reasoning/textDelta" &&
         method != "item/reasoning/summaryTextDelta" && method != "turn/started" && method != "turn/completed" &&
-        method != "error")
+        method != "item/commandExecution/outputDelta" && method != "error")
         return Json();
     const auto p = wire.value("params", Json::object());
     if (wire.contains("id")) {
+        if (method == "item/commandExecution/requestApproval" || method == "item/fileChange/requestApproval")
+            return {{"event", "serverApproval"}, {"requestId", wire.at("id")},
+                {"conversationId", p.value("threadId", std::string())}, {"taskId", p.value("turnId", std::string())}};
         if (method != "item/tool/call")
             return {{"event", "unsupportedRequest"},
                     {"requestId", wire.at("id")},
@@ -130,7 +157,20 @@ inline Json DecodeNotification(const Json &wire) {
                 {"arguments", p.value("arguments", Json::object())}};
     }
     Json event = {{"conversationId", p.value("threadId", std::string())}, {"taskId", p.value("turnId", std::string())}};
-    if (method == "item/agentMessage/delta") {
+    if ((method == "item/started" || method == "item/completed") &&
+        (p.value("item", Json::object()).value("type", "") == "commandExecution" ||
+         p.value("item", Json::object()).value("type", "") == "fileChange")) {
+        event["event"] = "serverTool";
+        event["messageId"] = "server:" + p["item"].value("id", std::string());
+        event["completed"] = method == "item/completed";
+        event["appendStream"] = p["item"].value("type", "") == "commandExecution" &&
+            (!p["item"].contains("aggregatedOutput") || !p["item"]["aggregatedOutput"].is_string());
+        event["text"] = NativeItemText(p["item"], method == "item/completed");
+    } else if (method == "item/commandExecution/outputDelta") {
+        event["event"] = "serverToolDelta";
+        event["messageId"] = "server:" + p.value("itemId", std::string());
+        event["text"] = p.value("delta", std::string());
+    } else if (method == "item/agentMessage/delta") {
         event["event"] = "textDelta";
         event["messageId"] = p.value("itemId", std::string());
         event["text"] = p.value("delta", std::string());

@@ -6,6 +6,10 @@ on:
         description: 'Verified version, e.g. V1.0.3'
         required: true
         type: string
+      release_tag:
+        description: 'Optional revision tag, e.g. v2.0.2-r2; product version remains unchanged'
+        required: false
+        type: string
       archive_sha256:
         description: 'SHA-256 of the verified archive'
         required: true
@@ -34,12 +38,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_SHA256: ${{ inputs.archive_sha256 }}
           RELEASE_COMMIT: ${{ inputs.source_commit }}
           RELEASE_BUILD_RUN: ${{ inputs.build_run_id }}
           RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 }}
         run: |
           [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          RELEASE_BASE_TAG="v${RELEASE_VERSION#V}"
+          RELEASE_TAG="${RELEASE_TAG:-$RELEASE_BASE_TAG}"
+          [[ "$RELEASE_TAG" == "$RELEASE_BASE_TAG" || ( "$RELEASE_TAG" == "$RELEASE_BASE_TAG"-r* && "${RELEASE_TAG#"$RELEASE_BASE_TAG"-r}" =~ ^[1-9][0-9]*$ ) ]]
           [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$RELEASE_BUILD_RUN" =~ ^[0-9]+$ ]]
@@ -64,4 +72,4 @@ jobs:
           pathlib.Path('/tmp/update.json').write_bytes(data)
           PY
           python tools/new_update_feed.py --verify-archive "bin/$RELEASE_ARCHIVE" --metadata /tmp/update.json
-          gh release create "v${RELEASE_VERSION#V}" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+          gh release create "$RELEASE_TAG" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION ($RELEASE_TAG) — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"

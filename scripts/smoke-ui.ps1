@@ -468,6 +468,35 @@ foreach ($architecture in @('x64')) {
                 Click-Control $dialog 2
                 Start-Sleep -Milliseconds 200
             }
+            # Production AI page and connection dialog; never contact a real server.
+            Click-Control $application.MainWindowHandle 304
+            $aiDialog = Wait-Dialog $application.Id '连接 AI 服务器'
+            [SerialCtlUiSmoke]::AssertLabels($aiDialog, $expectedUiFace)
+            if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,208) -eq [IntPtr]::Zero) { throw 'AI project directory missing.' }
+            Capture-Window $aiDialog "$architecture-$theme-ai-connect"
+            Click-Control $aiDialog 2
+            Start-Sleep -Milliseconds 250
+            $script:aiPane = [IntPtr]::Zero
+            [SerialCtlUiSmoke]::EnumChildWindows($application.MainWindowHandle, {
+                param($child,$unused)
+                $name = New-Object Text.StringBuilder(64)
+                [SerialCtlUiSmoke]::GetClassName($child,$name,64) | Out-Null
+                if ($name.ToString() -eq 'SerialCtlAiPane') { $script:aiPane=$child }
+                return $true
+            },[IntPtr]::Zero) | Out-Null
+            if ($aiPane -eq [IntPtr]::Zero -or -not [SerialCtlUiSmoke]::IsWindowVisible($aiPane)) { throw 'AI page missing.' }
+            $modelClass = New-Object Text.StringBuilder(32)
+            [SerialCtlUiSmoke]::GetClassName([SerialCtlUiSmoke]::GetDlgItem($aiPane,12),$modelClass,32) | Out-Null
+            if ($modelClass.ToString() -ne 'Static' -or [SerialCtlUiSmoke]::GetDlgItem($aiPane,13) -ne [IntPtr]::Zero) { throw 'AI still exposes model selection.' }
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-collapsed"
+            Click-Control $application.MainWindowHandle 125
+            Start-Sleep -Milliseconds 300
+            if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))) { throw 'AI monitor header did not expand.' }
+            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))) { throw 'AI exposed unselected terminal.' }
+            [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-expanded"
+            Click-Control $application.MainWindowHandle 125
+            Start-Sleep -Milliseconds 300
             # New power pane occupies the central terminal area. It keeps independent connection/output actions.
             Click-Control $application.MainWindowHandle 301
             Start-Sleep -Milliseconds 250

@@ -32,6 +32,13 @@ int main() {
         Require(found, "Timed out waiting for fixture JSON-RPC event");
     };
     try {
+        std::wstring validation;
+        settings.workingDirectory = L"relative/path";
+        Require(!ValidateServer(settings, validation), "Relative server project directory accepted");
+        settings.workingDirectory = L"/srv/code\nother";
+        Require(!ValidateServer(settings, validation), "Multiline project directory accepted");
+        settings.workingDirectory = L"/srv/fixture code";
+        Require(ValidateServer(settings, validation), "Absolute directory with spaces rejected");
         Require(client.Connect(
                     settings,
                     [&](Json e) {
@@ -94,7 +101,7 @@ int main() {
             return e.value("token", Json()) == 21 && e.contains("result") &&
                    e["result"]["models"][0]["id"] == "fixture" && e["result"]["models"][0]["reasoning"] == true;
         });
-        Require(session.Request(Operation::NewConversation, 22, {{"modelId", "fixture"}}),
+        Require(session.Request(Operation::NewConversation, 22, {{"defaultModel", "fixture"}, {"cwd", "/srv/fixture code"}}),
                 "Domain conversation request rejected");
         wait([](const Json &e) {
             return e.value("token", Json()) == 22 && e.contains("result") &&
