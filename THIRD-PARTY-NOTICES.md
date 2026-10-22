@@ -16,6 +16,10 @@ SSH 和 SFTP 功能使用 PuTTY 项目的 `plink.exe` 与 `psftp.exe`。其中 `
 
 MIT; `JSON-LICENSE.txt`。来源：https://github.com/nlohmann/json/releases/tag/v3.11.3
 
+## miniz 3.0.2 (tinfl)
+
+ZIP 更新提取使用静态集成的低层 DEFLATE 解码器，MIT License。来源：https://github.com/richgel999/miniz/tree/3.0.2；仅 tinfl 源码，适配说明见 third_party/miniz/README.md，许可证随包保存为 MINIZ-LICENSE.txt。
+
 ## NI-VISA 18.0 Runtime
 
 Copyright © 2018 National Instruments Corporation. All Rights Reserved.

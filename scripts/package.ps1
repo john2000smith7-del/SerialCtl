@@ -106,6 +106,7 @@ $copyMap = [ordered]@{
     'docs/testing/V1.0.6-ACCEPTANCE.md' = 'V1.0.6-ACCEPTANCE.md'
     'docs/package/POWER.md' = 'POWER.md'
     'third_party/json/LICENSE' = 'JSON-LICENSE.txt'
+    'third_party/miniz/LICENSE' = 'MINIZ-LICENSE.txt'
     'docs/package/AI-SERIAL.md' = 'AI-SERIAL.md'
     'VERSION' = 'VERSION'
     'THIRD-PARTY-NOTICES.md' = 'THIRD-PARTY-NOTICES.md'

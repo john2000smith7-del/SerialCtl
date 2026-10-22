@@ -6,6 +6,7 @@
 #include <winhttp.h>
 
 #include "UpdateClient.h"
+#include "UpdateZipFixture.h"
 #include "json.hpp"
 
 #include <algorithm>
@@ -391,6 +392,121 @@ struct Fixture {
         if (!result.stagingDirectory.empty()) fs::remove_all(result.stagingDirectory);
     }
 };
+
+Bytes Envelope(const Json &payload, const SigningKey &key) {
+    const auto raw = Data(payload.dump());
+    std::string signature;
+    constexpr char hex[] = "0123456789abcdef";
+    for (auto byte : key.Sign(raw)) {
+        signature += hex[byte >> 4];
+        signature += hex[byte & 15];
+    }
+    return Data(Json{{"schema", 2}, {"payload", payload.dump()}, {"signature", signature}}.dump());
+}
+void VerifyRealArchive(const fs::path &metadata, const fs::path &archive, const fs::path &publicKey) {
+    auto read = [](const fs::path &path) {
+        std::ifstream file(path, std::ios::binary);
+        return Bytes(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    };
+    const auto manifest = testing::VerifyEmbeddedManifest(read(metadata), read(publicKey));
+    const auto root = fs::temp_directory_path() / (L"serialctl-real-archive-" + std::to_wstring(GetCurrentProcessId()));
+    fs::create_directory(root);
+    struct Cleanup {
+        fs::path path;
+        ~Cleanup() {
+            std::error_code ec;
+            fs::remove_all(path, ec);
+        }
+    } cleanup{root};
+    std::atomic<bool> cancel{false};
+    // Match the client: the archive is a regular file in its local staging
+    // directory, even when this test receives it through a mapped host drive.
+    const auto localArchive = root / L"package.zip";
+    fs::copy_file(archive, localArchive);
+    ExtractUpdateArchive(localArchive, manifest, root, cancel);
+    Require(!fs::exists(root / L"drivers") && !fs::exists(root / L"update.ini"),
+            "real full release ZIP extracts only signed runtime without drivers or configuration");
+    std::cout << "Real release archive round trip passed: " << manifest.version << " / " << manifest.files.size()
+              << " runtime files\n";
+}
+
+void RunArchiveTests() {
+    Fixture fixture;
+    auto payload = fixture.manifest;
+    payload["schema"] = 2;
+    auto members = fixture.payload;
+    members["update.ini"] = Data("[update]\nurl=must-not-replace\n");
+    members["drivers/vendor/setup.exe"] = Data("must not extract or execute");
+    members["unexpected.exe"] = Data("must not install");
+    auto publish = [&](const Bytes &archive) {
+        const auto path = fixture.root / L"candidate.zip";
+        Write(path, archive);
+        payload["archive"] = {
+            {"url", "SerialCtl-V1.0.8-Win7-x64.zip"}, {"size", archive.size()}, {"sha256", Sha256File(path)}};
+        fixture.server.Set("/update.json", {Envelope(payload, fixture.key)});
+        fixture.server.Set("/SerialCtl-V1.0.8-Win7-x64.zip", {archive});
+    };
+    const auto installed = Sha256File(fixture.root / L"serialctl.exe");
+    for (bool deflated : {false, true}) {
+        publish(testing::BuildTestZip(members, deflated));
+        const auto count = fixture.server.Requests();
+        auto result = fixture.Run();
+        Require(result.status == UpdateStatus::Ready && fixture.server.Requests() == count + 2,
+                "two-file update requests only signed JSON and full ZIP");
+        Require(!fs::exists(result.stagingDirectory / L"update.json.sig") &&
+                    !fs::exists(result.stagingDirectory / L"files" / L"update.ini") &&
+                    !fs::exists(result.stagingDirectory / L"files" / L"drivers") &&
+                    !fs::exists(result.stagingDirectory / L"files" / L"unexpected.exe"),
+                "ZIP staging excludes configuration, drivers and unlisted members");
+        Require(testing::VerifyStagedManifest(result.stagingDirectory, "V1.0.7", fixture.key.publicKey).archive.size >
+                    0,
+                "installer re-verifies embedded signature and signed staged runtime");
+        Require(!fs::exists(result.stagingDirectory / L"package.zip"),
+                "full ZIP is discarded after verified extraction");
+        Write(result.stagingDirectory / L"files" / L"serialctl.exe", Data("changed after staging"));
+        Reject([&] { testing::VerifyStagedManifest(result.stagingDirectory, "V1.0.7", fixture.key.publicKey); },
+               "extracted runtime tampering before installation is rejected");
+        fixture.Cleanup(result);
+    }
+    members["serialctl.exe"] = Data(std::string(100000, 'X'));
+    const auto path = fixture.root / L"huffman.bin";
+    Write(path, members["serialctl.exe"]);
+    for (auto &record : payload["files"])
+        if (record["name"] == "serialctl.exe") {
+            record["size"] = members["serialctl.exe"].size();
+            record["sha256"] = Sha256File(path);
+        }
+    publish(testing::BuildTestZip(members, true));
+    auto result = fixture.Run();
+    Require(result.status == UpdateStatus::Ready &&
+                Sha256File(result.stagingDirectory / L"files" / L"serialctl.exe") == Sha256File(path),
+            "dynamic-Huffman DEFLATE preserves the signed output exactly");
+    fixture.Cleanup(result);
+    publish(testing::BuildTestZip(members, true, true));
+    Require(fixture.Run().status == UpdateStatus::Failed, "validly signed ZIP with wrong CRC is rejected");
+    members["../escape.exe"] = Data("never written");
+    publish(testing::BuildTestZip(members, false));
+    Require(fixture.Run().status == UpdateStatus::Failed && !fs::exists(fixture.root.parent_path() / L"escape.exe"),
+            "signed ZIP path traversal is rejected even for an unselected member");
+    members.erase("../escape.exe");
+    publish(testing::BuildTestZip(members, true));
+    auto envelope = Json::parse(Envelope(payload, fixture.key));
+    envelope["payload"] = envelope["payload"].get<std::string>() + " ";
+    fixture.server.Set("/update.json", {Data(envelope.dump())});
+    auto count = fixture.server.Requests();
+    Require(fixture.Run().status == UpdateStatus::Failed && fixture.server.Requests() == count + 1,
+            "tampered embedded payload is rejected before any archive request");
+    publish(testing::BuildTestZip(members, true));
+    fixture.server.Set("/SerialCtl-V1.0.8-Win7-x64.zip", {Data("wrong archive")});
+    Require(fixture.Run().status == UpdateStatus::Failed && fs::is_empty(fixture.root / L".serialctl-update"),
+            "wrong or truncated ZIP is rejected and staging cleaned");
+    publish(testing::BuildTestZip(members, true));
+    count = fixture.server.Requests();
+    Require(fixture.Run("V1.0.8").status == UpdateStatus::NoUpdate && fixture.server.Requests() == count + 1,
+            "same-version two-file update never downloads ZIP");
+    Require(Sha256File(fixture.root / L"serialctl.exe") == installed,
+            "archive checks never modify the installed runtime");
+}
 
 // Split session/option/request construction from HTTP I/O so a native event
 // lifetime issue cannot be mistaken for the callback state's completion event.
@@ -845,12 +961,23 @@ void RunTests() {
 }
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
     WSADATA data{};
-    if (WSAStartup(MAKEWORD(2, 2), &data)) return 1;
+    if (WSAStartup(MAKEWORD(2, 2), &data))
+        return 1;
     int result = 0;
-    try { RunTests(); }
-    catch (const std::exception& error) { std::cerr << "[FAIL] " << error.what() << '\n'; result = 1; }
+    try {
+        if (argc == 5 && std::string(argv[1]) == "--verify-archive")
+            VerifyRealArchive(fs::path(argv[2]), fs::path(argv[3]), fs::path(argv[4]));
+        else {
+            RunArchiveTests();
+            if (argc < 2 || std::string(argv[1]) != "--archive-only")
+                RunTests();
+        }
+    } catch (const std::exception &error) {
+        std::cerr << "[FAIL] " << error.what() << '\n';
+        result = 1;
+    }
     WSACleanup();
     return result;
 }

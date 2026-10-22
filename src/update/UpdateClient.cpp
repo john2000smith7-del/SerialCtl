@@ -225,8 +225,9 @@ HINTERNET Session(bool secure) {
 
 // No proxy autodiscovery, automatic credentials, cookies, redirects, decompression,
 // retry or TLS validation overrides. Caller runs on its own joined worker.
-std::vector<unsigned char> Download(const Url& url, std::size_t limit, const std::atomic<bool>& cancel,
-                                   const std::chrono::steady_clock::time_point deadline) {
+std::vector<unsigned char> Download(const Url &url, std::size_t limit, const std::atomic<bool> &cancel,
+                                    const std::chrono::steady_clock::time_point deadline,
+                                    HANDLE output = INVALID_HANDLE_VALUE) {
     CheckCancelled(cancel);
     InternetHandle connection(WinHttpConnect(Session(url.secure), url.host.c_str(), url.port, 0));
     AsyncRequest request(connection.value, url);
@@ -239,24 +240,37 @@ std::vector<unsigned char> Download(const Url& url, std::size_t limit, const std
     request.Receive(cancel, deadline);
     DWORD status = 0, size = sizeof(status);
     if (!WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX) || status != 200)
+                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX) ||
+        status != 200)
         throw std::runtime_error("Update server must return HTTP 200 without a redirect");
     // Restrict declared length before allocation, and enforce the actual byte bound
     // even for a chunked body or a dishonest Content-Length.
     DWORD declared = 0;
     size = sizeof(declared);
-    bool hasLength = WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
-                                         WINHTTP_HEADER_NAME_BY_INDEX, &declared, &size,
-                                         WINHTTP_NO_HEADER_INDEX) != FALSE;
-    if (hasLength && declared > limit) throw std::runtime_error("HTTP update body exceeds size limit");
+    bool hasLength =
+        WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+                            WINHTTP_HEADER_NAME_BY_INDEX, &declared, &size, WINHTTP_NO_HEADER_INDEX) != FALSE;
+    if (hasLength && declared > limit)
+        throw std::runtime_error("HTTP update body exceeds size limit");
     std::vector<unsigned char> data;
+    size_t received = 0;
     for (;;) {
         const DWORD count = request.Read(cancel, deadline);
-        if (!count) break;
-        if (count > limit - data.size()) throw std::runtime_error("HTTP update body exceeds size limit");
-        data.insert(data.end(), request.Bytes(), request.Bytes() + count);
+        if (!count)
+            break;
+        if (count > limit - received)
+            throw std::runtime_error("HTTP update body exceeds size limit");
+        received += count;
+        if (output == INVALID_HANDLE_VALUE)
+            data.insert(data.end(), request.Bytes(), request.Bytes() + count);
+        else {
+            DWORD written = 0;
+            if (!WriteFile(output, request.Bytes(), count, &written, nullptr) || written != count)
+                throw std::runtime_error("Cannot save update archive; check disk space and permissions");
+        }
     }
-    if (hasLength && data.size() != declared) throw std::runtime_error("Update body is truncated");
+    if (hasLength && received != declared)
+        throw std::runtime_error("Update body is truncated");
     return data;
 }
 
@@ -332,15 +346,20 @@ UpdateResult Run(const std::filesystem::path& exePath, const std::string& curren
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
         const auto metadataDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
         const auto manifestBytes = Download(manifestUrl, kMaxManifestBytes, cancel, metadataDeadline);
-        const auto signatureBytes = Download(signatureUrl, 256, cancel, metadataDeadline);
+        const bool embedded = IsEmbeddedManifest(manifestBytes);
+        const auto signatureBytes =
+            embedded ? std::vector<unsigned char>() : Download(signatureUrl, 256, cancel, metadataDeadline);
         Manifest manifest;
 #ifdef SERIALCTL_UPDATE_TESTING
-        if (key) manifest = testing::VerifySignedManifest(manifestBytes, signatureBytes, *key);
+        if (key)
+            manifest = embedded ? testing::VerifyEmbeddedManifest(manifestBytes, *key)
+                                : testing::VerifySignedManifest(manifestBytes, signatureBytes, *key);
         else
 #else
         (void)key;
 #endif
-            manifest = VerifySignedManifest(manifestBytes, signatureBytes);
+            manifest =
+                embedded ? VerifyEmbeddedManifest(manifestBytes) : VerifySignedManifest(manifestBytes, signatureBytes);
         result.version = manifest.version;
         if (CompareVersions(manifest.version, currentVersion) <= 0) {
             result.status = UpdateStatus::NoUpdate;
@@ -365,18 +384,48 @@ UpdateResult Run(const std::filesystem::path& exePath, const std::string& curren
         CheckCancelled(cancel);
         stage = NewStage(install);
         WriteNew(stage / L"update.json", manifestBytes);
-        WriteNew(stage / L"update.json.sig", signatureBytes);
-        for (const auto& file : manifest.files) {
-            CheckCancelled(cancel);
+        if (manifest.archive.size) {
             auto url = manifestUrl;
             url.path.erase(url.path.rfind(L'/') + 1);
-            url.path.append(file.url.begin(), file.url.end());
-            auto bytes = Download(url, static_cast<size_t>(file.size), cancel, deadline);
-            if (bytes.size() != file.size) throw std::runtime_error("Downloaded file length differs from signed manifest");
-            const auto destination = stage / L"files" / std::filesystem::u8path(file.name);
-            WriteNew(destination, bytes);
-            if (Sha256File(destination, &cancel) != file.sha256)
-                throw std::runtime_error("Downloaded file SHA-256 differs from signed manifest");
+            url.path.append(manifest.archive.url.begin(), manifest.archive.url.end());
+            const auto archive = stage / L"package.zip";
+            {
+                HANDLE output =
+                    CreateFileW(archive.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (output == INVALID_HANDLE_VALUE)
+                    throw std::runtime_error("Cannot create staged archive");
+                struct Close {
+                    HANDLE handle;
+                    ~Close() {
+                        CloseHandle(handle);
+                    }
+                } close{output};
+                Download(url, static_cast<size_t>(manifest.archive.size), cancel,
+                         std::chrono::steady_clock::now() + std::chrono::minutes(10), output);
+                if (!FlushFileBuffers(output))
+                    throw std::runtime_error("Cannot flush update archive");
+            }
+            ExtractUpdateArchive(archive, manifest, stage / L"files", cancel);
+            // Each extracted runtime has a signed hash and is reverified by the
+            // installer. Discard the full bundle (including drivers) now: do not
+            // rehash hundreds of MiB on the UI thread when launching installation.
+            if (!DeleteFileW(archive.c_str()))
+                throw std::runtime_error("Cannot remove downloaded archive after extraction");
+        } else {
+            WriteNew(stage / L"update.json.sig", signatureBytes);
+            for (const auto &file : manifest.files) {
+                CheckCancelled(cancel);
+                auto url = manifestUrl;
+                url.path.erase(url.path.rfind(L'/') + 1);
+                url.path.append(file.url.begin(), file.url.end());
+                auto bytes = Download(url, static_cast<size_t>(file.size), cancel, deadline);
+                if (bytes.size() != file.size)
+                    throw std::runtime_error("Downloaded file length differs from signed manifest");
+                const auto destination = stage / L"files" / std::filesystem::u8path(file.name);
+                WriteNew(destination, bytes);
+                if (Sha256File(destination, &cancel) != file.sha256)
+                    throw std::runtime_error("Downloaded file SHA-256 differs from signed manifest");
+            }
         }
         CheckCancelled(cancel);
 #ifdef SERIALCTL_UPDATE_TESTING

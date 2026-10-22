@@ -15,6 +15,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+import zipfile
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("new_update_feed", REPOSITORY / "tools/new_update_feed.py")
@@ -209,6 +210,84 @@ class FeedTests(unittest.TestCase):
         (self.package / "VERSION").write_bytes(b"PROJECT_VERSION=V1.0.8\r\nCPP_VERSION=V1.0.8\r\n")
         self.rehash()
         self.assertEqual(self.build()["version"], "V1.0.8")
+
+
+    def make_archive(self):
+        archive = self.root / "SerialCtl-V1.0.8-Win7-x64.zip"
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
+            for path in sorted(self.package.rglob("*")):
+                if path.is_file():
+                    output.write(path, path.relative_to(self.package).as_posix())
+        return archive
+
+    def archive_feed(self, archive):
+        return feed.build_archive_feed(archive, self.output, self.private, self.header, self.openssl)
+
+    def test_two_file_archive_round_trip(self):
+        archive = self.make_archive()
+        result = self.archive_feed(archive)
+        self.assertEqual({p.name for p in self.output.iterdir()}, {archive.name, "update.json"})
+        self.assertEqual(feed.sha256(archive), feed.sha256(self.output / archive.name))
+        self.assertTrue(feed.verify_archive_feed(self.output / "update.json", self.output / archive.name,
+                                                self.header, self.openssl)["verified"])
+        envelope = json.loads((self.output / "update.json").read_text())
+        payload = json.loads(envelope["payload"])
+        self.assertEqual(payload["archive"]["sha256"], result["archive_sha256"])
+        self.assertEqual(len(envelope["signature"]), 512)
+        self.assertNotIn("update.ini", {row["name"] for row in payload["files"]})
+
+    def test_archive_wrong_key(self):
+        with self.assertRaises(ValueError):
+            feed.build_archive_feed(self.make_archive(), self.output, self.wrong_private, self.header, self.openssl)
+        self.assertFalse(self.output.exists())
+
+    def test_archive_checksum_mismatch(self):
+        (self.package / "README.md").write_bytes(b"modified after verification")
+        with self.assertRaises(ValueError):
+            self.archive_feed(self.make_archive())
+        self.assertFalse(self.output.exists())
+
+    def test_archive_traversal_and_duplicate_names(self):
+        for name in ("../escape", "drivers\\device.inf"):
+            archive = self.make_archive()
+            with zipfile.ZipFile(archive, "a") as output:
+                output.writestr(name, b"untrusted")
+            with self.assertRaises(ValueError):
+                self.archive_feed(archive)
+            self.assertFalse(self.output.exists())
+
+    def test_archive_symlink(self):
+        archive = self.make_archive()
+        with zipfile.ZipFile(archive, "a") as output:
+            entry = zipfile.ZipInfo("drivers/link")
+            entry.create_system = 3
+            entry.external_attr = 0o120777 << 16
+            output.writestr(entry, "../../target")
+        with self.assertRaises(ValueError):
+            self.archive_feed(archive)
+
+    def test_embedded_signature_tamper(self):
+        archive = self.make_archive()
+        self.archive_feed(archive)
+        metadata = self.output / "update.json"
+        envelope = json.loads(metadata.read_text())
+        envelope["payload"] += " "
+        metadata.write_text(json.dumps(envelope))
+        with self.assertRaises(ValueError):
+            feed.verify_archive_feed(metadata, archive, self.header, self.openssl)
+
+    def test_archive_substitution(self):
+        archive = self.make_archive()
+        self.archive_feed(archive)
+        with zipfile.ZipFile(archive, "a") as output:
+            output.writestr("extra.txt", "archive differs")
+        with self.assertRaises(ValueError):
+            feed.verify_archive_feed(self.output / "update.json", archive, self.header, self.openssl)
+
+    def test_archive_requires_verified_release(self):
+        self.write_metadata({"product": "SerialCtl", "version": "V1.0.8", "verification": {}})
+        with self.assertRaises(ValueError):
+            self.archive_feed(self.make_archive())
 
 
 if __name__ == "__main__":

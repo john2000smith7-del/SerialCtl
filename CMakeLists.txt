@@ -133,6 +133,8 @@ add_executable(serialctl WIN32
     src/app/AiPane.cpp
     src/ai/CodexClient.cpp
     src/connections/PasswordPipe.cpp
+    src/update/UpdateArchive.cpp
+    src/update/UpdateInflate.cpp
     src/update/UpdateClient.cpp
     src/update/UpdateManifest.cpp
     src/update/UpdateInstaller.cpp
@@ -226,7 +228,7 @@ if(BUILD_TESTING)
     add_test(NAME ui_combo_paint COMMAND ui_combo_paint_test)
     set_tests_properties(ui_combo_paint PROPERTIES TIMEOUT 60)
     add_executable(update_client_test tests/integration/UpdateClientTest.cpp
-        src/update/UpdateClient.cpp src/update/UpdateManifest.cpp)
+        src/update/UpdateClient.cpp src/update/UpdateManifest.cpp src/update/UpdateArchive.cpp src/update/UpdateInflate.cpp)
     serialctl_configure_native_target(update_client_test CONSOLE)
     target_compile_definitions(update_client_test PRIVATE SERIALCTL_UPDATE_TESTING)
     target_link_libraries(update_client_test PRIVATE winhttp advapi32 ws2_32)

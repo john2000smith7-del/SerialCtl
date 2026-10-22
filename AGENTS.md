@@ -18,7 +18,7 @@ Before changing the project, read:
 - `legacy/` is historical reference only. It must not be built, tested, or packaged as the production application.
 - `third_party/` contains pinned dependency inputs, licenses, source archives, patches, and required prebuilt runtime tools.
 - `build/` contains disposable intermediate state only.
-- `bin/` contains only the single latest verified release archive. Never copy unverified build output directly into `bin/`.
+- `bin/` contains only the latest verified full release ZIP and, once signed, its matching `update.json`. Never copy unverified build output directly into `bin/`.
 - Create new directories only when they have a real responsibility. Do not add placeholder directories or `.gitkeep` files.
 
 ## Platform and implementation
@@ -50,5 +50,5 @@ Before changing the project, read:
 
 - The user requires every future version delivery to include exactly two deployable files: the verified full `SerialCtl-V<version>-Win7-x64.zip` and its matching `update.json`, with the digital signature embedded in that JSON. The user uploads these two files to the existing static update directory. Do not ask the user to generate metadata, run Python, unpack a deployment bundle, or maintain a separate `.sig`/`files` tree.
 - Preserve startup automatic checking/downloading and the existing `[update] url=` configuration in `update.ini`. A new settings page or manual update button is not part of this request. Preserve idle installation, data/config/driver protection and failure recovery.
-- This is an accepted delivery requirement, not a claim that V1.10.0 supports the new format. Implement and test the ZIP-based signed format in the client and release tooling before claiming it works. The first supporting client requires manual deployment once.
+- V2.0.0 implements the ZIP-based signed format; V1.10.0 and earlier do not support it. Test both client and release tooling before every formal delivery. The first supporting client requires manual deployment once.
 - Before any future release, verify that a matching signing key is available to the authorized signing process without exposing its contents. Deliver a genuinely signed `update.json` generated from the exact verified ZIP, and give both download links. A checksum sidecar or unsigned JSON does not satisfy the signature requirement. If signing is unavailable, report the concrete blocker rather than publishing an incomplete or falsely signed two-file delivery.

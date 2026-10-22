@@ -18,6 +18,10 @@ on:
         description: Successful Windows build run on main
         required: true
         type: string
+      metadata_base64:
+        description: 'Public signed update.json, Base64 encoded; never a private key'
+        required: true
+        type: string
 permissions:
   contents: write
   actions: read
@@ -33,6 +37,7 @@ jobs:
           RELEASE_SHA256: ${{ inputs.archive_sha256 }}
           RELEASE_COMMIT: ${{ inputs.source_commit }}
           RELEASE_BUILD_RUN: ${{ inputs.build_run_id }}
+          RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 }}
         run: |
           [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
@@ -48,5 +53,15 @@ jobs:
           gh run download "$RELEASE_BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-Win7-portable --dir bin
           RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
           printf '%s  %s\n' "$RELEASE_SHA256" "bin/$RELEASE_ARCHIVE" | sha256sum --check
-          printf '%s  %s\n' "$RELEASE_SHA256" "$RELEASE_ARCHIVE" > "$RELEASE_ARCHIVE.sha256"
-          gh release create "v${RELEASE_VERSION#V}" "bin/$RELEASE_ARCHIVE" "$RELEASE_ARCHIVE.sha256" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+          python - <<'PY'
+          import base64, os, pathlib
+          encoded = os.environ['RELEASE_METADATA_BASE64']
+          if len(encoded) > 90000:
+              raise ValueError('Signed metadata exceeds its envelope limit')
+          data = base64.b64decode(encoded, validate=True)
+          if not 0 < len(data) <= 65536:
+              raise ValueError('Invalid metadata size')
+          pathlib.Path('/tmp/update.json').write_bytes(data)
+          PY
+          python tools/new_update_feed.py --verify-archive "bin/$RELEASE_ARCHIVE" --metadata /tmp/update.json
+          gh release create "v${RELEASE_VERSION#V}" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"

@@ -94,6 +94,41 @@
           "sha256": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14"
         }
       ]
+    },
+    {
+      "name": "miniz (tinfl only)",
+      "version": "3.0.2",
+      "upstream": "https://github.com/richgel999/miniz/tree/3.0.2",
+      "files": [
+        {
+          "path": "third_party/miniz/LICENSE",
+          "sha256": "3d67361c281936632c4d657141982440baf62f79d8a74633c1db8af9edbbdefa"
+        },
+        {
+          "path": "third_party/miniz/README.md",
+          "sha256": "d008aebfa625d7dfc06e66dcf1b0b5978167abdcb3c228e9a32795c306259302"
+        },
+        {
+          "path": "third_party/miniz/miniz.h",
+          "sha256": "be80653efe278ba76ef89dab0aac45de1147f2043905acd1456cd1a6bc6a45aa"
+        },
+        {
+          "path": "third_party/miniz/miniz_common.h",
+          "sha256": "8b60e76e726dfcf41a338c3a4c54c70038041a21e6314aa54fd3b7f729ea3412"
+        },
+        {
+          "path": "third_party/miniz/miniz_export.h",
+          "sha256": "f212df70a64c559ff1efd94916ee2e985440bd74d77e2bdeaf64eab3adede243"
+        },
+        {
+          "path": "third_party/miniz/miniz_tinfl.c",
+          "sha256": "9b7edc1fab708166e10f5e90a618a91c95a91496c4692e38160fdae810c1149a"
+        },
+        {
+          "path": "third_party/miniz/miniz_tinfl.h",
+          "sha256": "040aad2d9ca23c487652c150277d950be12e72c5453ae1f7c6713ed2efd16b4e"
+        }
+      ]
     }
   ]
 }

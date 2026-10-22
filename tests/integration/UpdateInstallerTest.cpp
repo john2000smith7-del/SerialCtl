@@ -3,6 +3,7 @@
 #include <wincrypt.h>
 #include <winioctl.h>
 #include "UpdateInstaller.h"
+#include "UpdateZipFixture.h"
 #include "UpdateManifest.h"
 #include "Win32Helpers.h"
 #include "json.hpp"
@@ -164,17 +165,46 @@ struct Fixture {
         Check(!fs::exists(root / L"README.md"), "newly added file removed by rollback");
         Check(Read(root / L"update.ini") == "private user update URL" && Read(root / L"drivers" / L"driver.txt") == "preserve driver", "configuration and driver bytes preserved");
     }
-    void ExecutablePayload(Key& key) {
+    void ExecutablePayload(Key &key, bool embedded = false) {
         fs::copy_file(Self(), root / L"serialctl.exe", fs::copy_options::overwrite_existing);
         fs::copy_file(Self(), stage / L"files" / L"serialctl.exe", fs::copy_options::overwrite_existing);
         Write(stage / L"files" / L"VERSION", "PROJECT_VERSION=V9.0.0\nCPP_VERSION=V9.0.0\n");
-        Json manifest{{"schema", 1}, {"product", "SerialCtl"}, {"architecture", "x64"}, {"version", "V9.0.0"}, {"files", Json::array()}};
-        for (const auto& item : fs::directory_iterator(stage / L"files")) {
+        Json manifest{{"schema", 1},
+                      {"product", "SerialCtl"},
+                      {"architecture", "x64"},
+                      {"version", "V9.0.0"},
+                      {"files", Json::array()}};
+        for (const auto &item : fs::directory_iterator(stage / L"files")) {
             const auto name = item.path().filename().u8string();
-            manifest["files"].push_back({{"name", name}, {"size", fs::file_size(item.path())}, {"sha256", Sha256File(item.path())}, {"url", "files/" + name}});
+            manifest["files"].push_back({{"name", name},
+                                         {"size", fs::file_size(item.path())},
+                                         {"sha256", Sha256File(item.path())},
+                                         {"url", "files/" + name}});
         }
-        const auto raw = manifest.dump();
-        Write(stage / L"update.json", raw); Write(stage / L"update.json.sig", key.Sign(raw));
+        if (embedded) {
+            std::map<std::string, testing::ZipBytes> members;
+            for (const auto &item : fs::directory_iterator(stage / L"files")) {
+                const auto bytes = Read(item.path());
+                members[item.path().filename().u8string()] = testing::ZipBytes(bytes.begin(), bytes.end());
+            }
+            const auto archive = testing::BuildTestZip(members, true);
+            Write(stage / L"package.zip", archive);
+            manifest["schema"] = 2;
+            manifest["archive"] = {
+                {"url", "test-update.zip"}, {"size", archive.size()}, {"sha256", Sha256File(stage / L"package.zip")}};
+            const auto raw = manifest.dump();
+            std::string signature;
+            constexpr char digits[] = "0123456789abcdef";
+            for (auto byte : key.Sign(raw)) {
+                signature += digits[byte >> 4];
+                signature += digits[byte & 15];
+            }
+            Write(stage / L"update.json", Json{{"schema", 2}, {"payload", raw}, {"signature", signature}}.dump());
+        } else {
+            const auto raw = manifest.dump();
+            Write(stage / L"update.json", raw);
+            Write(stage / L"update.json.sig", key.Sign(raw));
+        }
         Write(stage / L"test-public-key.bin", key.publicKey);
     }
 };
@@ -282,8 +312,8 @@ int wmain(int argc, wchar_t** argv) {
             f.OriginalRestored();
         }
         Key key;
-        {
-            Fixture f(6); f.ExecutablePayload(key);
+        for (bool embedded : {false, true}) {
+            Fixture f(embedded ? 15 : 6); f.ExecutablePayload(key, embedded);
             Process parent(f.root / L"serialctl.exe", L"--test-update-parent " + serialctl::QuoteCommandLineArgument(f.stage.wstring()));
             Check(parent.Wait() == 0, "signed worker validates and parent exits normally");
             Check(WaitFile(f.root / L"healthy.txt"), "real replacement process creates window and completes health ACK");
@@ -292,7 +322,7 @@ int wmain(int argc, wchar_t** argv) {
             Check(Read(f.root / L"update.ini") == "private user update URL", "full worker preserves update.ini");
         }
         for (unsigned i = 7; i <= 9; ++i) {
-            Fixture f(i == 9 ? 14 : i); f.ExecutablePayload(key);
+            Fixture f(i == 9 ? 14 : i); f.ExecutablePayload(key, true);
             const auto oldHash = Sha256File(f.root / L"serialctl.exe");
             Write(f.root / L"health-mode.txt", i == 7 ? "exit" : i == 8 ? "hang" : "version-mismatch");
             Process parent(f.root / L"serialctl.exe", L"--test-update-parent " + serialctl::QuoteCommandLineArgument(f.stage.wstring()));

@@ -46,6 +46,22 @@ jobs:
         run: |
           python tests/integration/test_new_update_feed.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Describe the exact verified ZIP for offline signing
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archive.Count -ne 1) { throw 'Expected exactly one verified release archive.' }
+          python tools/new_update_feed.py --describe-archive $archive[0].FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Native extraction round trip on the exact full release ZIP
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archive.Count -ne 1) { throw 'Expected exactly one verified release archive.' }
+          python tests/integration/test_full_update_archive.py $archive[0].FullName build/windows/x64/cmake/Release/update_client_test.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload verified portable bundle
         uses: actions/upload-artifact@v4
         with:

@@ -83,28 +83,8 @@ $updateTemplateLines = @(Get-Content -LiteralPath (Join-Path $repositoryRoot 'do
 Assert-SerialCtlCondition -Condition (($updateTemplateLines -join "`n") -ceq "[update]`nurl=") `
     -Message 'The packaged update.ini must contain only [update] and a blank url; deployment settings must remain local'
 
-$scanRoots = @('CMakeLists.txt', 'README.md', 'VERSION.md', 'AGENTS.md', 'src', 'tests', 'docs', 'scripts', 'tools')
-$oldVersionPattern = ('V2' + '\.0\.0|2' + '\.0\.0\.0|SerialCtl-' + 'V2')
-$oldVersionMatches = New-Object System.Collections.Generic.List[string]
-foreach ($scanRoot in $scanRoots) {
-    $fullScanRoot = Join-Path $repositoryRoot $scanRoot
-    $files = @()
-    if (Test-Path -LiteralPath $fullScanRoot -PathType Leaf) {
-        $files = @(Get-Item -LiteralPath $fullScanRoot)
-    } elseif (Test-Path -LiteralPath $fullScanRoot -PathType Container) {
-        $files = @(Get-ChildItem -LiteralPath $fullScanRoot -Recurse -File -ErrorAction Stop | Where-Object {
-            $_.Extension -in @('.cpp', '.h', '.in', '.md', '.txt', '.ps1', '.cmake', '.json')
-        })
-    }
-    foreach ($file in $files) {
-        $match = Select-String -LiteralPath $file.FullName -Pattern $oldVersionPattern -Encoding UTF8 -ErrorAction Stop
-        foreach ($item in @($match)) {
-            $oldVersionMatches.Add("$($file.FullName):$($item.LineNumber)")
-        }
-    }
-}
-Assert-SerialCtlCondition -Condition ($oldVersionMatches.Count -eq 0) `
-    -Message "Old product-version text remains outside generated/legacy content: $($oldVersionMatches -join ', ')"
+# V2.0.0 is now an explicitly requested production version. Version consistency
+# is checked above; historical version mentions are legitimate documentation.
 
 $dependencyManifestPath = Join-Path $repositoryRoot 'third_party\manifest.json'
 $dependencyManifest = Get-Content -LiteralPath $dependencyManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json

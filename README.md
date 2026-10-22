@@ -2,7 +2,7 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-本轮候选版本：`V1.10.0`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
+本轮候选版本：`V2.0.0`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。
 
 ## 主要功能
 
@@ -70,7 +70,7 @@ SSH 登录成功后，右侧 `SFTP` 页会自动读取目录。路径面包屑�
 
 编辑 `serialctl.exe` 旁的 `update.ini`，在 `[update]` 下填写 `url=完整的 update.json 网址`。默认留空，确定服务器 `172.16.2.188` 的实际发布目录后填写；后续地址变化只改这个文件。程序每次启动读取配置，服务器不可达时继续使用当前版本。正在使用的设备和任务不会为更新而被强制断开。
 
-HTTP 更新以程序内置 RSA 公钥验证签名，服务器仅需托管静态文件。首次部署 V1.0.7 需正常解压安装；旧版本没有更新器，不能自动跳到本版本。用户步骤见 [AUTO-UPDATE.md](docs/package/AUTO-UPDATE.md)，管理员签名和部署见 [架构说明](docs/architecture/AUTO-UPDATE.md)。
+V2.0.0 起，每次交付两个文件：完整发布 ZIP 和内嵌数字签名的 `update.json`。管理员直接上传到同一静态目录，无需生成签名、拆分运行文件或维护额外 `.sig`。程序启动自动检查，验证后下载整个 ZIP，只替换批准的运行文件，保留配置、日志和驱动；旧版首次切换需要手动部署一次 V2.0.0。使用步骤见 [AUTO-UPDATE.md](docs/package/AUTO-UPDATE.md)，签名封装及发布门槛见 [架构说明](docs/architecture/AUTO-UPDATE.md)。
 
 ## 工程结构
 
@@ -130,7 +130,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 发布流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中只保留：
 
 ```text
-SerialCtl-V1.10.0-Win7-x64.zip
+SerialCtl-V2.0.0-Win7-x64.zip
 ```
 
 压缩包根目录直接包含 x64 的 `serialctl.exe`、`plink.exe` 和 `psftp.exe`，解压后保持三者位于同一目录。
@@ -165,6 +165,6 @@ SerialCtl-V1.10.0-Win7-x64.zip
 
 推送 main、feat/*、feature/* 或手动运行 Actions 的 `Windows Win7 release build` 会构建并验证 x64。正式程序包可在仓库 Releases 下载；Actions 的 `SerialCtl-Win7-portable` 为构建产物（保留 30 天）。CI 使用 Windows Server 2022，不替代真实 Win7 SP1 与硬件验收。
 
-V1.10.0 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
+V2.0.0 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
 
 统一协议和客户端说明见 [WEBSOCKET-PROTOCOL.md](docs/architecture/WEBSOCKET-PROTOCOL.md)，本轮状态见 [V1.0.6-ACCEPTANCE.md](docs/testing/V1.0.6-ACCEPTANCE.md)。

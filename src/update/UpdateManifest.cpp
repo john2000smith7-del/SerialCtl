@@ -118,6 +118,29 @@ bool SafeRelativeUrl(const std::string& url) {
     return true;
 }
 
+nlohmann::json ParseDocument(const std::vector<unsigned char>& bytes) {
+    if (bytes.empty() || bytes.size() > kMaxManifestBytes) throw std::runtime_error("Invalid manifest size");
+    using Json = nlohmann::json;
+    // Reject deeply nested/duplicate-key documents, even when signed by mistake.
+    std::vector<std::set<std::string>> objectKeys;
+    auto callback = [&](int depth, Json::parse_event_t event, Json& parsed) {
+        if (depth > 8) throw std::runtime_error("Manifest nesting limit exceeded");
+        if (event == Json::parse_event_t::object_start) objectKeys.emplace_back();
+        if (event == Json::parse_event_t::key &&
+            !objectKeys.back().insert(parsed.get<std::string>()).second)
+            throw std::runtime_error("Duplicate manifest key");
+        if (event == Json::parse_event_t::object_end) objectKeys.pop_back();
+        return true;
+    };
+    return Json::parse(bytes.begin(), bytes.end(), callback);
+}
+
+bool Digest(const std::string& text) {
+    return text.size() == 64 && std::all_of(text.begin(), text.end(), [](char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    });
+}
+
 Manifest Verify(const std::vector<unsigned char>& bytes, const std::vector<unsigned char>& signature,
                 const unsigned char* publicKey, size_t keySize) {
     if (bytes.empty() || bytes.size() > kMaxManifestBytes || signature.size() != 256 || keySize > 4096)
@@ -135,20 +158,10 @@ Manifest Verify(const std::vector<unsigned char>& bytes, const std::vector<unsig
         throw std::runtime_error("Update manifest signature is invalid");
 
     using Json = nlohmann::json;
-    // Reject deeply nested/duplicate-key documents, even when signed by mistake.
-    std::vector<std::set<std::string>> objectKeys;
-    auto callback = [&](int depth, Json::parse_event_t event, Json& parsed) {
-        if (depth > 8) throw std::runtime_error("Manifest nesting limit exceeded");
-        if (event == Json::parse_event_t::object_start) objectKeys.emplace_back();
-        if (event == Json::parse_event_t::key &&
-            !objectKeys.back().insert(parsed.get<std::string>()).second)
-            throw std::runtime_error("Duplicate manifest key");
-        if (event == Json::parse_event_t::object_end) objectKeys.pop_back();
-        return true;
-    };
-    const Json json = Json::parse(bytes.begin(), bytes.end(), callback);
-    if (!json.is_object() || json.size() != 5 || !json.contains("schema") ||
-        !json["schema"].is_number_integer() || json["schema"] != 1 ||
+    const Json json = ParseDocument(bytes);
+    if (!json.is_object() || !json.contains("schema") ||
+        !json["schema"].is_number_integer() ||
+        !((json["schema"] == 1 && json.size() == 5) || (json["schema"] == 2 && json.size() == 6)) ||
         json.value("product", Json()) != "SerialCtl" || json.value("architecture", Json()) != "x64" ||
         !json.contains("version") || !json["version"].is_string() ||
         !json.contains("files") || !json["files"].is_array() ||
@@ -157,6 +170,16 @@ Manifest Verify(const std::vector<unsigned char>& bytes, const std::vector<unsig
     Manifest manifest;
     manifest.version = json["version"].get<std::string>();
     Version(manifest.version);
+    if (json["schema"] == 2) {
+        const auto archive = json.value("archive", Json());
+        if (!archive.is_object() || archive.size() != 3 || !archive.value("url", Json()).is_string() ||
+            !archive.value("sha256", Json()).is_string() || !archive.value("size", Json()).is_number_unsigned())
+            throw std::runtime_error("Invalid archive descriptor");
+        manifest.archive = {archive["url"].get<std::string>(), archive["sha256"].get<std::string>(), archive["size"].get<std::uint64_t>()};
+        if (!SafeRelativeUrl(manifest.archive.url) || !Digest(manifest.archive.sha256) ||
+            !manifest.archive.size || manifest.archive.size > kMaxArchiveBytes)
+            throw std::runtime_error("Unsafe archive URL, size or checksum");
+    }
     std::uint64_t total = 0;
     std::set<std::string> names;
     for (const auto& item : json["files"]) {
@@ -182,12 +205,31 @@ Manifest Verify(const std::vector<unsigned char>& bytes, const std::vector<unsig
     return manifest;
 }
 
+Manifest Embedded(const std::vector<unsigned char>& bytes, const unsigned char* key, size_t keySize) {
+    const auto envelope = ParseDocument(bytes);
+    if (!envelope.is_object() || envelope.size() != 3 || envelope.value("schema", nlohmann::json()) != 2 ||
+        !envelope.value("payload", nlohmann::json()).is_string() || !envelope.value("signature", nlohmann::json()).is_string())
+        throw std::runtime_error("Invalid signed update envelope");
+    const auto payload = envelope["payload"].get<std::string>();
+    const auto encoded = envelope["signature"].get<std::string>();
+    if (encoded.size() != 512) throw std::runtime_error("Invalid embedded signature size");
+    std::vector<unsigned char> signature;
+    auto digit = [](char c) -> unsigned { if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10; throw std::runtime_error("Invalid signature hex"); };
+    for (size_t i = 0; i < encoded.size(); i += 2)
+        signature.push_back(static_cast<unsigned char>(digit(encoded[i]) * 16 + digit(encoded[i + 1])));
+    auto manifest = Verify(std::vector<unsigned char>(payload.begin(), payload.end()), signature, key, keySize);
+    if (!manifest.archive.size) throw std::runtime_error("Embedded update requires signed archive metadata");
+    return manifest;
+}
+
 Manifest VerifyStage(const std::filesystem::path& stage, const std::string& currentVersion,
                      const unsigned char* key, size_t keySize, const std::atomic<bool>* cancel) {
     if (cancel && cancel->load()) throw std::runtime_error("Update cancelled");
     CheckPath(stage);
-    const auto manifest = Verify(Read(stage / L"update.json", kMaxManifestBytes),
-                                 Read(stage / L"update.json.sig", 256), key, keySize);
+    const auto metadata = Read(stage / L"update.json", kMaxManifestBytes);
+    const auto manifest = IsEmbeddedManifest(metadata) ? Embedded(metadata, key, keySize) :
+        Verify(metadata, Read(stage / L"update.json.sig", 256), key, keySize);
     if (CompareVersions(manifest.version, currentVersion) <= 0)
         throw std::runtime_error("Staged version is not newer than the running version");
     std::set<std::filesystem::path> expected;
@@ -223,7 +265,7 @@ bool IsAllowedUpdateFile(const std::string& name) {
     static const std::set<std::string> allowed = {
         "serialctl.exe", "plink.exe", "psftp.exe", "VERSION", "README.md", "RELEASE-NOTES.md", "AUTO-UPDATE.md",
         "AI-API.md", "AI-SERIAL.md", "WEBSOCKET-PROTOCOL.md", "POWER.md", "THIRD-PARTY-NOTICES.md",
-        "JSON-LICENSE.txt", "PUTTY-LICENCE.txt", "YY-THUNKS-LICENSE.txt", "WIN7-HARDWARE-TEST.md",
+        "JSON-LICENSE.txt", "MINIZ-LICENSE.txt", "PUTTY-LICENCE.txt", "YY-THUNKS-LICENSE.txt", "WIN7-HARDWARE-TEST.md",
         "MANUAL-REGRESSION.md", "V1.0.6-ACCEPTANCE.md", "AUTO-UPDATE-ACCEPTANCE.md",
         "serialctl_client.py", "serialctl_api.py", "serialctl_ws.py", u8"常用命令示例.txt"};
     return allowed.count(name) != 0;
@@ -253,6 +295,13 @@ std::string Sha256File(const std::filesystem::path& path, const std::atomic<bool
     return result;
 }
 
+bool IsEmbeddedManifest(const std::vector<unsigned char>& data) {
+    const auto document = ParseDocument(data);
+    return document.is_object() && document.contains("payload");
+}
+Manifest VerifyEmbeddedManifest(const std::vector<unsigned char>& data) {
+    return Embedded(data, kTrustedPublicKey, sizeof(kTrustedPublicKey));
+}
 Manifest VerifySignedManifest(const std::vector<unsigned char>& data,
                               const std::vector<unsigned char>& signature) {
     return Verify(data, signature, kTrustedPublicKey, sizeof(kTrustedPublicKey));
@@ -264,6 +313,10 @@ Manifest VerifyStagedManifest(const std::filesystem::path& stage, const std::str
 
 #ifdef SERIALCTL_UPDATE_TESTING
 namespace testing {
+Manifest VerifyEmbeddedManifest(const std::vector<unsigned char>& data, const std::vector<unsigned char>& key) {
+    return Embedded(data, key.data(), key.size());
+}
+
 Manifest VerifySignedManifest(const std::vector<unsigned char>& data, const std::vector<unsigned char>& signature,
                               const std::vector<unsigned char>& key) {
     return Verify(data, signature, key.data(), key.size());
