@@ -32,6 +32,13 @@ if (-not (Test-Path -LiteralPath $candidateArchive -PathType Leaf)) {
 }
 $candidateHash = (Get-FileHash -LiteralPath $candidateArchive -Algorithm SHA256).Hash
 
+Write-Host '==> Native extraction of the exact full release ZIP (temporary test signature)'
+$archiveTest = Join-Path (Get-SerialCtlBuildOutputDirectory -Architecture x64 -Configuration Release -RepositoryRoot $repositoryRoot) 'update_client_test.exe'
+python (Join-Path $repositoryRoot 'tests/integration/test_full_update_archive.py') $candidateArchive $archiveTest
+if ($LASTEXITCODE -ne 0) {
+    throw 'The full release ZIP failed native update extraction verification'
+}
+
 if (-not (Test-Path -LiteralPath $binRoot -PathType Container)) {
     New-Item -ItemType Directory -Path $binRoot | Out-Null
 }
