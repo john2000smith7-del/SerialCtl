@@ -1,0 +1,13 @@
+{
+  "version": "V2.0.2",
+  "source_sha": "3db66c7808b5fe5ec57d5adead48a87c4db42f22",
+  "run_id": "39873495558",
+  "archive": {
+    "url": "SerialCtl-V2.0.2-Win7-x64.zip",
+    "size": 130253809,
+    "sha256": "8e7cb88bd22d572f439dfca4a9514b2edf920165135bbde858c869cb44b17ffb"
+  },
+  "metadata_sha256": "7a0ddcd00efc572bfc67ee836a04831bd04604f280ec8555ac63f9cdea1934d4",
+  "signature_verified": true,
+  "private_key_uploaded": false
+}

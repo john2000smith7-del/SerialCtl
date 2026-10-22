@@ -1,0 +1,94 @@
+[1/15] Building CXX object CMakeFiles/serialctl.dir/src/app/App.cpp.obj
+[2/15] Building CXX object CMakeFiles/ai_pane_test.dir/tests/integration/AiPaneTest.cpp.obj
+[3/15] Building CXX object CMakeFiles/ai_protocol_test.dir/tests/unit/AiProtocolTest.cpp.obj
+[4/15] Building CXX object CMakeFiles/ai_client_test.dir/tests/integration/AiClientTest.cpp.obj
+[5/15] Building CXX object CMakeFiles/ai_device_test.dir/tests/integration/AiDeviceTest.cpp.obj
+[6/15] Building CXX object CMakeFiles/serialctl.dir/src/app/AiPane.cpp.obj
+[7/15] Linking CXX executable ai_protocol_test.exe
+[8/15] Linking CXX executable ai-fixture/ai_client_test.exe
+[9/15] Building CXX object CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj
+FAILED: [code=1] CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj 
+/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/x86_64-w64-mingw32-clang++ -DNOMINMAX -DNTDDI_VERSION=0x06010000 -DSERIALCTL_AI_TESTING -DSERIALCTL_APP_VERSION=\"V2.0.2\" -DSERIALCTL_VERSION=L\"V2.0.2\" -DUNICODE -DWIN32_LEAN_AND_MEAN -DWINVER=0x0601 -D_UNICODE -D_WIN32_WINNT=0x0601 -I/workspace/SerialCtl/src/app -I/workspace/SerialCtl/src/ai -I/workspace/SerialCtl/src/connections -I/workspace/SerialCtl/src/logging -I/workspace/SerialCtl/src/platform -I/workspace/SerialCtl/src/sftp -I/workspace/SerialCtl/src/terminal -I/workspace/SerialCtl/src/power -I/workspace/SerialCtl/src/network -I/workspace/SerialCtl/src/update -I/workspace/SerialCtl/third_party/json -O3 -DNDEBUG -MD -MT CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj -MF CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj.d -o CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj -c /workspace/SerialCtl/src/app/AiPane.cpp
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.
+Stack dump:
+0.	Program arguments: /workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/clang --start-no-unused-arguments --driver-mode=g++ -target x86_64-w64-mingw32 -rtlib=compiler-rt -unwindlib=libunwind -stdlib=libc++ -fuse-ld=lld --end-no-unused-arguments -DNOMINMAX -DNTDDI_VERSION=0x06010000 -DSERIALCTL_AI_TESTING -DSERIALCTL_APP_VERSION=\"V2.0.2\" -DSERIALCTL_VERSION=L\"V2.0.2\" -DUNICODE -DWIN32_LEAN_AND_MEAN -DWINVER=0x0601 -D_UNICODE -D_WIN32_WINNT=0x0601 -I/workspace/SerialCtl/src/app -I/workspace/SerialCtl/src/ai -I/workspace/SerialCtl/src/connections -I/workspace/SerialCtl/src/logging -I/workspace/SerialCtl/src/platform -I/workspace/SerialCtl/src/sftp -I/workspace/SerialCtl/src/terminal -I/workspace/SerialCtl/src/power -I/workspace/SerialCtl/src/network -I/workspace/SerialCtl/src/update -I/workspace/SerialCtl/third_party/json -O3 -DNDEBUG -MD -MT CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj -MF CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj.d -o CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj -c /workspace/SerialCtl/src/app/AiPane.cpp
+1.	<unknown> parser at unknown location
+2.	/workspace/SerialCtl/src/app/AiPane.cpp:8:1: parsing namespace 'serialctl'
+3.	/workspace/SerialCtl/src/app/AiPane.cpp:1128:30: parsing function body 'serialctl::AiPane::ServerRequest'
+4.	/workspace/SerialCtl/src/app/AiPane.cpp:1128:30: in compound statement ('{}')
+5.	/workspace/SerialCtl/src/app/AiPane.cpp:1195:15: in compound statement ('{}')
+ #0 0x00007fd5c9b3f75f llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libLLVM.so.18.1+0x8df75f)
+ #1 0x00007fd5c9b3d7ac llvm::sys::CleanupOnSignal(unsigned long) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libLLVM.so.18.1+0x8dd7ac)
+ #2 0x00007fd5c9a402d8 (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libLLVM.so.18.1+0x7e02d8)
+ #3 0x00007fd5c8e22d70 (/lib/x86_64-linux-gnu/libc.so.6+0x3fd70)
+ #4 0x00007fd5cf06f0cc clang::Lexer::LexTokenInternal(clang::Token&, bool) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xad40cc)
+ #5 0x00007fd5cf1028fc clang::Preprocessor::Lex(clang::Token&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xb678fc)
+ #6 0x00007fd5cf11c7ef (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xb817ef)
+ #7 0x00007fd5cf1256b6 (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xb8a6b6)
+ #8 0x00007fd5cf173d21 clang::Parser::ParsePostfixExpressionSuffix(clang::ActionResult<clang::Expr*, true>) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xbd8d21)
+ #9 0x00007fd5cf16a507 clang::Parser::ParseCastExpression(clang::Parser::CastParseKind, bool, bool&, clang::Parser::TypeCastState, bool, bool*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xbcf507)
+#10 0x00007fd5cf16da8e clang::Parser::ParseCastExpression(clang::Parser::CastParseKind, bool, clang::Parser::TypeCastState, bool, bool*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xbd2a8e)
+#11 0x00007fd5cf16f015 clang::Parser::ParseRHSOfBinaryExpression(clang::ActionResult<clang::Expr*, true>, clang::prec::Level) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xbd4015)
+#12 0x00007fd5cf17336d clang::Parser::ParseExpression(clang::Parser::TypeCastState) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xbd836d)
+#13 0x00007fd5cf18281c clang::Parser::ParseCXXCondition(clang::ActionResult<clang::Stmt*, true>*, clang::SourceLocation, clang::Sema::ConditionKind, bool, clang::Parser::ForRangeInfo*, bool) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xbe781c)
+#14 0x00007fd5cf1ee1cd clang::Parser::ParseParenExprOrCondition(clang::ActionResult<clang::Stmt*, true>*, clang::Sema::ConditionResult&, clang::SourceLocation, clang::Sema::ConditionKind, clang::SourceLocation&, clang::SourceLocation&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc531cd)
+#15 0x00007fd5cf1efa56 clang::Parser::ParseIfStatement(clang::SourceLocation*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc54a56)
+#16 0x00007fd5cf1f0af3 clang::Parser::ParseStatementOrDeclarationAfterAttributes(llvm::SmallVector<clang::Stmt*, 32u>&, clang::Parser::ParsedStmtContext, clang::SourceLocation*, clang::ParsedAttributes&, clang::ParsedAttributes&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc55af3)
+#17 0x00007fd5cf1f1f0f clang::Parser::ParseStatementOrDeclaration(llvm::SmallVector<clang::Stmt*, 32u>&, clang::Parser::ParsedStmtContext, clang::SourceLocation*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc56f0f)
+#18 0x00007fd5cf1f2d69 clang::Parser::ParseCompoundStatementBody(bool) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc57d69)
+#19 0x00007fd5cf1f36bf clang::Parser::ParseCompoundStatement(bool, unsigned int) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc586bf)
+#20 0x00007fd5cf1f01e7 clang::Parser::ParseStatementOrDeclarationAfterAttributes(llvm::SmallVector<clang::Stmt*, 32u>&, clang::Parser::ParsedStmtContext, clang::SourceLocation*, clang::ParsedAttributes&, clang::ParsedAttributes&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc551e7)
+#21 0x00007fd5cf1f1f0f clang::Parser::ParseStatementOrDeclaration(llvm::SmallVector<clang::Stmt*, 32u>&, clang::Parser::ParsedStmtContext, clang::SourceLocation*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc56f0f)
+#22 0x00007fd5cf1f6f38 clang::Parser::ParseStatement(clang::SourceLocation*, clang::Parser::ParsedStmtContext) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc5bf38)
+#23 0x00007fd5cf1efa1f clang::Parser::ParseIfStatement(clang::SourceLocation*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc54a1f)
+#24 0x00007fd5cf1f0af3 clang::Parser::ParseStatementOrDeclarationAfterAttributes(llvm::SmallVector<clang::Stmt*, 32u>&, clang::Parser::ParsedStmtContext, clang::SourceLocation*, clang::ParsedAttributes&, clang::ParsedAttributes&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc55af3)
+#25 0x00007fd5cf1f1f0f clang::Parser::ParseStatementOrDeclaration(llvm::SmallVector<clang::Stmt*, 32u>&, clang::Parser::ParsedStmtContext, clang::SourceLocation*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc56f0f)
+#26 0x00007fd5cf1f2d69 clang::Parser::ParseCompoundStatementBody(bool) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc57d69)
+#27 0x00007fd5cf1f4f02 clang::Parser::ParseFunctionStatementBody(clang::Decl*, clang::Parser::ParseScope&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc59f02)
+#28 0x00007fd5cf22b8d8 clang::Parser::ParseFunctionDefinition(clang::ParsingDeclarator&, clang::Parser::ParsedTemplateInfo const&, clang::Parser::LateParsedAttrList*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc908d8)
+#29 0x00007fd5cf13d0cf clang::Parser::ParseDeclGroup(clang::ParsingDeclSpec&, clang::DeclaratorContext, clang::ParsedAttributes&, clang::SourceLocation*, clang::Parser::ForRangeInit*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xba20cf)
+#30 0x00007fd5cf224f39 clang::Parser::ParseDeclOrFunctionDefInternal(clang::ParsedAttributes&, clang::ParsedAttributes&, clang::ParsingDeclSpec&, clang::AccessSpecifier) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc89f39)
+#31 0x00007fd5cf225abe clang::Parser::ParseDeclarationOrFunctionDefinition(clang::ParsedAttributes&, clang::ParsedAttributes&, clang::ParsingDeclSpec*, clang::AccessSpecifier) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc8aabe)
+#32 0x00007fd5cf22ddbf clang::Parser::ParseExternalDeclaration(clang::ParsedAttributes&, clang::ParsedAttributes&, clang::ParsingDeclSpec*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc92dbf)
+#33 0x00007fd5cf156ed7 clang::Parser::ParseInnerNamespace(llvm::SmallVector<clang::Parser::InnerNamespaceInfo, 4u> const&, unsigned int, clang::SourceLocation&, clang::ParsedAttributes&, clang::BalancedDelimiterTracker&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xbbbed7)
+#34 0x00007fd5cf15c136 clang::Parser::ParseNamespace(clang::DeclaratorContext, clang::SourceLocation&, clang::SourceLocation) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xbc1136)
+#35 0x00007fd5cf140221 clang::Parser::ParseDeclaration(clang::DeclaratorContext, clang::SourceLocation&, clang::ParsedAttributes&, clang::ParsedAttributes&, clang::SourceLocation*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xba5221)
+#36 0x00007fd5cf22dde7 clang::Parser::ParseExternalDeclaration(clang::ParsedAttributes&, clang::ParsedAttributes&, clang::ParsingDeclSpec*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc92de7)
+#37 0x00007fd5cf22f9a7 clang::Parser::ParseTopLevelDecl(clang::OpaquePtr<clang::DeclGroupRef>&, clang::Sema::ModuleImportState&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xc949a7)
+#38 0x00007fd5cf10de5a clang::ParseAST(clang::Sema&, bool, bool) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0xb72e5a)
+#39 0x00007fd5d0ab7395 clang::CodeGenAction::ExecuteAction() (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x251c395)
+#40 0x00007fd5d168fca1 clang::FrontendAction::Execute() (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x30f4ca1)
+#41 0x00007fd5d160700b clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x306c00b)
+#42 0x00007fd5d172858b clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x318d58b)
+#43 0x00005599616f332d cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/clang+0x1432d)
+#44 0x00005599616ebdad (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/clang+0xcdad)
+#45 0x00007fd5d1223e6d (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x2c88e6d)
+#46 0x00007fd5c9a40757 llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libLLVM.so.18.1+0x7e0757)
+#47 0x00007fd5d122430c (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x2c8930c)
+#48 0x00007fd5d11e92ce clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x2c4e2ce)
+#49 0x00007fd5d11e9c9d clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&, bool) const (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x2c4ec9d)
+#50 0x00007fd5d11f5ccc clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::pair<int, clang::driver::Command const*>>&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/../lib/libclang-cpp.so.18.1+0x2c5accc)
+#51 0x00005599616f06c1 clang_main(int, char**, llvm::ToolContext const&) (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/clang+0x116c1)
+#52 0x00005599616eb50b main (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/clang+0xc50b)
+#53 0x00007fd5c8e0cca8 (/lib/x86_64-linux-gnu/libc.so.6+0x29ca8)
+#54 0x00007fd5c8e0cd65 __libc_start_main (/lib/x86_64-linux-gnu/libc.so.6+0x29d65)
+#55 0x00005599616eb56e _start (/workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin/clang+0xc56e)
+clang: error: clang frontend command failed with exit code 135 (use -v to see invocation)
+clang version 18.1.8 (https://github.com/llvm/llvm-project.git 3b5b5c1ec4a3095ab096dd780e84d7ab81f3d7ff)
+Target: x86_64-w64-windows-gnu
+Thread model: posix
+InstalledDir: /workspace/work/serialctl-ai/llvm-mingw-20240619-msvcrt-ubuntu-20.04-x86_64/bin
+clang: note: diagnostic msg: 
+********************
+
+PLEASE ATTACH THE FOLLOWING FILES TO THE BUG REPORT:
+Preprocessed source(s) and associated run script(s) are located at:
+clang: note: diagnostic msg: /tmp/AiPane-b431a6.cpp
+clang: note: diagnostic msg: /tmp/AiPane-b431a6.sh
+clang: note: diagnostic msg: 
+
+********************
+[10/15] Building CXX object CMakeFiles/ai_pane_test.dir/src/app/AiPane.cpp.obj
+[11/15] Building CXX object CMakeFiles/serialctl.dir/src/app/MainWindow.cpp.obj
+[12/15] Building CXX object CMakeFiles/ai_device_test.dir/src/app/MainWindow.cpp.obj
+ninja: build stopped: subcommand failed.

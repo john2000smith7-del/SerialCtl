@@ -1,0 +1,8 @@
+[PASS] Production embedded trust verified actual signed V2.0.2 release and staged 24 runtime files; no archived program executed
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+
+exit=0

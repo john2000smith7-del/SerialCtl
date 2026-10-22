@@ -1,0 +1,75 @@
+Windows Server 2022 build run 39873495558 / job 120153334148
+Source 3db66c7808b5fe5ec57d5adead48a87c4db42f22
+All workflow steps succeeded; timestamps below are UTC.
+
+2026-10-22T23:42:20.0304210Z [PASS] Source/version/dependency checks: V2.0.2
+2026-10-22T23:42:20.4649270Z [PASS] Git provenance: 3db66c7808b5fe5ec57d5adead48a87c4db42f22
+2026-10-22T23:42:20.4661255Z [PASS] Source-only checks completed
+2026-10-22T23:46:05.0787303Z [PASS] SerialCtl build completed: All / Release
+2026-10-22T23:46:56.3587427Z 10/24 Test #10: power_service ....................   Passed    3.66 sec
+2026-10-22T23:46:56.5371444Z 11/24 Test #11: cmd_connection ...................   Passed    0.18 sec
+2026-10-22T23:46:59.8029902Z 12/24 Test #12: api_server .......................   Passed    3.27 sec
+2026-10-22T23:46:59.8291364Z 13/24 Test #13: api_response .....................   Passed    0.03 sec
+2026-10-22T23:46:59.9028894Z 14/24 Test #14: shared_serial_protocol ...........   Passed    0.07 sec
+2026-10-22T23:46:59.9101200Z 15/24 Test #15: tcp_connection ...................   Passed    0.01 sec
+2026-10-22T23:46:59.9184941Z 16/24 Test #16: terminal_model ...................   Passed    0.01 sec
+2026-10-22T23:47:00.0343845Z 17/24 Test #17: putty_host_key ...................   Passed    0.12 sec
+2026-10-22T23:47:10.7548330Z 18/24 Test #18: serial_share_backpressure ........   Passed   10.72 sec
+2026-10-22T23:47:11.6274735Z 19/24 Test #19: multi_serial .....................   Passed    0.87 sec
+2026-10-22T23:47:11.8747372Z 20/24 Test #20: shared_terminal_response .........   Passed    0.25 sec
+2026-10-22T23:47:13.4805258Z 21/24 Test #21: api_client .......................   Passed    1.61 sec
+2026-10-22T23:47:23.0753095Z 22/24 Test #22: linux_gateway_client .............   Passed    9.59 sec
+2026-10-22T23:47:23.0813720Z 23/24 Test #23: terminal_decoder .................   Passed    0.01 sec
+2026-10-22T23:47:23.0871495Z 24/24 Test #24: sftp_model .......................   Passed    0.01 sec
+2026-10-22T23:47:23.0877026Z 100% tests passed, 0 tests failed out of 24
+2026-10-22T23:47:23.0877357Z Total Test time (real) =  77.04 sec
+2026-10-22T23:47:25.1270274Z [PASS] SerialCtl tests completed: All / Release
+2026-10-22T23:47:25.2012834Z [PASS] Source/version/dependency checks: V2.0.2
+2026-10-22T23:47:25.2780353Z [PASS] Git provenance: 3db66c7808b5fe5ec57d5adead48a87c4db42f22
+2026-10-22T23:47:33.8602163Z [PASS] x64 / GUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serialctl.exe
+2026-10-22T23:47:34.0495033Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\plink.exe
+2026-10-22T23:47:34.2322416Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\psftp.exe
+2026-10-22T23:47:34.4179682Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\ui_buffered_paint_test.exe
+2026-10-22T23:47:34.5997261Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\shared_serial_protocol_test.exe
+2026-10-22T23:47:34.7773307Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\cmd_connection_test.exe
+2026-10-22T23:47:34.9546309Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\power_service_test.exe
+2026-10-22T23:47:35.1314674Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\tcp_connection_test.exe
+2026-10-22T23:47:35.3025686Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_model_test.exe
+2026-10-22T23:47:35.4773169Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\sftp_model_test.exe
+2026-10-22T23:47:35.6864870Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\ai_device_test.exe
+2026-10-22T23:47:35.8661094Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\update_installer_test.exe
+2026-10-22T23:47:36.0387143Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\terminal_decoder_test.exe
+2026-10-22T23:47:36.2189559Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\api_server_test.exe
+2026-10-22T23:47:36.3975194Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\serial_share_backpressure_test.exe
+2026-10-22T23:47:36.5781357Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\multi_serial_test.exe
+2026-10-22T23:47:36.7558285Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\session_logger_test.exe
+2026-10-22T23:47:36.9430092Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\ui_combo_paint_test.exe
+2026-10-22T23:47:37.1195219Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\putty_host_key_test.exe
+2026-10-22T23:47:37.2992465Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\ai_protocol_test.exe
+2026-10-22T23:47:37.4786183Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\Release\update_client_test.exe
+2026-10-22T23:47:37.6637581Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\ai-fixture\Release\ai_client_test.exe
+2026-10-22T23:47:37.8635655Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\ai-fixture\Release\ai_pane_test.exe
+2026-10-22T23:47:38.0364770Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\windows\x64\cmake\ai-fixture\Release\plink.exe
+2026-10-22T23:47:38.0370951Z [PASS] Binary compatibility checks completed: All / Release
+2026-10-22T23:47:40.0782878Z [PASS] Original NI-VISA 18.0 Runtime, complete offline installer and licenses
+2026-10-22T23:47:55.1022367Z [PASS] x64 / GUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\serialctl.exe
+2026-10-22T23:47:55.2787956Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\plink.exe
+2026-10-22T23:47:55.4580228Z [PASS] x64 / CUI / Win7 PE: D:\a\SerialCtl\SerialCtl\build\release\verify\psftp.exe
+2026-10-22T23:47:55.5946544Z [PASS] Candidate archive was reopened and verified: D:\a\SerialCtl\SerialCtl\build\release\out\SerialCtl-V2.0.2-Win7-x64.zip
+2026-10-22T23:47:55.5953180Z [PASS] Candidate SHA-256: 8e7cb88bd22d572f439dfca4a9514b2edf920165135bbde858c869cb44b17ffb
+2026-10-22T23:48:02.0981178Z [PASS] real full release ZIP extracts only signed runtime without drivers or configuration
+2026-10-22T23:48:02.5201489Z [PASS] Local release ready: D:\a\SerialCtl\SerialCtl\bin\SerialCtl-V2.0.2-Win7-x64.zip
+2026-10-22T23:48:02.5207479Z [PASS] SHA-256: 8e7cb88bd22d572f439dfca4a9514b2edf920165135bbde858c869cb44b17ffb
+2026-10-22T23:48:12.5098856Z [PASS] Toolbar ends after Settings; detached theme and equal card gaps: 12
+2026-10-22T23:48:14.6981050Z [PASS] Theme corner pixels survive native mouse, Space and BM_CLICK with focus retained
+2026-10-22T23:50:51.5554323Z [PASS] Toolbar ends after Settings; detached theme and equal card gaps: 12
+2026-10-22T23:50:55.1840558Z [PASS] Theme corner pixels survive native mouse, Space and BM_CLICK with focus retained
+2026-10-22T23:53:48.9981480Z [PASS] Executed assertions for packaged startup/shutdown, theme/dialog layout, controlled CMD, panel geometry, drafts, and isolated SFTP UI. See per-case JSON for input method and scope.
+2026-10-22T23:53:51.0646303Z [PASS] updater production GUI missing
+2026-10-22T23:53:52.1862640Z [PASS] updater production GUI empty
+2026-10-22T23:53:53.0336373Z [PASS] updater production GUI url-a-404
+2026-10-22T23:53:53.6390651Z [PASS] updater production GUI url-b-invalid-signature
+2026-10-22T23:53:54.1984321Z [PASS] updater production GUI slowheaders
+2026-10-22T23:53:54.9592146Z [PASS] updater production GUI slowbody
+2026-10-22T23:53:55.7894933Z Ran 10 tests in 0.002s
+2026-10-22T23:53:57.5187766Z Ran 24 tests in 1.446s

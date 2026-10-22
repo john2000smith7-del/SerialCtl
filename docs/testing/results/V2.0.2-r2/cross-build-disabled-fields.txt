@@ -1,0 +1,7 @@
+[1/7] Building CXX object CMakeFiles/serialctl.dir/src/app/AiPane.cpp.obj
+[2/7] Linking CXX executable serialctl.exe
+[3/7] Building CXX object CMakeFiles/ai_pane_test.dir/tests/integration/AiPaneTest.cpp.obj
+[4/7] Building CXX object CMakeFiles/ai_pane_test.dir/src/app/AiPane.cpp.obj
+[5/7] Linking CXX executable ai-fixture/ai_pane_test.exe
+[6/7] Building CXX object CMakeFiles/ai_device_test.dir/src/app/AiPane.cpp.obj
+[7/7] Linking CXX executable ai_device_test.exe

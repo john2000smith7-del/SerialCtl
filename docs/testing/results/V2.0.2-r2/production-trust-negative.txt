@@ -1,0 +1,8 @@
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+wine: failed to open L"C:\\windows\\system32\\winedevice.exe": c0000135
+Rejected: Update manifest signature is invalid
+
+exit=1
