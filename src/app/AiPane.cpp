@@ -44,6 +44,13 @@ std::wstring Text(HWND h) {
     s.resize(length);
     return s;
 }
+bool EditColorMessage(UINT message, LPARAM control) {
+    if (message == WM_CTLCOLOREDIT) return true;
+    if (message != WM_CTLCOLORSTATIC || !control) return false;
+    wchar_t type[32]{};
+    GetClassNameW(reinterpret_cast<HWND>(control), type, 32);
+    return _wcsicmp(type, L"EDIT") == 0;
+}
 void Draw(HDC dc, const std::wstring &text, RECT r, HFONT font, COLORREF color,
           UINT format = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
     auto old = SelectObject(dc, font);
@@ -264,8 +271,8 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_CTLCOLOREDIT: {
         auto dc = reinterpret_cast<HDC>(w);
         const auto c = UiAiTheme(self->dark_);
-        SetTextColor(dc, c.text);
-        const bool field = m == WM_CTLCOLOREDIT;
+        const bool field = EditColorMessage(m, l);
+        SetTextColor(dc, field && !IsWindowEnabled(reinterpret_cast<HWND>(l)) ? c.muted : c.text);
         SetBkColor(dc, field ? c.field : c.surface);
         return reinterpret_cast<LRESULT>(field ? self->fieldBrush_ : self->surfaceBrush_);
     }
@@ -1106,7 +1113,7 @@ void AiPane::Event(const Json &e) {
             Add(L"状态", Wide(ai::ExplainServiceError(e.value("message", std::string()))));
             SetStatus(Wide(ai::ExplainServiceError(e.value("message", std::string()))));
         } else
-            SetStatus(stopRequested_  ? L"任务已停止；已提交命令的执行结果仍需设备回显确认"
+            SetStatus(stopRequested_  ? L"任务已停止；已提交操作仍需实际输出或回读确认"
                       : observedTool_ ? L"回复完成 · 已处理工具调用"
                                       : L"回复完成 · 推理已响应，工具能力待实际调用验证");
         RefreshTargets();
@@ -1478,8 +1485,8 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORBTN || m == WM_CTLCOLORDLG) {
         const auto c = UiAiTheme(self->dark_);
         auto dc = reinterpret_cast<HDC>(w);
-        const bool field = m == WM_CTLCOLOREDIT;
-        SetTextColor(dc, c.text);
+        const bool field = EditColorMessage(m, l);
+        SetTextColor(dc, field && !IsWindowEnabled(reinterpret_cast<HWND>(l)) ? c.muted : c.text);
         SetBkColor(dc, field ? c.field : c.surface);
         return reinterpret_cast<INT_PTR>(field ? self->fieldBrush_ : self->surfaceBrush_);
     }

@@ -90,11 +90,17 @@ struct AiPaneTestAccess {
         auto old = SelectObject(buffer, bitmap);
         SendMessageW(pane.Control(10), WM_PRINT, reinterpret_cast<WPARAM>(buffer), PRF_CLIENT | PRF_NONCLIENT);
         const auto corner = GetPixel(buffer, 0, 0);
+        EnableWindow(pane.Control(10), FALSE);
+        SendMessageW(pane.Control(10), WM_PRINT, reinterpret_cast<WPARAM>(buffer), PRF_CLIENT | PRF_NONCLIENT);
+        const auto disabledField = GetPixel(buffer, (inputBounds.right - inputBounds.left) / 2,
+            (inputBounds.bottom - inputBounds.top) / 2);
+        EnableWindow(pane.Control(10), TRUE);
         SelectObject(buffer, old);
         DeleteObject(bitmap);
         DeleteDC(buffer);
         ReleaseDC(pane.Control(10), screen);
         require(corner == UiAiTheme(true).surface, "Dark composer exposed a black rectangular exterior");
+        require(disabledField == UiAiTheme(true).field, "Disabled AI edit exposed a different rectangular fill");
 
         ai::ServerSettings server;
         server.host = L"serialctl-pane-" + std::to_wstring(GetCurrentProcessId()) + L".invalid";
