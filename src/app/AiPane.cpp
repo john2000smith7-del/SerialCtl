@@ -233,7 +233,7 @@ struct HistoryPopup {
             UiResizeDialog(h, p->dpi, 436, 396);
             p->surface = CreateSolidBrush(UiAiTheme(p->dark).surface);
             p->field = CreateSolidBrush(UiAiTheme(p->dark).field);
-            p->style = {&p->dark, p->font, p->dpi};
+            p->style = {&p->dark, p->font, p->dpi, true};
             auto edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, p->D(16),
                                         p->D(16), p->D(404), p->D(28), h, reinterpret_cast<HMENU>(300),
                                         GetModuleHandleW(nullptr), nullptr);
