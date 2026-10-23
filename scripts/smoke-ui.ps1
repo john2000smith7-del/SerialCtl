@@ -216,6 +216,13 @@ public static class SerialCtlUiSmoke {
         if(Math.Abs(rect.Left-x)>2 || Math.Abs(rect.Top-y)>2 || Math.Abs(rect.Right-rect.Left-width)>2 || Math.Abs(rect.Bottom-rect.Top-height)>2)
             throw new Exception("Power geometry mismatch id="+id+" actual="+rect.Left+","+rect.Top+","+(rect.Right-rect.Left)+","+(rect.Bottom-rect.Top)+" expected="+x+","+y+","+width+","+height);
     }
+    public static void AssertPowerGap(IntPtr pane, int leftId, int rightId) {
+        RECT left, right; GetWindowRect(GetDlgItem(pane,leftId),out left); GetWindowRect(GetDlgItem(pane,rightId),out right);
+        IntPtr dc=GetDC(pane); int dpi=GetDeviceCaps(dc,88); ReleaseDC(pane,dc);
+        int expected=(12*dpi+48)/96;
+        if(Math.Abs(right.Left-left.Right-expected)>1)
+            throw new Exception("Power peer gap must follow the shared 12 px grid: "+leftId+" -> "+rightId);
+    }
     public static void AssertPowerScrollLane(IntPtr pane) {
         RECT client; GetClientRect(pane,out client);
         IntPtr dc=GetDC(pane); int dpi=GetDeviceCaps(dc,88); ReleaseDC(pane,dc);
@@ -545,18 +552,23 @@ foreach ($architecture in @('x64')) {
             $powerBounds=New-Object SerialCtlUiSmoke+RECT
             [SerialCtlUiSmoke]::GetClientRect($powerPane,[ref]$powerBounds)|Out-Null
             $powerWidth=$powerBounds.Right
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,10,($powerWidth-200),0,96,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,10,($powerWidth-204),0,96,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,11,($powerWidth-96),0,96,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,80,72,52,160,36)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,81,($powerWidth-312),52,104,36)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,12,($powerWidth-200),52,96,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,81,($powerWidth-320),52,104,36)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,12,($powerWidth-204),52,96,36)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,13,($powerWidth-96),52,96,36)
+            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,10,11)
+            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,81,12)
+            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,12,13)
             # Each rounded tab leaves a four-pixel peer gap; no enclosing double outline.
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,90,2,338,88,28)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,91,94,338,88,28)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,92,186,338,88,28)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,93,278,338,100,28)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,103,($powerWidth-248),384,72,28)
+            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,103,($powerWidth-256),384,72,28)
+            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,103,100)
+            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,100,101)
             # The approved views are captured from the real EXE with no hardware or fake measurements.
             foreach ($tab in @(91,92,93)) {
                 Click-Control $powerPane $tab
