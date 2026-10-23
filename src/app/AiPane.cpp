@@ -285,18 +285,13 @@ struct HistoryPopup {
         if (m == WM_DRAWITEM) {
             auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
             auto c = UiAiTheme(p->dark);
-            const bool enabled = IsWindowEnabled(item.hwndItem), primary = item.CtlID == IDOK,
-                       hover = (item.itemState & (ODS_SELECTED | ODS_FOCUS)) != 0;
+            const bool enabled = IsWindowEnabled(item.hwndItem), primary = item.CtlID == IDOK;
+            const auto visual = UiButtonVisual(c, enabled, item.itemState & ODS_SELECTED,
+                                               GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
             FillRect(item.hDC, &item.rcItem, p->surface);
-            UiBox(item.hDC, item.rcItem,
-                  primary && enabled ? c.accent
-                  : hover            ? c.raised
-                                     : c.field,
-                  hover ? c.accent : c.border, p->D(8));
-            Draw(item.hDC, Text(item.hwndItem), item.rcItem, p->font,
-                 !enabled  ? c.muted
-                 : primary ? RGB(255, 255, 255)
-                           : c.text,
+            UiBox(item.hDC, item.rcItem, visual.fill, visual.border, p->D(8));
+            UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, p->D(96));
+            Draw(item.hDC, Text(item.hwndItem), item.rcItem, p->font, visual.ink,
                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return TRUE;
         }
@@ -536,24 +531,23 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
         const bool primary = item.CtlID == Send || item.CtlID == IDOK;
         const bool hover = GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr;
-        if (item.CtlID != Connect && item.CtlID != HistoryButton && item.CtlID != New)
-            UiBox(dc, item.rcItem,
-                  primary && enabled ? c.accent : (hover || (item.itemState & ODS_SELECTED) ? c.accentSoft : c.raised),
-                  item.itemState & ODS_FOCUS ? c.accent : c.border, self->D(10));
+        const bool pressed = enabled && (item.itemState & ODS_SELECTED);
+        const auto visual = UiButtonVisual(c, enabled, pressed, hover, primary);
+        const bool iconOnly = item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
+        if (!iconOnly || pressed || hover)
+            UiBox(dc, item.rcItem, iconOnly && !pressed ? c.raised : visual.fill,
+                  iconOnly && !pressed ? c.raised : visual.border, self->D(10));
+        UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->style_.dpi);
         if (item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New) {
             const int x = (item.rcItem.left + item.rcItem.right - self->D(18)) / 2,
                       y = (item.rcItem.top + item.rcItem.bottom - self->D(18)) / 2;
             RECT icon{x, y, x + self->D(18), y + self->D(18)};
             if (item.CtlID == Connect)
-                self->icons_.Draw(dc, ToolbarIcon::Settings, icon, self->dark_);
+                self->icons_.Draw(dc, ToolbarIcon::Settings, icon, self->dark_ || pressed);
             else
-                UiDrawGlyph(dc, icon, enabled ? c.text : c.muted, item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
+                UiDrawGlyph(dc, icon, visual.ink, item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
         } else
-            Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
-                 !enabled  ? c.muted
-                 : primary ? RGB(255, 255, 255)
-                           : c.text,
-                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            Draw(dc, Text(item.hwndItem), item.rcItem, self->font_, visual.ink, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         return TRUE;
     }
     case WM_CTLCOLORSTATIC:

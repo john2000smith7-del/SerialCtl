@@ -132,6 +132,10 @@ void RunCase(HWND parent, bool ownerDrawn) {
     layout.Commit();
     SetFocus(combo);
     Pump();
+    RECT normalized{};
+    GetWindowRect(combo, &normalized);
+    Require(normalized.bottom - normalized.top == MulDiv(28, style.dpi, 96),
+            "Native dropdown visible height must match the shared 28 px field at every DPI");
     RedrawWindow(combo, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
     CheckSettled(combo, "initial");
     SendMessageW(combo, WM_MOUSEMOVE, 0, MAKELPARAM(10, 10));

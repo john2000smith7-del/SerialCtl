@@ -23,6 +23,25 @@ inline UiColors UiTheme(bool dark) {
 inline COLORREF UiAccentInset() {
     return RGB(25, 63, 175);
 }
+struct UiButtonColors {
+    COLORREF fill, border, ink;
+};
+inline UiButtonColors UiButtonVisual(const UiColors &c, bool enabled, bool pressed, bool hovered,
+                                     bool primary = false) {
+    if (!enabled)
+        return {c.raised, c.border, c.muted};
+    if (pressed)
+        return {primary ? UiAccentInset() : c.accent, c.accent, RGB(255, 255, 255)};
+    if (primary)
+        return {c.accent, c.accent, RGB(255, 255, 255)};
+    return {hovered ? c.surface : c.raised, c.border, c.text};
+}
+inline void UiButtonKeyboardFocus(HDC dc, RECT rect, UINT state, int dpi) {
+    if ((state & ODS_FOCUS) && !(state & (ODS_NOFOCUSRECT | ODS_DISABLED))) {
+        InflateRect(&rect, -MulDiv(4, dpi, 96), -MulDiv(4, dpi, 96));
+        DrawFocusRect(dc, &rect);
+    }
+}
 // AI uses the existing softer surfaces; regular terminal/dialog palettes stay independent.
 inline UiColors UiAiTheme(bool dark) {
     auto c = UiTheme(dark);
@@ -53,7 +72,8 @@ enum class UiGlyph {
     Check,
     Folder,
     Link,
-    ChevronUp
+    ChevronUp,
+    Command
 };
 inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
     if (UiResourceGlyph(dc, bounds, color, static_cast<int>(icon)))
@@ -1021,13 +1041,27 @@ class UiLayoutBatch {
         for (auto &c : changes)
             InvalidateRect(c.h, nullptr, FALSE);
         for (auto &combo : combos) {
-            RECT bounds{};
-            GetWindowRect(combo.first, &bounds);
-            int visible = bounds.bottom - bounds.top;
-            if (visible != combo.second) {
-                auto selection = static_cast<WPARAM>(-1);
-                int current = static_cast<int>(SendMessageW(combo.first, CB_GETITEMHEIGHT, selection, 0));
-                SendMessageW(combo.first, CB_SETITEMHEIGHT, selection, std::max(1, current + combo.second - visible));
+            // Selection-height getters/setters can account for native insets
+            // differently. Calibrate against the actual window after a write;
+            // never assume a fixed system border thickness across DPI/themes.
+            int heightBias = 0;
+            for (int attempt = 0; attempt < 3 && IsWindow(combo.first); ++attempt) {
+                RECT bounds{};
+                GetWindowRect(combo.first, &bounds);
+                const int visible = bounds.bottom - bounds.top;
+                if (visible == combo.second)
+                    break;
+                const auto selection = static_cast<WPARAM>(-1);
+                const int current = static_cast<int>(SendMessageW(combo.first, CB_GETITEMHEIGHT, selection, 0));
+                if (current == CB_ERR)
+                    break;
+                const int desired = std::max(1, current + combo.second - visible - heightBias);
+                if (desired == current)
+                    break;
+                SendMessageW(combo.first, CB_SETITEMHEIGHT, selection, desired);
+                const int reported = static_cast<int>(SendMessageW(combo.first, CB_GETITEMHEIGHT, selection, 0));
+                if (reported != CB_ERR)
+                    heightBias = reported - desired;
                 InvalidateRect(combo.first, nullptr, FALSE);
             }
         }

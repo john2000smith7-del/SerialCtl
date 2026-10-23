@@ -66,9 +66,126 @@ struct AiDeviceTestAccess {
         }
         Require(SendDlgItemMessageW(remote, IDC_REMOTE_MODE, CB_GETCOUNT, 0, 0) == 3,
                 "Remote transport options missing");
+        for (int id : {IDC_REMOTE_MODE, IDC_SERIAL}) {
+            RECT field{};
+            GetWindowRect(GetDlgItem(remote, id), &field);
+            Require(field.bottom - field.top == 28, "Remote dropdown must retain the 28 px field height");
+        }
         main.discoveryCancel_ = true;
         main.discoveryDialog_ = nullptr;
         DestroyWindow(remote);
+        main.pendingMode_ = 1;
+        const auto local = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
+                                              MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
+        Require(local != nullptr, "Local serial dialog missing");
+        for (const auto dialog : {local}) {
+            RECT bounds{}, refresh{}, selector{};
+            GetClientRect(dialog, &bounds);
+            GetWindowRect(GetDlgItem(dialog, IDC_SERIAL_REFRESH), &refresh);
+            GetWindowRect(GetDlgItem(dialog, IDC_SERIAL), &selector);
+            Require(refresh.top == selector.top && refresh.bottom == selector.bottom,
+                    "Serial Refresh must match final dropdown height");
+            Require(selector.right - selector.left > refresh.right - refresh.left + 180,
+                    "Hardware selector is still squeezed by Refresh");
+            for (const int id : {IDC_SERIAL, IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW}) {
+                RECT field{};
+                GetWindowRect(GetDlgItem(dialog, id), &field);
+                Require(field.bottom - field.top == 28, "Collapsed serial dropdown must be 28 px at test DPI");
+                MapWindowPoints(nullptr, dialog, reinterpret_cast<POINT *>(&field), 2);
+                Require(field.bottom <= bounds.bottom, "Serial field escapes resized dialog");
+            }
+        }
+        DestroyWindow(local);
+        // Exercise actual production owner painters, preserving row/page selection separately from a held press.
+        auto render = [&](HWND button, UINT state, bool power) {
+            RECT rect{};
+            GetClientRect(button, &rect);
+            // Inactive power pages have not received layout yet. Exercise their
+            // real painter at a normal selector size; layout is checked separately.
+            if (power && (rect.right < 32 || rect.bottom < 28))
+                rect = {0, 0, 128, 32};
+            HDC screen = GetDC(button), dc = CreateCompatibleDC(screen);
+            HBITMAP bitmap = CreateCompatibleBitmap(screen, rect.right, rect.bottom);
+            auto old = SelectObject(dc, bitmap);
+            DRAWITEMSTRUCT item{};
+            item.CtlType = ODT_BUTTON;
+            item.CtlID = GetDlgCtrlID(button);
+            item.hwndItem = button;
+            item.hDC = dc;
+            item.rcItem = rect;
+            item.itemState = state;
+            if (power)
+                SendMessageW(main.powerPane_.Handle(), WM_DRAWITEM, item.CtlID, reinterpret_cast<LPARAM>(&item));
+            else
+                main.DrawOwnerItem(item);
+            const auto pixel = GetPixel(dc, 8, rect.bottom / 2);
+            SelectObject(dc, old);
+            DeleteObject(bitmap);
+            DeleteDC(dc);
+            ReleaseDC(button, screen);
+            return pixel;
+        };
+        for (const bool dark : {false, true}) {
+            main.darkMode_ = dark;
+            main.ApplyTheme();
+            main.aiVisible_ = main.powerVisible_ = true;
+            for (const auto button : main.toolbarButtons_) {
+                const auto normal = render(button, 0, false);
+                Require(normal != RGB(31, 79, 216), "Current navigation page latched accent fill");
+                Require(render(button, ODS_SELECTED, false) == RGB(31, 79, 216),
+                        "Navigation press must be solid deep blue");
+                Require(render(button, ODS_FOCUS | ODS_NOFOCUSRECT, false) == normal,
+                        "Mouse focus must restore neutral navigation");
+            }
+            for (int id : {90, 91, 110, 190}) {
+                HWND button = GetDlgItem(main.powerPane_.Handle(), id);
+                const auto normal = render(button, 0, true);
+                Require(normal != RGB(31, 79, 216), "Power selector latched accent fill");
+                const auto down = render(button, ODS_SELECTED, true);
+                Require(down == RGB(31, 79, 216), "Power selector press differs from toolbar");
+                Require(render(button, ODS_FOCUS | ODS_NOFOCUSRECT, true) == normal,
+                        "Power selector mouse focus retained press color");
+            }
+        }
+        const auto commandDraft = main.commands_;
+        main.commands_ = {CommandItem(L"Controlled command", L"echo fixture")};
+        MoveWindow(main.commandList_, 0, 0, 280, 200, TRUE);
+        main.RefreshCommandList();
+        for (const bool dark : {false, true}) {
+            main.darkMode_ = dark;
+            const auto c = UiTheme(dark);
+            HDC screen = GetDC(parent), dc = CreateCompatibleDC(screen);
+            HBITMAP bitmap = CreateCompatibleBitmap(screen, 280, 66);
+            const auto old = SelectObject(dc, bitmap);
+            DRAWITEMSTRUCT item{};
+            item.CtlType = ODT_LISTBOX;
+            item.CtlID = GetDlgCtrlID(main.commandList_);
+            item.itemID = 0;
+            item.itemState = ODS_SELECTED;
+            item.hwndItem = main.commandList_;
+            item.hDC = dc;
+            item.rcItem = {0, 0, 280, 66};
+            main.DrawOwnerItem(item);
+            Require(GetPixel(dc, 5, 33) == c.raised, "Selected command retained a sticky blue card");
+            main.pressedCommandIndex_ = 0;
+            main.pressedCommandAction_ = 2;
+            main.DrawOwnerItem(item);
+            Require(GetPixel(dc, 244, 33) == c.accent, "Command action has no deep-blue held feedback");
+            SendMessageW(main.commandList_, WM_LBUTTONUP, 0, 0);
+            Require(main.pressedCommandIndex_ == -1 && main.pressedCommandAction_ == 0,
+                    "Command press did not reset after mouse release");
+            main.DrawOwnerItem(item);
+            Require(GetPixel(dc, 244, 33) == c.raised, "Command action retained blue after release");
+            SelectObject(dc, old);
+            DeleteObject(bitmap);
+            DeleteDC(dc);
+            ReleaseDC(parent, screen);
+        }
+        main.commands_ = commandDraft;
+        main.RefreshCommandList();
+        main.aiVisible_ = main.powerVisible_ = false;
+        main.darkMode_ = false;
+        main.ApplyTheme();
         main.pendingMode_ = 0;
         main.rightPanelWidth_ = 320;
         main.rightPanelCollapsed_ = false;

@@ -103,10 +103,9 @@ public static class SerialCtlUiSmoke {
         bool dark=WindowColor(window)==0x001e1c1cu;
         uint panel=dark ? 0x00262424u : 0x00ffffffu;
         bool active=IsWindowEnabled(footer);
-        bool highlighted=(Send(footer,0xf2,IntPtr.Zero,IntPtr.Zero).ToInt64()&4)!=0 ||
-            (active && GetProp(footer,"SerialCtl.ButtonHover")!=IntPtr.Zero);
-        uint fill=highlighted ? (dark ? 0x0050371fu : 0x00fff1e5u) :
-            active ? (dark ? 0x002e2c2cu : 0x00f7f2f2u) : panel;
+        bool pressed=active && (Send(footer,0xf2,IntPtr.Zero,IntPtr.Zero).ToInt64()&4)!=0;
+        bool hovered=active && GetProp(footer,"SerialCtl.ButtonHover")!=IntPtr.Zero;
+        uint fill=pressed ? 0x00d84f1fu : hovered ? panel : (dark ? 0x002e2c2cu : 0x00f7f2f2u);
         dc=GetDC(IntPtr.Zero);
         try {
             if(GetPixel(dc,r.Left,r.Bottom-1)!=panel || GetPixel(dc,r.Right-1,r.Bottom-1)!=panel ||
@@ -222,6 +221,26 @@ public static class SerialCtlUiSmoke {
         int expected=(12*dpi+48)/96;
         if(Math.Abs(right.Left-left.Right-expected)>1)
             throw new Exception("Power peer gap must follow the shared 12 px grid: "+leftId+" -> "+rightId);
+    }
+    public static void AssertPowerSelectors(IntPtr pane, int first, int count, int top, string face) {
+        RECT client; GetClientRect(pane,out client);
+        IntPtr dc=GetDC(pane); int dpi=GetDeviceCaps(dc,88);
+        IntPtr font=CreateFont(-(13*dpi+48)/96,0,0,0,400,0,0,0,1,0,0,5,32,face);
+        IntPtr previous=SelectObject(dc,font);
+        int x=0,y=(top*dpi+48)/96,gap=(12*dpi+48)/96,height=(32*dpi+48)/96;
+        try {
+            for(int i=0;i<count;i++) {
+                IntPtr button=GetDlgItem(pane,first+i);
+                var label=new StringBuilder(128); ReadText(button,13,new IntPtr(label.Capacity),label);
+                SIZE text; GetTextExtentPoint32(dc,label.ToString(),label.Length,out text);
+                int width=text.Width+(32*dpi+48)/96;
+                if(x>0 && x+width>client.Right) {x=0;y+=(44*dpi+48)/96;}
+                RECT rect; GetWindowRect(button,out rect); MapWindowPoints(IntPtr.Zero,pane,ref rect,2);
+                if(Math.Abs(rect.Left-x)>1 || Math.Abs(rect.Top-y)>1 || Math.Abs(rect.Right-rect.Left-width)>2 || Math.Abs(rect.Bottom-rect.Top-height)>1)
+                    throw new Exception("Power selector violates measured text padding / 12 px gaps / 32 px height: "+(first+i));
+                x+=width+gap;
+            }
+        } finally {SelectObject(dc,previous);DeleteObject(font);ReleaseDC(pane,dc);}
     }
     public static void AssertPowerScrollLane(IntPtr pane) {
         RECT client; GetClientRect(pane,out client);
@@ -561,11 +580,7 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::AssertPowerGap($powerPane,10,11)
             [SerialCtlUiSmoke]::AssertPowerGap($powerPane,81,12)
             [SerialCtlUiSmoke]::AssertPowerGap($powerPane,12,13)
-            # Each rounded tab leaves a four-pixel peer gap; no enclosing double outline.
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,90,2,338,88,28)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,91,94,338,88,28)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,92,186,338,88,28)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,93,278,338,100,28)
+            [SerialCtlUiSmoke]::AssertPowerSelectors($powerPane,90,4,336,$expectedUiFace)
             [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,103,($powerWidth-256),384,72,28)
             [SerialCtlUiSmoke]::AssertPowerGap($powerPane,103,100)
             [SerialCtlUiSmoke]::AssertPowerGap($powerPane,100,101)
@@ -574,7 +589,10 @@ foreach ($architecture in @('x64')) {
                 Click-Control $powerPane $tab
                 Start-Sleep -Milliseconds 200
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-tab-$tab"
-                if($tab -eq 91) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,40,0,499,[int](($powerWidth-184)/2),36) }
+                if($tab -eq 91) {
+                    [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,40,0,499,[int](($powerWidth-184)/2),36)
+                    [SerialCtlUiSmoke]::AssertPowerSelectors($powerPane,110,5,384,$expectedUiFace)
+                }
                 if($tab -eq 92) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,202,132,451,[int](($powerWidth-144)/2),28) }
             }
             Click-Control $powerPane 92

@@ -414,6 +414,7 @@ private:
     int draggingCommandIndex_ = -1;
     int hoveredCommandIndex_ = -1;
     int hoveredCommandAction_ = 0;
+    int pressedCommandIndex_ = -1, pressedCommandAction_ = 0;
     int runningCommandIndex_ = -1;
     size_t submittedCommandSteps_ = 0;
     std::uint64_t runningCommandSessionId_ = 0;

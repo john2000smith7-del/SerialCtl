@@ -770,12 +770,19 @@ void PowerPane::Layout() {
             batch.Show(current_[i], SW_HIDE);
         }
     }
-    const int widths[] = {92, 92, 92, 104};
+    HDC tabDc = GetDC(window_);
+    const auto tabFont = SelectObject(tabDc, smallFont_);
     int x = 0;
     for (int i = 0; i < 4; ++i) {
-        move(Control(90 + i), x + d(2), taskTop_ + d(2), d(widths[i] - 4), d(28));
-        x += d(widths[i]);
+        const auto label = Text(Control(90 + i));
+        SIZE extent{};
+        GetTextExtentPoint32W(tabDc, label.c_str(), static_cast<int>(label.size()), &extent);
+        const int tabWidth = extent.cx + d(32);
+        move(Control(90 + i), x, taskTop_, tabWidth, d(32));
+        x += tabWidth + d(12);
     }
+    SelectObject(tabDc, tabFont);
+    ReleaseDC(window_, tabDc);
     currentLayout_=nullptr;batch.Commit();
 }
 void PowerPane::DetailsLayout(int width, int top) {
@@ -807,13 +814,13 @@ void PowerPane::DetailsLayout(int width, int top) {
             const auto label = Text(Control(110 + i));
             SIZE extent{};
             GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &extent);
-            const int size = MulDiv(extent.cx, 96, dpi_) + 8;
+            const int size = MulDiv(extent.cx, 96, dpi_) + 32;
             if (x && x + size > w) {
                 x = 0;
-                automationOffset_ += 36;
+                automationOffset_ += 44;
             }
-            move(110 + i, x, automationOffset_, size);
-            x += size + 8;
+            move(110 + i, x, automationOffset_, size, 32);
+            x += size + 12;
         }
         SelectObject(dc, old);
         ReleaseDC(window_, dc);
@@ -840,7 +847,7 @@ void PowerPane::DetailsLayout(int width, int top) {
     }
     if (tab_ == 2) {
         for (int i = 0; i < 4; ++i)
-            move(190 + i, 0, i * 36, 104, 32);
+            move(190 + i, 0, i * 44, 120, 32);
         const int x = 132, cw = w - x, half = (cw - 12) / 2;
         if (settings_ == 0) {
             move(200, x + 38, 0, 96);
@@ -1260,7 +1267,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         UiBufferedPaint paint(item.hDC, item.rcItem);
         item.hDC = paint.Dc();
         auto c = UiTheme(self->dark_);
-        bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start;
+        bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start || item.CtlID == IDOK;
         bool mainTab = item.CtlID >= 90 && item.CtlID <= 93, subTab = item.CtlID >= 110 && item.CtlID <= 114,
              groupTab = item.CtlID >= 190 && item.CtlID <= 193;
         bool active = mainTab    ? item.CtlID == 90 + self->tab_
@@ -1271,15 +1278,15 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             const bool enabled = !(item.itemState & ODS_DISABLED);
             const bool hovered = enabled && GetPropW(item.hwndItem, L"SerialCtl.PowerHover");
             const bool pressed = enabled && (item.itemState & ODS_SELECTED);
-            const bool focused = enabled && (item.itemState & ODS_FOCUS);
             HBRUSH background = CreateSolidBrush(c.field);
             FillRect(item.hDC, &item.rcItem, background);
             DeleteObject(background);
-            const COLORREF fill = active ? c.accent : pressed || hovered ? c.raised : mainTab ? c.raised : c.field;
-            UiBox(item.hDC, item.rcItem, fill, focused ? c.accent : active ? c.muted : c.border,
+            const auto visual = UiButtonVisual(c, enabled, pressed, hovered);
+            UiBox(item.hDC, item.rcItem, visual.fill, active && !pressed ? c.muted : visual.border,
                   MulDiv(10, self->dpi_, 96));
+            UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_);
             SetBkMode(item.hDC, TRANSPARENT);
-            SetTextColor(item.hDC, !enabled ? c.muted : active ? RGB(255, 255, 255) : c.text);
+            SetTextColor(item.hDC, visual.ink);
             auto old = SelectObject(item.hDC, self->smallFont_);
             auto label = self->Text(item.hwndItem);
             RECT rect = item.rcItem;
@@ -1292,17 +1299,15 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         HBRUSH outside = CreateSolidBrush(_wcsicmp(parentClass, L"#32770") == 0 ? c.surface : c.field);
         FillRect(item.hDC, &item.rcItem, outside);
         DeleteObject(outside);
-        UiBox(item.hDC, item.rcItem,
-              (item.itemState & ODS_SELECTED)                                                        ? c.border
-              : primary && !(item.itemState & ODS_DISABLED)                                          ? c.accent
-              : GetPropW(item.hwndItem, L"SerialCtl.PowerHover") && !(item.itemState & ODS_DISABLED) ? c.surface
-                                                                                                     : c.raised,
-              (item.itemState & ODS_FOCUS) ? c.accent : c.border, MulDiv(10, self->dpi_, 96));
+        const auto visual = UiButtonVisual(c, !(item.itemState & ODS_DISABLED), item.itemState & ODS_SELECTED,
+                                           GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
+        UiBox(item.hDC, item.rcItem, visual.fill, visual.border, MulDiv(10, self->dpi_, 96));
+        UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_);
         SetBkMode(item.hDC, TRANSPARENT);
         SetTextColor(item.hDC, (item.itemState & ODS_DISABLED)           ? c.muted
+                               : (item.itemState & ODS_SELECTED)         ? visual.ink
                                : item.CtlID == Off || item.CtlID == Stop ? c.danger
-                               : primary                                 ? RGB(255, 255, 255)
-                                                                         : c.text);
+                                                                         : visual.ink);
         auto old = SelectObject(item.hDC, item.CtlID >= 90 ? self->smallFont_ : self->font_);
         RECT rect = item.rcItem;
         auto value = self->Text(item.hwndItem);
@@ -1802,13 +1807,12 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         FillRect(item.hDC, &item.rcItem, pane->surfaceBrush_);
         const bool enabled = !(item.itemState & ODS_DISABLED);
         const bool primary = item.CtlID == IDOK && enabled;
-        const COLORREF fill = enabled && (item.itemState & ODS_SELECTED) ? c.border
-                                : primary ? c.accent
-                                : enabled && GetPropW(item.hwndItem, L"SerialCtl.PowerHover") ? c.accentSoft : c.raised;
-        UiBox(item.hDC, item.rcItem, fill,
-              item.itemState & ODS_FOCUS ? c.accent : c.border, MulDiv(10, pane->dpi_, 96));
+        const auto visual = UiButtonVisual(c, enabled, item.itemState & ODS_SELECTED,
+                                           GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
+        UiBox(item.hDC, item.rcItem, visual.fill, visual.border, MulDiv(10, pane->dpi_, 96));
+        UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, pane->dpi_);
         SetBkMode(item.hDC, TRANSPARENT);
-        SetTextColor(item.hDC, !enabled ? c.muted : primary ? RGB(255, 255, 255) : c.text);
+        SetTextColor(item.hDC, visual.ink);
         auto old = SelectObject(item.hDC, pane->font_);
         auto text = pane->Text(item.hwndItem);
         DrawTextW(item.hDC, text.c_str(), -1, &item.rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);

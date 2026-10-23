@@ -1596,6 +1596,12 @@ LRESULT CALLBACK MainWindow::DialogControlSubclassProc(HWND window, UINT message
 LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     auto* self = reinterpret_cast<MainWindow*>(referenceData);
+    if (message == WM_LBUTTONUP || message == WM_MOUSELEAVE || message == WM_CAPTURECHANGED ||
+        message == WM_CANCELMODE) {
+        self->pressedCommandIndex_ = -1;
+        self->pressedCommandAction_ = 0;
+        InvalidateRect(window, nullptr, FALSE);
+    }
     if (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK) {
         const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         RECT client{};
@@ -1615,6 +1621,13 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             const CommandActionRects actions = GetCommandActionRects(card);
             SendMessageW(window, LB_SETCURSEL, index, 0);
             self->UpdateCommandActions();
+            self->pressedCommandIndex_ = index;
+            self->pressedCommandAction_ = PointInRect(actions.run, point)    ? 1
+                                          : PointInRect(actions.edit, point) ? 2
+                                                                             : 0;
+            TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0};
+            TrackMouseEvent(&tracking);
+            RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             if (PointInRect(actions.run, point)) {
                 if (self->runningCommandIndex_ == index) {
                     self->StopCommandSequence(CommandSequenceEnd::UserStopped);
@@ -1633,9 +1646,12 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             if (PointInRect(actions.edit, point)) {
                 if (self->runningCommandIndex_ < 0)
                     self->EditCommand(static_cast<size_t>(index));
+                self->pressedCommandIndex_ = -1;
+                self->pressedCommandAction_ = 0;
+                InvalidateRect(window, nullptr, FALSE);
                 return 0;
             }
-            if (point.x <= itemRect.left + 30 && self->runningCommandIndex_ < 0) {
+            if (point.x <= itemRect.left + Ui::Scale(32) && self->runningCommandIndex_ < 0) {
                 self->draggingCommandIndex_ = index;
                 SetCapture(window);
                 SetCursor(LoadCursorW(nullptr, IDC_SIZEALL));
@@ -2342,9 +2358,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         pendingRemoteInstance_ = result->success ? result->instance : std::string();
         pendingRemoteUdp_ = result->success && result->udp;
+        SetDlgItemTextW(result->dialog, IDC_SERIAL_LABEL, pendingRemoteUdp_ ? L"数据通道" : L"远端串口");
         if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
         SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR,
-                        result->udp ? L"UDP 原始透传；无设备查询，打开后等待数据"
+                        result->udp ? L"未查询设备身份；打开后等待 UDP 数据"
                         : result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str()
                                           : result->error.c_str());
         EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
@@ -2746,9 +2763,7 @@ void MainWindow::PaintWindow(HDC dc) {
     const Palette colors = Colors(darkMode_);
     FillRect(dc, &client, windowBrush_);
     const RECT toolbar = NavigationFrame();
-    const HWND focus = GetFocus();
-    const bool toolbarFocused = focus && GetParent(focus) == window_ && IsToolbarButton(GetDlgCtrlID(focus));
-    DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, toolbarFocused ? colors.accent : colors.border);
+    DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, colors.border);
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
                                                           SidebarCollapsed(), rightPanelAnimatedWidth_, aiVisible_);
@@ -2901,7 +2916,6 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const int id = static_cast<int>(item.CtlID);
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
         const bool hovered = GetPropW(item.hwndItem, Ui::HoverProperty) != nullptr;
-        const bool focused = (item.itemState & ODS_FOCUS) != 0;
         COLORREF outside = id == IdTheme ? colors.window : colors.panel;
         if (aiVisible_ && (id == IdAiWrap || id == IdRightPanelToggle))
             outside = colors.terminal;
@@ -2911,14 +2925,10 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         FillRect(dc, &rect, outsideBrush);
         DeleteObject(outsideBrush);
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi || id == IdSettings) {
-            const bool active = id == IdAi ? aiVisible_ : id == IdPower ? powerVisible_ :
-                (id != IdSettings && !powerVisible_ && !aiVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
-            const bool inverse = darkMode_ || active;
-            const COLORREF ink = !enabled ? colors.muted : active ? RGB(255, 255, 255) : colors.text;
-            const COLORREF fill = active                            ? colors.accent
-                                  : (pressed && enabled)            ? colors.panelAlt
-                                  : enabled && (hovered || focused) ? colors.panelAlt
-                                                                    : colors.panel;
+            const bool down = pressed && enabled;
+            const bool inverse = darkMode_ || down;
+            const COLORREF ink = !enabled ? colors.muted : down ? RGB(255, 255, 255) : colors.text;
+            const COLORREF fill = down ? colors.accent : enabled && hovered ? colors.panelAlt : colors.panel;
             if (fill != colors.panel)
                 DrawRoundedBox(dc, rect, Ui::Radius, fill, fill);
             const ToolbarIcon icon = id == IdSettings ? ToolbarIcon::Settings :
@@ -2931,39 +2941,44 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             textRect.left += Ui::Scale(46);
             DrawTextSimple(dc, ControlText(item.hwndItem), textRect, ink,
                 uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
             return;
         }
         if (id == IdTheme) {
-            const COLORREF fill = pressed ? colors.accentSoft : hovered || focused ? colors.panelAlt : colors.panel;
-            DrawRoundedBox(dc, rect, Ui::Radius, fill, focused ? colors.accent : colors.border);
+            const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
+            DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
             RECT iconRect=rect; InflateRect(&iconRect,-Ui::Scale(6),-Ui::Scale(6));
-            toolbarIcons_.Draw(dc,darkMode_?ToolbarIcon::Sun:ToolbarIcon::Moon,iconRect,darkMode_);
+            toolbarIcons_.Draw(dc, darkMode_ ? ToolbarIcon::Sun : ToolbarIcon::Moon, iconRect,
+                               darkMode_ || (pressed && enabled));
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
             return;
         }
         if (id == IdRightPanelToggle) {
-            DrawRoundedBox(dc, rect, Ui::Radius,
-                pressed ? colors.accentSoft : (hovered ? colors.accentSoft : colors.panelAlt),
-                focused ? colors.accent : colors.border);
-            DrawChevronHorizontal(dc, rect, enabled ? colors.text : colors.muted,
-                powerVisible_ || (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_);
+            const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
+            DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            DrawChevronHorizontal(dc, rect, visual.ink,
+                                  powerVisible_ || (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) ||
+                                      rightPanelAutoCollapsed_);
             return;
         }
         if (id == IdDisconnect || id == IdDisconnectAll) {
-            const COLORREF fill = enabled ? colors.panelAlt : colors.panel;
-            DrawRoundedBox(dc, rect, Ui::Radius,
-                pressed ? colors.accentSoft : (hovered && enabled ? colors.accentSoft : fill),
-                focused ? colors.accent : colors.border);
-            DrawTextSimple(dc, id == IdDisconnect ? L"断开" : L"全部断开", rect, enabled ? colors.danger : colors.muted,
+            const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
+            DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            DrawTextSimple(dc, id == IdDisconnect ? L"断开" : L"全部断开", rect,
+                           !enabled  ? colors.muted
+                           : pressed ? visual.ink
+                                     : colors.danger,
                            smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
         }
         if (id == IdCommandTab || id == IdSftpTab) {
             const bool active = (id == IdSftpTab) == sftpPanelVisible_;
-            const COLORREF fill = active ? colors.accent : (hovered && enabled ? colors.accentSoft : colors.panelAlt);
-            DrawRoundedBox(dc, rect, Ui::Radius, pressed ? colors.accentSoft : fill,
-                focused || active ? colors.accent : colors.border);
-            DrawTextSimple(dc, ControlText(item.hwndItem), rect,
-                           active ? RGB(255, 255, 255) : (enabled ? colors.text : colors.muted), uiFont_,
+            const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
+            DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, active && !pressed ? colors.muted : visual.border);
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            DrawTextSimple(dc, ControlText(item.hwndItem), rect, visual.ink, uiFont_,
                            DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
         }
@@ -3012,31 +3027,29 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             return;
         }
         if (id == IdAddCommand || id == IDC_COMMAND_ADD_STEP) {
+            const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
             DrawRoundedBox(dc, rect, Ui::Radius,
-                pressed ? colors.accentSoft : (hovered ? colors.accentSoft : colors.panel),
-                focused ? colors.accent : colors.panel);
+                           pressed   ? visual.fill
+                           : hovered ? colors.panelAlt
+                                     : colors.panel,
+                           pressed ? visual.fill : colors.panel);
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
             RECT icon = rect;
             auto label = ControlText(item.hwndItem);
             if (!label.empty())
                 icon.right = icon.left + Ui::Scale(32);
-            DrawPlusIcon(dc, icon, colors.accent);
+            DrawPlusIcon(dc, icon, pressed ? visual.ink : colors.accent);
             RECT textRect = rect;
             textRect.left += Ui::Scale(32);
             textRect.right -= Ui::Space;
-            DrawTextSimple(dc, ControlText(item.hwndItem), textRect, colors.accent,
-                uiFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            DrawTextSimple(dc, ControlText(item.hwndItem), textRect, pressed ? visual.ink : colors.accent, uiFont_,
+                           DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
         }
 
-        COLORREF fill = pressed ? colors.accentSoft : (hovered ? colors.accentSoft : colors.panelAlt);
-        COLORREF border = focused ? colors.accent : colors.border;
-        if (id == IDOK) {
-            fill =
-                enabled ? (pressed ? UiAccentInset() : (hovered ? RGB(35, 76, 196) : colors.accent)) : colors.panelAlt;
-            border = fill;
-        }
-        if (!enabled) fill = colors.panel;
-        DrawRoundedBox(dc, rect, Ui::Radius, fill, border);
+        const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered, id == IDOK);
+        DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
+        UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
         const bool utility = id == IdMenuSaveLog || id == IdMenuClear || id == IdMenuCopy || id == IdMenuPaste ||
                              id == IdMenuSelectAll || id == IdSendSelectionToAi || id == IdMenuNetworkDiagnostics ||
                              id == IdMenuCancelLogExport;
@@ -3046,9 +3059,9 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             text.right -= Ui::Scale(8);
             const int cy = (rect.top + rect.bottom) / 2;
             RECT icon{rect.left + Ui::Scale(10), cy - Ui::Scale(9), rect.left + Ui::Scale(28), cy + Ui::Scale(9)};
-            const auto color = enabled ? colors.text : colors.muted;
+            const auto color = visual.ink;
             if (id == IdSendSelectionToAi)
-                toolbarIcons_.Draw(dc, ToolbarIcon::Ai, icon, darkMode_);
+                toolbarIcons_.Draw(dc, ToolbarIcon::Ai, icon, darkMode_ || (pressed && enabled));
             else
                 UiDrawGlyph(dc, icon, color,
                             id == IdMenuClear             ? UiGlyph::Trash
@@ -3060,8 +3073,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             DrawTextSimple(dc, ControlText(item.hwndItem), text, color, uiFont_,
                            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         } else {
-            DrawTextSimple(dc, ControlText(item.hwndItem), rect,
-                           enabled ? (id == IDOK ? RGB(255, 255, 255) : colors.text) : colors.muted, uiFont_,
+            DrawTextSimple(dc, ControlText(item.hwndItem), rect, visual.ink, uiFont_,
                            DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
         return;
@@ -3127,23 +3139,20 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
         RECT card{rect.left, rect.top + Ui::Gap / 2, rect.right - rightInset, rect.bottom - (Ui::Gap - Ui::Gap / 2)};
-        DrawRoundedBox(dc, card, Ui::CardRadius, selected ? colors.accent : colors.panelAlt,
-                       selected ? colors.accent : colors.border);
+        DrawRoundedBox(dc, card, Ui::CardRadius, colors.panelAlt, selected ? colors.muted : colors.border);
         const int cy = (card.top + card.bottom) / 2;
-        RECT dot{card.left + Ui::Scale(14), cy - Ui::Scale(2), card.left + Ui::Scale(18), cy + Ui::Scale(2)};
-        DrawStatusDot(dc, dot, selected ? RGB(255, 255, 255) : colors.muted);
+        RECT marker{card.left + Ui::Scale(8), cy - Ui::Scale(8), card.left + Ui::Scale(24), cy + Ui::Scale(8)};
+        UiDrawGlyph(dc, marker, colors.muted, UiGlyph::Command);
         const CommandActionRects actions = GetCommandActionRects(card);
         RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(9), actions.run.left - Ui::Space, card.top + Ui::Scale(30)};
         RECT value{card.left + Ui::Scale(32), card.top + Ui::Scale(31), actions.run.left - Ui::Space, card.bottom - Ui::Scale(6)};
-        DrawTextSimple(dc, command.name, title, selected ? RGB(255, 255, 255) : colors.text, uiFont_,
-                       DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, command.name, title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         const bool macro = command.commands.size() > 1;
         const std::wstring summary = macro ?
             L"宏 · " + std::to_wstring(command.commands.size()) + L" 条指令 · " +
                 std::to_wstring(command.intervalMs) + L" ms" :
             (command.commands.empty() ? std::wstring() : command.commands.front());
-        DrawTextSimple(dc, summary, value, selected ? RGB(235, 240, 255) : colors.muted, smallFont_,
-                       DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, summary, value, colors.muted, smallFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         const bool connected = connection_ && connection_->IsConnected();
         const bool sequenceRunning = runningCommandIndex_ >= 0;
@@ -3152,28 +3161,32 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool editable = !sequenceRunning;
         const bool hoverRun = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 1;
         const bool hoverEdit = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 2;
-        const COLORREF cardFill = selected ? colors.accent : colors.panelAlt;
+        const bool runDown =
+            runnable && pressedCommandIndex_ == static_cast<int>(item.itemID) && pressedCommandAction_ == 1;
+        const bool editDown =
+            editable && pressedCommandIndex_ == static_cast<int>(item.itemID) && pressedCommandAction_ == 2;
         DrawRoundedBox(dc, actions.run, Ui::Radius,
-                       hoverRun && runnable ? (selected ? UiAccentInset() : colors.accentSoft) : cardFill,
-                       hoverRun && runnable ? colors.accent : cardFill);
+                       runDown                ? colors.accent
+                       : hoverRun && runnable ? colors.panel
+                                              : colors.panelAlt,
+                       runDown ? colors.accent : colors.panelAlt);
         DrawRoundedBox(dc, actions.edit, Ui::Radius,
-                       hoverEdit && editable ? (selected ? UiAccentInset() : colors.accentSoft) : cardFill,
-                       hoverEdit && editable ? colors.accent : cardFill);
+                       editDown                ? colors.accent
+                       : hoverEdit && editable ? colors.panel
+                                               : colors.panelAlt,
+                       editDown ? colors.accent : colors.panelAlt);
 
         RECT runIcon = actions.run;
         InflateRect(&runIcon, -Ui::Scale(6), -Ui::Scale(6));
         UiDrawGlyph(dc, runIcon,
-                    selected   ? RGB(255, 255, 255)
+                    runDown    ? RGB(255, 255, 255)
                     : runnable ? colors.text
                                : colors.muted,
                     isRunning ? UiGlyph::Stop : UiGlyph::Run);
         if (isRunning)
             DrawCommandProgress(dc, actions.run, submittedCommandSteps_, command.commands.size(),
                 colors.border, colors.accent);
-        DrawEditIcon(dc, actions.edit,
-                     selected   ? RGB(255, 255, 255)
-                     : editable ? (hoverEdit ? colors.accent : colors.muted)
-                                : colors.border);
+        DrawEditIcon(dc, actions.edit, editDown ? RGB(255, 255, 255) : editable ? colors.muted : colors.border);
     } else if (item.CtlID == IdSftpList && item.itemID < sftpEntries_.size()) {
         const SftpEntry& entry = sftpEntries_[item.itemID];
         OverlayScrollMetrics scrollMetrics;
@@ -3365,8 +3378,11 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         HDC dc = reinterpret_cast<HDC>(wParam);
         SetBkMode(dc, TRANSPARENT);
         const HWND control = reinterpret_cast<HWND>(lParam);
-        SetTextColor(dc, GetDlgCtrlID(control) == IDC_DIALOG_ERROR && !self->pendingRemoteUdp_ ? colors.danger
-                                                                                               : colors.text);
+        SetTextColor(dc, GetDlgCtrlID(control) == IDC_DIALOG_ERROR
+                             ? (self->pendingRemoteUdp_ ? colors.muted : colors.danger)
+                             : colors.text);
+        if (GetDlgCtrlID(control) == IDC_DIALOG_ERROR)
+            SelectObject(dc, self->smallFont_);
         if (message == WM_CTLCOLOREDIT || message == WM_CTLCOLORLISTBOX) {
             SetBkColor(dc, colors.terminal);
             return reinterpret_cast<INT_PTR>(self->terminalBrush_);
@@ -3472,18 +3488,18 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     constexpr int fullWidth = dialogWidth - margin * 2;
     if (serial) {
         MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 10, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 22, 61, 154);
-        MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 81, 22, 32, 14);
-        MoveDialogItemDlu(dialog, IDC_BAUD_LABEL, rightColumn, 10, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_BAUD, rightColumn, 22, columnWidth, 140);
-        MoveDialogItemDlu(dialog, IDC_DATABITS_LABEL, margin, 44, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_DATABITS, margin, 56, columnWidth, 84);
-        MoveDialogItemDlu(dialog, IDC_PARITY_LABEL, rightColumn, 44, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_PARITY, rightColumn, 56, columnWidth, 72);
-        MoveDialogItemDlu(dialog, IDC_STOPBITS_LABEL, margin, 78, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_STOPBITS, margin, 90, columnWidth, 72);
-        MoveDialogItemDlu(dialog, IDC_FLOW_LABEL, rightColumn, 78, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_FLOW, rightColumn, 90, columnWidth, 72);
+        MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 22, 174, 154);
+        MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 22, 32, 14);
+        MoveDialogItemDlu(dialog, IDC_BAUD_LABEL, margin, 44, 64, 10);
+        MoveDialogItemDlu(dialog, IDC_BAUD, margin, 56, columnWidth, 140);
+        MoveDialogItemDlu(dialog, IDC_DATABITS_LABEL, rightColumn, 44, 64, 10);
+        MoveDialogItemDlu(dialog, IDC_DATABITS, rightColumn, 56, columnWidth, 84);
+        MoveDialogItemDlu(dialog, IDC_PARITY_LABEL, margin, 78, 64, 10);
+        MoveDialogItemDlu(dialog, IDC_PARITY, margin, 90, columnWidth, 72);
+        MoveDialogItemDlu(dialog, IDC_STOPBITS_LABEL, rightColumn, 78, 64, 10);
+        MoveDialogItemDlu(dialog, IDC_STOPBITS, rightColumn, 90, columnWidth, 72);
+        MoveDialogItemDlu(dialog, IDC_FLOW_LABEL, margin, 112, 64, 10);
+        MoveDialogItemDlu(dialog, IDC_FLOW, margin, 124, columnWidth, 72);
     } else {
         MoveDialogItemDlu(dialog, IDC_HOST_LABEL, margin, 10, columnWidth, 10);
         MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, columnWidth, 14);
@@ -3495,7 +3511,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
             MoveDialogItemDlu(dialog, IDC_PASSWORD_LABEL, rightColumn, 44, columnWidth, 10);
             MoveDialogItemDlu(dialog, IDC_PASSWORD, rightColumn, 56, columnWidth, 14);
         } else if (share) {
-            SetDlgItemTextW(dialog, IDC_HOST_LABEL, L"来源 IP");
+            SetDlgItemTextW(dialog, IDC_HOST_LABEL, L"远端 IP");
             MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, 174, 14);
             MoveDialogItemDlu(dialog, IDC_REMOTE_MODE_LABEL, margin, 44, fullWidth, 10);
             MoveDialogItemDlu(dialog, IDC_REMOTE_MODE, margin, 56, fullWidth, 154);
@@ -3513,7 +3529,11 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     int errorY = 106;
     int buttonY = 118;
     int dialogHeight = 144;
-    if (!serial && ssh) {
+    if (serial) {
+        errorY = 140;
+        buttonY = 152;
+        dialogHeight = 178;
+    } else if (ssh) {
         errorY = 72;
         buttonY = 84;
         dialogHeight = 110;
@@ -3526,7 +3546,6 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     MoveDialogItemDlu(dialog, IDCANCEL, dialogWidth - 156, buttonY, 68, 18);
     MoveDialogItemDlu(dialog, IDOK, dialogWidth - 80, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight);
-    if (serial || share) MatchDialogControlHeight(dialog, IDC_SERIAL, IDC_SERIAL_REFRESH);
     FitDialogLabels(dialog);
 
     const wchar_t* titles[] = {L"新建 SSH 连接", L"新建串口连接", L"新建 Telnet 连接", L"连接共享串口"};
@@ -3555,6 +3574,12 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     AddComboItems(GetDlgItem(dialog, IDC_PARITY), {L"无", L"奇", L"偶"}, 0);
     AddComboItems(GetDlgItem(dialog, IDC_STOPBITS), {L"1", L"1.5", L"2"}, 0);
     AddComboItems(GetDlgItem(dialog, IDC_FLOW), {L"无", L"CTS/RTS", L"XON/XOFF"}, 0);
+    UiLayoutBatch fields;
+    for (int id : {IDC_REMOTE_MODE, IDC_SERIAL, IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW})
+        fields.ComboVisibleHeight(GetDlgItem(dialog, id), Ui::Scale(28));
+    fields.Commit();
+    if (serial || share)
+        MatchDialogControlHeight(dialog, IDC_SERIAL, IDC_SERIAL_REFRESH);
 }
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {
@@ -3611,7 +3636,7 @@ void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
                 result->success = true;
                 result->udp = true;
                 result->port = transport == 2 && explicitPort ? explicitPort : 6333;
-                result->names = {L"UDP 原始数据流 · " + std::to_wstring(result->port) + L"（设备名称未知）"};
+                result->names = {L"UDP 数据流 · " + std::to_wstring(result->port)};
                 result->instance.clear();
             }
         } catch (...) {
