@@ -130,9 +130,21 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     RegisterClassW(&wc);
     transcript_ = CreateWindowExW(0, wc.lpszClassName, L"AI 对话历史", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0, 0, 100,
                                   100, window_, nullptr, wc.hInstance, this);
-    Child(L"BUTTON", L"连接设置", Connect, BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON", L"连接", Connect, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"历史", HistoryButton, BS_OWNERDRAW | WS_TABSTOP);
-    Child(L"BUTTON", L"新建会话", New, BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON", L"新建", New, BS_OWNERDRAW | WS_TABSTOP);
+    HWND tips = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP, 0, 0, 0, 0, window_,
+                                nullptr, GetModuleHandleW(nullptr), nullptr);
+    for (int id : {Connect, HistoryButton, New}) {
+        TOOLINFOW tip{sizeof(tip)};
+        tip.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        tip.hwnd = window_;
+        tip.uId = reinterpret_cast<UINT_PTR>(Control(id));
+        tip.lpszText = const_cast<wchar_t *>(id == Connect         ? L"连接设置"
+                                             : id == HistoryButton ? L"历史会话"
+                                                                   : L"新建会话");
+        SendMessageW(tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tip));
+    }
     auto input = Child(L"EDIT", L"", Input, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_TABSTOP);
     SendMessageW(input, EM_SETLIMITTEXT, 32768, 0);
     SetPropW(input, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
@@ -260,11 +272,20 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         UiBox(dc, item.rcItem,
               primary && enabled ? c.accent : (hover || (item.itemState & ODS_SELECTED) ? c.accentSoft : c.raised),
               item.itemState & ODS_FOCUS ? c.accent : c.border, self->D(10));
-        Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
-             !enabled  ? c.muted
-             : primary ? RGB(255, 255, 255)
-                       : c.text,
-             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        if (item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New) {
+            const int x = (item.rcItem.left + item.rcItem.right - self->D(18)) / 2,
+                      y = (item.rcItem.top + item.rcItem.bottom - self->D(18)) / 2;
+            RECT icon{x, y, x + self->D(18), y + self->D(18)};
+            if (item.CtlID == Connect)
+                self->icons_.Draw(dc, ToolbarIcon::Settings, icon, self->dark_);
+            else
+                UiDrawGlyph(dc, icon, enabled ? c.text : c.muted, item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
+        } else
+            Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
+                 !enabled  ? c.muted
+                 : primary ? RGB(255, 255, 255)
+                           : c.text,
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         return TRUE;
     }
     case WM_CTLCOLORSTATIC:
@@ -289,29 +310,29 @@ void AiPane::Layout() {
     RECT r{};
     GetClientRect(window_, &r);
     const int width = r.right, height = r.bottom;
-    const int composerHeight = D(128), footer = D(8), top = D(64), gap = D(8);
+    const int composerHeight = D(140), footer = D(0), top = D(60), gap = D(12);
     const int composerTop = std::max(top + D(64), height - composerHeight - footer);
     const int contextTop = composerTop - D(40);
     UiLayoutBatch b;
-    const int historyLeft = std::max(D(104), width - D(264));
-    b.Move(Control(Connect), historyLeft, D(4), D(88), D(28));
-    b.Move(Control(HistoryButton), historyLeft + D(96), D(4), D(56), D(28));
-    b.Move(Control(New), historyLeft + D(160), D(4), D(104), D(28));
+    const int historyLeft = width - D(108);
+    b.Move(Control(Connect), historyLeft, D(0), D(28), D(28));
+    b.Move(Control(HistoryButton), historyLeft + D(40), D(0), D(28), D(28));
+    b.Move(Control(New), historyLeft + D(80), D(0), D(28), D(28));
     b.Move(transcript_, 0, top, width, std::max(D(48), contextTop - top - gap));
     const int left = width > D(900) ? (width - D(900)) / 2 : 0;
     const int cw = std::min(width, D(900));
     b.Move(Control(Analyze), left, contextTop, D(128), D(32));
-    b.Move(Control(Observe), left + D(136), contextTop, D(104), D(32));
+    b.Move(Control(Observe), left + D(140), contextTop, D(104), D(32));
     b.Move(Control(Bottom), std::max(left, left + cw - D(136)), contextTop, D(136), D(32));
     b.Show(Control(Bottom), scroll_.unread ? SW_SHOW : SW_HIDE);
     b.Show(Control(Observe), scroll_.unread ? SW_HIDE : SW_SHOW);
-    b.Move(Control(Input), left + D(8), composerTop + D(8), std::max(D(100), cw - D(16)), D(64));
-    const int targetWidth = std::min(D(240), std::max(D(144), cw - D(224)));
-    b.Move(Control(Target), left + D(8), composerTop + D(84), targetWidth, D(220));
-    b.ComboVisibleHeight(Control(Target), D(28));
-    b.Move(Control(Model), left + D(16) + targetWidth, composerTop + D(84),
-        std::max(D(64), cw - targetWidth - D(96)), D(28));
-    b.Move(Control(Send), left + cw - D(72), composerTop + D(80), D(64), D(36));
+    b.Move(Control(Input), left, composerTop + D(8), std::max(D(100), cw), D(72));
+    const int targetWidth = std::min(D(240), std::max(D(132), cw - D(208)));
+    b.Move(Control(Target), left, composerTop + D(92), targetWidth, D(220));
+    b.ComboVisibleHeight(Control(Target), D(36));
+    b.Move(Control(Model), left + D(12) + targetWidth, composerTop + D(92), std::max(D(64), cw - targetWidth - D(96)),
+           D(36));
+    b.Move(Control(Send), left + cw - D(72), composerTop + D(92), D(72), D(36));
     b.Commit();
     layoutWidth_ = width;
     Reflow();
@@ -324,14 +345,14 @@ void AiPane::Paint(HDC target) {
     auto dc = paint.Dc();
     const auto c = UiAiTheme(dark_);
     FillRect(dc, &r, surfaceBrush_);
-    Draw(dc, L"AI 助手", {0, 0, D(144), D(28)}, titleFont_, c.text);
-    Draw(dc, L"高级嵌入式软件工程师", {0, D(32), D(248), D(56)}, smallFont_, c.muted);
-    Draw(dc, status_, {D(256), D(32), r.right, D(56)}, smallFont_, client_.Ready() ? c.accent : c.muted);
+    icons_.Draw(dc, ToolbarIcon::Ai, {0, D(4), D(20), D(24)}, dark_);
+    Draw(dc, L"AI 助手", {D(28), 0, D(128), D(28)}, font_, c.text);
+    Draw(dc, status_, {0, D(30), r.right, D(48)}, smallFont_, client_.Ready() ? c.accent : c.muted);
+    UiSeparator(dc, 0, r.right, D(52), c.border);
     RECT input{};
     GetWindowRect(Control(Input), &input);
     MapWindowPoints(HWND_DESKTOP, window_, reinterpret_cast<POINT *>(&input), 2);
-    RECT composer{input.left - D(8), input.top - D(8), input.right + D(8), input.top + D(120)};
-    UiBox(dc, composer, c.surface, c.accent, D(12));
+    UiSeparator(dc, 0, r.right, input.top - D(52), c.border);
 }
 void AiPane::Reflow(bool appended) {
     if (!transcript_)
@@ -343,7 +364,14 @@ void AiPane::Reflow(bool appended) {
     int y = D(8);
     for (auto &message : messages_) {
         const bool user = message.role == L"我";
-        const int w = std::min(width - D(16), D(user ? 680 : 880));
+        int w = std::min(width - D(16), D(user ? 680 : 880));
+        if (user && message.text.find(L'\n') == std::wstring::npos) {
+            auto old = SelectObject(dc, font_);
+            SIZE size{};
+            GetTextExtentPoint32W(dc, message.text.c_str(), static_cast<int>(message.text.size()), &size);
+            SelectObject(dc, old);
+            w = std::min(w, std::max(D(140), static_cast<int>(size.cx) + D(32)));
+        }
         const int left = user ? width - w : 0;
         // Existing messages keep their measured paragraphs. A streaming delta
         // remeasures only its message, rather than every historical log block.
@@ -369,15 +397,49 @@ void AiPane::Reflow(bool appended) {
                 }
                 if (!code)
                     line = Inline(line);
-                RECT measure{0, 0, std::max(D(40), w - D(32)), 0};
-                auto font = style == 2 ? codeFont_ : style == 1 ? titleFont_ : font_;
-                auto old = SelectObject(dc, font);
-                DrawTextW(dc, line.empty() ? L" " : line.c_str(), -1, &measure,
-                          DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_EDITCONTROL);
+                Paragraph paragraph{{D(16), inner, w - D(16), inner}, line, style, {}};
+                auto old = SelectObject(dc, ParagraphFont(style));
+                TEXTMETRICW metric{};
+                GetTextMetricsW(dc, &metric);
+                const int lineHeight = std::max(D(20), static_cast<int>(metric.tmHeight) + D(2));
+                size_t offset = 0;
+                do {
+                    const size_t remaining = line.size() - offset;
+                    int fit = 0;
+                    SIZE size{};
+                    if (remaining)
+                        GetTextExtentExPointW(dc, line.data() + offset, static_cast<int>(remaining),
+                                              std::max(D(40), w - D(32)), &fit, nullptr, &size);
+                    size_t length = remaining ? std::max<size_t>(1, static_cast<size_t>(fit)) : 0;
+                    length = std::min(length, remaining);
+                    // Never split a UTF-16 pair. Prefer a word boundary in prose.
+                    if (length < remaining && length && line[offset + length] >= 0xdc00 &&
+                        line[offset + length] <= 0xdfff)
+                        --length;
+                    if (!length && remaining)
+                        length = std::min<size_t>(2, remaining);
+                    if (style != 2 && length < remaining) {
+                        auto space = line.find_last_of(L" \t", offset + length - 1);
+                        if (space != std::wstring::npos && space >= offset + length / 2)
+                            length = space - offset + 1;
+                    }
+                    TextLine visual{
+                        {D(16), inner, w - D(16), inner + lineHeight}, offset, length, std::vector<int>(length + 1, 0)};
+                    if (length) {
+                        std::vector<int> widths(length);
+                        GetTextExtentExPointW(dc, line.data() + offset, static_cast<int>(length), INT_MAX, nullptr,
+                                              widths.data(), &size);
+                        for (size_t k = 0; k < length; ++k)
+                            visual.advances[k + 1] = widths[k];
+                    }
+                    paragraph.lines.push_back(std::move(visual));
+                    inner += lineHeight;
+                    offset += length;
+                } while (offset < line.size());
+                inner += D(4);
+                paragraph.rect.bottom = inner;
+                message.paragraphs.push_back(std::move(paragraph));
                 SelectObject(dc, old);
-                const int h = std::max(D(20), static_cast<int>(measure.bottom)) + D(4);
-                message.paragraphs.push_back({{D(16), inner, w - D(16), inner + h}, line, style});
-                inner += h;
             }
             message.measuredWidth = w;
             message.measuredLength = message.text.size();
@@ -424,9 +486,10 @@ void AiPane::PaintTranscript(HDC target) {
         OffsetRect(&box, 0, -scroll_.offset);
         if (box.bottom < 0 || box.top > r.bottom)
             continue;
-        UiBox(dc, box, m.role == L"我" ? c.accentSoft : UiTheme(dark_).surface, c.accent, D(12));
-        Draw(dc, L"复制", {box.right - D(64), box.bottom - D(32), box.right - D(16), box.bottom - D(8)}, smallFont_,
-             c.accent);
+        UiBox(dc, box, m.role == L"我" ? c.accentSoft : UiTheme(dark_).surface, m.role == L"我" ? c.accent : c.border,
+              D(12));
+        UiDrawGlyph(dc, {box.right - D(34), box.bottom - D(30), box.right - D(16), box.bottom - D(12)}, c.muted,
+                    UiGlyph::Copy);
         for (const auto &p : m.paragraphs) {
             RECT b = p.rect;
             OffsetRect(&b, box.left, box.top);
@@ -434,14 +497,43 @@ void AiPane::PaintTranscript(HDC target) {
                 continue;
             if (p.style == 2)
                 UiBox(dc, b, c.raised, c.raised, D(4));
-            Draw(dc, p.text, b,
-                 p.style == 3   ? smallFont_
-                 : p.style == 2 ? codeFont_
-                 : p.style == 1 ? titleFont_
-                                : font_,
-                 p.style == 3 ? c.accent : c.text, DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL);
+            auto old = SelectObject(dc, ParagraphFont(p.style));
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, c.text);
+            const size_t pi = static_cast<size_t>(&p - m.paragraphs.data());
+            const auto lo = std::min(selectionStart_, selectionEnd_), hi = std::max(selectionStart_, selectionEnd_);
+            for (const auto &line : p.lines) {
+                RECT row = line.rect;
+                OffsetRect(&row, box.left, box.top);
+                const auto text = p.text.substr(line.start, line.length);
+                ExtTextOutW(dc, row.left, row.top, ETO_CLIPPED, &row, text.c_str(), static_cast<UINT>(text.size()),
+                            nullptr);
+                if (std::get<0>(lo) == SIZE_MAX || lo == hi)
+                    continue;
+                const TextPoint first{i, pi, line.start}, last{i, pi, line.start + line.length};
+                if (hi <= first || lo >= last)
+                    continue;
+                const size_t begin = std::get<0>(lo) == i && std::get<1>(lo) == pi
+                                         ? std::max(line.start, std::get<2>(lo)) - line.start
+                                         : 0;
+                const size_t end = std::get<0>(hi) == i && std::get<1>(hi) == pi
+                                       ? std::min(line.start + line.length, std::get<2>(hi)) - line.start
+                                       : line.length;
+                if (begin < end) {
+                    RECT selected{row.left + line.advances[begin], row.top, row.left + line.advances[end], row.bottom};
+                    SetBkColor(dc, c.accent);
+                    SetTextColor(dc, RGB(255, 255, 255));
+                    ExtTextOutW(dc, row.left, row.top, ETO_CLIPPED | ETO_OPAQUE, &selected, text.c_str(),
+                                static_cast<UINT>(text.size()), nullptr);
+                    SetTextColor(dc, c.text);
+                }
+            }
+            SelectObject(dc, old);
         }
     }
+    if (copiedUntil_ > GetTickCount64())
+        Draw(dc, L"已复制选中文字", {D(12), r.bottom - D(28), r.right - D(20), r.bottom}, smallFont_, c.accent,
+             DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
     auto thumb = ScrollThumb();
     if (thumb.bottom > thumb.top)
         UiBox(dc, thumb, c.border, c.border, D(2));
@@ -498,13 +590,33 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (PtInRect(&self->messages_[i].bounds, p)) {
                 self->selectedMessage_ = i;
                 const auto b = self->messages_[i].bounds;
-                if (p.y >= b.bottom - self->D(32) && p.x >= b.right - self->D(72))
+                if (p.y >= b.bottom - self->D(32) && p.x >= b.right - self->D(72)) {
+                    self->ClearTextSelection();
                     self->Copy(self->messages_[i].text);
+                    return 0;
+                }
                 break;
             }
+        p.y -= self->scroll_.offset;
+        self->selectionStart_ = self->selectionEnd_ = self->HitText(p);
+        self->selecting_ = std::get<0>(self->selectionStart_) != SIZE_MAX;
+        if (self->selecting_)
+            SetCapture(h);
+        InvalidateRect(h, nullptr, FALSE);
         return 0;
     }
     case WM_MOUSEMOVE:
+        if (self->selecting_ && GetCapture() == h) {
+            POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            RECT r{};
+            GetClientRect(h, &r);
+            if (p.y < 0)
+                self->Scroll(-self->D(24));
+            if (p.y > r.bottom)
+                self->Scroll(self->D(24));
+            self->selectionEnd_ = self->HitText(p);
+            InvalidateRect(h, nullptr, FALSE);
+        }
         if (self->dragging_) {
             RECT r{};
             GetClientRect(h, &r);
@@ -518,11 +630,35 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_LBUTTONUP:
+        if (self->selecting_) {
+            self->selectionEnd_ = self->HitText({GET_X_LPARAM(l), GET_Y_LPARAM(l)});
+            const auto text = self->SelectedText();
+            if (!text.empty()) {
+                self->Copy(text);
+                self->copiedUntil_ = GetTickCount64() + 1600;
+            }
+        }
+        self->selecting_ = false;
+        self->dragging_ = false;
+        if (GetCapture() == h)
+            ReleaseCapture();
+        InvalidateRect(h, nullptr, FALSE);
+        return 0;
     case WM_CAPTURECHANGED:
+        self->selecting_ = false;
         self->dragging_ = false;
         if (GetCapture() == h)
             ReleaseCapture();
         return 0;
+    case WM_SETCURSOR: {
+        POINT p{};
+        GetCursorPos(&p);
+        ScreenToClient(h, &p);
+        RECT r{};
+        GetClientRect(h, &r);
+        SetCursor(LoadCursorW(nullptr, p.x < r.right - self->D(16) ? IDC_IBEAM : IDC_ARROW));
+        return TRUE;
+    }
     case WM_GETDLGCODE:
         return DLGC_WANTARROWS;
     case WM_KEYDOWN:
@@ -545,6 +681,64 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     return DefWindowProcW(h, m, w, l);
+}
+HFONT AiPane::ParagraphFont(int style) const {
+    return style == 2 ? codeFont_ : style == 1 ? titleFont_ : font_;
+}
+void AiPane::ClearTextSelection() {
+    selectionStart_ = selectionEnd_ = {SIZE_MAX, 0, 0};
+    selecting_ = false;
+    if (transcript_)
+        InvalidateRect(transcript_, nullptr, FALSE);
+}
+AiPane::TextPoint AiPane::HitText(POINT point) const {
+    point.y += scroll_.offset;
+    if (messages_.empty())
+        return {SIZE_MAX, 0, 0};
+    for (size_t i = 0; i < messages_.size(); ++i) {
+        const auto &m = messages_[i];
+        if (point.y >= m.bounds.bottom && i + 1 < messages_.size())
+            continue;
+        for (size_t pi = 0; pi < m.paragraphs.size(); ++pi) {
+            const auto &p = m.paragraphs[pi];
+            for (size_t li = 0; li < p.lines.size(); ++li) {
+                const auto &line = p.lines[li];
+                if (point.y >= m.bounds.top + line.rect.bottom &&
+                    (li + 1 < p.lines.size() || pi + 1 < m.paragraphs.size()))
+                    continue;
+                const int x = point.x - m.bounds.left - line.rect.left;
+                size_t ch = 0;
+                while (ch < line.length && x > (line.advances[ch] + line.advances[ch + 1]) / 2)
+                    ++ch;
+                size_t offset = line.start + ch;
+                if (offset < p.text.size() && offset && p.text[offset] >= 0xdc00 && p.text[offset] <= 0xdfff)
+                    ++offset;
+                return {i, pi, offset};
+            }
+        }
+    }
+    return {SIZE_MAX, 0, 0};
+}
+std::wstring AiPane::SelectedText() const {
+    const auto lo = std::min(selectionStart_, selectionEnd_), hi = std::max(selectionStart_, selectionEnd_);
+    if (std::get<0>(lo) == SIZE_MAX || std::get<0>(hi) >= messages_.size() || lo == hi)
+        return {};
+    std::wstring text;
+    for (size_t i = std::get<0>(lo); i <= std::get<0>(hi); ++i) {
+        const auto &paragraphs = messages_[i].paragraphs;
+        for (size_t pi = 0; pi < paragraphs.size(); ++pi) {
+            if (TextPoint{i, pi, SIZE_MAX} < lo || TextPoint{i, pi, 0} > hi)
+                continue;
+            const auto &p = paragraphs[pi].text;
+            const auto begin = i == std::get<0>(lo) && pi == std::get<1>(lo) ? std::min(p.size(), std::get<2>(lo)) : 0;
+            const auto end =
+                i == std::get<0>(hi) && pi == std::get<1>(hi) ? std::min(p.size(), std::get<2>(hi)) : p.size();
+            text += p.substr(begin, end - begin);
+            if (TextPoint{i, pi, p.size()} < hi)
+                text += L"\r\n";
+        }
+    }
+    return text;
 }
 void AiPane::Copy(const std::wstring &text) {
     if (!OpenClipboard(window_))
@@ -760,6 +954,7 @@ void AiPane::NewConversation() {
     thread_.clear();
     turn_.clear();
     finishedTurns_.clear();
+    ClearTextSelection();
     messages_.clear();
     selectedMessage_ = SIZE_MAX;
     messageBytes_ = 0;
@@ -848,6 +1043,10 @@ void AiPane::Shutdown() {
         devices_("release", {{"sessionId", turnTarget_}});
 }
 void AiPane::Poll() {
+    if (copiedUntil_ && copiedUntil_ <= GetTickCount64()) {
+        copiedUntil_ = 0;
+        InvalidateRect(transcript_, nullptr, FALSE);
+    }
     std::shared_ptr<HostPrompt> prompt;
     {
         std::lock_guard<std::mutex> l(eventsMutex_);
@@ -982,7 +1181,7 @@ void AiPane::Event(const Json &e) {
                        {"status", "interrupted"}});
         } else if (purpose == "start") {
             thread_ = result.at("conversationId").get<std::string>();
-            RememberThread(thread_, messages_.empty() ? L"新会话" : messages_.front().text.substr(0, 40));
+            RememberThread(thread_, pendingPrompt_.empty() ? L"新会话" : pendingPrompt_.substr(0, 40));
             if (stopRequested_) {
                 busy_ = false;
                 pendingPrompt_.clear();
@@ -1002,8 +1201,16 @@ void AiPane::Event(const Json &e) {
                 turnStarted_ = GetTickCount64();
                 if (!Request(ai::Operation::RestoreConversation, {{"conversationId", thread_}, {"defaultModel", serverDefaultModel_},
                     {"cwd", Utf8(settings_.workingDirectory)}}, "resume")) busy_ = false;
-            } else busy_ = false;
+            } else {
+                busy_ = false;
+                if (messages_.empty())
+                    Add(L"AI",
+                        L"你好，我是 "
+                        L"jiojio，你的高级嵌入式软件工程师。\n\n我可以分析终端日志、排查和修改服务器代码、执行命令，也"
+                        L"能按你的指令控制已连接电源。\n\n选择关联终端，或告诉我服务器项目路径，我们就开始。");
+            }
         } else if (purpose == "resume") {
+            ClearTextSelection();
             messages_.clear();
             selectedMessage_ = SIZE_MAX;
             messageBytes_ = 0;

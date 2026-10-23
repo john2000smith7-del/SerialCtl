@@ -368,6 +368,37 @@ void TestCmdEditor() {
 } // namespace
 
 int main() {
+    {
+        serialctl::TerminalModel view(5, 6);
+        view.Feed(L"ABC中文DEF\r\nHARD", L"device source");
+        const auto raw = view.PlainText(false);
+        const auto columns = view.Columns();
+        view.SetLineWrapView(false);
+        ExpectLine(view, 0, L"ABC中文DEF", "long-line projection joins only soft wraps including wide characters");
+        ExpectLine(view, 1, L"HARD", "explicit CR/LF survives long-line projection");
+        Expect(view.Columns() == columns && view.MaximumDisplayColumns() >= 10,
+               "long-line view does not widen parser or PTY dimensions");
+        Expect(view.SelectedText(0, 0, 1, 3) == L"ABC中文DEF\r\nHARD", "projection copy preserves raw hard breaks");
+        const auto anchor = view.CaptureAnchor(0, 7);
+        view.Resize(8, 6);
+        ExpectLine(view, 0, L"ABC中文DEF", "long line survives window reflow");
+        Expect(view.LocateAnchor(anchor) == std::make_pair<size_t, int>(0, 7),
+               "reading anchor survives projection and reflow");
+        view.Feed(L" MORE", L"new");
+        ExpectLine(view, 1, L"HARD MORE", "new output invalidates projected line cache");
+        auto draft = view.PreviewInput(L"123456789abcdefgh", 5);
+        Expect(draft.PlainText(false).find(L"HARD MORE123456789abcdefgh") != std::wstring::npos,
+               "CMD preview retains history and long line text");
+        Expect(view.PlainText(false).find(L"123456789") == std::wstring::npos,
+               "CMD preview cannot mutate real device evidence");
+        view.Feed(L"\x1b[?1049h123456789", L"");
+        Expect(view.AlternateScreen() && view.MaximumDisplayColumns() == 8, "alternate screen keeps native grid width");
+        view.Feed(L"\x1b[?1049l", L"");
+        ExpectLine(view, 0, L"ABC中文DEF", "leaving full screen restores long-line view");
+        view.SetLineWrapView(true);
+        Expect(view.PlainText(false).find(L"HARD MORE") != std::wstring::npos,
+               "wrap toggle preserves terminal evidence");
+    }
     TestSharedResponseOwnership();
     serialctl::TerminalModel selection(5, 5);
     selection.Feed(L"abc  def\r\n中 x ", L"timestamp");

@@ -6,7 +6,7 @@ SerialCtl uses an Apple-inspired desktop design language adapted to native Win32
 
 - Base spacing grid: 8 px.
 - Allowed spacing: 8, 12, 16, and 24 px.
-- Main cards use 12 px outer gaps, 16 px inner padding, and 8 px gaps between peer actions.
+- Main cards use 12 px outer gaps, 16 px inner padding, and 12 px gaps between peer actions.
 - Component-internal optical insets may use 2 or 4 px only for segmented controls and vector icon strokes; page and dialog layout still follows the base grid.
 - All buttons and form controls use a 10 px radius.
 - Cards and large surfaces use a 12 px radius.
@@ -105,7 +105,7 @@ Light theme:
 - Alternate-screen applications such as `vi`, `vim`, `top`, and `less` use the full terminal surface without the timestamp gutter or primary scrollback. Entering or leaving the alternate screen recalculates and reports the available PTY size; leaving it restores the primary screen and its scroll position.
 - Terminal selection is cell-based: completing a nonempty drag or double-clicking a word copies it once, retaining the highlight and history-reading position. An empty click or scrollbar drag does not replace the clipboard. Mouse right-click pastes once and returns to the live position without appending Enter. Clipboard line breaks retain the session's normal semantics; CMD submits complete lines and retains an incomplete trailing draft. `Ctrl+Shift+C`, selection-aware `Ctrl+C`, `Ctrl+Shift+V`, and `Shift+Insert` remain available. The keyboard context-menu key opens Settings and never pastes. Bracketed paste is honored when requested by the remote application. Text fields, password fields and SFTP retain their own editing/file-operation semantics.
 - Command cards use the same card radius and vertical rhythm as connection cards.
-- Every command card has matching 28 px Run and Edit icon actions separated by 8 px. Run is disabled when the session is not writable; double-click remains a shortcut for Run.
+- Every command card has matching 28 px Run and Edit icon actions separated by 12 px. Run is disabled when the session is not writable; double-click remains a shortcut for Run.
 - Multi-command macros keep the standard command-card size. While steps are being submitted, Run becomes Stop and draws a determinate submission-count ring inside the same 28 px bounds; other structural command actions remain disabled until submission ends. Report accepted N/N and direct users to terminal output for execution results. Stop prevents future submissions and must state that already accepted work may continue; interruption preserves an unknown execution outcome and never triggers automatic resend. A full ring is not a device acknowledgement or task-level writer lock. Manual disconnect (current or all), session switches and unexpected transport exit retain the accepted count and unknown-outcome warning; ordinary connection success or teardown text must not replace that outcome.
 - Idle status labels do not reserve permanent rows. Transient status temporarily reserves space at the bottom of the left card. Error status stays until replaced; long status is available in a hover tooltip.
 - The right panel uses the same segmented tab style for Commands and SFTP. The SFTP working directory uses the shared rounded field treatment and follows the active SSH shell directory when it can be identified from the prompt. SFTP transfer actions use compact secondary buttons and remain disabled while an operation is running.
@@ -135,9 +135,9 @@ Light theme:
 - Connection and command dialogs share a 238-dialog-unit compact width, 12-dialog-unit outer margins, balanced columns, and the same footer geometry.
 - Dialog height follows visible content; hidden fields must not leave empty rows.
 - Use labels above fields and a two-column grid only for closely related values.
-- Footer buttons are right-aligned, equal in size, and separated by 8 px.
+- Footer buttons are right-aligned, equal in size, and separated by 12 px.
 - Dialog footer buttons use the 36 px standard height; they must not inherit the taller native resource-template size.
-- Buttons sharing a row use the same height and visual role. Keep 8 px between peer actions; field-adjacent actions use the dialog grid gap and align exactly with the field top and bottom.
+- Buttons sharing a row use the same height and visual role. Keep 12 px between peer actions; field-adjacent actions use the dialog grid gap and align exactly with the field top and bottom.
 - Primary action appears at the far right.
 - Helper text sits directly above the footer and uses the secondary-text token.
 - Do not show generic helper copy in connection dialogs. Reserve the inline message row for validation errors only.
@@ -173,3 +173,17 @@ Power and local CMD share the center card. Power uses three checked channel card
 The left connection card keeps the existing per-session Disconnect action and one compact danger-text “全部断开” footer action. It stops real transports, CMD process trees, SFTP transfers and power-task ownership before removing entries. No remote disconnect permission is implied. CMD drafts render within the terminal; no composer is added.
 
 AI chat bubbles use alignment and accent fill to identify the speaker; omit role/status headings and the Enter/Shift+Enter footer hint. The composer and all its rounded fields restore exterior corners using the parent surface in both palettes. Owner-drawn theme buttons restore their full current-palette rendering after native focus/press transitions; a theme toggle synchronously invalidates the complete visible child tree.
+
+
+## V2.0.3 approved revision
+
+- Peer rounded cards and peer actions use a shared 12 logical px exterior gap; container insets remain 16 px. Optical glyph insets remain separate. Buttons radius10, cards radius12, standard/compact heights36/28.
+- AI workspace starts expanded with equal chat/monitor widths, excludes the connection list, and permits a draggable divider. Persist user ratios under a new setting; migrate the old fixed-width/collapsed default once.
+- AI header is compact, without the jiojio name or role subtitle. jiojio introduces itself only in the initial welcome message after verified connection readiness, without initiating device work. History/reconnect do not stack introductions.
+- One continuous AI background spans header, transcript and composer. Separate these regions only with thin horizontal lines whose ends stop at the panel padding. The terminal uses the same open-ended separator over its own uniform background.
+- AI supports character-range drag selection, copy on release and Ctrl+C; keep whole-message copying. Streaming and scrolling preserve the selected range and reading location. Native edit menus retain their usual semantics.
+- Connection cards directly reuse the corresponding ToolbarIcons resource. Sidebar glyphs are20 logical px, never larger than top-nav24. No substitute monitor/DB9/hand-drawn glyphs. Use text plus status dot, with selected and focus states.
+- Command cards have no decorative function glyph. Use a single4px neutral circular drag marker with a generous hit region, name and command preview, and existing run/edit actions. Consistent12px card gaps.
+- The AI live monitor hides application timestamp gutters. Its default long-line view joins only actual soft wraps, never changes sent bytes or remote PTY width, and retains explicit CR/LF and alternate-screen semantics. Offer wrap toggle and horizontal scrolling.
+- Settings footer shows VERSION and `Application design by jiojio`; utility actions use compact consistent line icons.
+- Startup verifies signed newer metadata before showing a mandatory confirmation. Only after OK may ZIP download begin. Closing exits rather than bypassing a known required update. Progress reflects real download/verification/install phases; retries preserve existing data and idle-install protections. Unavailable/untrusted metadata does not invent a newer version. Existing two-file deployment and update.ini URL remain.

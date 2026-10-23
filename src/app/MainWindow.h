@@ -176,8 +176,14 @@ private:
     static INT_PTR CALLBACK SettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static void PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
+    static INT_PTR CALLBACK UpdateDialogProc(HWND, UINT, WPARAM, LPARAM);
     void StopStartupUpdate();
-    bool CanInstallStartupUpdate() const;
+    HWND updateDialog_ = nullptr;
+    bool updateRequired_ = false, updateConfirming_ = true;
+    std::string updateApprovedVersion_, updatePromptVersion_;
+    std::atomic<std::uint64_t> updateReceived_{0}, updateTotal_{0};
+    std::atomic<int> updatePhase_{0};
+    bool CanInstallStartupUpdate(bool confirmed = false) const;
 
     Json ApiResources();
     Json ApiRequest(const std::string&,const std::string&,const Json&);
@@ -340,8 +346,11 @@ private:
     PowerPane powerPane_;
     AiPane aiPane_;
     bool aiVisible_ = false, aiPageOpened_ = false;
-    bool aiMonitorCollapsed_ = true;
+    bool aiMonitorCollapsed_ = false;
     int aiMonitorWidth_ = 360;
+    int aiMonitorRatio_ = 500;
+    bool aiMonitorWrap_ = false;
+    HWND aiWrapButton_ = nullptr;
     HWND aiTerminalHeader_ = nullptr;
     bool aiRemoteConnect_ = false;
     HWND aiButton_ = nullptr;

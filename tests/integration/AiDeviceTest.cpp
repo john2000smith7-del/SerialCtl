@@ -35,6 +35,9 @@ struct AiDeviceTestAccess {
         MainWindow main;
         main.window_ = parent;
         main.instance_ = GetModuleHandleW(nullptr);
+        RECT size{0, 0, 1400, 850};
+        AdjustWindowRectEx(&size, WS_OVERLAPPEDWINDOW, FALSE, 0);
+        SetWindowPos(parent, nullptr, 0, 0, size.right - size.left, size.bottom - size.top, SWP_NOZORDER);
         main.CreateControls();
         ShowWindow(parent, SW_SHOW);
         main.rightPanelWidth_ = 320;
@@ -79,19 +82,25 @@ struct AiDeviceTestAccess {
         Require(main.aiVisible_ && main.activeSession_ == main.sessions_[1].get(),
             "AI target binding left the conversation page or selected wrong terminal");
         main.LayoutControls(1400, 850);
+        Require(!main.aiMonitorCollapsed_, "AI monitor must start expanded");
+        main.aiMonitorCollapsed_ = true;
+        main.LayoutControls(1400, 850);
         Require(!IsWindowVisible(main.terminal_), "Collapsed AI monitor exposed terminal");
         main.aiMonitorCollapsed_ = false;
-        main.aiMonitorWidth_ = 420;
+        main.aiMonitorRatio_ = 500;
         main.LayoutControls(1400, 850);
         RECT ai{}, terminal{}, header{};
         GetWindowRect(main.aiPane_.Handle(), &ai);
         GetWindowRect(main.terminal_, &terminal);
         GetWindowRect(main.aiTerminalHeader_, &header);
+        Require(std::abs((terminal.right - terminal.left) - (ai.right - ai.left)) <= 1,
+                "Default AI and terminal widths must be equal");
+        Require(!main.sessions_[1]->terminal.LineWrapView(), "AI monitor defaults to long-line projection");
         Require(IsWindowVisible(main.terminal_) && terminal.left > ai.right && terminal.top >= header.bottom,
             "Expanded monitor did not place actual terminal beside chat under its header");
         Require(main.rightPanelWidth_ == 320 && !main.rightPanelCollapsed_,
             "AI monitor changed terminal sidebar preference");
-        main.aiMonitorWidth_ = 520;
+        main.aiMonitorRatio_ = 600;
         main.LayoutControls(1400, 850);
         RECT resized{}; GetWindowRect(main.terminal_, &resized);
         Require(resized.right - resized.left > terminal.right - terminal.left,

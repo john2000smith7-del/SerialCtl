@@ -1,11 +1,13 @@
 #pragma once
 #include "CodexSession.h"
+#include "ToolbarIcons.h"
 #include "UiStyle.h"
 #include <atomic>
 #include <deque>
 #include <future>
 #include <map>
 #include <set>
+#include <tuple>
 
 namespace serialctl {
 inline constexpr UINT AiStateChanged = WM_APP + 22;
@@ -39,10 +41,17 @@ class AiPane {
 #ifdef SERIALCTL_AI_TESTING
     friend struct AiPaneTestAccess;
 #endif
+    struct TextLine {
+        RECT rect{};
+        size_t start = 0, length = 0;
+        std::vector<int> advances;
+    };
+    using TextPoint = std::tuple<size_t, size_t, size_t>;
     struct Paragraph {
         RECT rect;
         std::wstring text;
         int style;
+        std::vector<TextLine> lines;
     };
     struct Message {
         std::wstring role, text, streamedOutput;
@@ -86,6 +95,14 @@ class AiPane {
     void RememberThread(const std::string &, const std::wstring &);
     Json History() const;
     void Copy(const std::wstring &);
+    TextPoint HitText(POINT) const;
+    std::wstring SelectedText() const;
+    void ClearTextSelection();
+    HFONT ParagraphFont(int style) const;
+    ToolbarIcons icons_;
+    TextPoint selectionStart_{SIZE_MAX, 0, 0}, selectionEnd_{SIZE_MAX, 0, 0};
+    bool selecting_ = false;
+    ULONGLONG copiedUntil_ = 0;
     bool PromptValue(const std::wstring &, std::wstring &);
     HWND Control(int id) const {
         return GetDlgItem(window_, id);

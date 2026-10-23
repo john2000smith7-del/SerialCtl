@@ -208,7 +208,7 @@ if(BUILD_TESTING)
     add_dependencies(ai_client_test ai_fake_plink)
     add_test(NAME ai_client COMMAND ai_client_test)
     set_tests_properties(ai_client PROPERTIES TIMEOUT 45)
-    add_executable(ai_pane_test tests/integration/AiPaneTest.cpp src/app/AiPane.cpp src/ai/CodexClient.cpp
+    add_executable(ai_pane_test tests/integration/AiPaneTest.cpp src/app/AiPane.cpp src/app/ToolbarIcons.cpp src/ai/CodexClient.cpp
         src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(ai_pane_test CONSOLE)
     target_compile_definitions(ai_pane_test PRIVATE SERIALCTL_AI_TESTING)

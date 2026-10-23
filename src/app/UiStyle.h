@@ -34,6 +34,66 @@ inline UiColors UiAiTheme(bool dark) {
 inline Gdiplus::Color UiColor(COLORREF color) {
     return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
 }
+// Shared compact utility line glyphs; connection types always use ToolbarIcons.
+enum class UiGlyph { Clock, Plus, Document, Trash, Copy, Paste, SelectAll, Stop };
+inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
+    Gdiplus::Graphics g(dc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    g.TranslateTransform(static_cast<float>(bounds.left), static_cast<float>(bounds.top));
+    g.ScaleTransform((bounds.right - bounds.left) / 24.f, (bounds.bottom - bounds.top) / 24.f);
+    Gdiplus::Pen pen(UiColor(color), 1.6f);
+    pen.SetStartCap(Gdiplus::LineCapRound);
+    pen.SetEndCap(Gdiplus::LineCapRound);
+    auto line = [&](int a, int b, int c, int d) { g.DrawLine(&pen, a, b, c, d); };
+    switch (icon) {
+    case UiGlyph::Clock:
+        g.DrawEllipse(&pen, 3, 3, 18, 18);
+        line(12, 6, 12, 12);
+        line(12, 12, 16, 14);
+        break;
+    case UiGlyph::Plus:
+        line(12, 4, 12, 20);
+        line(4, 12, 20, 12);
+        break;
+    case UiGlyph::Copy:
+        g.DrawRectangle(&pen, 8, 3, 12, 15);
+        line(5, 7, 4, 7);
+        line(4, 7, 4, 21);
+        line(4, 21, 16, 21);
+        break;
+    case UiGlyph::Paste:
+        g.DrawRectangle(&pen, 5, 5, 14, 16);
+        g.DrawRectangle(&pen, 9, 3, 6, 4);
+        break;
+    case UiGlyph::Trash:
+        line(4, 6, 20, 6);
+        line(9, 3, 15, 3);
+        line(6, 6, 7, 21);
+        line(7, 21, 17, 21);
+        line(17, 21, 18, 6);
+        line(10, 10, 10, 17);
+        line(14, 10, 14, 17);
+        break;
+    case UiGlyph::SelectAll:
+        pen.SetDashStyle(Gdiplus::DashStyleDash);
+        g.DrawRectangle(&pen, 4, 4, 16, 16);
+        break;
+    case UiGlyph::Stop:
+        g.DrawRectangle(&pen, 5, 5, 14, 14);
+        break;
+    default:
+        line(6, 3, 15, 3);
+        line(15, 3, 20, 8);
+        line(20, 8, 20, 21);
+        line(20, 21, 6, 21);
+        line(6, 21, 6, 3);
+        line(15, 3, 15, 8);
+        line(15, 8, 20, 8);
+        line(9, 12, 17, 12);
+        line(9, 16, 15, 16);
+        break;
+    }
+}
 // Build a complete owner-drawn item off screen, then publish it with one blit.
 // Keep the caller's logical coordinates (list rows need not start at 0,0).
 // The destination DC retains its native update/visibility clip on the final blit.
@@ -131,6 +191,12 @@ inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius)
     Gdiplus::Pen pen(UiColor(border), 1.0f);
     graphics.FillPath(&brush, &path);
     graphics.DrawPath(&pen, &path);
+}
+inline void UiSeparator(HDC dc, int left, int right, int y, COLORREF color) {
+    RECT line{left, y, right, y + 1};
+    HBRUSH brush = CreateSolidBrush(color);
+    FillRect(dc, &line, brush);
+    DeleteObject(brush);
 }
 inline void UiPolyline(HDC dc, const POINT *points, int count, COLORREF color, float width = 1.0f) {
     if (!dc || !points || count < 2)

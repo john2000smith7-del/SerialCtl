@@ -46,6 +46,11 @@ constexpr UINT MessageHostKey = WM_APP + 6;
 constexpr UINT MessageDiscovery = WM_APP + 7;
 constexpr UINT MessageApi = WM_APP + 8;
 constexpr UINT MessageUpdate = WM_APP + 20;
+constexpr UINT MessageUpdatePrompt = WM_APP + 24;
+struct UpdatePrompt {
+    std::string version;
+    std::promise<bool> answer;
+};
 constexpr UINT MessageLogExport = WM_APP + 21;
 
 void DiscardUpdate(update::UpdateResult& result) {
@@ -106,7 +111,8 @@ enum ControlId {
     IdDisconnectAll,
     IdSettings,
     IdAi,
-    IdSendSelectionToAi
+    IdSendSelectionToAi,
+    IdAiWrap
 };
 
 bool IsToolbarButton(int id) {
@@ -260,14 +266,17 @@ int MainCardTop() {
     return NavigationFrame().bottom + Ui::Gap;
 }
 
-MainLayoutMetrics GetMainLayoutMetrics(
-    int width, int height, int preferredRightWidth, bool rightPanelCollapsed, int animationWidth = -1) {
+MainLayoutMetrics GetMainLayoutMetrics(int width, int height, int preferredRightWidth, bool rightPanelCollapsed,
+                                       int animationWidth = -1, bool ai = false) {
     const int leftWidth = std::max(Ui::MinLeftWidth, std::min(Ui::MaxLeftWidth, width * 18 / 100));
-    const int availableRight = std::max(Ui::MinRightWidth,
-        width - leftWidth - Ui::Gap * 2 - Ui::MinCenterWidth);
-    const int rightWidth = animationWidth >= 0 ? animationWidth : rightPanelCollapsed ? Ui::CollapsedRightWidth + Ui::Gap :
-        std::max(Ui::MinRightWidth, std::min({Ui::MaxRightWidth,
-            availableRight, preferredRightWidth}));
+    const int availableRight =
+        std::max(Ui::MinRightWidth, width - leftWidth - Ui::Gap * 2 - (ai ? Ui::MinRightWidth : Ui::MinCenterWidth));
+    const int rightWidth =
+        animationWidth >= 0 ? animationWidth
+        : rightPanelCollapsed
+            ? Ui::CollapsedRightWidth + Ui::Gap
+            : std::max(Ui::MinRightWidth,
+                       std::min({ai ? availableRight : Ui::MaxRightWidth, availableRight, preferredRightWidth}));
     return {leftWidth, rightWidth, width - rightWidth, leftWidth + Ui::Gap,
         width - rightWidth - Ui::Gap, height - Ui::Gap};
 }
@@ -279,10 +288,8 @@ struct CommandActionRects {
 
 CommandActionRects GetCommandActionRects(const RECT& card) {
     const int top = card.top + ((card.bottom - card.top) - Ui::IconButtonSize) / 2;
-    RECT edit{card.right - Ui::Space - Ui::IconButtonSize, top,
-        card.right - Ui::Space, top + Ui::IconButtonSize};
-    RECT run{edit.left - Ui::Space - Ui::IconButtonSize, top,
-        edit.left - Ui::Space, top + Ui::IconButtonSize};
+    RECT edit{card.right - Ui::Gap - Ui::IconButtonSize, top, card.right - Ui::Gap, top + Ui::IconButtonSize};
+    RECT run{edit.left - Ui::Gap - Ui::IconButtonSize, top, edit.left - Ui::Gap, top + Ui::IconButtonSize};
     return {run, edit};
 }
 
@@ -1026,37 +1033,170 @@ void MainWindow::StartStartupUpdate() {
     const std::filesystem::path executable(std::wstring(path.data(), size));
     updateCancel_.store(false);
     try {
-        updateThread_ = std::thread([this, executable] {
+        const auto approved = updateApprovedVersion_;
+        updateThread_ = std::thread([this, executable, approved] {
+            update::UpdateCallbacks callbacks;
+            callbacks.confirm = [this, approved](const std::string &version) {
+                if (version == approved && !approved.empty())
+                    return true;
+                auto prompt = std::make_unique<UpdatePrompt>();
+                prompt->version = version;
+                auto future = prompt->answer.get_future();
+                if (!PostMessageW(window_, MessageUpdatePrompt, 0, reinterpret_cast<LPARAM>(prompt.get())))
+                    return false;
+                prompt.release();
+                while (!updateCancel_.load()) {
+                    if (future.wait_for(std::chrono::milliseconds(50)) == std::future_status::ready)
+                        return future.get();
+                }
+                return false;
+            };
+            callbacks.progress = [this](std::uint64_t received, std::uint64_t total, update::UpdatePhase phase) {
+                updateReceived_ = received;
+                updateTotal_ = total;
+                updatePhase_ = phase == update::UpdatePhase::Download ? 1 : 2;
+            };
             auto result = std::make_unique<update::UpdateResult>(
-                update::CheckAndStage(executable, SERIALCTL_APP_VERSION, updateCancel_));
-            if (!updateCancel_.load() && PostMessageW(window_, MessageUpdate, 0,
-                    reinterpret_cast<LPARAM>(result.get()))) result.release();
-            else DiscardUpdate(*result);
+                update::CheckAndStage(executable, SERIALCTL_APP_VERSION, updateCancel_, callbacks));
+            if (!updateCancel_.load() &&
+                PostMessageW(window_, MessageUpdate, 0, reinterpret_cast<LPARAM>(result.get())))
+                result.release();
+            else
+                DiscardUpdate(*result);
         });
     } catch (const std::exception&) {
         AppendStatus(L"无法启动自动更新检查，继续使用当前版本。", true);
     }
 }
 
+INT_PTR CALLBACK MainWindow::UpdateDialogProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto self = reinterpret_cast<MainWindow *>(GetWindowLongPtrW(h, DWLP_USER));
+    if (m == WM_INITDIALOG) {
+        self = reinterpret_cast<MainWindow *>(l);
+        SetWindowLongPtrW(h, DWLP_USER, l);
+        self->updateDialog_ = h;
+        SetWindowTextW(h, L"软件更新");
+        ApplyDarkTitleBar(h, self->darkMode_);
+        UiResizeDialog(h, Ui::Dpi, 460, self->updateConfirming_ ? 244 : 188);
+        auto add = [&](const wchar_t *cls, const std::wstring &text, int id, int x, int y, int width, int height,
+                       DWORD style = 0) {
+            HWND child = CreateWindowExW(0, cls, text.c_str(), WS_CHILD | WS_VISIBLE | style, Ui::Scale(x),
+                                         Ui::Scale(y), Ui::Scale(width), Ui::Scale(height), h,
+                                         reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), self->instance_, nullptr);
+            SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), FALSE);
+            if (style & BS_OWNERDRAW)
+                SetWindowSubclass(child, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
+            return child;
+        };
+        if (self->updateConfirming_) {
+            const auto version = std::wstring(self->updatePromptVersion_.begin(), self->updatePromptVersion_.end());
+            add(L"STATIC", L"发现新版本 " + version, -1, 16, 16, 428, 28);
+            add(L"STATIC", L"更新后才能继续使用。点击确定开始下载，完成后自动重启。", -1, 16, 56, 428, 56);
+            add(L"STATIC", L"连接配置、命令、日志和驱动将保留。", -1, 16, 124, 428, 24);
+            add(L"STATIC", L"关闭此窗口将退出 SerialCtl。", -1, 16, 184, 304, 36);
+            auto ok = add(L"BUTTON", L"确定", IDOK, 348, 184, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
+            SendMessageW(h, DM_SETDEFID, IDOK, 0);
+            SetFocus(ok);
+        } else {
+            add(L"STATIC", L"准备下载更新…", 100, 16, 16, 428, 28);
+            add(L"STATIC", L"", 101, 16, 56, 428, 24);
+            add(L"STATIC", L"下载 → 校验 → 安装并重启", -1, 16, 128, 428, 28);
+            SetTimer(h, 1, 100, nullptr);
+        }
+        CenterOnOwner(h, self->window_);
+        return FALSE;
+    }
+    if (!self)
+        return FALSE;
+    if (m == WM_TIMER) {
+        const auto received = self->updateReceived_.load(), total = self->updateTotal_.load();
+        const int phase = self->updatePhase_.load();
+        SetDlgItemTextW(h, 100, phase == 2 ? L"正在校验更新包…" : phase == 1 ? L"正在下载更新…" : L"准备更新…");
+        const auto detail = phase == 1 && total
+                                ? std::to_wstring(received / 1024) + L" / " + std::to_wstring(total / 1024) +
+                                      L" KiB · " +
+                                      std::to_wstring(std::min<std::uint64_t>(100, received * 100 / total)) + L"%"
+                                : L"请等待，完成后将自动重启。";
+        SetDlgItemTextW(h, 101, detail.c_str());
+        InvalidateRect(h, nullptr, FALSE);
+        return TRUE;
+    }
+    if (m == WM_PAINT || m == WM_ERASEBKGND) {
+        PAINTSTRUCT paint{};
+        HDC dc = m == WM_PAINT ? BeginPaint(h, &paint) : reinterpret_cast<HDC>(w);
+        RECT rect{};
+        GetClientRect(h, &rect);
+        FillRect(dc, &rect, self->panelBrush_);
+        const auto c = UiTheme(self->darkMode_);
+        if (!self->updateConfirming_) {
+            RECT bar{Ui::Scale(16), Ui::Scale(96), Ui::Scale(444), Ui::Scale(104)};
+            UiBox(dc, bar, c.raised, c.raised, Ui::Scale(4));
+            const auto total = self->updateTotal_.load(), received = self->updateReceived_.load();
+            if (total && received) {
+                bar.right = bar.left + static_cast<LONG>((bar.right - bar.left) * std::min(received, total) / total);
+                UiBox(dc, bar, c.accent, c.accent, Ui::Scale(4));
+            }
+        }
+        if (m == WM_PAINT)
+            EndPaint(h, &paint);
+        return TRUE;
+    }
+    if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLORDLG) {
+        const auto c = UiTheme(self->darkMode_);
+        SetTextColor(reinterpret_cast<HDC>(w), c.text);
+        SetBkColor(reinterpret_cast<HDC>(w), c.surface);
+        return reinterpret_cast<INT_PTR>(self->panelBrush_);
+    }
+    if (m == WM_DRAWITEM) {
+        self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT *>(l));
+        return TRUE;
+    }
+    if (m == WM_COMMAND && LOWORD(w) == IDOK && self->updateConfirming_) {
+        UiEndOwnedDialog(h, IDOK);
+        return TRUE;
+    }
+    if (m == WM_CLOSE || (m == WM_COMMAND && LOWORD(w) == IDCANCEL)) {
+        UiEndOwnedDialog(h, IDCANCEL);
+        if (!self->updateConfirming_) {
+            self->updateCancel_ = true;
+            PostMessageW(self->window_, WM_CLOSE, 0, 0);
+        }
+        return TRUE;
+    }
+    if (m == WM_DESTROY) {
+        KillTimer(h, 1);
+        if (self->updateDialog_ == h)
+            self->updateDialog_ = nullptr;
+    }
+    return FALSE;
+}
+
 void MainWindow::StopStartupUpdate() {
     updateCancel_.store(true);
     if (updateThread_.joinable()) updateThread_.join();
     MSG pending{};
+    while (window_ && PeekMessageW(&pending, window_, MessageUpdatePrompt, MessageUpdatePrompt, PM_REMOVE)) {
+        std::unique_ptr<UpdatePrompt> prompt(reinterpret_cast<UpdatePrompt *>(pending.lParam));
+        if (prompt)
+            prompt->answer.set_value(false);
+    }
     while (window_ && PeekMessageW(&pending, window_, MessageUpdate, MessageUpdate, PM_REMOVE)) {
         std::unique_ptr<update::UpdateResult> result(reinterpret_cast<update::UpdateResult*>(pending.lParam));
         if (result) DiscardUpdate(*result);
     }
 }
 
-bool MainWindow::CanInstallStartupUpdate() const {
+bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     // PowerPageOpened also excludes a queued connect/task that has not yet
     // appeared in the service snapshot. A modal owner and mouse capture exclude
-    // edits and ongoing gestures. A busy startup defers for the entire run.
-    return !closing_.load() && !startupUpdateDeferred_ && !logExportJob_ && sessions_.empty() && !pendingSession_ &&
-        !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ && !disconnectAllPending_ && !disconnectAllInProgress_ &&
-        !commandsDirty_ && runningCommandIndex_ < 0 && !sftpBusy_ && !activeSftpTransferId_ &&
-        !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ && draggingCommandIndex_ < 0 &&
-        !sftpColumnDragging_ && !GetCapture() && IsWindowEnabled(window_);
+    // edits and ongoing gestures. Explicit consent may follow harmless UI use;
+    // actual device work is still protected and defers installation.
+    return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && sessions_.empty() &&
+           !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
+           !disconnectAllPending_ && !disconnectAllInProgress_ && !commandsDirty_ && runningCommandIndex_ < 0 &&
+           !sftpBusy_ && !activeSftpTransferId_ && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
+           draggingCommandIndex_ < 0 && !sftpColumnDragging_ && !GetCapture() &&
+           (IsWindowEnabled(window_) || updateRequired_);
 }
 
 LRESULT CALLBACK MainWindow::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -1207,7 +1347,8 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         if (!self->activeSession_) return 0;
         POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         const TerminalModel& model = self->activeSession_->terminal;
-        const int timestampWidth = self->timestampEnabled_ && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
+        const int timestampWidth =
+            self->timestampEnabled_ && !self->aiVisible_ && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
         const TerminalHorizontalScrollMetrics horizontalMetrics =
             GetTerminalHorizontalScrollMetrics(window, Ui::TerminalPadding + timestampWidth,
                 model.MaximumDisplayColumns(), self->terminalVisibleColumns_,
@@ -1287,7 +1428,9 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         if (self->terminalHorizontalScrollbarDragging_) {
             const TerminalModel& model = self->activeSession_->terminal;
-            const int timestampWidth = self->timestampEnabled_ && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
+            const int timestampWidth = self->timestampEnabled_ && !self->aiVisible_ && !model.AlternateScreen()
+                                           ? Ui::TerminalTimestampWidth
+                                           : 0;
             const TerminalHorizontalScrollMetrics metrics =
                 GetTerminalHorizontalScrollMetrics(window, Ui::TerminalPadding + timestampWidth,
                     model.MaximumDisplayColumns(), self->terminalVisibleColumns_,
@@ -1417,8 +1560,8 @@ void MainWindow::PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self
 
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
-    MoveWindow(edit, rect.left + Ui::Space, rect.top + Ui::Scale(4),
-        std::max(1, width - Ui::Space * 2), std::max(1, height - Ui::Scale(8)), TRUE);
+    MoveWindow(edit, rect.left + Ui::Space, rect.top + Ui::Gap / 2, std::max(1, width - Ui::Space * 2),
+               std::max(1, height - Ui::Scale(8)), TRUE);
     SetWindowPos(frame, edit, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     SetWindowPos(edit, nullptr, 0, 0, 0, 0,
@@ -1776,18 +1919,57 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         RefreshConnectionList();
         EnableWindow(disconnectButton_, aiVisible_ ? aiPane_.Busy() : activeSession_ != nullptr);
         return 0;
+    case MessageUpdatePrompt: {
+        std::unique_ptr<UpdatePrompt> prompt(reinterpret_cast<UpdatePrompt *>(lParam));
+        if (!prompt)
+            return 0;
+        if (!CanInstallStartupUpdate(true)) {
+            AppendStatus(L"已发现新版；当前任务不受影响，请空闲时重新启动以确认更新。", false);
+            prompt->answer.set_value(false);
+            return 0;
+        }
+        updateRequired_ = true;
+        updateConfirming_ = true;
+        updatePromptVersion_ = prompt->version;
+        struct Dialog {
+            DLGTEMPLATE d{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME, 0, 0, 0, 0, 270, 150};
+            WORD menu = 0, cls = 0, title = 0;
+        } data;
+        const auto answer =
+            UiDialogBoxIndirectOwned(instance_, &data.d, window_, UpdateDialogProc, reinterpret_cast<LPARAM>(this));
+        if (answer != IDOK) {
+            updateRequired_ = false;
+            prompt->answer.set_value(false);
+            PostMessageW(window_, WM_CLOSE, 0, 0);
+            return 0;
+        }
+        updateApprovedVersion_ = prompt->version;
+        updateConfirming_ = false;
+        updatePhase_ = 0;
+        updateReceived_ = 0;
+        updateTotal_ = 0;
+        prompt->answer.set_value(true);
+        UiDialogBoxIndirectOwned(instance_, &data.d, window_, UpdateDialogProc, reinterpret_cast<LPARAM>(this));
+        return 0;
+    }
     case MessageUpdate: {
         std::unique_ptr<update::UpdateResult> result(reinterpret_cast<update::UpdateResult*>(lParam));
         if (!result) return 0;
         if (updateThread_.joinable()) updateThread_.join();
         if (closing_.load()) { DiscardUpdate(*result); return 0; }
         if (result->status == update::UpdateStatus::Ready) {
-            if (!CanInstallStartupUpdate()) {
+            if (!CanInstallStartupUpdate(true)) {
                 AppendStatus(L"已发现 " + std::wstring(result->version.begin(), result->version.end()) +
                     L" 新版；当前工作不受影响，请空闲时重新启动以更新。", false);
                 DiscardUpdate(*result);
+                if (updateDialog_)
+                    UiEndOwnedDialog(updateDialog_, IDCANCEL);
+                updateRequired_ = false;
+                updateApprovedVersion_.clear();
                 return 0;
             }
+            if (updateDialog_)
+                UiEndOwnedDialog(updateDialog_, IDOK);
             std::wstring error;
             if (update::LaunchUpdateWorker(result->stagingDirectory, SERIALCTL_APP_VERSION, error)) {
                 // The ready worker now owns this stage. No UI message can start
@@ -1796,8 +1978,23 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 SendMessageW(window_, WM_CLOSE, 0, 0);
                 return 0;
             }
-            AppendStatus(L"自动更新暂未安装，继续使用当前版本：" + error, true);
             DiscardUpdate(*result);
+            MessageBoxW(window_, (L"更新安装失败：" + error + L"\n请重新启动程序重试。").c_str(), L"软件更新",
+                        MB_OK | MB_ICONERROR);
+            SendMessageW(window_, WM_CLOSE, 0, 0);
+        } else if (updateRequired_) {
+            const auto choice = MessageBoxW(updateDialog_ ? updateDialog_ : window_,
+                                            (result->message + L"\n选择重试继续更新；取消将退出程序。").c_str(),
+                                            L"更新失败", MB_RETRYCANCEL | MB_ICONERROR);
+            if (choice == IDRETRY) {
+                updatePhase_ = 0;
+                updateReceived_ = 0;
+                StartStartupUpdate();
+            } else {
+                if (updateDialog_)
+                    UiEndOwnedDialog(updateDialog_, IDCANCEL);
+                SendMessageW(window_, WM_CLOSE, 0, 0);
+            }
         } else if (result->status == update::UpdateStatus::Failed && CanInstallStartupUpdate()) {
             AppendStatus(result->message, true);
         }
@@ -1869,7 +2066,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, aiVisible_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
                 return TRUE;
@@ -1882,7 +2079,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, aiVisible_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelDragging_ = true;
                 SetCapture(window_);
@@ -1896,9 +2093,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, aiVisible_);
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
-                (aiVisible_ ? aiMonitorWidth_ : rightPanelWidth_) = 360;
+                if (aiVisible_)
+                    aiMonitorRatio_ = 500;
+                else
+                    rightPanelWidth_ = 360;
                 LayoutControls(client.right, client.bottom);
                 InvalidateRect(window_, nullptr, TRUE);
                 return 0;
@@ -1909,10 +2109,19 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (rightPanelDragging_ && GetCapture() == window_) {
             RECT client{};
             GetClientRect(window_, &client);
-            const int newWidth = std::max(
-                Ui::MinRightWidth, std::min(Ui::MaxRightWidth, static_cast<int>(client.right) - GET_X_LPARAM(lParam)));
+            const int newWidth =
+                std::max(Ui::MinRightWidth, std::min(aiVisible_ ? static_cast<int>(client.right) : Ui::MaxRightWidth,
+                                                     static_cast<int>(client.right) - GET_X_LPARAM(lParam)));
             if (newWidth != SidebarWidth()) {
-                (aiVisible_ ? aiMonitorWidth_ : rightPanelWidth_) = newWidth;
+                if (aiVisible_) {
+                    const int left =
+                        std::clamp(static_cast<int>(client.right) * 18 / 100, Ui::MinLeftWidth, Ui::MaxLeftWidth);
+                    aiMonitorRatio_ =
+                        std::clamp(MulDiv(newWidth - Ui::Gap, 1000,
+                                          std::max(1, static_cast<int>(client.right) - left - Ui::Gap * 3)),
+                                   200, 800);
+                } else
+                    rightPanelWidth_ = newWidth;
                 LayoutControls(client.right, client.bottom);
                 InvalidateRect(window_, nullptr, FALSE);
             }
@@ -1992,9 +2201,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             measure->itemHeight = measure->itemData == 0 ? Ui::Scale(9) : Ui::Scale(32);
             return TRUE;
         }
-        measure->itemHeight = measure->CtlID == IdCommandList ? Ui::Scale(66) :
-            (measure->CtlID == IdSftpList ? Ui::SftpTableRowHeight :
-            (measure->CtlID == IdSftpTransferList ? Ui::SftpTransferRowHeight : Ui::Scale(58)));
+        measure->itemHeight =
+            measure->CtlID == IdCommandList
+                ? Ui::Scale(66)
+                : (measure->CtlID == IdSftpList
+                       ? Ui::SftpTableRowHeight
+                       : (measure->CtlID == IdSftpTransferList ? Ui::SftpTransferRowHeight : Ui::Scale(76)));
         return TRUE;
     }
     case WM_CONTEXTMENU:
@@ -2031,8 +2243,18 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             else if (id == IdAddCommand) AddCommand();
             else if (id == IdDeleteCommand) DeleteSelectedCommand();
             else if (id == IdCommandTab) ShowSftpPanel(false);
-            else if (id == IdSftpTab) { ShowSftpPanel(true); RefreshSftp(); }
-            else if (id == IdRightPanelToggle) SetRightPanelCollapsed(!(aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_));
+            else if (id == IdSftpTab) {
+                ShowSftpPanel(true);
+                RefreshSftp();
+            } else if (id == IdAiWrap) {
+                aiMonitorWrap_ = !aiMonitorWrap_;
+                UpdateTerminalDimensions();
+                SaveUiState();
+                RECT r{};
+                GetClientRect(window_, &r);
+                LayoutControls(r.right, r.bottom);
+            } else if (id == IdRightPanelToggle)
+                SetRightPanelCollapsed(!(aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_));
             else if (id == IdSftpNameHeader) SetSftpSort(SftpSortColumn::Name);
             else if (id == IdSftpSizeHeader) SetSftpSort(SftpSortColumn::Size);
             else if (id == IdSftpModifiedHeader) SetSftpSort(SftpSortColumn::Modified);
@@ -2189,7 +2411,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             SetBkColor(dc, colors.window);
             return reinterpret_cast<LRESULT>(windowBrush_);
         }
-        if (control == terminal_) {
+        if (control == terminal_ || control == aiTerminalHeader_) {
             SetBkColor(dc, colors.terminal);
             return reinterpret_cast<LRESULT>(terminalBrush_);
         }
@@ -2393,7 +2615,8 @@ void MainWindow::CreateControls() {
 void MainWindow::LayoutControls(int width, int height) {
     UiLayoutBatch batch;
     if (width <= 0 || height <= 0) return;
-    rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth + Ui::MinCenterWidth + Ui::Gap * 3;
+    rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth +
+                                           (aiVisible_ ? Ui::MinRightWidth : Ui::MinCenterWidth) + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
     int x = Ui::Gap + Ui::Space;
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
@@ -2405,8 +2628,8 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(themeButton_, width - Ui::Gap - Ui::StandardHeight, toolbarButtonTop,
                Ui::StandardHeight, Ui::StandardHeight, TRUE);
 
-    const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        width, height, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
+    const MainLayoutMetrics layout =
+        GetMainLayoutMetrics(width, height, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, aiVisible_);
     const int cardTop = MainCardTop();
     const int centerCardBottom = layout.contentBottom;
     const int sideCardBottom = height - Ui::Gap;
@@ -2436,8 +2659,19 @@ void MainWindow::LayoutControls(int width, int height) {
             layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
             centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
     batch.Move(aiTerminalHeader_, layout.rightLeft + Ui::PanelPadding, headerTop + 2,
-        std::max(Ui::Scale(80), width - Ui::Gap - layout.rightLeft - Ui::PanelPadding * 2 - Ui::CollapsedRightWidth),
-        Ui::CompactHeight, TRUE);
+               std::max(Ui::Scale(80), width - Ui::Gap - layout.rightLeft - Ui::PanelPadding * 2 -
+                                           Ui::CollapsedRightWidth - Ui::Scale(108)),
+               Ui::CompactHeight, TRUE);
+    if (!aiWrapButton_) {
+        aiWrapButton_ = CreateWindowExW(0, L"BUTTON", L"长行查看", WS_CHILD | BS_OWNERDRAW | WS_TABSTOP, 0, 0, 0, 0,
+                                        window_, reinterpret_cast<HMENU>(IdAiWrap), instance_, nullptr);
+        SendMessageW(aiWrapButton_, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), FALSE);
+        SetWindowSubclass(aiWrapButton_, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
+    }
+    SetWindowTextW(aiWrapButton_, aiMonitorWrap_ ? L"自动折行" : L"长行查看");
+    batch.Move(aiWrapButton_, width - Ui::Gap - Ui::PanelPadding - Ui::CollapsedRightWidth - Ui::Scale(96),
+               headerTop + 2, Ui::Scale(96), Ui::CompactHeight, TRUE);
+    batch.Show(aiWrapButton_, monitor ? SW_SHOW : SW_HIDE);
     batch.Show(aiTerminalHeader_, monitor ? SW_SHOW : SW_HIDE);
 
     batch.Move(powerPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
@@ -2477,11 +2711,13 @@ void MainWindow::LayoutControls(int width, int height) {
     const int listBottom = footerTop - Ui::Gap;
     batch.Move(commandList_, rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
                std::max(20, listBottom - rightListTop), TRUE);
-    const int commandWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 3) / 4;
-    int commandX = rightInnerLeft;
+    const int commandAvailable = rightInnerRight - rightInnerLeft - Ui::Gap * 3;
+    int commandIndex = 0;
     for (HWND button : {importButton_, exportButton_, deleteCommandButton_, saveCommandsButton_}) {
-        batch.Move(button, commandX, footerTop, commandWidth, Ui::CompactHeight, TRUE);
-        commandX += commandWidth + Ui::Space;
+        const int x = rightInnerLeft + commandAvailable * commandIndex / 4 + Ui::Gap * commandIndex;
+        const int end = rightInnerLeft + commandAvailable * (commandIndex + 1) / 4 + Ui::Gap * commandIndex;
+        batch.Move(button, x, footerTop, end - x, Ui::CompactHeight, TRUE);
+        ++commandIndex;
     }
     const int sftpContentWidth = std::max(1, rightInnerRight - rightInnerLeft);
     batch.Move(sftpPath_, rightInnerLeft, rightListTop, sftpContentWidth, Ui::CompactHeight, TRUE);
@@ -2506,14 +2742,14 @@ void MainWindow::LayoutControls(int width, int height) {
                Ui::CompactHeight, TRUE);
     batch.Move(sftpTransferList_, rightInnerLeft, transferHeaderTop + Ui::CompactHeight + Ui::Gap, sftpContentWidth,
                transferListHeight, TRUE);
-    const int sftpWidth = (rightInnerRight - rightInnerLeft - Ui::Space * 3) / 4;
-    batch.Move(sftpUpButton_, rightInnerLeft, footerTop, sftpWidth, Ui::CompactHeight, TRUE);
-    batch.Move(sftpRefreshButton_, rightInnerLeft + sftpWidth + Ui::Space, footerTop, sftpWidth, Ui::CompactHeight,
-               TRUE);
-    batch.Move(sftpUploadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 2, footerTop, sftpWidth, Ui::CompactHeight,
-               TRUE);
-    batch.Move(sftpDownloadButton_, rightInnerLeft + (sftpWidth + Ui::Space) * 3, footerTop,
-               rightInnerRight - (rightInnerLeft + (sftpWidth + Ui::Space) * 3), Ui::CompactHeight, TRUE);
+    const int sftpAvailable = rightInnerRight - rightInnerLeft - Ui::Gap * 3;
+    int sftpIndex = 0;
+    for (HWND button : {sftpUpButton_, sftpRefreshButton_, sftpUploadButton_, sftpDownloadButton_}) {
+        const int x = rightInnerLeft + sftpAvailable * sftpIndex / 4 + Ui::Gap * sftpIndex;
+        const int end = rightInnerLeft + sftpAvailable * (sftpIndex + 1) / 4 + Ui::Gap * sftpIndex;
+        batch.Move(button, x, footerTop, end - x, Ui::CompactHeight, TRUE);
+        ++sftpIndex;
+    }
 
     batch.Move(status_, leftInnerLeft,
                sideCardBottom - Ui::PanelPadding - Ui::CompactHeight - Ui::Space - statusHeight_,
@@ -2535,8 +2771,8 @@ void MainWindow::PaintWindow(HDC dc) {
     const bool toolbarFocused = focus && GetParent(focus) == window_ && IsToolbarButton(GetDlgCtrlID(focus));
     DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, toolbarFocused ? colors.accent : colors.border);
 
-    const MainLayoutMetrics layout = GetMainLayoutMetrics(
-        client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_);
+    const MainLayoutMetrics layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
+                                                          SidebarCollapsed(), rightPanelAnimatedWidth_, aiVisible_);
     const int cardTop = MainCardTop();
     RECT leftCard{Ui::Gap, cardTop, layout.leftWidth, client.bottom - Ui::Gap};
     RECT terminalFrame{layout.centerLeft, cardTop,
@@ -2545,7 +2781,11 @@ void MainWindow::PaintWindow(HDC dc) {
         client.right - Ui::Gap, client.bottom - Ui::Gap};
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, aiVisible_ ? UiAiTheme(darkMode_).surface : colors.terminal, colors.border);
-    DrawRoundedBox(dc, rightCard, Ui::CardRadius, colors.panel, colors.border);
+    DrawRoundedBox(dc, rightCard, Ui::CardRadius, aiVisible_ ? colors.terminal : colors.panel, colors.border);
+    if (aiVisible_ && !SidebarCollapsed()) {
+        UiSeparator(dc, rightCard.left + Ui::PanelPadding, rightCard.right - Ui::PanelPadding,
+                    cardTop + Ui::PanelPadding + Ui::StandardHeight + Ui::Scale(2), colors.border);
+    }
 }
 
 void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
@@ -2813,9 +3053,33 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         }
         if (!enabled) fill = colors.panel;
         DrawRoundedBox(dc, rect, Ui::Radius, fill, border);
-        DrawTextSimple(dc, ControlText(item.hwndItem), rect,
-            enabled ? (id == IDOK ? RGB(255, 255, 255) : colors.text) : colors.muted,
-            uiFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        const bool utility = id == IdMenuSaveLog || id == IdMenuClear || id == IdMenuCopy || id == IdMenuPaste ||
+                             id == IdMenuSelectAll || id == IdSendSelectionToAi || id == IdMenuNetworkDiagnostics ||
+                             id == IdMenuCancelLogExport;
+        if (utility) {
+            RECT text = rect;
+            text.left += Ui::Scale(36);
+            text.right -= Ui::Scale(8);
+            const int cy = (rect.top + rect.bottom) / 2;
+            RECT icon{rect.left + Ui::Scale(10), cy - Ui::Scale(9), rect.left + Ui::Scale(28), cy + Ui::Scale(9)};
+            const auto color = enabled ? colors.text : colors.muted;
+            if (id == IdSendSelectionToAi)
+                toolbarIcons_.Draw(dc, ToolbarIcon::Ai, icon, darkMode_);
+            else
+                UiDrawGlyph(dc, icon, color,
+                            id == IdMenuClear             ? UiGlyph::Trash
+                            : id == IdMenuCopy            ? UiGlyph::Copy
+                            : id == IdMenuPaste           ? UiGlyph::Paste
+                            : id == IdMenuSelectAll       ? UiGlyph::SelectAll
+                            : id == IdMenuCancelLogExport ? UiGlyph::Stop
+                                                          : UiGlyph::Document);
+            DrawTextSimple(dc, ControlText(item.hwndItem), text, color, uiFont_,
+                           DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        } else {
+            DrawTextSimple(dc, ControlText(item.hwndItem), rect,
+                           enabled ? (id == IDOK ? RGB(255, 255, 255) : colors.text) : colors.muted, uiFont_,
+                           DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
         return;
     }
 
@@ -2832,42 +3096,54 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             session&&session->connection&&session->connection->IsConnected();
         const bool active=ai?aiVisible_:power?powerVisible_:!powerVisible_&&!aiVisible_&&session==activeSession_;
         OverlayScrollMetrics scrollMetrics;
-        RECT card{rect.left, rect.top + Ui::Scale(4),
+        RECT card{rect.left, rect.top + Ui::Gap / 2,
                   rect.right - (GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ? Ui::OverlayScrollLaneWidth : 0),
-                  rect.bottom - Ui::Scale(4)};
+                  rect.bottom - (Ui::Gap - Ui::Gap / 2)};
         DrawRoundedBox(dc, card, Ui::CardRadius, active ? colors.accentSoft : colors.panelAlt,
             active ? colors.accent : colors.panelAlt);
-        RECT dotRect{card.left + Ui::Scale(14), card.top + Ui::Scale(17), card.left + Ui::Scale(22), card.top + Ui::Scale(25)};
-        DrawStatusDot(dc, dotRect, connected ? colors.accent : colors.muted);
-        RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(6), card.right - Ui::Scale(8), card.top + Ui::Scale(27)};
-        RECT subtitle{card.left + Ui::Scale(32), card.top + Ui::Scale(27), card.right - Ui::Scale(8), card.bottom - Ui::Scale(4)};
-        DrawTextSimple(dc, ai ? L"AI 助手" : power ? L"IT6332A" : session ? session->name : L"暂无连接", title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
-        std::wstring state = connected ? L"● 已连接" : L"○ 已断开";
-        COLORREF stateColor = colors.muted;
-        if (connected) {
-            state = L"● 已连接";
-            stateColor = colors.accent;
-        }
-        if (connected && session && session->mode == 1) {
-            state = session->port ? L"TCP " + std::to_wstring(session->port) + L" · 共享" : L"本地可用 · 未共享";
-            if (!session->port) stateColor = colors.danger;
-        }
-        DrawTextSimple(dc, state, subtitle, stateColor, smallFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        const int iconSize = Ui::Scale(20);
+        RECT icon{card.left + Ui::Scale(12), card.top + Ui::Scale(16), card.left + Ui::Scale(12) + iconSize,
+                  card.top + Ui::Scale(16) + iconSize};
+        const auto glyph = ai                              ? ToolbarIcon::Ai
+                           : power                         ? ToolbarIcon::Power
+                           : session && session->mode == 0 ? ToolbarIcon::Ssh
+                           : session && session->mode == 1 ? ToolbarIcon::Serial
+                           : session && session->mode == 2 ? ToolbarIcon::Telnet
+                           : session && session->mode == 3 ? ToolbarIcon::RemoteSerial
+                                                           : ToolbarIcon::Cmd;
+        toolbarIcons_.Draw(dc, glyph, icon, darkMode_);
+        const int textLeft = icon.right + Ui::Gap;
+        RECT title{textLeft, card.top + Ui::Scale(8), card.right - Ui::Scale(12), card.top + Ui::Scale(30)};
+        RECT subtitle{textLeft, card.top + Ui::Scale(32), card.right - Ui::Scale(12), card.bottom - Ui::Scale(8)};
+        DrawTextSimple(dc,
+                       ai        ? L"AI 助手"
+                       : power   ? L"IT6332A"
+                       : session ? session->name
+                                 : L"暂无连接",
+                       title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        std::wstring state = connected ? L"已连接" : L"已断开";
+        if (connected && session && session->mode == 1)
+            state = session->port ? L"共享 · TCP " + std::to_wstring(session->port) : L"本地可用";
+        if (session && !session->host.empty())
+            state = session->host + L" · " + state;
+        else if (session && session->mode == 4)
+            state = L"本机 · " + state;
+        RECT dot{textLeft, subtitle.top + Ui::Scale(8), textLeft + Ui::Scale(5), subtitle.top + Ui::Scale(13)};
+        DrawStatusDot(dc, dot, connected ? colors.accent : colors.muted);
+        subtitle.left += Ui::Scale(12);
+        DrawTextSimple(dc, state, subtitle, connected ? colors.accent : colors.muted, smallFont_,
+                       DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
     } else if (item.CtlID == IdCommandList && item.itemID < commands_.size()) {
         const CommandItem& command = commands_[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
-        RECT card{rect.left, rect.top + Ui::Scale(4), rect.right - rightInset, rect.bottom - Ui::Scale(4)};
+        RECT card{rect.left, rect.top + Ui::Gap / 2, rect.right - rightInset, rect.bottom - (Ui::Gap - Ui::Gap / 2)};
         DrawRoundedBox(dc, card, Ui::CardRadius, selected ? colors.accentSoft : colors.panelAlt,
-            selected ? colors.accent : colors.panelAlt);
-        for (int row = 0; row < 3; ++row) {
-            for (int col = 0; col < 2; ++col) {
-                RECT dot{card.left + Ui::Scale(12) + col * Ui::Scale(5), card.top + Ui::Scale(20) + row * Ui::Scale(5),
-                    card.left + Ui::Scale(14) + col * Ui::Scale(5), card.top + Ui::Scale(22) + row * Ui::Scale(5)};
-                DrawStatusDot(dc, dot, colors.muted);
-            }
-        }
+                       selected ? colors.accent : colors.border);
+        const int cy = (card.top + card.bottom) / 2;
+        RECT dot{card.left + Ui::Scale(14), cy - Ui::Scale(2), card.left + Ui::Scale(18), cy + Ui::Scale(2)};
+        DrawStatusDot(dc, dot, colors.muted);
         const CommandActionRects actions = GetCommandActionRects(card);
         RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(9), actions.run.left - Ui::Space, card.top + Ui::Scale(30)};
         RECT value{card.left + Ui::Scale(32), card.top + Ui::Scale(31), actions.run.left - Ui::Space, card.bottom - Ui::Scale(6)};
@@ -4289,7 +4565,8 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     SetWindowTextW(status_, text.c_str());
     if (status_) {
         RECT client{}; GetClientRect(window_, &client);
-        const auto layout = GetMainLayoutMetrics(client.right,client.bottom,SidebarWidth(),SidebarCollapsed(),rightPanelAnimatedWidth_);
+        const auto layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(), SidebarCollapsed(),
+                                                 rightPanelAnimatedWidth_, aiVisible_);
         HDC dc=GetDC(status_); auto old=SelectObject(dc,smallFont_);
         RECT measured{0,0,layout.leftWidth-Ui::Gap-Ui::PanelPadding*2,0};
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
@@ -4541,7 +4818,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
     if (message == WM_INITDIALOG) {
         SetWindowTextW(dialog, L"设置");
         ApplyDarkTitleBar(dialog, self->darkMode_);
-        UiResizeDialog(dialog, Ui::Dpi, 436, 520);
+        UiResizeDialog(dialog, Ui::Dpi, 436, 556);
         auto add = [&](const wchar_t* type, const wchar_t* text, int id, int x, int y,
                        int width, int height, DWORD style = 0) {
             HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
@@ -4610,8 +4887,14 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         tool.lpszText = state->exportTip;
         SendMessageW(self->statusTip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
         SendMessageW(help, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), TRUE);
-        add(L"BUTTON", L"取消", IDCANCEL, 220, 468, 96, 36, button);
+        add(L"BUTTON", L"取消", IDCANCEL, 216, 468, 96, 36, button);
         add(L"BUTTON", L"保存", IDOK, 324, 468, 96, 36, button);
+        HWND version = add(L"STATIC", L"SerialCtl " SERIALCTL_VERSION, -1, 16, 520, 136, 20, SS_LEFT);
+        HWND credit = add(L"STATIC", L"Application design by jiojio", -1, 152, 520, 268, 20, SS_RIGHT);
+        SetPropW(version, L"SerialCtl.Secondary", reinterpret_cast<HANDLE>(1));
+        SetPropW(credit, L"SerialCtl.Secondary", reinterpret_cast<HANDLE>(1));
+        SendMessageW(version, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
+        SendMessageW(credit, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
         UiLayoutBatch layout;
         layout.ComboVisibleHeight(encoding, Ui::Scale(28));
         layout.ComboVisibleHeight(ending, Ui::Scale(28));
@@ -4629,6 +4912,8 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         RECT client{};
         GetClientRect(dialog, &client);
         FillRect(reinterpret_cast<HDC>(wParam), &client, self->panelBrush_);
+        UiSeparator(reinterpret_cast<HDC>(wParam), Ui::Scale(16), client.right - Ui::Scale(16), Ui::Scale(512),
+                    Colors(self->darkMode_).border);
         return TRUE;
     }
     if (message == WM_CTLCOLORDLG || message == WM_CTLCOLORSTATIC || message == WM_CTLCOLORBTN ||
@@ -4636,7 +4921,10 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         const auto colors = Colors(self->darkMode_);
         HDC dc = reinterpret_cast<HDC>(wParam);
         SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, IsWindowEnabled(reinterpret_cast<HWND>(lParam)) ? colors.text : colors.muted);
+        SetTextColor(dc, IsWindowEnabled(reinterpret_cast<HWND>(lParam)) &&
+                                 !GetPropW(reinterpret_cast<HWND>(lParam), L"SerialCtl.Secondary")
+                             ? colors.text
+                             : colors.muted);
         SetBkColor(dc, colors.panel);
         return reinterpret_cast<INT_PTR>(self->panelBrush_);
     }
@@ -4887,8 +5175,8 @@ void MainWindow::UpdateTerminalDimensions() {
     ReleaseDC(terminal_, dc);
     terminalCellWidth_ = std::max(Ui::Scale(7), static_cast<int>(characterSize.cx));
     terminalLineHeight_ = std::max(Ui::Scale(15), static_cast<int>(metrics.tmHeight) + Ui::Scale(2));
-    const bool showTimestamps = timestampEnabled_ && activeSession_ &&
-        !activeSession_->terminal.AlternateScreen();
+    const bool showTimestamps =
+        timestampEnabled_ && !aiVisible_ && activeSession_ && !activeSession_->terminal.AlternateScreen();
     const int timestampWidth = showTimestamps ? Ui::TerminalTimestampWidth : 0;
     const int contentWidth = std::max(1,
         static_cast<int>(client.right) - Ui::TerminalPadding * 2 - timestampWidth - Ui::OverlayScrollLaneWidth);
@@ -4896,8 +5184,7 @@ void MainWindow::UpdateTerminalDimensions() {
     const int oldColumns = terminalVisibleColumns_, oldRows = terminalVisibleRows_;
     terminalVisibleColumns_ = std::max(20, contentWidth / terminalCellWidth_);
     terminalVisibleRows_ = std::max(2, contentHeight / terminalLineHeight_);
-    if (oldColumns == terminalVisibleColumns_ && oldRows == terminalVisibleRows_)
-        return;
+
     for (const auto& session : sessions_) {
         auto &model = session->terminal;
         const size_t oldTop =
@@ -4907,6 +5194,7 @@ void MainWindow::UpdateTerminalDimensions() {
         auto readAnchor = model.CaptureAnchor(oldTop);
         auto selectionAnchor = model.CaptureAnchor(terminalSelectionAnchorLine_, terminalSelectionAnchorColumn_);
         auto selectionFocus = model.CaptureAnchor(terminalSelectionFocusLine_, terminalSelectionFocusColumn_);
+        model.SetLineWrapView(!aiVisible_ || aiMonitorWrap_);
         session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
         if (session->terminalScrollOffset > 0) {
             auto line = model.LocateAnchor(readAnchor).first;
@@ -4954,16 +5242,18 @@ void MainWindow::PaintTerminal(HDC dc) {
             preview = std::make_unique<TerminalModel>(
                 model.PreviewInput(activeSession_->cmdEditor.Text(), activeSession_->cmdEditor.Cursor()));
         auto displayLine = [&](size_t i) -> const TerminalLine & {
-            return preview && i >= model.HistorySize() ? preview->DisplayLine(i - model.HistorySize())
-                                                       : model.DisplayLine(i);
+            return preview && !model.LineWrapView()      ? preview->DisplayLine(i)
+                   : preview && i >= model.HistorySize() ? preview->DisplayLine(i - model.HistorySize())
+                                                         : model.DisplayLine(i);
         };
-        const bool showTimestamps = timestampEnabled_ && !model.AlternateScreen();
+        const bool showTimestamps = timestampEnabled_ && !aiVisible_ && !model.AlternateScreen();
         const int padding = Ui::TerminalPadding;
         const int timestampWidth = showTimestamps ? Ui::TerminalTimestampWidth : 0;
         const int textLeft = padding + timestampWidth;
         const size_t totalLines =
-            (preview ? model.HistorySize() + preview->DisplayLineCount() : model.DisplayLineCount());
-        const size_t totalColumns = model.MaximumDisplayColumns();
+            (preview ? (model.LineWrapView() ? model.HistorySize() : 0) + preview->DisplayLineCount()
+                     : model.DisplayLineCount());
+        const size_t totalColumns = preview ? preview->MaximumDisplayColumns() : model.MaximumDisplayColumns();
         const int maximumHorizontalOffset = std::max(0,
             static_cast<int>(totalColumns) - terminalVisibleColumns_);
         activeSession_->terminalHorizontalOffset = std::max(0,
@@ -5074,7 +5364,8 @@ void MainWindow::PaintTerminal(HDC dc) {
         if (GetFocus() == terminal_ && model.CursorVisible() &&
             activeSession_->terminalScrollOffset == 0) {
             const size_t cursorLine =
-                preview ? model.HistorySize() + preview->CursorDisplayLine() : model.CursorDisplayLine();
+                preview ? (model.LineWrapView() ? model.HistorySize() : 0) + preview->CursorDisplayLine()
+                        : model.CursorDisplayLine();
             const int cursorColumn = (preview ? preview->CursorColumn() : model.CursorColumn()) - horizontalOffset;
             if (cursorLine >= topLine &&
                 cursorLine < topLine + static_cast<size_t>(terminalVisibleRows_) &&
@@ -5180,7 +5471,8 @@ bool MainWindow::TerminalPointToCell(POINT point, size_t& line, int& column) con
     RECT client{};
     GetClientRect(terminal_, &client);
     const TerminalModel& model = activeSession_->terminal;
-    const int timestampWidth = timestampEnabled_ && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
+    const int timestampWidth =
+        timestampEnabled_ && !aiVisible_ && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
     const int textLeft = Ui::TerminalPadding + timestampWidth;
     const size_t totalLines = model.DisplayLineCount();
     const size_t topLine = totalLines > static_cast<size_t>(terminalVisibleRows_ +
@@ -5373,7 +5665,16 @@ void MainWindow::RefreshConnectionList() {
 bool MainWindow::SidebarCollapsed() const {
     return powerVisible_ || (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_ || rightPanelAnimating_;
 }
-int MainWindow::SidebarWidth() const { return aiVisible_ ? aiMonitorWidth_ : rightPanelWidth_; }
+int MainWindow::SidebarWidth() const {
+    if (!aiVisible_)
+        return rightPanelWidth_;
+    RECT client{};
+    GetClientRect(window_, &client);
+    const int left = std::clamp(static_cast<int>(client.right) * 18 / 100, Ui::MinLeftWidth, Ui::MaxLeftWidth);
+    return std::max(Ui::MinRightWidth,
+                    MulDiv(std::max(1, static_cast<int>(client.right) - left - Ui::Gap * 3), aiMonitorRatio_, 1000) +
+                        Ui::Gap);
+}
 void MainWindow::SyncAiTerminal() {
     if (!aiVisible_) return;
     const auto& id = aiPane_.AssociatedTarget();
@@ -5401,7 +5702,12 @@ void MainWindow::LoadUiState() {
             L"Layout", L"RightPanelWidth", 360, path.c_str()))));
     sftpNameWidth_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"SftpNameWidth", 180, path.c_str())), 80, 600);
     aiMonitorWidth_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"AiMonitorWidth", 360, path.c_str())), Ui::MinRightWidth, Ui::MaxRightWidth);
-    aiMonitorCollapsed_ = GetPrivateProfileIntW(L"Layout", L"AiMonitorCollapsed", 1, path.c_str()) != 0;
+    // New ratio key migrates the old narrow/collapsed monitor default once.
+    aiMonitorRatio_ =
+        std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"AiMonitorRatio", 500, path.c_str())), 200, 800);
+    aiMonitorCollapsed_ = GetPrivateProfileIntW(L"Layout", L"AiMonitorRatio", 0, path.c_str()) &&
+                          GetPrivateProfileIntW(L"Layout", L"AiMonitorCollapsed", 0, path.c_str());
+    aiMonitorWrap_ = GetPrivateProfileIntW(L"Layout", L"AiMonitorWrap", 0, path.c_str()) != 0;
     rightPanelCollapsed_ = GetPrivateProfileIntW(
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
 }
@@ -5414,6 +5720,8 @@ void MainWindow::SaveUiState() const {
         directory = DirectoryOf(modulePath);
     }
     const std::wstring path = JoinLocalPath(directory, L"settings.ini");
+    WritePrivateProfileStringW(L"Layout", L"AiMonitorRatio", std::to_wstring(aiMonitorRatio_).c_str(), path.c_str());
+    WritePrivateProfileStringW(L"Layout", L"AiMonitorWrap", aiMonitorWrap_ ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"Layout", L"AiMonitorWidth", std::to_wstring(aiMonitorWidth_).c_str(), path.c_str());
     WritePrivateProfileStringW(L"Layout", L"AiMonitorCollapsed", aiMonitorCollapsed_ ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"Layout", L"SftpNameWidth", std::to_wstring(sftpNameWidth_).c_str(), path.c_str());
@@ -5426,11 +5734,14 @@ void MainWindow::SaveUiState() const {
 void MainWindow::SetRightPanelCollapsed(bool collapsed) {
     if (powerVisible_ || ((aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) == collapsed && !rightPanelAnimating_)) return;
     RECT client{}; GetClientRect(window_, &client);
-    const auto before = GetMainLayoutMetrics(client.right,client.bottom,SidebarWidth(),
-        (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_, rightPanelAnimatedWidth_);
+    const auto before =
+        GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
+                             (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_,
+                             rightPanelAnimatedWidth_, aiVisible_);
     (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) = collapsed;
-    const auto after = GetMainLayoutMetrics(client.right,client.bottom,SidebarWidth(),
-        (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_);
+    const auto after = GetMainLayoutMetrics(
+        client.right, client.bottom, SidebarWidth(),
+        (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_, -1, aiVisible_);
     SetWindowTextW(rightPanelToggleButton_, collapsed ? L"展开侧栏" : L"折叠侧栏");
     rightPanelAnimationFrom_=before.rightWidth; rightPanelAnimationTo_=after.rightWidth;
     rightPanelAnimatedWidth_=before.rightWidth; rightPanelAnimationAt_=GetTickCount64();

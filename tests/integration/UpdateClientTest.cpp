@@ -385,8 +385,8 @@ struct Fixture {
         server.Set(path + ".sig", {key.Sign(bytes)});
     }
     void Configure(const std::string& url) { Write(root / L"update.ini", Data("[update]\r\nurl=" + url + "\r\n")); }
-    UpdateResult Run(const std::string& version = "V1.0.7") {
-        return testing::CheckAndStage(root / L"serialctl.exe", version, cancel, key.publicKey);
+    UpdateResult Run(const std::string &version = "V1.0.7", const UpdateCallbacks &callbacks = {}) {
+        return testing::CheckAndStage(root / L"serialctl.exe", version, cancel, key.publicKey, callbacks);
     }
     void Cleanup(const UpdateResult& result) {
         if (!result.stagingDirectory.empty()) fs::remove_all(result.stagingDirectory);
@@ -449,6 +449,35 @@ void RunArchiveTests() {
     const auto installed = Sha256File(fixture.root / L"serialctl.exe");
     for (bool deflated : {false, true}) {
         publish(testing::BuildTestZip(members, deflated));
+        unsigned confirmations = 0;
+        const auto beforeApproval = fixture.server.Requests();
+        UpdateCallbacks decline;
+        decline.confirm = [&](const std::string &version) {
+            ++confirmations;
+            Require(version == "V1.0.8", "confirmation receives verified newer version");
+            Require(fixture.server.Requests() == beforeApproval + 1, "no ZIP request before confirmation");
+            Require(!fs::exists(fixture.root / L".serialctl-update") ||
+                        fs::is_empty(fixture.root / L".serialctl-update"),
+                    "no staging before confirmation");
+            return false;
+        };
+        Require(fixture.Run("V1.0.7", decline).status == UpdateStatus::Cancelled && confirmations == 1 &&
+                    fixture.server.Requests() == beforeApproval + 1,
+                "declining verified offer never downloads archive");
+        bool sawDownload = false, sawVerify = false;
+        UpdateCallbacks accept;
+        accept.confirm = [](const std::string &) { return true; };
+        accept.progress = [&](std::uint64_t received, std::uint64_t total, UpdatePhase phase) {
+            Require(received <= total && total > 0, "download progress is bounded signed bytes");
+            if (phase == UpdatePhase::Download)
+                sawDownload = true;
+            else
+                sawVerify = true;
+        };
+        auto accepted = fixture.Run("V1.0.7", accept);
+        Require(accepted.status == UpdateStatus::Ready && sawDownload && sawVerify,
+                "approved offer downloads and reports real verification phase");
+        fixture.Cleanup(accepted);
         const auto count = fixture.server.Requests();
         auto result = fixture.Run();
         Require(result.status == UpdateStatus::Ready && fixture.server.Requests() == count + 2,

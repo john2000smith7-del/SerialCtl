@@ -113,6 +113,8 @@ void TerminalModel::HandleOsc(TerminalFeedResult& result) {
 }
 
 TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstring& timestamp) {
+    const auto oldDisplayCount = !lineWrapView_ && !alternateScreen_ ? DisplayLineCount() : 0;
+    projectionDirty_ = true;
     if (!text.empty()) resizeHistoryLines_ = 0;
     TerminalFeedResult result;
     for (const wchar_t character : text) {
@@ -201,6 +203,11 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
             parserState_ = character == L'\\' ? ParserState::Ground : ParserState::StringIgnore;
             break;
         }
+    }
+    if (!lineWrapView_ && !alternateScreen_) {
+        projectionDirty_ = true;
+        const auto count = DisplayLineCount();
+        result.scrollbackAdded = count > oldDisplayCount ? count - oldDisplayCount : 0;
     }
     return result;
 }
@@ -708,6 +715,7 @@ void TerminalModel::EnsureTimestamp(TerminalLine& line, const std::wstring& time
 }
 
 void TerminalModel::Resize(int columns, int rows) {
+    projectionDirty_ = true;
     columns = std::max(1, columns);
     rows = std::max(1, rows);
     if (columns == columns_ && rows == rows_)
@@ -863,6 +871,22 @@ std::pair<size_t, int> TerminalModel::LocateAnchor(Anchor anchor) const {
     return {best, col};
 }
 TerminalModel TerminalModel::PreviewInput(const std::wstring &text, size_t cursor) const {
+    if (!lineWrapView_ && !alternateScreen_) {
+        TerminalModel model = *this;
+        model.SetLineWrapView(true);
+        cursor = std::min(cursor, text.size());
+        model.Feed(text.substr(0, cursor), L"");
+        const auto anchor = model.CaptureAnchor(model.CursorDisplayLine(), model.CursorColumn());
+        const bool pending = model.primary_.wrapPending;
+        model.Feed(text.substr(cursor), L"");
+        const auto caret = model.LocateAnchor(anchor);
+        model.primary_.cursorRow =
+            static_cast<int>(caret.first >= model.HistorySize() ? caret.first - model.HistorySize() : 0);
+        model.primary_.cursorColumn = caret.second;
+        model.primary_.wrapPending = pending;
+        model.SetLineWrapView(false);
+        return model;
+    }
     TerminalModel model(columns_, rows_);
     model.primary_ = primary_;
     model.attributes_ = attributes_;
@@ -889,6 +913,7 @@ TerminalModel TerminalModel::PreviewInput(const std::wstring &text, size_t curso
 }
 
 void TerminalModel::Reset() {
+    projectionDirty_ = true;
     ClearHistory();
     resizeHistoryLines_ = 0;
     primary_ = BlankScreen();
@@ -912,6 +937,7 @@ void TerminalModel::Reset() {
 }
 
 void TerminalModel::Clear() {
+    projectionDirty_ = true;
     Screen& screen = ActiveScreen();
     for (TerminalLine& line : screen.lines) line = BlankLine();
     screen.cursorRow = 0;
@@ -924,6 +950,7 @@ void TerminalModel::Clear() {
 }
 
 void TerminalModel::ClearScrollback() {
+    projectionDirty_ = true;
     ClearHistory();
     resizeHistoryLines_ = 0;
 }
@@ -932,31 +959,104 @@ size_t TerminalModel::HistorySize() const {
     return alternateScreen_ ? 0 : history_.size();
 }
 
-size_t TerminalModel::DisplayLineCount() const {
-    return HistorySize() + ActiveScreen().lines.size();
+void TerminalModel::SetLineWrapView(bool enabled) {
+    if (lineWrapView_ != enabled) {
+        lineWrapView_ = enabled;
+        projectionDirty_ = true;
+    }
 }
-
-size_t TerminalModel::MaximumDisplayColumns() const {
-    size_t maximum = static_cast<size_t>(columns_);
-    const size_t count = DisplayLineCount();
-    for (size_t index = 0; index < count; ++index)
-        maximum = std::max(maximum, DisplayLine(index).cells.size());
-    return maximum;
-}
-
-const TerminalLine& TerminalModel::DisplayLine(size_t index) const {
-    if (!alternateScreen_ && index < history_.size()) return history_[index];
+const TerminalLine &TerminalModel::RawDisplayLine(size_t index) const {
+    if (!alternateScreen_ && index < history_.size())
+        return history_[index];
     const size_t screenIndex = index - HistorySize();
-    if (screenIndex < ActiveScreen().lines.size()) return ActiveScreen().lines[screenIndex];
+    if (screenIndex < ActiveScreen().lines.size())
+        return ActiveScreen().lines[screenIndex];
     return ActiveScreen().lines.back();
 }
-
-size_t TerminalModel::CursorDisplayLine() const {
-    return HistorySize() + static_cast<size_t>(ActiveScreen().cursorRow);
+void TerminalModel::EnsureProjection() const {
+    if (!projectionDirty_)
+        return;
+    projectionStarts_.clear();
+    projectedLines_.clear();
+    projectionReady_.clear();
+    const size_t count = HistorySize() + ActiveScreen().lines.size();
+    for (size_t i = 0; i < count; ++i) {
+        const auto &line = RawDisplayLine(i);
+        if (!i || !RawDisplayLine(i - 1).wrapped || !line.logicalId ||
+            line.logicalId != RawDisplayLine(i - 1).logicalId ||
+            line.logicalOffset <= RawDisplayLine(i - 1).logicalOffset)
+            projectionStarts_.push_back(i);
+    }
+    projectedLines_.resize(projectionStarts_.size());
+    projectionReady_.resize(projectionStarts_.size(), false);
+    projectionDirty_ = false;
 }
-
+size_t TerminalModel::DisplayLineCount() const {
+    if (lineWrapView_ || alternateScreen_)
+        return HistorySize() + ActiveScreen().lines.size();
+    EnsureProjection();
+    return projectionStarts_.size();
+}
+size_t TerminalModel::MaximumDisplayColumns() const {
+    size_t maximum = static_cast<size_t>(columns_);
+    if (!lineWrapView_ && !alternateScreen_) {
+        EnsureProjection();
+        const size_t count = HistorySize() + ActiveScreen().lines.size();
+        for (size_t i = 0; i < projectionStarts_.size(); ++i) {
+            const size_t end = i + 1 < projectionStarts_.size() ? projectionStarts_[i + 1] : count;
+            const auto &first = RawDisplayLine(projectionStarts_[i]);
+            const auto &last = RawDisplayLine(end - 1);
+            maximum = std::max(maximum, last.logicalOffset - first.logicalOffset + last.used);
+        }
+    } else {
+        for (size_t i = 0; i < DisplayLineCount(); ++i)
+            maximum = std::max(maximum, DisplayLine(i).cells.size());
+    }
+    return maximum;
+}
+const TerminalLine& TerminalModel::DisplayLine(size_t index) const {
+    if (lineWrapView_ || alternateScreen_)
+        return RawDisplayLine(index);
+    EnsureProjection();
+    index = std::min(index, projectionStarts_.size() - 1);
+    if (!projectionReady_[index]) {
+        const auto start = projectionStarts_[index];
+        const auto end =
+            index + 1 < projectionStarts_.size() ? projectionStarts_[index + 1] : HistorySize() + primary_.lines.size();
+        auto &joined = projectedLines_[index];
+        joined = RawDisplayLine(start);
+        if (end > start + 1) {
+            joined.cells.clear();
+            joined.used = 0;
+            for (size_t i = start; i < end; ++i) {
+                const auto &line = RawDisplayLine(i);
+                const auto offset = line.logicalOffset - joined.logicalOffset;
+                const auto used = std::min(line.used, line.cells.size());
+                joined.cells.resize(offset + used);
+                std::copy_n(line.cells.begin(), used, joined.cells.begin() + offset);
+                joined.used = offset + used;
+                joined.hardBreak = line.hardBreak;
+            }
+        }
+        joined.wrapped = false;
+        projectionReady_[index] = true;
+    }
+    return projectedLines_[index];
+}
+size_t TerminalModel::CursorDisplayLine() const {
+    const auto raw = HistorySize() + static_cast<size_t>(ActiveScreen().cursorRow);
+    if (lineWrapView_ || alternateScreen_)
+        return raw;
+    EnsureProjection();
+    return static_cast<size_t>(std::upper_bound(projectionStarts_.begin(), projectionStarts_.end(), raw) -
+                               projectionStarts_.begin() - 1);
+}
 int TerminalModel::CursorColumn() const {
-    return ActiveScreen().cursorColumn;
+    if (lineWrapView_ || alternateScreen_)
+        return ActiveScreen().cursorColumn;
+    const auto raw = HistorySize() + static_cast<size_t>(ActiveScreen().cursorRow);
+    return static_cast<int>(RawDisplayLine(raw).logicalOffset - DisplayLine(CursorDisplayLine()).logicalOffset) +
+           ActiveScreen().cursorColumn;
 }
 
 std::wstring TerminalModel::LineText(size_t displayLine, bool trimRight) const {

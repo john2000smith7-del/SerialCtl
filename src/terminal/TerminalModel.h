@@ -68,6 +68,11 @@ public:
     void SetResponseRole(ResponseRole role) { responseRole_ = role; }
     TerminalFeedResult Feed(const std::wstring& text, const std::wstring& timestamp);
     void Resize(int columns, int rows);
+    // Display-only projection: never changes PTY dimensions or VT parsing.
+    void SetLineWrapView(bool enabled);
+    bool LineWrapView() const {
+        return lineWrapView_;
+    }
     struct Anchor {
         std::uint64_t id = 0;
         size_t offset = 0;
@@ -159,6 +164,13 @@ private:
     static bool IsCombiningCharacter(wchar_t character);
     wchar_t MapSpecialGraphics(wchar_t character) const;
 
+    const TerminalLine &RawDisplayLine(size_t index) const;
+    void EnsureProjection() const;
+    bool lineWrapView_ = true;
+    mutable bool projectionDirty_ = true;
+    mutable std::vector<size_t> projectionStarts_;
+    mutable std::vector<TerminalLine> projectedLines_;
+    mutable std::vector<bool> projectionReady_;
     mutable std::uint64_t nextLogicalId_ = 1;
     int columns_ = 80;
     int rows_ = 24;

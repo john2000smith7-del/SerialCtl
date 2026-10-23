@@ -227,7 +227,7 @@ HINTERNET Session(bool secure) {
 // retry or TLS validation overrides. Caller runs on its own joined worker.
 std::vector<unsigned char> Download(const Url &url, std::size_t limit, const std::atomic<bool> &cancel,
                                     const std::chrono::steady_clock::time_point deadline,
-                                    HANDLE output = INVALID_HANDLE_VALUE) {
+                                    HANDLE output = INVALID_HANDLE_VALUE, const UpdateCallbacks *callbacks = nullptr) {
     CheckCancelled(cancel);
     InternetHandle connection(WinHttpConnect(Session(url.secure), url.host.c_str(), url.port, 0));
     AsyncRequest request(connection.value, url);
@@ -261,6 +261,8 @@ std::vector<unsigned char> Download(const Url &url, std::size_t limit, const std
         if (count > limit - received)
             throw std::runtime_error("HTTP update body exceeds size limit");
         received += count;
+        if (callbacks && callbacks->progress)
+            callbacks->progress(received, limit, UpdatePhase::Download);
         if (output == INVALID_HANDLE_VALUE)
             data.insert(data.end(), request.Bytes(), request.Bytes() + count);
         else {
@@ -322,8 +324,9 @@ std::filesystem::path NewStage(const std::filesystem::path& install) {
     return stage;
 }
 
-UpdateResult Run(const std::filesystem::path& exePath, const std::string& currentVersion,
-                 const std::atomic<bool>& cancel, const std::vector<unsigned char>* key) {
+UpdateResult Run(const std::filesystem::path &exePath, const std::string &currentVersion,
+                 const std::atomic<bool> &cancel, const std::vector<unsigned char> *key,
+                 const UpdateCallbacks &callbacks) {
     UpdateResult result;
     std::filesystem::path stage;
     try {
@@ -382,6 +385,12 @@ UpdateResult Run(const std::filesystem::path& exePath, const std::string& curren
             }
         }
         CheckCancelled(cancel);
+        if (callbacks.confirm && !callbacks.confirm(manifest.version)) {
+            result.status = UpdateStatus::Cancelled;
+            result.message = L"更新未确认；未下载更新包";
+            return result;
+        }
+        CheckCancelled(cancel);
         stage = NewStage(install);
         WriteNew(stage / L"update.json", manifestBytes);
         if (manifest.archive.size) {
@@ -401,10 +410,12 @@ UpdateResult Run(const std::filesystem::path& exePath, const std::string& curren
                     }
                 } close{output};
                 Download(url, static_cast<size_t>(manifest.archive.size), cancel,
-                         std::chrono::steady_clock::now() + std::chrono::minutes(10), output);
+                         std::chrono::steady_clock::now() + std::chrono::minutes(10), output, &callbacks);
                 if (!FlushFileBuffers(output))
                     throw std::runtime_error("Cannot flush update archive");
             }
+            if (callbacks.progress)
+                callbacks.progress(manifest.archive.size, manifest.archive.size, UpdatePhase::Verify);
             ExtractUpdateArchive(archive, manifest, stage / L"files", cancel);
             // Each extracted runtime has a signed hash and is reverified by the
             // installer. Discard the full bundle (including drivers) now: do not
@@ -453,9 +464,9 @@ UpdateResult Run(const std::filesystem::path& exePath, const std::string& curren
 
 } // namespace
 
-UpdateResult CheckAndStage(const std::filesystem::path& exePath, const std::string& currentVersion,
-                           const std::atomic<bool>& cancel) {
-    return Run(exePath, currentVersion, cancel, nullptr);
+UpdateResult CheckAndStage(const std::filesystem::path &exePath, const std::string &currentVersion,
+                           const std::atomic<bool> &cancel, const UpdateCallbacks &callbacks) {
+    return Run(exePath, currentVersion, cancel, nullptr, callbacks);
 }
 
 #ifdef SERIALCTL_UPDATE_TESTING
@@ -463,9 +474,10 @@ namespace testing {
 HttpLifetimeCounts GetHttpLifetimeCounts() {
     return {httpStatesCreated.load(), httpStatesDestroyed.load(), httpClosingCallbacks.load()};
 }
-UpdateResult CheckAndStage(const std::filesystem::path& exePath, const std::string& currentVersion,
-                          const std::atomic<bool>& cancel, const std::vector<unsigned char>& key) {
-    return Run(exePath, currentVersion, cancel, &key);
+UpdateResult CheckAndStage(const std::filesystem::path &exePath, const std::string &currentVersion,
+                           const std::atomic<bool> &cancel, const std::vector<unsigned char> &key,
+                           const UpdateCallbacks &callbacks) {
+    return Run(exePath, currentVersion, cancel, &key, callbacks);
 }
 }
 #endif

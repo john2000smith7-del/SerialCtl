@@ -24,6 +24,32 @@ struct AiPaneTestAccess {
         SendMessageW(pane.Handle(), WM_COMMAND, MAKEWPARAM(14, CBN_SELCHANGE),
                      reinterpret_cast<LPARAM>(pane.Control(14)));
         require(pane.target_ == "session-7", "Explicit remote serial selection was not associated with the task");
+        pane.Add(L"AI", L"ABC中文DEF\n```\nx = 1;\n```\nend");
+        const auto &first = pane.messages_.front();
+        const auto &line = first.paragraphs.front().lines.front();
+        const int y = first.bounds.top + line.rect.top + 2;
+        const int x = first.bounds.left + line.rect.left;
+        SendMessageW(pane.transcript_, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x + line.advances[1], y));
+        SendMessageW(pane.transcript_, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x + line.advances[5], y));
+        SendMessageW(pane.transcript_, WM_LBUTTONUP, 0, MAKELPARAM(x + line.advances[5], y));
+        require(pane.SelectedText() == L"BC中文",
+                "Character range selection differs from actual displayed glyph positions");
+        require(OpenClipboard(pane.Handle()) != FALSE, "Cannot inspect selection clipboard");
+        auto data = GetClipboardData(CF_UNICODETEXT);
+        auto copied = static_cast<const wchar_t *>(GlobalLock(data));
+        const std::wstring clip = copied ? copied : L"";
+        if (copied)
+            GlobalUnlock(data);
+        CloseClipboard();
+        require(clip == L"BC中文", "Releasing text selection must copy selected characters, not whole message");
+        pane.selectionStart_ = {0, 1, 6};
+        pane.selectionEnd_ = {0, 0, 0};
+        require(pane.SelectedText() == L"ABC中文DEF\r\nx = 1;",
+                "Reverse selection must span code and preserve hard line breaks");
+        pane.ClearTextSelection();
+        pane.messages_.clear();
+        pane.messageBytes_ = 0;
+        pane.scroll_ = {};
         pane.thread_ = "fixture";
         for (int i = 0; i < 40; ++i)
             pane.Add(

@@ -740,11 +740,11 @@ void PowerPane::Layout() {
         batch.Move(h, x, y - scroll_, width, height);
         batch.Show(h, SW_SHOW);
     };
-    move(buttons_[0], w - d(200), 0, d(96), d(36));
+    move(buttons_[0], w - d(204), 0, d(96), d(36));
     move(buttons_[1], w - d(96), 0, d(96), d(36));
-    move(buttons_[2], w - d(200), d(52), d(96), d(36));
+    move(buttons_[2], w - d(204), d(52), d(96), d(36));
     move(buttons_[3], w - d(96), d(52), d(96), d(36));
-    move(Control(81), w - d(312), d(52), d(104), d(36));
+    move(Control(81), w - d(320), d(52), d(104), d(36));
     move(Control(80), d(72), d(52), d(160), d(180));
     batch.ComboVisibleHeight(Control(80), d(36));
     for (int i = 0; i < 3; ++i) {
@@ -794,8 +794,8 @@ void PowerPane::DetailsLayout(int width, int top) {
     };
     const int w = MulDiv(width, 96, dpi_);
     if (tab_ == 0) {
-        move(103, w - 248, 0, 72);
-        move(100, w - 168, 0, 78);
+        move(103, w - 256, 0, 72);
+        move(100, w - 172, 0, 78);
         move(101, w - 82, 0, 82);
     }
     if (tab_ == 1) {
@@ -879,7 +879,7 @@ void PowerPane::DetailsLayout(int width, int top) {
         }
     }
     if (tab_ == 3) {
-        move(240, w - 200, 0, 96);
+        move(240, w - 204, 0, 96);
         move(241, w - 96, 0, 96);
         int x = 0;
         for (int i = 0; i < 6; ++i) {
@@ -1747,7 +1747,7 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                          16, 44, 404, data->multiline ? 204 : 28);
         UiStyleField(data->edit, &pane->fieldStyle_);
         SendMessageW(data->edit, EM_SETLIMITTEXT, data->multiline ? 65536 : 256, 0);
-        auto cancel = add(L"BUTTON", L"取消", IDCANCEL, WS_TABSTOP | BS_OWNERDRAW, 220, height - 52, 96, 36);
+        auto cancel = add(L"BUTTON", L"取消", IDCANCEL, WS_TABSTOP | BS_OWNERDRAW, 216, height - 52, 96, 36);
         auto ok = add(L"BUTTON", L"确定", IDOK, WS_TABSTOP | BS_OWNERDRAW, 324, height - 52, 96, 36);
         UiStyleButton(cancel);
         UiStyleButton(ok);
