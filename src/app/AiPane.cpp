@@ -745,7 +745,7 @@ void AiPane::PaintTranscript(HDC target) {
     }
     for (size_t i = 0; i < messages_.size(); ++i) {
         const auto &m = messages_[i];
-        if (m.hidden || m.folded)
+        if (m.hidden)
             continue;
         RECT box = m.bounds;
         OffsetRect(&box, 0, -scroll_.offset);

@@ -141,6 +141,22 @@ struct AiPaneTestAccess {
         require(!pane.waitingReply_ && pane.messages_[0].folded && !pane.messages_[1].folded,
                 "Successful process must fold without hiding final answer");
         require(pane.messages_[0].text == L"实际执行输出", "Folding discarded original tool evidence");
+        {
+            RECT size{};
+            GetClientRect(pane.transcript_, &size);
+            auto screen = GetDC(pane.transcript_), dc = CreateCompatibleDC(screen);
+            auto bitmap = CreateCompatibleBitmap(screen, size.right, size.bottom), old = SelectObject(dc, bitmap);
+            pane.PaintTranscript(dc);
+            const auto summaryPixel = GetPixel(dc, pane.messages_[0].bounds.left + pane.D(20),
+                                               pane.messages_[0].bounds.top + pane.D(34) - pane.scroll_.offset);
+            SelectObject(dc, old);
+            DeleteObject(bitmap);
+            DeleteDC(dc);
+            ReleaseDC(pane.transcript_, screen);
+            require(summaryPixel == UiTheme(pane.dark_).surface,
+                    "Collapsed process summary must remain visibly painted and expandable");
+        }
+
         pane.collapsedGroups_.erase("process-fixture");
         pane.Reflow();
         require(!pane.messages_[0].folded, "Process could not be expanded");
