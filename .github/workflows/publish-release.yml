@@ -1,5 +1,8 @@
 name: Publish verified release
 on:
+  push:
+    branches: ["release/**"]
+    paths: [release-request.json]
   workflow_dispatch:
     inputs:
       version:
@@ -34,15 +37,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Read the public signed release request
+        id: request
+        if: github.event_name == 'push'
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          raw = pathlib.Path('release-request.json').read_bytes()
+          if len(raw) > 100000:
+              raise ValueError('Release request exceeds its limit')
+          data = json.loads(raw)
+          fields = {'version', 'release_tag', 'archive_sha256', 'source_commit', 'build_run_id', 'metadata_base64'}
+          if set(data) != fields or any(not isinstance(v, str) or '\n' in v or '\r' in v for v in data.values()):
+              raise ValueError('Invalid release request fields')
+          # Public signature/metadata only. The existing archive verifier below
+          # authenticates the exact ZIP; no signing key is sent to this runner.
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for name in sorted(fields):
+                  output.write(name + '=' + data[name] + '\n')
+          PY
       - name: Verify the previously built archive and publish
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          RELEASE_SHA256: ${{ inputs.archive_sha256 }}
-          RELEASE_COMMIT: ${{ inputs.source_commit }}
-          RELEASE_BUILD_RUN: ${{ inputs.build_run_id }}
-          RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 }}
+          RELEASE_VERSION: ${{ inputs.version || steps.request.outputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag || steps.request.outputs.release_tag }}
+          RELEASE_SHA256: ${{ inputs.archive_sha256 || steps.request.outputs.archive_sha256 }}
+          RELEASE_COMMIT: ${{ inputs.source_commit || steps.request.outputs.source_commit }}
+          RELEASE_BUILD_RUN: ${{ inputs.build_run_id || steps.request.outputs.build_run_id }}
+          RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 || steps.request.outputs.metadata_base64 }}
         run: |
           [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
           RELEASE_BASE_TAG="v${RELEASE_VERSION#V}"
