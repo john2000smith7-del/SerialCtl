@@ -1,0 +1,83 @@
+name: Diagnose native SSH first click
+on:
+  push:
+    branches: [verification/v203-evidence-review]
+    paths: [.github/workflows/ui-first-click.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  probe:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: bin
+          run-id: 39966791006
+          github-token: ${{ github.token }}
+      - shell: powershell
+        run: |
+          Expand-Archive bin/*.zip "$env:RUNNER_TEMP/serialctl-probe" -Force
+          $env:SERIALCTL_UI_METRICS='1'
+          python -X utf8 - <<'PY'
+          PY
+        if: false
+      - name: Probe the first mouse press without connection or retries
+        shell: python
+        run: |
+          import ctypes as c, ctypes.wintypes as w, json, os, pathlib, subprocess, sys, time, zipfile
+          sys.path.insert(0, str(pathlib.Path('tests/integration').resolve()))
+          from desktop_user_actions import DesktopActions, POINT
+          from types import SimpleNamespace
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'serialctl-first-click'
+          root.mkdir(exist_ok=True)
+          with zipfile.ZipFile(next(pathlib.Path('bin').glob('*.zip'))) as z:
+              for name in ('serialctl.exe','plink.exe','psftp.exe'):
+                  (root/name).write_bytes(z.read(name))
+          (root/'update.ini').write_text('[update]\nurl=\n')
+          os.environ['SERIALCTL_UI_METRICS']='1'
+          user=c.WinDLL('user32')
+          user.SetForegroundWindow.argtypes=(w.HWND,)
+          callback=c.WINFUNCTYPE(w.BOOL,w.HWND,w.LPARAM)
+          user.EnumWindows.argtypes=(callback,w.LPARAM)
+          user.GetWindowThreadProcessId.argtypes=(w.HWND,c.POINTER(w.DWORD))
+          user.GetWindowTextW.argtypes=(w.HWND,w.LPWSTR,c.c_int)
+          user.IsWindowVisible.argtypes=(w.HWND,)
+          def windows(pid):
+              items=[]
+              @callback
+              def collect(hwnd, _):
+                  actual=w.DWORD();user.GetWindowThreadProcessId(hwnd,c.byref(actual))
+                  if actual.value==pid and user.IsWindowVisible(hwnd):
+                      text=c.create_unicode_buffer(512);user.GetWindowTextW(hwnd,text,512)
+                      items.append((int(hwnd),text.value))
+                  return True
+              user.EnumWindows(collect,0)
+              return items
+          for i in range(3):
+              process=subprocess.Popen([str(root/'serialctl.exe')],cwd=root)
+              try:
+                  deadline=time.monotonic()+10
+                  hwnd=0
+                  while time.monotonic()<deadline and not hwnd:
+                      hwnd=next((x for x,title in windows(process.pid) if title=='SerialCtl'),0)
+                      time.sleep(.1)
+                  if not hwnd: raise RuntimeError('No main window')
+                  test=DesktopActions(SimpleNamespace(window=hwnd,pid=process.pid,output=str(root/'evidence'),prefix='first-'+str(i),mode='desktop'))
+                  user.SetForegroundWindow(hwnd);time.sleep(.06)
+                  button=test.control(100);r=test.rect(button);point=((r[0]+r[2])//2,(r[1]+r[3])//2)
+                  print('BEFORE',i,json.dumps({'windows':windows(process.pid),'rect':r,'foreground':int(user.GetForegroundWindow() or 0),'hit':int(user.WindowFromPoint(POINT(*point)) or 0)},ensure_ascii=False),flush=True)
+                  test.move_mouse(point);test.button(True);time.sleep(.025);test.button(False)
+                  time.sleep(1)
+                  print('AFTER',i,json.dumps({'windows':windows(process.pid),'foreground':int(user.GetForegroundWindow() or 0)},ensure_ascii=False),flush=True)
+                  test.capture('after-first-click');test.flush_frames()
+              finally:
+                  process.kill();process.wait()
+          print('Probe finished; no network or SSH command was submitted.')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-first-click-probe
+          path: ${{ runner.temp }}/serialctl-first-click/evidence/*
