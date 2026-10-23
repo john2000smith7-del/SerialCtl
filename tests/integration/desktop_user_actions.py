@@ -277,10 +277,19 @@ class DesktopActions:
         x, y = map(int, point)
         require(self.user.SetCursorPos(x, y), "SetCursorPos failed: interactive desktop unavailable")
         actual = POINT()
+        moved = time.perf_counter()
         require(self.user.GetCursorPos(c.byref(actual)), "GetCursorPos failed")
+        initial = (actual.x, actual.y)
+        # Observe desktop delivery before issuing the one actual mouse press.
+        # Never re-click a command or resend input to accommodate a slow desktop.
+        while (abs(actual.x - x) > 1 or abs(actual.y - y) > 1) and time.perf_counter() - moved < .25:
+            time.sleep(.005)
+            require(self.user.GetCursorPos(c.byref(actual)), "GetCursorPos failed")
         require(abs(actual.x - x) <= 1 and abs(actual.y - y) <= 1,
-                "Cursor did not reach requested desktop position")
-        self.trace.append({**self.timestamp(), "event": "mouse_move", "x": x, "y": y})
+                "Cursor did not reach requested desktop position: requested=" + repr((x, y)) +
+                " observed=" + repr((actual.x, actual.y)))
+        self.trace.append({**self.timestamp(), "event": "mouse_move", "x": x, "y": y,
+                           "initial_cursor": initial, "settle_ms": round((time.perf_counter() - moved) * 1000, 3)})
 
     def button(self, down):
         self.user.mouse_event(2 if down else 4, 0, 0, 0, 0)

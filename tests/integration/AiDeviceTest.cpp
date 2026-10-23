@@ -76,6 +76,9 @@ struct AiDeviceTestAccess {
         Require(hostFrame != nullptr, "Remote IP field frame missing");
         GetWindowRect(hostFrame, &hostField);
         GetWindowRect(GetDlgItem(remote, IDC_SERIAL_REFRESH), &remoteRefresh);
+        std::cout << "[REMOTE GEOMETRY] IP=" << hostField.left << ',' << hostField.top << ',' << hostField.right << ','
+                  << hostField.bottom << " refresh=" << remoteRefresh.left << ',' << remoteRefresh.top << ','
+                  << remoteRefresh.right << ',' << remoteRefresh.bottom << '\n';
         Require(hostField.bottom - hostField.top == 28 && remoteRefresh.top == hostField.top &&
                     remoteRefresh.bottom == hostField.bottom && remoteRefresh.left > hostField.right,
                 "Remote Refresh must align with IP field, never overlap the device dropdown");

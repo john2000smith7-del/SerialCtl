@@ -728,8 +728,11 @@ void MoveDialogItemDlu(HWND dialog, int id, int x, int y, int width, int height)
     if (!control) return;
     HWND frame = reinterpret_cast<HWND>(GetPropW(control, Ui::FieldFrameProperty));
     const int pixelWidth = rect.right - rect.left;
-    const int pixelHeight = frame ? std::max(Ui::Scale(28), static_cast<int>(rect.bottom - rect.top))
-                                  : static_cast<int>(rect.bottom - rect.top);
+    // Compact single-line fields have a logical height independent of the
+    // resource template font's dialog-unit conversion on the current system.
+    const int pixelHeight = frame && height <= 14 ? Ui::Scale(28)
+                            : frame               ? std::max(Ui::Scale(28), static_cast<int>(rect.bottom - rect.top))
+                                                  : static_cast<int>(rect.bottom - rect.top);
     if (frame) {
         MoveWindow(frame, rect.left, rect.top, pixelWidth, pixelHeight, TRUE);
         const int horizontalInset = Ui::Space;
