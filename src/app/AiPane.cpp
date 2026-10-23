@@ -759,9 +759,22 @@ void AiPane::PaintTranscript(HDC target) {
     const auto c = UiAiTheme(dark_);
     FillRect(dc, &r, surfaceBrush_);
     if (messages_.empty()) {
-        Draw(dc, L"有什么问题需要一起排查？", {D(16), D(48), r.right - D(16), D(88)}, titleFont_, c.text,
-             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        Draw(dc, L"分析终端日志、排查服务器代码，或控制已连接电源。", {D(16), D(96), r.right - D(16), D(160)}, font_,
+        std::wstring title = L"有什么问题需要一起排查？";
+        RECT measured{0, 0, std::max(1, static_cast<int>(r.right) - D(32)), 0};
+        auto old = SelectObject(dc, titleFont_);
+        SIZE singleLine{};
+        if (GetTextExtentPoint32W(dc, title.c_str(), static_cast<int>(title.size()), &singleLine) &&
+            singleLine.cx > measured.right)
+            title = L"有什么问题\n需要一起排查？";
+        DrawTextW(dc, title.c_str(), static_cast<int>(title.size()), &measured,
+                  DT_CENTER | DT_WORDBREAK | DT_CALCRECT | DT_NOPREFIX);
+        SelectObject(dc, old);
+        const int titleHeight = static_cast<int>(measured.bottom - measured.top);
+        RECT titleRect{D(16), D(48) + std::max(0, (D(40) - titleHeight) / 2), r.right - D(16), 0};
+        titleRect.bottom = titleRect.top + titleHeight;
+        Draw(dc, title, titleRect, titleFont_, c.text, DT_CENTER | DT_WORDBREAK);
+        const int descriptionTop = std::max(D(96), static_cast<int>(titleRect.bottom) + D(8));
+        Draw(dc, L"分析终端日志、排查服务器代码，或控制已连接电源。", {D(16), descriptionTop, r.right - D(16), descriptionTop + D(64)}, font_,
              c.muted, DT_CENTER | DT_WORDBREAK);
         return;
     }
