@@ -2714,9 +2714,9 @@ void MainWindow::LayoutControls(int width, int height) {
     const int commandAvailable = rightInnerRight - rightInnerLeft - Ui::Gap * 3;
     int commandIndex = 0;
     for (HWND button : {importButton_, exportButton_, deleteCommandButton_, saveCommandsButton_}) {
-        const int x = rightInnerLeft + commandAvailable * commandIndex / 4 + Ui::Gap * commandIndex;
+        const int footerX = rightInnerLeft + commandAvailable * commandIndex / 4 + Ui::Gap * commandIndex;
         const int end = rightInnerLeft + commandAvailable * (commandIndex + 1) / 4 + Ui::Gap * commandIndex;
-        batch.Move(button, x, footerTop, end - x, Ui::CompactHeight, TRUE);
+        batch.Move(button, footerX, footerTop, end - footerX, Ui::CompactHeight, TRUE);
         ++commandIndex;
     }
     const int sftpContentWidth = std::max(1, rightInnerRight - rightInnerLeft);
@@ -2745,9 +2745,9 @@ void MainWindow::LayoutControls(int width, int height) {
     const int sftpAvailable = rightInnerRight - rightInnerLeft - Ui::Gap * 3;
     int sftpIndex = 0;
     for (HWND button : {sftpUpButton_, sftpRefreshButton_, sftpUploadButton_, sftpDownloadButton_}) {
-        const int x = rightInnerLeft + sftpAvailable * sftpIndex / 4 + Ui::Gap * sftpIndex;
+        const int footerX = rightInnerLeft + sftpAvailable * sftpIndex / 4 + Ui::Gap * sftpIndex;
         const int end = rightInnerLeft + sftpAvailable * (sftpIndex + 1) / 4 + Ui::Gap * sftpIndex;
-        batch.Move(button, x, footerTop, end - x, Ui::CompactHeight, TRUE);
+        batch.Move(button, footerX, footerTop, end - footerX, Ui::CompactHeight, TRUE);
         ++sftpIndex;
     }
 
@@ -2922,6 +2922,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool hovered = GetPropW(item.hwndItem, Ui::HoverProperty) != nullptr;
         const bool focused = (item.itemState & ODS_FOCUS) != 0;
         COLORREF outside = id == IdTheme ? colors.window : colors.panel;
+        if (aiVisible_ && (id == IdAiWrap || id == IdRightPanelToggle))
+            outside = colors.terminal;
         if (id == IdCommandTab || id == IdSftpTab) outside = colors.panel;
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) outside = colors.panel;
         HBRUSH outsideBrush = CreateSolidBrush(outside);

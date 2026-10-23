@@ -801,9 +801,21 @@ void AiPane::RefreshTargets() {
     targets_ = ids;
     SendMessageW(Control(Target), CB_RESETCONTENT, 0, 0);
     SendMessageW(Control(Target), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"请选择终端…"));
-    for (const auto &s : result)
-        SendMessageW(Control(Target), CB_ADDSTRING, 0,
-                     reinterpret_cast<LPARAM>(Wide(s.value("name", s.value("id", std::string()))).c_str()));
+    for (const auto &s : result) {
+        const auto kind = s.value("kind", std::string("serial"));
+        const std::wstring label = kind == "remoteSerial" ? L"远程串口"
+                                   : kind == "cmd"        ? L"CMD"
+                                   : kind == "telnet"     ? L"Telnet"
+                                   : kind == "ssh"        ? L"SSH"
+                                                          : L"串口";
+        auto name = Wide(s.value("name", s.value("id", std::string())));
+        const auto prefix = L"[" + Wide(kind) + L"] ";
+        if (name.rfind(prefix, 0) == 0)
+            name.erase(0, prefix.size());
+        if (name.find(label) == std::wstring::npos)
+            name = label + L" · " + name;
+        SendMessageW(Control(Target), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
+    }
     SendMessageW(Control(Target), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"连接远程串口…"));
     auto it = std::find(targets_.begin(), targets_.end(), target_);
     if (it == targets_.end())

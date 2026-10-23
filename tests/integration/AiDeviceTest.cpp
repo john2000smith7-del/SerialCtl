@@ -33,13 +33,22 @@ Json Wait(PowerService& power, Json action) {
 struct AiDeviceTestAccess {
     static void Run(HWND parent) {
         MainWindow main;
+        struct WindowLifetime {
+            HWND handle;
+            ~WindowLifetime() {
+                if (IsWindow(handle))
+                    DestroyWindow(handle);
+            }
+        } windowLifetime{parent};
         main.window_ = parent;
         main.instance_ = GetModuleHandleW(nullptr);
         RECT size{0, 0, 1400, 850};
         AdjustWindowRectEx(&size, WS_OVERLAPPEDWINDOW, FALSE, 0);
         SetWindowPos(parent, nullptr, 0, 0, size.right - size.left, size.bottom - size.top, SWP_NOZORDER);
+        RECT viewport{};
         main.CreateControls();
         ShowWindow(parent, SW_SHOW);
+        GetClientRect(parent, &viewport);
         main.rightPanelWidth_ = 320;
         main.rightPanelCollapsed_ = false;
         std::vector<std::shared_ptr<Transport>> transports;
@@ -81,18 +90,20 @@ struct AiDeviceTestAccess {
         main.SyncAiTerminal();
         Require(main.aiVisible_ && main.activeSession_ == main.sessions_[1].get(),
             "AI target binding left the conversation page or selected wrong terminal");
-        main.LayoutControls(1400, 850);
+        main.LayoutControls(viewport.right, viewport.bottom);
         Require(!main.aiMonitorCollapsed_, "AI monitor must start expanded");
         main.aiMonitorCollapsed_ = true;
-        main.LayoutControls(1400, 850);
+        main.LayoutControls(viewport.right, viewport.bottom);
         Require(!IsWindowVisible(main.terminal_), "Collapsed AI monitor exposed terminal");
         main.aiMonitorCollapsed_ = false;
         main.aiMonitorRatio_ = 500;
-        main.LayoutControls(1400, 850);
+        main.LayoutControls(viewport.right, viewport.bottom);
         RECT ai{}, terminal{}, header{};
         GetWindowRect(main.aiPane_.Handle(), &ai);
         GetWindowRect(main.terminal_, &terminal);
         GetWindowRect(main.aiTerminalHeader_, &header);
+        std::cout << "[GEOMETRY] client=" << viewport.right << "x" << viewport.bottom << " chat=" << ai.right - ai.left
+                  << " terminal=" << terminal.right - terminal.left << '\n';
         Require(std::abs((terminal.right - terminal.left) - (ai.right - ai.left)) <= 1,
                 "Default AI and terminal widths must be equal");
         Require(!main.sessions_[1]->terminal.LineWrapView(), "AI monitor defaults to long-line projection");
@@ -100,8 +111,35 @@ struct AiDeviceTestAccess {
             "Expanded monitor did not place actual terminal beside chat under its header");
         Require(main.rightPanelWidth_ == 320 && !main.rightPanelCollapsed_,
             "AI monitor changed terminal sidebar preference");
+        main.darkMode_ = true;
+        main.ApplyTheme();
+        for (HWND button : {main.aiWrapButton_, main.rightPanelToggleButton_}) {
+            RECT rect{};
+            GetClientRect(button, &rect);
+            HDC screen = GetDC(button), buffer = CreateCompatibleDC(screen);
+            HBITMAP bitmap = CreateCompatibleBitmap(screen, rect.right, rect.bottom);
+            auto old = SelectObject(buffer, bitmap);
+            for (UINT state : {0u, static_cast<UINT>(ODS_FOCUS | ODS_SELECTED)}) {
+                DRAWITEMSTRUCT item{};
+                item.CtlType = ODT_BUTTON;
+                item.CtlID = GetDlgCtrlID(button);
+                item.hwndItem = button;
+                item.hDC = buffer;
+                item.rcItem = rect;
+                item.itemState = state;
+                main.DrawOwnerItem(item);
+                Require(GetPixel(buffer, 0, 0) == UiTheme(true).field,
+                        "AI monitor button exposed a rectangular sidebar-colored exterior");
+            }
+            SelectObject(buffer, old);
+            DeleteObject(bitmap);
+            DeleteDC(buffer);
+            ReleaseDC(button, screen);
+        }
+        main.darkMode_ = false;
+        main.ApplyTheme();
         main.aiMonitorRatio_ = 600;
-        main.LayoutControls(1400, 850);
+        main.LayoutControls(viewport.right, viewport.bottom);
         RECT resized{}; GetWindowRect(main.terminal_, &resized);
         Require(resized.right - resized.left > terminal.right - terminal.left,
             "Monitor width change did not resize real terminal");
@@ -115,7 +153,7 @@ struct AiDeviceTestAccess {
         main.aiPane_.SelectTarget(""); main.SyncAiTerminal();
         Require(!IsWindowVisible(main.terminal_), "Missing AI target exposed another session output");
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
-        main.LayoutControls(1400, 850);
+        main.LayoutControls(viewport.right, viewport.bottom);
         GetWindowRect(main.terminal_, &terminal); GetWindowRect(main.aiPane_.Handle(), &ai);
         Require(!main.aiVisible_ && IsWindowVisible(main.terminal_) && terminal.left == ai.left &&
             main.rightPanelWidth_ == 320, "Leaving AI failed to restore original terminal layout");
