@@ -14,14 +14,15 @@ jobs:
         with:
           name: SerialCtl-actual-desktop-interaction
           path: evidence
-          run-id: 39989822478
+          run-id: 39992349537
           github-token: ${{ github.token }}
-      - name: Inspect original reports
+      - name: Inspect original observation reports
         run: |
           python - <<'PY'
           import pathlib,json
           root=pathlib.Path('evidence')
           for path in sorted(root.rglob('*sftp-paint.json')):
-              report=json.loads(path.read_text(encoding='utf-8-sig'))
-              print('REPORT',str(path),json.dumps({k:report.get(k) for k in ('status','error','traceback','sidebar_clicks','input_trace','behavior_failures','recording')},ensure_ascii=False))
+              r=json.loads(path.read_text(encoding='utf-8-sig'))
+              clicks=r['sidebar_clicks'];latencies=[x['caption_latency_ms'] for x in clicks]
+              print('SINGLE_RELEASE_RESULT',path.name,json.dumps({'status':r['status'],'clicks':len(clicks),'caption_flips':sum(x['caption_flipped'] for x in clicks),'maximum_latency_ms':max(latencies),'over120ms':[x for x in clicks if x['caption_latency_ms']>120],'rapid_click_interval_ms':r.get('rapid_click_interval_ms'),'recording_encoded_frames':r['recording']['encoded_frames']},ensure_ascii=False))
           PY
