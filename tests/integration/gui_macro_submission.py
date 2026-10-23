@@ -98,6 +98,15 @@ class MacroActions(GlobalActions):
     def fill(self, dialog, identifier, text):
         edit = self.user.GetDlgItem(dialog, identifier)
         require(edit, 'Missing macro field ' + str(identifier))
+        def ready():
+            if not self.user.IsWindowVisible(edit) or not self.user.IsWindowEnabled(edit):
+                return False
+            bounds = self.rect(edit)
+            center = POINT((bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2)
+            return self.user.WindowFromPoint(center) == edit
+        # A dialog HWND and its fields exist before ShowWindow/presentation.
+        # Observe actual hit-test readiness; never re-click Add or resend input.
+        self.wait(ready, 'macro field visible, enabled and exposed: ' + str(identifier))
         self.click_window(edit)
         # Classic numeric EDIT controls do not consistently implement Ctrl+A.
         # All macro fields are single-line: select their full native text with
@@ -121,11 +130,21 @@ class MacroActions(GlobalActions):
     def add_macro(self, first, second, interval):
         before = self.query(self.control(112), 0x18b)
         self.click_window(self.control(115))
+        opened = []
         def dialog():
             foreground = self.user.GetForegroundWindow()
-            return foreground if foreground != self.window and self.user.GetDlgItem(foreground, 1101) else 0
+            if not foreground or foreground == self.window or not self.user.IsWindowVisible(foreground):
+                return 0
+            owner_pid = c.c_ulong()
+            self.user.GetWindowThreadProcessId(foreground, c.byref(owner_pid))
+            field = self.user.GetDlgItem(foreground, 1101)
+            if (owner_pid.value == self.args.pid and field and self.user.IsWindowVisible(field)
+                    and self.user.IsWindowEnabled(field)):
+                opened[:] = [foreground]
+                return foreground
+            return 0
         self.wait(dialog, 'command editor opens')
-        root = dialog()
+        root = opened[-1]
         self.args.root = root
         try:
             self.fill(root, 1101, '宏提交验收 ' + self.token)
@@ -242,6 +261,7 @@ class MacroActions(GlobalActions):
                     if r['kind'] == 'cmd' and r['connected'] and r['id'] not in before]
         self.wait(fresh, 'restore fresh CMD for later smoke tests')
         self.cmd = fresh()[-1]
+        self.wait(lambda: self.user.IsWindowEnabled(self.control(105)), 'fresh CMD active in the GUI')
         self.expect_resource_gone = self.resource_gone = False
         snapshot = self.client.events_since(self.cmd, (1 << 64) - 1)
         self.client.subscribe(self.cmd, snapshot['cursor'])

@@ -3032,7 +3032,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         COLORREF border = focused ? colors.accent : colors.border;
         if (id == IDOK) {
             fill =
-                enabled ? (pressed ? RGB(25, 63, 175) : (hovered ? RGB(35, 76, 196) : colors.accent)) : colors.panelAlt;
+                enabled ? (pressed ? UiAccentInset() : (hovered ? RGB(35, 76, 196) : colors.accent)) : colors.panelAlt;
             border = fill;
         }
         if (!enabled) fill = colors.panel;
@@ -3154,11 +3154,11 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool hoverEdit = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 2;
         const COLORREF cardFill = selected ? colors.accent : colors.panelAlt;
         DrawRoundedBox(dc, actions.run, Ui::Radius,
-            hoverRun && runnable ? colors.accentSoft : cardFill,
-            hoverRun && runnable ? colors.accent : cardFill);
+                       hoverRun && runnable ? (selected ? UiAccentInset() : colors.accentSoft) : cardFill,
+                       hoverRun && runnable ? colors.accent : cardFill);
         DrawRoundedBox(dc, actions.edit, Ui::Radius,
-            hoverEdit && editable ? colors.accentSoft : cardFill,
-            hoverEdit && editable ? colors.accent : cardFill);
+                       hoverEdit && editable ? (selected ? UiAccentInset() : colors.accentSoft) : cardFill,
+                       hoverEdit && editable ? colors.accent : cardFill);
 
         RECT runIcon = actions.run;
         InflateRect(&runIcon, -Ui::Scale(6), -Ui::Scale(6));

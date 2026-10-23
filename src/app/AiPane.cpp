@@ -797,7 +797,8 @@ void AiPane::PaintTranscript(HDC target) {
             if (b.bottom < 0 || b.top > r.bottom)
                 continue;
             if (p.style == 2)
-                UiBox(dc, b, c.raised, c.raised, D(4));
+                UiBox(dc, b, m.role == L"我" ? UiAccentInset() : c.raised, m.role == L"我" ? UiAccentInset() : c.raised,
+                      D(4));
             auto old = SelectObject(dc, ParagraphFont(p.style));
             SetBkMode(dc, TRANSPARENT);
             SetTextColor(dc, m.role == L"我" ? RGB(255, 255, 255) : c.text);

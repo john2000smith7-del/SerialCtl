@@ -1,5 +1,6 @@
 #include "AiPane.h"
 #include <chrono>
+#include <cmath>
 #include <gdiplus.h>
 #include <iostream>
 #include <stdexcept>
@@ -169,6 +170,50 @@ struct AiPaneTestAccess {
         require(!pane.messages_.back().folded, "Failed operation must remain visible even when AI turn completes");
         pane.NewConversation();
         pane.thread_ = "fixture";
+        pane.NewConversation();
+        pane.Add(L"我", L"中文 ABC\n```\nint main(void) {}\n```");
+        for (bool dark : {false, true}) {
+            pane.Theme(dark);
+            RECT size{};
+            GetClientRect(pane.transcript_, &size);
+            auto screen = GetDC(pane.transcript_);
+            auto dc = CreateCompatibleDC(screen);
+            auto bitmap = CreateCompatibleBitmap(screen, size.right, size.bottom);
+            auto old = SelectObject(dc, bitmap);
+            pane.PaintTranscript(dc);
+            const auto &message = pane.messages_.front();
+            for (const auto &paragraph : message.paragraphs) {
+                if (paragraph.style != 0 && paragraph.style != 2)
+                    continue;
+                unsigned ink = 0;
+                for (int y = paragraph.rect.top; y < paragraph.rect.bottom - 4; y += 2)
+                    for (int x = paragraph.rect.left; x < paragraph.rect.right; x += 2) {
+                        const auto pixel =
+                            GetPixel(dc, message.bounds.left + x, message.bounds.top + y - pane.scroll_.offset);
+                        if (GetRValue(pixel) > 230 && GetGValue(pixel) > 230 && GetBValue(pixel) > 230)
+                            ++ink;
+                    }
+                require(ink > 3,
+                        "User prose and code must visibly render light ink on their blue surfaces in both themes");
+                if (paragraph.style == 2) {
+                    const auto background = GetPixel(dc, message.bounds.left + paragraph.rect.right - 8,
+                                                     message.bounds.top + paragraph.rect.top + 8 - pane.scroll_.offset);
+                    auto linear = [](unsigned v) {
+                        const double c = v / 255.0;
+                        return c <= .04045 ? c / 12.92 : std::pow((c + .055) / 1.055, 2.4);
+                    };
+                    const double luminance = .2126 * linear(GetRValue(background)) +
+                                             .7152 * linear(GetGValue(background)) +
+                                             .0722 * linear(GetBValue(background));
+                    require(1.05 / (luminance + .05) >= 4.5,
+                            "User code block background loses readable contrast with white ink");
+                }
+            }
+            SelectObject(dc, old);
+            DeleteObject(bitmap);
+            DeleteDC(dc);
+            ReleaseDC(pane.transcript_, screen);
+        }
         pane.messageBytes_ = 4 * 1024 * 1024;
         const auto displayed = pane.messages_.size();
         pane.Add(L"AI", L"overflow");

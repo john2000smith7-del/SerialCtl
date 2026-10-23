@@ -20,6 +20,9 @@ inline UiColors UiTheme(bool dark) {
                            RGB(110, 110, 115), RGB(210, 210, 215), RGB(31, 79, 216),   RGB(255, 59, 48),
                            RGB(245, 245, 247), RGB(229, 241, 255)};
 }
+inline COLORREF UiAccentInset() {
+    return RGB(25, 63, 175);
+}
 // AI uses the existing softer surfaces; regular terminal/dialog palettes stay independent.
 inline UiColors UiAiTheme(bool dark) {
     auto c = UiTheme(dark);
@@ -98,6 +101,10 @@ inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon
         break;
     case UiGlyph::Stop:
         g.DrawRectangle(&pen, 5, 5, 14, 14);
+        break;
+    case UiGlyph::Check:
+        line(5, 12, 9, 16);
+        line(9, 16, 19, 6);
         break;
     default:
         line(6, 3, 15, 3);
@@ -672,10 +679,7 @@ inline void UiPaintCheckBox(HWND h, HDC target, const UiFieldStyle &style) {
     UiBox(dc, mark, fill, checked != BST_UNCHECKED && enabled && !pressed ? colors.accent : border, d(2));
     const COLORREF ink = enabled && !pressed ? RGB(255, 255, 255) : colors.muted;
     if (checked == BST_CHECKED) {
-        const POINT tick[]{{mark.left + d(4), mark.top + d(8)},
-                           {mark.left + d(7), mark.top + d(11)},
-                           {mark.left + d(12), mark.top + d(5)}};
-        UiPolyline(dc, tick, 3, ink, static_cast<float>(std::max(1, d(2))));
+        UiDrawGlyph(dc, mark, ink, UiGlyph::Check);
     } else if (checked == BST_INDETERMINATE) {
         const POINT dash[]{{mark.left + d(4), mark.top + d(8)}, {mark.right - d(4), mark.top + d(8)}};
         UiPolyline(dc, dash, 2, ink, static_cast<float>(std::max(1, d(2))));
