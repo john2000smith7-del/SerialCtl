@@ -71,6 +71,14 @@ struct AiDeviceTestAccess {
             GetWindowRect(GetDlgItem(remote, id), &field);
             Require(field.bottom - field.top == 28, "Remote dropdown must retain the 28 px field height");
         }
+        RECT hostField{}, remoteRefresh{};
+        auto hostFrame = reinterpret_cast<HWND>(GetPropW(GetDlgItem(remote, IDC_HOST), L"SerialCtl.FieldFrame"));
+        Require(hostFrame != nullptr, "Remote IP field frame missing");
+        GetWindowRect(hostFrame, &hostField);
+        GetWindowRect(GetDlgItem(remote, IDC_SERIAL_REFRESH), &remoteRefresh);
+        Require(remoteRefresh.top == hostField.top && remoteRefresh.bottom == hostField.bottom &&
+                    remoteRefresh.left > hostField.right,
+                "Remote Refresh must align with IP field, never overlap the device dropdown");
         main.discoveryCancel_ = true;
         main.discoveryDialog_ = nullptr;
         DestroyWindow(remote);

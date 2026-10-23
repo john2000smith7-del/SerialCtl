@@ -754,6 +754,8 @@ void ShowDialogItem(HWND dialog, int id, bool show) {
 
 void MatchDialogControlHeight(HWND dialog, int referenceId, int targetId) {
     HWND reference = GetDlgItem(dialog, referenceId);
+    if (const auto frame = reinterpret_cast<HWND>(GetPropW(reference, Ui::FieldFrameProperty)))
+        reference = frame;
     HWND target = GetDlgItem(dialog, targetId);
     if (!reference || !target) return;
     RECT referenceRect{};
@@ -3579,7 +3581,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         fields.ComboVisibleHeight(GetDlgItem(dialog, id), Ui::Scale(28));
     fields.Commit();
     if (serial || share)
-        MatchDialogControlHeight(dialog, IDC_SERIAL, IDC_SERIAL_REFRESH);
+        MatchDialogControlHeight(dialog, share ? IDC_HOST : IDC_SERIAL, IDC_SERIAL_REFRESH);
 }
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {
