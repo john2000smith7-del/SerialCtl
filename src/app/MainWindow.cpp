@@ -1466,6 +1466,12 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         }
     }
     if (message == WM_LBUTTONUP) {
+        if (self->terminalSelecting_) {
+            size_t line = 0;
+            int column = 0;
+            if (self->TerminalPointToCell({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}, line, column))
+                self->UpdateTerminalSelection(line, column, true);
+        }
         const bool completedSelection = self->terminalSelecting_ && self->HasTerminalSelection();
         self->terminalSelecting_ = false;
         self->terminalScrollbarDragging_ = false;

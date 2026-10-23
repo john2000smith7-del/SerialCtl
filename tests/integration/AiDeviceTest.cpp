@@ -34,6 +34,7 @@ Json Wait(PowerService& power, Json action) {
 struct AiDeviceTestAccess {
     static void Run(HWND parent) {
         MainWindow main;
+        main.measurePaint_ = true;
         struct WindowLifetime {
             HWND handle;
             ~WindowLifetime() {
@@ -312,6 +313,47 @@ struct AiDeviceTestAccess {
         GetWindowRect(main.terminal_, &terminal); GetWindowRect(main.aiPane_.Handle(), &ai);
         Require(!main.aiVisible_ && IsWindowVisible(main.terminal_) && terminal.left == ai.left &&
             main.rightPanelWidth_ == 320, "Leaving AI failed to restore original terminal layout");
+        // A final WM_MOUSEMOVE can be coalesced while output is repainting.
+        // The real terminal handler must finish at WM_LBUTTONUP's coordinates.
+        main.activeSession_->terminal.Reset();
+        main.activeSession_->terminal.Feed(L"COPY_HEAD  \r\nHARD_LINE", L"");
+        InvalidateRect(main.terminal_, nullptr, FALSE);
+        UpdateWindow(main.terminal_);
+        const auto metric = [&](const wchar_t* name) {
+            const int value = static_cast<int>(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, name)));
+            Require(value > 0, "Terminal selection test geometry missing");
+            return value;
+        };
+        const int left = metric(L"SerialCtl.TextLeft"), top = metric(L"SerialCtl.TextTop");
+        const int cell = metric(L"SerialCtl.CellWidth"), row = metric(L"SerialCtl.LineHeight");
+        const auto point = [&](int column, int line) {
+            return MAKELPARAM(left + column * cell + cell / 2, top + line * row + row / 2);
+        };
+        const auto copied = [&] {
+            Require(OpenClipboard(main.terminal_) != FALSE, "Cannot inspect terminal release clipboard");
+            const auto data = GetClipboardData(CF_UNICODETEXT);
+            const auto text = data ? static_cast<const wchar_t*>(GlobalLock(data)) : nullptr;
+            const std::wstring value = text ? text : L"";
+            if (text) GlobalUnlock(data);
+            CloseClipboard();
+            return value;
+        };
+        for (const bool finalMoveDelivered : {false, true}) {
+            SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(0, 0));
+            if (finalMoveDelivered)
+                SendMessageW(main.terminal_, WM_MOUSEMOVE, MK_LBUTTON, point(7, 1));
+            SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(8, 1));
+            Require(main.TerminalSelectionText(false) == L"COPY_HEAD  \r\nHARD_LINE" &&
+                        copied() == L"COPY_HEAD  \r\nHARD_LINE",
+                    "Terminal mouse release omitted its final character after a coalesced move");
+        }
+        SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(8, 1));
+        SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(0, 0));
+        Require(copied() == L"COPY_HEAD  \r\nHARD_LINE", "Reverse terminal release lost hard line breaks");
+        SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(0, 0));
+        SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(0, 0));
+        Require(copied() == L"COPY_HEAD  \r\nHARD_LINE", "Ordinary click replaced the selection clipboard");
+        main.ClearTerminalSelection();
         const auto before = transports[4]->sent;
         Require(main.AiDeviceRequest("command", {{"sessionId", "session-5"}, {"command", "a\nb"}}).contains("error"), "Multiline command bypassed validation");
         Require(transports[4]->sent == before, "Rejected command partially wrote");
