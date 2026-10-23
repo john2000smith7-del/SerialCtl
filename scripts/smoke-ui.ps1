@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([Parameter(Mandatory = $true)][string]$OutputDirectory, [switch]$ActualMouse)
+param([Parameter(Mandatory = $true)][string]$OutputDirectory, [switch]$ActualMouse, [switch]$HostFixtureOnly)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $behaviorFailures = [System.Collections.Generic.List[string]]::new()
@@ -354,6 +354,8 @@ function Wait-Dialog([int]$ProcessId, [string]$Title) {
         if ($dialog -ne [IntPtr]::Zero) { return $dialog }
         Start-Sleep -Milliseconds 100
     }
+    Capture-Desktop 'missing-dialog-desktop'
+    Get-Process -Id $ProcessId | Select-Object Id,MainWindowHandle,MainWindowTitle,Responding | ConvertTo-Json | Write-Host
     throw "The expected dialog did not appear: $Title"
 }
 function Capture-Window([IntPtr]$Handle, [string]$Name) {
@@ -427,6 +429,7 @@ New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
 $titles = @(([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFNTSCDov57mjqU='))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu65Liy5Y+j6L+e5o6l'))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5paw5bu6IFRlbG5ldCDov57mjqU='))), ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6L+e5o6l5YWx5Lqr5Liy5Y+j'))))
 foreach ($architecture in @('x64')) {
     $native = $extract
+    if (-not $HostFixtureOnly) {
     # First launch the exact packaged program with its exact packaged dependencies.
     Set-Content -LiteralPath (Join-Path $settingsDirectory 'settings.ini') -Value "[Layout]`nRightPanelWidth=260`nRightPanelCollapsed=0" -Encoding ASCII
     $application = Start-Process -FilePath (Join-Path $native 'serialctl.exe') -PassThru
@@ -833,10 +836,12 @@ foreach ($architecture in @('x64')) {
         if(Test-Path $failureLogs){Get-ChildItem $failureLogs -Filter '*.log' | ForEach-Object {Copy-Item $_.FullName (Join-Path $OutputDirectory ('failure-'+$_.Name)) -Force}}
         throw
     } finally { if (-not $application.HasExited) { $application.Kill() } }
+    }
     # Exercise the asynchronous first-host dialog without any real network/credentials.
     $sandbox = Join-Path $OutputDirectory "mock-$architecture"
     New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
     Copy-Item (Join-Path $native '*.exe') $sandbox
+    Copy-Item (Join-Path $native 'update.ini') $sandbox
     Copy-Item $mock (Join-Path $sandbox 'plink.exe') -Force
     Copy-Item $mock (Join-Path $sandbox 'psftp.exe') -Force
     $application = Start-Process -FilePath (Join-Path $sandbox 'serialctl.exe') -PassThru

@@ -68,8 +68,10 @@ class ThemeActions(DesktopActions):
         expected = (31, 79, 216) if state == "pressed" else (
             ((36, 36, 38) if theme == "dark" else (255, 255, 255)) if state == "hover" and enabled else
             ((44, 44, 46) if theme == "dark" else (242, 242, 247)))
-        # Interior strips avoid the rounded border and central Chinese text.
-        ys = list(range(round(4 * self.scale), round(8 * self.scale)))
+        # Interior strips avoid the rounded border, central Chinese text and
+        # the native keyboard focus cue inset by four logical pixels. A valid
+        # DrawFocusRect changes that row even when the background is correct.
+        ys = list(range(round(5 * self.scale), round(8 * self.scale)))
         ys += [height - 1 - y for y in ys]
         matches = total = 0
         for y in ys:
@@ -194,6 +196,10 @@ def main():
         (test.output / f"{args.prefix}-theme.json").write_text(
             json.dumps(test.report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"{test.report['status']} actual theme changes: {args.prefix}")
+    if test.report["status"] != "PASS":
+        print(json.dumps({key: test.report.get(key) for key in
+                          ("error", "traceback", "behavior_failures", "color_samples")},
+                         ensure_ascii=False))
     return 0 if test.report["status"] == "PASS" else (2 if test.report["behavior_failures"] else 1)
 
 
