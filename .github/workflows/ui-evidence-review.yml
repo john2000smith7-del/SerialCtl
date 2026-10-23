@@ -14,16 +14,27 @@ jobs:
         with:
           name: SerialCtl-actual-desktop-interaction
           path: evidence
-          run-id: 39992220886
+          run-id: 39995482753
           github-token: ${{ github.token }}
-      - name: Inspect original clipboard observations
+      - name: Review exact final receipts and original screenshots
         run: |
           python - <<'PY'
-          import pathlib,json
+          import pathlib,json,base64
           root=pathlib.Path('evidence')
-          for path in sorted(root.rglob('*terminal*.json')):
+          for name in ['interaction-receipt.json','program-executable-sha256.json']:
+              path=root/name
+              print('RECEIPT',name,path.read_text(encoding='utf-8-sig'))
+          for path in sorted(root.glob('*terminal-user-actions.json')):
               r=json.loads(path.read_text(encoding='utf-8-sig'))
-              if 'clipboard_observations' in r:
-                  print('CLIPBOARD_REPORT',path.name,json.dumps({k:r.get(k) for k in ('status','error','traceback','terminal_geometry','clipboard_observations','input_trace')},ensure_ascii=False))
-          print('JSON_NAMES',[str(x) for x in root.rglob('*.json')])
+              print('TERMINAL_RESULT',path.name,json.dumps({'status':r['status'],'clipboard':r.get('clipboard_observations')},ensure_ascii=False))
+          for path in sorted(root.glob('*paint.json')):
+              r=json.loads(path.read_text(encoding='utf-8-sig'))
+              clicks=r.get('sidebar_clicks',[])
+              print('PAINT_RESULT',path.name,json.dumps({'status':r['status'],'clicks':len(clicks),'maximum_caption_latency_ms':max((x.get('caption_latency_ms',0) for x in clicks),default=0),'frames':r.get('recording',{}).get('encoded_frames')},ensure_ascii=False))
+          for name in ['x64-light-ai-divider--1-released.png','x64-dark-ai-divider-1-released.png']:
+              path=root/name;raw=path.read_bytes();encoded=base64.b64encode(raw).decode()
+              print('ORIGINAL_BEGIN',name,len(raw),len(encoded))
+              for start in range(0,len(encoded),16000):
+                  print('ORIGINAL_CHUNK',name,start,encoded[start:start+16000])
+              print('ORIGINAL_END',name)
           PY
