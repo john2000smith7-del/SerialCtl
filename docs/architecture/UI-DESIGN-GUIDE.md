@@ -27,7 +27,7 @@ Dark theme:
 - Border: `#3A3A3C`
 - Text: `#F5F5F7`
 - Secondary text: `#98989D`
-- Accent: `#0A84FF`
+- Accent: `#1F4FD8`
 - Accent surface: `#1F3750`
 - Danger: `#FF453A`
 
@@ -40,7 +40,7 @@ Light theme:
 - Border: `#D2D2D7`
 - Text: `#1D1D1F`
 - Secondary text: `#6E6E73`
-- Accent: `#007AFF`
+- Accent: `#1F4FD8`
 - Accent surface: `#E5F1FF`
 - Danger: `#FF3B30`
 
@@ -187,3 +187,14 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 - The AI live monitor hides application timestamp gutters. Its default long-line view joins only actual soft wraps, never changes sent bytes or remote PTY width, and retains explicit CR/LF and alternate-screen semantics. Offer wrap toggle and horizontal scrolling.
 - Settings footer shows VERSION and `Application design by jiojio`; utility actions use compact consistent line icons.
 - Startup verifies signed newer metadata before showing a mandatory confirmation. Only after OK may ZIP download begin. Closing exits rather than bypassing a known required update. Progress reflects real download/verification/install phases; retries preserve existing data and idle-install protections. Unavailable/untrusted metadata does not invent a newer version. Existing two-file deployment and update.ini URL remain.
+
+## Approved compact resource design (V2.0.3)
+
+- Connection cards are 48 logical px high in 60 px rows, icons 18 px; command cards remain 54 in 66 px rows with a centered 4 px marker. Use shared 12 px gaps and a compact 190 px left lane.
+- AI composer is 96 px: multiline text above a 28 px footer. The target shows a short name; full hardware/source details belong in the themed dropdown and tooltip. Server-default model information belongs in connection settings, not a persistent composer label.
+- Selected navigation, cards, dropdown rows and user messages use solid #1F4FD8 with white foreground; hover without selection uses a neutral raised surface. Final task output stays visible and successful process items may collapse; failures remain visible.
+- Utility SVG masters and the surface fill/stroke masks generate embedded 4x PNG resources. Surface masks are nine-sliced with fixed DPI-scaled corners; dynamic text, native editing/accessibility and data plots stay live. No runtime SVG framework or source files are required.
+- Whole controls compose against their parent surface. Restore the owner surface before painting rounded resources, including focus, dropdown selection, theme switch and scrollbar updates.
+- Remote device discovery remains a themed dropdown; it is not a card gallery. UDP 6333 raw-stream compatibility must not claim to discover unknown COM identities or guarantee delivery.
+
+历史会话弹窗使用共享436宽紧凑网格、搜索28高、会话行48高与同色细滚动条；不使用系统原始 TrackPopupMenu 展示会话。远程设备列表仍为统一主题下拉框。压缩与折叠分别处理：折叠保留原文，成功后自动收起；错误／未知保持展开，最终回答不并入过程。

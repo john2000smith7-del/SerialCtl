@@ -125,9 +125,33 @@ struct AiPaneTestAccess {
         DeleteObject(bitmap);
         DeleteDC(buffer);
         ReleaseDC(pane.Control(10), screen);
-        require(corner == UiAiTheme(true).surface, "Dark composer exposed a black rectangular exterior");
+        require(corner == UiAiTheme(true).field, "Borderless edit must match its enclosing composer card");
         require(disabledField == UiAiTheme(true).field, "Disabled AI edit exposed a different rectangular fill");
 
+        pane.NewConversation();
+        pane.displayGroup_ = "process-fixture";
+        pane.thread_ = "process-thread";
+        pane.busy_ = true;
+        pane.waitingReply_ = true;
+        pane.Reflow();
+        require(pane.waitingBounds_.bottom > pane.waitingBounds_.top, "Waiting indicator missing inside transcript");
+        pane.Add(L"工具", L"实际执行输出", "process-tool");
+        pane.Add(L"AI", L"最终回答", "process-final");
+        pane.Event({{"event", "taskFinished"}, {"conversationId", "process-thread"}, {"status", "completed"}});
+        require(!pane.waitingReply_ && pane.messages_[0].folded && !pane.messages_[1].folded,
+                "Successful process must fold without hiding final answer");
+        require(pane.messages_[0].text == L"实际执行输出", "Folding discarded original tool evidence");
+        pane.collapsedGroups_.erase("process-fixture");
+        pane.Reflow();
+        require(!pane.messages_[0].folded, "Process could not be expanded");
+        pane.displayGroup_ = "failed-fixture";
+        pane.busy_ = true;
+        pane.groupStates_[pane.displayGroup_] = L"含失败记录";
+        pane.Add(L"工具", L"退出码 1", "failed-tool");
+        pane.Event({{"event", "taskFinished"}, {"status", "completed"}});
+        require(!pane.messages_.back().folded, "Failed operation must remain visible even when AI turn completes");
+        pane.NewConversation();
+        pane.thread_ = "fixture";
         ai::ServerSettings server;
         server.host = L"serialctl-pane-" + std::to_wstring(GetCurrentProcessId()) + L".invalid";
         server.username = L"fixture";

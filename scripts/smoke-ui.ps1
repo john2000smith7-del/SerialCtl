@@ -488,6 +488,11 @@ foreach ($architecture in @('x64')) {
             $modelClass = New-Object Text.StringBuilder(32)
             [SerialCtlUiSmoke]::GetClassName([SerialCtlUiSmoke]::GetDlgItem($aiPane,12),$modelClass,32) | Out-Null
             if ($modelClass.ToString() -ne 'Static' -or [SerialCtlUiSmoke]::GetDlgItem($aiPane,13) -ne [IntPtr]::Zero) { throw 'AI still exposes model selection.' }
+            # First launch defaults to a 50/50 monitor; later launches may restore its saved state.
+            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))) {
+                Click-Control $application.MainWindowHandle 125
+                Start-Sleep -Milliseconds 200
+            }
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-collapsed"
             Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 300

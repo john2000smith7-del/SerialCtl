@@ -3,15 +3,16 @@
 #include "TerminalDecoder.h"
 #include "MainWindow.h"
 
+#include "CmdConnection.h"
 #include "PlinkConnection.h"
 #include "QueuedConnection.h"
-#include "CmdConnection.h"
 #include "SerialConnection.h"
 #include "SharedSerialConnection.h"
 #include "TcpConnection.h"
-#include "Win32Helpers.h"
+#include "UdpSerialConnection.h"
 #include "UpdateClient.h"
 #include "UpdateInstaller.h"
+#include "Win32Helpers.h"
 #include "resource.h"
 
 #include <commctrl.h>
@@ -196,8 +197,8 @@ int SegmentHeight = 32;
 int SegmentWidth = 70;
 int PanelPadding = 16;
 int IconButtonSize = 28;
-int MinLeftWidth = 196;
-int MaxLeftWidth = 260;
+int MinLeftWidth = 190;
+int MaxLeftWidth = 190;
 int MinRightWidth = 260;
 int MaxRightWidth = 650;
 int CollapsedRightWidth = 48;
@@ -304,7 +305,7 @@ struct DiscoveryMessage {
     std::uint16_t port = 0;
     std::vector<std::wstring> names;
     std::wstring error;
-    bool success = false;
+    bool success = false, udp = false;
 };
 
 struct ApiMessage { std::string method,path; Json body; std::promise<Json> result; std::atomic_int state{0}; };
@@ -533,66 +534,40 @@ void CenterOnOwner(HWND window, HWND owner) {
 }
 
 void DrawChevronDown(HDC dc, const RECT& rect, COLORREF color) {
-    const int cx = (rect.left + rect.right) / 2;
-    const int cy = (rect.top + rect.bottom) / 2;
-    const POINT points[] = {{cx - Ui::Scale(4), cy - Ui::Scale(2)},
-        {cx, cy + Ui::Scale(2)}, {cx + Ui::Scale(4), cy - Ui::Scale(2)}};
-    UiPolyline(dc, points, 3, color, static_cast<float>(Ui::Scale(2)));
+    const int size = Ui::Scale(16);
+    const int x = (rect.left + rect.right - size) / 2, y = (rect.top + rect.bottom - size) / 2;
+    UiDrawGlyph(dc, {x, y, x + size, y + size}, color, UiGlyph::ChevronDown);
 }
 
 void DrawChevronHorizontal(HDC dc, const RECT& rect, COLORREF color, bool right) {
-    const int cx = (rect.left + rect.right) / 2;
-    const int cy = (rect.top + rect.bottom) / 2;
-    const int direction = right ? 1 : -1;
-    const POINT points[] = {{cx - Ui::Scale(2) * direction, cy - Ui::Scale(4)},
-        {cx + Ui::Scale(2) * direction, cy}, {cx - Ui::Scale(2) * direction, cy + Ui::Scale(4)}};
-    UiPolyline(dc, points, 3, color, static_cast<float>(Ui::Scale(2)));
+    const int size = Ui::Scale(16), x = (rect.left + rect.right - size) / 2, y = (rect.top + rect.bottom - size) / 2;
+    UiDrawGlyph(dc, {x, y, x + size, y + size}, color, right ? UiGlyph::ChevronRight : UiGlyph::ChevronLeft);
 }
 
 void DrawSortChevron(HDC dc, const RECT& rect, COLORREF color, bool ascending) {
-    const int cx = rect.right - Ui::Scale(12);
-    const int cy = (rect.top + rect.bottom) / 2;
-    const int direction = ascending ? -1 : 1;
-    const POINT points[] = {{cx - Ui::Scale(3), cy + direction * Ui::Scale(2)},
-        {cx, cy - direction * Ui::Scale(2)}, {cx + Ui::Scale(3), cy + direction * Ui::Scale(2)}};
-    UiPolyline(dc, points, 3, color, static_cast<float>(Ui::Scale(2)));
+    const int size = Ui::Scale(12), y = (rect.top + rect.bottom - size) / 2;
+    UiDrawGlyph(dc, {rect.right - Ui::Scale(20), y, rect.right - Ui::Scale(20) + size, y + size}, color,
+                ascending ? UiGlyph::ChevronUp : UiGlyph::ChevronDown);
 }
 
 void DrawSftpEntryIcon(HDC dc, const RECT& rect, COLORREF color, bool directory, bool symlink) {
-    const int cx = (rect.left + rect.right) / 2, cy = (rect.top + rect.bottom) / 2;
-    auto point = [&](int x, int y) { return POINT{cx + Ui::Scale(x), cy + Ui::Scale(y)}; };
-    auto line = [&](const POINT* points, int count) {
-        UiPolyline(dc, points, count, color, static_cast<float>(Ui::Scale(2)));
-    };
-    if (directory) {
-        const POINT outline[] = {point(-8,-5), point(-2,-5), point(0,-2), point(8,-2),
-            point(8,6), point(-8,6), point(-8,-5)};
-        line(outline, static_cast<int>(std::size(outline)));
-    } else {
-        const POINT page[] = {point(-6,-7), point(3,-7), point(7,-3), point(7,7), point(-6,7), point(-6,-7)};
-        const POINT fold[] = {point(3,-7), point(3,-3), point(7,-3)};
-        line(page, static_cast<int>(std::size(page)));
-        line(fold, static_cast<int>(std::size(fold)));
-    }
-    if (symlink) {
-        const POINT shaft[] = {point(-3,2), point(4,2)};
-        const POINT arrow[] = {point(1,-1), point(4,2), point(1,5)};
-        line(shaft, 2);
-        line(arrow, 3);
-    }
+    const int size = Ui::Scale(18), x = (rect.left + rect.right - size) / 2, y = (rect.top + rect.bottom - size) / 2;
+    UiDrawGlyph(dc, {x, y, x + size, y + size}, color,
+                symlink     ? UiGlyph::Link
+                : directory ? UiGlyph::Folder
+                            : UiGlyph::Document);
 }
 
 void DrawPlusIcon(HDC dc, const RECT& rect, COLORREF color) {
-    UiPlus(dc, rect, color, Ui::Dpi);
+    const int size = Ui::Scale(16);
+    const int x = (rect.left + rect.right - size) / 2, y = (rect.top + rect.bottom - size) / 2;
+    UiDrawGlyph(dc, {x, y, x + size, y + size}, color, UiGlyph::Plus);
 }
 
 void DrawEditIcon(HDC dc, const RECT& rect, COLORREF color) {
-    const int cx = (rect.left + rect.right) / 2, cy = (rect.top + rect.bottom) / 2;
-    auto point = [&](int x, int y) { return POINT{cx + Ui::Scale(x), cy + Ui::Scale(y)}; };
-    const POINT outline[] = {point(-6,6), point(-4,1), point(4,-7), point(7,-4), point(-1,4), point(-6,6)};
-    const POINT end[] = {point(-4,1), point(-1,4)};
-    UiPolyline(dc, outline, static_cast<int>(std::size(outline)), color, static_cast<float>(Ui::Scale(2)));
-    UiPolyline(dc, end, 2, color, static_cast<float>(Ui::Scale(2)));
+    const int size = Ui::Scale(16);
+    const int x = (rect.left + rect.right - size) / 2, y = (rect.top + rect.bottom - size) / 2;
+    UiDrawGlyph(dc, {x, y, x + size, y + size}, color, UiGlyph::Edit);
 }
 
 void DrawStatusDot(HDC dc, const RECT& rect, COLORREF color) {
@@ -2206,7 +2181,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 ? Ui::Scale(66)
                 : (measure->CtlID == IdSftpList
                        ? Ui::SftpTableRowHeight
-                       : (measure->CtlID == IdSftpTransferList ? Ui::SftpTransferRowHeight : Ui::Scale(76)));
+                       : (measure->CtlID == IdSftpTransferList ? Ui::SftpTransferRowHeight : Ui::Scale(60)));
         return TRUE;
     }
     case WM_CONTEXTMENU:
@@ -2366,8 +2341,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (!result->success) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未发现可连接的串口"));
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         pendingRemoteInstance_ = result->success ? result->instance : std::string();
+        pendingRemoteUdp_ = result->success && result->udp;
         if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
-        SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR, result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str() : result->error.c_str());
+        SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR,
+                        result->udp ? L"UDP 原始透传；无设备查询，打开后等待数据"
+                        : result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str()
+                                          : result->error.c_str());
         EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
         InvalidateRect(result->dialog, nullptr, TRUE); return 0;
     }
@@ -2821,7 +2800,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if (selected) {
             RECT highlight = rect;
             InflateRect(&highlight, -3, -2);
-            DrawRoundedBox(dc, highlight, Ui::Radius, colors.accentSoft, colors.accentSoft);
+            DrawRoundedBox(dc, highlight, Ui::Radius, colors.accent, colors.accent);
         }
         const bool checked = (item.itemState & ODS_CHECKED) != 0 || (item.itemID == IdMenuLocalEcho && localEchoEnabled_) ||
             (item.itemID == IdMenuTimestamp && timestampEnabled_) ||
@@ -2837,8 +2816,10 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const auto* label = reinterpret_cast<const wchar_t*>(item.itemData);
         const COLORREF menuText = item.itemID == IdMenuSftpDelete ? colors.danger : colors.text;
         DrawTextSimple(dc, label ? label : L"", textRect,
-            (item.itemState & ODS_DISABLED) ? colors.muted : menuText,
-            uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                       (item.itemState & ODS_DISABLED) ? colors.muted
+                       : selected                      ? RGB(255, 255, 255)
+                                                       : menuText,
+                       uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         return;
     }
 
@@ -2932,10 +2913,12 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi || id == IdSettings) {
             const bool active = id == IdAi ? aiVisible_ : id == IdPower ? powerVisible_ :
                 (id != IdSettings && !powerVisible_ && !aiVisible_ && (id == IdCmd ? selectedMode_ == 4 : id - IdSsh == selectedMode_));
-            const bool inverse = darkMode_;
-            const COLORREF ink = !enabled ? colors.muted : active ? colors.accent : colors.text;
-            const COLORREF fill = active || (pressed && enabled) ? colors.accentSoft :
-                enabled && (hovered || focused) ? colors.panelAlt : colors.panel;
+            const bool inverse = darkMode_ || active;
+            const COLORREF ink = !enabled ? colors.muted : active ? RGB(255, 255, 255) : colors.text;
+            const COLORREF fill = active                            ? colors.accent
+                                  : (pressed && enabled)            ? colors.panelAlt
+                                  : enabled && (hovered || focused) ? colors.panelAlt
+                                                                    : colors.panel;
             if (fill != colors.panel)
                 DrawRoundedBox(dc, rect, Ui::Radius, fill, fill);
             const ToolbarIcon icon = id == IdSettings ? ToolbarIcon::Settings :
@@ -2976,13 +2959,12 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         }
         if (id == IdCommandTab || id == IdSftpTab) {
             const bool active = (id == IdSftpTab) == sftpPanelVisible_;
-            const COLORREF fill = active ? colors.panel :
-                (hovered && enabled ? colors.accentSoft : colors.panelAlt);
+            const COLORREF fill = active ? colors.accent : (hovered && enabled ? colors.accentSoft : colors.panelAlt);
             DrawRoundedBox(dc, rect, Ui::Radius, pressed ? colors.accentSoft : fill,
                 focused || active ? colors.accent : colors.border);
             DrawTextSimple(dc, ControlText(item.hwndItem), rect,
-                active ? colors.accent : (enabled ? colors.text : colors.muted),
-                uiFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                           active ? RGB(255, 255, 255) : (enabled ? colors.text : colors.muted), uiFont_,
+                           DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
         }
         if (id == IdSftpNameHeader || id == IdSftpSizeHeader || id == IdSftpModifiedHeader) {
@@ -3049,8 +3031,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         COLORREF fill = pressed ? colors.accentSoft : (hovered ? colors.accentSoft : colors.panelAlt);
         COLORREF border = focused ? colors.accent : colors.border;
         if (id == IDOK) {
-            fill = enabled ? (pressed ? RGB(0, 94, 204) :
-                (hovered ? RGB(38, 147, 255) : colors.accent)) : colors.panelAlt;
+            fill =
+                enabled ? (pressed ? RGB(25, 63, 175) : (hovered ? RGB(35, 76, 196) : colors.accent)) : colors.panelAlt;
             border = fill;
         }
         if (!enabled) fill = colors.panel;
@@ -3101,11 +3083,12 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         RECT card{rect.left, rect.top + Ui::Gap / 2,
                   rect.right - (GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ? Ui::OverlayScrollLaneWidth : 0),
                   rect.bottom - (Ui::Gap - Ui::Gap / 2)};
-        DrawRoundedBox(dc, card, Ui::CardRadius, active ? colors.accentSoft : colors.panelAlt,
-            active ? colors.accent : colors.panelAlt);
-        const int iconSize = Ui::Scale(20);
-        RECT icon{card.left + Ui::Scale(12), card.top + Ui::Scale(16), card.left + Ui::Scale(12) + iconSize,
-                  card.top + Ui::Scale(16) + iconSize};
+        DrawRoundedBox(dc, card, Ui::CardRadius, active ? colors.accent : colors.panelAlt,
+                       active ? colors.accent : colors.panelAlt);
+        const int iconSize = Ui::Scale(18);
+        RECT icon{card.left + Ui::Scale(12), card.top + ((card.bottom - card.top) - iconSize) / 2,
+                  card.left + Ui::Scale(12) + iconSize,
+                  card.top + ((card.bottom - card.top) - iconSize) / 2 + iconSize};
         const auto glyph = ai                              ? ToolbarIcon::Ai
                            : power                         ? ToolbarIcon::Power
                            : session && session->mode == 0 ? ToolbarIcon::Ssh
@@ -3113,27 +3096,30 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                            : session && session->mode == 2 ? ToolbarIcon::Telnet
                            : session && session->mode == 3 ? ToolbarIcon::RemoteSerial
                                                            : ToolbarIcon::Cmd;
-        toolbarIcons_.Draw(dc, glyph, icon, darkMode_);
-        const int textLeft = icon.right + Ui::Gap;
-        RECT title{textLeft, card.top + Ui::Scale(8), card.right - Ui::Scale(12), card.top + Ui::Scale(30)};
-        RECT subtitle{textLeft, card.top + Ui::Scale(32), card.right - Ui::Scale(12), card.bottom - Ui::Scale(8)};
+        toolbarIcons_.Draw(dc, glyph, icon, darkMode_ || active);
+        const int textLeft = icon.right + Ui::Space;
+        RECT title{textLeft, card.top + Ui::Scale(3), card.right - Ui::Scale(8), card.top + Ui::Scale(25)};
+        RECT subtitle{textLeft, card.top + Ui::Scale(25), card.right - Ui::Scale(8), card.bottom - Ui::Scale(3)};
         DrawTextSimple(dc,
                        ai        ? L"AI 助手"
                        : power   ? L"IT6332A"
                        : session ? session->name
                                  : L"暂无连接",
-                       title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+                       title, active ? RGB(255, 255, 255) : colors.text, smallFont_,
+                       DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         std::wstring state = connected ? L"已连接" : L"已断开";
+        if (session && session->udpRaw && connected)
+            state = session->udpReceived ? L"已接收数据" : L"等待 UDP 数据";
         if (connected && session && session->mode == 1)
             state = session->port ? L"共享 · TCP " + std::to_wstring(session->port) : L"本地可用";
         if (session && !session->host.empty())
             state = session->host + L" · " + state;
         else if (session && session->mode == 4)
             state = L"本机 · " + state;
-        RECT dot{textLeft, subtitle.top + Ui::Scale(8), textLeft + Ui::Scale(5), subtitle.top + Ui::Scale(13)};
-        DrawStatusDot(dc, dot, connected ? colors.accent : colors.muted);
+        RECT dot{textLeft, subtitle.top + Ui::Scale(6), textLeft + Ui::Scale(5), subtitle.top + Ui::Scale(11)};
+        DrawStatusDot(dc, dot, active ? RGB(255, 255, 255) : colors.muted);
         subtitle.left += Ui::Scale(12);
-        DrawTextSimple(dc, state, subtitle, connected ? colors.accent : colors.muted, smallFont_,
+        DrawTextSimple(dc, state, subtitle, active ? RGB(255, 255, 255) : colors.muted, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
     } else if (item.CtlID == IdCommandList && item.itemID < commands_.size()) {
         const CommandItem& command = commands_[item.itemID];
@@ -3141,22 +3127,23 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
         RECT card{rect.left, rect.top + Ui::Gap / 2, rect.right - rightInset, rect.bottom - (Ui::Gap - Ui::Gap / 2)};
-        DrawRoundedBox(dc, card, Ui::CardRadius, selected ? colors.accentSoft : colors.panelAlt,
+        DrawRoundedBox(dc, card, Ui::CardRadius, selected ? colors.accent : colors.panelAlt,
                        selected ? colors.accent : colors.border);
         const int cy = (card.top + card.bottom) / 2;
         RECT dot{card.left + Ui::Scale(14), cy - Ui::Scale(2), card.left + Ui::Scale(18), cy + Ui::Scale(2)};
-        DrawStatusDot(dc, dot, colors.muted);
+        DrawStatusDot(dc, dot, selected ? RGB(255, 255, 255) : colors.muted);
         const CommandActionRects actions = GetCommandActionRects(card);
         RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(9), actions.run.left - Ui::Space, card.top + Ui::Scale(30)};
         RECT value{card.left + Ui::Scale(32), card.top + Ui::Scale(31), actions.run.left - Ui::Space, card.bottom - Ui::Scale(6)};
-        DrawTextSimple(dc, command.name, title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, command.name, title, selected ? RGB(255, 255, 255) : colors.text, uiFont_,
+                       DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         const bool macro = command.commands.size() > 1;
         const std::wstring summary = macro ?
             L"宏 · " + std::to_wstring(command.commands.size()) + L" 条指令 · " +
                 std::to_wstring(command.intervalMs) + L" ms" :
             (command.commands.empty() ? std::wstring() : command.commands.front());
-        DrawTextSimple(dc, summary, value, colors.muted, smallFont_,
-            DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, summary, value, selected ? RGB(235, 240, 255) : colors.muted, smallFont_,
+                       DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         const bool connected = connection_ && connection_->IsConnected();
         const bool sequenceRunning = runningCommandIndex_ >= 0;
@@ -3165,7 +3152,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool editable = !sequenceRunning;
         const bool hoverRun = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 1;
         const bool hoverEdit = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 2;
-        const COLORREF cardFill = selected ? colors.accentSoft : colors.panelAlt;
+        const COLORREF cardFill = selected ? colors.accent : colors.panelAlt;
         DrawRoundedBox(dc, actions.run, Ui::Radius,
             hoverRun && runnable ? colors.accentSoft : cardFill,
             hoverRun && runnable ? colors.accent : cardFill);
@@ -3173,32 +3160,26 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             hoverEdit && editable ? colors.accentSoft : cardFill,
             hoverEdit && editable ? colors.accent : cardFill);
 
-        const int runCx = (actions.run.left + actions.run.right) / 2;
-        const int runCy = (actions.run.top + actions.run.bottom) / 2;
-        const COLORREF runColor = runnable ? colors.accent : colors.muted;
-        {
-            Gdiplus::Graphics graphics(dc);
-            graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-            Gdiplus::SolidBrush brush(UiColor(runColor));
-            if (isRunning) {
-                graphics.FillRectangle(&brush, runCx - Ui::Scale(4), runCy - Ui::Scale(4), Ui::Scale(8), Ui::Scale(8));
-            } else {
-                const Gdiplus::Point triangle[] = {{runCx - Ui::Scale(4), runCy - Ui::Scale(6)},
-                    {runCx + Ui::Scale(6), runCy}, {runCx - Ui::Scale(4), runCy + Ui::Scale(6)}};
-                graphics.FillPolygon(&brush, triangle, 3);
-            }
-        }
+        RECT runIcon = actions.run;
+        InflateRect(&runIcon, -Ui::Scale(6), -Ui::Scale(6));
+        UiDrawGlyph(dc, runIcon,
+                    selected   ? RGB(255, 255, 255)
+                    : runnable ? colors.text
+                               : colors.muted,
+                    isRunning ? UiGlyph::Stop : UiGlyph::Run);
         if (isRunning)
             DrawCommandProgress(dc, actions.run, submittedCommandSteps_, command.commands.size(),
                 colors.border, colors.accent);
         DrawEditIcon(dc, actions.edit,
-            editable ? (hoverEdit ? colors.accent : colors.muted) : colors.border);
+                     selected   ? RGB(255, 255, 255)
+                     : editable ? (hoverEdit ? colors.accent : colors.muted)
+                                : colors.border);
     } else if (item.CtlID == IdSftpList && item.itemID < sftpEntries_.size()) {
         const SftpEntry& entry = sftpEntries_[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = Ui::OverlayScrollLaneWidth;
         RECT row{rect.left, rect.top, rect.right - rightInset, rect.bottom};
-        HBRUSH rowBrush = CreateSolidBrush(selected ? colors.accentSoft : colors.panel);
+        HBRUSH rowBrush = CreateSolidBrush(selected ? colors.accent : colors.panel);
         FillRect(dc, &row, rowBrush);
         DeleteObject(rowBrush);
         RECT tableClient{}; GetClientRect(sftpList_, &tableClient);
@@ -3207,22 +3188,25 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         int nameWidth, sizeWidth, modifiedWidth;
         SftpColumnWidths(contentWidth, nameWidth, sizeWidth, modifiedWidth);
         RECT icon{row.left + Ui::Space, row.top, row.left + Ui::Scale(32), row.bottom};
-        DrawSftpEntryIcon(dc, icon, entry.directory ? colors.accent : colors.muted,
-            entry.directory, entry.symlink);
+        DrawSftpEntryIcon(dc, icon,
+                          selected          ? RGB(255, 255, 255)
+                          : entry.directory ? colors.accent
+                                            : colors.muted,
+                          entry.directory, entry.symlink);
         RECT name{row.left + Ui::Scale(36), row.top, row.left + nameWidth - Ui::Space, row.bottom};
-        DrawTextSimple(dc, entry.name, name, colors.text, uiFont_,
-            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, entry.name, name, selected ? RGB(255, 255, 255) : colors.text, uiFont_,
+                       DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         if (!entry.directory) {
             RECT size{row.left + nameWidth, row.top,
                 row.left + nameWidth + sizeWidth - Ui::Space, row.bottom};
-            DrawTextSimple(dc, FileSizeText(entry.size), size, colors.muted, smallFont_,
-                DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            DrawTextSimple(dc, FileSizeText(entry.size), size, selected ? RGB(235, 240, 255) : colors.muted, smallFont_,
+                           DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
         }
         if (showModified) {
             RECT modified{row.left + nameWidth + sizeWidth, row.top,
                 row.right - Ui::Space, row.bottom};
-            DrawTextSimple(dc, entry.modifiedText, modified, colors.muted, smallFont_,
-                DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            DrawTextSimple(dc, entry.modifiedText, modified, selected ? RGB(235, 240, 255) : colors.muted, smallFont_,
+                           DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         }
         HPEN divider = CreatePen(PS_SOLID, 1, colors.border);
         HPEN oldDivider = reinterpret_cast<HPEN>(SelectObject(dc, divider));
@@ -3381,7 +3365,8 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         HDC dc = reinterpret_cast<HDC>(wParam);
         SetBkMode(dc, TRANSPARENT);
         const HWND control = reinterpret_cast<HWND>(lParam);
-        SetTextColor(dc, GetDlgCtrlID(control) == IDC_DIALOG_ERROR ? colors.danger : colors.text);
+        SetTextColor(dc, GetDlgCtrlID(control) == IDC_DIALOG_ERROR && !self->pendingRemoteUdp_ ? colors.danger
+                                                                                               : colors.text);
         if (message == WM_CTLCOLOREDIT || message == WM_CTLCOLORLISTBOX) {
             SetBkColor(dc, colors.terminal);
             return reinterpret_cast<INT_PTR>(self->terminalBrush_);
@@ -3425,7 +3410,8 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             ++self->discoveryGeneration_; self->discoveryCancel_ = true;
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE); SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return TRUE;
         }
-        if (self->pendingMode_ == 3 && LOWORD(wParam) == IDC_HOST && HIWORD(wParam) == EN_CHANGE) {
+        if (self->pendingMode_ == 3 && ((LOWORD(wParam) == IDC_HOST && HIWORD(wParam) == EN_CHANGE) ||
+                                        (LOWORD(wParam) == IDC_REMOTE_MODE && HIWORD(wParam) == CBN_SELCHANGE))) {
             ++self->discoveryGeneration_; self->discoveryCancel_ = true;
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
             SetTimer(dialog, DiscoveryTimerId, 500, nullptr); return TRUE;
@@ -3461,6 +3447,9 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     const bool share = pendingMode_ == 3;
     discoveryExplicitPort_ = 0;
     pendingRemoteInstance_.clear();
+    pendingRemoteUdp_ = false;
+    ShowDialogItem(dialog, IDC_REMOTE_MODE_LABEL, share);
+    ShowDialogItem(dialog, IDC_REMOTE_MODE, share);
     const int serialSelectorIds[] = {IDC_SERIAL_LABEL, IDC_SERIAL};
     const int serialSettingIds[] = {IDC_BAUD_LABEL, IDC_BAUD, IDC_DATABITS_LABEL, IDC_DATABITS,
         IDC_PARITY_LABEL, IDC_PARITY, IDC_STOPBITS_LABEL, IDC_STOPBITS, IDC_FLOW_LABEL, IDC_FLOW};
@@ -3507,18 +3496,24 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
             MoveDialogItemDlu(dialog, IDC_PASSWORD, rightColumn, 56, columnWidth, 14);
         } else if (share) {
             SetDlgItemTextW(dialog, IDC_HOST_LABEL, L"来源 IP");
-            MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, fullWidth, 14);
+            MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, 174, 14);
+            MoveDialogItemDlu(dialog, IDC_REMOTE_MODE_LABEL, margin, 44, fullWidth, 10);
+            MoveDialogItemDlu(dialog, IDC_REMOTE_MODE, margin, 56, fullWidth, 154);
+            auto mode = GetDlgItem(dialog, IDC_REMOTE_MODE);
+            for (auto label : {L"自动识别", L"SerialCtl WebSocket", L"UDP 6333 · 原始透传"})
+                SendMessageW(mode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
+            SendMessageW(mode, CB_SETCURSEL, 0, 0);
             SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"远端串口");
-            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 44, columnWidth, 10);
-            MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 56, 174, 154);
-            MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 56, 32, 14);
+            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 78, columnWidth, 10);
+            MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 90, fullWidth, 154);
+            MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 22, 32, 14);
         }
     }
 
     int errorY = 106;
     int buttonY = 118;
     int dialogHeight = 144;
-    if (share || (!serial && ssh)) {
+    if (!serial && ssh) {
         errorY = 72;
         buttonY = 84;
         dialogHeight = 110;
@@ -3565,14 +3560,14 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
 void MainWindow::RefreshSerialPorts(HWND dialog) {
     HWND ports = GetDlgItem(dialog, IDC_SERIAL);
     SendMessageW(ports, CB_RESETCONTENT, 0, 0);
+    serialPorts_ = EnumerateSerialPorts();
     int count = 0;
-    for (int index = 1; index <= 256; ++index) {
-        const std::wstring name = L"COM" + std::to_wstring(index);
-        wchar_t target[256]{};
-        if (QueryDosDeviceW(name.c_str(), target, static_cast<DWORD>(std::size(target)))) {
-            SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
-            ++count;
-        }
+    for (const auto &port : serialPorts_) {
+        auto label = port.friendlyName;
+        if (label.find(port.port) == std::wstring::npos)
+            label += L" (" + port.port + L")";
+        SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+        ++count;
     }
     if (count == 0) {
         SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未检测到串口"));
@@ -3598,28 +3593,46 @@ void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
     discoveryFinished_ = false;
     const unsigned generation = ++discoveryGeneration_;
     const auto explicitPort = discoveryExplicitPort_;
+    const int transport = static_cast<int>(SendMessageW(GetDlgItem(dialog, IDC_REMOTE_MODE), CB_GETCURSEL, 0, 0));
     EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
     SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"正在自动发现串口…");
-    discoveryThread_ = std::thread([this, host, dialog, generation, explicitPort] {
-        auto result = std::make_unique<DiscoveryMessage>(); result->dialog = dialog; result->generation = generation;
+    discoveryThread_ = std::thread([this, host, dialog, generation, explicitPort, transport] {
+        auto result = std::make_unique<DiscoveryMessage>();
+        result->dialog = dialog;
+        result->generation = generation;
         try {
             std::vector<std::wstring> descriptions;
-            result->success =
-                SharedSerialConnection::DiscoverAuto(host, result->port, result->names, result->error,
-                                                     &discoveryCancel_, explicitPort, &descriptions, &result->instance);
-            if (result->success) result->names = std::move(descriptions);
+            result->success = transport != 2 && SharedSerialConnection::DiscoverAuto(
+                                                    host, result->port, result->names, result->error, &discoveryCancel_,
+                                                    explicitPort, &descriptions, &result->instance);
+            if (result->success)
+                result->names = std::move(descriptions);
+            else if (transport != 1 && !discoveryCancel_) {
+                result->success = true;
+                result->udp = true;
+                result->port = transport == 2 && explicitPort ? explicitPort : 6333;
+                result->names = {L"UDP 原始数据流 · " + std::to_wstring(result->port) + L"（设备名称未知）"};
+                result->instance.clear();
+            }
         } catch (...) {
             result->error = L"串口查询失败";
         }
         discoveryFinished_ = true;
-        if (PostMessageW(window_, MessageDiscovery, 0, reinterpret_cast<LPARAM>(result.get()))) result.release();
+        if (PostMessageW(window_, MessageDiscovery, 0, reinterpret_cast<LPARAM>(result.get())))
+            result.release();
     });
 }
 
 bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
     auto text = [dialog](int id) { return Trim(ControlText(GetDlgItem(dialog, id))); };
     if (pendingMode_ == 1) {
-        pendingSerial_.portName = text(IDC_SERIAL);
+        const auto selected = SendMessageW(GetDlgItem(dialog, IDC_SERIAL), CB_GETCURSEL, 0, 0);
+        if (selected < 0 || static_cast<size_t>(selected) >= serialPorts_.size()) {
+            error = L"请选择有效串口";
+            return false;
+        }
+        pendingSerial_.portName = serialPorts_[selected].port;
+        pendingSerial_.friendlyName = serialPorts_[selected].friendlyName;
         pendingSerial_.baudRate = ParsePositive(text(IDC_BAUD));
         if (pendingSerial_.portName.empty() || pendingSerial_.baudRate == 0) {
             error = L"请选择串口并填写正确的波特率。";
@@ -3647,6 +3660,7 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
     }
     if (pendingMode_ == 3) {
         pendingRemoteSerial_ = text(IDC_SERIAL);
+        pendingRemoteLabel_ = pendingRemoteSerial_;
         const auto description = pendingRemoteSerial_.find(L" · ");
         if (description != std::wstring::npos) pendingRemoteSerial_.erase(description);
         if (pendingRemoteSerial_.empty() || pendingRemoteSerial_ == L"请先查询远端串口" ||
@@ -3686,22 +3700,26 @@ void MainWindow::ConnectFromDialog() {
         sessionName = pendingUsername_ + L"@" + pendingHost_;
     } else if (pendingMode_ == 1) {
         connection = std::make_unique<SerialConnection>(pendingSerial_);
-        sessionName = pendingSerial_.portName + L" 本地串口";
+        sessionName = pendingSerial_.friendlyName.empty() ? pendingSerial_.portName : pendingSerial_.friendlyName;
     } else if (pendingMode_ == 2) {
         connection = std::make_unique<TcpConnection>(pendingHost_, pendingPort_, true);
         sessionName = pendingHost_ + L":" + std::to_wstring(pendingPort_);
     } else if (pendingMode_ == 4) {
         connection = std::make_unique<CmdConnection>(); sessionName = L"本地 CMD";
     } else {
-        connection = std::make_unique<SharedSerialConnection>(pendingHost_, pendingPort_, pendingRemoteSerial_,
-                                                              pendingRemoteInstance_);
-        sessionName = pendingRemoteSerial_ + L" @ " + pendingHost_;
+        if (pendingRemoteUdp_)
+            connection = std::make_unique<UdpSerialConnection>(pendingHost_, pendingPort_, pendingPort_);
+        else
+            connection = std::make_unique<SharedSerialConnection>(pendingHost_, pendingPort_, pendingRemoteSerial_,
+                                                                  pendingRemoteInstance_);
+        sessionName = pendingRemoteLabel_ + L" @ " + pendingHost_;
     }
 
     auto session = std::make_unique<SessionState>();
     session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
     session->id = nextSessionId_++;
     session->mode = pendingMode_;
+    session->udpRaw = pendingMode_ == 3 && pendingRemoteUdp_;
     // Only the desktop that owns the local COM answers terminal queries.
     // A shared viewer receives live output and history through the same Feed
     // path, so neither may synthesize additional device input. SSH/Telnet keep
@@ -3712,7 +3730,10 @@ void MainWindow::ConnectFromDialog() {
     session->lineEndingIndex = pendingMode_ == 0 ? 1 : (pendingMode_ == 4 ? 2 : 0);
     session->name = sessionName + (pendingMode_ == 4 ? L" #" + std::to_wstring(session->id) : L"");
     session->host = pendingHost_;
-    if (session->mode == 3) session->remoteCom = pendingRemoteSerial_;
+    if (session->mode == 3 && !session->udpRaw)
+        session->remoteCom = pendingRemoteSerial_;
+    if (session->mode == 1)
+        session->remoteCom = pendingSerial_.portName;
     session->username = pendingUsername_;
     session->password = pendingPassword_;
     session->port = pendingPort_;
@@ -3728,6 +3749,7 @@ void MainWindow::ConnectFromDialog() {
         if (session->mode == 1) {
             resource["com"] = WideToMultiByte(pendingSerial_.portName, CP_UTF8);
             resource["baudRate"] = pendingSerial_.baudRate;
+            resource["friendlyName"] = WideToMultiByte(pendingSerial_.friendlyName, CP_UTF8);
         }
         sessionService_.Register(resource, session->connection);
         apiServer_.SetSessions(sessionService_.Ids());
@@ -3776,6 +3798,12 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     if (!pendingSession_) return;
     if (!success || closing_ || connectionCancel_.load()) {
         aiRemoteConnect_ = false;
+        if (pendingSession_->mode == 0 && ai::IsAuthenticationFailure(error)) {
+            SecureZeroMemory(pendingPassword_.data(), pendingPassword_.size() * sizeof(wchar_t));
+            pendingPassword_.clear();
+            SecureZeroMemory(pendingSession_->password.data(), pendingSession_->password.size() * sizeof(wchar_t));
+            pendingSession_->password.clear();
+        }
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
         apiServer_.SetSessions(sessionService_.Ids());
         pendingSession_.reset();
@@ -3954,14 +3982,24 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
         Json result = Json::array();
         for (const auto& session : sessions_)
             if (*ai::TerminalKind(session->mode) && session->connection && session->connection->IsConnected())
-                result.push_back({{"id", "session-" + std::to_string(session->id)},
-                    {"name", std::string("[") + ai::TerminalKind(session->mode) + "] " + WideToMultiByte(session->name, CP_UTF8)},
-                    {"kind", ai::TerminalKind(session->mode)}, {"codePage", session->connection->OutputCodePage() ? session->connection->OutputCodePage() : session->codePage},
-                    {"inputCodePage", session->connection->InputCodePage() ? session->connection->InputCodePage() : session->codePage},
-                    {"remoteIp", session->mode == 0 || session->mode == 2 || session->mode == 3 ? WideToMultiByte(session->host, CP_UTF8) : ""},
-                    {"remotePort", session->mode == 0 || session->mode == 2 || session->mode == 3 ? session->port : 0},
-                    {"remoteCom", WideToMultiByte(session->remoteCom, CP_UTF8)},
-                    {"commandSupported", true}});
+                result.push_back(
+                    {{"id", "session-" + std::to_string(session->id)},
+                     {"name", std::string("[") + ai::TerminalKind(session->mode) + "] " +
+                                  WideToMultiByte(session->name, CP_UTF8)},
+                     {"kind", ai::TerminalKind(session->mode)},
+                     {"codePage", session->connection->OutputCodePage() ? session->connection->OutputCodePage()
+                                                                        : session->codePage},
+                     {"inputCodePage",
+                      session->connection->InputCodePage() ? session->connection->InputCodePage() : session->codePage},
+                     {"remoteIp", session->mode == 0 || session->mode == 2 || session->mode == 3
+                                      ? WideToMultiByte(session->host, CP_UTF8)
+                                      : ""},
+                     {"remotePort", session->mode == 0 || session->mode == 2 || session->mode == 3 ? session->port : 0},
+                     {"remoteCom", WideToMultiByte(session->remoteCom, CP_UTF8)},
+                     {"com", WideToMultiByte(session->remoteCom, CP_UTF8)},
+                     {"transport", session->udpRaw ? "udpRaw" : "session"},
+                     {"peerVerified", !session->udpRaw || session->udpReceived},
+                     {"commandSupported", true}});
         return result;
     }
     if (method == "power.get") {
@@ -4420,6 +4458,8 @@ void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, b
 void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage, LONGLONG arrival) {
     SessionState* session = FindSession(sessionId);
     if (!session) return;
+    if (session->udpRaw && !data.empty())
+        session->udpReceived = true;
     if (session->rawTrace && session->logger) {
         auto raw = Encode64(data);
         session->logger->WriteStatus(

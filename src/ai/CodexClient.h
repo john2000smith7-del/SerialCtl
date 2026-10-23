@@ -15,6 +15,8 @@ struct ServerSettings {
 };
 bool ValidateServer(const ServerSettings &, std::wstring &error);
 ServerSettings LoadServerSettings();
+bool ForgetSavedServerPassword(const ServerSettings &, std::wstring &error);
+bool IsAuthenticationFailure(const std::wstring &message);
 bool SaveServerSettings(const ServerSettings &, std::wstring &error);
 
 // Owns SSH stdio only. No HWND, terminal model, device service or model API key.

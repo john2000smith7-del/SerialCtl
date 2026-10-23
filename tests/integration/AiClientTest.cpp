@@ -33,6 +33,14 @@ int main() {
     };
     try {
         std::wstring validation;
+        Require(IsAuthenticationFailure(L"Access denied") &&
+                    IsAuthenticationFailure(L"No supported authentication methods available"),
+                "Password failure not classified");
+        Require(!IsAuthenticationFailure(L"Host key did not match manually configured list") &&
+                    !IsAuthenticationFailure(L"Connection timed out"),
+                "Host identity or network error misclassified as password failure");
+        Require(ForgetSavedServerPassword(settings, validation),
+                "Removing absent fixture password should be idempotent");
         settings.workingDirectory = L"relative/path";
         Require(!ValidateServer(settings, validation), "Relative server project directory accepted");
         settings.workingDirectory = L"/srv/code\nother";

@@ -99,6 +99,28 @@ int main() {
         Require(DecodeNotification({{"id", 90}, {"method", "item/fileChange/requestApproval"},
             {"params", {{"threadId", "t"}, {"turnId", "u"}}}})["event"] == "serverApproval",
             "Native approval request not associated with active turn");
+        Require(commandEvent["failed"] == true, "Nonzero command exit status was not retained for process display");
+        const auto compact = MakeRequest(Operation::CompactConversation, 82, {{"conversationId", "t"}});
+        Require(compact["method"] == "thread/compact/start" && compact["params"] == Json({{"threadId", "t"}}),
+                "Context cleanup must use the native server thread API");
+        Require(
+            DecodeNotification({{"method", "item/completed"},
+                                {"params", {{"threadId", "t"}, {"item", {{"type", "contextCompaction"}}}}}})["event"] ==
+                "contextCompacted",
+            "Current context compaction completion was ignored");
+        const auto grouped = DecodeResponse(
+            Operation::RestoreConversation,
+            {{"thread",
+              {{"id", "t"},
+               {"turns",
+                {{{"id", "turn-a"},
+                  {"status", "completed"},
+                  {"items",
+                   {{{"type", "agentMessage"}, {"id", "interim"}, {"text", "Progress"}, {"phase", "commentary"}},
+                    {{"type", "agentMessage"}, {"id", "final"}, {"text", "Answer"}, {"phase", "final_answer"}}}}}}}}}});
+        Require(grouped["messages"][0]["group"] == "turn-a" && grouped["messages"][0]["process"] == true &&
+                    grouped["messages"][1]["process"] == false,
+                "History lost process/final-answer boundaries");
         const auto resumed = MakeRequest(Operation::RestoreConversation, 78, {{"conversationId", "t"}});
         Require(resumed["params"]["config"]["web_search"] == "disabled" &&
                     resumed["params"]["approvalPolicy"] == "never",

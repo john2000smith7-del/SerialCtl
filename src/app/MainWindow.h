@@ -1,20 +1,21 @@
 #pragma once
 
+#include "AiPane.h"
+#include "ApiServer.h"
+#include "CmdLineEditor.h"
 #include "Connection.h"
+#include "PowerPane.h"
+#include "SerialPorts.h"
 #include "SessionLogger.h"
+#include "SessionService.h"
 #include "SftpClient.h"
 #include "SftpModel.h"
-#include "TerminalModel.h"
 #include "TerminalDecoder.h"
-#include "PowerPane.h"
-#include "ApiServer.h"
-#include "SessionService.h"
-#include "CmdLineEditor.h"
+#include "TerminalModel.h"
 #include "ToolbarIcons.h"
-#include "AiPane.h"
-#include <future>
-#include <functional>
 #include <deque>
+#include <functional>
+#include <future>
 
 #include <atomic>
 #include <cstdint>
@@ -134,6 +135,7 @@ private:
         LONGLONG pendingProbeArrival = 0;
         std::wstring host;
         std::wstring remoteCom;
+        bool udpRaw = false, udpReceived = false;
         std::wstring username;
         std::wstring password;
         std::uint16_t port = 0;
@@ -501,7 +503,9 @@ private:
     std::wstring pendingUsername_;
     std::wstring pendingPassword_;
     std::uint16_t pendingPort_ = 0;
-    std::wstring pendingRemoteSerial_;
+    std::wstring pendingRemoteSerial_, pendingRemoteLabel_;
+    std::vector<SerialPortInfo> serialPorts_;
+    bool pendingRemoteUdp_ = false;
     std::string pendingRemoteInstance_;
     CommandItem pendingCommand_;
     std::wstring pendingSftpInputTitle_;

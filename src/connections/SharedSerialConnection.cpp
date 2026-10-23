@@ -23,8 +23,11 @@ Probe Query(const std::wstring &host, unsigned port, const std::atomic_bool *can
                 auto com = r.value("com", std::string());
                 auto name = MultiByteToWide(reinterpret_cast<const std::uint8_t *>(com.data()), com.size(), CP_UTF8);
                 p.names.push_back(name);
-                p.descriptions.push_back(name + L" · " + std::to_wstring(r.value("baudRate", 115200)) +
-                                         L" · WebSocket");
+                auto friendly = r.value("friendlyName", std::string());
+                auto full =
+                    MultiByteToWide(reinterpret_cast<const std::uint8_t *>(friendly.data()), friendly.size(), CP_UTF8);
+                p.descriptions.push_back(name + (full.empty() ? L"" : L" · " + full) + L" · " +
+                                         std::to_wstring(r.value("baudRate", 115200)) + L" · WebSocket");
             }
     } catch (const ws::Error &e) {
         if (!p.instance.empty() || !e.instance.empty()) {

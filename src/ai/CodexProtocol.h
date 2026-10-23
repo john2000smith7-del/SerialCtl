@@ -4,7 +4,15 @@
 namespace serialctl::ai {
 // UI-facing operations. Only this adapter knows the App Server method names,
 // parameter casing, experimental fields and persisted thread item shapes.
-enum class Operation { Models, Defaults, NewConversation, StartTask, StopTask, RestoreConversation };
+enum class Operation {
+    Models,
+    Defaults,
+    NewConversation,
+    StartTask,
+    StopTask,
+    RestoreConversation,
+    CompactConversation
+};
 inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &data) {
     Json params = Json::object();
     const char *method = "";
@@ -39,6 +47,10 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
     case Operation::StopTask:
         method = "turn/interrupt";
         params = {{"threadId", data.at("conversationId")}, {"turnId", data.at("taskId")}};
+        break;
+    case Operation::CompactConversation:
+        method = "thread/compact/start";
+        params = {{"threadId", data.at("conversationId")}};
         break;
     case Operation::RestoreConversation:
         method = "thread/resume";
@@ -83,6 +95,7 @@ inline Json DecodeResponse(Operation operation, const Json &result) {
     case Operation::StartTask:
         return {{"taskId", result.at("turn").at("id")}};
     case Operation::StopTask:
+    case Operation::CompactConversation:
         return Json::object();
     case Operation::Defaults: {
         const auto config = result.value("config", Json::object());
@@ -103,13 +116,15 @@ inline Json DecodeResponse(Operation operation, const Json &result) {
     case Operation::RestoreConversation: {
         const auto &thread = result.at("thread");
         Json messages = Json::array();
-        for (const auto &turn : thread.value("turns", Json::array()))
+        for (const auto &turn : thread.value("turns", Json::array())) {
+            const auto first = messages.size();
             for (const auto &item : turn.value("items", Json::array())) {
                 const auto type = item.value("type", std::string());
                 if (type == "agentMessage")
                     messages.push_back({{"role", "AI"},
                                         {"text", item.value("text", std::string())},
-                                        {"messageId", item.value("id", std::string())}});
+                                        {"messageId", item.value("id", std::string())},
+                                        {"process", item.value("phase", Json()) == "commentary"}});
                 else if (type == "commandExecution" || type == "fileChange")
                     messages.push_back({{"role", u8"工具"}, {"text", NativeItemText(item, true)},
                         {"messageId", "server:" + item.value("id", std::string())}});
@@ -122,6 +137,16 @@ inline Json DecodeResponse(Operation operation, const Json &result) {
                         {{"role", u8"我"}, {"text", text}, {"messageId", item.value("id", std::string())}});
                 }
             }
+            for (size_t i = first; i < messages.size(); ++i) {
+                messages[i]["group"] = turn.value("id", std::string());
+                messages[i]["status"] = turn.value("status", std::string());
+                for (const auto &source : turn.value("items", Json::array()))
+                    if (source.value("status", std::string()) == "failed" ||
+                        (source.contains("exitCode") && source["exitCode"].is_number_integer() &&
+                         source["exitCode"].get<int>() != 0))
+                        messages[i]["status"] = "failed";
+            }
+        }
         return {{"conversationId", thread.at("id")}, {"messages", messages}};
     }
     }
@@ -136,7 +161,7 @@ inline Json DecodeNotification(const Json &wire) {
     if (!wire.contains("id") && method != "item/agentMessage/delta" && method != "item/completed" &&
         method != "item/started" && method != "item/reasoning/textDelta" &&
         method != "item/reasoning/summaryTextDelta" && method != "turn/started" && method != "turn/completed" &&
-        method != "item/commandExecution/outputDelta" && method != "error")
+        method != "item/commandExecution/outputDelta" && method != "thread/compacted" && method != "error")
         return Json();
     const auto p = wire.value("params", Json::object());
     if (wire.contains("id")) {
@@ -163,6 +188,9 @@ inline Json DecodeNotification(const Json &wire) {
         event["event"] = "serverTool";
         event["messageId"] = "server:" + p["item"].value("id", std::string());
         event["completed"] = method == "item/completed";
+        event["failed"] = p["item"].value("status", std::string()) == "failed" ||
+                          (p["item"].contains("exitCode") && p["item"]["exitCode"].is_number_integer() &&
+                           p["item"]["exitCode"].get<int>() != 0);
         event["appendStream"] = p["item"].value("type", "") == "commandExecution" &&
             (!p["item"].contains("aggregatedOutput") || !p["item"]["aggregatedOutput"].is_string());
         event["text"] = NativeItemText(p["item"], method == "item/completed");
@@ -180,6 +208,8 @@ inline Json DecodeNotification(const Json &wire) {
         event["messageId"] = item.value("id", std::string());
         event["text"] = item.value("text", std::string());
         event["final"] = !item.contains("phase") || item["phase"].is_null() || item["phase"] == "final_answer";
+    } else if (method == "item/completed" && p.value("item", Json::object()).value("type", "") == "contextCompaction") {
+        event["event"] = "contextCompacted";
     } else if (method == "item/started" || method == "item/reasoning/textDelta" ||
                method == "item/reasoning/summaryTextDelta") {
         event["event"] = "taskActivity";
@@ -193,6 +223,8 @@ inline Json DecodeNotification(const Json &wire) {
         event["status"] = turn.value("status", std::string());
         const auto error = turn.value("error", Json::object());
         event["message"] = error.is_object() ? error.value("message", std::string()) : std::string();
+    } else if (method == "thread/compacted") {
+        event["event"] = "contextCompacted";
     } else if (method == "error") {
         event["event"] = "serviceError";
         const auto error = p.value("error", Json::object());

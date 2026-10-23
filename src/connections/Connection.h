@@ -53,6 +53,7 @@ struct SerialSettings {
     BYTE parity = NOPARITY;
     BYTE stopBits = ONESTOPBIT;
     DWORD flowControl = 0;
+    std::wstring friendlyName;
 };
 
 } // namespace serialctl

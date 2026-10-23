@@ -28,6 +28,21 @@ void Close(HANDLE &h) {
     h = nullptr;
 }
 } // namespace
+bool IsAuthenticationFailure(const std::wstring &message) {
+    std::wstring lower = message;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+    return lower.find(L"access denied") != std::wstring::npos ||
+           lower.find(L"authentication failed") != std::wstring::npos ||
+           lower.find(L"no supported authentication methods") != std::wstring::npos ||
+           lower.find(L"认证失败") != std::wstring::npos;
+}
+bool ForgetSavedServerPassword(const ServerSettings &s, std::wstring &error) {
+    if (CredDeleteW(CredentialName(s).c_str(), CRED_TYPE_GENERIC, 0) || GetLastError() == ERROR_NOT_FOUND)
+        return true;
+    error = L"无法删除旧的 Windows 密码凭据：" + Win32ErrorMessage();
+    return false;
+}
 bool ValidateServer(const ServerSettings &s, std::wstring &error) {
     if (s.host.empty() || s.host.size() > 253 || s.host.front() == L'-' ||
         s.host.find_first_of(L" \t\r\n/\\\"'@") != std::wstring::npos)
@@ -184,7 +199,10 @@ void CodexClient::Run(ServerSettings settings, HostKeyConfirmation confirm) {
     if (!ResolvePuttyHostKey(plink, settings.host, static_cast<uint16_t>(settings.port), settings.username,
                              settings.password, fingerprint, error, &stop_, confirm, true)) {
         // SSH output is never retained as a transcript or diagnostic log.
-        Emit({{"event", "error"}, {"message", WideToMultiByte(error, CP_UTF8)}});
+        const bool auth = IsAuthenticationFailure(error);
+        Emit({{"event", "error"},
+              {"category", auth ? "authentication" : "connection"},
+              {"message", auth ? std::string(u8"SSH 认证失败，请输入新的密码") : WideToMultiByte(error, CP_UTF8)}});
         return;
     }
     if (stop_)
@@ -306,6 +324,10 @@ void CodexClient::Run(ServerSettings settings, HostKeyConfirmation confirm) {
             read(outRead, true);
             read(errRead, false);
             Emit({{"event", "error"},
+                  {"category", IsAuthenticationFailure(MultiByteToWide(
+                                   reinterpret_cast<const uint8_t *>(stderrText.data()), stderrText.size(), CP_UTF8))
+                                   ? "authentication"
+                                   : "connection"},
                   {"message", stderrText.find("Access denied") != std::string::npos ||
                                       stderrText.find("authentication") != std::string::npos
                                   ? u8"SSH 认证失败，请检查用户名和密码"

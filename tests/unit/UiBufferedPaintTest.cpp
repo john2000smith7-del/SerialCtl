@@ -142,6 +142,16 @@ int main() {
     ULONG_PTR token = 0;
     if (Gdiplus::GdiplusStartup(&token, &startup, nullptr) != Gdiplus::Ok)
         return 1;
+    Expect(serialctl::UiResource(2010).bitmap && serialctl::UiResource(2011).bitmap &&
+               serialctl::UiResource(2012).bitmap,
+           "Embedded card masks and utility icon atlas are present");
+    {
+        Surface surface;
+        const auto original = GetPixel(surface.dc, 10, 10);
+        serialctl::UiBox(surface.dc, {10, 10, 110, 90}, RGB(31, 79, 216), RGB(31, 79, 216), 12);
+        Expect(GetPixel(surface.dc, 10, 10) == original, "Resource card corners preserve the surrounding background");
+        Expect(GetPixel(surface.dc, 60, 50) == RGB(31, 79, 216), "Resource tint must match the shared accent exactly");
+    }
     TestItem({13, 33, 151, 91}, false);
     TestItem({-5, -9, 133, 49}, false);
     TestItem({13, 33, 131, 91}, true);

@@ -82,6 +82,242 @@ void Center(HWND window, HWND owner) {
 std::wstring Profile(const ai::ServerSettings &s) {
     return s.host + L":" + std::to_wstring(s.port) + L"/" + s.username + (s.workingDirectory.empty() ? L"" : L"/project:" + s.workingDirectory);
 }
+struct HistoryPopup {
+    bool dark = false, canCompact = false, dragging = false;
+    int grab = 0;
+    int dpi = 96, selected = 0, offset = 0;
+    HFONT font = nullptr;
+    HBRUSH surface = nullptr, field = nullptr;
+    UiFieldStyle style{};
+    HWND dialog = nullptr, list = nullptr;
+    std::vector<ai::Json> entries;
+    std::vector<size_t> filtered;
+    int D(int n) const {
+        return MulDiv(n, dpi, 96);
+    }
+    void Filter() {
+        auto query = Text(GetDlgItem(dialog, 300));
+        std::transform(query.begin(), query.end(), query.begin(), towlower);
+        filtered.clear();
+        for (size_t i = 0; i < entries.size(); ++i) {
+            auto title = Wide(entries[i].value("title", std::string()));
+            std::transform(title.begin(), title.end(), title.begin(), towlower);
+            if (query.empty() || title.find(query) != std::wstring::npos)
+                filtered.push_back(i);
+        }
+        selected = 0;
+        offset = 0;
+        EnableWindow(GetDlgItem(dialog, IDOK), !filtered.empty());
+        InvalidateRect(list, nullptr, FALSE);
+    }
+    void Reveal() {
+        RECT r{};
+        GetClientRect(list, &r);
+        const int h = D(48);
+        if (selected * h < offset)
+            offset = selected * h;
+        if ((selected + 1) * h > offset + r.bottom)
+            offset = (selected + 1) * h - r.bottom;
+        InvalidateRect(list, nullptr, FALSE);
+    }
+    static LRESULT CALLBACK ListProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+        auto p = reinterpret_cast<HistoryPopup *>(GetWindowLongPtrW(h, GWLP_USERDATA));
+        if (m == WM_NCCREATE) {
+            p = static_cast<HistoryPopup *>(reinterpret_cast<CREATESTRUCTW *>(l)->lpCreateParams);
+            SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(p));
+        }
+        if (!p)
+            return DefWindowProcW(h, m, w, l);
+        if (m == WM_ERASEBKGND)
+            return 1;
+        if (m == WM_PAINT) {
+            PAINTSTRUCT ps{};
+            auto dc = BeginPaint(h, &ps);
+            RECT r{};
+            GetClientRect(h, &r);
+            const auto c = UiAiTheme(p->dark);
+            FillRect(dc, &r, p->surface);
+            if (p->filtered.empty())
+                Draw(dc, L"当前服务器暂无匹配的历史会话", r, p->font, c.muted, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            for (size_t i = 0; i < p->filtered.size(); ++i) {
+                RECT row{0, static_cast<LONG>(i * p->D(48) - p->offset), r.right - p->D(12),
+                         static_cast<LONG>((i + 1) * p->D(48) - p->offset - p->D(4))};
+                if (row.bottom < 0 || row.top > r.bottom)
+                    continue;
+                const bool active = static_cast<int>(i) == p->selected;
+                UiBox(dc, row, active ? c.accent : c.field, active ? c.accent : c.border, p->D(8));
+                row.left += p->D(12);
+                row.right -= p->D(12);
+                Draw(dc, Wide(p->entries[p->filtered[i]].value("title", std::string("AI 会话"))), row, p->font,
+                     active ? RGB(255, 255, 255) : c.text);
+            }
+            const int content = static_cast<int>(p->filtered.size()) * p->D(48);
+            if (content > r.bottom) {
+                const int height = std::max<int>(p->D(28), r.bottom * r.bottom / content),
+                          top = p->offset * (r.bottom - height) / (content - r.bottom);
+                UiBox(dc, {r.right - p->D(5), top, r.right, top + height}, c.muted, c.muted, p->D(2));
+            }
+            EndPaint(h, &ps);
+            return 0;
+        }
+        if (m == WM_MOUSEWHEEL) {
+            RECT r{};
+            GetClientRect(h, &r);
+            p->offset =
+                std::clamp(p->offset - GET_WHEEL_DELTA_WPARAM(w) * p->D(48) / WHEEL_DELTA, 0,
+                           std::max(0, static_cast<int>(p->filtered.size()) * p->D(48) - static_cast<int>(r.bottom)));
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (m == WM_LBUTTONDOWN || m == WM_LBUTTONDBLCLK) {
+            RECT r{};
+            GetClientRect(h, &r);
+            const int content = static_cast<int>(p->filtered.size()) * p->D(48);
+            if (GET_X_LPARAM(l) >= r.right - p->D(12) && content > r.bottom) {
+                const int height = std::max<int>(p->D(28), r.bottom * r.bottom / content),
+                          top = p->offset * (r.bottom - height) / (content - r.bottom);
+                p->dragging = true;
+                p->grab = GET_Y_LPARAM(l) >= top && GET_Y_LPARAM(l) < top + height ? GET_Y_LPARAM(l) - top : height / 2;
+                SetCapture(h);
+                SendMessageW(h, WM_MOUSEMOVE, MK_LBUTTON, l);
+                return 0;
+            }
+            const int index = (GET_Y_LPARAM(l) + p->offset) / p->D(48);
+            if (index >= 0 && index < static_cast<int>(p->filtered.size())) {
+                p->selected = index;
+                SetFocus(h);
+                p->Reveal();
+                if (m == WM_LBUTTONDBLCLK)
+                    SendMessageW(p->dialog, WM_COMMAND, IDOK, 0);
+            }
+            return 0;
+        }
+        if (m == WM_MOUSEMOVE && p->dragging) {
+            RECT r{};
+            GetClientRect(h, &r);
+            const int content = static_cast<int>(p->filtered.size()) * p->D(48),
+                      height = std::max<int>(p->D(28), r.bottom * r.bottom / std::max(1, content)),
+                      maximum = std::max<int>(0, content - r.bottom);
+            p->offset = std::clamp(static_cast<int>(static_cast<long long>(GET_Y_LPARAM(l) - p->grab) * maximum /
+                                                    std::max<int>(1, r.bottom - height)),
+                                   0, maximum);
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (m == WM_LBUTTONUP && p->dragging) {
+            p->dragging = false;
+            ReleaseCapture();
+            return 0;
+        }
+        if (m == WM_CAPTURECHANGED)
+            p->dragging = false;
+        if (m == WM_GETDLGCODE)
+            return DLGC_WANTARROWS;
+        if (m == WM_KEYDOWN && (w == VK_DOWN || w == VK_UP || w == VK_HOME || w == VK_END)) {
+            p->selected = w == VK_HOME  ? 0
+                          : w == VK_END ? static_cast<int>(p->filtered.size()) - 1
+                                        : p->selected + (w == VK_DOWN ? 1 : -1);
+            p->selected = std::clamp(p->selected, 0, std::max(0, static_cast<int>(p->filtered.size()) - 1));
+            p->Reveal();
+            return 0;
+        }
+        return DefWindowProcW(h, m, w, l);
+    }
+    static INT_PTR CALLBACK Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
+        auto p = reinterpret_cast<HistoryPopup *>(GetWindowLongPtrW(h, DWLP_USER));
+        if (m == WM_INITDIALOG) {
+            p = reinterpret_cast<HistoryPopup *>(l);
+            SetWindowLongPtrW(h, DWLP_USER, l);
+            p->dialog = h;
+            SetWindowTextW(h, L"历史会话");
+            UiResizeDialog(h, p->dpi, 436, 396);
+            p->surface = CreateSolidBrush(UiAiTheme(p->dark).surface);
+            p->field = CreateSolidBrush(UiAiTheme(p->dark).field);
+            p->style = {&p->dark, p->font, p->dpi};
+            auto edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, p->D(16),
+                                        p->D(16), p->D(404), p->D(28), h, reinterpret_cast<HMENU>(300),
+                                        GetModuleHandleW(nullptr), nullptr);
+            SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(p->font), TRUE);
+            SendMessageW(edit, EM_SETCUEBANNER, 0, reinterpret_cast<LPARAM>(L"搜索当前服务器会话…"));
+            UiStyleField(edit, &p->style);
+            WNDCLASSW wc{};
+            wc.style = CS_DBLCLKS;
+            wc.lpfnWndProc = ListProc;
+            wc.hInstance = GetModuleHandleW(nullptr);
+            wc.lpszClassName = L"SerialCtlHistoryList";
+            wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+            RegisterClassW(&wc);
+            p->list = CreateWindowExW(0, wc.lpszClassName, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP, p->D(16), p->D(56),
+                                      p->D(404), p->D(272), h, nullptr, wc.hInstance, p);
+            for (int id : {301, IDCANCEL, IDOK}) {
+                auto b = CreateWindowExW(0, L"BUTTON",
+                                         id == 301    ? L"整理当前会话"
+                                         : id == IDOK ? L"恢复会话"
+                                                      : L"取消",
+                                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+                                         p->D(id == 301        ? 16
+                                              : id == IDCANCEL ? 220
+                                                               : 324),
+                                         p->D(344), p->D(id == 301 ? 144 : 96), p->D(36), h,
+                                         reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), wc.hInstance, nullptr);
+                SendMessageW(b, WM_SETFONT, reinterpret_cast<WPARAM>(p->font), TRUE);
+                UiStyleButton(b);
+                if (id == 301)
+                    EnableWindow(b, p->canCompact);
+            }
+            p->Filter();
+            Center(h, GetWindow(h, GW_OWNER));
+            return TRUE;
+        }
+        if (!p)
+            return FALSE;
+        if (m == WM_COMMAND) {
+            const int id = LOWORD(w);
+            if (id == 300 && HIWORD(w) == EN_CHANGE) {
+                p->Filter();
+                return TRUE;
+            }
+            if (id == IDCANCEL || id == 301 || (id == IDOK && !p->filtered.empty())) {
+                UiEndOwnedDialog(h, id);
+                return TRUE;
+            }
+        }
+        if (m == WM_DRAWITEM) {
+            auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
+            auto c = UiAiTheme(p->dark);
+            const bool enabled = IsWindowEnabled(item.hwndItem), primary = item.CtlID == IDOK,
+                       hover = (item.itemState & (ODS_SELECTED | ODS_FOCUS)) != 0;
+            FillRect(item.hDC, &item.rcItem, p->surface);
+            UiBox(item.hDC, item.rcItem,
+                  primary && enabled ? c.accent
+                  : hover            ? c.raised
+                                     : c.field,
+                  hover ? c.accent : c.border, p->D(8));
+            Draw(item.hDC, Text(item.hwndItem), item.rcItem, p->font,
+                 !enabled  ? c.muted
+                 : primary ? RGB(255, 255, 255)
+                           : c.text,
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            return TRUE;
+        }
+        if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT) {
+            auto c = UiAiTheme(p->dark);
+            SetTextColor(reinterpret_cast<HDC>(w), c.text);
+            SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : c.surface);
+            return reinterpret_cast<INT_PTR>(m == WM_CTLCOLOREDIT ? p->field : p->surface);
+        }
+        if (m == WM_CLOSE) {
+            UiEndOwnedDialog(h, IDCANCEL);
+            return TRUE;
+        }
+        if (m == WM_DESTROY) {
+            DeleteObject(p->surface);
+            DeleteObject(p->field);
+            return TRUE;
+        }
+        return FALSE;
+    }
+};
 } // namespace
 AiPane::~AiPane() {
     Shutdown();
@@ -135,6 +371,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     Child(L"BUTTON", L"新建", New, BS_OWNERDRAW | WS_TABSTOP);
     HWND tips = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP, 0, 0, 0, 0, window_,
                                 nullptr, GetModuleHandleW(nullptr), nullptr);
+    tips_ = tips;
     for (int id : {Connect, HistoryButton, New}) {
         TOOLINFOW tip{sizeof(tip)};
         tip.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
@@ -148,8 +385,8 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     auto input = Child(L"EDIT", L"", Input, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_TABSTOP);
     SendMessageW(input, EM_SETLIMITTEXT, 32768, 0);
     SetPropW(input, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
-    UiStyleField(input, &style_);
-    SendMessageW(input, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"输入消息，分析终端或控制已连接电源…"));
+    // The borderless edit lives inside the one shared composer card.
+    SendMessageW(input, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"输入消息…"));
     SetWindowSubclass(input, InputProc, 1, reinterpret_cast<DWORD_PTR>(this));
     for (int id : {Target}) {
         auto c = Child(WC_COMBOBOXW, L"", id,
@@ -157,9 +394,11 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
         SetPropW(c, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
         UiStyleField(c, &style_);
     }
+    SetPropW(Control(Target), L"SerialCtl.Composer", reinterpret_cast<HANDLE>(1));
+    SetPropW(Control(Target), L"SerialCtl.CompactLabel", reinterpret_cast<HANDLE>(&compactTargetLabel_));
     Child(L"STATIC", L"服务器默认模型", Model, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS);
     Child(L"BUTTON", L"发送", Send, BS_OWNERDRAW | WS_TABSTOP);
-    Child(L"BUTTON", L"分析当前日志", Analyze, BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON", L"分析日志", Analyze, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"持续观察", Observe, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"返回最新消息", Bottom, BS_OWNERDRAW | WS_TABSTOP);
     Theme(dark);
@@ -205,6 +444,8 @@ bool AiPane::PreTranslate(MSG &m) {
     return false;
 }
 LRESULT CALLBACK AiPane::InputProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR) {
+    if (m == WM_SETFOCUS || m == WM_KILLFOCUS)
+        InvalidateRect(GetParent(h), nullptr, FALSE);
     if (m == WM_IME_STARTCOMPOSITION)
         SetPropW(h, L"SerialCtl.AiIme", reinterpret_cast<HANDLE>(1));
     if (m == WM_IME_ENDCOMPOSITION || m == WM_NCDESTROY)
@@ -252,6 +493,7 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                              chosen == self->targets_.end() ? 0 : chosen - self->targets_.begin() + 1, 0);
             } else
                 self->target_.clear();
+            self->UpdateTargetLabel();
             self->UpdateActions();
             PostMessageW(GetParent(h), AiTargetChanged, 0, 0);
         }
@@ -265,13 +507,14 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         UiBufferedPaint paint(item.hDC, item.rcItem);
         auto dc = paint.Dc();
         const auto c = UiAiTheme(self->dark_);
-        FillRect(dc, &item.rcItem, self->surfaceBrush_);
+        FillRect(dc, &item.rcItem, item.CtlID == Send ? self->fieldBrush_ : self->surfaceBrush_);
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
         const bool primary = item.CtlID == Send || item.CtlID == IDOK;
         const bool hover = GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr;
-        UiBox(dc, item.rcItem,
-              primary && enabled ? c.accent : (hover || (item.itemState & ODS_SELECTED) ? c.accentSoft : c.raised),
-              item.itemState & ODS_FOCUS ? c.accent : c.border, self->D(10));
+        if (item.CtlID != Connect && item.CtlID != HistoryButton && item.CtlID != New)
+            UiBox(dc, item.rcItem,
+                  primary && enabled ? c.accent : (hover || (item.itemState & ODS_SELECTED) ? c.accentSoft : c.raised),
+                  item.itemState & ODS_FOCUS ? c.accent : c.border, self->D(10));
         if (item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New) {
             const int x = (item.rcItem.left + item.rcItem.right - self->D(18)) / 2,
                       y = (item.rcItem.top + item.rcItem.bottom - self->D(18)) / 2;
@@ -310,29 +553,26 @@ void AiPane::Layout() {
     RECT r{};
     GetClientRect(window_, &r);
     const int width = r.right, height = r.bottom;
-    const int composerHeight = D(140), footer = D(0), top = D(60), gap = D(12);
-    const int composerTop = std::max(top + D(64), height - composerHeight - footer);
-    const int contextTop = composerTop - D(40);
+    const int top = D(44), gap = D(12);
+    const int composerTop = std::max(top + D(76), height - D(96));
+    const int contextTop = composerTop - D(36);
+    composerBounds_ = {0, composerTop, width, composerTop + D(96)};
     UiLayoutBatch b;
     const int historyLeft = width - D(108);
-    b.Move(Control(Connect), historyLeft, D(0), D(28), D(28));
-    b.Move(Control(HistoryButton), historyLeft + D(40), D(0), D(28), D(28));
-    b.Move(Control(New), historyLeft + D(80), D(0), D(28), D(28));
-    b.Move(transcript_, 0, top, width, std::max(D(48), contextTop - top - gap));
-    const int left = width > D(900) ? (width - D(900)) / 2 : 0;
-    const int cw = std::min(width, D(900));
-    b.Move(Control(Analyze), left, contextTop, D(128), D(32));
-    b.Move(Control(Observe), left + D(140), contextTop, D(104), D(32));
-    b.Move(Control(Bottom), std::max(left, left + cw - D(136)), contextTop, D(136), D(32));
+    b.Move(Control(Connect), historyLeft, 0, D(28), D(28));
+    b.Move(Control(HistoryButton), historyLeft + D(40), 0, D(28), D(28));
+    b.Move(Control(New), historyLeft + D(80), 0, D(28), D(28));
+    b.Move(transcript_, 0, top, width, std::max(D(24), contextTop - top - gap));
+    b.Move(Control(Analyze), 0, contextTop, D(96), D(28));
+    b.Move(Control(Observe), D(108), contextTop, D(96), D(28));
+    b.Move(Control(Bottom), std::max(0, width - D(128)), contextTop, D(128), D(28));
     b.Show(Control(Bottom), scroll_.unread ? SW_SHOW : SW_HIDE);
     b.Show(Control(Observe), scroll_.unread ? SW_HIDE : SW_SHOW);
-    b.Move(Control(Input), left, composerTop + D(8), std::max(D(100), cw), D(72));
-    const int targetWidth = std::min(D(240), std::max(D(132), cw - D(208)));
-    b.Move(Control(Target), left, composerTop + D(92), targetWidth, D(220));
-    b.ComboVisibleHeight(Control(Target), D(36));
-    b.Move(Control(Model), left + D(12) + targetWidth, composerTop + D(92), std::max(D(64), cw - targetWidth - D(96)),
-           D(36));
-    b.Move(Control(Send), left + cw - D(72), composerTop + D(92), D(72), D(36));
+    b.Move(Control(Input), D(12), composerTop + D(8), std::max(D(80), width - D(24)), D(40));
+    b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(176), std::max(D(112), width - D(104))), D(220));
+    b.ComboVisibleHeight(Control(Target), D(28));
+    b.Show(Control(Model), SW_HIDE);
+    b.Move(Control(Send), width - D(72), composerTop + D(60), D(64), D(28));
     b.Commit();
     layoutWidth_ = width;
     Reflow();
@@ -347,12 +587,14 @@ void AiPane::Paint(HDC target) {
     FillRect(dc, &r, surfaceBrush_);
     icons_.Draw(dc, ToolbarIcon::Ai, {0, D(4), D(20), D(24)}, dark_);
     Draw(dc, L"AI 助手", {D(28), 0, D(128), D(28)}, font_, c.text);
-    Draw(dc, status_, {0, D(30), r.right, D(48)}, smallFont_, client_.Ready() ? c.accent : c.muted);
-    UiSeparator(dc, 0, r.right, D(52), c.border);
-    RECT input{};
-    GetWindowRect(Control(Input), &input);
-    MapWindowPoints(HWND_DESKTOP, window_, reinterpret_cast<POINT *>(&input), 2);
-    UiSeparator(dc, 0, r.right, input.top - D(52), c.border);
+    Draw(dc,
+         client_.Ready()     ? L"● 已连接"
+         : client_.Running() ? L"连接中…"
+                             : L"未连接",
+         {D(108), 0, std::max<int>(D(108), r.right - D(120)), D(28)}, smallFont_, c.muted);
+    UiSeparator(dc, 0, r.right, D(36), c.border);
+    UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
+    UiBox(dc, composerBounds_, c.field, GetFocus() == Control(Input) ? c.accent : c.border, D(12));
 }
 void AiPane::Reflow(bool appended) {
     if (!transcript_)
@@ -362,7 +604,23 @@ void AiPane::Reflow(bool appended) {
     const int width = std::max(D(120), static_cast<int>(r.right) - D(16));
     HDC dc = GetDC(transcript_);
     int y = D(8);
+    std::set<std::string> seen;
     for (auto &message : messages_) {
+        message.hidden = message.folded = message.groupHeader = false;
+        if (message.process && !message.group.empty()) {
+            message.groupHeader = seen.insert(message.group).second;
+            if (collapsedGroups_.count(message.group)) {
+                if (!message.groupHeader) {
+                    message.hidden = true;
+                    message.bounds = {};
+                    continue;
+                }
+                message.folded = true;
+                message.bounds = {0, y, width - D(16), y + D(40)};
+                y = message.bounds.bottom + D(12);
+                continue;
+            }
+        }
         const bool user = message.role == L"我";
         int w = std::min(width - D(16), D(user ? 680 : 880));
         if (user && message.text.find(L'\n') == std::wstring::npos) {
@@ -377,7 +635,7 @@ void AiPane::Reflow(bool appended) {
         // remeasures only its message, rather than every historical log block.
         if (message.measuredWidth != w || message.measuredLength != message.text.size()) {
             message.paragraphs.clear();
-            int inner = D(16);
+            int inner = D(12) + (message.groupHeader ? D(28) : 0);
 
             std::wistringstream stream(message.text);
             std::wstring line;
@@ -443,12 +701,17 @@ void AiPane::Reflow(bool appended) {
             }
             message.measuredWidth = w;
             message.measuredLength = message.text.size();
-            message.measuredHeight = inner + D(40);
+            message.measuredHeight = inner + D(28);
         }
         message.bounds = {left, y, left + w, y + message.measuredHeight};
-        y = message.bounds.bottom + D(16);
+        y = message.bounds.bottom + D(12);
     }
     ReleaseDC(transcript_, dc);
+    waitingBounds_ = {};
+    if (busy_ && waitingReply_) {
+        waitingBounds_ = {0, y, D(72), y + D(40)};
+        y += D(52);
+    }
     scroll_.Layout(y, r.bottom, appended);
     InvalidateRect(transcript_, nullptr, FALSE);
     ShowWindow(Control(Bottom), scroll_.unread ? SW_SHOW : SW_HIDE);
@@ -482,14 +745,27 @@ void AiPane::PaintTranscript(HDC target) {
     }
     for (size_t i = 0; i < messages_.size(); ++i) {
         const auto &m = messages_[i];
+        if (m.hidden || m.folded)
+            continue;
         RECT box = m.bounds;
         OffsetRect(&box, 0, -scroll_.offset);
         if (box.bottom < 0 || box.top > r.bottom)
             continue;
-        UiBox(dc, box, m.role == L"我" ? c.accentSoft : UiTheme(dark_).surface, m.role == L"我" ? c.accent : c.border,
+        UiBox(dc, box, m.role == L"我" ? c.accent : UiTheme(dark_).surface, m.role == L"我" ? c.accent : c.border,
               D(12));
-        UiDrawGlyph(dc, {box.right - D(34), box.bottom - D(30), box.right - D(16), box.bottom - D(12)}, c.muted,
-                    UiGlyph::Copy);
+        if (m.groupHeader) {
+            const auto count = std::count_if(messages_.begin(), messages_.end(),
+                                             [&](const Message &x) { return x.process && x.group == m.group; });
+            const auto state = groupStates_.count(m.group) ? groupStates_.at(m.group) : L"执行过程";
+            Draw(dc, state + L" · " + std::to_wstring(count) + L" 条记录",
+                 {box.left + D(12), box.top + D(6), box.right - D(36), box.top + D(32)}, smallFont_, c.muted);
+            UiDrawGlyph(dc, {box.right - D(28), box.top + D(12), box.right - D(12), box.top + D(28)}, c.muted,
+                        m.folded ? UiGlyph::ChevronRight : UiGlyph::ChevronDown);
+            if (m.folded)
+                continue;
+        }
+        UiDrawGlyph(dc, {box.right - D(34), box.bottom - D(26), box.right - D(18), box.bottom - D(10)},
+                    m.role == L"我" ? RGB(255, 255, 255) : c.muted, UiGlyph::Copy);
         for (const auto &p : m.paragraphs) {
             RECT b = p.rect;
             OffsetRect(&b, box.left, box.top);
@@ -499,7 +775,7 @@ void AiPane::PaintTranscript(HDC target) {
                 UiBox(dc, b, c.raised, c.raised, D(4));
             auto old = SelectObject(dc, ParagraphFont(p.style));
             SetBkMode(dc, TRANSPARENT);
-            SetTextColor(dc, c.text);
+            SetTextColor(dc, m.role == L"我" ? RGB(255, 255, 255) : c.text);
             const size_t pi = static_cast<size_t>(&p - m.paragraphs.data());
             const auto lo = std::min(selectionStart_, selectionEnd_), hi = std::max(selectionStart_, selectionEnd_);
             for (const auto &line : p.lines) {
@@ -521,14 +797,25 @@ void AiPane::PaintTranscript(HDC target) {
                                        : line.length;
                 if (begin < end) {
                     RECT selected{row.left + line.advances[begin], row.top, row.left + line.advances[end], row.bottom};
-                    SetBkColor(dc, c.accent);
+                    SetBkColor(dc, m.role == L"我" ? RGB(15, 36, 102) : c.accent);
                     SetTextColor(dc, RGB(255, 255, 255));
                     ExtTextOutW(dc, row.left, row.top, ETO_CLIPPED | ETO_OPAQUE, &selected, text.c_str(),
                                 static_cast<UINT>(text.size()), nullptr);
-                    SetTextColor(dc, c.text);
+                    SetTextColor(dc, m.role == L"我" ? RGB(255, 255, 255) : c.text);
                 }
             }
             SelectObject(dc, old);
+        }
+    }
+    if (busy_ && waitingReply_) {
+        RECT box = waitingBounds_;
+        OffsetRect(&box, 0, -scroll_.offset);
+        UiBox(dc, box, c.field, c.border, D(12));
+        const int phase = static_cast<int>((GetTickCount64() / 180) % 6);
+        for (int i = 0; i < 3; ++i) {
+            const COLORREF ink = phase % 3 == i ? c.muted : c.border;
+            UiBox(dc, {box.left + D(18 + i * 12), box.top + D(17), box.left + D(23 + i * 12), box.top + D(22)}, ink,
+                  ink, D(3));
         }
     }
     if (copiedUntil_ > GetTickCount64())
@@ -587,7 +874,20 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         p.y += self->scroll_.offset;
         for (size_t i = 0; i < self->messages_.size(); ++i)
-            if (PtInRect(&self->messages_[i].bounds, p)) {
+            if (!self->messages_[i].hidden && PtInRect(&self->messages_[i].bounds, p)) {
+                auto &message = self->messages_[i];
+                if (message.groupHeader && (message.folded || p.y < message.bounds.top + self->D(36))) {
+                    if (self->collapsedGroups_.count(message.group))
+                        self->collapsedGroups_.erase(message.group);
+                    else
+                        self->collapsedGroups_.insert(message.group);
+                    for (auto &entry : self->messages_)
+                        if (entry.group == message.group)
+                            entry.measuredLength = SIZE_MAX;
+                    self->ClearTextSelection();
+                    self->Reflow();
+                    return 0;
+                }
                 self->selectedMessage_ = i;
                 const auto b = self->messages_[i].bounds;
                 if (p.y >= b.bottom - self->D(32) && p.x >= b.right - self->D(72)) {
@@ -697,6 +997,8 @@ AiPane::TextPoint AiPane::HitText(POINT point) const {
         return {SIZE_MAX, 0, 0};
     for (size_t i = 0; i < messages_.size(); ++i) {
         const auto &m = messages_[i];
+        if (m.hidden || m.folded)
+            continue;
         if (point.y >= m.bounds.bottom && i + 1 < messages_.size())
             continue;
         for (size_t pi = 0; pi < m.paragraphs.size(); ++pi) {
@@ -725,6 +1027,8 @@ std::wstring AiPane::SelectedText() const {
         return {};
     std::wstring text;
     for (size_t i = std::get<0>(lo); i <= std::get<0>(hi); ++i) {
+        if (messages_[i].hidden || messages_[i].folded)
+            continue;
         const auto &paragraphs = messages_[i].paragraphs;
         for (size_t pi = 0; pi < paragraphs.size(); ++pi) {
             if (TextPoint{i, pi, SIZE_MAX} < lo || TextPoint{i, pi, 0} > hi)
@@ -767,6 +1071,8 @@ void AiPane::Add(std::wstring role, std::wstring text, std::string item) {
     message.role = std::move(role);
     message.text = std::move(text);
     message.item = std::move(item);
+    message.group = displayGroup_;
+    message.process = message.role == L"工具";
     messages_.push_back(std::move(message));
     Reflow(true);
 }
@@ -796,8 +1102,10 @@ void AiPane::RefreshTargets() {
     if (result.is_array())
         for (const auto &s : result)
             ids.push_back(s.at("id").get<std::string>());
-    if (ids == targets_ && SendMessageW(Control(Target), CB_GETCOUNT, 0, 0) > 0)
+    if (result == targetSnapshot_ && SendMessageW(Control(Target), CB_GETCOUNT, 0, 0) > 0)
         return;
+    targetSnapshot_ = result;
+    targetLabels_.clear();
     targets_ = ids;
     SendMessageW(Control(Target), CB_RESETCONTENT, 0, 0);
     SendMessageW(Control(Target), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"请选择终端…"));
@@ -814,6 +1122,7 @@ void AiPane::RefreshTargets() {
             name.erase(0, prefix.size());
         if (name.find(label) == std::wstring::npos)
             name = label + L" · " + name;
+        targetLabels_.push_back(name);
         SendMessageW(Control(Target), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
     }
     SendMessageW(Control(Target), CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"连接远程串口…"));
@@ -822,8 +1131,50 @@ void AiPane::RefreshTargets() {
         target_.clear();
     SendMessageW(Control(Target), CB_SETCURSEL,
                  it == targets_.end() ? 0 : static_cast<WPARAM>(it - targets_.begin() + 1), 0);
+    UpdateTargetLabel();
     PostMessageW(GetParent(window_), AiTargetChanged, 0, 0);
     UpdateActions();
+}
+void AiPane::UpdateTargetLabel() {
+    compactTargetLabel_ = L"选择终端";
+    targetTooltip_ = L"选择关联终端；完整名称与来源在展开列表中显示";
+    for (size_t i = 0; i < targets_.size(); ++i)
+        if (targets_[i] == target_) {
+            const auto &data = targetSnapshot_[i];
+            const auto kind = data.value("kind", std::string());
+            auto com = Wide(data.value("com", std::string()));
+            if (com.empty()) {
+                auto found = targetLabels_[i].find(L"COM");
+                if (found != std::wstring::npos) {
+                    size_t end = found + 3;
+                    while (end < targetLabels_[i].size() && iswdigit(targetLabels_[i][end]))
+                        ++end;
+                    com = targetLabels_[i].substr(found, end - found);
+                }
+            }
+            compactTargetLabel_ = kind == "remoteSerial" ? L"远程"
+                                  : kind == "serial"     ? L"串口"
+                                  : kind == "cmd"        ? L"CMD"
+                                  : kind == "ssh"        ? L"SSH"
+                                                         : L"Telnet";
+            if (!com.empty())
+                compactTargetLabel_ += L" " + com;
+            if (data.value("transport", std::string()) == "udpRaw")
+                compactTargetLabel_ = L"UDP " + std::to_wstring(data.value("remotePort", 6333));
+            targetTooltip_ = targetLabels_[i];
+            break;
+        }
+    TOOLINFOW tip{sizeof(tip)};
+    tip.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    tip.hwnd = window_;
+    tip.uId = reinterpret_cast<UINT_PTR>(Control(Target));
+    tip.lpszText = const_cast<wchar_t *>(targetTooltip_.c_str());
+    SendMessageW(tips_, TTM_DELTOOLW, 0, reinterpret_cast<LPARAM>(&tip));
+    SendMessageW(tips_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tip));
+    RECT desktop{};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &desktop, 0);
+    SendMessageW(Control(Target), CB_SETDROPPEDWIDTH, std::min<int>(D(520), desktop.right - desktop.left - D(32)), 0);
+    InvalidateRect(Control(Target), nullptr, FALSE);
 }
 void AiPane::SelectTarget(const std::string &id) {
     if (busy_)
@@ -833,6 +1184,7 @@ void AiPane::SelectTarget(const std::string &id) {
     auto it = std::find(targets_.begin(), targets_.end(), id);
     if (it != targets_.end())
         SendMessageW(Control(Target), CB_SETCURSEL, it - targets_.begin() + 1, 0);
+    UpdateTargetLabel();
     PostMessageW(GetParent(window_), AiTargetChanged, 0, 0);
     UpdateActions();
 }
@@ -859,6 +1211,8 @@ bool AiPane::Request(ai::Operation operation, Json params, const std::string &pu
     return true;
 }
 void AiPane::Reply(const Json &id, Json result, bool success) {
+    if (!success && !displayGroup_.empty())
+        groupStates_[displayGroup_] = L"含失败记录";
     // JSON escapes and the tool-result string envelope can expand raw logs.
     if (result.is_object() && result.contains("text") && result["text"].is_string()) {
         auto text = result["text"].get<std::string>();
@@ -904,9 +1258,12 @@ void AiPane::SendPrompt(std::wstring text) {
         attachment_.clear();
         attachmentTarget_.clear();
     }
+    displayGroup_ = "local:" + std::to_string(nextRequest_);
+    waitingReply_ = true;
     Add(L"我", text);
     SetWindowTextW(Control(Input), L"");
     busy_ = true;
+    Reflow(true);
     turn_.clear();
     completionDeadline_ = 0;
     stopRequested_ = false;
@@ -942,6 +1299,8 @@ void AiPane::Stop() {
     restoreOnConfig_ = false;
     nativeItems_.clear();
     stopRequested_ = true;
+    waitingReply_ = false;
+    Reflow();
     completionDeadline_ = 0;
     if (!pendingObservation_.is_null()) {
         Reply(pendingObservation_["requestId"], {{"error", "User stopped observation"}}, false);
@@ -950,9 +1309,7 @@ void AiPane::Stop() {
     }
     if (!turn_.empty())
         Request(ai::Operation::StopTask, {{"conversationId", thread_}, {"taskId", turn_}}, "interrupt");
-    else if (busy_) {
-        client_.Disconnect();
-    }
+    // A pending turn/start is cancelled when its ID arrives; keep SSH alive.
     if (devices_)
         devices_("release", {{"sessionId", turnTarget_}});
     SetStatus(L"已请求停止；已提交的服务器或设备命令可能继续执行，不自动重发");
@@ -966,6 +1323,10 @@ void AiPane::NewConversation() {
     thread_.clear();
     turn_.clear();
     finishedTurns_.clear();
+    displayGroup_.clear();
+    collapsedGroups_.clear();
+    groupStates_.clear();
+    waitingReply_ = false;
     ClearTextSelection();
     messages_.clear();
     selectedMessage_ = SIZE_MAX;
@@ -1083,6 +1444,8 @@ void AiPane::Poll() {
         } catch (...) {
         }
     }
+    if (busy_ && waitingReply_)
+        InvalidateRect(transcript_, nullptr, FALSE);
     std::deque<Json> batch;
     {
         std::lock_guard<std::mutex> l(eventsMutex_);
@@ -1115,9 +1478,8 @@ void AiPane::Poll() {
         requests_.empty())
         Event({{"event", "taskFinished"}, {"conversationId", thread_}, {"taskId", turn_}, {"status", "completed"}});
     if (busy_ && turnStarted_ && GetTickCount64() - turnStarted_ > 10 * 60 * 1000) {
-        Stop();
-        client_.Disconnect();
-        SetStatus(L"AI 任务已超过 10 分钟，连接已停止；可重连后恢复历史，不自动重试");
+        turnStarted_ = 0;
+        Add(L"状态", L"任务已运行超过 10 分钟，连接仍保留；可点击停止。已提交操作不会自动重发。");
     }
 }
 void AiPane::Event(const Json &e) {
@@ -1141,6 +1503,19 @@ void AiPane::Event(const Json &e) {
     if (event == "status" || event == "error") {
         SetStatus(Wide(e.value("message", std::string())));
         if (event == "error") {
+            if (e.value("category", std::string()) == "authentication") {
+                std::wstring failure;
+                const bool erased = ai::ForgetSavedServerPassword(settings_, failure);
+                SecureZeroMemory(settings_.password.data(), settings_.password.size() * sizeof(wchar_t));
+                settings_.password.clear();
+                needsPassword_ = true;
+                SetStatus(erased ? L"SSH 密码认证失败，已清除当前账号保存的旧密码；请输入新密码。主机身份记录保留。"
+                                 : failure);
+                if (dialog_) {
+                    SetDlgItemTextW(dialog_, Password, L"");
+                    SetDlgItemTextW(dialog_, IDOK, L"连接");
+                }
+            }
             connectionError_ = true;
             Add(L"状态", status_);
         }
@@ -1151,6 +1526,8 @@ void AiPane::Event(const Json &e) {
         restoreOnConfig_ = false;
         PostMessageW(GetParent(window_), AiStateChanged, 0, 0);
         busy_ = false;
+        waitingReply_ = false;
+        Reflow();
         turn_.clear();
         requests_.clear();
         completionDeadline_ = 0;
@@ -1162,6 +1539,13 @@ void AiPane::Event(const Json &e) {
         if (!connectionError_)
             SetStatus(L"Codex 已断开，可重新连接并恢复历史");
         UpdateActions();
+        if (needsPassword_ && !closing_) {
+            needsPassword_ = false;
+            if (dialog_)
+                SetFocus(GetDlgItem(dialog_, Password));
+            else
+                PostMessageW(window_, WM_COMMAND, Connect, 0);
+        }
         return;
     }
     if (event == "response") {
@@ -1176,6 +1560,8 @@ void AiPane::Event(const Json &e) {
             SetStatus(Wide(ai::ExplainServiceError(e.at("error").get<std::string>())));
             Add(L"状态", status_);
             if (purpose == "start" || purpose == "turn" || purpose == "resume") {
+                waitingReply_ = false;
+                Reflow();
                 taskAuthorized_ = false;
                 busy_ = false;
                 pendingPrompt_.clear();
@@ -1203,6 +1589,8 @@ void AiPane::Event(const Json &e) {
             turn_ = result.at("taskId").get<std::string>();
             if (stopRequested_)
                 Stop();
+        } else if (purpose == "compact") {
+            Add(L"状态", L"服务器已接受会话整理请求；完成状态以服务器通知为准，完整历史仍保留。");
         } else if (purpose == "config") {
             serverDefaultModel_ = result.value("defaultModel", std::string());
             SetWindowTextW(Control(Model), serverDefaultModel_.empty() ? L"服务器默认模型" :
@@ -1228,9 +1616,24 @@ void AiPane::Event(const Json &e) {
             messageBytes_ = 0;
             scroll_ = {};
             thread_ = result.at("conversationId").get<std::string>();
-            for (const auto &message : result.value("messages", Json::array()))
+            collapsedGroups_.clear();
+            groupStates_.clear();
+            displayGroup_.clear();
+            for (const auto &message : result.value("messages", Json::array())) {
+                displayGroup_ = message.value("group", std::string());
+                const auto count = messages_.size();
                 Add(Wide(message.at("role").get<std::string>()), Wide(message.at("text").get<std::string>()),
                     message.value("messageId", std::string()));
+                if (messages_.size() > count)
+                    messages_.back().process = messages_.back().process || message.value("process", false);
+                if (message.value("status", std::string()) == "completed" && !displayGroup_.empty()) {
+                    collapsedGroups_.insert(displayGroup_);
+                    groupStates_[displayGroup_] = L"已完成";
+                }
+            }
+            displayGroup_.clear();
+            waitingReply_ = false;
+            Reflow();
             busy_ = false;
             SetStatus(L"已恢复服务器历史 · 查看历史不会自动发送命令");
         }
@@ -1248,7 +1651,13 @@ void AiPane::Event(const Json &e) {
         return;
     if (!task.empty() && !turn_.empty() && task != turn_)
         return;
+    if (event == "contextCompacted") {
+        Add(L"状态", L"服务器已完成上下文整理；完整历史仍保留。");
+        return;
+    }
     if ((event == "serverTool" || event == "serverToolDelta") && busy_ && !stopRequested_) {
+        if (e.value("failed", false))
+            groupStates_[displayGroup_] = L"含失败记录";
         completionDeadline_ = 0;
         const auto id = e.value("messageId", std::string());
         if (event == "serverTool" && e.value("completed", false)) nativeItems_.erase(id);
@@ -1284,6 +1693,7 @@ void AiPane::Event(const Json &e) {
     if (event == "taskActivity" || event == "serialToolRequest" || event == "textDelta")
         completionDeadline_ = 0;
     if ((event == "textDelta" || event == "textComplete") && !stopRequested_) {
+        waitingReply_ = false;
         const auto id = e.value("messageId", std::string());
         const auto text = Wide(e.value("text", std::string()));
         auto message = std::find_if(messages_.begin(), messages_.end(),
@@ -1305,6 +1715,15 @@ void AiPane::Event(const Json &e) {
                 Reflow(true);
             }
         }
+        if (event == "textComplete") {
+            auto found = std::find_if(messages_.begin(), messages_.end(),
+                                      [&](const Message &m) { return m.item == id && m.role == L"AI"; });
+            if (found != messages_.end()) {
+                found->process = !e.value("final", true);
+                found->measuredLength = SIZE_MAX;
+            }
+            Reflow(true);
+        }
         if (event == "textComplete" && busy_ && e.value("final", false))
             completionDeadline_ = GetTickCount64() + 1000;
     } else if (event == "taskStarted") {
@@ -1314,6 +1733,17 @@ void AiPane::Event(const Json &e) {
                 Stop();
         }
     } else if (event == "taskFinished") {
+        waitingReply_ = false;
+        const auto outcome = e.value("status", std::string());
+        const bool failedStep = groupStates_[displayGroup_] == L"含失败记录";
+        groupStates_[displayGroup_] = stopRequested_           ? L"已停止"
+                                      : outcome == "failed"    ? L"失败"
+                                      : failedStep             ? L"含失败记录"
+                                      : outcome == "completed" ? L"已完成"
+                                                               : L"状态待确认";
+        if (!failedStep && !stopRequested_ && outcome == "completed")
+            collapsedGroups_.insert(displayGroup_);
+        Reflow(true);
         taskAuthorized_ = false;
         const auto state = e.value("status", std::string());
         if (!turn_.empty()) {
@@ -1335,6 +1765,7 @@ void AiPane::Event(const Json &e) {
             SetStatus(stopRequested_  ? L"任务已停止；已提交操作仍需实际输出或回读确认"
                       : observedTool_ ? L"回复完成 · 已处理工具调用"
                                       : L"回复完成 · 推理已响应，工具能力待实际调用验证");
+        Reflow(true);
         RefreshTargets();
         UpdateActions();
     } else if (event == "serviceError") {
@@ -1342,6 +1773,8 @@ void AiPane::Event(const Json &e) {
         Add(L"状态", explanation);
         SetStatus(explanation);
         if (!e.value("willRetry", false)) {
+            waitingReply_ = false;
+            Reflow();
             taskAuthorized_ = false;
             busy_ = false;
             completionDeadline_ = 0;
@@ -1525,20 +1958,25 @@ void AiPane::RememberThread(const std::string &id, const std::wstring &title) {
 void AiPane::ShowHistory() {
     if (busy_)
         return;
-    auto entries = History();
-    HMENU menu = CreatePopupMenu();
-    std::vector<Json> visible;
-    for (const auto &e : entries)
-        if (e.value("profile", std::string()) == Utf8(Profile(settings_))) {
-            visible.push_back(e);
-            AppendMenuW(menu, MF_STRING, visible.size(), Wide(e.value("title", std::string("AI 会话"))).c_str());
-        }
-    if (visible.empty())
-        AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"当前服务器尚无历史会话");
-    RECT r{};
-    GetWindowRect(Control(HistoryButton), &r);
-    int chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN, r.left, r.bottom, 0, window_, nullptr);
-    DestroyMenu(menu);
+    HistoryPopup popup;
+    popup.dark = dark_;
+    popup.dpi = dpi_;
+    popup.font = font_;
+    popup.canCompact = client_.Ready() && !thread_.empty();
+    for (const auto &e : History())
+        if (e.value("profile", std::string()) == Utf8(Profile(settings_)))
+            popup.entries.push_back(e);
+    EmptyDialog d;
+    const auto choice = UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &d.dialog, GetAncestor(window_, GA_ROOT),
+                                                 HistoryPopup::Proc, reinterpret_cast<LPARAM>(&popup));
+    if (choice == 301) {
+        if (popup.canCompact)
+            Request(ai::Operation::CompactConversation, {{"conversationId", thread_}}, "compact");
+        return;
+    }
+    const auto &visible = popup.entries;
+    const int chosen =
+        choice == IDOK && !popup.filtered.empty() ? static_cast<int>(popup.filtered[popup.selected]) + 1 : 0;
     if (chosen > 0 && static_cast<size_t>(chosen) <= visible.size()) {
         auto id = visible[chosen - 1].at("id").get<std::string>();
         taskAuthorized_ = false;
@@ -1661,6 +2099,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (Profile(s) != Profile(self->settings_))
                 self->NewConversation();
             self->settings_ = s;
+            self->needsPassword_ = false;
             self->dialogEnter_ = id == IDOK;
             self->SetStatus(L"正在连接并检测 SSH / Codex / App Server…");
             self->client_.Connect(

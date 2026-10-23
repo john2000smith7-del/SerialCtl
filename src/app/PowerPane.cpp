@@ -1275,12 +1275,11 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             HBRUSH background = CreateSolidBrush(c.field);
             FillRect(item.hDC, &item.rcItem, background);
             DeleteObject(background);
-            const COLORREF fill = pressed || hovered ? c.accentSoft
-                                  : active ? c.surface : mainTab ? c.raised : c.field;
+            const COLORREF fill = active ? c.accent : pressed || hovered ? c.raised : mainTab ? c.raised : c.field;
             UiBox(item.hDC, item.rcItem, fill, focused ? c.accent : active ? c.muted : c.border,
                   MulDiv(10, self->dpi_, 96));
             SetBkMode(item.hDC, TRANSPARENT);
-            SetTextColor(item.hDC, !enabled ? c.muted : active ? c.accent : c.text);
+            SetTextColor(item.hDC, !enabled ? c.muted : active ? RGB(255, 255, 255) : c.text);
             auto old = SelectObject(item.hDC, self->smallFont_);
             auto label = self->Text(item.hwndItem);
             RECT rect = item.rcItem;

@@ -47,6 +47,13 @@ file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/serialctl.ico" SERIALCTL_
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/serialctl-light.ico" SERIALCTL_LIGHT_ICON_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-black.png" SERIALCTL_TOOLBAR_BLACK_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-white.png" SERIALCTL_TOOLBAR_WHITE_PATH)
+foreach(asset surface-fill surface-stroke utility-icons)
+    string(REPLACE "-" "_" variable "${asset}")
+    string(TOUPPER "${variable}" variable)
+    file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/${asset}.png" SERIALCTL_${variable}_PATH)
+endforeach()
+configure_file("${SERIALCTL_SOURCE_DIR}/app/ui-assets.rc.in" "${SERIALCTL_GENERATED_DIR}/ui-assets.rc" @ONLY)
+
 set(SERIALCTL_FILE_VERSION_COMMA
     "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
 set(SERIALCTL_FILE_VERSION_DOTTED
@@ -152,6 +159,8 @@ add_executable(serialctl WIN32
     src/connections/SerialConnection.cpp
     src/connections/SerialDevice.cpp
     src/connections/SharedSerialConnection.cpp
+    src/connections/UdpSerialConnection.cpp
+    src/connections/SerialPorts.cpp
     src/connections/TcpConnection.cpp
     src/logging/SessionLogger.cpp
     src/sftp/SftpClient.cpp
@@ -168,7 +177,7 @@ if(MSVC)
     # resources and to ensure the Win7 compatibility declarations stay authoritative.
     target_link_options(serialctl PRIVATE /MANIFEST:NO)
 endif()
-target_link_libraries(serialctl PRIVATE ws2_32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
+target_link_libraries(serialctl PRIVATE ws2_32 setupapi comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
 
 foreach(PUTTY_PROGRAM IN ITEMS plink.exe psftp.exe)
     if(NOT EXISTS "${PUTTY_ARCH_DIR}/${PUTTY_PROGRAM}")
@@ -211,6 +220,8 @@ if(BUILD_TESTING)
     add_executable(ai_pane_test tests/integration/AiPaneTest.cpp src/app/AiPane.cpp src/app/ToolbarIcons.cpp src/ai/CodexClient.cpp
         src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(ai_pane_test CONSOLE)
+    target_sources(ai_pane_test PRIVATE "${SERIALCTL_GENERATED_DIR}/ui-assets.rc")
+    target_link_libraries(ai_pane_test PRIVATE ole32)
     target_compile_definitions(ai_pane_test PRIVATE SERIALCTL_AI_TESTING)
     target_link_libraries(ai_pane_test PRIVATE advapi32 ole32 comctl32 gdiplus gdi32 user32)
     set_target_properties(ai_pane_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ai-fixture")
@@ -224,7 +235,7 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(ai_device_test CONSOLE)
     target_compile_definitions(ai_device_test PRIVATE SERIALCTL_AI_TESTING
         SERIALCTL_VERSION=L"${SERIALCTL_CPP_VERSION}" SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
-    target_link_libraries(ai_device_test PRIVATE ws2_32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
+    target_link_libraries(ai_device_test PRIVATE ws2_32 setupapi comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
     if(MSVC)
         target_link_options(ai_device_test PRIVATE /MANIFEST:NO)
     endif()
@@ -232,11 +243,15 @@ if(BUILD_TESTING)
     set_tests_properties(ai_device PROPERTIES TIMEOUT 45)
     add_executable(ui_buffered_paint_test tests/unit/UiBufferedPaintTest.cpp)
     serialctl_configure_native_target(ui_buffered_paint_test CONSOLE)
+    target_sources(ui_buffered_paint_test PRIVATE "${SERIALCTL_GENERATED_DIR}/ui-assets.rc")
+    target_link_libraries(ui_buffered_paint_test PRIVATE ole32)
     target_link_libraries(ui_buffered_paint_test PRIVATE gdiplus gdi32 user32 comctl32)
     add_test(NAME ui_buffered_paint COMMAND ui_buffered_paint_test)
     set_tests_properties(ui_buffered_paint PROPERTIES TIMEOUT 30)
     add_executable(ui_combo_paint_test tests/integration/UiComboPaintTest.cpp)
     serialctl_configure_native_target(ui_combo_paint_test CONSOLE)
+    target_sources(ui_combo_paint_test PRIVATE "${SERIALCTL_GENERATED_DIR}/ui-assets.rc")
+    target_link_libraries(ui_combo_paint_test PRIVATE ole32)
     target_link_libraries(ui_combo_paint_test PRIVATE gdiplus gdi32 user32 comctl32)
     add_test(NAME ui_combo_paint COMMAND ui_combo_paint_test)
     set_tests_properties(ui_combo_paint PROPERTIES TIMEOUT 60)
@@ -284,6 +299,11 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(shared_serial_protocol_test CONSOLE)
     target_link_libraries(shared_serial_protocol_test PRIVATE ws2_32 advapi32)
     add_test(NAME shared_serial_protocol COMMAND shared_serial_protocol_test)
+
+    add_executable(udp_serial_test tests/integration/UdpSerialConnectionTest.cpp src/connections/UdpSerialConnection.cpp)
+    serialctl_configure_native_target(udp_serial_test CONSOLE)
+    target_link_libraries(udp_serial_test PRIVATE ws2_32)
+    add_test(NAME udp_serial COMMAND udp_serial_test)
 
     add_executable(tcp_connection_test
         tests/integration/TcpConnectionTest.cpp

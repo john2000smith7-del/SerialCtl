@@ -8,20 +8,16 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <windowsx.h>
-// Windows SDK GDI+ declarations use COM/property interfaces.
-#include <objidl.h>
-#include <propidl.h>
-#include <gdiplus.h>
+#include "UiResources.h"
 namespace serialctl {
 struct UiColors {
     COLORREF surface, raised, field, text, muted, border, accent, danger, window, accentSoft;
 };
 inline UiColors UiTheme(bool dark) {
-    return dark ? UiColors{RGB(36, 36, 38),    RGB(44, 44, 46), RGB(20, 20, 22),   RGB(245, 245, 247),
-                           RGB(152, 152, 157), RGB(58, 58, 60), RGB(10, 132, 255), RGB(255, 69, 58),
-                           RGB(28, 28, 30), RGB(31, 55, 80)}
+    return dark ? UiColors{RGB(36, 36, 38), RGB(44, 44, 46),  RGB(20, 20, 22),  RGB(245, 245, 247), RGB(152, 152, 157),
+                           RGB(58, 58, 60), RGB(31, 79, 216), RGB(255, 69, 58), RGB(28, 28, 30),    RGB(31, 55, 80)}
                 : UiColors{RGB(255, 255, 255), RGB(242, 242, 247), RGB(255, 255, 255), RGB(29, 29, 31),
-                           RGB(110, 110, 115), RGB(210, 210, 215), RGB(0, 122, 255),   RGB(255, 59, 48),
+                           RGB(110, 110, 115), RGB(210, 210, 215), RGB(31, 79, 216),   RGB(255, 59, 48),
                            RGB(245, 245, 247), RGB(229, 241, 255)};
 }
 // AI uses the existing softer surfaces; regular terminal/dialog palettes stay independent.
@@ -35,8 +31,30 @@ inline Gdiplus::Color UiColor(COLORREF color) {
     return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
 }
 // Shared compact utility line glyphs; connection types always use ToolbarIcons.
-enum class UiGlyph { Clock, Plus, Document, Trash, Copy, Paste, SelectAll, Stop };
+enum class UiGlyph {
+    Clock,
+    Plus,
+    Document,
+    Trash,
+    Copy,
+    Paste,
+    SelectAll,
+    Stop,
+    Run,
+    Edit,
+    ChevronRight,
+    Diagnostics,
+    ChevronDown,
+    ChevronLeft,
+    Refresh,
+    Check,
+    Folder,
+    Link,
+    ChevronUp
+};
 inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
+    if (UiResourceGlyph(dc, bounds, color, static_cast<int>(icon)))
+        return;
     Gdiplus::Graphics g(dc);
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     g.TranslateTransform(static_cast<float>(bounds.left), static_cast<float>(bounds.top));
@@ -168,6 +186,8 @@ class UiBufferedPaint {
     bool ready_ = false;
 };
 inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius) {
+    if (UiResourceBox(dc, rect, fill, border, radius))
+        return;
     const float width = static_cast<float>(rect.right - rect.left - 1);
     const float height = static_cast<float>(rect.bottom - rect.top - 1);
     if (!dc || width <= 0 || height <= 0)
@@ -278,7 +298,7 @@ inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool select
     if (selected) {
         RECT highlight = row;
         InflateRect(&highlight, 0, -1);
-        UiBox(dc, highlight, colors.accentSoft, colors.accentSoft, d(8));
+        UiBox(dc, highlight, colors.accent, colors.accent, d(8));
     }
     const int length = static_cast<int>(SendMessageW(combo, CB_GETLBTEXTLEN, index, 0));
     if (length < 0 || length > 65536)
@@ -288,7 +308,7 @@ inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool select
     row.left += d(6);
     row.right -= d(6);
     SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, !IsWindowEnabled(combo) ? colors.muted : selected ? colors.accent : colors.text);
+    SetTextColor(dc, !IsWindowEnabled(combo) ? colors.muted : selected ? RGB(255, 255, 255) : colors.text);
     DrawTextW(dc, text.data(), length, &row, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
 inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style) {
@@ -306,7 +326,7 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
     const COLORREF outsideColor = GetPropW(combo, L"SerialCtl.FieldSurface") || _wcsicmp(parentClass, L"#32770") == 0
                                       ? colors.surface
                                       : colors.field;
-    HBRUSH outside = CreateSolidBrush(outsideColor);
+    HBRUSH outside = CreateSolidBrush(GetPropW(combo, L"SerialCtl.Composer") ? colors.field : outsideColor);
     FillRect(dc, &bounds, outside);
     DeleteObject(outside);
     const bool enabled = IsWindowEnabled(combo) != FALSE;
@@ -325,6 +345,8 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
             text.assign(buffer.data());
         }
     }
+    if (auto label = reinterpret_cast<const std::wstring *>(GetPropW(combo, L"SerialCtl.CompactLabel")))
+        text = *label;
     HFONT font = reinterpret_cast<HFONT>(SendMessageW(combo, WM_GETFONT, 0, 0));
     if (font || style.font)
         SelectObject(dc, font ? font : style.font);
@@ -336,7 +358,9 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
     DrawTextW(dc, text.c_str(), -1, &label, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
     const int x = bounds.right - d(14), y = bounds.bottom / 2;
     const POINT chevron[]{{x - d(4), y - d(2)}, {x, y + d(2)}, {x + d(4), y - d(2)}};
-    UiPolyline(dc, chevron, 3, colors.muted, static_cast<float>(d(2)));
+    UiDrawGlyph(dc,
+                {bounds.right - d(24), (bounds.bottom - d(16)) / 2, bounds.right - d(8), (bounds.bottom + d(16)) / 2},
+                colors.muted, UiGlyph::ChevronDown);
     RestoreDC(dc, saved);
 }
 inline void UiDrawComboItem(const DRAWITEMSTRUCT &source, const UiFieldStyle &style) {

@@ -55,7 +55,8 @@ class AiPane {
     };
     struct Message {
         std::wstring role, text, streamedOutput;
-        std::string item;
+        std::string item, group;
+        bool process = false, hidden = false, folded = false, groupHeader = false;
         RECT bounds{};
         std::vector<Paragraph> paragraphs;
         size_t measuredLength = SIZE_MAX;
@@ -98,6 +99,16 @@ class AiPane {
     TextPoint HitText(POINT) const;
     std::wstring SelectedText() const;
     void ClearTextSelection();
+    bool waitingReply_ = false, needsPassword_ = false;
+    RECT composerBounds_{}, waitingBounds_{};
+    std::string displayGroup_;
+    std::set<std::string> collapsedGroups_;
+    std::map<std::string, std::wstring> groupStates_;
+    std::vector<std::wstring> targetLabels_;
+    std::wstring compactTargetLabel_, targetTooltip_;
+    Json targetSnapshot_;
+    HWND tips_ = nullptr;
+    void UpdateTargetLabel();
     HFONT ParagraphFont(int style) const;
     ToolbarIcons icons_;
     TextPoint selectionStart_{SIZE_MAX, 0, 0}, selectionEnd_{SIZE_MAX, 0, 0};
