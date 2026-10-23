@@ -7,6 +7,10 @@ SerialCtl uses an Apple-inspired desktop design language adapted to native Win32
 - Base spacing grid: 8 px.
 - Allowed spacing: 8, 12, 16, and 24 px.
 - Main cards use 12 px outer gaps, 16 px inner padding, and 12 px gaps between peer actions.
+- When the fixed navigation would enter the detached theme action's 12 px gap, use 48 px icon-only navigation items with the same approved 24 px icons, accessible names and full-label tooltips. Restore labels when space returns; do not wrap or enlarge the toolbar.
+- The power mode field and its action group share a width budget. Below 564 logical px, move the action group to a separate row and shift the channel cards down by 48 px; peer actions keep 12 px gaps.
+- AI headers reserve nonoverlapping areas for status and actions. At narrow widths retain a short AI title and readable status; the monitor wrap switch becomes a 32 px icon button with a tooltip before its title area would shrink below 80 px.
+- Oversized AI and Settings dialogs fit inside the monitor work area with 12 px margins. Keep the footer actions/credits fixed, scroll only the content using the shared overlay scrollbar, clip content before the footer, and reveal fields on keyboard focus. Normal-size dialog geometry stays unchanged.
 - Component-internal optical insets may use 2 or 4 px only for segmented controls and vector icon strokes; page and dialog layout still follows the base grid.
 - All buttons and form controls use a 10 px radius.
 - Cards and large surfaces use a 12 px radius.

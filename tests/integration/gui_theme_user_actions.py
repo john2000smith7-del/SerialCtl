@@ -65,9 +65,9 @@ class ThemeActions(DesktopActions):
             if dc:
                 self.user.ReleaseDC(None, dc)
         enabled = bool(self.user.IsWindowEnabled(self.control(302)))
-        expected = ((31, 55, 80) if theme == "dark" else (229, 241, 255)) if state in ("hover", "pressed") else (
-            ((44, 44, 46) if enabled else (36, 36, 38)) if theme == "dark" else
-            ((242, 242, 247) if enabled else (255, 255, 255)))
+        expected = (31, 79, 216) if state == "pressed" else (
+            ((36, 36, 38) if theme == "dark" else (255, 255, 255)) if state == "hover" and enabled else
+            ((44, 44, 46) if theme == "dark" else (242, 242, 247)))
         # Interior strips avoid the rounded border and central Chinese text.
         ys = list(range(round(4 * self.scale), round(8 * self.scale)))
         ys += [height - 1 - y for y in ys]

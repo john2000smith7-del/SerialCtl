@@ -333,6 +333,9 @@ private:
     HBRUSH panelBrush_ = nullptr;
     HBRUSH terminalBrush_ = nullptr;
     bool darkMode_ = false;
+    bool compactNavigation_ = false;
+    HWND navigationTooltip_ = nullptr;
+    std::wstring navigationTipText_;
     int selectedMode_ = -1;
     int lineEndingIndex_ = 0;
     UINT selectedCodePage_ = CP_UTF8;

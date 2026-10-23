@@ -2,6 +2,7 @@
 #include <chrono>
 #include "TerminalDecoder.h"
 #include "MainWindow.h"
+#include "UiDialogViewport.h"
 
 #include "CmdConnection.h"
 #include "PlinkConnection.h"
@@ -255,16 +256,24 @@ struct MainLayoutMetrics {
     int contentBottom;
 };
 
-RECT NavigationFrame() {
+bool CompactNavigation(int width) {
+    int full = Ui::Gap + Ui::Space;
+    for (int item : Ui::ToolbarButtonWidths) full += Ui::Scale(item) + Ui::Space;
+    full += Ui::Scale(Ui::SettingsButtonWidth) + Ui::Space;
+    return full + Ui::Gap + Ui::StandardHeight + Ui::Gap > width;
+}
+
+RECT NavigationFrame(int width) {
     int right = Ui::Gap + Ui::Space;
-    for (int width : Ui::ToolbarButtonWidths) right += Ui::Scale(width) + Ui::Space;
-    right += Ui::Scale(Ui::SettingsButtonWidth) + Ui::Space;
+    const bool compact = CompactNavigation(width);
+    for (int item : Ui::ToolbarButtonWidths) right += Ui::Scale(compact ? 48 : item) + Ui::Space;
+    right += Ui::Scale(compact ? 48 : Ui::SettingsButtonWidth) + Ui::Space;
     return {Ui::Gap, Ui::Section, right, Ui::ToolbarHeight - Ui::Section};
 }
 
 int MainCardTop() {
     // Match the horizontal card/splitter gaps, measuring from the visible bar.
-    return NavigationFrame().bottom + Ui::Gap;
+    return Ui::ToolbarHeight - Ui::Section + Ui::Gap;
 }
 
 MainLayoutMetrics GetMainLayoutMetrics(int width, int height, int preferredRightWidth, bool rightPanelCollapsed,
@@ -1912,6 +1921,15 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     // messages. Once work has begun, never surprise the user with a later restart.
     if (message == WM_COMMAND || message == WM_ENTERSIZEMOVE) startupUpdateDeferred_ = true;
     switch (message) {
+    case WM_NOTIFY: {
+        const auto header = reinterpret_cast<NMHDR*>(lParam);
+        if (header && header->hwndFrom == navigationTooltip_ && header->code == TTN_GETDISPINFOW) {
+            navigationTipText_ = ControlText(reinterpret_cast<HWND>(header->idFrom));
+            reinterpret_cast<NMTTDISPINFOW*>(lParam)->lpszText = navigationTipText_.data();
+            return 0;
+        }
+        break;
+    }
     case AiStateChanged:
         RefreshConnectionList();
         EnableWindow(disconnectButton_, aiVisible_ ? aiPane_.Busy() : activeSession_ != nullptr);
@@ -2214,6 +2232,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_COMMAND:
+        if (reinterpret_cast<HWND>(lParam) == aiTerminalHeader_) return 0;
         if (LOWORD(wParam) == IdAi && HIWORD(wParam) == BN_CLICKED) { ShowAiPage(); return 0; }
         if (LOWORD(wParam) == IdCmd && HIWORD(wParam) == BN_CLICKED) {
             if (pendingSession_) { AppendStatus(L"请等待当前连接完成", true); return 0; }
@@ -2529,6 +2548,20 @@ void MainWindow::CreateControls() {
     toolbarButtons_.push_back(aiButton_);
     settingsButton_ = CreateChild(L"BUTTON", L"设置", BS_OWNERDRAW, IdSettings);
     themeButton_ = CreateChild(L"BUTTON", L"浅色", BS_OWNERDRAW, IdTheme);
+    navigationTooltip_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
+        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        window_, nullptr, instance_, nullptr);
+    auto addTip = [this](HWND control) {
+        TOOLINFOW tool{sizeof(tool)};
+        tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        tool.hwnd = window_;
+        tool.uId = reinterpret_cast<UINT_PTR>(control);
+        tool.lpszText = LPSTR_TEXTCALLBACKW;
+        SendMessageW(navigationTooltip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
+    };
+    for (auto button : toolbarButtons_) addTip(button);
+    addTip(settingsButton_);
+    addTip(themeButton_);
     disconnectButton_ = CreateChild(L"BUTTON", L"断开", BS_OWNERDRAW, IdDisconnect);
 
     connectionHeader_ = CreateChild(L"STATIC", L"连接", SS_LEFT, -1);
@@ -2537,7 +2570,8 @@ void MainWindow::CreateControls() {
     connectionList_ = CreateChild(L"LISTBOX", L"", LBS_OWNERDRAWFIXED | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, IdConnectionList);
 
     SetWindowSubclass(connectionList_, OverlayListSubclassProc, 2, reinterpret_cast<DWORD_PTR>(this));
-    aiTerminalHeader_ = CreateChild(L"STATIC", L"终端实时输出", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS, 305);
+    aiTerminalHeader_ = CreateChild(L"STATIC", L"终端实时输出", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS | SS_NOTIFY, 305);
+    addTip(aiTerminalHeader_);
     terminal_ = CreateChild(L"STATIC", L"终端", SS_NOTIFY | WS_TABSTOP, IdTerminal);
     SendMessageW(terminal_, WM_SETFONT, reinterpret_cast<WPARAM>(terminalFont_), TRUE);
     SetWindowSubclass(terminal_, TerminalSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
@@ -2620,13 +2654,15 @@ void MainWindow::LayoutControls(int width, int height) {
     rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth +
                                            (aiVisible_ ? Ui::MinRightWidth : Ui::MinCenterWidth) + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
+    compactNavigation_ = CompactNavigation(width);
     int x = Ui::Gap + Ui::Space;
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
-        batch.Move(toolbarButtons_[index], x, toolbarButtonTop, Ui::Scale(Ui::ToolbarButtonWidths[index]), Ui::StandardHeight,
+        const int buttonWidth = Ui::Scale(compactNavigation_ ? 48 : Ui::ToolbarButtonWidths[index]);
+        batch.Move(toolbarButtons_[index], x, toolbarButtonTop, buttonWidth, Ui::StandardHeight,
                    TRUE);
-        x += Ui::Scale(Ui::ToolbarButtonWidths[index]) + Ui::Space;
+        x += buttonWidth + Ui::Space;
     }
-    batch.Move(settingsButton_, x, toolbarButtonTop, Ui::Scale(Ui::SettingsButtonWidth), Ui::StandardHeight, TRUE);
+    batch.Move(settingsButton_, x, toolbarButtonTop, Ui::Scale(compactNavigation_ ? 48 : Ui::SettingsButtonWidth), Ui::StandardHeight, TRUE);
     batch.Move(themeButton_, width - Ui::Gap - Ui::StandardHeight, toolbarButtonTop,
                Ui::StandardHeight, Ui::StandardHeight, TRUE);
 
@@ -2660,19 +2696,26 @@ void MainWindow::LayoutControls(int width, int height) {
         batch.Move(terminal_, layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
             layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
             centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
+    const int monitorInnerWidth = width - Ui::Gap - layout.rightLeft - Ui::PanelPadding * 2;
+    const int wrapWidth = monitorInnerWidth < Ui::Scale(80 + 12 + 96 + 48) ? Ui::CompactHeight : Ui::Scale(96);
+    const int wrapLeft = width - Ui::Gap - Ui::PanelPadding - Ui::CollapsedRightWidth - wrapWidth;
     batch.Move(aiTerminalHeader_, layout.rightLeft + Ui::PanelPadding, headerTop + 2,
-               std::max(Ui::Scale(80), width - Ui::Gap - layout.rightLeft - Ui::PanelPadding * 2 -
-                                           Ui::CollapsedRightWidth - Ui::Scale(108)),
+               std::max(0, wrapLeft - Ui::Gap - layout.rightLeft - Ui::PanelPadding),
                Ui::CompactHeight, TRUE);
     if (!aiWrapButton_) {
         aiWrapButton_ = CreateWindowExW(0, L"BUTTON", L"长行查看", WS_CHILD | BS_OWNERDRAW | WS_TABSTOP, 0, 0, 0, 0,
                                         window_, reinterpret_cast<HMENU>(IdAiWrap), instance_, nullptr);
         SendMessageW(aiWrapButton_, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), FALSE);
         SetWindowSubclass(aiWrapButton_, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
+        TOOLINFOW tool{sizeof(tool)};
+        tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        tool.hwnd = window_;
+        tool.uId = reinterpret_cast<UINT_PTR>(aiWrapButton_);
+        tool.lpszText = LPSTR_TEXTCALLBACKW;
+        SendMessageW(navigationTooltip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
     }
     SetWindowTextW(aiWrapButton_, aiMonitorWrap_ ? L"自动折行" : L"长行查看");
-    batch.Move(aiWrapButton_, width - Ui::Gap - Ui::PanelPadding - Ui::CollapsedRightWidth - Ui::Scale(96),
-               headerTop + 2, Ui::Scale(96), Ui::CompactHeight, TRUE);
+    batch.Move(aiWrapButton_, wrapLeft, headerTop + 2, wrapWidth, Ui::CompactHeight, TRUE);
     batch.Show(aiWrapButton_, monitor ? SW_SHOW : SW_HIDE);
     batch.Show(aiTerminalHeader_, monitor ? SW_SHOW : SW_HIDE);
 
@@ -2768,7 +2811,7 @@ void MainWindow::PaintWindow(HDC dc) {
     GetClientRect(window_, &client);
     const Palette colors = Colors(darkMode_);
     FillRect(dc, &client, windowBrush_);
-    const RECT toolbar = NavigationFrame();
+    const RECT toolbar = NavigationFrame(client.right);
     DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, colors.border);
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
@@ -2941,12 +2984,14 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 id == IdAi ? ToolbarIcon::Ai : id == IdCmd ? ToolbarIcon::Cmd : id == IdPower ? ToolbarIcon::Power :
                 static_cast<ToolbarIcon>(id - IdSsh);
             const int size = Ui::Scale(24), top = (rect.top+rect.bottom-size)/2;
-            RECT iconRect{rect.left+Ui::Scale(12), top, rect.left+Ui::Scale(12)+size, top+size};
+            const int iconLeft = compactNavigation_ ? (rect.left + rect.right - size) / 2 : rect.left + Ui::Scale(12);
+            RECT iconRect{iconLeft, top, iconLeft+size, top+size};
             toolbarIcons_.Draw(dc, icon, iconRect, inverse);
             RECT textRect = rect;
             textRect.left += Ui::Scale(46);
-            DrawTextSimple(dc, ControlText(item.hwndItem), textRect, ink,
-                uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            if (!compactNavigation_)
+                DrawTextSimple(dc, ControlText(item.hwndItem), textRect, ink,
+                    uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
             UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
             return;
         }
@@ -3056,6 +3101,12 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered, id == IDOK);
         DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
         UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+        if (id == IdAiWrap && rect.right - rect.left <= Ui::CompactHeight) {
+            RECT glyph = rect;
+            InflateRect(&glyph, -Ui::Scale(7), -Ui::Scale(7));
+            UiDrawGlyph(dc, glyph, visual.ink, UiGlyph::Wrap);
+            return;
+        }
         const bool utility = id == IdMenuSaveLog || id == IdMenuClear || id == IdMenuCopy || id == IdMenuPaste ||
                              id == IdMenuSelectAll || id == IdSendSelectionToAi || id == IdMenuNetworkDiagnostics ||
                              id == IdMenuCancelLogExport;
@@ -4975,6 +5026,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         layout.Commit();
         refresh();
         CenterOnOwner(dialog, self->window_);
+        UiDialogViewport::Fit(dialog, Ui::Dpi);
         SetTimer(dialog, 1, 250, nullptr);
         return TRUE;
     }
@@ -4986,7 +5038,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         RECT client{};
         GetClientRect(dialog, &client);
         FillRect(reinterpret_cast<HDC>(wParam), &client, self->panelBrush_);
-        UiSeparator(reinterpret_cast<HDC>(wParam), Ui::Scale(16), client.right - Ui::Scale(16), Ui::Scale(512),
+        UiSeparator(reinterpret_cast<HDC>(wParam), Ui::Scale(16), client.right - Ui::Scale(16), client.bottom - Ui::Scale(44),
                     Colors(self->darkMode_).border);
         return TRUE;
     }

@@ -1,6 +1,7 @@
 #include "AiPane.h"
 #include "AiHistory.h"
 #include "Win32Helpers.h"
+#include "UiDialogViewport.h"
 #include <chrono>
 #include <sstream>
 #include <windowsx.h>
@@ -256,7 +257,7 @@ struct HistoryPopup {
                                                       : L"取消",
                                          WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
                                          p->D(id == 301        ? 16
-                                              : id == IDCANCEL ? 220
+                                              : id == IDCANCEL ? 216
                                                                : 324),
                                          p->D(344), p->D(id == 301 ? 144 : 96), p->D(36), h,
                                          reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), wc.hInstance, nullptr);
@@ -267,6 +268,7 @@ struct HistoryPopup {
             }
             p->Filter();
             Center(h, GetWindow(h, GW_OWNER));
+            UiDialogViewport::Fit(h, p->dpi, {301, IDCANCEL, IDOK});
             return TRUE;
         }
         if (!p)
@@ -605,12 +607,13 @@ void AiPane::Paint(HDC target) {
     const auto c = UiAiTheme(dark_);
     FillRect(dc, &r, surfaceBrush_);
     icons_.Draw(dc, ToolbarIcon::Ai, {0, D(4), D(20), D(24)}, dark_);
-    Draw(dc, L"AI 助手", {D(28), 0, D(128), D(28)}, font_, c.text);
+    const bool compact = r.right < D(300);
+    Draw(dc, compact ? L"AI" : L"AI 助手", {D(28), 0, D(compact ? 52 : 128), D(28)}, font_, c.text);
     Draw(dc,
-         client_.Ready()     ? L"● 已连接"
+         client_.Ready()     ? (compact ? L"已连接" : L"● 已连接")
          : client_.Running() ? L"连接中…"
                              : L"未连接",
-         {D(108), 0, std::max<int>(D(108), r.right - D(120)), D(28)}, smallFont_, c.muted);
+         {D(compact ? 56 : 108), 0, r.right - D(120), D(28)}, smallFont_, c.muted);
     UiSeparator(dc, 0, r.right, D(36), c.border);
     UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
     UiBox(dc, composerBounds_, c.field, GetFocus() == Control(Input) ? c.accent : c.border, D(12));
@@ -2075,10 +2078,11 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         add(L"STATIC", L"连接检测", -1, 16, 332, 196, 28);
         add(L"BUTTON", L"测试连接", Test, 316, 324, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
         add(L"STATIC", self->status_.c_str(), Note, 16, 372, 404, 72);
-        add(L"BUTTON", L"取消", IDCANCEL, 220, 460, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", L"取消", IDCANCEL, 216, 460, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 460, 96, 36,
             BS_OWNERDRAW | WS_TABSTOP);
         Center(h, GetWindow(h, GW_OWNER));
+        UiDialogViewport::Fit(h, self->dpi_);
         SetTimer(h, 1, 100, nullptr);
         return TRUE;
     }

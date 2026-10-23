@@ -37,6 +37,7 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+    [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string className,string caption);
     [DllImport("user32.dll")] public static extern bool GetMenuItemRect(IntPtr window,IntPtr menu,uint item,out RECT rect);
@@ -215,6 +216,16 @@ public static class SerialCtlUiSmoke {
         if(Math.Abs(rect.Left-x)>2 || Math.Abs(rect.Top-y)>2 || Math.Abs(rect.Right-rect.Left-width)>2 || Math.Abs(rect.Bottom-rect.Top-height)>2)
             throw new Exception("Power geometry mismatch id="+id+" actual="+rect.Left+","+rect.Top+","+(rect.Right-rect.Left)+","+(rect.Bottom-rect.Top)+" expected="+x+","+y+","+width+","+height);
     }
+    public static void AssertAiHeader(IntPtr window) {
+        RECT title,wrap,toggle,theme;
+        GetWindowRect(GetDlgItem(window,305),out title);
+        GetWindowRect(GetDlgItem(window,306),out wrap);
+        GetWindowRect(GetDlgItem(window,125),out toggle);
+        GetWindowRect(GetDlgItem(window,104),out theme);
+        int gap=(int)Math.Round((theme.Bottom-theme.Top)/3.0);
+        if(title.Right+gap>wrap.Left || wrap.Right+gap>toggle.Left)
+            throw new Exception("AI monitor title/wrap/toggle areas overlap or lose the shared gap");
+    }
     public static void AssertPowerGap(IntPtr pane, int leftId, int rightId) {
         RECT left, right; GetWindowRect(GetDlgItem(pane,leftId),out left); GetWindowRect(GetDlgItem(pane,rightId),out right);
         IntPtr dc=GetDC(pane); int dpi=GetDeviceCaps(dc,88); ReleaseDC(pane,dc);
@@ -299,6 +310,14 @@ function Click-Control([IntPtr]$Parent, [int]$Id) {
     $hit = [SerialCtlUiSmoke]::WindowFromPoint($point)
     if ($hit -ne $control -and -not [SerialCtlUiSmoke]::IsChild($control, $hit)) { throw "Control $Id is covered; no synthetic command fallback is allowed." }
     if (-not [SerialCtlUiSmoke]::SetCursorPos($point.X, $point.Y)) { throw 'Cannot position system mouse.' }
+    $cursor = New-Object SerialCtlUiSmoke+POINT
+    $cursorDeadline = [DateTime]::UtcNow.AddMilliseconds(250)
+    do {
+        if (-not [SerialCtlUiSmoke]::GetCursorPos([ref]$cursor)) { throw 'Cannot verify system mouse position.' }
+        if ($cursor.X -eq $point.X -and $cursor.Y -eq $point.Y) { break }
+        Start-Sleep -Milliseconds 5
+    } while ([DateTime]::UtcNow -lt $cursorDeadline)
+    if ($cursor.X -ne $point.X -or $cursor.Y -ne $point.Y) { throw 'System mouse did not reach the target; click was not sent.' }
     $before = [SerialCtlUiSmoke]::GetForegroundWindow().ToInt64()
     [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
     Start-Sleep -Milliseconds 25
@@ -525,7 +544,40 @@ foreach ($architecture in @('x64')) {
             if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))) { throw 'AI monitor header did not expand.' }
             if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))) { throw 'AI exposed unselected terminal.' }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
+            [SerialCtlUiSmoke]::AssertAiHeader($application.MainWindowHandle)
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-expanded"
+            if ($ActualMouse) {
+                foreach ($direction in @(-1,1)) {
+                    $paneRect = New-Object SerialCtlUiSmoke+RECT
+                    $headerRect = New-Object SerialCtlUiSmoke+RECT
+                    $windowRect = New-Object SerialCtlUiSmoke+RECT
+                    [SerialCtlUiSmoke]::GetWindowRect($aiPane,[ref]$paneRect)|Out-Null
+                    [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305),[ref]$headerRect)|Out-Null
+                    [SerialCtlUiSmoke]::GetWindowRect($application.MainWindowHandle,[ref]$windowRect)|Out-Null
+                    $startX = [int](($paneRect.Right+$headerRect.Left)/2)
+                    $y = $paneRect.Top+100
+                    $endX = if ($direction -lt 0) { $windowRect.Left+210 } else { $windowRect.Right-32 }
+                    $point = New-Object SerialCtlUiSmoke+POINT
+                    $point.X=$startX; $point.Y=$y
+                    if ([SerialCtlUiSmoke]::WindowFromPoint($point) -ne $application.MainWindowHandle) { throw 'AI divider is not exposed.' }
+                    [SerialCtlUiSmoke]::SetCursorPos($startX,$y)|Out-Null
+                    Start-Sleep -Milliseconds 40
+                    [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+                    try {
+                        foreach ($frame in 1..12) {
+                            [SerialCtlUiSmoke]::SetCursorPos([int]($startX+($endX-$startX)*$frame/12),$y)|Out-Null
+                            Start-Sleep -Milliseconds 40
+                            Capture-Desktop "$architecture-$theme-ai-divider-$direction-held-$frame"
+                        }
+                    } finally { [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero) }
+                    Start-Sleep -Milliseconds 200
+                    $afterPane = New-Object SerialCtlUiSmoke+RECT
+                    [SerialCtlUiSmoke]::GetWindowRect($aiPane,[ref]$afterPane)|Out-Null
+                    if ([Math]::Abs(($afterPane.Right-$afterPane.Left)-($paneRect.Right-$paneRect.Left)) -lt 32) { throw 'AI divider drag did not resize the pane.' }
+                    [SerialCtlUiSmoke]::AssertAiHeader($application.MainWindowHandle)
+                    Capture-Desktop "$architecture-$theme-ai-divider-$direction-released"
+                }
+            }
             Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 300
             # New power pane occupies the central terminal area. It keeps independent connection/output actions.

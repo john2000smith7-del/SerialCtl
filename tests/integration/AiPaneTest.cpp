@@ -83,7 +83,7 @@ struct AiPaneTestAccess {
         require(pane.scroll_.offset == 0, "Dragging the scrollbar to the top failed");
         for (bool dark : {false, true}) {
             pane.Theme(dark);
-            for (int width : {368, 400, 900}) {
+            for (int width : {228, 260, 368, 400, 900}) {
                 SetWindowPos(pane.Handle(), nullptr, 0, 0, width, 600, SWP_NOZORDER);
                 pane.Layout();
                 RECT input{}, outer{}, canvas{}, target{}, send{};

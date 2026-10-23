@@ -73,7 +73,8 @@ enum class UiGlyph {
     Folder,
     Link,
     ChevronUp,
-    Command
+    Command,
+    Wrap
 };
 inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
     if (UiResourceGlyph(dc, bounds, color, static_cast<int>(icon)))
@@ -125,6 +126,16 @@ inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon
     case UiGlyph::Check:
         line(5, 12, 9, 16);
         line(9, 16, 19, 6);
+        break;
+    case UiGlyph::Wrap:
+        line(4, 6, 20, 6);
+        line(4, 11, 17, 11);
+        line(17, 11, 20, 14);
+        line(20, 14, 17, 17);
+        line(17, 17, 10, 17);
+        line(10, 17, 13, 14);
+        line(10, 17, 13, 20);
+        line(4, 17, 6, 17);
         break;
     default:
         line(6, 3, 15, 3);
@@ -963,6 +974,22 @@ inline INT_PTR UiDialogBoxIndirectOwned(HINSTANCE instance, LPCDLGTEMPLATE resou
 }
 // Collect final child bounds/visibility, then commit one native layout transaction.
 // If a native batch allocation fails, apply all final bounds individually.
+class UiRedrawScope {
+  public:
+    explicit UiRedrawScope(HWND window) : window_(window), visible_((GetWindowLongPtrW(window, GWL_STYLE) & WS_VISIBLE) != 0) {
+        if (visible_) SendMessageW(window_, WM_SETREDRAW, FALSE, 0);
+    }
+    ~UiRedrawScope() {
+        if (!visible_ || !IsWindow(window_)) return;
+        SendMessageW(window_, WM_SETREDRAW, TRUE, 0);
+        RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    }
+    UiRedrawScope(const UiRedrawScope&) = delete;
+    UiRedrawScope& operator=(const UiRedrawScope&) = delete;
+  private:
+    HWND window_;
+    bool visible_;
+};
 class UiLayoutBatch {
   public:
     void Move(HWND h, int x, int y, int w, int height, BOOL = FALSE) {

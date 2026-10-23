@@ -703,6 +703,9 @@ void PowerPane::SelectMode() {
     Refresh();
 }
 void PowerPane::Layout() {
+    // Native combo/checkbox updates can paint synchronously during a batch.
+    // Keep the old complete page until both geometry and visibility are final.
+    UiRedrawScope redraw(window_);
     UiLayoutBatch batch;currentLayout_=&batch;
     RECT r{};
     GetClientRect(window_, &r);
@@ -712,6 +715,7 @@ void PowerPane::Layout() {
     cardHeight_ = d(216);
     bool group = draftMode_ == 1 || draftMode_ == 2;
     auto measureCards = [&](int width) {
+        cardTop_ = d(width < d(564) ? 152 : 104);
         cardColumns_ = width >= d(600) ? 3 : 1;
         const int rows = cardColumns_ == 3 ? 1 : group ? 2 : 3;
         taskTop_ = cardTop_ + rows * (cardHeight_ + d(12)) + d(4);
@@ -742,9 +746,10 @@ void PowerPane::Layout() {
     };
     move(buttons_[0], w - d(204), 0, d(96), d(36));
     move(buttons_[1], w - d(96), 0, d(96), d(36));
-    move(buttons_[2], w - d(204), d(52), d(96), d(36));
-    move(buttons_[3], w - d(96), d(52), d(96), d(36));
-    move(Control(81), w - d(320), d(52), d(104), d(36));
+    const int actionTop = cardTop_ - d(52);
+    move(buttons_[2], w - d(204), actionTop, d(96), d(36));
+    move(buttons_[3], w - d(96), actionTop, d(96), d(36));
+    move(Control(81), w - d(320), actionTop, d(104), d(36));
     move(Control(80), d(72), d(52), d(160), d(180));
     batch.ComboVisibleHeight(Control(80), d(36));
     for (int i = 0; i < 3; ++i) {
@@ -831,10 +836,10 @@ void PowerPane::DetailsLayout(int width, int top) {
         for (int i = 0; i < 3; ++i)
             if (ids[automation_][i])
                 move(ids[automation_][i], i * (field + 12), 71, automation_ == 2 ? w : field);
-        const int wide = (w - 184) / 2;
+        const int wide = (w - 196) / 2;
         move(Start, 0, 115, wide, 36);
-        move(Stop, wide + 8, 115, wide, 36);
-        move(Save, w - 168, 115, 80, 36);
+        move(Stop, wide + 12, 115, wide, 36);
+        move(Save, w - 172, 115, 80, 36);
         move(44, w - 80, 115, 80, 36);
         SetWindowTextW(start_, automation_ == 3 ? L"应用定时器" : automation_ == 4 ? L"应用并触发" : L"开始测试");
     }
@@ -842,7 +847,7 @@ void PowerPane::DetailsLayout(int width, int top) {
         move(133, w - 80, 71, 80);
     if (tab_ == 1 && automation_ == 4) {
         for (int i = 0; i < 4; ++i)
-            move(134 + i, i * 112, 156, 104);
+            move(134 + i, i * 116, 156, 104);
         contentHeight_ = top + d(240);
     }
     if (tab_ == 2) {
@@ -854,8 +859,8 @@ void PowerPane::DetailsLayout(int width, int top) {
             move(201, w - 112, 0, 112);
             for (int i = 0; i < 4; ++i)
                 move(202 + i, x + (i % 2) * (half + 12), 67 + (i / 2) * 67, half);
-            move(206, w - 256, 174, 80);
-            move(207, w - 168, 174, 80);
+            move(206, w - 264, 174, 80);
+            move(207, w - 172, 174, 80);
             move(208, w - 80, 174, 80);
         }
         if (settings_ == 1) {
@@ -863,15 +868,15 @@ void PowerPane::DetailsLayout(int width, int top) {
             move(211, x + 100, 52, cw - 100);
             move(212, x, 116, half);
             move(213, x + half + 12, 116, half);
-            move(214, w - 168, 172, 80);
+            move(214, w - 172, 172, 80);
             move(215, w - 80, 172, 80);
         }
         if (settings_ == 2) {
             move(220, x + 100, 12, cw - 100);
             move(221, x + 100, 52, cw - 100);
-            move(222, w - 232, 92, 112);
+            move(222, w - 236, 92, 112);
             move(223, w - 112, 92, 112);
-            move(224, w - 232, 132, 112);
+            move(224, w - 236, 132, 112);
             move(225, w - 112, 132, 112);
         }
         if (settings_ == 3) {
@@ -880,8 +885,8 @@ void PowerPane::DetailsLayout(int width, int top) {
             move(232, x + 124, 52, 112);
             move(233, x + 248, 52, 80);
             move(234, x + 100, 92, cw - 100);
-            move(235, w - 256, 132, 80);
-            move(236, w - 168, 132, 80);
+            move(235, w - 264, 132, 80);
+            move(236, w - 172, 132, 80);
             move(237, w - 80, 132, 80);
         }
     }
@@ -893,12 +898,12 @@ void PowerPane::DetailsLayout(int width, int top) {
             int size = i == 4 ? 104 : 88;
             if (x + size > w) {
                 x = 0;
-                top += d(36);
+                top += d(40);
             }
             move(242 + i, x, 156, size);
-            x += size + 8;
+            x += size + 12;
         }
-        contentHeight_ = std::max(contentHeight_, top + d(192));
+        contentHeight_ = std::max(contentHeight_, top + d(196));
     }
 }
 void PowerPane::Paint(HDC dc) {
