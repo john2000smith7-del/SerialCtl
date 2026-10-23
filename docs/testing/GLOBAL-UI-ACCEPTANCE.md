@@ -4,6 +4,8 @@
 
 ## 自动执行
 
+主分支的 Windows Win7 release build 成功后，会自动使用该次已验证 ZIP 执行 Desktop user interaction audit，保留包、源码和桌面输入证据。手动入口仍可指定 build_run。
+
 在 Windows 专用测试账户执行标准流程：
 
 ```powershell

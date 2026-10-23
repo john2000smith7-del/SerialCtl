@@ -642,7 +642,10 @@ foreach ($architecture in @('x64')) {
                 Start-Sleep -Milliseconds 200
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-tab-$tab"
                 if($tab -eq 91) {
-                    [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,40,0,499,[int](($powerWidth-184)/2),36)
+                    [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,40,0,499,[int](($powerWidth-196)/2),36)
+                    [SerialCtlUiSmoke]::AssertPowerGap($powerPane,40,41)
+                    [SerialCtlUiSmoke]::AssertPowerGap($powerPane,41,42)
+                    [SerialCtlUiSmoke]::AssertPowerGap($powerPane,42,44)
                     [SerialCtlUiSmoke]::AssertPowerSelectors($powerPane,110,5,384,$expectedUiFace)
                 }
                 if($tab -eq 92) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,202,132,451,[int](($powerWidth-144)/2),28) }
