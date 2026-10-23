@@ -157,6 +157,10 @@ int main() {
     TestItem({13, 33, 131, 91}, true);
     TestFallback();
     // Warm the APIs before checking the repeated buffer resource lifetime.
+    {
+        Surface warm;
+        Paint(warm.dc, RECT{0, 0, 160, 128});
+    }
     const auto before = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
     for (int i = 0; i < 100; ++i) {
         Surface surface;
