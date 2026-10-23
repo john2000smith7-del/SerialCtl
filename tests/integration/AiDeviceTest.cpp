@@ -88,6 +88,12 @@ struct AiDeviceTestAccess {
             transports.push_back(transport);
             main.sessions_.push_back(std::move(session));
         }
+        main.sessions_[3]->udpRaw = true;
+        main.sessions_[3]->udpReceived = true;
+        const auto udpMetadata = main.AiDeviceRequest("sessions", Json::object());
+        Require(udpMetadata[3]["dataReceived"] == true && udpMetadata[3]["peerVerified"] == false,
+                "Raw UDP data was mistaken for verified device identity");
+        main.sessions_[3]->udpRaw = false;
         const auto sessions = main.AiDeviceRequest("sessions", Json::object());
         Require(sessions.size() == 5, "AI target list omitted an open terminal type");
         for (int mode = 0; mode <= 4; ++mode) {

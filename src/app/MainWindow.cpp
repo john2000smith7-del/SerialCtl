@@ -3998,7 +3998,8 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
                      {"remoteCom", WideToMultiByte(session->remoteCom, CP_UTF8)},
                      {"com", WideToMultiByte(session->remoteCom, CP_UTF8)},
                      {"transport", session->udpRaw ? "udpRaw" : "session"},
-                     {"peerVerified", !session->udpRaw || session->udpReceived},
+                     {"peerVerified", !session->udpRaw},
+                     {"dataReceived", session->udpReceived},
                      {"commandSupported", true}});
         return result;
     }
