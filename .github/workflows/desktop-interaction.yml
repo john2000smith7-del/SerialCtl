@@ -1,5 +1,8 @@
-name: Desktop user interaction audit
+name: Focused SFTP input observation
 on:
+  push:
+    branches: [verification/v203-sidebar-observation]
+    paths: [.github/workflows/desktop-interaction.yml]
   workflow_run:
     workflows: [Windows Win7 release build]
     types: [completed]
@@ -15,7 +18,7 @@ permissions:
   actions: read
 jobs:
   desktop:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
@@ -26,7 +29,7 @@ jobs:
       - name: Verify tested program source matches production on this commit
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN: ${{ inputs.build_run || github.event.workflow_run.id }}
+          BUILD_RUN: ${{ inputs.build_run || github.event.workflow_run.id || 39990723515 }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -44,7 +47,7 @@ jobs:
         with:
           name: SerialCtl-Win7-portable
           path: bin
-          run-id: ${{ inputs.build_run || github.event.workflow_run.id }}
+          run-id: ${{ inputs.build_run || github.event.workflow_run.id || 39990723515 }}
           github-token: ${{ github.token }}
       - name: Install test-only lossless screen encoder
         run: python -m pip install imageio-ffmpeg==0.6.0
@@ -54,7 +57,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Get-ChildItem bin -Filter '*.zip' | Get-FileHash -Algorithm SHA256 | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-package-sha256.json" -Encoding UTF8
           Start-Transcript -Path "$env:RUNNER_TEMP/serialctl-ui/desktop-interaction-transcript.txt"
-          try { ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui" -ActualMouse } finally { Stop-Transcript }
+          try { ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui" -ActualMouse -HostFixtureOnly } finally { Stop-Transcript }
       - name: Record exact executable and preserve desktop evidence even on failure
         if: always()
         shell: powershell

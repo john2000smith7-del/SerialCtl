@@ -300,6 +300,7 @@ class PaintActions(DesktopActions):
         self.report["purpose"] = "#31 actual-screen light-block regression and #15 repeated mouse reversal"
         self.report["rapid_count"] = args.rapid_count
         self.report["normal_collapse_expand_cycles"] = args.normal_cycles
+        self.report["caption_observation_budget_ms"] = 1000
         self.report["pixel_oracle"] = {
             "applies_to": "dark theme declared sidebar capture only",
             "rule": "at least 8x3 adjacent samples on a 4px-at-96-DPI grid, RGB each >=190 and max-min <=16",
@@ -331,13 +332,18 @@ class PaintActions(DesktopActions):
         row["bounds_before_up"] = self.rect(toggle)
         row["hit_before_up"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
         self.button(False)
-        deadline = time.perf_counter() + .12
+        released = time.perf_counter()
+        # Observe this single release for up to one second; never re-click or
+        # replace it with a command. Hosted desktops can delay input delivery.
+        # The separate >=90% within-200ms reversal requirement remains intact.
+        deadline = released + 1.0
         after = self.caption(toggle)
         while after == before and time.perf_counter() < deadline:
             time.sleep(.002)
             after = self.caption(toggle)
         row.update({"caption_after": after, "caption_flipped": bool(after and after != before),
-                    "observed_seconds": self.timestamp()["seconds"], "bounds_after_up": self.rect(toggle)})
+                    "observed_seconds": self.timestamp()["seconds"], "bounds_after_up": self.rect(toggle),
+                    "caption_latency_ms": round((time.perf_counter() - released) * 1000, 3)})
         require(row["bounds_before_up"] == anchor and row["bounds_after_up"] == anchor,
                 "Sidebar toggle moved during mouse press")
         require(row["caption_flipped"], "Released sidebar click did not change target state: " + label)
