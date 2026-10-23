@@ -728,7 +728,8 @@ void MoveDialogItemDlu(HWND dialog, int id, int x, int y, int width, int height)
     if (!control) return;
     HWND frame = reinterpret_cast<HWND>(GetPropW(control, Ui::FieldFrameProperty));
     const int pixelWidth = rect.right - rect.left;
-    const int pixelHeight = rect.bottom - rect.top;
+    const int pixelHeight = frame ? std::max(Ui::Scale(28), static_cast<int>(rect.bottom - rect.top))
+                                  : static_cast<int>(rect.bottom - rect.top);
     if (frame) {
         MoveWindow(frame, rect.left, rect.top, pixelWidth, pixelHeight, TRUE);
         const int horizontalInset = Ui::Space;
