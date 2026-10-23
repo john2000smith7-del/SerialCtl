@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "Win32Helpers.h"
+#include "resource.h"
 #include <gdiplus.h>
 #include <iostream>
 #include <stdexcept>
@@ -49,6 +50,26 @@ struct AiDeviceTestAccess {
         main.CreateControls();
         ShowWindow(parent, SW_SHOW);
         GetClientRect(parent, &viewport);
+        main.pendingMode_ = 3;
+        const auto remote = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
+                                               MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
+        Require(remote != nullptr, "Remote connection dialog missing");
+        RECT dialogBounds{};
+        GetClientRect(remote, &dialogBounds);
+        for (int id : {IDC_HOST, IDC_SERIAL_REFRESH, IDC_REMOTE_MODE, IDC_SERIAL, IDC_DIALOG_ERROR, IDCANCEL, IDOK}) {
+            RECT control{};
+            GetWindowRect(GetDlgItem(remote, id), &control);
+            MapWindowPoints(nullptr, remote, reinterpret_cast<POINT *>(&control), 2);
+            Require(control.left >= 0 && control.top >= 0 && control.right <= dialogBounds.right &&
+                        control.bottom <= dialogBounds.bottom,
+                    "Remote discovery controls escape compact dialog");
+        }
+        Require(SendDlgItemMessageW(remote, IDC_REMOTE_MODE, CB_GETCOUNT, 0, 0) == 3,
+                "Remote transport options missing");
+        main.discoveryCancel_ = true;
+        main.discoveryDialog_ = nullptr;
+        DestroyWindow(remote);
+        main.pendingMode_ = 0;
         main.rightPanelWidth_ = 320;
         main.rightPanelCollapsed_ = false;
         std::vector<std::shared_ptr<Transport>> transports;

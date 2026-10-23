@@ -3517,7 +3517,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         errorY = 72;
         buttonY = 84;
         dialogHeight = 110;
-    } else if (!serial) {
+    } else if (!serial && !share) {
         errorY = 38;
         buttonY = 50;
         dialogHeight = 76;
