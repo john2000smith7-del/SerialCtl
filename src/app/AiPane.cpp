@@ -443,8 +443,33 @@ bool AiPane::PreTranslate(MSG &m) {
         return false;
     return false;
 }
-LRESULT CALLBACK AiPane::InputProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR) {
-    if (m == WM_SETFOCUS || m == WM_KILLFOCUS)
+LRESULT CALLBACK AiPane::InputProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR reference) {
+    auto self = reinterpret_cast<AiPane *>(reference);
+    // The native disabled EDIT can substitute a system background on Windows,
+    // even when WM_CTLCOLORSTATIC supplies the card brush. It is not interactive
+    // in this state; render its visible draft on the same borderless surface.
+    if (!IsWindowEnabled(h) && (m == WM_PAINT || m == WM_PRINT || m == WM_PRINTCLIENT)) {
+        PAINTSTRUCT ps{};
+        HDC target = m == WM_PAINT ? BeginPaint(h, &ps) : reinterpret_cast<HDC>(w);
+        RECT r{};
+        GetClientRect(h, &r);
+        if (target) {
+            UiBufferedPaint paint(target, r);
+            auto dc = paint.Dc();
+            const auto colors = UiAiTheme(self->dark_);
+            FillRect(dc, &r, self->fieldBrush_);
+            auto text = Text(h);
+            const auto first = SendMessageW(h, EM_GETFIRSTVISIBLELINE, 0, 0);
+            const auto start = SendMessageW(h, EM_LINEINDEX, first, 0);
+            if (start > 0 && static_cast<size_t>(start) < text.size())
+                text.erase(0, static_cast<size_t>(start));
+            Draw(dc, text, r, self->font_, colors.muted, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_EDITCONTROL);
+        }
+        if (m == WM_PAINT)
+            EndPaint(h, &ps);
+        return 0;
+    }
+    if (m == WM_SETFOCUS || m == WM_KILLFOCUS || m == WM_ENABLE)
         InvalidateRect(GetParent(h), nullptr, FALSE);
     if (m == WM_IME_STARTCOMPOSITION)
         SetPropW(h, L"SerialCtl.AiIme", reinterpret_cast<HANDLE>(1));

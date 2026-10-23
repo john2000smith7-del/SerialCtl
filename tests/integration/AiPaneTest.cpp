@@ -145,7 +145,8 @@ struct AiPaneTestAccess {
             RECT size{};
             GetClientRect(pane.transcript_, &size);
             auto screen = GetDC(pane.transcript_), dc = CreateCompatibleDC(screen);
-            auto bitmap = CreateCompatibleBitmap(screen, size.right, size.bottom), old = SelectObject(dc, bitmap);
+            auto bitmap = CreateCompatibleBitmap(screen, size.right, size.bottom);
+            auto old = SelectObject(dc, bitmap);
             pane.PaintTranscript(dc);
             const auto summaryPixel = GetPixel(dc, pane.messages_[0].bounds.left + pane.D(20),
                                                pane.messages_[0].bounds.top + pane.D(34) - pane.scroll_.offset);
