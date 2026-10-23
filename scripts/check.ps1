@@ -126,7 +126,9 @@ $serialCtlDlls = @(
     'GDI32.dll',
     'gdiplus.dll',
     'KERNEL32.dll',
+    'MSIMG32.dll',
     'ole32.dll',
+    'SETUPAPI.dll',
     'SHELL32.dll',
     'USER32.dll',
     'WINHTTP.dll',
@@ -153,9 +155,9 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
 
     $testPrograms = @{
         'ai_protocol_test.exe' = @('KERNEL32.dll')
-        'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'COMDLG32.dll', 'GDI32.dll', 'OLE32.dll', 'SHELL32.dll')
-        'ui_buffered_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll')
-        'ui_combo_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll')
+        'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'COMDLG32.dll', 'GDI32.dll', 'OLE32.dll', 'SHELL32.dll', 'MSIMG32.dll', 'SETUPAPI.dll')
+        'ui_buffered_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'OLE32.dll', 'MSIMG32.dll')
+        'ui_combo_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
         'update_client_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'WINHTTP.dll', 'WS2_32.dll')
         'update_installer_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'SHELL32.dll', 'USER32.dll')
         'power_service_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
@@ -163,6 +165,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'cmd_connection_test.exe' = @('KERNEL32.dll')
         'api_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'shared_serial_protocol_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
+        'udp_serial_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'tcp_connection_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'terminal_model_test.exe' = @('KERNEL32.dll')
         'terminal_decoder_test.exe' = @('KERNEL32.dll')
@@ -181,7 +184,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     & $binaryVerifier -Path (Join-Path $fixtureDirectory 'ai_client_test.exe') -Architecture $item `
         -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll')
     & $binaryVerifier -Path (Join-Path $fixtureDirectory 'ai_pane_test.exe') -Architecture $item `
-        -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll')
+        -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'MSIMG32.dll')
     & $binaryVerifier -Path (Join-Path $fixtureDirectory 'plink.exe') -Architecture $item `
         -Subsystem CUI -AllowedDll @('KERNEL32.dll')
 }

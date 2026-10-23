@@ -38,3 +38,9 @@ check → clean build → test → PE compatibility check → package → extrac
 `.github/workflows/windows-build.yml` 在 windows-2022 运行同一 release.ps1 流程，再启动解压后的 x64 程序进行 UI 冒烟检查并上传便携包。实际 Win7 验收按 docs/testing 执行。
 
 发布工作流使用成功的 main 分支 Windows 构建 run ID、完整源码 SHA 和压缩包 SHA-256，从 Actions 下载已经验证的包再发布，不重新编译，不要求大压缩包进入 Git。发布标签 V1.0.4 对应 v1.0.4，保留历史发布。
+
+## V2.0.3 已审核的系统依赖
+
+圆角资源合成使用 MSIMG32!AlphaBlend；完整串口名称读取使用 SETUPAPI 的 SetupDiGetClassDevsW、SetupDiEnumDeviceInfo、SetupDiOpenDevRegKey、SetupDiGetDeviceRegistryPropertyW、SetupDiDestroyDeviceInfoList。这些接口在 Windows 7 之前已提供，不添加用户运行库。对应程序、UI 测试及解压后程序的精确 DLL 清单同步更新；新增 UDP 测试也纳入二进制检查。禁止较新 API、API-set、动态 MSVC／.NET 依赖和非6.01子系统的检查保留。
+
+接口最低系统说明可查 [AlphaBlend](https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-alphablend) 和 [SetupDiGetClassDevsW](https://learn.microsoft.com/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw)。静态接口核对不替代 Windows 7 实机验收。
