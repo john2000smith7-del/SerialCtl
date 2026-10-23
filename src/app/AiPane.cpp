@@ -1061,9 +1061,23 @@ void AiPane::Copy(const std::wstring &text) {
     }
     CloseClipboard();
 }
+void AiPane::ShowDisplayLimit() {
+    if (displayLimitReached_)
+        return;
+    displayLimitReached_ = true;
+    Message notice;
+    notice.role = L"状态";
+    notice.item = "client:display-limit";
+    notice.text =
+        L"当前显示已达上限，后续内容不再追加；服务器历史仍保留。请新建会话，或从历史恢复。上下文整理不会清空已有显示。";
+    messageBytes_ += notice.text.size() * sizeof(wchar_t);
+    messages_.push_back(std::move(notice));
+    Reflow(true);
+}
 void AiPane::Add(std::wstring role, std::wstring text, std::string item) {
     if (messages_.size() >= 2000 || messageBytes_ + text.size() * sizeof(wchar_t) > MaxConversation) {
         SetStatus(L"当前对话显示已达上限，请新建会话；服务器历史仍保留");
+        ShowDisplayLimit();
         return;
     }
     messageBytes_ += text.size() * sizeof(wchar_t);
@@ -1331,6 +1345,7 @@ void AiPane::NewConversation() {
     messages_.clear();
     selectedMessage_ = SIZE_MAX;
     messageBytes_ = 0;
+    displayLimitReached_ = false;
     scroll_ = {};
     attachment_.clear();
     attachmentTarget_.clear();
@@ -1614,6 +1629,7 @@ void AiPane::Event(const Json &e) {
             messages_.clear();
             selectedMessage_ = SIZE_MAX;
             messageBytes_ = 0;
+            displayLimitReached_ = false;
             scroll_ = {};
             thread_ = result.at("conversationId").get<std::string>();
             collapsedGroups_.clear();
@@ -1713,7 +1729,8 @@ void AiPane::Event(const Json &e) {
                     message->measuredLength = SIZE_MAX;
                 }
                 Reflow(true);
-            }
+            } else
+                ShowDisplayLimit();
         }
         if (event == "textComplete") {
             auto found = std::find_if(messages_.begin(), messages_.end(),

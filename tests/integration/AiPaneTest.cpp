@@ -152,6 +152,14 @@ struct AiPaneTestAccess {
         require(!pane.messages_.back().folded, "Failed operation must remain visible even when AI turn completes");
         pane.NewConversation();
         pane.thread_ = "fixture";
+        pane.messageBytes_ = 4 * 1024 * 1024;
+        const auto displayed = pane.messages_.size();
+        pane.Add(L"AI", L"overflow");
+        pane.Add(L"AI", L"overflow");
+        require(pane.messages_.size() == displayed + 1 && pane.messages_.back().item == "client:display-limit",
+                "Long transcript must show one visible bounded notice instead of silently dropping output");
+        pane.NewConversation();
+        pane.thread_ = "fixture";
         ai::ServerSettings server;
         server.host = L"serialctl-pane-" + std::to_wstring(GetCurrentProcessId()) + L".invalid";
         server.username = L"fixture";

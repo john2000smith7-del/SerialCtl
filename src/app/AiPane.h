@@ -89,6 +89,8 @@ class AiPane {
     void StartTurn();
     void Stop();
     void NewConversation();
+    void ShowDisplayLimit();
+    bool displayLimitReached_ = false;
     void Add(std::wstring role, std::wstring text, std::string item = {});
     void SetStatus(const std::wstring &);
     void UpdateActions();
