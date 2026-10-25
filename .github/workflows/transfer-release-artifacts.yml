@@ -1,0 +1,131 @@
+name: Transfer verified release evidence
+on:
+  push:
+    branches: [evidence/v2.0.4-transfer]
+    paths: [evidence-request.json]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original artifacts and prepare bounded transfers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,os,pathlib,re,shutil,subprocess,zipfile
+          root=pathlib.Path('transfer');root.mkdir()
+          request=json.loads(pathlib.Path('evidence-request.json').read_text())
+          assert re.fullmatch(r'[0-9a-f]{40}',request['source_sha'])
+          repository=os.environ['GITHUB_REPOSITORY']
+          def download(record,kind):
+              metadata=json.loads(subprocess.check_output(['gh','api',f"repos/{repository}/actions/artifacts/{record['id']}"]))
+              assert metadata['workflow_run']['head_sha']==request['source_sha']
+              assert metadata['workflow_run']['id']==record['run']
+              if kind=='package':
+                  run=json.loads(subprocess.check_output(['gh','api',f"repos/{repository}/actions/runs/{record['run']}"]))
+                  assert run['conclusion']=='success' and run['head_branch']=='main' and run['name']=='Windows Win7 release build'
+              target=root/(kind+'.zip')
+              with target.open('wb') as output:
+                  subprocess.run(['gh','api',f"repos/{repository}/actions/artifacts/{record['id']}/zip"],stdout=output,check=True)
+              digest=hashlib.file_digest(target.open('rb'),'sha256').hexdigest()
+              assert metadata['digest']=='sha256:'+digest
+              assert target.stat().st_size==metadata['size_in_bytes']
+              return target,metadata
+          if request.get('package'):
+              original,metadata=download(request['package'],'package')
+              candidate=root/'SerialCtl-V2.0.4-Win7-x64.zip'
+              with zipfile.ZipFile(original) as archive:
+                  assert archive.testzip() is None
+                  assert archive.namelist()==[candidate.name]
+                  with archive.open(candidate.name) as source,candidate.open('wb') as output:shutil.copyfileobj(source,output)
+              digest=hashlib.file_digest(candidate.open('rb'),'sha256').hexdigest()
+              assert digest==request['package']['archive_sha256']
+              parts=[]
+              with candidate.open('rb') as source:
+                  for index in range(5):
+                      chunk=source.read(26*1024*1024)
+                      if not chunk:break
+                      folder=root/('part-'+str(index));folder.mkdir()
+                      name='package.zip.part-'+str(index);(folder/name).write_bytes(chunk)
+                      parts.append({'name':name,'bytes':len(chunk),'sha256':hashlib.sha256(chunk).hexdigest()})
+                  assert not source.read(1),'Candidate exceeds bounded transfer size'
+              receipt={'source_sha':request['source_sha'],'original_artifact':metadata,'archive_name':candidate.name,'archive_bytes':candidate.stat().st_size,'archive_sha256':digest,'parts':parts,'method':'Exact binary split; no ZIP rewriting'}
+              for index in range(len(parts)):(root/('part-'+str(index))/'transfer-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+              print('Verified candidate SHA-256:',digest)
+          if request.get('ui'):
+              original,metadata=download(request['ui'],'ui')
+              folder=root/'ui-lite';folder.mkdir();records=[]
+              with zipfile.ZipFile(original) as archive:
+                  entries=archive.infolist()
+                  (folder/'original-index.json').write_text(json.dumps([{'name':item.filename,'bytes':item.file_size} for item in entries],indent=2)+'\n')
+                  def priority(item):
+                      name=item.filename.lower()
+                      if 'power-unavailable' in name:return 0
+                      if any(word in name for word in ['startup','-main','-default','-light.png','-dark.png']):return 1
+                      if any(word in name for word in ['ai-connect','command','settings','power-layout','ssh','serial']):return 2
+                      return 3
+                  choices=sorted((item for item in entries if item.filename.lower().endswith('.png') and '-frame-' not in item.filename.lower()),key=lambda item:(priority(item),item.filename))
+                  image_bytes=0;log_bytes=0
+                  def copy(item):
+                      path=pathlib.PurePosixPath(item.filename.replace(chr(92),'/'))
+                      assert not path.is_absolute() and '..' not in path.parts and ':' not in item.filename
+                      content=archive.read(item);target=folder.joinpath(*path.parts);target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(content)
+                      records.append({'name':item.filename,'bytes':len(content),'sha256':hashlib.sha256(content).hexdigest()})
+                  for item in choices:
+                      if item.file_size>8*1024*1024 or image_bytes+item.file_size>16*1024*1024:continue
+                      copy(item);image_bytes+=item.file_size
+                  for item in entries:
+                      if pathlib.PurePosixPath(item.filename).suffix.lower() not in ['.json','.jsonl','.log','.txt']:continue
+                      if item.file_size>4*1024*1024 or log_bytes+item.file_size>8*1024*1024:continue
+                      copy(item);log_bytes+=item.file_size
+              (folder/'selection.json').write_text(json.dumps({'source_sha':request['source_sha'],'original_artifact':metadata,'method':'Original screenshot/log bytes; bounded selection only','files':records},indent=2)+'\n')
+              print('Original UI screenshots/logs selected:',len(records),'bytes:',image_bytes+log_bytes)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('transfer/part-0/*') != ''
+        with:
+          name: SerialCtl-candidate-part-0
+          path: transfer/part-0/
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('transfer/part-1/*') != ''
+        with:
+          name: SerialCtl-candidate-part-1
+          path: transfer/part-1/
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('transfer/part-2/*') != ''
+        with:
+          name: SerialCtl-candidate-part-2
+          path: transfer/part-2/
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('transfer/part-3/*') != ''
+        with:
+          name: SerialCtl-candidate-part-3
+          path: transfer/part-3/
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('transfer/part-4/*') != ''
+        with:
+          name: SerialCtl-candidate-part-4
+          path: transfer/part-4/
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('transfer/ui-lite/*') != ''
+        with:
+          name: SerialCtl-native-ui-lite
+          path: transfer/ui-lite/
+          compression-level: 6
+          retention-days: 7
