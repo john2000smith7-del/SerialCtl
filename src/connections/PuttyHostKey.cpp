@@ -2,6 +2,7 @@
 
 #include "ChildProcess.h"
 #include "PasswordPipe.h"
+#include "ProcessOutput.h"
 #include "Win32Helpers.h"
 
 #include <windows.h>
@@ -68,16 +69,16 @@ std::wstring Decode(const std::string& bytes) {
 bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uint16_t port,
     const std::wstring& username, const std::wstring& password, const std::wstring& hostKey,
     DWORD& exitCode, std::wstring& output, std::wstring& error,
-    const std::atomic_bool* cancel, bool securePassword) {
+    const std::atomic_bool* cancel) {
     PasswordPipe passwordPipe;
-    if (securePassword && !password.empty() && !passwordPipe.Open(password, error)) {
+    if (!password.empty() && !passwordPipe.Open(password, error)) {
         if (error.empty()) error = L"无法创建安全密码通道";
         return false;
     }
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
     HANDLE outputRead = nullptr;
     HANDLE outputWrite = nullptr;
-    if (!CreatePipe(&outputRead, &outputWrite, &security, 0)) {
+    if (!CreatePipe(&outputRead, &outputWrite, &security, 65536)) {
         error = L"创建 SSH 验证管道失败：" + Win32ErrorMessage();
         return false;
     }
@@ -98,8 +99,7 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
 
     std::wstring command = QuoteCommandLineArgument(executable) + L" -batch -ssh -P " +
         std::to_wstring(port) + L" -l " + QuoteCommandLineArgument(username);
-    if (!password.empty()) command += securePassword ? L" -pwfile " + QuoteCommandLineArgument(passwordPipe.Name()) :
-        L" -pw " + QuoteCommandLineArgument(password);
+    if (!password.empty()) command += L" -pwfile " + QuoteCommandLineArgument(passwordPipe.Name());
     if (!hostKey.empty()) command += L" -hostkey " + QuoteCommandLineArgument(hostKey);
     command += L" " + QuoteCommandLineArgument(host) + L" exit";
     std::vector<wchar_t> buffer(command.begin(), command.end());
@@ -126,20 +126,21 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
     }
 
     std::string bytes;
-    std::array<char, 4096> chunk{};
     const DWORD started = GetTickCount();
     bool timedOut = false;
     bool cancelled = false;
+    bool tooLarge = false;
     for (;;) {
-        if (securePassword) passwordPipe.Poll();
-        DWORD available = 0;
-        while (PeekNamedPipe(outputRead, nullptr, 0, nullptr, &available, nullptr) && available) {
-            DWORD read = 0;
-            if (!ReadFile(outputRead, chunk.data(),
-                    std::min<DWORD>(available, static_cast<DWORD>(chunk.size())), &read, nullptr) || !read) break;
-            bytes.append(chunk.data(), read);
+        passwordPipe.Poll();
+        const auto read = ReadProcessOutput(outputRead, bytes, 256 * 1024, cancel);
+        tooLarge = read == PipeRead::Limit;
+        cancelled = read == PipeRead::Cancelled;
+        if (tooLarge || cancelled || passwordPipe.Failed()) {
+            TerminateProcess(process.hProcess, 1);
+            WaitForSingleObject(process.hProcess, 1000);
+            break;
         }
-        if (WaitForSingleObject(process.hProcess, 20) == WAIT_OBJECT_0) break;
+        if (WaitForSingleObject(process.hProcess, read == PipeRead::More ? 0 : 20) == WAIT_OBJECT_0) break;
         if (cancel && cancel->load()) {
             cancelled = true;
             TerminateProcess(process.hProcess, 1);
@@ -153,10 +154,12 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
             break;
         }
     }
-    for (;;) {
-        DWORD read = 0;
-        if (!ReadFile(outputRead, chunk.data(), static_cast<DWORD>(chunk.size()), &read, nullptr) || !read) break;
-        bytes.append(chunk.data(), read);
+    if (!tooLarge && !cancelled && !timedOut) {
+        PipeRead read;
+        do { read = ReadProcessOutput(outputRead, bytes, 256 * 1024, cancel); }
+        while (read == PipeRead::More);
+        tooLarge = read == PipeRead::Limit;
+        cancelled = read == PipeRead::Cancelled;
     }
     exitCode = 1;
     GetExitCodeProcess(process.hProcess, &exitCode);
@@ -164,6 +167,10 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
     CloseHandle(process.hProcess);
     CloseHandle(outputRead);
     output = Decode(bytes);
+    if (tooLarge || passwordPipe.Failed()) {
+        error = tooLarge ? L"SSH 验证输出超过 256 KiB，已停止连接" : L"安全密码通道写入失败";
+        return false;
+    }
     if (cancelled) {
         error = L"SSH 登录验证已取消。";
         return false;
@@ -192,7 +199,7 @@ std::wstring ExtractFingerprint(const std::wstring& output) {
 bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& host,
     std::uint16_t port, const std::wstring& username, const std::wstring& password,
     std::wstring& hostKey, std::wstring& error, const std::atomic_bool* cancel,
-    const HostKeyConfirmation& confirm, bool securePassword) {
+    const HostKeyConfirmation& confirm) {
     const std::wstring cacheKey = host + L":" + std::to_wstring(port);
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
@@ -210,7 +217,7 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
     DWORD exitCode = 1;
     std::wstring output;
     if (!RunProbe(executable, host, port, username, password, hostKey,
-            exitCode, output, error, cancel, securePassword)) return false;
+            exitCode, output, error, cancel)) return false;
     if (exitCode == 0) {
         // PuTTY already knows and has validated this host through its persisted
         // host-key cache. Remember that state in-process too; callers must omit
@@ -235,7 +242,7 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
         hostKey = discovered;
         output.clear();
         if (!RunProbe(executable, host, port, username, password, hostKey,
-                exitCode, output, error, cancel, securePassword)) return false;
+                exitCode, output, error, cancel)) return false;
         if (exitCode == 0) {
             std::lock_guard<std::mutex> lock(cacheMutex);
             hostKeyCache[cacheKey] = hostKey;

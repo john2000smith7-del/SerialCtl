@@ -158,9 +158,11 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'COMDLG32.dll', 'GDI32.dll', 'OLE32.dll', 'SHELL32.dll', 'MSIMG32.dll', 'SETUPAPI.dll')
         'ui_buffered_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'OLE32.dll', 'MSIMG32.dll')
         'ui_combo_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
+        'ui_dialog_viewport_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
         'update_client_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'WINHTTP.dll', 'WS2_32.dll')
         'update_installer_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'SHELL32.dll', 'USER32.dll')
         'power_service_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
+        'power_connection_gate_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
         'session_logger_test.exe' = @('ADVAPI32.dll', 'KERNEL32.dll', 'SHELL32.dll')
         'cmd_connection_test.exe' = @('KERNEL32.dll')
         'api_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
@@ -187,6 +189,13 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'MSIMG32.dll')
     & $binaryVerifier -Path (Join-Path $fixtureDirectory 'plink.exe') -Architecture $item `
         -Subsystem CUI -AllowedDll @('KERNEL32.dll')
+    $sftpFixture = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "sftp-fixture\$Configuration"
+    & $binaryVerifier -Path (Join-Path $sftpFixture 'sftp_client_test.exe') -Architecture $item `
+        -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll')
+    foreach ($program in @('plink.exe', 'psftp.exe')) {
+        & $binaryVerifier -Path (Join-Path $sftpFixture $program) -Architecture $item `
+            -Subsystem CUI -AllowedDll @('KERNEL32.dll')
+    }
 }
 
 Write-Host "[PASS] Binary compatibility checks completed: $Architecture / $Configuration"

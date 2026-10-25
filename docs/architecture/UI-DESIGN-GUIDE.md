@@ -11,11 +11,12 @@ SerialCtl uses an Apple-inspired desktop design language adapted to native Win32
 - The power mode field and its action group share a width budget. Below 564 logical px, move the action group to a separate row and shift the channel cards down by 48 px; peer actions keep 12 px gaps.
 - AI headers reserve nonoverlapping areas for status and actions. At narrow widths retain a short AI title and readable status; the monitor wrap switch becomes a 32 px icon button with a tooltip before its title area would shrink below 80 px.
 - AI empty-state titles wrap to the measured content width without changing font size; place the description below the measured title with at least 8 px clearance, including at the narrowest divider position.
-- Oversized AI and Settings dialogs fit inside the monitor work area with 12 px margins. Keep the footer actions/credits fixed, scroll only the content using the shared overlay scrollbar, clip content before the footer, and reveal fields on keyboard focus. Normal-size dialog geometry stays unchanged.
+- Oversized application dialogs (including dynamically growing command/step editors) fit inside the monitor work area with 12 px margins. Keep the footer actions/credits fixed, scroll only the content using the shared overlay scrollbar, clip content before the footer, and reveal fields on keyboard focus. Normal-size dialog geometry stays unchanged.
 - Component-internal optical insets may use 2 or 4 px only for segmented controls and vector icon strokes; page and dialog layout still follows the base grid.
 - All buttons and form controls use a 10 px radius.
 - Cards and large surfaces use a 12 px radius.
 - Standard button height: 36 px.
+- The unavailable power-connection notice uses a compact 360 by 132 logical-pixel client area, 16 px content insets and a single 96 by 36 px primary footer action. Reuse the existing owned-dialog, theme and rounded-button renderers; do not enumerate or open devices when showing this notice.
 - Compact dialog fields and icon buttons use a shared 28 px height; dropdowns and text fields must remain visually equal at the active DPI.
 - Compact utility button height: 32 px.
 - Terminal fills the center card; there is no bottom composer. Mouse right-click pastes once; per-session CR/LF/CRLF settings belong in the top Settings entry. SSH Enter stays CR.
@@ -33,6 +34,7 @@ Dark theme:
 - Text: `#F5F5F7`
 - Secondary text: `#98989D`
 - Accent: `#1F4FD8`
+- Accent text / focus ink: `#6595FF` on dark neutral surfaces. Keep `#1F4FD8` for filled controls with white content.
 - Accent surface: `#1F3750`
 - Danger: `#FF453A`
 
@@ -63,15 +65,16 @@ Light theme:
 - Primary button: accent fill, white text.
 - Secondary button: raised-surface fill and subtle border.
 - Text button: transparent surface and accent text.
+- Unfilled accent text, links, sort chevrons and focused field outlines use the shared theme-aware accent ink; disabled text actions use secondary text, including Add at the ten-step limit.
 - Danger button: secondary surface with danger text; use a filled danger button only for irreversible actions.
 - Icon button: square, same radius as other buttons, centered 16-18 px icon.
 - Top navigation icons use the approved monochrome vector family with rounded negative-space details. Editable SVG masters produce transparent 4x PNG atlases, embedded as resources and rendered with Win7 GDI+ high-quality scaling. Do not use raw GDI primitive drawing for navigation icons. The power glyph is a plain circular switch symbol. Desktop icon artwork is unchanged. Other utility icons may retain their shared line family. Do not use Unicode glyphs for theme, arrows, plus, refresh, or other interface symbols.
 - Dialog actions placed beside a field use a compact text label, the same height as the field, and at least 32 dialog units of width. Do not use a lone oversized glyph when the action can be named clearly.
 - Field-adjacent actions must copy the reference field's final runtime pixel bounds after Windows applies its font and DPI metrics; equal resource values alone are not sufficient.
 - Disabled controls retain their shape but use muted content and a low-contrast border.
-- Checkboxes keep native automatic state, keyboard operation and accessibility while sharing the themed painter. Use a 16 px indicator, 2 px indicator radius and 8 px label gap, scaled with DPI. Disabled labels use one muted text pass without the native embossed shadow; paint the complete parent surface, and retain the native keyboard-focus cue.
+- Checkboxes keep native automatic state, keyboard operation and accessibility while sharing the themed painter. Use a 16 px indicator, 2 px indicator radius and 8 px label gap, scaled with DPI. Disabled labels use one muted text pass without the native embossed shadow; paint the complete parent surface, and retain a visible keyboard-focus cue using the shared rounded outline.
 - Owner-drawn buttons paint their entire background and content together; do not expose the native system button erase color before the themed draw. Theme changes invalidate every direct child, including footer actions. Compose each owner-drawn item (including list rows and power tabs) off screen before one final clipped blit, so resize cannot present a cleared card before its text and icons. Preserve native item coordinates and DC state; geometry changes must not copy stale rounded-edge pixels.
-- Hover uses a neutral surface. Secondary held presses use solid accent and white content; primary held presses use accentInset. Keyboard focus for buttons uses an inset native cue; text fields retain their accent focus frame.
+- Hover uses a neutral surface. Secondary held presses use solid accent and white content; primary held presses use accentInset. Keyboard focus for buttons uses the shared antialiased inset rounded outline; text fields retain their accent focus frame.
 - Form labels sit above their controls. Related fields may share a balanced two-column row.
 - Dropdowns and text fields must share height, radius, padding, border, focus treatment, and background.
 - Native text fields use one shared rounded frame behind an inset borderless edit surface. The rectangular edit surface must remain inside the straight center of the rounded frame, so no dark square client corners can escape the field radius.
@@ -90,8 +93,8 @@ Light theme:
 
 - Connection methods form one evenly spaced segmented toolbar.
 - The top toolbar has one continuous rounded container enclosing navigation and Settings only, ending 8 px after Settings rather than stretching across the window. The theme action is a separate 36 px icon button at the right 12 px window inset; restore its exterior corners with the window background, and give it its own focus border. The navigation frame starts at y=16 px and ends at y=56 px; its buttons are 36 px tall with a 2 px optical vertical inset. Keep 12 px between the visible toolbar bottom and the three main cards, matching both horizontal card gaps. Scale these shared metrics at the active DPI.
-- Top navigation items have no individual outline. All top items use a neutral resting surface, including the currently open AI and power pages. Only an enabled held press uses solid accent and white foreground; release, cancellation and capture loss restore neutral styling. The shared container always keeps its neutral border. Keyboard focus uses an inset native focus cue, never a persistent blue container or item outline.
-- Other selection bars use the shared rounded-rectangle outline, a neutral muted border for the current page, neutral hover and a momentary accent fill for a held press; keyboard focus uses an inset focus cue. Apply this to Commands/SFTP, power main pages, automation pages and device-setting groups; underline-only tabs are not used. Keep consistent gaps and avoid overlapping outlines.
+- Top navigation items have no individual outline. All top items use a neutral resting surface, including the currently open AI and power pages. Only an enabled held press uses solid accent and white foreground; release, cancellation and capture loss restore neutral styling. The shared container always keeps its neutral border. Keyboard focus uses the shared inset rounded focus outline, never a persistent blue container or item outline.
+- Other selection bars use the shared rounded-rectangle outline, a neutral muted border for the current page, neutral hover and a momentary accent fill for a held press; keyboard focus uses the shared inset rounded focus outline. Apply this to Commands/SFTP, power main pages, automation pages and device-setting groups; underline-only tabs are not used. Keep consistent gaps and avoid overlapping outlines.
 - The top navigation retains seven connection/page items (SSH, serial, Telnet, remote serial, CMD, power, AI), plus a separate Settings action. Settings is not a connection type. Use 24 px monochrome icons and the shared label inset; no API item. Default theme is light. Idle navigation uses the shared toolbar surface and normal foreground. Current pages retain neutral navigation buttons; page identity is carried by the visible content and connection list. Primary submit actions and AI user messages retain their existing solid blue role.
 - Navigation items share the single toolbar boundary, including in idle and selected states; do not draw per-item borders. The toolbar retains the standard surface, radius and height tokens in both themes.
 - The title-bar application icon follows the active theme: dark artwork in dark mode and the matching light artwork in light mode.
@@ -215,3 +218,15 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 - Power main and automation selectors use 32 px height, measured text width plus 16 px padding per side, and 12 px peer gaps. Automation selectors wrap with a 44 px row pitch; following content moves down with wrapped rows.
 - Connection-dialog collapsed dropdowns are normalized to the shared 28 px visible height after their final font, native movement and item population, including editable baud rates. Refresh matches the actual final selector height. Local serial hardware gets a full-width first row beside Refresh; remaining serial settings use the same balanced two-column grid.
 - The product version stays V2.0.3; r1 identifies the release revision only. Same-version installed clients require manual replacement; the updater continues to require a higher product version.
+
+## Interaction and edge acceptance (V2.0.4)
+
+- The shared keyboard-focus outline follows the control radius with a 4 px inset, instead of a rectangular dotted XOR focus box. Use light-theme accent / dark-theme `#6595FF`, and white on an accent-filled control; keep disabled states and hidden-focus cues respected. Checkbox labels use the same smooth outline, with 4 px label radius.
+- AI history footer actions also use the 10 px button radius. No dialog-specific 8 px action corners.
+- Review at actual 96/120/144/192 DPI in both palettes. Retain native-size screenshots plus 6x nearest-neighbor corner crops for normal, hover, pressed, focused, checked and disabled states. Enlargement is evidence inspection, not a replacement for actual DPI testing. Visible partially covered edge pixels are expected antialiasing; hard binary diagonal steps, clipped arcs, nine-slice seams, mismatched stroke widths and stale exterior pixels are failures.
+- Rounded surfaces and focus outlines share destination-pixel area coverage at the actual DPI. Integrate the curve within each edge pixel; do not point-sample a reduced bitmap mask or rely on a separate low-resolution focus path. Use at least 32 vertical subpixel samples with continuous horizontal coverage, premultiplied alpha, and one complete-surface AlphaBlend. Preserve clear interiors for outlines. Cache the result and bulk-fill flat spans; do not supersample whole pages or blur text, icons, or straight edges. Quality acceptance uses curve-area accuracy and matched before/after desktop crops, not equality to the old rasterization.
+- Command Run/Edit arm on mouse down and activate on a matching release; dragging out, cancellation and capture loss cancel activation. The system double-click interval bounds duplicate Run activations for the same command/session. Stop remains immediate and bypasses that guard. Enter/Space run the selected command once; F2 edits it.
+- Ctrl+F6 (Shift reverses) moves between visible panes without transmitting bytes. Terminal Tab/Shift+Tab and unmodified function keys retain remote semantics. All application edit fields support Ctrl+A.
+- AI Send keeps its label and becomes disabled while a turn runs. A separate Stop action appears in the utility row, away from Send's hit target. Repeated activation of Send must never interrupt a turn.
+- Layout widths are stored as versioned 96-DPI logical values. Legacy pixel values are migrated using their saved DPI, or the current DPI when that historical value is unavailable.
+- Per-session transport status retains its reason and time. Background errors mark their own connection card; selecting it acknowledges the mark and restores that session's reason without overwriting another session's state.

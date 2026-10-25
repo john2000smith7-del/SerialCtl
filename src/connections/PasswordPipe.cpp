@@ -6,16 +6,30 @@
 
 namespace serialctl {
 PasswordPipe::~PasswordPipe() {
+    Reset();
+}
+void PasswordPipe::Reset() {
     if (!password_.empty())
         SecureZeroMemory(password_.data(), password_.size());
     if (pipe_ != INVALID_HANDLE_VALUE) {
-        CancelIo(pipe_);
+        CancelIoEx(pipe_, nullptr);
+        if (pending_) {
+            DWORD ignored = 0;
+            GetOverlappedResult(pipe_, &connect_, &ignored, TRUE);
+        }
         CloseHandle(pipe_);
     }
     if (event_)
         CloseHandle(event_);
+    pipe_ = INVALID_HANDLE_VALUE;
+    event_ = nullptr;
+    connect_ = {};
+    password_.clear();
+    name_.clear();
+    pending_ = failed_ = false;
 }
 bool PasswordPipe::Open(const std::wstring &password, std::wstring &error) {
+    Reset();
     if (password.find_first_of(L"\r\n") != std::wstring::npos || password.size() > 1024) {
         error = L"密码不支持换行且不能超过 1024 字符";
         return false;
@@ -37,10 +51,13 @@ bool PasswordPipe::Open(const std::wstring &password, std::wstring &error) {
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &descriptor, nullptr))
         return false;
     GUID guid{};
-    CoCreateGuid(&guid);
     wchar_t unique[40]{};
-    StringFromGUID2(guid, unique, 40);
-    name_ = L"\\\\.\\pipe\\SerialCtl-AI-" + std::wstring(unique);
+    if (FAILED(CoCreateGuid(&guid)) || !StringFromGUID2(guid, unique, 40)) {
+        LocalFree(descriptor);
+        error = L"无法创建安全密码通道标识";
+        return false;
+    }
+    name_ = L"\\\\.\\pipe\\SerialCtl-Password-" + std::wstring(unique);
     SECURITY_ATTRIBUTES sa{sizeof(sa), descriptor, FALSE};
     pipe_ = CreateNamedPipeW(name_.c_str(), PIPE_ACCESS_OUTBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
                              PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 8192, 8192, 0, &sa);
@@ -67,21 +84,25 @@ void PasswordPipe::Poll() {
         return;
     if (pending_) {
         DWORD ignored = 0;
-        if (!GetOverlappedResult(pipe_, &connect_, &ignored, FALSE))
+        if (!GetOverlappedResult(pipe_, &connect_, &ignored, FALSE)) {
+            if (GetLastError() != ERROR_IO_INCOMPLETE) failed_ = true;
             return;
+        }
         pending_ = false;
     }
     // A password is at most 4 KiB, below the pipe buffer size. The write is
     // bounded; never FlushFileBuffers (a child may abort before reading).
     OVERLAPPED write{};
     write.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!write.hEvent) { failed_ = true; return; }
     DWORD written = 0;
-    if (!WriteFile(pipe_, password_.data(), static_cast<DWORD>(password_.size()), &written, &write) &&
-        GetLastError() == ERROR_IO_PENDING) {
+    bool ok = WriteFile(pipe_, password_.data(), static_cast<DWORD>(password_.size()), &written, &write) != FALSE;
+    if (!ok && GetLastError() == ERROR_IO_PENDING) {
         if (WaitForSingleObject(write.hEvent, 500) != WAIT_OBJECT_0)
-            CancelIo(pipe_);
-        GetOverlappedResult(pipe_, &write, &written, TRUE);
+            CancelIoEx(pipe_, &write);
+        ok = GetOverlappedResult(pipe_, &write, &written, TRUE) != FALSE;
     }
+    failed_ = !ok || written != password_.size();
     CloseHandle(write.hEvent);
     SecureZeroMemory(password_.data(), password_.size());
     password_.clear();

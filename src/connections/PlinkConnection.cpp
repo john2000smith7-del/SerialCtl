@@ -37,6 +37,8 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
             hostKey_, error, &cancelStarting_, confirmHostKey_)) {
         return false;
     }
+    passwordPipe_.Reset();
+    if (!password_.empty() && !passwordPipe_.Open(password_, error)) return false;
 
     SECURITY_ATTRIBUTES security{};
     security.nLength = sizeof(security);
@@ -85,7 +87,7 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
         L" -serialctl-resize-map " +
         std::to_wstring(reinterpret_cast<UINT_PTR>(resizeMapping_));
     if (!password_.empty()) {
-        command += L" -pw " + QuoteCommandLineArgument(password_);
+        command += L" -pwfile " + QuoteCommandLineArgument(passwordPipe_.Name());
     }
     if (!hostKey_.empty())
         command += L" -hostkey " + QuoteCommandLineArgument(hostKey_);
@@ -133,6 +135,16 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
 
     process_ = processInfo.hProcess;
     processThread_ = processInfo.hThread;
+    const auto passwordDeadline = GetTickCount64() + 15000;
+    while (!passwordPipe_.Delivered()) {
+        passwordPipe_.Poll();
+        if (passwordPipe_.Failed() || cancelStarting_ || GetTickCount64() >= passwordDeadline ||
+            WaitForSingleObject(process_, 10) != WAIT_TIMEOUT) {
+            error = cancelStarting_ ? L"SSH 登录已取消" : L"SSH 安全密码通道失败或登录进程已退出";
+            Stop();
+            return false;
+        }
+    }
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
     readThread_ = std::thread(&PlinkConnection::ReadLoop, this);
@@ -171,6 +183,7 @@ void PlinkConnection::Stop() {
     }
     CloseResizeChannel();
     DeletePuttySession();
+    passwordPipe_.Reset();
     onData_ = {};
     onStatus_ = {};
 }

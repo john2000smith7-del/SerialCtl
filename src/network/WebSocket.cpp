@@ -143,18 +143,32 @@ bool Token(const std::string &s, const std::string &token) {
     }
     return false;
 }
-Header ReadHeader(SOCKET s, Bytes &tail) {
+Header ReadHeader(SOCKET s, Bytes &tail, DWORD timeout) {
     std::string header;
     std::array<char, 2048> b{};
+    const auto deadline = GetTickCount64() + timeout;
     for (;;) {
         auto end = header.find("\r\n\r\n");
         if (end != std::string::npos) {
+            if (end > 8192) throw Error(1002, "HEADER_TOO_LARGE");
             tail.assign(header.begin() + end + 4, header.end());
             header.resize(end);
             break;
         }
         if (header.size() > 8192)
             throw Error(1002, "HEADER_TOO_LARGE");
+        // One deadline covers the whole header. A peer sending one byte just
+        // before SO_RCVTIMEO must not keep a handshake slot indefinitely.
+        const auto now = GetTickCount64();
+        if (now >= deadline)
+            throw Error(1002, "HANDSHAKE_CLOSED_OR_TIMEOUT");
+        const auto remaining = deadline - now;
+        timeval wait{static_cast<long>(remaining / 1000), static_cast<long>((remaining % 1000) * 1000)};
+        fd_set readable;
+        FD_ZERO(&readable);
+        FD_SET(s, &readable);
+        if (select(0, &readable, nullptr, nullptr, &wait) <= 0)
+            throw Error(1002, "HANDSHAKE_CLOSED_OR_TIMEOUT");
         int n = recv(s, b.data(), int(b.size()), 0);
         if (n <= 0)
             throw Error(1002, "HANDSHAKE_CLOSED_OR_TIMEOUT");

@@ -24,12 +24,30 @@ void RemoveValue(const std::wstring& host) {
 int wmain(int argc, wchar_t** argv) {
     if (argc > 1 && std::wstring(argv[1]) == L"-batch") {
         bool explicitKey = false, hasKey = false;
+        bool passwordExpected = false, flood = false;
+        std::wstring pipe;
         for (int i = 1; i + 1 < argc; ++i) {
+            if (std::wstring(argv[i]) == L"-pw") return 40;
+            if (std::wstring(argv[i]) == L"-pwfile") pipe = argv[i + 1];
+            passwordExpected = passwordExpected || std::wstring(argv[i]) == L"password-test";
+            flood = flood || std::wstring(argv[i]).find(L"probe-overflow") != std::wstring::npos;
             if (std::wstring(argv[i]) == L"-hostkey") {
                 hasKey = true;
                 explicitKey = std::wstring(argv[i + 1]) == Fingerprint;
             }
         }
+        if (passwordExpected) {
+            HANDLE input = CreateFileW(pipe.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+            if (input == INVALID_HANDLE_VALUE) return 41;
+            char password[128]{};
+            DWORD read = 0;
+            const bool ok = ReadFile(input, password, sizeof(password), &read, nullptr) &&
+                            std::string(password, read) == "probe-secret\n";
+            SecureZeroMemory(password, sizeof(password));
+            CloseHandle(input);
+            if (!ok) return 42;
+        }
+        if (flood) { std::cout << std::string(300 * 1024, 'x'); return 1; }
         if (explicitKey) return 0;
         if (hasKey) {
             std::cout << "WARNING - HOST KEY DOES NOT MATCH!\nkey fingerprint is:\n"
@@ -61,6 +79,11 @@ int wmain(int argc, wchar_t** argv) {
             ++prompts; return fingerprint == Fingerprint;
         });
     if (!trusted || prompts != 2 || key != Fingerprint) { RemoveValue(accepted); return 2; }
+    if (!serialctl::ResolvePuttyHostKey(Executable(), accepted, 22, L"password-test", L"probe-secret", key, error)) {
+        RemoveValue(accepted); return 11;
+    }
+    if (serialctl::ResolvePuttyHostKey(Executable(), prefix + L"-probe-overflow", 22, L"test", L"", key, error) ||
+        error.find(L"256 KiB") == std::wstring::npos) { RemoveValue(accepted); return 12; }
     const std::wstring changed = prefix + L"-changed";
     HKEY registry = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, RegistryPath, 0, nullptr, 0, KEY_SET_VALUE,

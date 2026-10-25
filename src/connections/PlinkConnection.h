@@ -2,6 +2,7 @@
 
 #include "Connection.h"
 #include "PuttyHostKey.h"
+#include "PasswordPipe.h"
 
 #include <atomic>
 #include <mutex>
@@ -34,6 +35,7 @@ private:
     std::uint16_t port_;
     std::wstring username_;
     std::wstring password_;
+    PasswordPipe passwordPipe_;
     std::wstring hostKey_;
     HostKeyConfirmation confirmHostKey_;
     int terminalColumns_ = 80;

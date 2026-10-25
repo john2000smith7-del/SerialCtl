@@ -1,4 +1,6 @@
-# AI 智能设备助手（V2.0.3）
+# AI 智能设备助手（V2.0.4）
+
+连接成功并取得服务器默认配置后，空白对话显示一次本地工程师助手介绍，不公开内部角色名 Jojo，不提交模型回合或设备命令；已有消息和恢复历史不插入重复介绍。本版电源连接暂未开放，GUI 使用公共主题提示，PowerService 在动作入队前拒绝所有生产连接后端；测试目标仅允许内存模拟后端。AI 不宣称可用的电源控制能力。
 
 ## 页面与连接
 
@@ -26,7 +28,7 @@ AI 不默认关联本地串口。输入栏明确显示“请选择终端”，�
 - `src/ai/CodexClient`：独立工作线程，使用随包 Plink 的 `-T -batch` 启动 Linux `codex app-server --listen stdio://`，分别读取 stdout JSONL 和 stderr。UI 不直接读写进程管道。
 - `src/ai/AiProtocol`：有界 UTF-8 JSONL 拆帧、滚动状态、固定工程师指导和四个终端工具和三个电源工具。
 - `src/connections/PasswordPipe`：当前用户 ACL 的一次性本机命名管道，通过 Plink `-pwfile` 传递密码，密码不进入命令行或磁盘文件。
-- `PuttyHostKey` 的新增安全密码选项仅用于 AI；原 SSH/SFTP 调用的默认行为不变。首次未知主机由用户核对完整指纹；变化的身份不自动接受。
+- `PuttyHostKey`、普通 SSH、SFTP 和 AI 均使用安全密码管道；密码不落盘、不进入命令行。首次未知主机由用户核对完整指纹；变化的身份不自动接受。
 
 服务器和可选项目目录保存在当前用户注册表；旧 Model 选择值不再读取或发送。密码默认不保存；勾选记住密码时使用 Windows Credential Manager（Win7 提供的 API），不写入 INI、日志或仓库。Linux Codex 使用该 SSH 用户已有模型和认证配置，Windows 不维护网关密钥，也不安装模型或独立 Bridge。
 

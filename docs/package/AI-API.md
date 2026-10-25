@@ -1,5 +1,7 @@
 # AI 接口（与远程串口相同的 WebSocket v1）
 
+V2.0.4 电源连接暂未开放；电源查询如实返回未连接，不提供网络建立电源连接。下方电源操作接口保留作后续功能参考。
+
 ```python
 from serialctl_ws import Client
 with Client('192.168.6.86') as client:

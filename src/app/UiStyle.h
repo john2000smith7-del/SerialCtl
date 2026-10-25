@@ -36,10 +36,34 @@ inline UiButtonColors UiButtonVisual(const UiColors &c, bool enabled, bool press
         return {c.accent, c.accent, RGB(255, 255, 255)};
     return {hovered ? c.surface : c.raised, c.border, c.text};
 }
-inline void UiButtonKeyboardFocus(HDC dc, RECT rect, UINT state, int dpi) {
+inline COLORREF UiAccentInk(bool dark) {
+    return dark ? RGB(101, 149, 255) : RGB(31, 79, 216);
+}
+inline COLORREF UiFocusInk(bool dark, bool inverse = false) {
+    return inverse ? RGB(255, 255, 255) : UiAccentInk(dark);
+}
+inline void UiFocusOutline(HDC dc, RECT rect, int radius, int dpi, COLORREF color) {
+    if (UiRoundedSurface(dc, rect, 0, color, radius, dpi, true)) return;
+    const float w = static_cast<float>(rect.right - rect.left - 1), h = static_cast<float>(rect.bottom - rect.top - 1);
+    if (w <= 0 || h <= 0) return;
+    const float diameter = std::min({static_cast<float>(radius * 2), w, h});
+    const float x = rect.left + .5f, y = rect.top + .5f;
+    Gdiplus::Graphics graphics(dc);
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::GraphicsPath path;
+    path.AddArc(x, y, diameter, diameter, 180, 90);
+    path.AddArc(x + w - diameter, y, diameter, diameter, 270, 90);
+    path.AddArc(x + w - diameter, y + h - diameter, diameter, diameter, 0, 90);
+    path.AddArc(x, y + h - diameter, diameter, diameter, 90, 90);
+    path.CloseFigure();
+    Gdiplus::Pen pen(Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color)),
+                     std::max(1.f, static_cast<float>(dpi) / 96));
+    graphics.DrawPath(&pen, &path);
+}
+inline void UiButtonKeyboardFocus(HDC dc, RECT rect, UINT state, int dpi, COLORREF color = RGB(31, 79, 216)) {
     if ((state & ODS_FOCUS) && !(state & (ODS_NOFOCUSRECT | ODS_DISABLED))) {
         InflateRect(&rect, -MulDiv(4, dpi, 96), -MulDiv(4, dpi, 96));
-        DrawFocusRect(dc, &rect);
+        UiFocusOutline(dc, rect, MulDiv(6, dpi, 96), dpi, color);
     }
 }
 // AI uses the existing softer surfaces; regular terminal/dialog palettes stay independent.
@@ -369,7 +393,7 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
     DeleteObject(outside);
     const bool enabled = IsWindowEnabled(combo) != FALSE;
     const bool focused = enabled && (GetFocus() == combo || SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0));
-    const COLORREF border = focused                                               ? colors.accent
+    const COLORREF border = focused                                               ? UiAccentInk(*style.dark)
                             : enabled && GetPropW(combo, L"SerialCtl.FieldHover") ? colors.muted
                                                                                   : colors.border;
     UiBox(dc, bounds, colors.field, border, d(10));
@@ -458,21 +482,8 @@ inline void UiPaintComboPopup(HWND list, HDC target, const UiComboPopup &data) {
     }
     if (scrolling)
         UiBox(dc, scroll.thumb, colors.border, colors.border, d(3));
-    // Draw only the outline here: filling UiBox would cover the native rows.
-    {
-    Gdiplus::Graphics graphics(dc);
-    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    const float x = 0.5f, y = 0.5f, width = bounds.right - 1.0f, height = bounds.bottom - 1.0f;
-    const float diameter = std::min(static_cast<float>(d(20)), std::min(width, height));
-    Gdiplus::GraphicsPath path;
-    path.AddArc(x, y, diameter, diameter, 180, 90);
-    path.AddArc(x + width - diameter, y, diameter, diameter, 270, 90);
-    path.AddArc(x + width - diameter, y + height - diameter, diameter, diameter, 0, 90);
-    path.AddArc(x, y + height - diameter, diameter, diameter, 90, 90);
-    path.CloseFigure();
-    Gdiplus::Pen pen(UiColor(colors.border), 1.0f);
-    graphics.DrawPath(&pen, &path);
-    }
+    // The shared coverage stroke preserves the rows and scales with the DPI.
+    UiFocusOutline(dc, bounds, d(10), data.style->dpi, colors.border);
     RestoreDC(dc, saved);
     if (bitmap) {
         BitBlt(target, 0, 0, bounds.right, bounds.bottom, buffer, 0, 0, SRCCOPY);
@@ -704,7 +715,7 @@ inline void UiPaintCheckBox(HWND h, HDC target, const UiFieldStyle &style) {
     const bool hovered = enabled && GetPropW(h, L"SerialCtl.CheckHover");
     const int size = std::min(d(16), static_cast<int>(bounds.bottom));
     RECT mark{0, (bounds.bottom - size) / 2, size, (bounds.bottom + size) / 2};
-    const COLORREF border = !enabled ? colors.border : focused ? colors.accent : hovered ? colors.muted : colors.border;
+    const COLORREF border = !enabled ? colors.border : focused ? UiAccentInk(*style.dark) : hovered ? colors.muted : colors.border;
     const COLORREF fill = !enabled ? colors.raised : pressed ? colors.accentSoft :
         checked != BST_UNCHECKED ? colors.accent : hovered ? colors.raised : colors.field;
     UiBox(dc, mark, fill, checked != BST_UNCHECKED && enabled && !pressed ? colors.accent : border, d(2));
@@ -737,8 +748,8 @@ inline void UiPaintCheckBox(HWND h, HDC target, const UiFieldStyle &style) {
         focus.top = (bounds.bottom - height) / 2;
         focus.bottom = focus.top + height;
         focus.right = std::min(focus.right + d(2), bounds.right);
-        SetBkColor(dc, outside);
-        DrawFocusRect(dc, &focus);
+        InflateRect(&focus, d(2), d(2));
+        UiFocusOutline(dc, focus, d(4), style.dpi, UiFocusInk(*style.dark, pressed));
     }
     RestoreDC(dc, saved);
     if (bitmap) {
@@ -799,11 +810,18 @@ inline void UiStyleCheckBox(HWND control, UiFieldStyle *style, bool surface) {
         RemovePropW(control, L"SerialCtl.CheckSurface");
     InvalidateRect(control, nullptr, FALSE);
 }
+inline bool UiEditSelectAll(HWND h, UINT message, WPARAM key) {
+    if (message != WM_KEYDOWN || key != 'A' || !(GetKeyState(VK_CONTROL) & 0x8000) ||
+        (GetKeyState(VK_MENU) & 0x8000)) return false;
+    SendMessageW(h, EM_SETSEL, 0, -1);
+    return true;
+}
 inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR reference) {
     auto *style = reinterpret_cast<UiFieldStyle *>(reference);
     wchar_t cls[32]{};
     GetClassNameW(h, cls, 32);
     bool edit = _wcsicmp(cls, L"EDIT") == 0;
+    if (edit && UiEditSelectAll(h, message, w)) return 0;
     bool hoverChanged = false;
     auto d = [style](int n) { return MulDiv(n, style->dpi, 96); };
     auto colors = UiFieldColors(*style);
@@ -864,7 +882,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         HBRUSH outside = CreateSolidBrush(outsideColor);
         FillRect(dc, &bounds, outside);
         DeleteObject(outside);
-        UiBox(dc, bounds, colors.field, GetFocus() == h ? colors.accent : colors.border, d(10));
+        UiBox(dc, bounds, colors.field, GetFocus() == h ? UiAccentInk(*style->dark) : colors.border, d(10));
         POINT origin{};
         GetViewportOrgEx(dc, &origin);
         SetViewportOrgEx(dc, origin.x + d(8), origin.y + d(4), nullptr);
@@ -885,7 +903,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         DeleteObject(outside);
         const bool enabled = IsWindowEnabled(h) != FALSE;
         const bool focused = enabled && GetFocus() == h;
-        const COLORREF border = focused ? colors.accent
+        const COLORREF border = focused ? UiAccentInk(*style->dark)
                                   : enabled && GetPropW(h, L"SerialCtl.FieldHover") ? colors.muted : colors.border;
         UiBox(dc, rect, colors.field, border, d(10));
         RestoreDC(dc, saved);

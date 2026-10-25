@@ -1289,7 +1289,8 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             const auto visual = UiButtonVisual(c, enabled, pressed, hovered);
             UiBox(item.hDC, item.rcItem, visual.fill, active && !pressed ? c.muted : visual.border,
                   MulDiv(10, self->dpi_, 96));
-            UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_);
+            UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_,
+                UiFocusInk(self->dark_, !(item.itemState & ODS_DISABLED) && (primary || (item.itemState & ODS_SELECTED))));
             SetBkMode(item.hDC, TRANSPARENT);
             SetTextColor(item.hDC, visual.ink);
             auto old = SelectObject(item.hDC, self->smallFont_);
@@ -1307,7 +1308,8 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const auto visual = UiButtonVisual(c, !(item.itemState & ODS_DISABLED), item.itemState & ODS_SELECTED,
                                            GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
         UiBox(item.hDC, item.rcItem, visual.fill, visual.border, MulDiv(10, self->dpi_, 96));
-        UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_);
+        UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_,
+                UiFocusInk(self->dark_, !(item.itemState & ODS_DISABLED) && (primary || (item.itemState & ODS_SELECTED))));
         SetBkMode(item.hDC, TRANSPARENT);
         SetTextColor(item.hDC, (item.itemState & ODS_DISABLED)           ? c.muted
                                : (item.itemState & ODS_SELECTED)         ? visual.ink
@@ -1366,6 +1368,18 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
             return c;
         };
+        if (!PowerService::ConnectionAvailable()) {
+            UiResizeDialog(h, dpi, 360, 132);
+            add(L"STATIC", Wide(PowerService::ConnectionUnavailableMessage()).c_str(), -1, 16, 16, 328, 0, 48);
+            add(L"BUTTON", L"确定", IDOK, 248, 80, 96, WS_TABSTOP | BS_OWNERDRAW, 36);
+            RECT owner{}, rect{};
+            GetWindowRect(GetParent(h), &owner);
+            GetWindowRect(h, &rect);
+            SetWindowPos(h, nullptr, owner.left + (owner.right - owner.left - (rect.right - rect.left)) / 2,
+                         owner.top + (owner.bottom - owner.top - (rect.bottom - rect.top)) / 2, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER);
+            return TRUE;
+        }
         add(L"STATIC", L"连接方式", -1, 16, 12, 200);
         data->kind = add(L"COMBOBOX", L"", 100, 16, 40, 404, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
         for (auto text : {L"USB", L"RS232"})
@@ -1422,6 +1436,11 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (m == WM_COMMAND) {
         int id = LOWORD(w);
+        if (!PowerService::ConnectionAvailable()) {
+            if (id == IDOK || id == IDCANCEL)
+                UiEndOwnedDialog(h, id);
+            return TRUE;
+        }
         int kind = static_cast<int>(SendMessageW(data->kind, CB_GETCURSEL, 0, 0));
         if (id == 100 || id == 103) {
             auto d = [data](int x) { return MulDiv(x, data->pane->dpi_, 96); };
@@ -1815,7 +1834,8 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const auto visual = UiButtonVisual(c, enabled, item.itemState & ODS_SELECTED,
                                            GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
         UiBox(item.hDC, item.rcItem, visual.fill, visual.border, MulDiv(10, pane->dpi_, 96));
-        UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, pane->dpi_);
+        UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, pane->dpi_,
+            UiFocusInk(pane->dark_, enabled && (primary || (item.itemState & ODS_SELECTED))));
         SetBkMode(item.hDC, TRANSPARENT);
         SetTextColor(item.hDC, visual.ink);
         auto old = SelectObject(item.hDC, pane->font_);

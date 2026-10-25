@@ -136,6 +136,82 @@ void TestFallback() {
         Expect(paint.Dc() == surface.dc, "unusual mappings retain original drawing semantics");
     }
 }
+void TestCurveCoverage() {
+    constexpr double pi = 3.14159265358979323846;
+    for (int dpi : {96, 120, 144, 192}) {
+        for (bool outline : {false, true}) {
+            Surface surface;
+            RECT rect{9, 11, 149, 117};
+            const int radius = MulDiv(outline ? 6 : 10, dpi, 96);
+            const double stroke = static_cast<double>(dpi) / 96;
+            HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
+            FillRect(surface.dc, &rect, black); DeleteObject(black);
+            Expect(serialctl::UiRoundedSurface(surface.dc, rect, RGB(255, 255, 255), RGB(255, 255, 255),
+                                               radius, dpi, outline), "area-coverage surface is available");
+            const auto pixels = surface.Pixels();
+            const int width = rect.right - rect.left, height = rect.bottom - rect.top;
+            double area = 0;
+            int partial = 0, allPartial = 0;
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    const auto value = pixels[(rect.top + y) * Surface::Width + rect.left + x] & 255;
+                    area += static_cast<double>(value) / 255;
+                    if (value > 0 && value < 255) ++allPartial;
+                    if (x < radius && y < radius && value > 0 && value < 255) ++partial;
+                    Expect(value == (pixels[(rect.top + y) * Surface::Width + rect.right - 1 - x] & 255),
+                           "curve coverage is exactly symmetric horizontally");
+                    Expect(value == (pixels[(rect.bottom - 1 - y) * Surface::Width + rect.left + x] & 255),
+                           "curve coverage is exactly symmetric vertically");
+                }
+            }
+            double expected = width * height - (4 - pi) * radius * radius;
+            if (outline)
+                expected -= (width - 2 * stroke) * (height - 2 * stroke) -
+                            (4 - pi) * (radius - stroke) * (radius - stroke);
+            // One half alpha LSB per partially covered pixel, plus the
+            // numerical integration budget. Fractional straight strokes may
+            // contain hundreds of partial pixels at 125%/150% DPI.
+            const double tolerance = .08 + allPartial / 510.;
+            if (std::abs(area - expected) >= tolerance)
+                std::cerr << "dpi=" << dpi << " outline=" << outline << " area=" << area
+                          << " expected=" << expected << " tolerance=" << tolerance << '\n';
+            Expect(std::abs(area - expected) < tolerance, "pixel coverage preserves the analytic rounded-rectangle area");
+            Expect(partial >= radius, "each corner retains partial coverage instead of binary stairs");
+        }
+    }
+    Surface pattern;
+    GdiFlush();
+    auto patternData = static_cast<DWORD *>(pattern.pixels);
+    for (int y = 30; y < 70; ++y)
+        for (int x = 24; x < 120; ++x)
+            patternData[y * Surface::Width + x] = (x + y) % 2 ? 0x00ff3300 : 0x000099ee;
+    const auto original = pattern.Pixels();
+    serialctl::UiFocusOutline(pattern.dc, RECT{10, 10, 140, 100}, 6, 96, RGB(101, 149, 255));
+    const auto focused = pattern.Pixels();
+    Expect(focused[50 * Surface::Width + 60] == original[50 * Surface::Width + 60],
+           "focus rendering must not fill or blur the control interior");
+    Expect(focused[10 * Surface::Width + 10] == original[10 * Surface::Width + 10],
+           "focus rendering must preserve the exterior corner");
+    bool patternIntact = true;
+    for (int y = 30; y < 70; ++y)
+        for (int x = 24; x < 120; ++x)
+            patternIntact &= focused[y * Surface::Width + x] == original[y * Surface::Width + x];
+    Expect(patternIntact, "focus coverage must preserve high-frequency interior detail without blurring");
+    for (int size : {1, 2, 3, 7}) {
+        Surface tiny;
+        RECT rect{2, 2, 2 + size, 2 + size};
+        HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
+        FillRect(tiny.dc, &rect, black); DeleteObject(black);
+        serialctl::UiRoundedSurface(tiny.dc, rect, RGB(255, 255, 255), RGB(255, 255, 255), 12, 96);
+        const auto pixels = tiny.Pixels();
+        double area = 0;
+        for (int y = rect.top; y < rect.bottom; ++y)
+            for (int x = rect.left; x < rect.right; ++x)
+                area += (pixels[y * Surface::Width + x] & 255) / 255.;
+        Expect(std::abs(area - pi * size * size / 4) < .05,
+               "tiny controls clamp their radius and retain circular pixel coverage");
+    }
+}
 } // namespace
 int main() {
     Gdiplus::GdiplusStartupInput startup;
@@ -156,6 +232,7 @@ int main() {
     TestItem({-5, -9, 133, 49}, false);
     TestItem({13, 33, 131, 91}, true);
     TestFallback();
+    TestCurveCoverage();
     // Warm the APIs before checking the repeated buffer resource lifetime.
     {
         Surface warm;

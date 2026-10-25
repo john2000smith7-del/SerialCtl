@@ -5,6 +5,7 @@ if(NOT WIN32)
 endif()
 
 set(SERIALCTL_VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SERIALCTL_VERSION_FILE}")
 file(STRINGS "${SERIALCTL_VERSION_FILE}" SERIALCTL_VERSION_LINES ENCODING UTF-8)
 
 list(LENGTH SERIALCTL_VERSION_LINES SERIALCTL_VERSION_LINE_COUNT)
@@ -37,6 +38,14 @@ string(REGEX REPLACE "^V" "" SERIALCTL_SEMVER "${SERIALCTL_CPP_VERSION}")
 project(SerialCtl VERSION "${SERIALCTL_SEMVER}" LANGUAGES CXX RC)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+option(SERIALCTL_CROSS_SMOKE "Test-only MinGW cross build (not a verified MSVC release)" OFF)
+if(SERIALCTL_CROSS_SMOKE)
+    if(MSVC OR NOT CMAKE_CROSSCOMPILING)
+        message(FATAL_ERROR "SERIALCTL_CROSS_SMOKE is only for isolated MinGW cross-platform validation")
+    endif()
+    message(WARNING "Cross smoke only: MSVC ABI thunks cannot link to MinGW; do not package or publish this build")
+    set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} --codepage=65001")
+endif()
 
 set(SERIALCTL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(SERIALCTL_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -123,12 +132,30 @@ function(serialctl_configure_native_target TARGET_NAME SUBSYSTEM_KIND)
         _WIN32_WINNT=0x0601
         NTDDI_VERSION=0x06010000
     )
-    target_sources("${TARGET_NAME}" PRIVATE "${YY_THUNKS_OBJECT}")
+    if(NOT SERIALCTL_CROSS_SMOKE)
+        target_sources("${TARGET_NAME}" PRIVATE "${YY_THUNKS_OBJECT}")
+    endif()
     if(MSVC)
         set_property(TARGET "${TARGET_NAME}" PROPERTY
             MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
         target_compile_options("${TARGET_NAME}" PRIVATE /W4 /permissive- /utf-8 /EHsc)
         target_link_options("${TARGET_NAME}" PRIVATE "/SUBSYSTEM:${SUBSYSTEM_KIND},6.01")
+    elseif(MINGW OR SERIALCTL_CROSS_SMOKE)
+        # Cross-platform smoke builds retain the Win7 subsystem. The formal
+        # release continues to use MSVC /MT and pinned thunks above.
+        string(TOLOWER "${SUBSYSTEM_KIND}" SUBSYSTEM_LOWER)
+        target_link_options("${TARGET_NAME}" PRIVATE "-Wl,--subsystem,${SUBSYSTEM_LOWER}:6.01" -static)
+        get_target_property(NATIVE_SOURCES "${TARGET_NAME}" SOURCES)
+        foreach(NATIVE_SOURCE IN LISTS NATIVE_SOURCES)
+            if(NATIVE_SOURCE MATCHES "\\.cpp$" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${NATIVE_SOURCE}")
+                file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/${NATIVE_SOURCE}" UNICODE_ENTRY
+                    REGEX "^int (WINAPI )?(wmain|wWinMain)\\(")
+                if(UNICODE_ENTRY)
+                    target_link_options("${TARGET_NAME}" PRIVATE -municode)
+                    break()
+                endif()
+            endif()
+        endforeach()
     endif()
 endfunction()
 
@@ -233,7 +260,7 @@ if(BUILD_TESTING)
     list(REMOVE_ITEM SERIALCTL_DEVICE_TEST_SOURCES src/app/App.cpp "${YY_THUNKS_OBJECT}")
     add_executable(ai_device_test tests/integration/AiDeviceTest.cpp ${SERIALCTL_DEVICE_TEST_SOURCES})
     serialctl_configure_native_target(ai_device_test CONSOLE)
-    target_compile_definitions(ai_device_test PRIVATE SERIALCTL_AI_TESTING
+    target_compile_definitions(ai_device_test PRIVATE SERIALCTL_AI_TESTING SERIALCTL_POWER_TESTING
         SERIALCTL_VERSION=L"${SERIALCTL_CPP_VERSION}" SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
     target_link_libraries(ai_device_test PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
     if(MSVC)
@@ -286,6 +313,11 @@ if(BUILD_TESTING)
     target_compile_definitions(power_service_test PRIVATE SERIALCTL_POWER_TESTING)
     target_link_libraries(power_service_test PRIVATE shell32 ws2_32)
     add_test(NAME power_service COMMAND power_service_test)
+    add_executable(power_connection_gate_test tests/integration/PowerConnectionGateTest.cpp
+        src/power/PowerService.cpp src/logging/SessionLogger.cpp)
+    serialctl_configure_native_target(power_connection_gate_test CONSOLE)
+    target_link_libraries(power_connection_gate_test PRIVATE shell32 ws2_32)
+    add_test(NAME power_connection_gate COMMAND power_connection_gate_test)
     add_executable(cmd_connection_test tests/integration/CmdConnectionTest.cpp src/connections/CmdConnection.cpp src/connections/QueuedConnection.cpp src/connections/ChildProcess.cpp src/network/SessionService.cpp)
     serialctl_configure_native_target(cmd_connection_test CONSOLE)
     add_dependencies(cmd_connection_test serialctl)
@@ -332,6 +364,20 @@ if(BUILD_TESTING)
     target_link_libraries(putty_host_key_test PRIVATE advapi32 ole32)
     add_test(NAME putty_host_key COMMAND putty_host_key_test)
 
+    add_executable(sftp_fake_process tests/integration/SftpFakeProcess.cpp)
+    serialctl_configure_native_target(sftp_fake_process CONSOLE)
+    set_target_properties(sftp_fake_process PROPERTIES OUTPUT_NAME plink RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sftp-fixture")
+    add_custom_command(TARGET sftp_fake_process POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:sftp_fake_process>" "$<TARGET_FILE_DIR:sftp_fake_process>/psftp.exe")
+    add_executable(sftp_client_test tests/integration/SftpClientTest.cpp src/sftp/SftpClient.cpp src/sftp/SftpModel.cpp
+        src/connections/PuttyHostKey.cpp src/connections/PasswordPipe.cpp src/connections/ChildProcess.cpp)
+    serialctl_configure_native_target(sftp_client_test CONSOLE)
+    target_link_libraries(sftp_client_test PRIVATE advapi32 ole32)
+    set_target_properties(sftp_client_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sftp-fixture")
+    add_dependencies(sftp_client_test sftp_fake_process)
+    add_test(NAME sftp_client COMMAND sftp_client_test)
+    set_tests_properties(sftp_client PROPERTIES TIMEOUT 30)
+
     add_executable(serial_share_backpressure_test tests/integration/SerialShareBackpressureTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(serial_share_backpressure_test CONSOLE)
     target_link_libraries(serial_share_backpressure_test PRIVATE ws2_32 advapi32 psapi)
@@ -350,8 +396,13 @@ if(BUILD_TESTING)
     add_test(NAME api_client COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/test_api_client.py")
     set_tests_properties(api_client PROPERTIES TIMEOUT 30)
+    set(SERIALCTL_GATEWAY_TEST_RUNNER "")
+    if(CMAKE_CROSSCOMPILING)
+        set(SERIALCTL_GATEWAY_TEST_RUNNER ${CMAKE_CROSSCOMPILING_EMULATOR})
+    endif()
     add_test(NAME linux_gateway_client COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/test_gateway_client.py"
+        ${SERIALCTL_GATEWAY_TEST_RUNNER}
         "$<TARGET_FILE:multi_serial_test>")
     set_tests_properties(linux_gateway_client PROPERTIES TIMEOUT 30)
 

@@ -13,6 +13,10 @@ class PowerService {
   public:
     PowerService();
     ~PowerService();
+    static constexpr bool ConnectionAvailable() { return false; }
+    static constexpr const char *ConnectionUnavailableMessage() {
+        return u8"该功能暂未开放，请等待后续开放。";
+    }
     Json State();
     Json Submit(const Json &command);
     Json Action(const std::string &id);

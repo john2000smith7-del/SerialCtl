@@ -1,6 +1,7 @@
 #include "SftpModel.h"
 
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -165,6 +166,26 @@ void TestMachineListingParser() {
     }
 }
 
+void TestListingLimits() {
+    using namespace serialctl;
+    const std::wstring row = L"SERIALCTL_ENTRY\t13\t1\t33188\t1791024000\t66696C65\n";
+    std::wstring text;
+    for (size_t i = 0; i < MaximumSftpEntries; ++i) text += row;
+    Expect(ParseSftpListingOutput(text, L"/", {}).entries.size() == MaximumSftpEntries,
+           "exactly the directory entry limit remains usable");
+    bool refused = false;
+    try { ParseSftpListingOutput(text + row, L"/", {}); }
+    catch (const std::length_error&) { refused = true; }
+    Expect(refused, "oversize machine listing is rejected without a partial directory");
+    text.clear();
+    for (size_t i = 0; i <= MaximumSftpEntries; ++i)
+        text += L"-rw-r--r-- 1 u g 1 Oct 3 2026 file\n";
+    refused = false;
+    try { ParseSftpListingOutput(text, L"/", {}); }
+    catch (const std::length_error&) { refused = true; }
+    Expect(refused, "human listing has the same directory entry bound");
+}
+
 void TestSorting() {
     using namespace serialctl;
     std::vector<SftpEntry> entries = {
@@ -211,6 +232,7 @@ int main() {
     TestPsftpBatchQuoting();
     TestListingParser();
     TestMachineListingParser();
+    TestListingLimits();
     TestSorting();
     TestProgressParser();
     if (failures == 0) std::cout << "SFTP model tests passed\n";

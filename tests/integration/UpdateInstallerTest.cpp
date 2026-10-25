@@ -273,6 +273,21 @@ int wmain(int argc, wchar_t** argv) {
         const int childResult = Child(argc, argv, handled);
         if (handled) return childResult;
         {
+            Fixture f(1000);
+            for (const auto *name : {L"VERSION", L"plink.exe", L"psftp.exe"})
+                fs::remove(f.root / name);
+            testing::ApplyTransaction(f.root, f.stage);
+            Check(Read(f.root / L"VERSION") == "V9.0.0\n" && Read(f.root / L"plink.exe") == "new-plink" &&
+                Read(f.root / L"psftp.exe") == "new-psftp", "full update restores missing old runtime files");
+            testing::RecoverTransaction(f.root);
+            Check(Read(f.root / L"serialctl.exe") == "old-exe" && !fs::exists(f.root / L"VERSION") &&
+                !fs::exists(f.root / L"plink.exe") && !fs::exists(f.root / L"psftp.exe"),
+                "rollback preserves the original absence of missing runtime files");
+            Check(Read(f.root / L"update.ini") == "private user update URL" &&
+                Read(f.root / L"drivers" / L"driver.txt") == "preserve driver",
+                "missing-file recovery preserves user configuration and drivers");
+        }
+        {
             Fixture f(1);
             testing::ApplyTransaction(f.root, f.stage);
             Check(Read(f.root / L"serialctl.exe") == "new-exe" && Read(f.root / L"plink.exe") == "new-plink" &&

@@ -340,6 +340,13 @@ Json PowerService::Action(const std::string &id) {
 Json PowerService::Submit(const Json &command) {
     try {
         const std::string type = command.at("type").get<std::string>();
+        if (type == "connect" && !ConnectionAvailable()) {
+#ifdef SERIALCTL_POWER_TESTING
+            // Only controlled test targets may exercise the in-memory backend.
+            if (command.value("backend", std::string()) != "simulation")
+#endif
+                return {{"error", ConnectionUnavailableMessage()}, {"code", "FEATURE_NOT_AVAILABLE"}};
+        }
         Require(type == "connect" || type == "disconnect" || type == "output" || type == "parameters" ||
                     type == "protection" || type == "task" || type == "stop" || type == "mode" || type == "batch" ||
                     type == "settings" || type == "deviceTimer" || type == "trigger" || type == "diagnostic" ||

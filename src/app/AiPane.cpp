@@ -20,6 +20,7 @@ enum {
     New,
     Connect,
     Bottom,
+    StopTurn,
     Host = 200,
     Port,
     Username,
@@ -291,8 +292,9 @@ struct HistoryPopup {
             const auto visual = UiButtonVisual(c, enabled, item.itemState & ODS_SELECTED,
                                                GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
             FillRect(item.hDC, &item.rcItem, p->surface);
-            UiBox(item.hDC, item.rcItem, visual.fill, visual.border, p->D(8));
-            UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, p->D(96));
+            UiBox(item.hDC, item.rcItem, visual.fill, visual.border, p->D(10));
+            UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, p->D(96),
+                UiFocusInk(p->dark, enabled && (primary || (item.itemState & ODS_SELECTED))));
             Draw(item.hDC, Text(item.hwndItem), item.rcItem, p->font, visual.ink,
                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return TRUE;
@@ -398,6 +400,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     Child(L"BUTTON", L"分析日志", Analyze, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"持续观察", Observe, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"返回最新消息", Bottom, BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON", L"停止", StopTurn, BS_OWNERDRAW | WS_TABSTOP);
     Theme(dark);
     SetTimer(window_, Timer, 50, nullptr);
     RefreshTargets();
@@ -442,6 +445,7 @@ bool AiPane::PreTranslate(MSG &m) {
 }
 LRESULT CALLBACK AiPane::InputProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR reference) {
     auto self = reinterpret_cast<AiPane *>(reference);
+    if (UiEditSelectAll(h, m, w)) return 0;
     // The native disabled EDIT can substitute a system background on Windows,
     // even when WM_CTLCOLORSTATIC supplies the card brush. It is not interactive
     // in this state; render its visible draft on the same borderless surface.
@@ -539,7 +543,8 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (!iconOnly || pressed || hover)
             UiBox(dc, item.rcItem, iconOnly && !pressed ? c.raised : visual.fill,
                   iconOnly && !pressed ? c.raised : visual.border, self->D(10));
-        UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->style_.dpi);
+        UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->style_.dpi,
+            UiFocusInk(self->dark_, enabled && (primary || pressed)));
         if (item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New) {
             const int x = (item.rcItem.left + item.rcItem.right - self->D(18)) / 2,
                       y = (item.rcItem.top + item.rcItem.bottom - self->D(18)) / 2;
@@ -549,7 +554,9 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             else
                 UiDrawGlyph(dc, icon, visual.ink, item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
         } else
-            Draw(dc, Text(item.hwndItem), item.rcItem, self->font_, visual.ink, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
+                 item.CtlID == StopTurn && enabled && !pressed ? c.danger : visual.ink,
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         return TRUE;
     }
     case WM_CTLCOLORSTATIC:
@@ -586,9 +593,13 @@ void AiPane::Layout() {
     b.Move(transcript_, 0, top, width, std::max(D(24), contextTop - top - gap));
     b.Move(Control(Analyze), 0, contextTop, D(96), D(28));
     b.Move(Control(Observe), D(108), contextTop, D(96), D(28));
-    b.Move(Control(Bottom), std::max(0, width - D(128)), contextTop, D(128), D(28));
+    const int bottomWidth = std::min(D(128), std::max(D(96), width - D(108)));
+    b.Move(Control(Bottom), busy_ ? 0 : std::max(0, width - bottomWidth), contextTop, bottomWidth, D(28));
     b.Show(Control(Bottom), scroll_.unread ? SW_SHOW : SW_HIDE);
-    b.Show(Control(Observe), scroll_.unread ? SW_HIDE : SW_SHOW);
+    b.Show(Control(Analyze), busy_ ? SW_HIDE : SW_SHOW);
+    b.Show(Control(Observe), scroll_.unread || busy_ ? SW_HIDE : SW_SHOW);
+    b.Move(Control(StopTurn), width - D(64), contextTop, D(64), D(28));
+    b.Show(Control(StopTurn), busy_ ? SW_SHOW : SW_HIDE);
     b.Move(Control(Input), D(12), composerTop + D(8), std::max(D(80), width - D(24)), D(40));
     b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(176), std::max(D(112), width - D(104))), D(220));
     b.ComboVisibleHeight(Control(Target), D(28));
@@ -616,7 +627,7 @@ void AiPane::Paint(HDC target) {
          {D(compact ? 56 : 108), 0, r.right - D(120), D(28)}, smallFont_, c.muted);
     UiSeparator(dc, 0, r.right, D(36), c.border);
     UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
-    UiBox(dc, composerBounds_, c.field, GetFocus() == Control(Input) ? c.accent : c.border, D(12));
+    UiBox(dc, composerBounds_, c.field, GetFocus() == Control(Input) ? UiAccentInk(dark_) : c.border, D(12));
 }
 void AiPane::Reflow(bool appended) {
     if (!transcript_)
@@ -1134,8 +1145,9 @@ void AiPane::SetStatus(const std::wstring &text) {
 }
 void AiPane::UpdateActions() {
     const bool ready = client_.Ready();
-    SetWindowTextW(Control(Send), busy_ ? L"停止" : L"发送");
-    EnableWindow(Control(Send), ready);
+    SetWindowTextW(Control(Send), L"发送");
+    EnableWindow(Control(Send), ready && !busy_);
+    EnableWindow(Control(StopTurn), ready && busy_ && !stopRequested_);
     for (int id : {Analyze, Observe, HistoryButton, New})
         EnableWindow(Control(id), ready && !busy_);
     EnableWindow(Control(Target), !busy_);
@@ -1391,10 +1403,9 @@ void AiPane::NewConversation() {
 }
 void AiPane::Action(int id) {
     if (id == Send) {
-        if (busy_)
-            Stop();
-        else
-            SendPrompt();
+        if (!busy_) SendPrompt();
+    } else if (id == StopTurn) {
+        if (busy_ && !stopRequested_) Stop();
     } else if (id == Connect)
         ShowConnection();
     else if (id == New)
@@ -1656,9 +1667,9 @@ void AiPane::Event(const Json &e) {
                 busy_ = false;
                 if (messages_.empty())
                     Add(L"AI",
-                        L"你好，我是 "
-                        L"jiojio，你的高级嵌入式软件工程师。\n\n我可以分析终端日志、排查和修改服务器代码、执行命令，也"
-                        L"能按你的指令控制已连接电源。\n\n选择关联终端，或告诉我服务器项目路径，我们就开始。");
+                        L"你好，我是你的高级嵌入式软件工程师助手。\n\n"
+                        L"我可以帮助你分析终端日志、定位嵌入式问题、阅读和修改服务器代码，并执行必要的调试命令。\n\n"
+                        L"请选择关联终端，或告诉我服务器项目路径和需要解决的问题。");
             }
         } else if (purpose == "resume") {
             ClearTextSelection();

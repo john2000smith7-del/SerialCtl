@@ -8,6 +8,7 @@
 #include <vector>
 
 namespace serialctl {
+inline constexpr size_t MaximumSftpEntries = 16384;
 
 struct SftpReferenceDate {
     int year = 0;

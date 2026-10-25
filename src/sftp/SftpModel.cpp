@@ -7,6 +7,7 @@
 #include <cwctype>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 
 namespace serialctl {
 namespace {
@@ -312,6 +313,7 @@ std::wstring QuotePsftpWildcardLiteral(const std::wstring& value) {
 
 SftpModelListing ParseSftpListingOutput(const std::wstring& output,
     const std::wstring& fallbackDirectory, SftpReferenceDate referenceDate) {
+    if (output.size() > 32 * 1024 * 1024) throw std::length_error("SFTP listing exceeds its text limit");
     SftpModelListing listing;
     listing.directory = fallbackDirectory.empty() ? L"." : NormalizeRemotePath(fallbackDirectory);
     std::wistringstream lines(output);
@@ -329,6 +331,7 @@ SftpModelListing ParseSftpListingOutput(const std::wstring& output,
         }
         SftpEntry machineEntry;
         if (ParseMachineEntry(line, machineEntry)) {
+            if (listing.entries.size() == MaximumSftpEntries) throw std::length_error("SFTP entry limit exceeded");
             listing.entries.push_back(std::move(machineEntry));
             continue;
         }
@@ -375,6 +378,7 @@ SftpModelListing ParseSftpListingOutput(const std::wstring& output,
         // represent every POSIX filename unambiguously. Keep it browseable,
         // but only the bundled machine-readable mode is safe for mutations.
         entry.pathSafe = false;
+        if (listing.entries.size() == MaximumSftpEntries) throw std::length_error("SFTP entry limit exceeded");
         listing.entries.push_back(std::move(entry));
     }
     return listing;

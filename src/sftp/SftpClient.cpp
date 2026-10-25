@@ -1,6 +1,8 @@
 #include "SftpClient.h"
 #include "ChildProcess.h"
 #include "PuttyHostKey.h"
+#include "PasswordPipe.h"
+#include "ProcessOutput.h"
 #include "SftpModel.h"
 #include "Win32Helpers.h"
 
@@ -9,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <stdexcept>
 #include <vector>
 
 namespace serialctl {
@@ -122,11 +125,17 @@ bool SftpClient::List(const std::wstring& directory, SftpListing& listing,
 
     SYSTEMTIME now{};
     GetLocalTime(&now);
-    SftpModelListing parsed = ParseSftpListingOutput(output,
-        directory.empty() ? L"." : directory,
-        {static_cast<int>(now.wYear), static_cast<int>(now.wMonth), static_cast<int>(now.wDay)});
-    listing.directory = std::move(parsed.directory);
-    listing.entries = std::move(parsed.entries);
+    try {
+        SftpModelListing parsed = ParseSftpListingOutput(output,
+            directory.empty() ? L"." : directory,
+            {static_cast<int>(now.wYear), static_cast<int>(now.wMonth), static_cast<int>(now.wDay)});
+        listing.directory = std::move(parsed.directory);
+        listing.entries = std::move(parsed.entries);
+    } catch (const std::length_error &) {
+        listing = {};
+        error = L"SFTP 目录超过 16384 条或文本上限；未显示不完整目录，请进入更小的子目录";
+        return false;
+    }
     return true;
 }
 
@@ -284,6 +293,8 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
         if (plink.empty()) error = L"未找到 plink.exe，无法验证 SFTP 主机密钥。";
         return false;
     }
+    PasswordPipe password;
+    if (!password_.empty() && !password.Open(password_, error)) return false;
 
     std::array<wchar_t, MAX_PATH> tempDirectory{};
     std::array<wchar_t, MAX_PATH> batchPath{};
@@ -300,7 +311,7 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
     HANDLE outputRead = nullptr;
     HANDLE outputWrite = nullptr;
-    if (!CreatePipe(&outputRead, &outputWrite, &security, 0)) {
+    if (!CreatePipe(&outputRead, &outputWrite, &security, 65536)) {
         DeleteFileW(batchPath.data());
         error = L"创建 SFTP 输出管道失败：" + Win32ErrorMessage();
         return false;
@@ -325,7 +336,7 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
     std::wstring command = QuoteCommandLineArgument(psftp) +
         L" -serialctl-machine-list -batch -P " + std::to_wstring(port_) +
         L" -l " + QuoteCommandLineArgument(username_);
-    if (!password_.empty()) command += L" -pw " + QuoteCommandLineArgument(password_);
+    if (!password_.empty()) command += L" -pwfile " + QuoteCommandLineArgument(password.Name());
     if (!hostKey.empty()) command += L" -hostkey " + QuoteCommandLineArgument(hostKey);
     command += L" -b " + QuoteCommandLineArgument(batchPath.data()) +
         L" " + QuoteCommandLineArgument(host_);
@@ -355,7 +366,6 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
     }
 
     std::string bytes;
-    std::array<char, 4096> buffer{};
     const DWORD started = GetTickCount();
     DWORD lastActivityTick = started;
     DWORD lastProgressTick = started;
@@ -365,17 +375,20 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
     int nativePercent = -1;
     bool timedOut = false;
     bool cancelled = false;
+    bool tooLarge = false;
+    constexpr size_t MaximumOutput = 32 * 1024 * 1024;
     for (;;) {
-        DWORD available = 0;
-        bool receivedOutput = false;
-        while (PeekNamedPipe(outputRead, nullptr, 0, nullptr, &available, nullptr) && available > 0) {
-            DWORD read = 0;
-            if (!ReadFile(outputRead, buffer.data(),
-                    std::min<DWORD>(available, static_cast<DWORD>(buffer.size())), &read, nullptr) || read == 0) break;
-            bytes.append(buffer.data(), read);
-            receivedOutput = true;
-            available -= read;
+        password.Poll();
+        const auto previous = bytes.size();
+        const auto read = ReadProcessOutput(outputRead, bytes, MaximumOutput, cancel);
+        tooLarge = read == PipeRead::Limit;
+        cancelled = read == PipeRead::Cancelled;
+        if (tooLarge || cancelled || password.Failed()) {
+            TerminateProcess(process.hProcess, 1);
+            WaitForSingleObject(process.hProcess, 1000);
+            break;
         }
+        const bool receivedOutput = bytes.size() != previous;
         if (receivedOutput && transferKind != TransferKind::None) {
             lastActivityTick = GetTickCount();
             constexpr size_t ProgressTailBytes = 2048;
@@ -425,7 +438,7 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
                 lastProgressTick = now;
             }
         }
-        if (WaitForSingleObject(process.hProcess, 20) == WAIT_OBJECT_0) break;
+        if (WaitForSingleObject(process.hProcess, read == PipeRead::More ? 0 : 20) == WAIT_OBJECT_0) break;
         if (cancel && cancel->load()) {
             cancelled = true;
             TerminateProcess(process.hProcess, 1);
@@ -440,10 +453,12 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
             break;
         }
     }
-    for (;;) {
-        DWORD read = 0;
-        if (!ReadFile(outputRead, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr) || read == 0) break;
-        bytes.append(buffer.data(), read);
+    if (!tooLarge && !cancelled && !timedOut) {
+        PipeRead read;
+        do { read = ReadProcessOutput(outputRead, bytes, MaximumOutput, cancel); }
+        while (read == PipeRead::More);
+        tooLarge = read == PipeRead::Limit;
+        cancelled = read == PipeRead::Cancelled;
     }
     DWORD exitCode = 1;
     GetExitCodeProcess(process.hProcess, &exitCode);
@@ -453,6 +468,11 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
     DeleteFileW(batchPath.data());
 
     output = DecodeOutput(bytes);
+    if (tooLarge || password.Failed()) {
+        output.clear();
+        error = tooLarge ? L"SFTP 输出超过 32 MiB，已停止；目录或操作结果不完整" : L"SFTP 安全密码通道写入失败";
+        return false;
+    }
     if (cancelled) {
         error = L"传输已取消。";
         return false;

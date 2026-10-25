@@ -10,6 +10,7 @@ class UiDialogViewport {
     HWND window_;
     int dpi_, offset_ = 0, maximum_ = 0, viewport_ = 0, content_ = 0, grab_ = 0;
     bool dragging_ = false;
+    SIZE naturalSize_{};
     std::vector<Item> items_;
     int D(int value) const { return MulDiv(value, dpi_, 96); }
     RECT Thumb() const {
@@ -30,19 +31,27 @@ class UiDialogViewport {
     void Scroll(int position) {
         offset_ = std::clamp(position, 0, maximum_);
         UiRedrawScope redraw(window_);
+        RECT client{}; GetClientRect(window_, &client);
         for (const auto &item : items_) {
             if (item.footer || !IsWindow(item.window)) continue;
-            const int y = item.bounds.top - offset_;
+            const int naturalY = item.bounds.top - offset_;
+            const int height = item.bounds.bottom - item.bounds.top;
+            const bool outside = naturalY >= viewport_ || naturalY + height <= 0;
+            // Keep offscreen children visible in the native Tab order. An
+            // empty window region can still leak direct native painting into
+            // the footer (notably under Wine); park it outside the client.
+            const int y = naturalY >= viewport_ ? client.bottom + height :
+                          naturalY + height <= 0 ? -height - 1 : naturalY;
             SetWindowPos(item.window, nullptr, item.bounds.left, y, 0, 0,
                          SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
-            const int height = item.bounds.bottom - item.bounds.top;
-            const int top = std::clamp(-y, 0, height), bottom = std::clamp(viewport_ - y, top, height);
-            HRGN clip = top == 0 && bottom == height ? nullptr :
+            const int top = std::clamp(-naturalY, 0, height), bottom = std::clamp(viewport_ - naturalY, top, height);
+            HRGN clip = outside || (top == 0 && bottom == height) ? nullptr :
                 CreateRectRgn(0, top, item.bounds.right - item.bounds.left, bottom);
             SetWindowRgn(item.window, clip, FALSE);
         }
     }
     void Reveal(HWND control) {
+        if (HWND frame = reinterpret_cast<HWND>(GetPropW(control, L"SerialCtl.FieldFrame"))) control = frame;
         for (const auto &item : items_) {
             if (item.window != control || item.footer) continue;
             if (item.bounds.top < offset_) Scroll(item.bounds.top);
@@ -105,6 +114,25 @@ class UiDialogViewport {
         return DefSubclassProc(h, m, w, l);
     }
   public:
+    // Restore unscrolled geometry before re-laying out a dynamic dialog. The
+    // caller can wrap Reset/layout/Fit in one UiRedrawScope to avoid a flash.
+    static void Reset(HWND dialog) {
+        DWORD_PTR data = 0;
+        if (!GetWindowSubclass(dialog, Proc, 86, &data)) return;
+        auto self = reinterpret_cast<UiDialogViewport *>(data);
+        if (GetCapture() == dialog) ReleaseCapture();
+        for (const auto &item : self->items_) {
+            if (!IsWindow(item.window)) continue;
+            RemoveWindowSubclass(item.window, ChildProc, 86);
+            SetWindowRgn(item.window, nullptr, FALSE);
+            SetWindowPos(item.window, nullptr, item.bounds.left, item.bounds.top, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+        }
+        RemoveWindowSubclass(dialog, Proc, 86);
+        SetWindowPos(dialog, nullptr, 0, 0, self->naturalSize_.cx, self->naturalSize_.cy,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+        delete self;
+    }
     static void Fit(HWND dialog, int dpi, std::initializer_list<int> footerIds = {IDCANCEL, IDOK}) {
         MONITORINFO monitor{sizeof(monitor)};
         if (!GetMonitorInfoW(MonitorFromWindow(dialog, MONITOR_DEFAULTTONEAREST), &monitor)) return;
@@ -114,6 +142,7 @@ class UiDialogViewport {
                                    static_cast<int>(monitor.rcWork.bottom - monitor.rcWork.top) - margin * 2);
         auto self = new UiDialogViewport;
         self->window_ = dialog; self->dpi_ = dpi;
+        self->naturalSize_ = {bounds.right - bounds.left, bounds.bottom - bounds.top};
         int footerTop = INT_MAX, footerBottom = 0;
         int naturalClient = client.bottom;
         for (HWND child = GetWindow(dialog, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {

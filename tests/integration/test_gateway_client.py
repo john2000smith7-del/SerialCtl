@@ -11,7 +11,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'tools'))
 from serialctl_ws import Client, ProtocolError, CapacityError, discover
 from serialctl_client import SerialStream
 
-fixture = subprocess.Popen([sys.argv[1], '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+# Native builds pass one executable; cross builds can prepend an emulator.
+fixture = subprocess.Popen([*sys.argv[1:], '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 clients = []
 try:
     port = int(fixture.stdout.readline())
@@ -105,7 +106,7 @@ try:
         assert fresh.subscription['gap'] is True
         fresh.send(b'LIVE_AFTER_EXPLICIT_GAP')
         assert exact(fresh, 23) == b'LIVE_AFTER_EXPLICIT_GAP'
-    capacity = subprocess.Popen([sys.argv[1], '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    capacity = subprocess.Popen([*sys.argv[1:], '--serve'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     held = []
     try:
         full_port = int(capacity.stdout.readline())

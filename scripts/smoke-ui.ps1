@@ -599,16 +599,18 @@ foreach ($architecture in @('x64')) {
             Click-Control $powerPane 10
             $dialog = Wait-Dialog $application.Id '连接电源'
             Start-Sleep -Milliseconds 200
-            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-connect"
-            Capture-Window $dialog "$architecture-$theme-power-usb"
-            Select-ControlOption $application.MainWindowHandle $dialog $application.Id 100 1 "$architecture-$theme-power-select-rs232"
-            Start-Sleep -Milliseconds 200
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
-            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-connect-rs232"
-            Capture-Window $dialog "$architecture-$theme-power-serial"
-            $methodCount = [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($dialog,100),0x146,[IntPtr]0,[IntPtr]0).ToInt32()
-            if ($methodCount -ne 2) { throw 'Power connection must expose only USB and RS232.' }
-            Click-Control $dialog 2
+            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-unavailable"
+            $notice = New-Object System.Text.StringBuilder 256
+            [SerialCtlUiSmoke]::ReadText([SerialCtlUiSmoke]::GetDlgItem($dialog,-1),0x000D,[IntPtr]$notice.Capacity,$notice) | Out-Null
+            if ($notice.ToString() -ne '该功能暂未开放，请等待后续开放。') { throw 'Power notice is missing or incorrect.' }
+            foreach ($id in @(100,101,102,103,109)) {
+                if ([SerialCtlUiSmoke]::GetDlgItem($dialog,$id) -ne [IntPtr]::Zero) {
+                    throw 'Unavailable power connection must not create device discovery or driver controls.'
+                }
+            }
+            Capture-Window $dialog "$architecture-$theme-power-unavailable"
+            Click-Control $dialog 1
             Start-Sleep -Milliseconds 250
             if ([SerialCtlUiSmoke]::IsIconic($application.MainWindowHandle)) { throw 'Main window minimized after power modal.' }
             foreach ($control in @(112,118,119,115)) {

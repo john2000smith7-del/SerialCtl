@@ -113,6 +113,45 @@ int main() {
             std::wstring error;
             auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(f.server.Port()), error);
             ws::SocketOptions(s, 3000);
+            const auto header = "GET /serialctl HTTP/1.1\r\nX-Large: " + std::string(9000, 'x') + "\r\n\r\n";
+            ws::SendAll(s, header.data(), header.size());
+            char response[512]{};
+            const int n = recv(s, response, sizeof(response), 0);
+            closesocket(s);
+            Expect(n > 0 && std::string(response, n).find("426") != std::string::npos,
+                   "coalesced terminator must not bypass the 8192-byte header bound");
+        }
+        {
+            // Every fragment arrives inside SO_RCVTIMEO. Only an absolute
+            // handshake deadline can reject this never-ending partial header.
+            std::wstring error;
+            auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(f.server.Port()), error);
+            ws::SocketOptions(s, 3000);
+            const std::string partial = "GET /serialctl HTTP/1.1\r\n";
+            ws::SendAll(s, partial.data(), partial.size());
+            std::atomic_bool done{false};
+            std::thread drip([&] {
+                while (!done) {
+                    Sleep(120);
+                    const char fragment[] = "X-Keep: alive\r\n";
+                    if (done || send(s, fragment, sizeof(fragment) - 1, 0) <= 0) break;
+                }
+            });
+            const auto start = GetTickCount64();
+            char response[512]{};
+            const int n = recv(s, response, sizeof(response), 0);
+            const auto elapsed = GetTickCount64() - start;
+            done = true;
+            drip.join();
+            closesocket(s);
+            Expect(n > 0 && std::string(response, n).find("426") != std::string::npos && elapsed < 2500,
+                   "trickled headers must expire at the total handshake deadline");
+            std::cout << "Slow header rejected after " << elapsed << " ms\n";
+        }
+        {
+            std::wstring error;
+            auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(f.server.Port()), error);
+            ws::SocketOptions(s, 3000);
             const std::string header =
                 "GET /serialctl HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: "
                 "Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: serialctl.v1\r\nSec-WebSocket-Key: "

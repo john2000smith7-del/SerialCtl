@@ -197,7 +197,7 @@ void CodexClient::Run(ServerSettings settings, HostKeyConfirmation confirm) {
     Emit({{"event", "status"}, {"message", u8"正在验证 SSH 连接与主机身份…"}});
     std::wstring fingerprint;
     if (!ResolvePuttyHostKey(plink, settings.host, static_cast<uint16_t>(settings.port), settings.username,
-                             settings.password, fingerprint, error, &stop_, confirm, true)) {
+                             settings.password, fingerprint, error, &stop_, confirm)) {
         // SSH output is never retained as a transcript or diagnostic log.
         const bool auth = IsAuthenticationFailure(error);
         Emit({{"event", "error"},

@@ -497,6 +497,23 @@ void RunArchiveTests() {
                "extracted runtime tampering before installation is rejected");
         fixture.Cleanup(result);
     }
+    // Full archives are independent of intermediate releases and installed
+    // metadata/runtime helpers. Only the running client and configured URL
+    // are needed to download and verify a complete replacement.
+    publish(testing::BuildTestZip(members, true));
+    fs::remove(fixture.root / L"candidate.zip");
+    for (const auto *name : {L"VERSION", L"MANIFEST.json", L"README.md", L"plink.exe", L"psftp.exe"})
+        fs::remove(fixture.root / name);
+    for (const std::string previous : {"V0.9.0", "V1.0.0", "V1.0.5"}) {
+        const auto count = fixture.server.Requests();
+        auto jumped = fixture.Run(previous);
+        Require(jumped.status == UpdateStatus::Ready && fixture.server.Requests() == count + 2,
+                "skipped versions with no previous ZIP or installed metadata still use just JSON and full ZIP");
+        const auto verified = testing::VerifyStagedManifest(jumped.stagingDirectory, previous, fixture.key.publicKey);
+        Require(verified.version == "V1.0.8" && verified.files.size() == fixture.payload.size(),
+                "jump update restores a complete verified runtime without an intermediate version");
+        fixture.Cleanup(jumped);
+    }
     members["serialctl.exe"] = Data(std::string(100000, 'X'));
     const auto path = fixture.root / L"huffman.bin";
     Write(path, members["serialctl.exe"]);

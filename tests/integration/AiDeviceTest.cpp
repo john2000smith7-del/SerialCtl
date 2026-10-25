@@ -7,15 +7,18 @@
 
 namespace serialctl {
 namespace {
-void Require(bool ok, const char* reason) { if (!ok) throw std::runtime_error(reason); }
+void Require(bool ok, const char* reason) {
+    if (!ok) { std::cerr << "FAILED: " << reason << std::endl; throw std::runtime_error(reason); }
+}
 struct Transport : IConnection {
     bool connected = true;
     unsigned input = CP_UTF8;
+    unsigned writes = 0;
     Bytes sent;
     bool Start(DataCallback, StatusCallback, std::wstring&) override { return true; }
     void Stop() override { connected = false; }
     bool IsConnected() const override { return connected; }
-    bool Send(const Bytes& data, std::wstring&) override { sent = data; return connected; }
+    bool Send(const Bytes& data, std::wstring&) override { ++writes; sent = data; return connected; }
     unsigned InputCodePage() const override { return input; }
     unsigned OutputCodePage() const override { return CP_UTF8; }
 };
@@ -240,6 +243,55 @@ struct AiDeviceTestAccess {
             auto expected = WideToMultiByte((mode == 4 ? L"echo 中文" : L"echo evidence") + ending, transports[mode]->input);
             Require(transports[mode]->sent == Bytes(expected.begin(), expected.end()), "AI wrote wrong target, encoding or line ending");
         }
+        main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
+        main.commands_ = {CommandItem(L"click regression", L"echo once")};
+        main.RefreshCommandList();
+        RECT actionRow{};
+        SendMessageW(main.commandList_, LB_GETITEMRECT, 0, reinterpret_cast<LPARAM>(&actionRow));
+        // Shared card metrics: the Run icon precedes Edit by one 12 px gap.
+        const auto runPoint = MAKELPARAM(actionRow.right - 12 * 2 - 28 * 3 / 2,
+                                        (actionRow.top + actionRow.bottom) / 2);
+        const auto writes = transports[4]->writes;
+        SendMessageW(main.commandList_, WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
+        Require(transports[4]->writes == writes, "Run submitted on mouse-down");
+        SendMessageW(main.commandList_, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(-10, -10));
+        SendMessageW(main.commandList_, WM_LBUTTONUP, 0, MAKELPARAM(-10, -10));
+        Require(transports[4]->writes == writes, "Dragging out of Run failed to cancel");
+        for (int i = 0; i < 5; ++i) {
+            SendMessageW(main.commandList_, i == 1 ? WM_LBUTTONDBLCLK : WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
+            SendMessageW(main.commandList_, WM_LBUTTONUP, 0, runPoint);
+        }
+        Require(transports[4]->writes == writes + 1, "Rapid Run clicks submitted duplicate commands");
+        main.lastCommandActivation_ = 0;
+        main.commands_[0].commands.push_back(L"echo should-not-run");
+        main.commands_[0].intervalMs = 10000;
+        main.SendCommand(0);
+        Require(main.runningCommandIndex_ == 0, "Macro did not enter running state");
+        SendMessageW(main.commandList_, WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
+        Require(main.runningCommandIndex_ == -1 && transports[4]->writes == writes + 2,
+                "Immediate Stop was blocked by Run's repeat guard");
+        SendMessageW(main.commandList_, WM_LBUTTONUP, 0, runPoint);
+        main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
+        main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
+        Require(main.statusText_.find(L"已停止后续提交") != std::wstring::npos,
+                "Session switch lost the macro stop reason");
+        main.PostStatus(2, L"fixture background disconnect reason", true);
+        MSG status{};
+        Require(PeekMessageW(&status, parent, WM_APP + 2, WM_APP + 2, PM_REMOVE) != FALSE,
+                "Connection status was not queued");
+        main.HandleMessage(status.message, status.wParam, status.lParam);
+        Require(main.sessions_[1]->unreadStatus && main.sessions_[1]->lastStatusIsError,
+                "Background failure was not marked unread");
+        main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
+        Require(!main.sessions_[1]->unreadStatus &&
+                    main.statusText_.find(L"fixture background disconnect reason") != std::wstring::npos,
+                "Selecting background session did not restore its failure reason");
+        transports[0]->connected = false;
+        main.SwitchSession(0, MainWindow::SessionFocus::Preserve);
+        Require(!main.sftpThread_.joinable(), "Selecting disconnected SSH started a redundant SFTP process");
+        transports[0]->connected = true;
+        main.commands_ = commandDraft;
+        main.RefreshCommandList();
         // Reuse the real terminal HWND and session model, not a copied AI log.
         main.ShowAiPage(false);
         main.aiPane_.SelectTarget("session-2");

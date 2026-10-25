@@ -113,6 +113,9 @@ private:
         size_t aiBytes = 0;
         bool aiTruncated = false;
         std::string aiTransportNotice;
+        std::wstring lastStatus;
+        bool lastStatusIsError = false, unreadStatus = false;
+        SYSTEMTIME statusTime{};
         std::uint64_t id = 0;
         int mode = -1;
         std::wstring name;
@@ -418,6 +421,10 @@ private:
     int hoveredCommandIndex_ = -1;
     int hoveredCommandAction_ = 0;
     int pressedCommandIndex_ = -1, pressedCommandAction_ = 0;
+    int armedCommandIndex_ = -1, armedCommandAction_ = 0;
+    int lastCommandIndex_ = -1;
+    std::uint64_t lastCommandSession_ = 0;
+    ULONGLONG lastCommandActivation_ = 0;
     int runningCommandIndex_ = -1;
     size_t submittedCommandSteps_ = 0;
     std::uint64_t runningCommandSessionId_ = 0;

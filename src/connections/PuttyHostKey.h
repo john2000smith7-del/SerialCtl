@@ -16,6 +16,6 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
     std::uint16_t port, const std::wstring& username, const std::wstring& password,
     std::wstring& hostKey, std::wstring& error,
     const std::atomic_bool* cancel = nullptr,
-    const HostKeyConfirmation& confirm = {}, bool securePassword = false);
+    const HostKeyConfirmation& confirm = {});
 
 } // namespace serialctl

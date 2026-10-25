@@ -21,7 +21,7 @@ int wmain(int argc, wchar_t **argv) {
         if (arg == L"exit")
             probe = true;
     }
-    if (passwordPath.rfind(L"\\\\.\\pipe\\SerialCtl-AI-", 0) != 0)
+    if (passwordPath.rfind(L"\\\\.\\pipe\\SerialCtl-Password-", 0) != 0)
         return 41;
     auto pipe = CreateFileW(passwordPath.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (pipe == INVALID_HANDLE_VALUE)

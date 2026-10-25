@@ -25,7 +25,7 @@ struct Header {
     std::map<std::string, std::string> fields;
 };
 // Reads only the HTTP header, retaining any coalesced WebSocket bytes.
-Header ReadHeader(SOCKET, Bytes &);
+Header ReadHeader(SOCKET, Bytes &, DWORD timeout = 1500);
 std::string Lower(std::string);
 bool Token(const std::string &, const std::string &);
 bool Utf8(const Bytes &);

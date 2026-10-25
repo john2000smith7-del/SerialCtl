@@ -12,6 +12,26 @@ struct AiPaneTestAccess {
             if (!value)
                 throw std::runtime_error(error);
         };
+        // A completed connection introduces capabilities locally, without
+        // authorizing a model turn or duplicating the greeting on reconnect.
+        auto configure = [&] {
+            pane.requests_[1001] = {"config", {}};
+            pane.Event({{"event", "response"}, {"token", 1001},
+                        {"result", {{"defaultModel", "fixture"}}}});
+        };
+        configure();
+        require(pane.messages_.size() == 1 && pane.messages_.front().role == L"AI",
+                "Successful connection must introduce the engineering assistant once");
+        const auto introduction = pane.messages_.front().text;
+        require(introduction.find(L"高级嵌入式软件工程师助手") != std::wstring::npos &&
+                    introduction.find(L"Jojo") == std::wstring::npos &&
+                    introduction.find(L"jiojio") == std::wstring::npos &&
+                    introduction.find(L"电源") == std::wstring::npos,
+                "Public introduction exposes the internal name or advertises unavailable power control");
+        configure();
+        require(pane.messages_.size() == 1 && !pane.busy_ && !pane.taskAuthorized_ && pane.requests_.empty(),
+                "Reconnect duplicated the introduction or started an unsolicited task");
+        pane.NewConversation();
         wchar_t modelClass[32]{};
         GetClassNameW(pane.Control(12), modelClass, 32);
         require(_wcsicmp(modelClass, L"Static") == 0 && !pane.Control(13),
@@ -129,6 +149,20 @@ struct AiPaneTestAccess {
         require(corner == UiAiTheme(true).field, "Borderless edit must match its enclosing composer card");
         require(disabledField == UiAiTheme(true).field, "Disabled AI edit exposed a different rectangular fill");
 
+        pane.busy_ = true;
+        pane.stopRequested_ = false;
+        pane.Layout();
+        RECT sendArea{}, stopArea{};
+        GetWindowRect(pane.Control(11), &sendArea);
+        GetWindowRect(pane.Control(21), &stopArea);
+        RECT overlap{};
+        require(IsWindowVisible(pane.Control(21)) && !IntersectRect(&overlap, &sendArea, &stopArea),
+                "Busy Stop must have a separate hit rectangle from Send");
+        for (int i = 0; i < 5; ++i) pane.Action(11);
+        require(!pane.stopRequested_, "Repeated Send clicks stopped the active task");
+        pane.Action(21);
+        require(pane.stopRequested_, "Explicit Stop did not request cancellation");
+        pane.busy_ = pane.stopRequested_ = false;
         pane.NewConversation();
         pane.displayGroup_ = "process-fixture";
         pane.thread_ = "process-thread";

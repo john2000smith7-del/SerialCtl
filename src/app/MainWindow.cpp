@@ -1587,7 +1587,7 @@ LRESULT CALLBACK MainWindow::DialogFieldFrameSubclassProc(HWND window, UINT mess
         FillRect(dc, &client, self->panelBrush_);
         DrawRoundedBox(dc, client, Ui::Radius,
             enabled ? colors.terminal : colors.panel,
-            edit && GetFocus() == edit ? colors.accent : colors.border);
+            edit && GetFocus() == edit ? UiAccentInk(self->darkMode_) : colors.border);
         EndPaint(window, &paint);
         return 0;
     }
@@ -1600,6 +1600,7 @@ LRESULT CALLBACK MainWindow::DialogFieldFrameSubclassProc(HWND window, UINT mess
 
 LRESULT CALLBACK MainWindow::DialogControlSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR) {
+    if (UiEditSelectAll(window, message, wParam)) return 0;
     if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
         const LRESULT result = DefSubclassProc(window, message, wParam, lParam);
         HWND frame = reinterpret_cast<HWND>(GetPropW(window, Ui::FieldFrameProperty));
@@ -1617,8 +1618,49 @@ LRESULT CALLBACK MainWindow::DialogControlSubclassProc(HWND window, UINT message
 LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     auto* self = reinterpret_cast<MainWindow*>(referenceData);
-    if (message == WM_LBUTTONUP || message == WM_MOUSELEAVE || message == WM_CAPTURECHANGED ||
-        message == WM_CANCELMODE) {
+    if (message == WM_CAPTURECHANGED || message == WM_CANCELMODE) {
+        self->armedCommandIndex_ = -1;
+        self->armedCommandAction_ = 0;
+        self->pressedCommandIndex_ = -1;
+        self->pressedCommandAction_ = 0;
+        if (message == WM_CANCELMODE && GetCapture() == window) ReleaseCapture();
+        InvalidateRect(window, nullptr, FALSE);
+    }
+    if (message == WM_KEYDOWN && (wParam == VK_RETURN || wParam == VK_SPACE || wParam == VK_F2)) {
+        const auto index = SendMessageW(window, LB_GETCURSEL, 0, 0);
+        if (index != LB_ERR && self->runningCommandIndex_ < 0) {
+            if (wParam == VK_F2) self->EditCommand(static_cast<size_t>(index));
+            else if (!(lParam & (1LL << 30))) self->SendCommand(static_cast<size_t>(index));
+        }
+        return 0;
+    }
+    if (message == WM_LBUTTONUP && self->armedCommandIndex_ >= 0) {
+        const int index = self->armedCommandIndex_, action = self->armedCommandAction_;
+        self->armedCommandIndex_ = -1;
+        self->armedCommandAction_ = 0;
+        self->pressedCommandIndex_ = -1;
+        self->pressedCommandAction_ = 0;
+        if (GetCapture() == window) ReleaseCapture();
+        RECT item{}, client{};
+        const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        GetClientRect(window, &client);
+        bool inside = PointInRect(client, point) && index < static_cast<int>(self->commands_.size()) &&
+                      SendMessageW(window, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&item)) != LB_ERR;
+        if (inside) {
+            OverlayScrollMetrics scroll;
+            RECT card{item.left, item.top + Ui::Scale(4), item.right -
+                (GetOverlayScrollMetrics(window, scroll) ? Ui::OverlayScrollLaneWidth : 0), item.bottom - Ui::Scale(4)};
+            const auto actions = GetCommandActionRects(card);
+            inside = PointInRect(action == 1 ? actions.run : actions.edit, point);
+        }
+        InvalidateRect(window, nullptr, FALSE);
+        if (inside && self->runningCommandIndex_ < 0) {
+            if (action == 1) self->SendCommand(static_cast<size_t>(index));
+            else self->EditCommand(static_cast<size_t>(index));
+        }
+        return 0;
+    }
+    if (message == WM_LBUTTONUP) {
         self->pressedCommandIndex_ = -1;
         self->pressedCommandAction_ = 0;
         InvalidateRect(window, nullptr, FALSE);
@@ -1640,6 +1682,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
                 Ui::OverlayScrollLaneWidth : 0);
             RECT card{itemRect.left, itemRect.top + Ui::Scale(4), cardRight, itemRect.bottom - Ui::Scale(4)};
             const CommandActionRects actions = GetCommandActionRects(card);
+            SetFocus(window);
             SendMessageW(window, LB_SETCURSEL, index, 0);
             self->UpdateCommandActions();
             self->pressedCommandIndex_ = index;
@@ -1651,12 +1694,17 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             if (PointInRect(actions.run, point)) {
                 if (self->runningCommandIndex_ == index) {
+                    // Stopping further submissions is a safety action and is
+                    // never delayed by the Run repeat guard or mouse capture.
                     self->StopCommandSequence(CommandSequenceEnd::UserStopped);
                     return 0;
                 }
                 const bool writable = self->connection_ && self->connection_->IsConnected();
-                if (writable && self->runningCommandIndex_ < 0)
-                    self->SendCommand(static_cast<size_t>(index));
+                if (writable && self->runningCommandIndex_ < 0) {
+                    self->armedCommandIndex_ = index;
+                    self->armedCommandAction_ = 1;
+                    SetCapture(window);
+                }
                 return 0;
             }
             // A rapid Run -> Stop click arrives as WM_LBUTTONDBLCLK. Handle
@@ -1665,11 +1713,11 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             if (message == WM_LBUTTONDBLCLK)
                 return DefSubclassProc(window, message, wParam, lParam);
             if (PointInRect(actions.edit, point)) {
-                if (self->runningCommandIndex_ < 0)
-                    self->EditCommand(static_cast<size_t>(index));
-                self->pressedCommandIndex_ = -1;
-                self->pressedCommandAction_ = 0;
-                InvalidateRect(window, nullptr, FALSE);
+                if (self->runningCommandIndex_ < 0) {
+                    self->armedCommandIndex_ = index;
+                    self->armedCommandAction_ = 2;
+                    SetCapture(window);
+                }
                 return 0;
             }
             if (point.x <= itemRect.left + Ui::Scale(32) && self->runningCommandIndex_ < 0) {
@@ -1704,9 +1752,18 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             self->hoveredCommandAction_ = hoverAction;
             InvalidateRect(window, nullptr, FALSE);
         }
+        if (self->armedCommandIndex_ >= 0) {
+            const bool inside = hoverIndex == self->armedCommandIndex_ && hoverAction == self->armedCommandAction_;
+            self->pressedCommandIndex_ = inside ? self->armedCommandIndex_ : -1;
+            self->pressedCommandAction_ = inside ? self->armedCommandAction_ : 0;
+            InvalidateRect(window, nullptr, FALSE);
+            return 0;
+        }
         TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0};
         TrackMouseEvent(&tracking);
     } else if (message == WM_MOUSELEAVE) {
+        self->pressedCommandIndex_ = -1;
+        self->pressedCommandAction_ = 0;
         self->hoveredCommandIndex_ = -1;
         self->hoveredCommandAction_ = 0;
         InvalidateRect(window, nullptr, FALSE);
@@ -1897,6 +1954,27 @@ LRESULT CALLBACK MainWindow::SftpPathSubclassProc(HWND window, UINT message, WPA
 }
 
 bool MainWindow::PreTranslate(MSG& message) {
+    if (message.message == WM_KEYDOWN && message.wParam == VK_F6 && (GetKeyState(VK_CONTROL) & 0x8000)) {
+        std::vector<HWND> panes{connectionList_, aiVisible_ ? aiPane_.Handle() : powerVisible_ ? powerPane_.Handle() : terminal_,
+                                sftpPanelVisible_ ? sftpList_ : commandList_};
+        panes.erase(std::remove_if(panes.begin(), panes.end(), [](HWND h) {
+            return !h || !IsWindowVisible(h) || !IsWindowEnabled(h);
+        }), panes.end());
+        if (!panes.empty()) {
+            const auto current = std::find_if(panes.begin(), panes.end(), [&](HWND h) {
+                return h == message.hwnd || IsChild(h, message.hwnd);
+            });
+            const int step = (GetKeyState(VK_SHIFT) & 0x8000) ? -1 : 1;
+            const int index = current == panes.end() ? 0 :
+                (static_cast<int>(current - panes.begin()) + step + static_cast<int>(panes.size())) % panes.size();
+            HWND next = panes[static_cast<size_t>(index)];
+            if (next == aiPane_.Handle() || next == powerPane_.Handle()) {
+                if (HWND child = GetNextDlgTabItem(next, nullptr, FALSE)) next = child;
+            }
+            SetFocus(next);
+        }
+        return true;
+    }
     if (aiVisible_ && aiPane_.PreTranslate(message)) return true;
     if (message.message == WM_KEYDOWN || message.message == WM_SYSKEYDOWN ||
         message.message == WM_LBUTTONDOWN || message.message == WM_RBUTTONDOWN ||
@@ -2045,6 +2123,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         wchar_t measure[2]{};
         measurePaint_ = GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", measure, 2) > 0;
     }
+        ScaleUiMetrics(window_);
         LoadUiState();
         CreateControls();
         LoadCommands();
@@ -2119,7 +2198,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 if (aiVisible_)
                     aiMonitorRatio_ = 500;
                 else
-                    rightPanelWidth_ = 360;
+                    rightPanelWidth_ = Ui::Scale(360);
                 LayoutControls(client.right, client.bottom);
                 InvalidateRect(window_, nullptr, TRUE);
                 return 0;
@@ -2367,6 +2446,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                     aiSession->aiTransportNotice = WideToMultiByte(status->text.substr(0, 512), CP_UTF8);
                 if (status->text.find(L"HISTORY_GAP") != std::wstring::npos) aiSession->aiTruncated = true;
             }
+            if (session) {
+                session->lastStatus = status->text;
+                session->lastStatusIsError = status->isError;
+                session->unreadStatus = session != activeSession_;
+                GetLocalTime(&session->statusTime);
+            }
             if (session && session == activeSession_) {
                 SetConnectedUi(connection_ && connection_->IsConnected());
                 if (runningCommandIndex_ >= 0 && (!connection_ || !connection_->IsConnected()))
@@ -2376,6 +2461,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             } else if (session && session->logger) {
                 session->logger->WriteStatus(status->text);
             }
+            RefreshConnectionList();
         }
         return 0;
     }
@@ -2953,7 +3039,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 const bool hovered = hoveredSftpBreadcrumb_ ==
                     static_cast<int>(sftpBreadcrumbHits_.size()) - 1;
                 DrawTextSimple(dc, crumbs[static_cast<size_t>(crumbIndex)].label, labelRect,
-                    hovered ? colors.accent : colors.text, smallFont_,
+                    hovered ? UiAccentInk(darkMode_) : colors.text, smallFont_,
                     DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
             }
             x = labelRect.right;
@@ -2998,7 +3084,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             if (!compactNavigation_)
                 DrawTextSimple(dc, ControlText(item.hwndItem), textRect, ink,
                     uiFont_, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
+                UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             return;
         }
         if (id == IdTheme) {
@@ -3007,13 +3094,15 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             RECT iconRect=rect; InflateRect(&iconRect,-Ui::Scale(6),-Ui::Scale(6));
             toolbarIcons_.Draw(dc, darkMode_ ? ToolbarIcon::Sun : ToolbarIcon::Moon, iconRect,
                                darkMode_ || (pressed && enabled));
-            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
+                UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             return;
         }
         if (id == IdRightPanelToggle) {
             const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
             DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
-            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
+                UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             DrawChevronHorizontal(dc, rect, visual.ink,
                                   powerVisible_ || (aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) ||
                                       rightPanelAutoCollapsed_);
@@ -3022,7 +3111,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if (id == IdDisconnect || id == IdDisconnectAll) {
             const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
             DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
-            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
+                UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             DrawTextSimple(dc, id == IdDisconnect ? L"断开" : L"全部断开", rect,
                            !enabled  ? colors.muted
                            : pressed ? visual.ink
@@ -3034,7 +3124,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             const bool active = (id == IdSftpTab) == sftpPanelVisible_;
             const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
             DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, active && !pressed ? colors.muted : visual.border);
-            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
+                UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             DrawTextSimple(dc, ControlText(item.hwndItem), rect, visual.ink, uiFont_,
                            DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
@@ -3050,10 +3141,10 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             textRect.left += Ui::Space;
             textRect.right -= active ? 22 : Ui::Space;
             DrawTextSimple(dc, ControlText(item.hwndItem), textRect,
-                active ? colors.accent : colors.muted, smallFont_,
+                active ? UiAccentInk(darkMode_) : colors.muted, smallFont_,
                 id == IdSftpNameHeader ? DT_LEFT | DT_VCENTER | DT_SINGLELINE :
                     DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-            if (active) DrawSortChevron(dc, rect, colors.accent, sftpSortAscending_);
+            if (active) DrawSortChevron(dc, rect, UiAccentInk(darkMode_), sftpSortAscending_);
             HPEN line = CreatePen(PS_SOLID, 1, colors.border);
             HPEN oldLine = reinterpret_cast<HPEN>(SelectObject(dc, line));
             MoveToEx(dc, rect.left, rect.bottom - 1, nullptr);
@@ -3090,23 +3181,26 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                            : hovered ? colors.panelAlt
                                      : colors.panel,
                            pressed ? visual.fill : colors.panel);
-            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
+                UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             RECT icon = rect;
             auto label = ControlText(item.hwndItem);
             if (!label.empty())
                 icon.right = icon.left + Ui::Scale(32);
-            DrawPlusIcon(dc, icon, pressed ? visual.ink : colors.accent);
+            const COLORREF ink = !enabled ? colors.muted : pressed ? visual.ink : UiAccentInk(darkMode_);
+            DrawPlusIcon(dc, icon, ink);
             RECT textRect = rect;
             textRect.left += Ui::Scale(32);
             textRect.right -= Ui::Space;
-            DrawTextSimple(dc, ControlText(item.hwndItem), textRect, pressed ? visual.ink : colors.accent, uiFont_,
+            DrawTextSimple(dc, ControlText(item.hwndItem), textRect, ink, uiFont_,
                            DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
         }
 
         const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered, id == IDOK);
         DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
-        UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX));
+        UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
+                UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
         if (id == IdAiWrap && rect.right - rect.left <= Ui::CompactHeight) {
             RECT glyph = rect;
             InflateRect(&glyph, -Ui::Scale(7), -Ui::Scale(7));
@@ -3191,10 +3285,13 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             state = session->host + L" · " + state;
         else if (session && session->mode == 4)
             state = L"本机 · " + state;
+        if (session && session->unreadStatus)
+            state = (session->lastStatusIsError ? L"新错误 · " : L"新状态 · ") + state;
         RECT dot{textLeft, subtitle.top + Ui::Scale(6), textLeft + Ui::Scale(5), subtitle.top + Ui::Scale(11)};
-        DrawStatusDot(dc, dot, active ? RGB(255, 255, 255) : colors.muted);
+        const bool unreadError = session && session->unreadStatus && session->lastStatusIsError;
+        DrawStatusDot(dc, dot, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted);
         subtitle.left += Ui::Scale(12);
-        DrawTextSimple(dc, state, subtitle, active ? RGB(255, 255, 255) : colors.muted, smallFont_,
+        DrawTextSimple(dc, state, subtitle, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
     } else if (item.CtlID == IdCommandList && item.itemID < commands_.size()) {
         const CommandItem& command = commands_[item.itemID];
@@ -4189,6 +4286,7 @@ void MainWindow::ShowPowerPage() {
 
 void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (index >= sessions_.size()) return;
+    const bool sameVisibleSession = activeSession_ == sessions_[index].get() && !aiVisible_ && !powerVisible_;
     if (focus != SessionFocus::AiPreview) {
         KillTimer(window_, SideAnimationTimerId);
         rightPanelAnimating_ = false;
@@ -4204,6 +4302,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
         StopCommandSequence(CommandSequenceEnd::Interrupted, L"用户切换当前会话");
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     activeSession_ = sessions_[index].get();
+    activeSession_->unreadStatus = false;
     connection_ = activeSession_->connection.get();
     logger_ = activeSession_->logger.get();
     activeConnectionName_ = activeSession_->name;
@@ -4227,7 +4326,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (focus != SessionFocus::AiPreview && selectedMode_ == 0 && SftpClient::IsAvailable()) {
         ShowSftpPanel(true);
         RefreshSftpList();
-        if (!sftpBusy_) RefreshSftp();
+        if (!sameVisibleSession && connection_ && connection_->IsConnected() && !sftpBusy_) RefreshSftp();
     } else {
         ShowSftpPanel(false);
     }
@@ -4237,6 +4336,12 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
     if (focus == SessionFocus::Terminal) SetFocus(terminal_);
     if (interruptedMacro) AppendStatus(macroStatus, true);
+    else if (!activeSession_->lastStatus.empty()) {
+        const auto &t = activeSession_->statusTime;
+        wchar_t timestamp[32]{};
+        swprintf_s(timestamp, L"%02u:%02u:%02u · ", t.wHour, t.wMinute, t.wSecond);
+        AppendStatus(timestamp + activeSession_->lastStatus, activeSession_->lastStatusIsError);
+    } else AppendStatus(L"", false);
 }
 
 bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText) {
@@ -4389,16 +4494,27 @@ void MainWindow::SendCommand(size_t index) {
         AppendStatus(L"请先建立连接，再执行常用命令。", true);
         return;
     }
+    const auto now = GetTickCount64();
+    if (lastCommandIndex_ == static_cast<int>(index) && lastCommandSession_ == activeSession_->id &&
+        now - lastCommandActivation_ < std::max<DWORD>(350, GetDoubleClickTime()))
+        return; // One activation across mouse double-clicks and held Enter.
     const CommandItem& command = commands_[index];
     if (command.commands.size() == 1) {
         const std::wstring text = command.commands.front() + SelectedLineEnding();
         const std::string encoded = EncodeTerminalText(text);
-        if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text))
+        if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text)) {
+            lastCommandIndex_ = static_cast<int>(index);
+            lastCommandSession_ = activeSession_->id;
+            lastCommandActivation_ = now;
             AppendStatus(L"已提交命令；执行结果见输出：" + command.commands.front(), false);
+        }
         return;
     }
 
     runningCommandIndex_ = static_cast<int>(index);
+    lastCommandIndex_ = static_cast<int>(index);
+    lastCommandSession_ = activeSession_->id;
+    lastCommandActivation_ = now;
     submittedCommandSteps_ = 0;
     runningCommandSessionId_ = activeSession_->id;
     runningCommandCodePage_ = SelectedCodePage();
@@ -4453,6 +4569,7 @@ void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring&
     const auto count = std::to_wstring(submittedCommandSteps_) + L"/" + std::to_wstring(total);
     // detail can alias statusText_; snapshot it before AppendStatus replaces it.
     const std::wstring reason = detail;
+    auto* owner = FindSession(runningCommandSessionId_);
     KillTimer(window_, CommandTimerId);
     runningCommandIndex_ = -1;
     submittedCommandSteps_ = 0;
@@ -4468,6 +4585,12 @@ void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring&
     else if (end == CommandSequenceEnd::Interrupted)
         AppendStatus(L"宏“" + name + L"”后续提交已中断（" + count + L"）：" + reason +
                      L"；已提交内容执行状态未知，请检查连接和输出，不自动重发。", true);
+    if (owner && end != CommandSequenceEnd::Silent) {
+        owner->lastStatus = statusText_;
+        owner->lastStatusIsError = end == CommandSequenceEnd::Interrupted;
+        owner->unreadStatus = owner != activeSession_;
+        GetLocalTime(&owner->statusTime);
+    }
 }
 
 void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data) {
@@ -5530,7 +5653,7 @@ void MainWindow::PaintTerminal(HDC dc) {
         if (activeSession_->terminalHasNewOutput && activeSession_->terminalScrollOffset > 0) {
             const RECT notification = TerminalNewOutputRect(client, horizontalScroll.visible);
             DrawRoundedBox(buffer, notification, Ui::Radius, colors.accentSoft, colors.accent);
-            DrawTextSimple(buffer, L"↓  新输出", notification, colors.accent,
+            DrawTextSimple(buffer, L"↓  新输出", notification, UiAccentInk(darkMode_),
                 smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
     }
@@ -5829,11 +5952,18 @@ void MainWindow::LoadUiState() {
         directory = DirectoryOf(modulePath);
     }
     const std::wstring path = JoinLocalPath(directory, L"settings.ini");
-    rightPanelWidth_ = std::max(Ui::MinRightWidth,
-        std::min(Ui::MaxRightWidth, static_cast<int>(GetPrivateProfileIntW(
-            L"Layout", L"RightPanelWidth", 360, path.c_str()))));
-    sftpNameWidth_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"SftpNameWidth", 180, path.c_str())), 80, 600);
-    aiMonitorWidth_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"AiMonitorWidth", 360, path.c_str())), Ui::MinRightWidth, Ui::MaxRightWidth);
+    const bool logical = GetPrivateProfileIntW(L"Layout", L"LayoutVersion", 0, path.c_str()) >= 2;
+    const int savedDpi = std::clamp(static_cast<int>(GetPrivateProfileIntW(
+        L"Layout", L"SavedDpi", Ui::Dpi, path.c_str())), 48, 768);
+    auto width = [&](const wchar_t *key, const wchar_t *logicalKey, int fallback, int minimum, int maximum) {
+        int value = static_cast<int>(GetPrivateProfileIntW(L"Layout", logical ? logicalKey : key, 0, path.c_str()));
+        if (!value) value = fallback;
+        else if (!logical) value = MulDiv(value, 96, savedDpi);
+        return Ui::Scale(std::clamp(value, minimum, maximum));
+    };
+    rightPanelWidth_ = width(L"RightPanelWidth", L"RightPanelWidth96", 360, 260, 650);
+    sftpNameWidth_ = width(L"SftpNameWidth", L"SftpNameWidth96", 180, 80, 600);
+    aiMonitorWidth_ = width(L"AiMonitorWidth", L"AiMonitorWidth96", 360, 260, 650);
     // New ratio key migrates the old narrow/collapsed monitor default once.
     aiMonitorRatio_ =
         std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"AiMonitorRatio", 500, path.c_str())), 200, 800);
@@ -5852,6 +5982,14 @@ void MainWindow::SaveUiState() const {
         directory = DirectoryOf(modulePath);
     }
     const std::wstring path = JoinLocalPath(directory, L"settings.ini");
+    auto logicalWidth = [&](const wchar_t *key, int pixels) {
+        WritePrivateProfileStringW(L"Layout", key, std::to_wstring(MulDiv(pixels, 96, Ui::Dpi)).c_str(), path.c_str());
+    };
+    logicalWidth(L"RightPanelWidth96", rightPanelWidth_);
+    logicalWidth(L"SftpNameWidth96", sftpNameWidth_);
+    logicalWidth(L"AiMonitorWidth96", aiMonitorWidth_);
+    WritePrivateProfileStringW(L"Layout", L"SavedDpi", std::to_wstring(Ui::Dpi).c_str(), path.c_str());
+    WritePrivateProfileStringW(L"Layout", L"LayoutVersion", L"2", path.c_str());
     WritePrivateProfileStringW(L"Layout", L"AiMonitorRatio", std::to_wstring(aiMonitorRatio_).c_str(), path.c_str());
     WritePrivateProfileStringW(L"Layout", L"AiMonitorWrap", aiMonitorWrap_ ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"Layout", L"AiMonitorWidth", std::to_wstring(aiMonitorWidth_).c_str(), path.c_str());
@@ -7375,6 +7513,8 @@ void MainWindow::ResetCommandDialogSteps(HWND dialog, const std::vector<std::wst
 }
 
 void MainWindow::LayoutCommandDialog(HWND dialog) {
+    UiRedrawScope redraw(dialog);
+    UiDialogViewport::Reset(dialog);
     constexpr int DialogWidth = 238;
     constexpr int Margin = 12;
     constexpr int StepTop = 58;
@@ -7426,6 +7566,7 @@ void MainWindow::LayoutCommandDialog(HWND dialog) {
     MoveDialogItemDlu(dialog, IDOK, DialogWidth - 80, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, DialogWidth, buttonY + 26);
     FitDialogLabels(dialog);
+    UiDialogViewport::Fit(dialog, Ui::Dpi);
     EnableWindow(GetDlgItem(dialog, IDC_COMMAND_ADD_STEP),
         commandDialogStepEdits_.size() < MaximumCommandSteps);
     InvalidateRect(GetDlgItem(dialog, IDC_COMMAND_ADD_STEP), nullptr, TRUE);
