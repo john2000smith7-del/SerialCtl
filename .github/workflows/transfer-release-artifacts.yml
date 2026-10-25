@@ -66,7 +66,7 @@ jobs:
                   (folder/'original-index.json').write_text(json.dumps([{'name':item.filename,'bytes':item.file_size} for item in entries],indent=2)+'\n')
                   def priority(item):
                       name=item.filename.lower()
-                      if 'power-unavailable' in name:return 0
+                      if any(word in name for word in ['missing-dialog','failure','power-unavailable']):return 0
                       if any(word in name for word in ['startup','-main','-default','-light.png','-dark.png']):return 1
                       if any(word in name for word in ['ai-connect','command','settings','power-layout','ssh','serial']):return 2
                       return 3
