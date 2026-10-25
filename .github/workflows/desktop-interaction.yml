@@ -1,5 +1,11 @@
 name: Desktop user interaction audit
 on:
+  push:
+    branches: [audit/v2.0.4-desktop-input-sync]
+    paths:
+      - tests/integration/desktop_user_actions.py
+      - docs/testing/DESKTOP-INTERACTION.md
+      - .github/workflows/desktop-interaction.yml
   workflow_run:
     workflows: [Windows Win7 release build]
     types: [completed]
@@ -15,7 +21,7 @@ permissions:
   actions: read
 jobs:
   desktop:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
@@ -26,7 +32,7 @@ jobs:
       - name: Verify tested program source matches production on this commit
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN: ${{ inputs.build_run || github.event.workflow_run.id }}
+          BUILD_RUN: ${{ inputs.build_run || github.event.workflow_run.id || '40171325741' }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -44,7 +50,7 @@ jobs:
         with:
           name: SerialCtl-Win7-portable
           path: bin
-          run-id: ${{ inputs.build_run || github.event.workflow_run.id }}
+          run-id: ${{ inputs.build_run || github.event.workflow_run.id || '40171325741' }}
           github-token: ${{ github.token }}
       - name: Install test-only lossless screen encoder
         run: python -m pip install imageio-ffmpeg==0.6.0
