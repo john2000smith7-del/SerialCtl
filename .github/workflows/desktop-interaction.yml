@@ -4,6 +4,7 @@ on:
     branches: [audit/v2.0.4-desktop-input-sync]
     paths:
       - tests/integration/desktop_user_actions.py
+      - tests/integration/gui_macro_submission.py
       - docs/testing/DESKTOP-INTERACTION.md
       - .github/workflows/desktop-interaction.yml
   workflow_run:

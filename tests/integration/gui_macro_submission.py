@@ -213,21 +213,31 @@ class MacroActions(GlobalActions):
         barrier = ('SCM_' + self.token + '_BARRIER').encode()
         index = self.add_macro('ping -n 4 127.0.0.1 >nul & echo SCM_' + self.token + '_^FIRST',
                                'echo SCM_' + self.token + '_^SECOND', 5000)
+        first_input = len(self.trace)
         self.run_or_stop(index)
-        self.observe(lambda: len(self.inputs) == 1, 'first macro step accepted')
+        # Native progress is published after the first write succeeds. Waiting
+        # for its WebSocket copy can consume the double-click window before we
+        # send Stop. Observe the GUI here, then independently verify raw input
+        # events after both real clicks; do not loosen the timing requirement.
+        self.wait(lambda: '已提交 1/2' in self.status(), 'first macro step accepted in native GUI', 3)
+        first_step_status = self.status()
         first_at = time.monotonic()
         self.run_or_stop(index)
-        clicks = self.report['macro_clicks']
-        click_interval_ms = (clicks[-1]['seconds'] - clicks[-2]['seconds']) * 1000
+        presses = [item for item in self.trace[first_input:] if item['event'] == 'left_down']
+        require(len(presses) == 2, 'Run/Stop must use exactly two real mouse presses')
+        click_interval_ms = (presses[1]['seconds'] - presses[0]['seconds']) * 1000
         double_click_ms = self.user.GetDoubleClickTime()
         require(click_interval_ms < double_click_ms, 'rapid Run/Stop must exercise the native double-click window')
-        self.observe(lambda: '已停止后续提交（1/2）' in self.status(), 'stop explains its exact scope', 3)
+        self.observe(lambda: '已停止后续提交（1/2）' in self.status() and len(self.inputs) == 1,
+                     'stop explains its exact scope and one raw input was accepted', 3)
         status = self.status()
         require('已提交内容可能继续执行' in status, 'stop must not claim cancellation of accepted work')
         self.report['macro_observations'].append({**self.timestamp(), 'case': 'stop_after_one', 'status': status,
                                                   'accepted_steps_at_stop': len(self.inputs),
                                                   'click_interval_ms': click_interval_ms,
-                                                  'system_double_click_ms': double_click_ms})
+                                                  'system_double_click_ms': double_click_ms,
+                                                  'timing_basis': 'actual left_down input trace',
+                                                  'first_step_native_status': first_step_status})
         self.screenshot('stopped-future-submission')
         self.observe(lambda: first_done in self.raw_output, 'already accepted command continues after Stop')
         while time.monotonic() - first_at < 5.5:
