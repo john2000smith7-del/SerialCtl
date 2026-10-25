@@ -54,6 +54,24 @@ struct AiDeviceTestAccess {
         main.CreateControls();
         ShowWindow(parent, SW_SHOW);
         GetClientRect(parent, &viewport);
+        auto rightActionsInside = [&] {
+            for (HWND action : {main.themeButton_, main.rightPanelToggleButton_}) {
+                RECT bounds{};
+                GetWindowRect(action, &bounds);
+                MapWindowPoints(nullptr, parent, reinterpret_cast<POINT *>(&bounds), 2);
+                Require(bounds.left >= 0 && bounds.right <= viewport.right && bounds.top >= 0 &&
+                            bounds.bottom <= viewport.bottom,
+                        "Right-edge actions escaped the current client after resize");
+            }
+        };
+        main.windowResizing_ = true;
+        main.HandleMessage(WM_SIZE, SIZE_RESTORED, MAKELPARAM(viewport.right + 80, viewport.bottom + 40));
+        rightActionsInside();
+        // Simulate an earlier layout completing after the native border moved.
+        main.LayoutControls(viewport.right + 80, viewport.bottom + 40);
+        main.HandleMessage(WM_EXITSIZEMOVE, 0, 0);
+        Require(!main.windowResizing_, "Resize completion did not release deferred terminal reflow");
+        rightActionsInside();
         main.pendingMode_ = 3;
         const auto remote = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
                                                MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));

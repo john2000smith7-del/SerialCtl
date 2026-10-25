@@ -2147,17 +2147,27 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_ENTERSIZEMOVE:
         windowResizing_ = true;
         return 0;
-    case WM_EXITSIZEMOVE:
+    case WM_EXITSIZEMOVE: {
+        // Commit the final client geometry while terminal reflow is still
+        // deferred. The last sizing notification can trail the native border.
+        RECT client{};
+        GetClientRect(window_, &client);
+        windowResizing_ = true;
+        LayoutControls(client.right, client.bottom);
         windowResizing_ = false;
         UpdateTerminalDimensions();
         return 0;
-    case WM_SIZE:
+    }
+    case WM_SIZE: {
         if (wParam == SIZE_MINIMIZED) return 0;
         KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
-        LayoutControls(LOWORD(lParam), HIWORD(lParam));
+        RECT client{};
+        GetClientRect(window_, &client);
+        LayoutControls(client.right, client.bottom);
         InvalidateRect(window_, nullptr, TRUE);
         UpdateWindow(window_);
         return 0;
+    }
     case WM_SETCURSOR:
         if (!SidebarCollapsed() && LOWORD(lParam) == HTCLIENT) {
             POINT point{};

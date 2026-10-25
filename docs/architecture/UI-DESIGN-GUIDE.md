@@ -100,6 +100,7 @@ Light theme:
 - The title-bar application icon follows the active theme: dark artwork in dark mode and the matching light artwork in light mode.
 - Left connection list, center terminal, and right command collection are separate rounded surfaces; avoid strong full-height divider lines.
 - The side columns scale within shared minimum and maximum widths. The terminal receives remaining space; maximizing the window must not leave both side panels visually undersized.
+- Resize handlers use the actual client bounds. At the end of a native sizing gesture, commit the final control layout before releasing deferred terminal reflow, so right-edge actions cannot remain at an earlier frame's position while a large terminal history is rewrapped.
 - Do not add a separate title card above the terminal. The left connection list owns session identity and disconnect actions; the center column is reserved for terminal content.
 - Shared serial sessions are directly writable by every connected client; the connection heading keeps only the disconnect action.
 - The top Settings entry contains all terminal utility actions: local echo, millisecond timestamps, raw RX/TX tracing, encoding, Enter policy, save log, save network diagnostics, clear, copy, paste and select all. Clearly distinguish whole-window options from current-session options and instance diagnostics. Missing sessions disable only session-dependent actions.
