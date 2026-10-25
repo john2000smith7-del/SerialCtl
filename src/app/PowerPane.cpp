@@ -1216,7 +1216,8 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         self->Refresh();
         return 0;
     }
-    if (m == WM_COMMAND && (HIWORD(w) == BN_CLICKED || HIWORD(w) == CBN_SELCHANGE)) {
+    if (m == WM_COMMAND && (HIWORD(w) == BN_CLICKED || HIWORD(w) == CBN_SELCHANGE ||
+                           (LOWORD(w) == Connect && HIWORD(w) == BN_DOUBLECLICKED))) {
         self->Action(LOWORD(w));
         return 0;
     }

@@ -46,6 +46,8 @@ jobs:
         run: |
           python tests/integration/test_new_update_feed.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/integration/test_update_key_recovery.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Describe the exact verified ZIP for offline signing
         shell: powershell
         run: |

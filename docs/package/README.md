@@ -4,6 +4,8 @@ Win7 SP1 x64 原生便携程序。解压后 serialctl.exe、固定 plink.exe 与
 
 本版电源连接暂未开放；点击电源页“连接”显示提示，不扫描或打开设备。后文的电源操作说明作为后续功能参考。AI 连接后以高级嵌入式软件工程师助手介绍能力，不公开姓名，不自动执行命令。
 
+本版按拥有者授权更换了无法找回的更新签名身份。旧客户端需要先手动解压部署 V2.0.4 一次；此后继续使用最新 ZIP 与 update.json 自动更新，可跳过中间版本。保留自己的 update.ini、配置和数据。
+
 软件启动自动提供单一 WebSocket v1 服务（TCP 7000–7015）。用户先在 GUI 打开 COM 或 CMD。远程串口填写 IP、明确 COM，通过相同服务发现和连接。多个实例需要指定端口；不猜测第一个串口，不再支持 telnet/IP:7000 串口透传或旧 HTTP REST。
 
 Linux Python 3 标准库客户端：serialctl_client.py、serialctl_api.py 是同一个 serialctl_ws.py 核心的入口，必须放在同一目录。

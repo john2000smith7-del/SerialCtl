@@ -26,6 +26,7 @@ Testing/
 !.env.example
 *.key
 *.pem
+!/release-signing/serialctl-update-v2.0.4.encrypted.pem
 *.p12
 *.pfx
 id_rsa

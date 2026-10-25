@@ -77,9 +77,9 @@ int main() {
     SetWindowPos(GetDlgItem(root, IDCANCEL), nullptr, 16, 260, 100, 36, SWP_NOZORDER);
     SetWindowPos(credit, nullptr, 16, 310, 100, 20, SWP_NOZORDER);
     UiDialogViewport::Fit(root, 96);
-    const RECT small = Bounds(root);
+    const RECT shortBounds = Bounds(root);
     SendMessageW(root, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-WHEEL_DELTA)), 0);
-    Expect(Bounds(first, root).top == 16 && Bounds(root).bottom == small.bottom,
+    Expect(Bounds(first, root).top == 16 && Bounds(root).bottom == shortBounds.bottom,
            "Shrinking back to short content retained the overflow viewport");
     DestroyWindow(root);
     HWND hidden = CreateWindowExW(0, wc.lpszClassName, L"Hidden", WS_OVERLAPPEDWINDOW,
