@@ -52,6 +52,18 @@ struct AiDeviceTestAccess {
         SetWindowPos(parent, nullptr, 0, 0, size.right - size.left, size.bottom - size.top, SWP_NOZORDER);
         RECT viewport{};
         main.CreateControls();
+        GetClientRect(parent, &viewport);
+        LONG previousNavigationRight = 0;
+        for (HWND button : main.toolbarButtons_) {
+            RECT bounds{};
+            GetWindowRect(button, &bounds);
+            MapWindowPoints(nullptr, parent, reinterpret_cast<POINT *>(&bounds), 2);
+            Require(bounds.left > previousNavigationRight && bounds.top > 0 &&
+                        bounds.right <= viewport.right && bounds.bottom <= viewport.bottom &&
+                        bounds.bottom - bounds.top > 24,
+                    "Navigation retains overlapping creation bounds before the main window is shown");
+            previousNavigationRight = bounds.right;
+        }
         ShowWindow(parent, SW_SHOW);
         GetClientRect(parent, &viewport);
         auto rightActionsInside = [&] {

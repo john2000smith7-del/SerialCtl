@@ -2748,6 +2748,12 @@ void MainWindow::CreateControls() {
     RefreshSftpTransferList();
     ShowSftpPanel(false);
     SetConnectedUi(false);
+    // ShowWindow makes children hit-testable before its initial WM_SIZE has
+    // finished. Commit the real geometry while the parent is still hidden so
+    // an immediate first click cannot target the 100x24 creation rectangles.
+    RECT client{};
+    GetClientRect(window_, &client);
+    LayoutControls(client.right, client.bottom);
 }
 
 void MainWindow::LayoutControls(int width, int height) {
