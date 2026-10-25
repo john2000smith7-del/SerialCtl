@@ -1,0 +1,72 @@
+name: Focused packaged SSH and SFTP input audit
+on:
+  push:
+    branches: [evidence/v2.0.4-transfer]
+    paths: [.github/workflows/focused-host-fixture.yml]
+permissions:
+  contents: read
+  actions: read
+env:
+  BUILD_RUN: '40160221006'
+  SOURCE_SHA: '103f6dccf36194532259d1385d410e9a0dd356ea'
+jobs:
+  host:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+      - name: Require the successful Windows build of this exact source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deadline = [DateTime]::UtcNow.AddMinutes(10)
+          do {
+            $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to read the source build.' }
+            if ($run.head_sha -ne $env:SOURCE_SHA -or $run.head_branch -ne 'main' -or $run.name -ne 'Windows Win7 release build') { throw 'Unexpected source build identity.' }
+            if ($run.status -eq 'completed') { break }
+            if ([DateTime]::UtcNow -gt $deadline) { throw 'Source build did not finish in time.' }
+            Start-Sleep -Seconds 10
+          } while ($true)
+          if ($run.conclusion -ne 'success') { throw 'Source Windows build did not pass.' }
+          if ((git rev-parse HEAD) -ne $env:SOURCE_SHA) { throw 'Unexpected checkout.' }
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/serialctl-host-ui" -Force | Out-Null
+          [ordered]@{source=$env:SOURCE_SHA; build=$env:BUILD_RUN; audit=$env:GITHUB_RUN_ID; scope='Exact packaged executable; actual Windows mouse/keyboard; controlled PuTTY fixture, no real credentials or server'} | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-host-ui/source-receipt.json" -Encoding UTF8
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: bin
+          run-id: ${{ env.BUILD_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install the test-only lossless recorder
+        run: python -m pip install imageio-ffmpeg==0.6.0
+      - name: Exercise startup, host identity dialogs and SFTP with real input
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem bin -Filter '*.zip' | Get-FileHash -Algorithm SHA256 | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-host-ui/program-package-sha256.json" -Encoding UTF8
+          Start-Transcript -Path "$env:RUNNER_TEMP/serialctl-host-ui/host-fixture-transcript.txt"
+          try { ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-host-ui" -ActualMouse -HostFixtureOnly } finally { Stop-Transcript }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-focused-host-review
+          path: |
+            ${{ runner.temp }}/serialctl-host-ui/*.json
+            ${{ runner.temp }}/serialctl-host-ui/*.jsonl
+            ${{ runner.temp }}/serialctl-host-ui/*.txt
+            ${{ runner.temp }}/serialctl-host-ui/*.log
+            ${{ runner.temp }}/serialctl-host-ui/*.mkv
+            ${{ runner.temp }}/serialctl-host-ui/*ssh-dialog.png
+            ${{ runner.temp }}/serialctl-host-ui/*host-key.png
+            ${{ runner.temp }}/serialctl-host-ui/*sftp-resized.png
+            ${{ runner.temp }}/serialctl-host-ui/*settled-final.png
+            ${{ runner.temp }}/serialctl-host-ui/*failure*.png
+            ${{ runner.temp }}/serialctl-host-ui/*missing*.png
+          if-no-files-found: error
+          retention-days: 14
