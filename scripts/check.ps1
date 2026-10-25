@@ -155,7 +155,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
 
     $testPrograms = @{
         'ai_protocol_test.exe' = @('KERNEL32.dll')
-        'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'COMDLG32.dll', 'GDI32.dll', 'OLE32.dll', 'SHELL32.dll', 'MSIMG32.dll', 'SETUPAPI.dll')
+        'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'COMDLG32.dll', 'GDI32.dll', 'OLE32.dll', 'SHELL32.dll', 'MSIMG32.dll', 'SETUPAPI.dll', 'WINHTTP.dll')
         'ui_buffered_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'OLE32.dll', 'MSIMG32.dll')
         'ui_combo_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
         # Rounded viewport thumbs no longer load PNG artwork through OLE streams.
@@ -179,23 +179,32 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'sftp_model_test.exe' = @('KERNEL32.dll')
     }
+    # Report every test-binary mismatch in the same build. Keep the verifier's
+    # exact DLL/API/subsystem checks and fail before packaging if any fail.
+    $testBinaryFailures = New-Object 'System.Collections.Generic.List[string]'
+    $testBinaries = New-Object 'System.Collections.Generic.List[object]'
     foreach ($testName in $testPrograms.Keys) {
-        & $binaryVerifier -Path (Join-Path $outputDirectory $testName) -Architecture $item `
-            -Subsystem CUI -AllowedDll $testPrograms[$testName]
+        $testBinaries.Add(@{ Path = Join-Path $outputDirectory $testName; Dlls = $testPrograms[$testName] })
     }
     $fixtureDirectory = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "ai-fixture\$Configuration"
-    & $binaryVerifier -Path (Join-Path $fixtureDirectory 'ai_client_test.exe') -Architecture $item `
-        -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll')
-    & $binaryVerifier -Path (Join-Path $fixtureDirectory 'ai_pane_test.exe') -Architecture $item `
-        -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'MSIMG32.dll')
-    & $binaryVerifier -Path (Join-Path $fixtureDirectory 'plink.exe') -Architecture $item `
-        -Subsystem CUI -AllowedDll @('KERNEL32.dll')
+    $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'ai_client_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll') })
+    $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'ai_pane_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'MSIMG32.dll') })
+    $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'plink.exe'; Dlls = @('KERNEL32.dll') })
     $sftpFixture = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "sftp-fixture\$Configuration"
-    & $binaryVerifier -Path (Join-Path $sftpFixture 'sftp_client_test.exe') -Architecture $item `
-        -Subsystem CUI -AllowedDll @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll')
+    $testBinaries.Add(@{ Path = Join-Path $sftpFixture 'sftp_client_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll') })
     foreach ($program in @('plink.exe', 'psftp.exe')) {
-        & $binaryVerifier -Path (Join-Path $sftpFixture $program) -Architecture $item `
-            -Subsystem CUI -AllowedDll @('KERNEL32.dll')
+        $testBinaries.Add(@{ Path = Join-Path $sftpFixture $program; Dlls = @('KERNEL32.dll') })
+    }
+    foreach ($testBinary in $testBinaries) {
+        try {
+            & $binaryVerifier -Path $testBinary.Path -Architecture $item -Subsystem CUI -AllowedDll $testBinary.Dlls
+        } catch {
+            $testBinaryFailures.Add($_.Exception.Message)
+            Write-Host ('[FAIL] ' + $_.Exception.Message)
+        }
+    }
+    if ($testBinaryFailures.Count -gt 0) {
+        throw ("Test binary compatibility checks failed:`n" + ($testBinaryFailures -join "`n"))
     }
 }
 
