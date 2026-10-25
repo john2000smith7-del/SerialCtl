@@ -455,6 +455,25 @@ class DesktopActions:
                    start[1] + height - (before[3] - before[1]))
             self.drag(label, start, end)
             after = self.rect(self.window)
+            # mouse_event queues input; cursor delivery does not acknowledge
+            # the UI thread's native sizing loop. Observe the final bounds with
+            # a strict deadline instead of treating the fixed 80 ms capture as
+            # an acknowledgement. Never inject another drag or resize the HWND.
+            awaiting = time.perf_counter()
+            observed = [{**self.timestamp(), "bounds": after}]
+            while (abs(after[2] - after[0] - width) > 3 or
+                   abs(after[3] - after[1] - height) > 3) and time.perf_counter() - awaiting < .5:
+                time.sleep(.005)
+                after = self.rect(self.window)
+                if after != observed[-1]["bounds"]:
+                    observed.append({**self.timestamp(), "bounds": after})
+            entry["native_resize_ack"] = {
+                "wait_ms": round((time.perf_counter() - awaiting) * 1000, 3),
+                "budget_ms": 500, "observed": observed,
+                "input_retried": False, "programmatic_resize": False,
+            }
+            if len(observed) > 1:
+                self.capture(label + "-native-size-acknowledged")
             require(abs(after[2] - after[0] - width) <= 3 and abs(after[3] - after[1] - height) <= 3,
                     f"Native border drag target {width}x{height}, actual {after}")
             require(after[:2] == before[:2], "Bottom-right drag unexpectedly moved top-left")
