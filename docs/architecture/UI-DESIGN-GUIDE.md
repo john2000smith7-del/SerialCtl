@@ -188,7 +188,7 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 
 - Peer rounded cards and peer actions use a shared 12 logical px exterior gap; container insets remain 16 px. Optical glyph insets remain separate. Buttons radius10, cards radius12, standard/compact heights36/28.
 - AI workspace starts expanded with equal chat/monitor widths, excludes the connection list, and permits a draggable divider. Persist user ratios under a new setting; migrate the old fixed-width/collapsed default once.
-- AI header is compact, without the jiojio name or role subtitle. jiojio introduces itself only in the initial welcome message after verified connection readiness, without initiating device work. History/reconnect do not stack introductions.
+- AI header is compact, without a name or role subtitle. After verified connection readiness, the initial welcome message introduces the engineering assistant's capabilities without disclosing its internal name, jiojio, or initiating device work. History/reconnect do not stack introductions.
 - One continuous AI background spans header, transcript and composer. Separate these regions only with thin horizontal lines whose ends stop at the panel padding. The terminal uses the same open-ended separator over its own uniform background.
 - AI supports character-range drag selection, copy on release and Ctrl+C; keep whole-message copying. Streaming and scrolling preserve the selected range and reading location. Native edit menus retain their usual semantics.
 - Connection cards directly reuse the corresponding ToolbarIcons resource. Sidebar glyphs are20 logical px, never larger than top-nav24. No substitute monitor/DB9/hand-drawn glyphs. Use text plus status dot, with selected and focus states.
