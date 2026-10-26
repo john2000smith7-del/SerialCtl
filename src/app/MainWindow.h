@@ -516,7 +516,6 @@ private:
     std::uint16_t pendingPort_ = 0;
     std::wstring pendingRemoteSerial_, pendingRemoteLabel_;
     std::vector<SerialPortInfo> serialPorts_;
-    bool pendingRemoteUdp_ = false;
     std::string pendingRemoteInstance_;
     CommandItem pendingCommand_;
     std::wstring pendingSftpInputTitle_;

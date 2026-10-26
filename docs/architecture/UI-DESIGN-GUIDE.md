@@ -201,12 +201,12 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 
 - Connection cards are 48 logical px high in 60 px rows, icons 18 px; command cards remain 54 in 66 px rows with a centered 16 px command resource glyph. Use shared 12 px gaps and a compact 190 px left lane.
 - AI composer is 96 px: multiline text above a 28 px footer. The target shows a short name; full hardware/source details belong in the themed dropdown and tooltip. Server-default model information belongs in connection settings, not a persistent composer label.
-- Selected connection cards, dropdown rows and user messages use solid #1F4FD8 with white foreground; navigation and command rows use neutral resting states; hover without selection uses a neutral raised surface. Final task output stays visible and successful process items may collapse; failures remain visible.
+- Selected connection cards, dropdown rows and user messages use solid #1F4FD8 with white foreground; navigation and command rows use neutral resting states; hover without selection uses a neutral raised surface. Final task output stays visible. Completed turns automatically collapse the process, including failed diagnostic steps, whose warning remains in the summary. Failed or stopped turns remain expanded.
 - Utility SVG masters and the surface fill/stroke masks generate embedded 4x PNG resources. Surface masks are nine-sliced with fixed DPI-scaled corners; dynamic text, native editing/accessibility and data plots stay live. No runtime SVG framework or source files are required.
 - Whole controls compose against their parent surface. Restore the owner surface before painting rounded resources, including focus, dropdown selection, theme switch and scrollbar updates.
-- Remote device discovery remains a themed dropdown; it is not a card gallery. UDP 6333 raw-stream compatibility must not claim to discover unknown COM identities or guarantee delivery.
+- Remote device discovery remains a themed dropdown; it is not a card gallery. Only the application’s own SerialCtl WebSocket service is discovered; there is no transport selector, UDP candidate or UDP fallback. Remove the unused mode row and close the vertical gap using the existing compact grid.
 
-历史会话弹窗使用共享436宽紧凑网格、搜索28高、会话行48高与同色细滚动条；不使用系统原始 TrackPopupMenu 展示会话。远程设备列表仍为统一主题下拉框。压缩与折叠分别处理：折叠保留原文，成功后自动收起；错误／未知保持展开，最终回答不并入过程。
+历史会话弹窗使用共享436宽紧凑网格、搜索28高、会话行48高与同色细滚动条；不使用系统原始 TrackPopupMenu 展示会话。远程设备列表仍为统一主题下拉框。压缩与折叠分别处理：折叠保留原文，回合正常完成后自动收起（中间命令失败在摘要标记），回合失败／停止／未知保持展开，最终回答不并入过程；缺少 phase 的中间 AI 消息也归入过程，恢复历史规则相同。
 
 资源底板先完成九宫格合成，再用单次原生 AlphaBlend 提交，遵守局部可见区域与 DC 原点；不得将九片分别缩放直接提交到目标 DC 造成接缝。缓存最多96个底板且通常不超过16MiB，圆角透明处保留父背景。强调色纯色区必须准确等于主题色。
 

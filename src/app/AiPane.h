@@ -77,6 +77,7 @@ class AiPane {
     void Paint(HDC);
     void PaintTranscript(HDC);
     void Reflow(bool appended = false);
+    void CollapseCompletedProcess(const std::string &group);
     void Scroll(int pixels);
     RECT ScrollThumb() const;
     void Action(int);

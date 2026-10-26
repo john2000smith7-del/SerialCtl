@@ -10,7 +10,6 @@
 #include "SerialConnection.h"
 #include "SharedSerialConnection.h"
 #include "TcpConnection.h"
-#include "UdpSerialConnection.h"
 #include "UpdateClient.h"
 #include "UpdateInstaller.h"
 #include "Win32Helpers.h"
@@ -314,7 +313,7 @@ struct DiscoveryMessage {
     std::uint16_t port = 0;
     std::vector<std::wstring> names;
     std::wstring error;
-    bool success = false, udp = false;
+    bool success = false;
 };
 
 struct ApiMessage { std::string method,path; Json body; std::promise<Json> result; std::atomic_int state{0}; };
@@ -2484,12 +2483,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (!result->success) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未发现可连接的串口"));
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         pendingRemoteInstance_ = result->success ? result->instance : std::string();
-        pendingRemoteUdp_ = result->success && result->udp;
-        SetDlgItemTextW(result->dialog, IDC_SERIAL_LABEL, pendingRemoteUdp_ ? L"数据通道" : L"远端串口");
         if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
         SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR,
-                        result->udp ? L"未查询设备身份；打开后等待 UDP 数据"
-                        : result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str()
+                        result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str()
                                           : result->error.c_str());
         EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
         InvalidateRect(result->dialog, nullptr, TRUE); return 0;
@@ -3554,9 +3550,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         HDC dc = reinterpret_cast<HDC>(wParam);
         SetBkMode(dc, TRANSPARENT);
         const HWND control = reinterpret_cast<HWND>(lParam);
-        SetTextColor(dc, GetDlgCtrlID(control) == IDC_DIALOG_ERROR
-                             ? (self->pendingRemoteUdp_ ? colors.muted : colors.danger)
-                             : colors.text);
+        SetTextColor(dc, GetDlgCtrlID(control) == IDC_DIALOG_ERROR ? colors.danger : colors.text);
         if (GetDlgCtrlID(control) == IDC_DIALOG_ERROR)
             SelectObject(dc, self->smallFont_);
         if (message == WM_CTLCOLOREDIT || message == WM_CTLCOLORLISTBOX) {
@@ -3602,8 +3596,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             ++self->discoveryGeneration_; self->discoveryCancel_ = true;
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE); SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return TRUE;
         }
-        if (self->pendingMode_ == 3 && ((LOWORD(wParam) == IDC_HOST && HIWORD(wParam) == EN_CHANGE) ||
-                                        (LOWORD(wParam) == IDC_REMOTE_MODE && HIWORD(wParam) == CBN_SELCHANGE))) {
+        if (self->pendingMode_ == 3 && LOWORD(wParam) == IDC_HOST && HIWORD(wParam) == EN_CHANGE) {
             ++self->discoveryGeneration_; self->discoveryCancel_ = true;
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
             SetTimer(dialog, DiscoveryTimerId, 500, nullptr); return TRUE;
@@ -3639,9 +3632,6 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     const bool share = pendingMode_ == 3;
     discoveryExplicitPort_ = 0;
     pendingRemoteInstance_.clear();
-    pendingRemoteUdp_ = false;
-    ShowDialogItem(dialog, IDC_REMOTE_MODE_LABEL, share);
-    ShowDialogItem(dialog, IDC_REMOTE_MODE, share);
     const int serialSelectorIds[] = {IDC_SERIAL_LABEL, IDC_SERIAL};
     const int serialSettingIds[] = {IDC_BAUD_LABEL, IDC_BAUD, IDC_DATABITS_LABEL, IDC_DATABITS,
         IDC_PARITY_LABEL, IDC_PARITY, IDC_STOPBITS_LABEL, IDC_STOPBITS, IDC_FLOW_LABEL, IDC_FLOW};
@@ -3689,15 +3679,9 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         } else if (share) {
             SetDlgItemTextW(dialog, IDC_HOST_LABEL, L"远端 IP");
             MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, 174, 14);
-            MoveDialogItemDlu(dialog, IDC_REMOTE_MODE_LABEL, margin, 44, fullWidth, 10);
-            MoveDialogItemDlu(dialog, IDC_REMOTE_MODE, margin, 56, fullWidth, 154);
-            auto mode = GetDlgItem(dialog, IDC_REMOTE_MODE);
-            for (auto label : {L"自动识别", L"SerialCtl WebSocket", L"UDP 6333 · 原始透传"})
-                SendMessageW(mode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
-            SendMessageW(mode, CB_SETCURSEL, 0, 0);
             SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"远端串口");
-            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 78, columnWidth, 10);
-            MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 90, fullWidth, 154);
+            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 44, columnWidth, 10);
+            MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 56, fullWidth, 154);
             MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 22, 32, 14);
         }
     }
@@ -3709,7 +3693,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         errorY = 140;
         buttonY = 152;
         dialogHeight = 178;
-    } else if (ssh) {
+    } else if (ssh || share) {
         errorY = 72;
         buttonY = 84;
         dialogHeight = 110;
@@ -3751,7 +3735,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     AddComboItems(GetDlgItem(dialog, IDC_STOPBITS), {L"1", L"1.5", L"2"}, 0);
     AddComboItems(GetDlgItem(dialog, IDC_FLOW), {L"无", L"CTS/RTS", L"XON/XOFF"}, 0);
     UiLayoutBatch fields;
-    for (int id : {IDC_REMOTE_MODE, IDC_SERIAL, IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW})
+    for (int id : {IDC_SERIAL, IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW})
         fields.ComboVisibleHeight(GetDlgItem(dialog, id), Ui::Scale(28));
     fields.Commit();
     if (serial || share)
@@ -3794,27 +3778,19 @@ void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
     discoveryFinished_ = false;
     const unsigned generation = ++discoveryGeneration_;
     const auto explicitPort = discoveryExplicitPort_;
-    const int transport = static_cast<int>(SendMessageW(GetDlgItem(dialog, IDC_REMOTE_MODE), CB_GETCURSEL, 0, 0));
     EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
     SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"正在自动发现串口…");
-    discoveryThread_ = std::thread([this, host, dialog, generation, explicitPort, transport] {
+    discoveryThread_ = std::thread([this, host, dialog, generation, explicitPort] {
         auto result = std::make_unique<DiscoveryMessage>();
         result->dialog = dialog;
         result->generation = generation;
         try {
             std::vector<std::wstring> descriptions;
-            result->success = transport != 2 && SharedSerialConnection::DiscoverAuto(
+            result->success = SharedSerialConnection::DiscoverAuto(
                                                     host, result->port, result->names, result->error, &discoveryCancel_,
                                                     explicitPort, &descriptions, &result->instance);
             if (result->success)
                 result->names = std::move(descriptions);
-            else if (transport != 1 && !discoveryCancel_) {
-                result->success = true;
-                result->udp = true;
-                result->port = transport == 2 && explicitPort ? explicitPort : 6333;
-                result->names = {L"UDP 数据流 · " + std::to_wstring(result->port)};
-                result->instance.clear();
-            }
         } catch (...) {
             result->error = L"串口查询失败";
         }
@@ -3908,11 +3884,8 @@ void MainWindow::ConnectFromDialog() {
     } else if (pendingMode_ == 4) {
         connection = std::make_unique<CmdConnection>(); sessionName = L"本地 CMD";
     } else {
-        if (pendingRemoteUdp_)
-            connection = std::make_unique<UdpSerialConnection>(pendingHost_, pendingPort_, pendingPort_);
-        else
-            connection = std::make_unique<SharedSerialConnection>(pendingHost_, pendingPort_, pendingRemoteSerial_,
-                                                                  pendingRemoteInstance_);
+        connection = std::make_unique<SharedSerialConnection>(pendingHost_, pendingPort_, pendingRemoteSerial_,
+                                                              pendingRemoteInstance_);
         sessionName = pendingRemoteLabel_ + L" @ " + pendingHost_;
     }
 
@@ -3920,7 +3893,6 @@ void MainWindow::ConnectFromDialog() {
     session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
     session->id = nextSessionId_++;
     session->mode = pendingMode_;
-    session->udpRaw = pendingMode_ == 3 && pendingRemoteUdp_;
     // Only the desktop that owns the local COM answers terminal queries.
     // A shared viewer receives live output and history through the same Feed
     // path, so neither may synthesize additional device input. SSH/Telnet keep

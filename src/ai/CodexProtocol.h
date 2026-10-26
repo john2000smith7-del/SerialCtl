@@ -137,14 +137,17 @@ inline Json DecodeResponse(Operation operation, const Json &result) {
                         {{"role", u8"我"}, {"text", text}, {"messageId", item.value("id", std::string())}});
                 }
             }
+            bool failedStep = false;
+            for (const auto &source : turn.value("items", Json::array()))
+                if (source.value("status", std::string()) == "failed" ||
+                    (source.contains("exitCode") && source["exitCode"].is_number_integer() &&
+                     source["exitCode"].get<int>() != 0))
+                    failedStep = true;
             for (size_t i = first; i < messages.size(); ++i) {
                 messages[i]["group"] = turn.value("id", std::string());
+                // A failed diagnostic command is different from a failed turn.
                 messages[i]["status"] = turn.value("status", std::string());
-                for (const auto &source : turn.value("items", Json::array()))
-                    if (source.value("status", std::string()) == "failed" ||
-                        (source.contains("exitCode") && source["exitCode"].is_number_integer() &&
-                         source["exitCode"].get<int>() != 0))
-                        messages[i]["status"] = "failed";
+                messages[i]["failedStep"] = failedStep;
             }
         }
         return {{"conversationId", thread.at("id")}, {"messages", messages}};

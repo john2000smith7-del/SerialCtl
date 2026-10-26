@@ -121,6 +121,13 @@ int main() {
         Require(grouped["messages"][0]["group"] == "turn-a" && grouped["messages"][0]["process"] == true &&
                     grouped["messages"][1]["process"] == false,
                 "History lost process/final-answer boundaries");
+        const auto recovered = DecodeResponse(Operation::RestoreConversation,
+            {{"thread", {{"id", "t"}, {"turns", {{{"id", "recovered-turn"}, {"status", "completed"},
+                {"items", {commandItem, {{"type", "agentMessage"}, {"id", "answer"}, {"text", "Diagnosis"}}}}}}}}}});
+        Require(recovered["messages"][0]["status"] == "completed" &&
+                    recovered["messages"][0]["failedStep"] == true &&
+                    recovered["messages"][1]["failedStep"] == true,
+                "A failed diagnostic command must not overwrite the server's completed turn status");
         const auto resumed = MakeRequest(Operation::RestoreConversation, 78, {{"conversationId", "t"}});
         Require(resumed["params"]["config"]["web_search"] == "disabled" &&
                     resumed["params"]["approvalPolicy"] == "never",

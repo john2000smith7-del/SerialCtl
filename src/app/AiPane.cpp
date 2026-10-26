@@ -629,6 +629,23 @@ void AiPane::Paint(HDC target) {
     UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
     UiBox(dc, composerBounds_, c.field, GetFocus() == Control(Input) ? UiAccentInk(dark_) : c.border, D(12));
 }
+void AiPane::CollapseCompletedProcess(const std::string &group) {
+    if (group.empty())
+        return;
+    // Some gateways omit the commentary phase. Within a completed turn only
+    // the last answer stays outside the expandable process, including on resume.
+    Message *finalAnswer = nullptr;
+    for (auto &message : messages_)
+        if (message.group == group && message.role == L"AI" && !message.process)
+            finalAnswer = &message;
+    if (finalAnswer)
+        for (auto &message : messages_)
+            if (message.group == group && message.role == L"AI" && &message != finalAnswer) {
+                message.process = true;
+                message.measuredLength = SIZE_MAX;
+            }
+    collapsedGroups_.insert(group);
+}
 void AiPane::Reflow(bool appended) {
     if (!transcript_)
         return;
@@ -1682,6 +1699,7 @@ void AiPane::Event(const Json &e) {
             collapsedGroups_.clear();
             groupStates_.clear();
             displayGroup_.clear();
+            std::map<std::string, std::string> outcomes;
             for (const auto &message : result.value("messages", Json::array())) {
                 displayGroup_ = message.value("group", std::string());
                 const auto count = messages_.size();
@@ -1689,10 +1707,19 @@ void AiPane::Event(const Json &e) {
                     message.value("messageId", std::string()));
                 if (messages_.size() > count)
                     messages_.back().process = messages_.back().process || message.value("process", false);
-                if (message.value("status", std::string()) == "completed" && !displayGroup_.empty()) {
-                    collapsedGroups_.insert(displayGroup_);
-                    groupStates_[displayGroup_] = L"已完成";
+                if (!displayGroup_.empty()) {
+                    outcomes[displayGroup_] = message.value("status", std::string());
+                    if (message.value("failedStep", false))
+                        groupStates_[displayGroup_] = L"含失败记录";
                 }
+            }
+            for (const auto &[group, outcome] : outcomes) {
+                const bool failedStep = groupStates_[group] == L"含失败记录";
+                groupStates_[group] = outcome == "completed" ? (failedStep ? L"已完成 · 含失败记录" : L"已完成")
+                                      : outcome == "failed" ? L"失败"
+                                      : outcome == "interrupted" ? L"已停止" : L"状态待确认";
+                if (outcome == "completed")
+                    CollapseCompletedProcess(group);
             }
             displayGroup_.clear();
             waitingReply_ = false;
@@ -1802,11 +1829,12 @@ void AiPane::Event(const Json &e) {
         const bool failedStep = groupStates_[displayGroup_] == L"含失败记录";
         groupStates_[displayGroup_] = stopRequested_           ? L"已停止"
                                       : outcome == "failed"    ? L"失败"
+                                      : failedStep && outcome == "completed" ? L"已完成 · 含失败记录"
                                       : failedStep             ? L"含失败记录"
                                       : outcome == "completed" ? L"已完成"
                                                                : L"状态待确认";
-        if (!failedStep && !stopRequested_ && outcome == "completed")
-            collapsedGroups_.insert(displayGroup_);
+        if (!stopRequested_ && outcome == "completed")
+            CollapseCompletedProcess(displayGroup_);
         Reflow(true);
         taskAuthorized_ = false;
         const auto state = e.value("status", std::string());

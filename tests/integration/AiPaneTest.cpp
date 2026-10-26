@@ -1,4 +1,5 @@
 #include "AiPane.h"
+#include "UiTestEvidence.h"
 #include <chrono>
 #include <cmath>
 #include <gdiplus.h>
@@ -200,8 +201,68 @@ struct AiPaneTestAccess {
         pane.busy_ = true;
         pane.groupStates_[pane.displayGroup_] = L"含失败记录";
         pane.Add(L"工具", L"退出码 1", "failed-tool");
+        const auto failedTool = pane.messages_.size() - 1;
+        pane.Add(L"AI", L"已根据日志完成分析", "recovered-final");
+        require(!pane.messages_[failedTool].folded, "Running process must stay expanded");
         pane.Event({{"event", "taskFinished"}, {"status", "completed"}});
-        require(!pane.messages_.back().folded, "Failed operation must remain visible even when AI turn completes");
+        require(pane.messages_[failedTool].folded && !pane.messages_.back().folded &&
+                    pane.groupStates_["failed-fixture"] == L"已完成 · 含失败记录",
+                "A completed answer must collapse diagnostic failures while retaining their summary");
+        require(pane.messages_[failedTool].text == L"退出码 1", "Folding lost a failed command's evidence");
+        for (const bool dark : {false, true}) {
+            pane.NewConversation();
+            pane.Theme(dark);
+            pane.thread_ = "phase-less-thread";
+            pane.displayGroup_ = "phase-less-turn";
+            pane.busy_ = true;
+            pane.Event({{"event", "textComplete"}, {"messageId", "progress"}, {"text", "Checking logs"}, {"final", true}});
+            pane.Add(L"工具", L"完整工具输出", "phase-less-tool");
+            pane.Event({{"event", "textComplete"}, {"messageId", "answer"}, {"text", "Final diagnosis"}, {"final", true}});
+            require(!pane.messages_[0].process && !pane.messages_[1].folded,
+                    "Process collapsed before the turn actually finished");
+            const std::wstring palette = dark ? L"dark" : L"light";
+            ui_test::SaveUiEvidence(pane.transcript_, L"v205-process-" + palette + L"-running.png",
+                                 [&](HDC dc) { pane.PaintTranscript(dc); });
+            pane.Event({{"event", "taskFinished"}, {"status", "completed"}});
+            require(pane.messages_[0].process && pane.messages_[0].folded && pane.messages_[1].hidden &&
+                        !pane.messages_[2].process && !pane.messages_[2].hidden,
+                    "Phase-less progress did not auto-collapse separately from the final answer");
+            ui_test::SaveUiEvidence(pane.transcript_, L"v205-process-" + palette + L"-completed.png",
+                                 [&](HDC dc) { pane.PaintTranscript(dc); });
+            const auto &summary = pane.messages_.front().bounds;
+            const auto toggle = MAKELPARAM(summary.right - pane.D(20), summary.top + pane.D(20) - pane.scroll_.offset);
+            SendMessageW(pane.transcript_, WM_LBUTTONDOWN, MK_LBUTTON, toggle);
+            SendMessageW(pane.transcript_, WM_LBUTTONUP, 0, toggle);
+            require(!pane.messages_[0].folded && !pane.messages_[1].hidden &&
+                        pane.messages_[1].text == L"完整工具输出",
+                    "Auto-collapsed process cannot be reopened using its real transcript action");
+            ui_test::SaveUiEvidence(pane.transcript_, L"v205-process-" + palette + L"-expanded.png",
+                                 [&](HDC dc) { pane.PaintTranscript(dc); });
+        }
+        for (const std::string outcome : {"failed", "interrupted"}) {
+            pane.NewConversation();
+            pane.displayGroup_ = "unfinished-turn";
+            pane.busy_ = true;
+            pane.stopRequested_ = outcome == "interrupted";
+            pane.Add(L"工具", L"未完成输出", "unfinished-tool");
+            pane.Event({{"event", "taskFinished"}, {"status", outcome}});
+            require(!pane.messages_.front().folded, "Failed or stopped turn hid its unresolved process");
+        }
+        pane.NewConversation();
+        pane.stopRequested_ = false;
+        pane.requests_[1002] = {"resume", {}};
+        pane.busy_ = true;
+        pane.Event({{"event", "response"}, {"token", 1002}, {"result", {
+            {"conversationId", "restored-thread"}, {"messages", {
+                {{"role", "AI"}, {"text", "Checking"}, {"messageId", "restored-progress"},
+                 {"group", "restored-turn"}, {"status", "completed"}, {"failedStep", true}},
+                {{"role", "工具"}, {"text", "exit 1"}, {"messageId", "restored-tool"},
+                 {"group", "restored-turn"}, {"status", "completed"}, {"failedStep", true}},
+                {{"role", "AI"}, {"text", "Diagnosis"}, {"messageId", "restored-answer"},
+                 {"group", "restored-turn"}, {"status", "completed"}, {"failedStep", true}}}}}}});
+        require(pane.messages_[0].folded && pane.messages_[1].hidden && !pane.messages_[2].process &&
+                    pane.groupStates_["restored-turn"] == L"已完成 · 含失败记录",
+                "Restoring a completed turn reopened its process or lost failed-step information");
         pane.NewConversation();
         pane.thread_ = "fixture";
         pane.NewConversation();

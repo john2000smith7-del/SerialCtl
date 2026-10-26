@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+#include "GatewayFixture.h"
+#include "UiTestEvidence.h"
 #include "Win32Helpers.h"
 #include "resource.h"
 #include <gdiplus.h>
@@ -90,7 +92,7 @@ struct AiDeviceTestAccess {
         Require(remote != nullptr, "Remote connection dialog missing");
         RECT dialogBounds{};
         GetClientRect(remote, &dialogBounds);
-        for (int id : {IDC_HOST, IDC_SERIAL_REFRESH, IDC_REMOTE_MODE, IDC_SERIAL, IDC_DIALOG_ERROR, IDCANCEL, IDOK}) {
+        for (int id : {IDC_HOST, IDC_SERIAL_REFRESH, IDC_SERIAL, IDC_DIALOG_ERROR, IDCANCEL, IDOK}) {
             RECT control{};
             GetWindowRect(GetDlgItem(remote, id), &control);
             MapWindowPoints(nullptr, remote, reinterpret_cast<POINT *>(&control), 2);
@@ -98,9 +100,15 @@ struct AiDeviceTestAccess {
                         control.bottom <= dialogBounds.bottom,
                     "Remote discovery controls escape compact dialog");
         }
-        Require(SendDlgItemMessageW(remote, IDC_REMOTE_MODE, CB_GETCOUNT, 0, 0) == 3,
-                "Remote transport options missing");
-        for (int id : {IDC_REMOTE_MODE, IDC_SERIAL}) {
+        unsigned visibleSelectors = 0;
+        for (HWND child = GetWindow(remote, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+            wchar_t className[32]{};
+            GetClassNameW(child, className, 32);
+            if (_wcsicmp(className, L"ComboBox") == 0 && (GetWindowLongPtrW(child, GWL_STYLE) & WS_VISIBLE))
+                ++visibleSelectors;
+        }
+        Require(visibleSelectors == 1, "Remote dialog must offer only the discovered SerialCtl port selector");
+        for (int id : {IDC_SERIAL}) {
             RECT field{};
             GetWindowRect(GetDlgItem(remote, id), &field);
             Require(field.bottom - field.top == 28, "Remote dropdown must retain the 28 px field height");
@@ -116,6 +124,39 @@ struct AiDeviceTestAccess {
         Require(hostField.bottom - hostField.top == 28 && remoteRefresh.top == hostField.top &&
                     remoteRefresh.bottom == hostField.bottom && remoteRefresh.left > hostField.right,
                 "Remote Refresh must align with IP field, never overlap the device dropdown");
+        ShowWindow(remote, SW_SHOW);
+        for (const bool dark : {false, true}) {
+            main.darkMode_ = dark;
+            main.ApplyTheme();
+            ui_test::SaveUiEvidence(remote, dark ? L"v205-remote-dark.png" : L"v205-remote-light.png");
+        }
+        main.darkMode_ = false;
+        main.ApplyTheme();
+        {
+            test::Wsa sockets;
+            test::Fixture gateway(18540, 18555);
+            main.discoveryExplicitPort_ = static_cast<std::uint16_t>(gateway.server.Port());
+            auto query = [&] {
+                main.DiscoverSharedSerialPorts(remote);
+                if (main.discoveryThread_.joinable()) main.discoveryThread_.join();
+                MSG notification{};
+                while (PeekMessageW(&notification, parent, WM_APP, WM_APP + 100, PM_REMOVE))
+                    main.HandleMessage(notification.message, notification.wParam, notification.lParam);
+            };
+            query();
+            Require(IsWindowEnabled(GetDlgItem(remote, IDOK)) && !main.pendingRemoteInstance_.empty() &&
+                        SendDlgItemMessageW(remote, IDC_SERIAL, CB_GETCOUNT, 0, 0) == 2,
+                    "Native remote dialog failed to discover the controlled SerialCtl COM3/COM5 service");
+            std::wstring error;
+            Require(main.ReadConnectionDialog(remote, error) && main.pendingRemoteSerial_ == L"COM3",
+                    "Native remote dialog did not pin the discovered SerialCtl port");
+            gateway.server.Stop();
+            query();
+            Require(!IsWindowEnabled(GetDlgItem(remote, IDOK)) && main.pendingRemoteInstance_.empty() &&
+                        MainWindow::ControlText(GetDlgItem(remote, IDC_SERIAL)) == L"未发现可连接的串口" &&
+                        !main.ReadConnectionDialog(remote, error),
+                    "Missing SerialCtl service fabricated a connectable UDP fallback");
+        }
         main.discoveryCancel_ = true;
         main.discoveryDialog_ = nullptr;
         DestroyWindow(remote);
