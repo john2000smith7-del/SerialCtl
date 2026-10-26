@@ -1,0 +1,46 @@
+name: Export small V2.0.5 manual screenshot groups
+on:
+  push:
+    branches: [verification/v205-autoupdate]
+    paths: [.github/workflows/v205-manual-assets-small.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        group: [0,1,2,3,4,5]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-UI-evidence
+          path: native-evidence
+          run-id: 40257439975
+          github-token: ${{ github.token }}
+      - name: Export one bounded group
+        env:
+          GROUP: ${{ matrix.group }}
+        run: |
+          python - <<'PY'
+          import pathlib,json,base64,hashlib,struct,os
+          paths=sorted(pathlib.Path('native-evidence').rglob('*.png'))
+          wanted=['x64-packaged-light.png','x64-light-connection-0.png','x64-light-connection-1.png','x64-light-connection-2.png','x64-light-connection-3.png','x64-light-shared-port.png','x64-light-ai-connect.png','x64-light-ai-expanded.png','x64-light-api-cmd-visible.png','x64-light-cmd.png','x64-light-command.png','x64-light-macro.png','x64-light-macro-ten.png','x64-light-sftp.png','x64-light-host-key.png','x64-light-sftp-path.png','x64-light-power-unavailable.png','x64-packaged-dark.png']
+          extra=[p.name for p in paths if 'light' in p.name and 'settings-opened' in p.name and 'power' not in p.name][:2]
+          wanted+=extra
+          group=int(os.environ['GROUP'])
+          catalog=[]
+          for p in paths:
+              if 'light' not in p.name and p.name not in wanted: continue
+              if 'frame-' in p.name or 'power' in p.name and 'unavailable' not in p.name: continue
+              b=p.read_bytes();w,h=struct.unpack('>II',b[16:24])
+              item={'name':p.name,'width':w,'height':h,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+              catalog.append(item)
+              if p.name in wanted and wanted.index(p.name)%6==group:
+                  encoded=base64.b64encode(b).decode()
+                  print('MANUAL_META '+json.dumps(item))
+                  chunks=[encoded[i:i+12000] for i in range(0,len(encoded),12000)]
+                  for i,part in enumerate(chunks): print('MANUAL_ASSET '+p.name+' '+str(i+1)+'/'+str(len(chunks))+' '+part)
+          if group==0: print('MANUAL_CATALOG '+json.dumps(catalog))
+          PY
