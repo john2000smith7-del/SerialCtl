@@ -23,6 +23,15 @@ std::map<std::wstring, unsigned long long> hostKeyRevisions;
 
 const wchar_t* TrustRegistryPath = L"Software\\SerialCtl\\TrustedHostKeys";
 
+std::wstring EndpointName(const std::wstring& host, std::uint16_t port) {
+    auto name = host + L":" + std::to_wstring(port);
+    // Registry value names are case insensitive. The shared in-memory pin and
+    // revision must use the same rule across SSH, AI and SFTP.
+    std::transform(name.begin(), name.end(), name.begin(),
+        [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+    return name;
+}
+
 std::wstring ReadTrustedKey(const std::wstring& name) {
     HKEY key = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, TrustRegistryPath, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
@@ -234,7 +243,7 @@ bool SameFingerprint(const std::wstring& a, const std::wstring& b) {
 
 std::wstring TrustedPuttyHostKey(const std::wstring& host, std::uint16_t port) {
     std::lock_guard<std::mutex> lock(cacheMutex);
-    return ReadTrustedKey(host + L":" + std::to_wstring(port));
+    return ReadTrustedKey(EndpointName(host, port));
 }
 
 bool IsPuttyHostKeyFailure(const std::wstring& message) {
@@ -258,7 +267,7 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
     std::uint16_t port, const std::wstring& username, const std::wstring& password,
     std::wstring& hostKey, std::wstring& error, const std::atomic_bool* cancel,
     const HostKeyConfirmation& confirm, bool reverify) {
-    const std::wstring cacheKey = host + L":" + std::to_wstring(port);
+    const std::wstring cacheKey = EndpointName(host, port);
     std::wstring previous;
     unsigned long long revision = 0;
     {
