@@ -3,6 +3,7 @@
 #include "SessionLogger.h"
 #include "json.hpp"
 #include <condition_variable>
+#include <atomic>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -34,6 +35,7 @@ class PowerService {
     friend struct PowerServiceTestAccess;
     bool testPauseRequested_ = false;
     bool testWorkerPaused_ = false;
+    bool testPauseRecoveryOn_ = false, testRecoveryAtOn_ = false;
     void FailNextOutputReadbackForTest();
 #endif
     struct Transport;
@@ -67,5 +69,7 @@ class PowerService {
     std::uint64_t pollAt_ = 0, taskAt_ = 0;
     unsigned pollInterval_ = 1000;
     std::uint64_t recoveryNotBefore_[3]{};
+    std::atomic<std::uint64_t> recoveryCancelEpoch_{0};
+    std::uint64_t taskRecoveryEpoch_ = 0;
 };
 } // namespace serialctl
