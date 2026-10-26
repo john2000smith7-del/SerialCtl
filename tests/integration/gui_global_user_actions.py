@@ -198,10 +198,57 @@ class GlobalActions(DesktopActions):
         require(self.user.GetGUIThreadInfo(self.thread, c.byref(info)), 'Cannot read actual GUI focus')
         return {'focus': int(info.focus or 0), 'foreground': int(self.user.GetForegroundWindow() or 0)}
 
+    def reveal_power_control(self, window):
+        # IsWindowVisible also returns true for children clipped by the power
+        # body's viewport. Exercise its real scrollbar before hitting a field;
+        # never replace a failed desktop click with SetFocus/SendMessage input.
+        body = self.user.GetParent(window)
+        while body:
+            parent = self.user.GetParent(body)
+            name = c.create_unicode_buffer(64)
+            self.user.GetClassNameW(parent, name, len(name))
+            if name.value == 'SerialCtlPowerPane':
+                break
+            body = parent
+        if not body:
+            return
+        # Let the pane observe the previous focus before deliberately scrolling
+        # away from it; its keyboard-reveal timer must not undo user scrolling.
+        time.sleep(.55)
+        for _ in range(40):
+            view, origin = RECT(), POINT()
+            require(self.user.GetClientRect(body, c.byref(view)) and
+                    self.user.ClientToScreen(body, c.byref(origin)),
+                    'Cannot inspect the real power scroll viewport')
+            top, bottom = origin.y, origin.y + view.bottom
+            bounds = self.rect(window)
+            if bounds[1] >= top and bounds[3] <= bottom:
+                return
+            require(bounds[3] - bounds[1] <= bottom - top,
+                    'Power field is taller than its available viewport')
+            point = (origin.x + view.right - max(2, round(5 * self.scale)),
+                     (top + bottom) // 2)
+            require(self.user.WindowFromPoint(POINT(*point)) == body,
+                    'Power scrollbar is covered by another control')
+            self.move_mouse(point)
+            delta = 120 if bounds[1] < top else -120
+            self.user.mouse_event(0x800, 0, 0, c.c_uint32(delta).value, 0)
+            self.trace.append({**self.timestamp(), 'event': 'mouse_wheel',
+                               'delta': delta, 'purpose': 'reveal power control',
+                               'id': self.user.GetDlgCtrlID(window)})
+            time.sleep(.12)
+            require(self.rect(window) != bounds,
+                    'Actual power scrollbar input did not move the clipped field')
+        raise AssertionError('Power field cannot be reached through actual scrolling')
+
     def click_window(self, window, point=None):
         require(self.user.IsWindowVisible(window) and self.user.IsWindowEnabled(window),
                 'Actual mouse target is hidden or disabled')
+        previous = self.rect(window)
+        self.reveal_power_control(window)
         bounds = self.rect(window)
+        if point is not None:
+            point = (point[0] + bounds[0] - previous[0], point[1] + bounds[1] - previous[1])
         point = point or ((bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2)
         require(self.user.WindowFromPoint(POINT(*point)) == window,
                 'Actual mouse target is covered at ' + repr(point))
@@ -357,6 +404,7 @@ class GlobalActions(DesktopActions):
         if count <= 0:
             self.report['skipped_controls'].append({'id': identifier, 'reason': 'no available options; no hardware/resource is fabricated'})
             return
+        self.reveal_power_control(window)
         bounds = self.rect(window)
         point = (bounds[2] - max(8, round(16 * self.scale)), (bounds[1] + bounds[3]) // 2)
         self.click_window(window, point)
@@ -538,6 +586,7 @@ class GlobalActions(DesktopActions):
 
     def select_combo(self, window, target):
         require(0 <= target < self.query(window, 0x146), 'Requested real combo option is absent')
+        self.reveal_power_control(window)
         bounds = self.rect(window)
         self.click_window(window, (bounds[2] - max(8, round(16 * self.scale)),
                                    (bounds[1] + bounds[3]) // 2))
