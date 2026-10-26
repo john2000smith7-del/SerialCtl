@@ -1,0 +1,64 @@
+name: Verify V2.0.7 published two-file delivery
+on:
+  push:
+    branches: [verification/v207-final]
+    paths: [verify-public-assets.json]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Re-download actual release assets and verify original signature and exact bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          python tests/integration/verify_published_assets.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V207-published-part-0
+          path: ${{ runner.temp }}/v207-published/part-0/part-0.bin
+          if-no-files-found: error
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V207-published-part-1
+          path: ${{ runner.temp }}/v207-published/part-1/part-1.bin
+          if-no-files-found: error
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V207-published-part-2
+          path: ${{ runner.temp }}/v207-published/part-2/part-2.bin
+          if-no-files-found: error
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V207-published-part-3
+          path: ${{ runner.temp }}/v207-published/part-3/part-3.bin
+          if-no-files-found: error
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V207-published-part-4
+          path: ${{ runner.temp }}/v207-published/part-4/part-4.bin
+          if-no-files-found: error
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V207-published-part-5
+          path: ${{ runner.temp }}/v207-published/part-5/part-5.bin
+          if-no-files-found: error
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V207-published-verification
+          path: |
+            ${{ runner.temp }}/v207-published/public-release-verification.json
+            ${{ runner.temp }}/v207-published/update.json
+          if-no-files-found: error
+          retention-days: 30
