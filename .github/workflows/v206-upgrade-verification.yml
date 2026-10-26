@@ -55,7 +55,7 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          python -c "import base64,pathlib; [(print('SERIALCTL_NATIVE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted((p for p in pathlib.Path('native-evidence').rglob('*.png') if p.name in {'v206-host-key-light-changed-unchecked.png','v206-host-key-dark-changed-checked.png','v206-host-key-light-192dpi-changed-unchecked.png','v206-host-key-dark-192dpi-changed-checked.png','x64-light-ssh-dialog.png','x64-dark-ssh-dialog.png','x64-light-ai-connect.png','x64-dark-ai-connect.png'}))]"
+          python -c "import base64,pathlib; [(print('SERIALCTL_NATIVE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted((p for p in pathlib.Path('native-evidence').rglob('*.png') if p.name in {'v206-host-key-light-changed-unchecked.png','v206-host-key-dark-changed-checked.png','v206-host-key-light-192dpi-changed-unchecked.png','v206-host-key-dark-192dpi-changed-checked.png','x64-light-ssh-dialog.png','x64-dark-ssh-dialog.png','x64-light-host-key.png','x64-dark-host-key.png','x64-light-ai-connect.png','x64-dark-ai-connect.png'}))]"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
