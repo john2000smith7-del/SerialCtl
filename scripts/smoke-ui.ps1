@@ -57,6 +57,8 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll", EntryPoint="GetDlgItem")] static extern IntPtr NativeGetDlgItem(IntPtr window,int id);
     public static IntPtr GetDlgItem(IntPtr window,int id) {
         var direct=NativeGetDlgItem(window,id); if(direct!=IntPtr.Zero) return direct;
+        var type=new StringBuilder(64); GetClassName(window,type,type.Capacity);
+        if(type.ToString()!="SerialCtlPowerPane") return IntPtr.Zero;
         IntPtr found=IntPtr.Zero;
         EnumChildWindows(window,delegate(IntPtr child,IntPtr ignored) {
             if(GetDlgCtrlID(child)==id) {found=child; return false;} return true;
