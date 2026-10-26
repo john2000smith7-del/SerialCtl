@@ -1,0 +1,31 @@
+name: Review V2.0.5 native screenshots
+on:
+  push:
+    branches: [verification/v205-autoupdate]
+    paths: [.github/workflows/v205-native-review.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-UI-evidence
+          path: native-evidence
+          run-id: 40257439975
+          github-token: ${{ github.token }}
+      - name: Read original native screenshots recursively
+        run: |
+          python - <<'PY'
+          import base64,pathlib
+          root=pathlib.Path('native-evidence')
+          images=sorted(root.rglob('v205-*.png'))
+          print('Native screenshot count:',len(images))
+          for p in images:
+              print('SERIALCTL_NATIVE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())
+          if len(images)!=8:
+              print('Available evidence files:',*[str(p) for p in root.rglob('*') if p.is_file()],sep='\n')
+              raise SystemExit('Expected eight original native UI screenshots')
+          PY
