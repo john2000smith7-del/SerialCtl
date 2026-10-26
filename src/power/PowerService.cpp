@@ -578,6 +578,11 @@ Json PowerService::Submit(const Json &command) {
                        {"command", command},
                        {"requestId", command.value("requestId", std::string())}};
         actions_[id] = action;
+        // Invalidate in-flight recovery at acceptance, even while the worker is
+        // waiting for a device readback. A queued Stop must not wait for ON.
+        if (priority || type == "connect" || type == "mode") ++recoveryCancelEpoch_;
+        auto queued = command;
+        if (type == "recover") queued["_recoveryEpoch"] = recoveryCancelEpoch_.load();
         if (priority) {
             for (auto it = queue_.begin(); it != queue_.end();) {
                 const auto t = it->second.value("type", std::string());
@@ -588,9 +593,9 @@ Json PowerService::Submit(const Json &command) {
                 } else
                     ++it;
             }
-            queue_.emplace_front(id, command);
+            queue_.emplace_front(id, std::move(queued));
         } else
-            queue_.emplace_back(id, command);
+            queue_.emplace_back(id, std::move(queued));
         while (actions_.size() > 256) {
             auto it = std::find_if(actions_.begin(), actions_.end(), [](const auto &item) {
                 return item.second["state"] != "queued" && item.second["state"] != "running";
@@ -659,6 +664,29 @@ void PowerService::Outputs(const Json &channels, bool enabled, Json &result) {
                     continue;
                 }
                 Select(channel);
+                if (enabled && task_.is_object() && task_.value("type",std::string()) == "recover") {
+#ifdef SERIALCTL_POWER_TESTING
+                    {
+                        std::unique_lock<std::mutex> lock(mutex_);
+                        if (testPauseRecoveryOn_) {
+                            testRecoveryAtOn_ = true; wake_.notify_all();
+                            wake_.wait(lock,[this] {return stopping_ || !testPauseRecoveryOn_;});
+                        }
+                    }
+#endif
+                    if (taskRecoveryEpoch_ != recoveryCancelEpoch_.load()) {
+                        result.push_back({{"channel",channel},{"state","canceled"}});
+                        return;
+                    }
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (taskRecoveryEpoch_ != recoveryCancelEpoch_.load()) {
+                        result.push_back({{"channel",channel},{"state","canceled"}});
+                        return;
+                    }
+                    actions_[task_.at("actionId").get<std::string>()]["onStartedAt"] = GetTickCount64();
+                }
+                if(enabled && task_.is_object() && task_.value("type",std::string())=="recover" &&
+                    taskRecoveryEpoch_ != recoveryCancelEpoch_.load()) return;
                 Command(enabled ? "CHAN:OUTP ON" : "CHAN:OUTP OFF");
                 bool confirmed = Number("CHAN:OUTP?") != 0;
                 Require(confirmed == enabled, "Output readback differs");
@@ -717,7 +745,7 @@ void PowerService::StopTask() {
         const auto id = completed.value("actionId", std::string());
         if (actions_.count(id) && actions_[id].value("state", std::string()) == "running") {
             actions_[id]["state"] = "canceled";
-            actions_[id]["error"] = "Recovery stopped before automatic power ON";
+            actions_[id]["error"] = "Recovery stopped; no further automatic ON will be submitted";
         }
     }
     task_ = Json();
@@ -856,6 +884,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
         else if (type == "stop")
             StopTask();
         else if (type == "recover") {
+            Require(command.at("_recoveryEpoch").get<std::uint64_t>() == recoveryCancelEpoch_.load(), "Recovery canceled before start");
             const auto state = State();
             Require(transport_ && state.value("connected", false), "Supply disconnected");
             Require(command.value("identity", std::string()) == state.value("identity", std::string()) &&
@@ -869,6 +898,8 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             taskAt_ = confirmed + 10000;
             for (const auto &channel : owned_) recoveryNotBefore_[channel.get<int>() - 1] = taskAt_;
             task_ = command;
+            taskRecoveryEpoch_ = command.at("_recoveryEpoch").get<std::uint64_t>();
+            task_.erase("_recoveryEpoch");
             task_["actionId"] = id;
             task_["phase"] = "off_wait";
             task_["offConfirmedAt"] = confirmed;
@@ -960,6 +991,8 @@ void PowerService::Execute(const std::string &id, const Json &command) {
         if (type != "recover") action["state"] = "completed";
     } catch (const std::exception &e) {
         action["state"] = "failed";
+        if(command.value("type",std::string()) == "recover" && command.contains("_recoveryEpoch") &&
+            command["_recoveryEpoch"].get<std::uint64_t>() != recoveryCancelEpoch_.load()) action["state"] = "canceled";
         action["error"] = e.what();
         action["timestamp"] = Timestamp();
         auto failureRecord = action.dump();
@@ -1107,6 +1140,7 @@ void PowerService::Shutdown() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         stopping_ = true;
+        ++recoveryCancelEpoch_;
         queue_.clear();
         wake_.notify_all();
     }
@@ -1448,12 +1482,14 @@ void PowerService::AdvanceTask() {
     if (type == "recover") {
         Require(GetTickCount64() >= task_.at("notBeforeOn").get<std::uint64_t>(), "Recovery delay not elapsed");
         ReadMode();
+        if(taskRecoveryEpoch_ != recoveryCancelEpoch_.load()) {StopTask();return;}
         const auto current = State();
         Require(current.value("connected",false) && current.value("identity",std::string()) == task_.value("identity",std::string()) &&
             current.value("mode",std::string()) == task_.value("mode",std::string()), "Recovery device identity/mode changed; pending ON canceled");
         const auto id = task_.at("actionId").get<std::string>();
         const auto beforeOn = GetTickCount64();
         Outputs(owned_, true, result);
+        if(taskRecoveryEpoch_ != recoveryCancelEpoch_.load()) {StopTask();return;}
         task_["phase"] = "on_confirmed";
         task_["completed"] = 1;
         task_["running"] = false;
