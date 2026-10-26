@@ -1,6 +1,7 @@
 #pragma once
 #include "PowerService.h"
 #include "UiStyle.h"
+#include "ToolbarIcons.h"
 #include <array>
 #include <deque>
 #include <functional>
@@ -22,19 +23,25 @@ class PowerPane {
     Json SelectedChannels() {
         return Selection();
     }
+    void SetRecoveryTarget(const std::string&, const std::wstring&, bool eligible);
+    Json RecoveryBinding();
 
   private:
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
+    static LRESULT CALLBACK BodyProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static INT_PTR CALLBACK ConnectProc(HWND, UINT, WPARAM, LPARAM);
     HWND Child(const wchar_t *type, const wchar_t *text, int id, DWORD style = 0);
     void Scroll(int position);
+    RECT ScrollThumb() const;
     void Layout();
     void Paint(HDC);
+    void PaintBody(HDC);
     void Action(int id);
     void Refresh();
     HWND Combo(int id, const std::vector<std::wstring> &items, int selected = 0);
     HWND Control(int id) {
-        return GetDlgItem(window_, id);
+        const auto found = controls_.find(id);
+        return found == controls_.end() ? nullptr : found->second;
     }
     void CreateControls();
     void DetailsLayout(int width, int top);
@@ -57,14 +64,25 @@ class PowerPane {
     std::wstring TaskPath();
     void TaskFile(bool save);
     HWND window_ = nullptr;
+    HWND body_ = nullptr;
+    HWND lastFocus_ = nullptr;
+    int bodyTop_ = 0, bodyHeight_ = 0, footerTop_ = 0, bodyWidth_ = 0, detailsInset_ = 0, detailStatusTop_ = 0;
+    std::array<RECT, 3> channelRects_{};
+    std::vector<std::pair<std::wstring, RECT>> detailLabels_;
+    std::string recoveryTarget_;
+    std::wstring recoveryLabel_;
+    bool recoveryEligible_ = false;
+    Json recoveryBinding_;
     HFONT font_ = nullptr, titleFont_ = nullptr, valueFont_ = nullptr, smallFont_ = nullptr;
     bool dark_ = true;
     int dpi_ = 96;
     UiFieldStyle fieldStyle_{&dark_, nullptr, 96};
+    ToolbarIcons icons_;
     int scroll_ = 0;
     int contentHeight_ = 0;
     int cardTop_ = 0, cardWidth_ = 0, cardHeight_ = 0, cardColumns_ = 1, taskTop_ = 0;
     bool scrolling_ = false;
+    int scrollGrab_ = 0;
     int tab_ = 0, automation_ = 0, settings_ = 0, draftMode_ = 0, independentSelection_ = 1;
     int detailsTop_ = 0, automationOffset_ = 0;
     UiLayoutBatch* currentLayout_ = nullptr;
@@ -81,7 +99,7 @@ class PowerPane {
     std::array<HWND, 4> buttons_{};
     HWND protectionButton_ = nullptr;
     HWND onTime_ = nullptr, offTime_ = nullptr, count_ = nullptr, start_ = nullptr, stop_ = nullptr, save_ = nullptr;
-    HBRUSH brush_ = nullptr, fieldBrush_ = nullptr, surfaceBrush_ = nullptr;
+    HBRUSH brush_ = nullptr, fieldBrush_ = nullptr, surfaceBrush_ = nullptr, panelBrush_ = nullptr;
     std::string action_;
     std::deque<std::string> pendingActions_;
     Json state_ = Json::object();

@@ -11,13 +11,29 @@ enum class Operation {
     StartTask,
     StopTask,
     RestoreConversation,
-    CompactConversation
+    CompactConversation,
+    ServerHome,
+    ReadDirectory,
+    DirectoryFallback
 };
 inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &data) {
     Json params = Json::object();
     const char *method = "";
     const Json policy = {{"features.shell_tool", true}, {"features.multi_agent", false}, {"web_search", "disabled"}};
     switch (operation) {
+    case Operation::ServerHome:
+        method = "command/exec";
+        params = {{"command", Json::array({"printenv", "HOME"})}, {"timeoutMs", 3000}, {"outputBytesCap", 4096}};
+        break;
+    case Operation::ReadDirectory:
+        method = "fs/readDirectory";
+        params = {{"path", data.at("path")}};
+        break;
+    case Operation::DirectoryFallback:
+        method = "command/exec";
+        params = {{"command", Json::array({"find", "-L", data.at("path"), "-mindepth", "1", "-maxdepth", "1", "-type", "d", "-print0"})},
+            {"timeoutMs", 3000}, {"outputBytesCap", 65536}};
+        break;
     case Operation::Models:
         method = "model/list";
         params = {{"limit", 100}};
@@ -63,7 +79,8 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
         break;
     }
     if (operation == Operation::NewConversation || operation == Operation::RestoreConversation || operation == Operation::StartTask) {
-        if (!data.value("cwd", std::string()).empty()) params["cwd"] = data["cwd"];
+        // Restoring a thread retains its own workspace, not the latest global default.
+        if (operation != Operation::RestoreConversation && !data.value("cwd", std::string()).empty()) params["cwd"] = data["cwd"];
         // This value comes from config/read, never a user model selector or old registry preference.
         if (!data.value("defaultModel", std::string()).empty()) params["model"] = data["defaultModel"];
     }
@@ -90,8 +107,13 @@ inline std::string NativeItemText(const Json& item, bool completed) {
 }
 inline Json DecodeResponse(Operation operation, const Json &result) {
     switch (operation) {
+    case Operation::ServerHome:
+    case Operation::ReadDirectory:
+    case Operation::DirectoryFallback:
+        return result;
     case Operation::NewConversation:
-        return {{"conversationId", result.at("thread").at("id")}};
+        return {{"conversationId", result.at("thread").at("id")},
+            {"cwd", result.at("thread").contains("cwd") && result.at("thread")["cwd"].is_string() ? result.at("thread")["cwd"] : Json("")}};
     case Operation::StartTask:
         return {{"taskId", result.at("turn").at("id")}};
     case Operation::StopTask:
@@ -150,7 +172,8 @@ inline Json DecodeResponse(Operation operation, const Json &result) {
                 messages[i]["failedStep"] = failedStep;
             }
         }
-        return {{"conversationId", thread.at("id")}, {"messages", messages}};
+        return {{"conversationId", thread.at("id")}, {"messages", messages},
+            {"cwd", thread.contains("cwd") && thread["cwd"].is_string() ? thread["cwd"] : Json("")}};
     }
     }
     return Json::object();
@@ -201,6 +224,10 @@ inline Json DecodeNotification(const Json &wire) {
         event["event"] = "serverToolDelta";
         event["messageId"] = "server:" + p.value("itemId", std::string());
         event["text"] = p.value("delta", std::string());
+    } else if (method == "item/started" && p.value("item", Json::object()).value("type", "") == "agentMessage") {
+        event["event"] = "textStarted";
+        event["messageId"] = p["item"].value("id", std::string());
+        event["final"] = p["item"].value("phase", Json()) == "final_answer";
     } else if (method == "item/agentMessage/delta") {
         event["event"] = "textDelta";
         event["messageId"] = p.value("itemId", std::string());

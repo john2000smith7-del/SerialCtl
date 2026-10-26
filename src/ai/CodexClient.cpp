@@ -57,11 +57,13 @@ bool ValidateServer(const ServerSettings &s, std::wstring &error) {
 }
 ServerSettings LoadServerSettings() {
     ServerSettings s;
+    s.username = L"linux";
     HKEY key = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, SettingsKey, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
         return s;
     s.host = ReadString(key, L"Host");
     s.username = ReadString(key, L"Username");
+    if (s.username.empty()) s.username = L"linux";
     s.workingDirectory = ReadString(key, L"WorkingDirectory");
     DWORD port = 22, size = sizeof(port), type = REG_DWORD;
     RegQueryValueExW(key, L"Port", nullptr, &type, reinterpret_cast<BYTE *>(&port), &size);

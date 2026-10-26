@@ -1,6 +1,7 @@
 #include "AiProtocol.h"
 #include "AiHistory.h"
 #include "CodexProtocol.h"
+#include "Workspace.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -52,15 +53,16 @@ int main() {
         Require(!ValidCommand(std::string("echo x\0reboot", 13)), "embedded NUL serial write accepted");
         Require(!ValidCommand(std::string(4097, 'x')), "oversized serial write accepted");
         const auto tools = SerialTools();
-        Require(tools.size() == 7, "terminal and bounded power tools missing");
-        Require(tools[5]["inputSchema"]["properties"].contains("enabled") &&
-                    !tools[5]["inputSchema"]["properties"].contains("channels"), "Model must not override GUI channel selection");
+        Require(tools.size() == 13, "terminal, local boot and bounded power recovery tools missing");
+        const auto outputTool = std::find_if(tools.begin(), tools.end(), [](const Json &t) { return t.at("name") == "serialctl_power_output"; });
+        Require(outputTool != tools.end() && (*outputTool)["inputSchema"]["properties"].contains("enabled") &&
+                    !(*outputTool)["inputSchema"]["properties"].contains("channels"), "Model must not override GUI channel selection");
         for (const auto &tool : tools)
             Require(tool["inputSchema"]["additionalProperties"] == false, "unbounded tool argument schema");
         const auto reply = ToolResult({{"accepted", 5}, {"execution", "unknown"}});
         Require(reply["contentItems"][0]["type"] == "inputText", "app-server dynamic tool result format invalid");
         const auto create = MakeRequest(Operation::NewConversation, 77, {{"defaultModel", "fixture"}, {"cwd", "/srv/project with spaces"}, {"modelId", "obsolete-model"}});
-        Require(create["method"] == "thread/start" && create["params"]["dynamicTools"].size() == 7 &&
+        Require(create["method"] == "thread/start" && create["params"]["dynamicTools"].size() == 13 &&
                     create["params"]["model"] == "fixture",
                 "Presentation adapter lost fixed role/model/tool configuration");
         Require(create["params"]["config"]["web_search"] == "disabled" && create["params"]["approvalPolicy"] == "never",
@@ -132,6 +134,28 @@ int main() {
         Require(resumed["params"]["config"]["web_search"] == "disabled" &&
                     resumed["params"]["approvalPolicy"] == "never",
                 "Resumed threads must retain the current serial policy");
+        const auto oldWorkspace = MakeRequest(Operation::RestoreConversation,79,{{"conversationId","t"},{"cwd","/other/project"}});
+        Require(!oldWorkspace["params"].contains("cwd"),"Restoring history must not replace its original server workspace");
+        const auto originalPath = DecodeResponse(Operation::RestoreConversation,{{"thread",{{"id","t"},{"cwd","/srv/original"}}}});
+        Require(originalPath["cwd"]=="/srv/original","Thread's actual cwd must survive the adapter");
+        const auto listPath=MakeRequest(Operation::ReadDirectory,80,{{"path","/srv/code with spaces"}});
+        Require(listPath["method"]=="fs/readDirectory" && listPath["params"]["path"]=="/srv/code with spaces","Directory API must use the exact absolute path");
+        const auto nativeFind=MakeRequest(Operation::DirectoryFallback,81,{{"path","/srv/$(literal) code"}});
+        Require(nativeFind["params"]["command"][2]=="/srv/$(literal) code" && nativeFind["params"]["timeoutMs"]==3000 &&
+            nativeFind["params"]["outputBytesCap"]==65536,"Fallback must pass native argv with timeout/bounds, never interpret shell metacharacters");
+        const auto directories=WorkspaceDirectories("/srv",Json::array({{{"fileName","code"},{"isDirectory",true}},
+            {{"fileName","../escape"},{"isDirectory",true}},{{"fileName","file.c"},{"isDirectory",false}},
+            {{"fileName","line\nbreak"},{"isDirectory",true}},{{"fileName","code"},{"isDirectory",true}}}));
+        Require(directories==Json::array({"/srv/code"}),"Directory dropdown must filter unsafe names, files and duplicate entries");
+        Require(WorkspaceParent("/srv/code/")=="/srv" && WorkspaceParent("/")=="/" && !ValidWorkspacePath("relative") &&
+            !ValidWorkspacePath(std::string("/a\0b",4)),"Workspace paths must remain absolute and bounded");
+        Require(WorkspaceProfileMatches("host:22/linux/project:/srv/old","host:22/linux") &&
+            StoredWorkspace({{"profile","host:22/linux/project:/srv/old"}})=="/srv/old" &&
+            !WorkspaceProfileMatches("other:22/linux","host:22/linux"),"Legacy workspace history must migrate without crossing servers");
+        Require(WorkspaceTargetIdentity({{"kind","cmd"},{"instance","old"},{"id","session-1"}})!=
+            WorkspaceTargetIdentity({{"kind","cmd"},{"instance","new"},{"id","session-1"}}),"Reused CMD IDs from another process must not restore the wrong terminal");
+        const auto finalStart=DecodeNotification({{"method","item/started"},{"params",{{"item",{{"type","agentMessage"},{"id","final"},{"phase","final_answer"}}}}}});
+        Require(finalStart["event"]=="textStarted" && finalStart["final"]==true,"Explicit final-answer streaming must remain separate from collapsed process");
         Require(DecodeResponse(Operation::NewConversation, {{"thread", {{"id", "nested-id"}}}})["conversationId"] ==
                     "nested-id",
                 "Thread ID must come from result.thread.id");

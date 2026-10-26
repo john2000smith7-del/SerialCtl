@@ -96,6 +96,17 @@ public:
     bool AlternateScreen() const { return alternateScreen_; }
     bool ApplicationCursorKeys() const { return applicationCursorKeys_; }
     bool BracketedPaste() const { return bracketedPaste_; }
+    int CursorRow() const { return ActiveScreen().cursorRow; }
+    std::wstring ScreenText(size_t maximumRows = 200) const;
+    unsigned KeyboardFlags() const { return ActiveScreen().keyboardFlags; }
+    bool MouseCaptured() const { return mouseTracking_ != 0; }
+    int MouseTracking() const { return mouseTracking_; }
+    bool AlternateScroll() const { return alternateScroll_; }
+    // Shared by real keyboard input and bounded AI key requests. Modifier bits
+    // are Shift=1, Alt=2, Ctrl=4; unknown names return no bytes.
+    std::string KeySequence(std::string name, unsigned modifiers = 0) const;
+    std::string WheelSequence(bool up, int column, int row, unsigned modifiers = 0) const;
+    std::string MouseSequence(int button, int column, int row, unsigned modifiers = 0, bool release = false) const;
 
     std::wstring LineText(size_t displayLine, bool trimRight = true) const;
     std::wstring CurrentLineText() const;
@@ -125,6 +136,9 @@ private:
         int scrollTop = 0;
         int scrollBottom = 0;
         bool wrapPending = false;
+        TerminalAttributes savedAttributes;
+        unsigned keyboardFlags = 0;
+        std::vector<unsigned> keyboardStack;
     };
 
     TerminalLine BlankLine() const;
@@ -187,6 +201,9 @@ private:
     bool cursorVisible_ = true;
     bool applicationCursorKeys_ = false;
     bool bracketedPaste_ = false;
+    int mouseTracking_ = 0;
+    bool sgrMouse_ = false, alternateScroll_ = true;
+    unsigned primaryModes_ = 0;
     bool autoWrap_ = true;
     bool originMode_ = false;
     bool insertMode_ = false;

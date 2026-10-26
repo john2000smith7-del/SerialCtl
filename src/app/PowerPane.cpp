@@ -62,6 +62,7 @@ PowerPane::~PowerPane() {
         DeleteObject(fieldBrush_);
     if (surfaceBrush_)
         DeleteObject(surfaceBrush_);
+    if (panelBrush_) DeleteObject(panelBrush_);
 }
 bool PowerPane::Create(HWND parent, HFONT font, bool dark, PowerService *service) {
     font_ = font;
@@ -125,10 +126,17 @@ void PowerPane::Theme(bool dark) {
         DeleteObject(fieldBrush_);
     if (surfaceBrush_)
         DeleteObject(surfaceBrush_);
+    if (panelBrush_) DeleteObject(panelBrush_);
     auto c = UiTheme(dark);
     brush_ = CreateSolidBrush(c.field);
     fieldBrush_ = CreateSolidBrush(c.raised);
     surfaceBrush_ = CreateSolidBrush(c.surface);
+    panelBrush_ = CreateSolidBrush(UiAiTheme(dark).surface);
+    for (const auto &entry : controls_) {
+        const bool card = GetParent(entry.second) == body_ && (tab_ != 0 || (entry.first >= 20 && entry.first <= 62));
+        const COLORREF backdrop = card ? c.surface : UiAiTheme(dark).surface;
+        SetPropW(entry.second, L"SerialCtl.Backdrop", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(backdrop) + 1));
+    }
     if (window_)
         RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
@@ -158,6 +166,35 @@ void PowerPane::Submit(Json command) {
         pendingActions_.push_back(action_);
     }
     Refresh();
+}
+void PowerPane::SetRecoveryTarget(const std::string &id, const std::wstring &label, bool eligible) {
+    if (id != recoveryTarget_ || !eligible) {
+        if (recoveryBinding_.is_object()) {
+            const auto task = service_->State().value("task", Json::object());
+            if (task.value("running", false) && task.value("type", std::string()) == "recover")
+                service_->Submit({{"type", "stop"}, {"source", "recovery-target-changed"}});
+        }
+        recoveryBinding_ = nullptr;
+        SendMessageW(Control(248), BM_SETCHECK, BST_UNCHECKED, 0);
+    }
+    recoveryTarget_ = id;
+    recoveryLabel_ = label;
+    recoveryEligible_ = eligible;
+    if (Control(248)) EnableWindow(Control(248), eligible && service_->State().value("connected", false));
+}
+Json PowerPane::RecoveryBinding() {
+    const auto current = service_->State();
+    if (!recoveryBinding_.is_object() || !recoveryEligible_ || !current.value("connected", false) ||
+        SendMessageW(Control(248), BM_GETCHECK, 0, 0) != BST_CHECKED ||
+        recoveryBinding_.value("sessionId", std::string()) != recoveryTarget_ ||
+        recoveryBinding_.value("identity", std::string()) != current.value("identity", std::string()) ||
+        recoveryBinding_.value("mode", std::string()) != current.value("mode", std::string()) ||
+        recoveryBinding_.value("channels", Json::array()) != Selection())
+        return {{"enabled", false}, {"sessionId", recoveryTarget_}};
+    Json result = recoveryBinding_;
+    result["enabled"] = true;
+    result["minimumOffMs"] = 10000;
+    return result;
 }
 std::wstring PowerPane::TaskPath() {
     wchar_t root[MAX_PATH]{};
@@ -194,6 +231,22 @@ void PowerPane::SaveTask() {
 void PowerPane::Action(int id) {
     refreshRequired_=true;
     try {
+        if (id == 248) {
+            recoveryBinding_ = nullptr;
+            if (SendMessageW(Control(248), BM_GETCHECK, 0, 0) == BST_CHECKED && recoveryEligible_ &&
+                state_.value("connected", false) && !Selection().empty())
+                recoveryBinding_ = {{"sessionId", recoveryTarget_}, {"label", WideToMultiByte(recoveryLabel_, CP_UTF8)},
+                    {"channels", Selection()}, {"identity", state_.value("identity", std::string())},
+                    {"mode", state_.value("mode", std::string())}};
+            else {
+                SendMessageW(Control(248), BM_SETCHECK, BST_UNCHECKED, 0);
+                const auto task = state_.value("task", Json::object());
+                if (task.value("running", false) && task.value("type", std::string()) == "recover")
+                    service_->Submit({{"type", "stop"}, {"source", "recovery-disabled"}});
+            }
+            Refresh();
+            return;
+        }
         if (id == 80) {
             SelectMode();
             return;
@@ -447,6 +500,7 @@ void PowerPane::Refresh() {
     refreshRequired_=false;
     bool connected = state_.value("connected", false), running = state_["task"].value("running", false);
     if (wasConnected != connected) {
+        Layout();
         PostMessageW(GetParent(window_), PowerStateChanged, 0, 0);
         populated_ = false;
         if (!connected) {
@@ -546,6 +600,13 @@ void PowerPane::Refresh() {
     EnableWindow(Control(241), !logExportBusy_ && state_.contains("logPath"));
     EnableWindow(Control(101), !logExportBusy_ && state_.contains("csvPath"));
     EnableWindow(Control(240), !logExportBusy_ && state_.contains("csvPath"));
+    EnableWindow(Control(248), connected && recoveryEligible_ && !Selection().empty());
+    if (recoveryBinding_.is_object() && !RecoveryBinding().value("enabled", false)) {
+        recoveryBinding_ = nullptr;
+        SendMessageW(Control(248), BM_SETCHECK, BST_UNCHECKED, 0);
+        if (state_.value("task", Json::object()).value("type", std::string()) == "recover" && running)
+            service_->Submit({{"type", "stop"}, {"source", "recovery-binding-invalidated"}});
+    }
     if (connected && !paused_) {
         auto stamp = state_["channels"][0]["timestamp"];
         if (stamp.is_string() && stamp.get<std::string>() != sampleStamp_) {
@@ -556,6 +617,7 @@ void PowerPane::Refresh() {
         }
     }
     InvalidateRect(window_, nullptr, FALSE);
+    InvalidateRect(body_, nullptr, FALSE);
     if (!notices.empty()) {
         reporting_ = true;
         for (auto &notice : notices)
@@ -651,6 +713,7 @@ void PowerPane::CreateControls() {
     Child(L"BUTTON", L"应用", 237, BS_OWNERDRAW);
     Child(L"BUTTON", L"测量 CSV", 240, BS_OWNERDRAW);
     Child(L"BUTTON", L"导出日志", 241, BS_OWNERDRAW);
+    Child(L"BUTTON", L"允许 AI 恢复关联串口", 248, BS_AUTOCHECKBOX);
     for (int i = 0; i < 6; ++i)
         Child(L"BUTTON",
               std::vector<std::wstring>{L"设备信息", L"错误队列", L"状态寄存器", L"自检", L"SCPI 调试", L"设备复位"}[i]
@@ -665,6 +728,15 @@ void PowerPane::CreateControls() {
         wchar_t value[40]{};
         std::wcsftime(value, 40, L"%Y-%m-%d %H:%M:%S", &local);
         SetWindowTextW(Control(120 + i), value);
+    }
+    for (const auto &entry : controls_) {
+        const int id = entry.first;
+        if (id != Connect && id != Disconnect && id != On && id != Off && id != Start && id != Stop && id != Save &&
+            id != 44 && id != 248 && !(id >= 90 && id <= 93))
+        {
+            SetParent(entry.second, body_);
+            if (auto frame = reinterpret_cast<HWND>(GetPropW(entry.second, L"SerialCtl.FieldFrame"))) SetParent(frame, body_);
+        }
     }
 }
 void PowerPane::SelectMode() {
@@ -703,452 +775,392 @@ void PowerPane::SelectMode() {
     Refresh();
 }
 void PowerPane::Layout() {
-    // Native combo/checkbox updates can paint synchronously during a batch.
-    // Keep the old complete page until both geometry and visibility are final.
-    UiRedrawScope redraw(window_);
-    UiLayoutBatch batch;currentLayout_=&batch;
-    RECT r{};
-    GetClientRect(window_, &r);
-    auto d = [this](int v) { return MulDiv(v, dpi_, 96); };
-    int w = r.right;
-    cardTop_ = d(104);
-    cardHeight_ = d(216);
-    bool group = draftMode_ == 1 || draftMode_ == 2;
-    auto measureCards = [&](int width) {
-        cardTop_ = d(width < d(564) ? 152 : 104);
-        cardColumns_ = width >= d(600) ? 3 : 1;
-        const int rows = cardColumns_ == 3 ? 1 : group ? 2 : 3;
-        taskTop_ = cardTop_ + rows * (cardHeight_ + d(12)) + d(4);
-        detailsTop_ = taskTop_ + d(48);
+    if (!body_) return;
+    UiLayoutBatch batch;
+    UiLayoutBatch bodyBatch;
+    currentLayout_ = &bodyBatch;
+    RECT client{}; GetClientRect(window_, &client);
+    const auto d = [this](int n) { return MulDiv(n, dpi_, 96); };
+    const int width = static_cast<int>(client.right);
+    const bool connected = state_.value("connected", false);
+    for (const auto &entry : controls_) {
+        const bool card = GetParent(entry.second) == body_ && (tab_ != 0 || (entry.first >= 20 && entry.first <= 62));
+        const COLORREF backdrop = card ? UiTheme(dark_).surface : UiAiTheme(dark_).surface;
+        SetPropW(entry.second, L"SerialCtl.Backdrop", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(backdrop) + 1));
+    }
+    const bool recovery = state_.value("task", Json::object()).value("running", false) &&
+        state_["task"].value("type", std::string()) == "recover";
+    for (const auto &entry : controls_)
+        (GetParent(entry.second) == body_ ? bodyBatch : batch).Show(entry.second, SW_HIDE);
+    auto fixed = [&](int id, int x, int y, int w, int h) {
+        batch.Move(Control(id), x, y, std::max(1, w), h);
+        batch.Show(Control(id), SW_SHOW);
     };
-    for (auto item : controls_)
-        if (item.first >= 100 || (item.first >= 40 && item.first <= 44) || (item.first >= 70 && item.first <= 72))
-            batch.Show(item.second, SW_HIDE);
-    // Details can wrap or add rows. Calculate their final height before
-    // deciding the shared width for child controls and painted cards. These
-    // tentative moves stay deferred in the same batch and never flash onscreen.
-    measureCards(w);
-    DetailsLayout(w, detailsTop_);
-    if (contentHeight_ > r.bottom) {
-        w -= d(16);
-        measureCards(w);
-        DetailsLayout(w, detailsTop_);
+    const int headerHeight = width < d(400) ? d(52) : d(36);
+    fixed(connected ? Disconnect : Connect, width - d(96), 0, d(96), d(36));
+    HDC dc = GetDC(window_); const auto old = SelectObject(dc, smallFont_);
+    int x = 0, y = headerHeight + d(12);
+    for (int id = 90; id <= 93; ++id) {
+        const auto label = Text(Control(id)); SIZE size{};
+        GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &size);
+        const int w = std::min(width, static_cast<int>(size.cx) + d(32));
+        if (x && x + w > width) { x = 0; y += d(44); }
+        fixed(id, x, y, w, d(32)); x += w + d(12);
     }
-    const int clampedScroll = std::clamp(scroll_, 0, std::max(0, contentHeight_ - static_cast<int>(r.bottom)));
-    if (scroll_ != clampedScroll) {
-        scroll_ = clampedScroll;
-        DetailsLayout(w, detailsTop_);
-    }
-    cardWidth_ = (w - d(12) * (cardColumns_ - 1)) / cardColumns_;
-    auto move = [&](HWND h, int x, int y, int width, int height) {
-        batch.Move(h, x, y - scroll_, width, height);
-        batch.Show(h, SW_SHOW);
-    };
-    move(buttons_[0], w - d(204), 0, d(96), d(36));
-    move(buttons_[1], w - d(96), 0, d(96), d(36));
-    const int actionTop = cardTop_ - d(52);
-    move(buttons_[2], w - d(204), actionTop, d(96), d(36));
-    move(buttons_[3], w - d(96), actionTop, d(96), d(36));
-    move(Control(81), w - d(320), actionTop, d(104), d(36));
-    move(Control(80), d(72), d(52), d(160), d(180));
-    batch.ComboVisibleHeight(Control(80), d(36));
-    for (int i = 0; i < 3; ++i) {
-        bool hidden = group && i == 1;
-        int index = group && i == 2 ? 1 : i;
-        int column = i % cardColumns_;
-        int x = column * (w + d(12)) / cardColumns_, y = cardTop_ + (index / cardColumns_) * (cardHeight_ + d(12)),
-            cw = (column + 1) * (w + d(12)) / cardColumns_ - x - d(12);
-        if (group && cardColumns_ == 3) {
-            if (i == 0)
-                cw = 2 * (w + d(12)) / 3 - d(12);
-            if (i == 2)
-                x = 2 * (w + d(12)) / 3;
-        }
-        SetWindowTextW(check_[i], group && i == 0 ? L"CH1＋CH2" : (L"CH" + std::to_wstring(i + 1)).c_str());
-        move(check_[i], x + d(16), y + d(12), d(group && i == 0 ? 140 : 72), d(28));
-        int label = d(group && i == 0 ? 124 : 100);
-        move(voltage_[i], x + label, y + d(136), cw - label - d(16), d(28));
-        move(current_[i], x + label, y + d(172), cw - label - d(16), d(28));
-        if (hidden) {
-            batch.Show(check_[i], SW_HIDE);
-            batch.Show(voltage_[i], SW_HIDE);
-            batch.Show(current_[i], SW_HIDE);
-        }
-    }
-    HDC tabDc = GetDC(window_);
-    const auto tabFont = SelectObject(tabDc, smallFont_);
-    int x = 0;
-    for (int i = 0; i < 4; ++i) {
-        const auto label = Text(Control(90 + i));
-        SIZE extent{};
-        GetTextExtentPoint32W(tabDc, label.c_str(), static_cast<int>(label.size()), &extent);
-        const int tabWidth = extent.cx + d(32);
-        move(Control(90 + i), x, taskTop_, tabWidth, d(32));
-        x += tabWidth + d(12);
-    }
-    SelectObject(tabDc, tabFont);
-    ReleaseDC(window_, tabDc);
-    currentLayout_=nullptr;batch.Commit();
-}
-void PowerPane::DetailsLayout(int width, int top) {
-    auto d = [this](int v) { return MulDiv(v, dpi_, 96); };
-    contentHeight_ = top + d(201);
-    auto move = [&](int id, int x, int y, int w, int h = 28) {
-        HWND control = Control(id);
-        wchar_t cls[24]{};
-        GetClassNameW(control, cls, 24);
-        if (_wcsicmp(cls, L"COMBOBOX") == 0) {
-            currentLayout_->ComboVisibleHeight(control, d(h));
-            h = 180;
-        }
-        currentLayout_->Move(control, d(x), top + d(y) - scroll_, d(w), d(h));
-        currentLayout_->Show(control, SW_SHOW);
-    };
-    const int w = MulDiv(width, 96, dpi_);
-    if (tab_ == 0) {
-        move(103, w - 256, 0, 72);
-        move(100, w - 172, 0, 78);
-        move(101, w - 82, 0, 82);
-    }
+    SelectObject(dc, old); ReleaseDC(window_, dc);
+    bodyTop_ = y + d(44);
+    const int actionRows = tab_ == 1 && width < d(440) ? 2 : 1;
+    const int footerHeight = d(36 + 12 + 36 * actionRows + 12 * (actionRows - 1));
+    footerTop_ = std::max(bodyTop_ + d(48), static_cast<int>(client.bottom) - footerHeight);
+    bodyHeight_ = std::max(d(48), footerTop_ - bodyTop_ - d(12));
+    batch.Move(body_, 0, bodyTop_, width, bodyHeight_, TRUE);
+    batch.Show(body_, SW_SHOW);
+    SetWindowTextW(Control(248), width < d(400) ? L"允许 AI 恢复" : L"允许 AI 恢复关联串口");
+    fixed(248, 0, footerTop_ + d(4), std::max(d(112), width - (recovery ? d(108) : 0)), d(28));
+    if (recovery && tab_ != 1) {
+        SetWindowTextW(stop_, L"停止恢复");
+        fixed(Stop, width - d(96), footerTop_, d(96), d(36));
+    } else SetWindowTextW(stop_, L"停止测试");
+    const int actionTop = footerTop_ + d(48);
     if (tab_ == 1) {
-        int x = 0;
-        automationOffset_ = 0;
-        HDC dc = GetDC(window_);
-        auto old = SelectObject(dc, smallFont_);
-        for (int i = 0; i < 5; ++i) {
-            const auto label = Text(Control(110 + i));
-            SIZE extent{};
-            GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &extent);
-            const int size = MulDiv(extent.cx, 96, dpi_) + 32;
-            if (x && x + size > w) {
-                x = 0;
-                automationOffset_ += 44;
-            }
-            move(110 + i, x, automationOffset_, size, 32);
-            x += size + 12;
-        }
-        SelectObject(dc, old);
-        ReleaseDC(window_, dc);
-        top += d(automationOffset_);
-        contentHeight_ += d(automationOffset_);
-        int field = (w - 24) / 3;
-        const int ids[5][3] = {{70, 71, 72}, {120, 121, 122}, {123, 0, 0}, {124, 125, 0}, {126, 127, 128}};
-        for (int i = 0; i < 3; ++i)
-            if (ids[automation_][i])
-                move(ids[automation_][i], i * (field + 12), 71, automation_ == 2 ? w : field);
-        const int wide = (w - 196) / 2;
-        move(Start, 0, 115, wide, 36);
-        move(Stop, wide + 12, 115, wide, 36);
-        move(Save, w - 172, 115, 80, 36);
-        move(44, w - 80, 115, 80, 36);
+        const int ids[]{Start, Stop, Save, 44};
+        const int cols = actionRows == 1 ? 4 : 2;
+        const int w = (width - (cols - 1) * d(12)) / cols;
+        for (int i = 0; i < 4; ++i) fixed(ids[i], (i % cols) * (w + d(12)),
+            actionTop + (i / cols) * d(48), w, d(36));
         SetWindowTextW(start_, automation_ == 3 ? L"应用定时器" : automation_ == 4 ? L"应用并触发" : L"开始测试");
+    } else {
+        const int button = d(width < d(400) ? 72 : 96);
+        fixed(On, width - button * 2 - d(12), actionTop, button, d(36));
+        fixed(Off, width - button, actionTop, button, d(36));
     }
-    if (tab_ == 1 && automation_ == 3)
-        move(133, w - 80, 71, 80);
-    if (tab_ == 1 && automation_ == 4) {
-        for (int i = 0; i < 4; ++i)
-            move(134 + i, i * 116, 156, 104);
-        contentHeight_ = top + d(240);
-    }
-    if (tab_ == 2) {
-        for (int i = 0; i < 4; ++i)
-            move(190 + i, 0, i * 44, 120, 32);
-        const int x = 132, cw = w - x, half = (cw - 12) / 2;
-        if (settings_ == 0) {
-            move(200, x + 38, 0, 96);
-            move(201, w - 112, 0, 112);
-            for (int i = 0; i < 4; ++i)
-                move(202 + i, x + (i % 2) * (half + 12), 67 + (i / 2) * 67, half);
-            move(206, w - 264, 174, 80);
-            move(207, w - 172, 174, 80);
-            move(208, w - 80, 174, 80);
-        }
-        if (settings_ == 1) {
-            move(210, x + 100, 12, cw - 100);
-            move(211, x + 100, 52, cw - 100);
-            move(212, x, 116, half);
-            move(213, x + half + 12, 116, half);
-            move(214, w - 172, 172, 80);
-            move(215, w - 80, 172, 80);
-        }
-        if (settings_ == 2) {
-            move(220, x + 100, 12, cw - 100);
-            move(221, x + 100, 52, cw - 100);
-            move(222, w - 236, 92, 112);
-            move(223, w - 112, 92, 112);
-            move(224, w - 236, 132, 112);
-            move(225, w - 112, 132, 112);
-        }
-        if (settings_ == 3) {
-            move(230, x + 100, 12, cw - 100);
-            move(231, x, 52, 112);
-            move(232, x + 124, 52, 112);
-            move(233, x + 248, 52, 80);
-            move(234, x + 100, 92, cw - 100);
-            move(235, w - 264, 132, 80);
-            move(236, w - 172, 132, 80);
-            move(237, w - 80, 132, 80);
-        }
-    }
-    if (tab_ == 3) {
-        move(240, w - 204, 0, 96);
-        move(241, w - 96, 0, 96);
-        int x = 0;
-        for (int i = 0; i < 6; ++i) {
-            int size = i == 4 ? 104 : 88;
-            if (x + size > w) {
-                x = 0;
-                top += d(40);
+    auto measure = [&](int w) {
+        bodyWidth_ = w;
+        channelRects_ = {};
+        cardColumns_ = w >= d(780) ? 3 : 1;
+        const bool group = draftMode_ == 1 || draftMode_ == 2;
+        if (tab_ == 0) {
+            const bool narrowMode = w < d(400);
+            cardTop_ = narrowMode ? d(88) : d(52);
+            cardWidth_ = (w - d(12) * (cardColumns_ - 1)) / cardColumns_;
+            cardHeight_ = d(cardWidth_ >= d(440) ? 144 : 184);
+            const int modeWidth = narrowMode ? w - d(76) : std::min(d(200), w - d(192));
+            bodyBatch.Move(Control(80), d(76), -scroll_, std::max(d(64), modeWidth), d(180));
+            bodyBatch.ComboVisibleHeight(Control(80), d(28)); bodyBatch.Show(Control(80), SW_SHOW);
+            bodyBatch.Move(Control(81), w - d(104), (narrowMode ? d(40) : 0) - scroll_, d(104), d(28));
+            bodyBatch.Show(Control(81), SW_SHOW);
+            int bottom = cardTop_;
+            for (int i = 0; i < 3; ++i) {
+                if (group && i == 1) continue;
+                const int index = group && i == 2 ? 1 : i;
+                const int col = i % cardColumns_;
+                int left = col * (cardWidth_ + d(12));
+                int cw = cardWidth_;
+                if (group && cardColumns_ == 3 && i == 0) cw = cardWidth_ * 2 + d(12);
+                const int top = cardTop_ + (index / cardColumns_) * (cardHeight_ + d(12));
+                channelRects_[i] = {left, top, left + cw, top + cardHeight_};
+                bottom = std::max(bottom, top + cardHeight_);
+                SetWindowTextW(check_[i], group && i == 0 ? L"CH1＋CH2" : (L"CH" + std::to_wstring(i + 1)).c_str());
+                bodyBatch.Move(check_[i], left + d(16), top + d(8) - scroll_, d(group && i == 0 ? 144 : 72), d(28));
+                bodyBatch.Show(check_[i], SW_SHOW);
+                const bool inlineFields = cw >= d(440);
+                const int half = (cw - d(44)) / 2;
+                const int label = d(group && i == 0 ? 120 : 100);
+                bodyBatch.Move(voltage_[i], left + d(16) + label, top + d(104) - scroll_,
+                    std::max(d(48), (inlineFields ? half : cw - d(32)) - label), d(28));
+                bodyBatch.Move(current_[i], left + (inlineFields ? d(28) + half : d(16)) + label,
+                    top + d(inlineFields ? 104 : 144) - scroll_,
+                    std::max(d(48), (inlineFields ? half : cw - d(32)) - label), d(28));
+                bodyBatch.Show(voltage_[i], SW_SHOW); bodyBatch.Show(current_[i], SW_SHOW);
             }
-            move(242 + i, x, 156, size);
-            x += size + 12;
+            detailsInset_ = 0;
+            detailsTop_ = bottom + d(20);
+        } else {
+            detailsInset_ = d(16);
+            detailsTop_ = d(16);
         }
-        contentHeight_ = std::max(contentHeight_, top + d(196));
-    }
-}
-void PowerPane::Paint(HDC dc) {
-    RECT r{};
-    GetClientRect(window_, &r);
-    auto c = UiTheme(dark_);
-    FillRect(dc, &r, brush_);
-    SetViewportOrgEx(dc, 0, -scroll_, nullptr);
-    auto d = [this](int v) { return MulDiv(v, dpi_, 96); };
-    int width = r.right - (contentHeight_ > r.bottom ? d(16) : 0);
-    auto text = [&](const std::wstring &s, RECT rect, COLORREF color, HFONT font = nullptr,
-                    UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
-        SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, color);
-        auto old = SelectObject(dc, font ? font : smallFont_);
-        DrawTextW(dc, s.c_str(), -1, &rect, flags);
-        SelectObject(dc, old);
+        DetailsLayout(std::max(d(100), w - detailsInset_ * 2), detailsTop_);
     };
-    text(L"IT6332A", {0, 0, d(96), d(36)}, c.text, titleFont_);
-    text(state_.value("connected", false) ? L"已连接" : L"未连接", {d(104), 0, width - d(216), d(36)}, c.muted);
-    text(L"工作模式", {0, d(52), d(72), d(88)}, c.text, font_);
-    bool group = draftMode_ == 1 || draftMode_ == 2;
-    for (int i = 0; i < 3; ++i) {
-        if (group && i == 1)
-            continue;
-        int index = group && i == 2 ? 1 : i;
-        int column = i % cardColumns_;
-        int x = column * (width + d(12)) / cardColumns_, y = cardTop_ + (index / cardColumns_) * (cardHeight_ + d(12)),
-            cw = (column + 1) * (width + d(12)) / cardColumns_ - x - d(12);
-        if (group && cardColumns_ == 3) {
-            if (i == 0)
-                cw = 2 * (width + d(12)) / 3 - d(12);
-            if (i == 2)
-                x = 2 * (width + d(12)) / 3;
-        }
-        bool checked = SendMessageW(check_[i], BM_GETCHECK, 0, 0) == BST_CHECKED;
-        UiBox(dc, {x, y, x + cw, y + cardHeight_}, c.surface, checked ? c.text : c.border, d(12));
-        if (!state_.contains("channels"))
-            continue;
-        auto channel = state_["channels"][i];
-        bool combined = group && i == 0;
-        if (combined) {
-            auto other = state_["channels"][1];
-            for (auto key : {"voltage", "current", "power"})
-                if (channel[key].is_number() && other[key].is_number()) {
-                    if (std::string(key) == "power" || (draftMode_ == 1 && std::string(key) == "current") ||
-                        (draftMode_ == 2 && std::string(key) == "voltage"))
-                        channel[key] = channel[key].get<double>() + other[key].get<double>();
-                } else
-                    channel[key] = nullptr;
-            if (other["output"] != channel["output"])
-                channel["output"] = nullptr;
-        }
-        std::wstring status = channel["output"].is_boolean() ? (channel["output"].get<bool>() ? L"已加电" : L"已掉电")
-                              : state_.value("connected", false) ? L"状态未知"
-                                                                 : L"未连接";
-        text(status, {x + d(combined ? 156 : 88), y + d(12), x + cw - d(16), y + d(40)}, c.muted, nullptr,
-             DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-        int half = (cw - d(32)) / 2;
-        text(combined && draftMode_ == 2 ? L"总电压 (V)" : L"电压 (V)",
-             {x + d(16), y + d(52), x + d(16) + half, y + d(72)}, c.muted);
-        text(combined && draftMode_ == 1 ? L"总电流 (A)" : L"电流 (A)",
-             {x + d(16) + half, y + d(52), x + cw - d(16), y + d(72)}, c.muted);
-        text(Value(channel["voltage"]), {x + d(16), y + d(76), x + d(16) + half, y + d(104)}, c.text, valueFont_);
-        text(Value(channel["current"]), {x + d(16) + half, y + d(76), x + cw - d(16), y + d(104)}, c.text, valueFont_);
-        text(L"功率 " + Value(channel["power"], L" W"), {x + d(16), y + d(108), x + cw - d(16), y + d(128)}, c.muted);
-        if (combined)
-            text(L"CH1 " + Value(state_["channels"][0]["voltage"]) + L"　CH2 " +
-                     Value(state_["channels"][1]["voltage"]),
-                 {x + d(172), y + d(108), x + cw - d(16), y + d(128)}, c.muted, nullptr,
-                 DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-        text(combined && draftMode_ == 2 ? L"总电压 (V)" : L"设定电压 (V)",
-             {x + d(16), y + d(136), x + d(combined ? 116 : 92), y + d(164)}, c.muted);
-        text(combined && draftMode_ == 1 ? L"总电流限值 (A)" : L"电流限值 (A)",
-             {x + d(16), y + d(172), x + d(combined ? 116 : 92), y + d(200)}, c.muted);
-    }
-    std::wstring selected = L"已选";
-    auto selection = Selection();
-    for (auto ch : selection)
-        selected += L" CH" + std::to_wstring(ch.get<int>());
-    if (selection.empty())
-        selected = L"未选择通道";
-    text(selected, {d(396), taskTop_, width, taskTop_ + d(32)}, c.muted, nullptr,
-         DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-    PaintDetails(dc, width, detailsTop_);
-    SetViewportOrgEx(dc, 0, 0, nullptr);
-    if (contentHeight_ > r.bottom) {
-        int thumb = std::max(d(32), static_cast<int>(r.bottom * r.bottom) / std::max(1, contentHeight_));
-        int top = scroll_ * (r.bottom - thumb) / std::max(1, contentHeight_ - static_cast<int>(r.bottom));
-        UiBox(dc, {r.right - d(8), top, r.right - d(3), top + thumb}, c.border, c.border, d(3));
-    }
+    measure(width);
+    if (contentHeight_ > bodyHeight_) measure(std::max(d(100), width - d(16)));
+    const int clamped = std::clamp(scroll_, 0, std::max(0, contentHeight_ - bodyHeight_));
+    if (clamped != scroll_) { scroll_ = clamped; measure(bodyWidth_); }
+    currentLayout_ = nullptr;
+    batch.Commit();
+    bodyBatch.Commit();
+    InvalidateRect(body_, nullptr, FALSE);
+    InvalidateRect(window_, nullptr, FALSE);
 }
-void PowerPane::PaintDetails(HDC dc, int width, int top) {
-    auto d = [this](int v) { return MulDiv(v, dpi_, 96); };
-    auto c = UiTheme(dark_);
+
+void PowerPane::DetailsLayout(int width, int top) {
+    const auto d = [this](int n) { return MulDiv(n, dpi_, 96); };
     const int w = MulDiv(width, 96, dpi_);
-    auto text = [&](const std::wstring &s, int x, int y, int size, int height = 28, COLORREF color = CLR_INVALID) {
-        RECT rect{d(x), top + d(y), d(x + size), top + d(y + height)};
-        SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, color == CLR_INVALID ? c.muted : color);
-        auto old = SelectObject(dc, smallFont_);
-        DrawTextW(dc, s.c_str(), -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        SelectObject(dc, old);
+    detailLabels_.clear();
+    auto label = [&](const std::wstring &text, int x, int y, int size, int height = 24) {
+        detailLabels_.push_back({text, {detailsInset_ + d(x), top + d(y), detailsInset_ + d(x + size), top + d(y + height)}});
     };
-    if (tab_ == 0) {
-        text(L"实时趋势", 0, 0, 160);
-        text(L"采样", w - 284, 0, 36);
-        int pw = (w - 12) / 2;
-        for (int metric = 0; metric < 2; ++metric) {
-            int x = metric * (pw + 12);
-            RECT box{d(x), top + d(40), d(x + pw), top + d(188)};
-            UiBox(dc, box, c.surface, c.border, d(12));
-            text(metric ? L"电流 (A)" : L"电压 (V)", x + 12, 52, pw - 24);
-            int left = d(x + 12), right = d(x + pw - 12), bottom = top + d(160), plotTop = top + d(80);
-            COLORREF gridColor =
-                RGB((GetRValue(c.border) + GetRValue(c.surface)) / 2, (GetGValue(c.border) + GetGValue(c.surface)) / 2,
-                    (GetBValue(c.border) + GetBValue(c.surface)) / 2);
-            HPEN grid = CreatePen(PS_SOLID, 1, gridColor);
-            auto old = SelectObject(dc, grid);
-            for (int i = 0; i <= 4; ++i) {
-                int y = plotTop + (bottom - plotTop) * i / 4;
-                MoveToEx(dc, left, y, nullptr);
-                LineTo(dc, right, y);
-            }
-            MoveToEx(dc, left, plotTop, nullptr);
-            LineTo(dc, left, bottom);
-            SelectObject(dc, old);
-            DeleteObject(grid);
-            if (history_.size() < 2)
-                continue;
-            double max = 0.001;
-            for (const auto &sample : history_)
-                for (const auto &ch : sample)
-                    if (ch[metric ? "current" : "voltage"].is_number())
-                        max = std::max(max, ch[metric ? "current" : "voltage"].get<double>());
-            for (int channel = 0; channel < 3; ++channel) {
-                COLORREF ink = channel == 0 ? c.accent : channel == 1 ? c.text : c.muted;
-                HPEN pen = CreatePen(channel == 2 ? PS_DOT : PS_SOLID, 1, ink);
-                auto previous = SelectObject(dc, pen);
-                bool begun = false;
-                int i = 0;
-                for (const auto &sample : history_) {
-                    auto value = sample[channel][metric ? "current" : "voltage"];
-                    if (value.is_number()) {
-                        int px = left + static_cast<int>((right - left) * i / (history_.size() - 1)),
-                            py = bottom -
-                                 static_cast<int>((bottom - plotTop) * std::clamp(value.get<double>() / max, 0.0, 1.0));
-                        if (begun)
-                            LineTo(dc, px, py);
-                        else
-                            MoveToEx(dc, px, py, nullptr);
-                        begun = true;
-                    } else
-                        begun = false;
-                    ++i;
-                }
-                SelectObject(dc, previous);
-                DeleteObject(pen);
-            }
+    auto move = [&](int id, int x, int y, int size, int height = 28) {
+        HWND h = Control(id); if (!h) return;
+        wchar_t cls[32]{}; GetClassNameW(h, cls, 32);
+        const bool combo = _wcsicmp(cls, L"COMBOBOX") == 0;
+        currentLayout_->Move(h, detailsInset_ + d(x), top + d(y) - scroll_, d(std::max(1, size)), d(combo ? 180 : height));
+        if (combo) currentLayout_->ComboVisibleHeight(h, d(height));
+        currentLayout_->Show(h, SW_SHOW);
+    };
+    auto flow = [&](const std::vector<int> &ids, int y) {
+        int x = 0;
+        HDC dc = GetDC(window_); const auto old = SelectObject(dc, smallFont_);
+        for (int id : ids) {
+            const auto text = Text(Control(id)); SIZE extent{};
+            GetTextExtentPoint32W(dc, text.c_str(), static_cast<int>(text.size()), &extent);
+            const int size = std::min(w, std::max(72, MulDiv(extent.cx, 96, dpi_) + 32));
+            if (x && x + size > w) { x = 0; y += 44; }
+            move(id, x, y, size, 32); x += size + 12;
         }
+        SelectObject(dc, old); ReleaseDC(window_, dc);
+        return y + 44;
+    };
+    auto fields = [&](const std::vector<std::pair<int, std::wstring>> &items, int y) {
+        const int cols = w >= 420 ? 2 : 1;
+        const int size = (w - (cols - 1) * 12) / cols;
+        for (size_t i = 0; i < items.size(); ++i) {
+            const int x = static_cast<int>(i % cols) * (size + 12);
+            const int row = y + static_cast<int>(i / cols) * 72;
+            label(items[i].second, x, row, size);
+            move(items[i].first, x, row + 28, size);
+        }
+        return y + static_cast<int>((items.size() + cols - 1) / cols) * 72;
+    };
+    int y = 0;
+    if (tab_ == 0) {
+        label(L"实时趋势", 0, 0, w);
+        y = flow({100, 101}, 32);
+        label(L"采样", 0, y, 64); move(103, 76, y, std::min(104, w - 76));
+        detailStatusTop_ = top + d(y + 44);
+        contentHeight_ = detailStatusTop_ + d(w < 360 ? 400 : 200);
+        return;
     }
     if (tab_ == 1) {
-        top += d(automationOffset_);
-        static const wchar_t *labels[5][3] = {{L"加电时长 (秒)", L"掉电时长 (秒)", L"循环次数"},
-                                              {L"开始时间", L"掉电时间", L"重复"},
-                                              {L"步骤序列", L"", L""},
-                                              {L"设备输出定时器", L"掉电延时 (秒)", L"设备状态"},
-                                              {L"触发延时 (秒)", L"电压步进 (V)", L"电流步进 (A)"}};
-        int field = (w - 24) / 3;
-        for (int i = 0; i < 3; ++i)
-            text(labels[automation_][i], i * (field + 12), 44, field, 20);
-        if (automation_ == 2)
-            text(std::to_wstring(steps_.size()) + L" 个步骤", w - 160, 40, 160, 20);
-        if (automation_ == 3) {
-            const auto timer = state_.value("timer", Json::object());
-            text(timer.contains("enabled") ? (timer["enabled"].get<bool>() ? L"开启" : L"关闭") : L"—",
-                 2 * (field + 12), 64, field);
+        y = flow({110, 111, 112, 113, 114}, 0) + 12;
+        if (automation_ == 0) y = fields({{70,L"上电时长（秒）"},{71,L"断电等待（秒）"},{72,L"循环次数"}}, y);
+        if (automation_ == 1) y = fields({{120,L"开始时间"},{121,L"掉电时间"},{122,L"重复"}}, y);
+        if (automation_ == 2) y = fields({{123,L"步骤序列"}}, y);
+        if (automation_ == 3) { y = fields({{124,L"设备输出定时器"},{125,L"掉电延时（秒）"}}, y); y = flow({133}, y); }
+        if (automation_ == 4) {
+            y = fields({{126,L"触发延时（秒）"},{127,L"电压步进（V）"},{128,L"电流步进（A）"}}, y);
+            y = flow({134,135,136,137}, y);
         }
-        auto task = state_.value("task", Json::object());
-        std::wstring status =
-            task.value("running", false) ? L"运行中 · " + std::to_wstring(task.value("completed", 0)) : L"未运行";
-        if (state_.contains("error"))
-            status = Wide(state_["error"]);
-        text(status, 0, automation_ == 4 ? 200 : 163, w, 28, state_.contains("error") ? c.danger : c.muted);
-    }
-    if (tab_ == 2) {
-        int x = 132, cw = w - x, half = (cw - 12) / 2;
-        HPEN pen = CreatePen(PS_SOLID, 1, c.border);
-        auto old = SelectObject(dc, pen);
-        MoveToEx(dc, d(116), top, nullptr);
-        LineTo(dc, d(116), top + d(201));
-        SelectObject(dc, old);
-        DeleteObject(pen);
+        label(L"任务状态", 0, y + 12, w);
+        detailStatusTop_ = top + d(y + 44);
+        contentHeight_ = detailStatusTop_ + d(120);
+    } else if (tab_ == 2) {
+        y = flow({190,191,192,193}, 0) + 12;
         if (settings_ == 0) {
-            text(L"通道", x, 0, 36);
-            const wchar_t *labels[] = {L"电压设置上限 (V)", L"设备过压阈值 (V)", L"软件电压阈值 (V)",
-                                       L"软件电流阈值 (A)"};
-            for (int i = 0; i < 4; ++i)
-                text(labels[i], x + (i % 2) * (half + 12), 40 + (i / 2) * 67, half, 20);
-            int ch = static_cast<int>(SendMessageW(Control(200), CB_GETCURSEL, 0, 0));
-            auto p = state_["channels"][std::clamp(ch, 0, 2)].value("deviceProtection", Json::object());
-            text(p.contains("tripped") ? (p["tripped"].get<bool>() ? L"保护状态 已触发" : L"保护状态 正常")
-                                       : L"保护状态 —",
-                 x, 172, std::max(0, cw - 264));
+            y = fields({{200,L"通道"},{202,L"电压设置上限（V）"},{203,L"设备过压阈值（V）"},
+                {204,L"软件电压阈值（V）"},{205,L"软件电流阈值（A）"}}, y);
+            y = flow({201}, y); y = flow({206,207,208}, y);
+        } else if (settings_ == 1) {
+            y = fields({{210,L"组合模式"},{211,L"关联通道"},{212,L"电压跟踪比例"},{213,L"电流跟踪比例"}}, y);
+            y = flow({214,215}, y);
+        } else if (settings_ == 2) {
+            y = fields({{220,L"设备存储位置"},{221,L"本地方案"}}, y);
+            y = flow({222,223,224,225}, y);
+        } else {
+            y = fields({{230,L"控制方式"},{234,L"屏幕文字"}}, y);
+            y = flow({231,232,233}, y); y = flow({235,236,237}, y);
         }
-        if (settings_ == 1) {
-            text(L"组合模式", x, 12, 88);
-            text(L"关联通道", x, 52, 88);
-            text(L"电压跟踪比例", x, 88, half, 20);
-            text(L"电流跟踪比例", x + half + 12, 88, half, 20);
+        contentHeight_ = top + d(y + 16);
+    } else {
+        y = flow({240,241}, 0); y = flow({242,243,244,245,246,247}, y);
+        label(L"操作记录", 0, y + 12, w);
+        detailStatusTop_ = top + d(y + 44);
+        const auto records = state_.value("records", Json::array());
+        contentHeight_ = detailStatusTop_ + d(static_cast<int>(std::min<size_t>(12, records.size())) * 64 + 32);
+    }
+    contentHeight_ += d(16);
+}
+
+void PowerPane::Paint(HDC dc) {
+    RECT r{}; GetClientRect(window_, &r);
+    const auto d = [this](int n) { return MulDiv(n, dpi_, 96); };
+    const auto c = UiTheme(dark_);
+    FillRect(dc, &r, panelBrush_);
+    auto text = [&](const std::wstring &value, RECT box, HFONT font, COLORREF ink, UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
+        const auto old = SelectObject(dc, font); SetBkMode(dc, TRANSPARENT); SetTextColor(dc, ink);
+        DrawTextW(dc, value.c_str(), -1, &box, flags | DT_NOPREFIX); SelectObject(dc, old);
+    };
+    const bool narrow = r.right < d(400);
+    icons_.Draw(dc, ToolbarIcon::Power, {0, d(8), d(18), d(26)}, dark_);
+    text(L"IT6332A", {d(28),0,r.right-d(108),d(36)}, titleFont_,c.text);
+    text(state_.value("connected",false) ? L"已连接" : L"未连接",
+        {narrow ? 0 : d(144), narrow ? d(28) : 0, r.right-d(108), narrow ? d(52) : d(36)}, smallFont_,c.muted);
+    UiSeparator(dc, 0, r.right, bodyTop_ - d(8), c.border);
+    UiSeparator(dc, 0, r.right, footerTop_ - d(8), c.border);
+    if (tab_ != 1) {
+        std::wstring selected = L"已选";
+        for (auto channel : Selection()) selected += L" CH" + std::to_wstring(channel.get<int>());
+        text(selected, {0,footerTop_+d(48), r.right-d(r.right<d(400)?168:216), footerTop_+d(84)},smallFont_,c.muted);
+    }
+}
+
+void PowerPane::PaintBody(HDC dc) {
+    RECT r{}; GetClientRect(body_, &r);
+    const auto d = [this](int n) { return MulDiv(n, dpi_, 96); };
+    const auto c = UiTheme(dark_);
+    FillRect(dc, &r, panelBrush_);
+    const int saved = SaveDC(dc);
+    SetViewportOrgEx(dc,0,-scroll_,nullptr);
+    auto text = [&](const std::wstring &value, RECT box, HFONT font, COLORREF ink) {
+        const auto old = SelectObject(dc,font); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,ink);
+        DrawTextW(dc,value.c_str(),-1,&box,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
+        SelectObject(dc,old);
+    };
+    if (tab_ == 0) {
+        text(L"工作模式",{0,0,d(72),d(28)},font_,c.text);
+        for (int i=0;i<3;++i) {
+            const RECT card=channelRects_[i];
+            if (card.right<=card.left) continue;
+            UiBox(dc,card,c.surface,c.border,d(12));
+            if (!state_.contains("channels")) continue;
+            auto channel=state_["channels"][i];
+            const bool combined=(draftMode_==1||draftMode_==2)&&i==0;
+            if (combined) {
+                const auto other=state_["channels"][1];
+                for (const char *key : {"voltage","current","power"}) {
+                    if (!channel[key].is_number() || !other[key].is_number()) channel[key]=nullptr;
+                    else if (std::string(key)=="power" || (draftMode_==1&&std::string(key)=="current") ||
+                        (draftMode_==2&&std::string(key)=="voltage"))
+                        channel[key]=channel[key].get<double>()+other[key].get<double>();
+                }
+                if (channel["output"]!=other["output"]) channel["output"]=nullptr;
+            }
+            const int left=card.left, top=card.top, width=card.right-card.left;
+            const std::wstring status=channel["output"].is_boolean() ? (channel["output"].get<bool>()?L"输出中":L"已关闭") :
+                state_.value("connected",false)?L"状态未知":L"未连接";
+            RECT statusBox{left+d(combined?164:100),top+d(8),card.right-d(16),top+d(36)};
+            const auto old=SelectObject(dc,smallFont_); SetTextColor(dc,c.muted); SetBkMode(dc,TRANSPARENT);
+            DrawTextW(dc,status.c_str(),-1,&statusBox,DT_RIGHT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS); SelectObject(dc,old);
+            const wchar_t *labels[]{L"电压（V）",L"电流（A）",L"功率（W）"};
+            const char *keys[]{"voltage","current","power"};
+            const int col=(width-d(32))/3;
+            for (int n=0;n<3;++n) {
+                const int x=left+d(16)+n*col;
+                text(labels[n],{x,top+d(40),x+col,top+d(60)},smallFont_,c.muted);
+                text(Value(channel[keys[n]]),{x,top+d(60),x+col,top+d(92)},valueFont_,c.text);
+            }
+            const bool inlineFields=width>=d(440);
+            const int half=(width-d(44))/2;
+            text(combined&&draftMode_==2?L"总电压（V）":L"设定电压（V）",
+                {left+d(16),top+d(104),left+d(combined?132:112),top+d(132)},smallFont_,c.muted);
+            const int currentLeft=left+(inlineFields?d(28)+half:d(16));
+            text(combined&&draftMode_==1?L"总电流限值（A）":L"电流限值（A）",
+                {currentLeft,top+d(inlineFields?104:144),currentLeft+d(combined?120:100),top+d(inlineFields?132:172)},smallFont_,c.muted);
         }
-        if (settings_ == 2) {
-            text(L"设备存储位置", x, 12, 100);
-            text(L"本地方案", x, 52, 88);
+    } else UiBox(dc,{0,0,bodyWidth_,contentHeight_},c.surface,c.border,d(12));
+    PaintDetails(dc,bodyWidth_-detailsInset_*2,detailsTop_);
+    RestoreDC(dc,saved);
+    if (contentHeight_>bodyHeight_) {
+        UiBox(dc,ScrollThumb(),c.border,c.border,d(3));
+    }
+}
+
+void PowerPane::PaintDetails(HDC dc,int width,int) {
+    const auto d=[this](int n){return MulDiv(n,dpi_,96);};
+    const auto c=UiTheme(dark_);
+    auto text=[&](const std::wstring &value,RECT box,COLORREF color,HFONT font=nullptr,UINT flags=DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS){
+        const auto old=SelectObject(dc,font?font:smallFont_);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,color);
+        DrawTextW(dc,value.c_str(),-1,&box,flags|DT_NOPREFIX);SelectObject(dc,old);
+    };
+    for(const auto &label:detailLabels_) text(label.first,label.second,c.muted);
+    if(tab_==0){
+        const bool stack=width<d(360);
+        const int plotWidth=stack?width:(width-d(12))/2;
+        for(int metric=0;metric<2;++metric){
+            const int x=stack?0:metric*(plotWidth+d(12));
+            const int y=detailStatusTop_+(stack?metric*d(200):0);
+            UiBox(dc,{x,y,x+plotWidth,y+d(188)},c.surface,c.border,d(12));
+            text(metric?L"电流（A）":L"电压（V）",{x+d(12),y+d(8),x+plotWidth-d(12),y+d(32)},c.muted);
+            const int left=x+d(12),right=x+plotWidth-d(12),top=y+d(44),bottom=y+d(172);
+            for(int n=0;n<=4;++n) UiSeparator(dc,left,right,top+(bottom-top)*n/4,c.border);
+            double maximum=0.001;
+            for(const auto &sample:history_) for(const auto &channel:sample){const auto value=channel[metric?"current":"voltage"];if(value.is_number())maximum=std::max(maximum,value.get<double>());}
+            for(int channel=0;channel<3;++channel){
+                std::vector<POINT> points;size_t index=0;
+                for(const auto &sample:history_){
+                    const auto value=sample[channel][metric?"current":"voltage"];
+                    if(value.is_number())points.push_back({left+static_cast<LONG>((right-left)*index/std::max<size_t>(1,history_.size()-1)),
+                        bottom-static_cast<LONG>((bottom-top)*std::clamp(value.get<double>()/maximum,0.0,1.0))});
+                    ++index;
+                }
+                UiPolyline(dc,points.data(),static_cast<int>(points.size()),channel==0?c.accent:channel==1?c.text:c.muted,1.0f);
+            }
         }
-        if (settings_ == 3) {
-            text(L"控制方式", x, 12, 88);
-            text(L"屏幕文字", x, 92, 88);
+    }else if(tab_==1){
+        const auto task=state_.value("task",Json::object());
+        const bool running=task.value("running",false);
+        std::wstring status=running?L"运行中":L"未运行";
+        if(task.value("type",std::string())=="recover")status=running?
+            L"断电等待 · "+std::to_wstring((task.value("remainingMs",std::uint64_t(0))+999)/1000)+L" 秒":
+            task.value("phase",std::string())=="on_confirmed"?L"上电已确认":L"恢复已停止";
+        else if(running)status+=L" · 第 "+std::to_wstring(task.value("completed",0)+1)+L" / "+std::to_wstring(task.value("count",1))+L" 轮";
+        if(state_.contains("error"))status=Wide(state_["error"]);
+        text(status,{detailsInset_,detailStatusTop_,detailsInset_+width,detailStatusTop_+d(56)},
+            state_.contains("error")?c.danger:c.text,font_,DT_LEFT|DT_WORDBREAK);
+        if(task.value("type",std::string())=="recover"&&running){
+            text(L"确认断电后等待满 10 秒，再上电并读取设备启动日志。",
+                {detailsInset_,detailStatusTop_+d(64),detailsInset_+width,detailStatusTop_+d(112)},c.muted,nullptr,DT_LEFT|DT_WORDBREAK);
+        }
+    }else if(tab_==3){
+        const auto records=state_.value("records",Json::array());
+        const size_t start=records.size()>12?records.size()-12:0;
+        for(size_t index=start;index<records.size();++index){
+            const auto &record=records[index];const int y=detailStatusTop_+static_cast<int>(index-start)*d(64);
+            text(Wide(record.value("timestamp",std::string()))+L" · "+Wide(record.value("operation",std::string())),
+                {detailsInset_,y,detailsInset_+width,y+d(28)},c.text);
+            text(Wide(record.value("source",std::string()))+L" · "+Wide(record.value("result",std::string())),
+                {detailsInset_,y+d(28),detailsInset_+width,y+d(56)},c.muted);
         }
     }
-    if (tab_ == 3) {
-        text(L"操作记录", 0, 0, 160);
-        const int positions[] = {0, 170, 250, 360};
-        for (int i = 0; i < 4; ++i)
-            text(std::vector<std::wstring>{L"时间", L"来源", L"操作", L"结果"}[i], positions[i], 40, w - positions[i],
-                 28);
-        auto records = state_.value("records", Json::array());
-        int start = std::max(0, static_cast<int>(records.size()) - 3);
-        for (int i = start; i < static_cast<int>(records.size()); ++i) {
-            auto record = records[i];
-            int y = 72 + (i - start) * 24;
-            text(Wide(record.value("timestamp", std::string())), 0, y, 164, 24);
-            text(Wide(record.value("source", std::string())), 170, y, 72, 24);
-            text(Wide(record.value("operation", std::string())), 250, y, 104, 24);
-            text(Wide(record.value("result", std::string())), 360, y, w - 360, 24);
+}
+
+LRESULT CALLBACK PowerPane::BodyProc(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR id,DWORD_PTR data){
+    auto *self=reinterpret_cast<PowerPane*>(data);
+    if(m==WM_PAINT){PAINTSTRUCT ps{};HDC dc=BeginPaint(h,&ps);RECT r{};GetClientRect(h,&r);{UiBufferedPaint paint(dc,r);self->PaintBody(paint.Dc());}EndPaint(h,&ps);return 0;}
+    if(m==WM_ERASEBKGND)return 1;
+    if(m==WM_MOUSEWHEEL){self->Scroll(self->scroll_-GET_WHEEL_DELTA_WPARAM(w)/WHEEL_DELTA*MulDiv(48,self->dpi_,96));return 0;}
+    if(m==WM_LBUTTONDOWN){
+        RECT r{};GetClientRect(h,&r);
+        if(GET_X_LPARAM(l)>=r.right-MulDiv(16,self->dpi_,96)&&self->contentHeight_>self->bodyHeight_){
+            const auto thumb=self->ScrollThumb();const int y=GET_Y_LPARAM(l);
+            self->scrollGrab_ = y>=thumb.top && y<thumb.bottom ? y-thumb.top : (thumb.bottom-thumb.top)/2;
+            self->scrolling_=true;SetCapture(h);
         }
     }
+    if((m==WM_MOUSEMOVE&&self->scrolling_)||(m==WM_LBUTTONDOWN&&self->scrolling_)){
+        const auto thumb=self->ScrollThumb();
+        self->Scroll(static_cast<int>(static_cast<long long>(GET_Y_LPARAM(l)-self->scrollGrab_)*
+            std::max(0,self->contentHeight_-self->bodyHeight_)/std::max(1,self->bodyHeight_-static_cast<int>(thumb.bottom-thumb.top))));return 0;
+    }
+    if(m==WM_LBUTTONUP||m==WM_CAPTURECHANGED){self->scrolling_=false;if(GetCapture()==h)ReleaseCapture();}
+    if(m==WM_COMMAND||m==WM_DRAWITEM||m==WM_MEASUREITEM||m==WM_CTLCOLORSTATIC||m==WM_CTLCOLORBTN||
+        m==WM_CTLCOLOREDIT||m==WM_CTLCOLORLISTBOX||m==WM_NOTIFY)return SendMessageW(self->window_,m,w,l);
+    if(m==WM_NCDESTROY)RemoveWindowSubclass(h,BodyProc,id);
+    return DefSubclassProc(h,m,w,l);
+}
+
+RECT PowerPane::ScrollThumb() const {
+    RECT r{}; GetClientRect(body_,&r);
+    const int height=std::min(bodyHeight_,std::max(MulDiv(28,dpi_,96),static_cast<int>(static_cast<long long>(bodyHeight_)*bodyHeight_/std::max(1,contentHeight_))));
+    const int top=static_cast<int>(static_cast<long long>(scroll_)*(bodyHeight_-height)/std::max(1,contentHeight_-bodyHeight_));
+    return {r.right-MulDiv(8,dpi_,96),top,r.right-MulDiv(3,dpi_,96),top+height};
 }
 void PowerPane::Scroll(int position) {
     RECT r{};
-    GetClientRect(window_, &r);
-    Layout();
-    scroll_ = std::clamp(position, 0, std::max(0, contentHeight_ - static_cast<int>(r.bottom)));
+    GetClientRect(body_, &r);
+    scroll_ = std::clamp(position, 0, std::max(0, contentHeight_ - bodyHeight_));
     Layout();
     InvalidateRect(window_, nullptr, FALSE);
+    InvalidateRect(body_, nullptr, FALSE);
 }
 LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto *self = reinterpret_cast<PowerPane *>(GetWindowLongPtrW(h, GWLP_USERDATA));
@@ -1161,6 +1173,9 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return DefWindowProcW(h, m, w, l);
     if (m == WM_CREATE) {
         self->Theme(self->dark_);
+        self->body_ = CreateWindowExW(WS_EX_CONTROLPARENT,L"STATIC",L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_CLIPSIBLINGS,
+            0,0,100,100,h,nullptr,GetModuleHandleW(nullptr),nullptr);
+        SetWindowSubclass(self->body_,BodyProc,1,reinterpret_cast<DWORD_PTR>(self));
         self->CreateControls();
         self->Refresh();
         SetTimer(h, 1, 500, nullptr);
@@ -1169,29 +1184,6 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_MOUSEWHEEL) {
         self->Scroll(self->scroll_ - GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA * MulDiv(48, self->dpi_, 96));
         return 0;
-    }
-    if (m == WM_LBUTTONDOWN) {
-        RECT r{};
-        GetClientRect(h, &r);
-        if (GET_X_LPARAM(l) >= r.right - MulDiv(16, self->dpi_, 96) && self->contentHeight_ > r.bottom) {
-            self->scrolling_ = true;
-            SetCapture(h);
-            self->Scroll(GET_Y_LPARAM(l) * std::max(0, self->contentHeight_ - static_cast<int>(r.bottom)) /
-                         std::max(1, static_cast<int>(r.bottom)));
-            return 0;
-        }
-    }
-    if (m == WM_MOUSEMOVE && self->scrolling_) {
-        RECT r{};
-        GetClientRect(h, &r);
-        self->Scroll(GET_Y_LPARAM(l) * std::max(0, self->contentHeight_ - static_cast<int>(r.bottom)) /
-                     std::max(1, static_cast<int>(r.bottom)));
-        return 0;
-    }
-    if (m == WM_LBUTTONUP || m == WM_CAPTURECHANGED) {
-        self->scrolling_ = false;
-        if (GetCapture() == h)
-            ReleaseCapture();
     }
     if (m == WM_SIZE) {
         self->Scroll(self->scroll_);
@@ -1203,16 +1195,17 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (m == WM_TIMER) {
         HWND focus = GetFocus();
-        if (focus && IsChild(h, focus) && IsWindowVisible(h)) {
+        if (focus && focus != self->lastFocus_ && IsChild(self->body_, focus) && IsWindowVisible(focus)) {
             RECT field{}, view{};
             GetWindowRect(focus, &field);
-            MapWindowPoints(HWND_DESKTOP, h, reinterpret_cast<POINT *>(&field), 2);
-            GetClientRect(h, &view);
+            MapWindowPoints(HWND_DESKTOP, self->body_, reinterpret_cast<POINT *>(&field), 2);
+            GetClientRect(self->body_, &view);
             if (field.top < 0)
                 self->Scroll(self->scroll_ + field.top);
             else if (field.bottom > view.bottom)
                 self->Scroll(self->scroll_ + field.bottom - view.bottom);
         }
+        self->lastFocus_ = focus;
         self->Refresh();
         return 0;
     }
@@ -1284,7 +1277,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             const bool enabled = !(item.itemState & ODS_DISABLED);
             const bool hovered = enabled && GetPropW(item.hwndItem, L"SerialCtl.PowerHover");
             const bool pressed = enabled && (item.itemState & ODS_SELECTED);
-            HBRUSH background = CreateSolidBrush(c.field);
+            HBRUSH background = CreateSolidBrush(UiControlBackdrop(item.hwndItem, UiAiTheme(self->dark_).surface));
             FillRect(item.hDC, &item.rcItem, background);
             DeleteObject(background);
             const auto visual = UiButtonVisual(c, enabled, pressed, hovered);
@@ -1303,7 +1296,8 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         wchar_t parentClass[32]{};
         GetClassNameW(GetParent(item.hwndItem), parentClass, 32);
-        HBRUSH outside = CreateSolidBrush(_wcsicmp(parentClass, L"#32770") == 0 ? c.surface : c.field);
+        HBRUSH outside = CreateSolidBrush(UiControlBackdrop(item.hwndItem,
+            _wcsicmp(parentClass, L"#32770") == 0 ? c.surface : c.field));
         FillRect(item.hDC, &item.rcItem, outside);
         DeleteObject(outside);
         const auto visual = UiButtonVisual(c, !(item.itemState & ODS_DISABLED), item.itemState & ODS_SELECTED,

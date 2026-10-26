@@ -252,7 +252,7 @@ class GlobalActions(DesktopActions):
             width = frame['width']
             rendered = []
             for identifier in anchors:
-                control = self.user.GetDlgItem(dialog, identifier)
+                control = self.find_control(dialog, identifier)
                 sample = {'id': identifier, 'hwnd': int(control or 0), 'nonuniform_pixels': False}
                 if control and self.user.IsWindowVisible(control):
                     bounds = self.rect(control)
@@ -401,11 +401,25 @@ class GlobalActions(DesktopActions):
             self.wait(lambda: self.query(window, 0x147) == before, 'restore original selection')
         self.screenshot('combo-' + str(identifier) + '-closed')
 
+    def find_control(self, parent, identifier):
+        direct = self.user.GetDlgItem(parent, identifier)
+        if direct:
+            return direct
+        found = []
+        @self.enum_callback
+        def inspect(child, _):
+            if self.user.GetDlgCtrlID(child) == identifier:
+                found.append(child)
+                return False
+            return True
+        self.user.EnumChildWindows(parent, inspect, 0)
+        return found[0] if found else None
+
     def select_control_option(self):
         root = self.args.root or self.window
         require(self.args.control_id is not None and self.args.selection is not None,
                 '--control-id and --selection are required for select-combo')
-        window = self.user.GetDlgItem(root, self.args.control_id)
+        window = self.find_control(root, self.args.control_id)
         require(window, 'Requested native dropdown does not exist')
         before = self.query(window, 0x147)
         self.select_combo(window, self.args.selection)
@@ -437,7 +451,7 @@ class GlobalActions(DesktopActions):
         if '-power-settings-' in self.args.prefix:
             checkbox_ids += (201, 231, 232)
         for identifier in checkbox_ids:
-            checkbox = self.user.GetDlgItem(root, identifier)
+            checkbox = self.find_control(root, identifier)
             if not checkbox or not self.user.IsWindowVisible(checkbox):
                 continue
             if not self.user.IsWindowEnabled(checkbox):
@@ -493,7 +507,7 @@ class GlobalActions(DesktopActions):
         return dialog
 
     def close_settings(self, dialog, accept=False):
-        button = self.user.GetDlgItem(dialog, 1 if accept else 2)
+        button = self.find_control(dialog, 1 if accept else 2)
         require(button, 'Missing Settings save/cancel footer action')
         self.click_window(button)
         self.wait(lambda: not self.user.IsWindow(dialog), 'Settings closes after footer action')
@@ -510,7 +524,7 @@ class GlobalActions(DesktopActions):
     def settings_state(self, dialog):
         result = {}
         for identifier in (2501, 2502, 2503, 2504, 2505, 2003, 2004, 2005, 2006, 2007, 2206):
-            control = self.user.GetDlgItem(dialog, identifier)
+            control = self.find_control(dialog, identifier)
             require(control and self.user.IsWindowVisible(control),
                     'Settings lost an existing terminal capability: ' + str(identifier))
             result[str(identifier)] = {'enabled': bool(self.user.IsWindowEnabled(control)),
@@ -537,7 +551,7 @@ class GlobalActions(DesktopActions):
 
     def set_settings(self, dialog, values):
         for identifier, value in values.items():
-            control = self.user.GetDlgItem(dialog, identifier)
+            control = self.find_control(dialog, identifier)
             current = self.query(control, 0xf0 if identifier <= 2503 else 0x147)
             if current != value:
                 if identifier <= 2503:
@@ -554,7 +568,7 @@ class GlobalActions(DesktopActions):
         dialog = self.open_settings()
         before = self.settings_state(dialog)
         self.report['settings_initial_state'] = before
-        checkbox = self.user.GetDlgItem(dialog, 2501)
+        checkbox = self.find_control(dialog, 2501)
         initial_check = self.query(checkbox, 0xf0)
         self.click_window(checkbox)
         self.wait(lambda: self.focus_state()['focus'] == checkbox and
@@ -626,7 +640,7 @@ class GlobalActions(DesktopActions):
         return found[0] if found else 0
 
     def save_from_settings(self, settings, identifier, name, expected=None, before_accept=None):
-        self.click_window(self.user.GetDlgItem(settings, identifier))
+        self.click_window(self.find_control(settings, identifier))
         self.wait(lambda: self.owned_dialog(settings), 'Settings opens a native Save As dialog')
         dialog = self.owned_dialog(settings)
         self.wait(lambda: self.user.GetForegroundWindow() == dialog, 'Save As receives foreground')
@@ -734,7 +748,7 @@ class GlobalActions(DesktopActions):
             'encoding_options': ['UTF-8', 'GBK', 'GB2312', 'CMD actual code page'],
             'enter_options': ['CR', 'LF', 'CRLF', 'none'],
             'actions': ['save log', 'clear', 'copy', 'select all', 'paste', 'save diagnostics']}
-        self.combo(self.user.GetDlgItem(dialog, 2504))
+        self.combo(self.find_control(dialog, 2504))
         self.close_settings(dialog)
         self.report['limitations'].append('CMD Enter is fixed CRLF; presence of four Enter options is inspected, '
                                           'but configurable CR/LF/CRLF/none transmission needs a non-CMD session.')
@@ -759,7 +773,7 @@ class GlobalActions(DesktopActions):
         time.sleep(.2)
         require(not result_file.exists(), 'Keyboard context-menu key pasted terminal input')
         self.check('keyboard context key opens Settings without pasting')
-        self.click_window(self.user.GetDlgItem(dialog, 2007))
+        self.click_window(self.find_control(dialog, 2007))
         # cmd /Q can place stdout directly after its visible '>' prompt.
         # The exact result file below proves execution and prevents an echoed
         # input token from passing this check by itself.
@@ -773,17 +787,17 @@ class GlobalActions(DesktopActions):
                                      'sha256': hashlib.sha256(expected).hexdigest()})
         require(self.user.IsWindow(dialog), 'Immediate Settings paste unexpectedly closed the dialog')
         self.check('Settings Paste executes real CMD stdout while remaining open', marker=token)
-        self.click_window(self.user.GetDlgItem(dialog, 2006))
-        self.wait(lambda: self.user.IsWindowEnabled(self.user.GetDlgItem(dialog, 2005)),
+        self.click_window(self.find_control(dialog, 2006))
+        self.wait(lambda: self.user.IsWindowEnabled(self.find_control(dialog, 2005)),
                   'Select All enables Copy')
         self.set_clipboard('SETTINGS_COPY_SENTINEL')
-        self.click_window(self.user.GetDlgItem(dialog, 2005))
+        self.click_window(self.find_control(dialog, 2005))
         self.wait(lambda: token in (self.clipboard() or ''), 'Settings Copy contains actual terminal output')
         self.check('Settings Select All / Copy reads real terminal text', marker=token)
         self.save_from_settings(dialog, 2003, 'settings-session.log', token.encode('ascii'))
         self.save_from_settings(dialog, 2206, 'settings-network.json')
-        self.click_window(self.user.GetDlgItem(dialog, 2004))
-        self.wait(lambda: not self.user.IsWindowEnabled(self.user.GetDlgItem(dialog, 2005)),
+        self.click_window(self.find_control(dialog, 2004))
+        self.wait(lambda: not self.user.IsWindowEnabled(self.find_control(dialog, 2005)),
                   'Clear removes the active terminal selection')
         self.check('Settings Clear removes active selection')
         self.close_settings(dialog)

@@ -48,6 +48,35 @@ Json Wait(PowerService &power, Json action) {
     return {{"error", "Timeout"}};
 }
 
+void TestNativeRecoveryTimingAndCancel() {
+    PowerService power;
+    Expect(Wait(power,power.Submit({{"type","connect"},{"backend","simulation"}})).value("state","")=="completed", "Recovery fixture uses controlled device transport only");
+    const auto ready=power.State();
+    auto recovery=power.Submit({{"type","recover"},{"channels",{1}},{"identity",ready["identity"]},{"mode",ready["mode"]}});
+    Json result;
+    for(int i=0;i<300;++i) {
+        result=power.Action(recovery.at("id"));
+        if(result.value("state","")=="completed" || result.value("state","")=="failed") break;
+        if(result.value("phase","")=="off_wait")
+            Expect(power.State()["channels"][0]["output"]==false,"Confirmed-OFF channel stays off throughout native wait");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    Expect(result.value("state","")=="completed" && result.contains("onSubmittedAt") && result.contains("offConfirmedAt") &&
+        result["onSubmittedAt"].get<std::uint64_t>()-result["offConfirmedAt"].get<std::uint64_t>()>=10000,
+        "Native recovery never submits ON before 10000ms after actual OFF readback");
+    Expect(power.State()["channels"][0]["output"]==true && power.State()["channels"][1]["output"]==false,
+        "Recovery readback energizes only the selected channel");
+    auto canceled=power.Submit({{"type","recover"},{"channels",{1}},{"identity",ready["identity"]},{"mode",ready["mode"]}});
+    for(int i=0;i<100 && power.Action(canceled.at("id")).value("phase","")!="off_wait";++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    Expect(Wait(power,power.Submit({{"type","stop"}})).value("state","")=="completed", "Stop cancels pending recovery");
+    Expect(power.Action(canceled.at("id")).value("state","")=="canceled" && power.State()["channels"][0]["output"]==false,
+        "Stopped recovery remains OFF and reports canceled rather than completed");
+    auto early=Wait(power,power.Submit({{"type","output"},{"channels",{1}},{"enabled",true}}));
+    Expect(early.value("state","")=="failed" && power.State().value("connected",false) && power.State()["channels"][0]["output"]==false,
+        "Even a direct ON cannot bypass the OFF interval; harmless rejection keeps transport alive");
+}
+
 void TestSafetyAtCapacity(Json safety) {
     PowerService power;
     Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
@@ -166,6 +195,7 @@ void TestSafetyReadbackFailureAtCapacity() {
 }
 
 int main() {
+    TestNativeRecoveryTimingAndCancel();
     TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "local"}});
     TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "network"}});
     TestSafetyAtCapacity({{"type", "stop"}, {"source", "local"}});

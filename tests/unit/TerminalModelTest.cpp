@@ -1,5 +1,6 @@
 #include "TerminalModel.h"
 #include "CmdLineEditor.h"
+#include "BootInterrupt.h"
 
 #include <iostream>
 #include <string>
@@ -51,6 +52,50 @@ void TestSharedResponseOwnership() {
     telnet.Feed(L"\x1b[?1049h\x1b[3;4H", L"");
     Expect(telnet.Feed(L"\x1b[6n", L"").response == "\x1b[3;4R",
            "independent Telnet alternate screen retains cursor replies");
+}
+
+void TestEnhancedTuiInputAndExit() {
+    serialctl::TerminalModel model(40,8);
+    model.Feed(L"shell\x1b[3;11H\x1b[31m\x1b" L"7", L"");
+    const auto before = model.Feed(L"\x1b[6n",L"").response;
+    Expect(model.Feed(L"\x1b[?u",L"").response == "\x1b[?0u", "Kitty query receives actual supported mode");
+    Expect(model.Feed(L"\x1b[6n",L"").response == before, "Prefixed u query never restores the cursor");
+    model.Feed(L"\x1b[>31u",L"");
+    Expect(model.KeyboardFlags() == 1 && model.KeySequence("Enter") == "\x1b[13u", "Only implemented disambiguation mode negotiated; enhanced Enter is a key");
+    Expect(model.KeySequence("c",4) == "\x1b[99;5u", "Enhanced Ctrl+C keeps key/modifier identity");
+    model.Feed(L"\x1b[?1049h\x1b[?1000h\x1b[?1006h\x1b[?2004h\x1b[>1u\x1b[2;2H\x1b[32m\x1b" L"7",L"");
+    Expect(model.WheelSequence(true,4,2,1) == "\x1b[<68;5;3M", "Shift wheel reaches the application using SGR mouse coordinates");
+    Expect(model.MouseSequence(0,4,2,0,true) == "\x1b[<0;5;3m", "SGR mouse release is distinct from press");
+    Expect(model.Feed(L"\x1b[?1006$p",L"").response == "\x1b[?1006;1$y", "Mouse mode query reports actual state");
+    model.Resize(52,10);
+    model.Feed(L"\x1b[?1049l",L"");
+    Expect(!model.AlternateScreen() && !model.BracketedPaste() && !model.MouseCaptured() && model.KeyboardFlags()==1,
+        "TUI exit restores primary paste/mouse/keyboard modes after resize");
+    model.Feed(L"\x1b[<u",L"");
+    Expect(model.KeyboardFlags()==0 && model.KeySequence("Enter")=="\r" && model.KeySequence("c",4)==std::string(1,3),
+        "Keyboard mode pop restores real legacy CR and Ctrl+C bytes");
+    model.Feed(L"\x1b" L"8X",L"");
+    Expect(model.CurrentLineText().find(L'X')!=std::wstring::npos, "Shell renders after leaving a resized TUI");
+    serialctl::TerminalModel viewer(40,8); viewer.SetResponseRole(serialctl::TerminalModel::ResponseRole::Viewer);
+    Expect(viewer.Feed(L"\x1b[?u\x1b[?1006$p",L"").response.empty(),"Mirrored viewers never answer input-mode queries");
+}
+void TestLocalBootInterrupt() {
+    serialctl::BootInterrupt boot;
+    Expect(!boot.Arm("", " ", "=>",90,0), "Empty U-Boot matcher rejected");
+    Expect(boot.Arm("Hit any key", " ", "=>",90,100), "Bounded actual-board matcher armed");
+    Expect(boot.Feed("Hit any ",8,101).empty(), "Split prompt waits for remaining receive bytes");
+    Expect(boot.Feed("key to stop",11,102)==" ", "Receive path interrupts immediately across packet boundaries");
+    Expect(boot.Poll(181).empty() && boot.Poll(182)==" ", "Retry uses a local 80ms interval");
+    Expect(boot.Poll(262)==" " && boot.Poll(1000).empty(), "At most three interrupt bursts");
+    Expect(!boot.Status(1000).entered,"Submission is never reported as bootloader entry");
+    boot.Feed("\r\n=> ",5,1001);
+    Expect(boot.Status(1001).entered && boot.Poll(2000).empty(),"Only fresh boot prompt confirms entry and stops retries");
+    boot.Arm("Hit", "stop", "=>",1,2000); boot.Cancel();
+    Expect(boot.Feed("Hit",3,2001).empty() && boot.Status(2001).state=="canceled","Cancel cannot submit later interrupt");
+    boot.Arm("Hit", " ", "=>",1,3000); boot.Poll(4000);
+    Expect(boot.Status(4000).state=="timed_out" && !boot.Status(4000).entered,"Timeout is explicit failure to verify entry");
+    boot.Arm("Hit", " ", "=>",1,5000); boot.Delivery(false,"Disconnected");
+    Expect(boot.Status(5001).state=="failed" && boot.Poll(5002).empty(),"Transport failure cancels pending retries");
 }
 
 void TestCarriageReturnAndHistoryRecall() {
@@ -429,6 +474,8 @@ int main() {
     cursorResize.Resize(40,2); cursorResize.Resize(40,4);
     Expect(cursorResize.HistorySize()==0,"idle grow restores rows moved by shrink");
     ExpectLine(cursorResize,3,L"four","cursor row survives shrink then grow");
+    TestEnhancedTuiInputAndExit();
+    TestLocalBootInterrupt();
     TestLogicalReflowAndBlanks();
     TestHardLineAnchorsAndEditingReflow();
     TestReflowAtScrollbackCapacity();

@@ -1,4 +1,5 @@
 #pragma once
+#include "BootInterrupt.h"
 
 #include "AiPane.h"
 #include "ApiServer.h"
@@ -55,7 +56,7 @@ private:
 #ifdef SERIALCTL_AI_TESTING
     friend struct AiDeviceTestAccess;
 #endif
-    enum class SessionFocus { Terminal, Preserve, AiPreview };
+    enum class SessionFocus { Terminal, Preserve, AiPreview, PowerPreview };
     enum class SftpTransferDirection { Upload, Download };
     enum class SftpTransferState { Queued, Running, Completed, Failed, Canceled };
     enum class SftpMutationKind { CreateDirectory, Rename, Delete, ChangeMode };
@@ -110,6 +111,11 @@ private:
         struct AiOutput { std::uint64_t seq; std::wstring timestamp; std::string text; };
         std::deque<AiOutput> aiOutput;
         std::uint64_t aiCursor = 0;
+        ULONGLONG aiLastReceivedAt = 0, aiCommandAt = 0;
+        ULONGLONG aiObservedAt = 0;
+        std::uint64_t aiCommandNumber = 0, aiCommandCursor = 0;
+        std::string aiCommandText, recoveryAction;
+        std::shared_ptr<BootInterrupt> boot = std::make_shared<BootInterrupt>();
         size_t aiBytes = 0;
         bool aiTruncated = false;
         std::string aiTransportNotice;
@@ -211,6 +217,7 @@ private:
     void ShowPowerPage();
     void ShowAiPage(bool connect = true);
     Json AiDeviceRequest(const std::string&, const Json&);
+    Json SendAiBytes(SessionState&, const Bytes&);
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
     void SendTerminalCharacter(wchar_t character);
@@ -260,6 +267,9 @@ private:
     bool SidebarCollapsed() const;
     int SidebarWidth() const;
     void SyncAiTerminal();
+    void RefreshPowerTargets();
+    void SyncPowerTerminal();
+    bool LiveMonitorPage() const { return aiVisible_ || powerVisible_; }
 
     void ShowSftpPanel(bool show);
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
@@ -310,6 +320,9 @@ private:
     void UpdateCommandActions();
     void EditCommand(size_t index);
     void MoveCommand(size_t from, size_t to);
+    void UpdateCommandDrag(POINT point, bool edgeScroll);
+    void EndCommandDrag(bool commit);
+    void ImportCommandFile(const std::wstring& path);
     void ImportCommands();
     void ExportCommands();
     void AddCommand();
@@ -364,6 +377,12 @@ private:
     HWND aiButton_ = nullptr;
     bool powerVisible_ = false;
     bool powerPageOpened_ = false;
+    bool powerMonitorCollapsed_ = false, powerMonitorWrap_ = false;
+    int powerMonitorRatio_ = 500;
+    HWND powerMonitorTarget_ = nullptr;
+    std::string powerMonitorSession_;
+    std::vector<std::string> powerMonitorIds_;
+    std::vector<std::wstring> powerMonitorLabels_;
     HWND cmdButton_ = nullptr, powerButton_ = nullptr;
     ToolbarIcons toolbarIcons_;
     HWND themeButton_ = nullptr;
@@ -390,6 +409,7 @@ private:
     HWND importButton_ = nullptr;
     HWND exportButton_ = nullptr;
     HWND addCommandButton_ = nullptr;
+    bool addCommandCompact_ = false;
     HWND deleteCommandButton_ = nullptr;
     HWND sftpPath_ = nullptr;
     HWND sftpNameHeader_ = nullptr;
@@ -418,6 +438,9 @@ private:
     std::wstring activeConnectionName_;
     std::vector<CommandItem> commands_;
     int draggingCommandIndex_ = -1;
+    int commandDropIndex_ = -1;
+    POINT commandDragGrab_{};
+    HWND commandDragGhost_ = nullptr;
     int hoveredCommandIndex_ = -1;
     int hoveredCommandAction_ = 0;
     int pressedCommandIndex_ = -1, pressedCommandAction_ = 0;

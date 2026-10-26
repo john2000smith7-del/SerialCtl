@@ -330,12 +330,26 @@ PowerService::~PowerService() {
 }
 Json PowerService::State() {
     std::lock_guard<std::mutex> lock(mutex_);
-    return state_;
+    Json result = state_;
+    if (result.contains("task") && result["task"].value("running", false) &&
+        result["task"].value("type", std::string()) == "recover") {
+        const auto due = result["task"].value("notBeforeOn", std::uint64_t(0));
+        const auto now = GetTickCount64();
+        result["task"]["remainingMs"] = now < due ? due - now : 0;
+    }
+    return result;
 }
 Json PowerService::Action(const std::string &id) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = actions_.find(id);
-    return it == actions_.end() ? Json{{"error", "Action expired or not found"}} : it->second;
+    if (it == actions_.end()) return {{"error", "Action expired or not found"}};
+    Json result = it->second;
+    if (result.value("state", std::string()) == "running" && result.value("phase", std::string()) == "off_wait") {
+        const auto due = result.value("notBeforeOn", std::uint64_t(0));
+        const auto now = GetTickCount64();
+        result["remainingMs"] = now < due ? due - now : 0;
+    }
+    return result;
 }
 Json PowerService::Submit(const Json &command) {
     try {
@@ -347,12 +361,20 @@ Json PowerService::Submit(const Json &command) {
 #endif
                 return {{"error", ConnectionUnavailableMessage()}, {"code", "FEATURE_NOT_AVAILABLE"}};
         }
-        Require(type == "connect" || type == "disconnect" || type == "output" || type == "parameters" ||
+        if (type == "connect") {
+            const auto backend = command.value("backend", std::string());
+            bool allowed = backend == "usb" || backend == "serial";
+#ifdef SERIALCTL_POWER_TESTING
+            allowed = allowed || backend == "simulation";
+#endif
+            Require(allowed, "Unsupported production power transport");
+        }
+        Require(type == "connect" || type == "disconnect" || type == "recover" || type == "output" || type == "parameters" ||
                     type == "protection" || type == "task" || type == "stop" || type == "mode" || type == "batch" ||
                     type == "settings" || type == "deviceTimer" || type == "trigger" || type == "diagnostic" ||
                     type == "sequence" || type == "schedule" || type == "interval" || type == "step",
                 "Unknown power action");
-        if (type == "output" || type == "parameters" || type == "protection" || type == "task") {
+        if (type == "output" || type == "parameters" || type == "protection" || type == "task" || type == "recover") {
             auto channels = ValidateChannels(command);
             if (type == "output")
                 Require(command.at("enabled").is_boolean(), "Invalid output state");
@@ -559,7 +581,7 @@ Json PowerService::Submit(const Json &command) {
         if (priority) {
             for (auto it = queue_.begin(); it != queue_.end();) {
                 const auto t = it->second.value("type", std::string());
-                if (t == "task" || t == "sequence" || t == "schedule" ||
+                if (t == "task" || t == "sequence" || t == "schedule" || t == "recover" ||
                     (t == "output" && it->second.value("enabled", false)) || safetyScope(it->second) == scope) {
                     actions_[it->first]["state"] = "canceled";
                     it = queue_.erase(it);
@@ -607,6 +629,10 @@ void PowerService::Select(int channel) {
     Require(Number("INST:NSEL?") == channel, "Channel selection readback differs");
 }
 void PowerService::Outputs(const Json &channels, bool enabled, Json &result) {
+    if (enabled)
+        for (const auto &channel : channels)
+            Require(GetTickCount64() >= recoveryNotBefore_[channel.get<int>() - 1],
+                "Recovery OFF interval has not reached 10 seconds; output ON was not sent");
     if (enabled)
         ReadMode();
     auto mode = State().value("mode", std::string("independent"));
@@ -686,6 +712,14 @@ void PowerService::StopTask() {
         return;
     Json channels = owned_;
     Json completed = task_;
+    if (completed.is_object() && completed.value("type", std::string()) == "recover") {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto id = completed.value("actionId", std::string());
+        if (actions_.count(id) && actions_[id].value("state", std::string()) == "running") {
+            actions_[id]["state"] = "canceled";
+            actions_[id]["error"] = "Recovery stopped before automatic power ON";
+        }
+    }
     task_ = Json();
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -821,10 +855,42 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             Disconnect();
         else if (type == "stop")
             StopTask();
+        else if (type == "recover") {
+            const auto state = State();
+            Require(transport_ && state.value("connected", false), "Supply disconnected");
+            Require(command.value("identity", std::string()) == state.value("identity", std::string()) &&
+                command.value("mode", std::string()) == state.value("mode", std::string()), "Recovery identity/mode changed");
+            Require(task_.is_null() || task_.empty(), "A task is already running");
+            Require(owned_.empty(), "Stop the previous task first");
+            communication = true;
+            owned_ = command.at("channels");
+            Outputs(owned_, false, action["offChannels"]);
+            const auto confirmed = GetTickCount64();
+            taskAt_ = confirmed + 10000;
+            for (const auto &channel : owned_) recoveryNotBefore_[channel.get<int>() - 1] = taskAt_;
+            task_ = command;
+            task_["actionId"] = id;
+            task_["phase"] = "off_wait";
+            task_["offConfirmedAt"] = confirmed;
+            task_["notBeforeOn"] = taskAt_;
+            task_["completed"] = 0;
+            task_["count"] = 1;
+            task_["running"] = true;
+            action["phase"] = "off_wait";
+            action["offConfirmedAt"] = confirmed;
+            action["notBeforeOn"] = taskAt_;
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["task"] = task_;
+            state_["ownedChannels"] = owned_;
+        }
         else if (type == "output") {
-            if (command["enabled"].get<bool>())
+            if (command["enabled"].get<bool>()) {
                 Require(task_.is_null() || task_.empty(), "Stop the running task before manual output ON");
+                for (const auto &channel : command.at("channels"))
+                    Require(GetTickCount64() >= recoveryNotBefore_[channel.get<int>() - 1], "Recovery requires at least 10 seconds after OFF confirmation");
+            }
             if (!command["enabled"].get<bool>()) {
+                if (task_.is_object() && task_.value("type", std::string()) == "recover") StopTask();
                 task_ = Json();
                 std::lock_guard<std::mutex> lock(mutex_);
                 state_["task"]["running"] = false;
@@ -891,7 +957,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             communication = type != "interval";
             Extended(command, action);
         }
-        action["state"] = "completed";
+        if (type != "recover") action["state"] = "completed";
     } catch (const std::exception &e) {
         action["state"] = "failed";
         action["error"] = e.what();
@@ -1022,11 +1088,17 @@ void PowerService::Run() {
             }
         } catch (const std::exception &e) {
             std::string error = e.what();
+            const auto recoveryId = task_.is_object() && task_.value("type", std::string()) == "recover" ?
+                task_.value("actionId", std::string()) : std::string();
             log_.WriteStatus(
                 MultiByteToWide(reinterpret_cast<const std::uint8_t *>(error.data()), error.size(), CP_UTF8));
             Disconnect();
             std::lock_guard<std::mutex> lock(mutex_);
             state_["error"] = error;
+            if (!recoveryId.empty() && actions_.count(recoveryId)) {
+                actions_[recoveryId]["state"] = "failed";
+                actions_[recoveryId]["error"] = error;
+            }
         }
     }
     Disconnect();
@@ -1373,6 +1445,40 @@ void PowerService::Extended(const Json &command, Json &action) {
 void PowerService::AdvanceTask() {
     const auto type = task_.value("type", std::string("task"));
     Json result;
+    if (type == "recover") {
+        Require(GetTickCount64() >= task_.at("notBeforeOn").get<std::uint64_t>(), "Recovery delay not elapsed");
+        ReadMode();
+        const auto current = State();
+        Require(current.value("connected",false) && current.value("identity",std::string()) == task_.value("identity",std::string()) &&
+            current.value("mode",std::string()) == task_.value("mode",std::string()), "Recovery device identity/mode changed; pending ON canceled");
+        const auto id = task_.at("actionId").get<std::string>();
+        const auto beforeOn = GetTickCount64();
+        Outputs(owned_, true, result);
+        task_["phase"] = "on_confirmed";
+        task_["completed"] = 1;
+        task_["running"] = false;
+        task_["onSubmittedAt"] = beforeOn;
+        task_["onConfirmedAt"] = GetTickCount64();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            actions_[id]["state"] = "completed";
+            actions_[id]["phase"] = "on_confirmed";
+            actions_[id]["channels"] = result;
+            actions_[id]["onSubmittedAt"] = beforeOn;
+            actions_[id]["onConfirmedAt"] = task_["onConfirmedAt"];
+            state_["task"] = task_;
+            state_["ownedChannels"] = Json::array();
+            state_["records"].push_back({{"timestamp", Timestamp()}, {"source", "ai:desktop"},
+                {"operation", "recover"}, {"result", "completed; OFF readback then >=10000ms before ON submission"}});
+            if (state_["records"].size() > 200) state_["records"].erase(state_["records"].begin());
+        }
+        const auto record = Json{{"type", "recover"}, {"id", id}, {"state", "completed"},
+            {"offConfirmedAt", task_["offConfirmedAt"]}, {"onSubmittedAt", beforeOn}, {"channels", result}}.dump();
+        log_.WriteStatus(MultiByteToWide(reinterpret_cast<const std::uint8_t *>(record.data()), record.size(), CP_UTF8));
+        task_ = Json();
+        owned_ = Json::array();
+        return;
+    }
     if (type == "sequence") {
         int index = task_["index"];
         if (index >= static_cast<int>(task_["steps"].size())) {

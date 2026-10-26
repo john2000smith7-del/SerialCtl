@@ -64,8 +64,12 @@ int wmain(int argc, wchar_t **argv) {
                     {"nextCursor", nullptr}}}});
         } else if (method == "config/read")
             Send({{"id", id}, {"result", {{"config", {{"model", "fixture"}}}}}});
-        else if (method == "thread/start") {
-            if (message["params"].value("dynamicTools", Json::array()).size() != 7)
+        else if (method == "command/exec") {
+            Send({{"id",id},{"result",{{"exitCode",0},{"stdout","/home/linux\n"},{"stderr",""}}}});
+        } else if (method == "fs/readDirectory") {
+            Send({{"id",id},{"result",{{"entries",Json::array({{{"fileName","fixture-project"},{"isDirectory",true},{"isFile",false}}})}}}});
+        } else if (method == "thread/start") {
+            if (message["params"].value("dynamicTools", Json::array()).size() != 13)
                 return 44;
             if (message["params"].contains("config") &&
                 message["params"]["config"].value("web_search", Json()) != "disabled") {

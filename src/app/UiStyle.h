@@ -301,6 +301,10 @@ struct UiFieldStyle {
     bool ai = false;
 };
 inline UiColors UiFieldColors(const UiFieldStyle& style) { return style.ai ? UiAiTheme(*style.dark) : UiTheme(*style.dark); }
+inline COLORREF UiControlBackdrop(HWND control, COLORREF fallback) {
+    const auto value = reinterpret_cast<UINT_PTR>(GetPropW(control, L"SerialCtl.Backdrop"));
+    return value ? static_cast<COLORREF>(value - 1) : fallback;
+}
 // Keep native COMBOBOX/ComboLBox windows, selection notifications, keyboard
 // handling and accessibility. Only painting and the scrollbar lane are shared.
 struct UiComboPopup {
@@ -388,11 +392,13 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
     const COLORREF outsideColor = GetPropW(combo, L"SerialCtl.FieldSurface") || _wcsicmp(parentClass, L"#32770") == 0
                                       ? colors.surface
                                       : colors.field;
-    HBRUSH outside = CreateSolidBrush(GetPropW(combo, L"SerialCtl.Composer") ? colors.field : outsideColor);
+    HBRUSH outside = CreateSolidBrush(UiControlBackdrop(combo, GetPropW(combo, L"SerialCtl.Composer") ? colors.field : outsideColor));
     FillRect(dc, &bounds, outside);
     DeleteObject(outside);
     const bool enabled = IsWindowEnabled(combo) != FALSE;
-    const bool focused = enabled && (GetFocus() == combo || SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0));
+    COMBOBOXINFO comboInfo{sizeof(comboInfo)};
+    const bool editable = (GetWindowLongPtrW(combo,GWL_STYLE) & 3) == CBS_DROPDOWN && GetComboBoxInfo(combo,&comboInfo);
+    const bool focused = enabled && (GetFocus() == combo || (editable && GetFocus() == comboInfo.hwndItem) || SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0));
     const COLORREF border = focused                                               ? UiAccentInk(*style.dark)
                             : enabled && GetPropW(combo, L"SerialCtl.FieldHover") ? colors.muted
                                                                                   : colors.border;
@@ -409,6 +415,11 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
     }
     if (auto label = reinterpret_cast<const std::wstring *>(GetPropW(combo, L"SerialCtl.CompactLabel")))
         text = *label;
+    if (editable) {
+        const int length=GetWindowTextLengthW(comboInfo.hwndItem);
+        text.resize(static_cast<size_t>(length)+1);
+        GetWindowTextW(comboInfo.hwndItem,text.data(),length+1);text.resize(length);
+    }
     HFONT font = reinterpret_cast<HFONT>(SendMessageW(combo, WM_GETFONT, 0, 0));
     if (font || style.font)
         SelectObject(dc, font ? font : style.font);
@@ -702,7 +713,7 @@ inline void UiPaintCheckBox(HWND h, HDC target, const UiFieldStyle &style) {
     HGDIOBJ previousBitmap = bitmap ? SelectObject(buffer, bitmap) : nullptr;
     HDC dc = bitmap ? buffer : target;
     const int saved = SaveDC(dc);
-    const COLORREF outside = GetPropW(h, L"SerialCtl.CheckSurface") ? colors.surface : colors.field;
+    const COLORREF outside = UiControlBackdrop(h, GetPropW(h, L"SerialCtl.CheckSurface") ? colors.surface : colors.field);
     HBRUSH background = CreateSolidBrush(outside);
     FillRect(dc, &bounds, background);
     DeleteObject(background);
@@ -816,6 +827,38 @@ inline bool UiEditSelectAll(HWND h, UINT message, WPARAM key) {
     SendMessageW(h, EM_SETSEL, 0, -1);
     return true;
 }
+inline int UiEditTextHeight(HWND edit, int available) {
+    HDC dc = GetDC(edit);
+    const auto font = reinterpret_cast<HFONT>(SendMessageW(edit, WM_GETFONT, 0, 0));
+    const auto old = font ? SelectObject(dc, font) : nullptr;
+    TEXTMETRICW metrics{};
+    GetTextMetricsW(dc, &metrics);
+    if (old) SelectObject(dc, old);
+    ReleaseDC(edit, dc);
+    return std::max(1, std::min(available, static_cast<int>(metrics.tmHeight)));
+}
+
+inline LRESULT CALLBACK UiComboEditProc(HWND h,UINT message,WPARAM w,LPARAM l,UINT_PTR id,DWORD_PTR) {
+    if(UiEditSelectAll(h,message,w)) return 0;
+    const auto result=DefSubclassProc(h,message,w,l);
+    if(message==WM_SETFOCUS || message==WM_KILLFOCUS) InvalidateRect(GetParent(h),nullptr,FALSE);
+    if(message==WM_NCDESTROY) RemoveWindowSubclass(h,UiComboEditProc,id);
+    return result;
+}
+inline void UiLayoutComboEdit(HWND combo,const UiFieldStyle &style) {
+    if((GetWindowLongPtrW(combo,GWL_STYLE)&3)!=CBS_DROPDOWN) return;
+    COMBOBOXINFO info{sizeof(info)}; if(!GetComboBoxInfo(combo,&info) || !info.hwndItem) return;
+    const auto d=[&](int n){return MulDiv(n,style.dpi,96);};
+    RECT r{};GetClientRect(combo,&r);
+    const auto edit=info.hwndItem;
+    SetWindowLongPtrW(edit,GWL_STYLE,GetWindowLongPtrW(edit,GWL_STYLE)&~WS_BORDER);
+    SetWindowLongPtrW(edit,GWL_EXSTYLE,GetWindowLongPtrW(edit,GWL_EXSTYLE)&~WS_EX_CLIENTEDGE);
+    SetWindowSubclass(edit,UiComboEditProc,84,0);
+    SendMessageW(edit,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,0);
+    const int height=UiEditTextHeight(edit,std::max(1L,r.bottom-d(8)));
+    SetWindowPos(edit,nullptr,d(8),std::max(0,(static_cast<int>(r.bottom)-height)/2),
+        std::max(1L,r.right-d(40)),height,SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
+}
 inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR reference) {
     auto *style = reinterpret_cast<UiFieldStyle *>(reference);
     wchar_t cls[32]{};
@@ -825,6 +868,11 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     bool hoverChanged = false;
     auto d = [style](int n) { return MulDiv(n, style->dpi, 96); };
     auto colors = UiFieldColors(*style);
+    if(!edit && message==WM_CTLCOLOREDIT) {
+        HDC dc=reinterpret_cast<HDC>(w); SetTextColor(dc,IsWindowEnabled(h)?colors.text:colors.muted);
+        SetBkColor(dc,colors.field);SetDCBrushColor(dc,colors.field);
+        return reinterpret_cast<LRESULT>(GetStockObject(DC_BRUSH));
+    }
     if (!edit && (message == WM_NCCALCSIZE || message == WM_NCPAINT))
         return 0;
     if (!edit && message == WM_ERASEBKGND)
@@ -866,13 +914,23 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     if (edit && message == WM_NCCALCSIZE) {
         LRESULT result = DefSubclassProc(h, message, w, l);
         RECT *rect = w ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(l)->rgrc[0] : reinterpret_cast<RECT *>(l);
-        InflateRect(rect, -d(8), -d(4));
+        rect->left += d(8);
+        rect->right -= d(8);
+        const int height = rect->bottom - rect->top;
+        if (GetWindowLongPtrW(h, GWL_STYLE) & ES_MULTILINE) {
+            rect->top += d(4);
+            rect->bottom -= d(4);
+        } else {
+            const int textHeight = UiEditTextHeight(h, std::max(1, height - d(8)));
+            rect->top += std::max(0, (height - textHeight) / 2);
+            rect->bottom = rect->top + textHeight;
+        }
         return result;
     }
     wchar_t parentClass[32]{};
     GetClassNameW(GetParent(h), parentClass, 32);
-    const COLORREF outsideColor =
-        GetPropW(h, L"SerialCtl.FieldSurface") || _wcsicmp(parentClass, L"#32770") == 0 ? colors.surface : colors.field;
+    const COLORREF outsideColor = UiControlBackdrop(h,
+        GetPropW(h, L"SerialCtl.FieldSurface") || _wcsicmp(parentClass, L"#32770") == 0 ? colors.surface : colors.field);
     if (edit && message == WM_PRINT) {
         HDC dc = reinterpret_cast<HDC>(w);
         int saved = SaveDC(dc);
@@ -885,8 +943,10 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         UiBox(dc, bounds, colors.field, GetFocus() == h ? UiAccentInk(*style->dark) : colors.border, d(10));
         POINT origin{};
         GetViewportOrgEx(dc, &origin);
-        SetViewportOrgEx(dc, origin.x + d(8), origin.y + d(4), nullptr);
-        IntersectClipRect(dc, 0, 0, bounds.right - d(16), bounds.bottom - d(8));
+        POINT clientOrigin{}; ClientToScreen(h,&clientOrigin);
+        RECT windowBounds{}, clientBounds{};GetWindowRect(h,&windowBounds);GetClientRect(h,&clientBounds);
+        SetViewportOrgEx(dc, origin.x+clientOrigin.x-windowBounds.left, origin.y+clientOrigin.y-windowBounds.top, nullptr);
+        IntersectClipRect(dc,0,0,clientBounds.right,clientBounds.bottom);
         DefSubclassProc(h, WM_PRINTCLIENT, w, PRF_CLIENT | PRF_ERASEBKGND);
         RestoreDC(dc, saved);
         return 0;
@@ -897,7 +957,10 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         RECT rect{};
         GetWindowRect(h, &rect);
         OffsetRect(&rect, -rect.left, -rect.top);
-        ExcludeClipRect(dc, d(8), d(4), rect.right - d(8), rect.bottom - d(4));
+        POINT clientOrigin{}; ClientToScreen(h,&clientOrigin);
+        RECT windowBounds{}, clientBounds{};GetWindowRect(h,&windowBounds);GetClientRect(h,&clientBounds);
+        const int x=clientOrigin.x-windowBounds.left, y=clientOrigin.y-windowBounds.top;
+        ExcludeClipRect(dc,x,y,x+clientBounds.right,y+clientBounds.bottom);
         HBRUSH outside = CreateSolidBrush(outsideColor);
         FillRect(dc, &rect, outside);
         DeleteObject(outside);
@@ -920,6 +983,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     DWORD_PTR current = 0;
     if (!GetWindowSubclass(h, UiFieldProc, id, &current) || current != reference)
         return result;
+    if(!edit && (message==WM_SIZE || message==WM_SETFONT || message==CB_SETITEMHEIGHT)) UiLayoutComboEdit(h,*style);
     if (!edit && message == WM_SETFONT)
         UiPrepareComboPopup(h, style);
     if (!edit && (hoverChanged || message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
@@ -949,8 +1013,10 @@ inline void UiStyleField(HWND control, UiFieldStyle *style) {
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     wchar_t cls[32]{};
     GetClassNameW(control, cls, 32);
-    if (_wcsicmp(cls, L"COMBOBOX") == 0)
+    if (_wcsicmp(cls, L"COMBOBOX") == 0) {
         UiPrepareComboPopup(control, style);
+        UiLayoutComboEdit(control,*style);
+    }
 }
 } // namespace serialctl
 

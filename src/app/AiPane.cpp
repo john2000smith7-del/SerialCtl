@@ -1,6 +1,7 @@
 #include "AiPane.h"
 #include "HostKeyDialog.h"
 #include "AiHistory.h"
+#include "Workspace.h"
 #include "Win32Helpers.h"
 #include "UiDialogViewport.h"
 #include <chrono>
@@ -32,7 +33,9 @@ enum {
     Value,
     Directory,
     HostIdentity,
-    HostReverify
+    HostReverify,
+    DirectoryUp,
+    DirectoryRefresh
 };
 constexpr UINT_PTR Timer = 1;
 constexpr size_t MaxConversation = 4 * 1024 * 1024;
@@ -85,7 +88,7 @@ void Center(HWND window, HWND owner) {
                  std::max(0L, p.top + (p.bottom - p.top - r.bottom + r.top) / 2), 0, 0, SWP_NOSIZE | SWP_NOZORDER);
 }
 std::wstring Profile(const ai::ServerSettings &s) {
-    return s.host + L":" + std::to_wstring(s.port) + L"/" + s.username + (s.workingDirectory.empty() ? L"" : L"/project:" + s.workingDirectory);
+    return s.host + L":" + std::to_wstring(s.port) + L"/" + s.username;
 }
 struct HistoryPopup {
     bool dark = false, canCompact = false, dragging = false;
@@ -105,7 +108,7 @@ struct HistoryPopup {
         std::transform(query.begin(), query.end(), query.begin(), towlower);
         filtered.clear();
         for (size_t i = 0; i < entries.size(); ++i) {
-            auto title = Wide(entries[i].value("title", std::string()));
+            auto title = Wide(entries[i].value("title", std::string()) + " " + ai::StoredWorkspace(entries[i]));
             std::transform(title.begin(), title.end(), title.begin(), towlower);
             if (query.empty() || title.find(query) != std::wstring::npos)
                 filtered.push_back(i);
@@ -153,8 +156,13 @@ struct HistoryPopup {
                 UiBox(dc, row, active ? c.accent : c.field, active ? c.accent : c.border, p->D(8));
                 row.left += p->D(12);
                 row.right -= p->D(12);
-                Draw(dc, Wide(p->entries[p->filtered[i]].value("title", std::string("AI 会话"))), row, p->font,
+                RECT title = row;
+                title.bottom = title.top + p->D(24);
+                Draw(dc, Wide(p->entries[p->filtered[i]].value("title", std::string("AI 会话"))), title, p->font,
                      active ? RGB(255, 255, 255) : c.text);
+                row.top += p->D(24);
+                const auto cwd = ai::StoredWorkspace(p->entries[p->filtered[i]]);
+                Draw(dc, cwd.empty() ? L"服务器默认目录" : Wide(cwd), row, p->font, active ? RGB(255,255,255) : c.muted);
             }
             const int content = static_cast<int>(p->filtered.size()) * p->D(48);
             if (content > r.bottom) {
@@ -339,6 +347,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     dark_ = dark;
     devices_ = std::move(devices);
     settings_ = ai::LoadServerSettings();
+    workspaceDirectory_ = settings_.workingDirectory;
     HDC dc = GetDC(parent);
     dpi_ = GetDeviceCaps(dc, LOGPIXELSX);
     ReleaseDC(parent, dc);
@@ -770,7 +779,8 @@ void AiPane::Reflow(bool appended) {
     }
     ReleaseDC(transcript_, dc);
     waitingBounds_ = {};
-    if (busy_ && waitingReply_) {
+    if (busy_ && waitingReply_ && std::none_of(messages_.begin(), messages_.end(),
+            [&](const Message &m) { return m.process && m.group == displayGroup_; })) {
         waitingBounds_ = {0, y, D(72), y + D(40)};
         y += D(52);
     }
@@ -831,8 +841,12 @@ void AiPane::PaintTranscript(HDC target) {
         if (m.groupHeader) {
             const auto count = std::count_if(messages_.begin(), messages_.end(),
                                              [&](const Message &x) { return x.process && x.group == m.group; });
-            const auto state = groupStates_.count(m.group) ? groupStates_.at(m.group) : L"执行过程";
-            Draw(dc, state + L" · " + std::to_wstring(count) + L" 条记录",
+            const auto state = busy_ && m.group == displayGroup_ ? L"正在处理" + std::wstring((GetTickCount64() / 400) % 4, L'.') :
+                groupStates_.count(m.group) ? groupStates_.at(m.group) : L"处理过程";
+            const auto duration = busy_ && m.group == displayGroup_ && turnStarted_ ? GetTickCount64()-turnStarted_ :
+                groupDurations_.count(m.group) ? groupDurations_.at(m.group) : 0;
+            const auto elapsed = duration ? L" · " + std::to_wstring(duration/1000) + L" 秒" : std::wstring();
+            Draw(dc, state + L" · " + std::to_wstring(count) + L" 项" + elapsed,
                  {box.left + D(12), box.top + D(6), box.right - D(36), box.top + D(32)}, smallFont_, c.muted);
             UiDrawGlyph(dc, {box.right - D(28), box.top + D(12), box.right - D(12), box.top + D(28)}, c.muted,
                         m.folded ? UiGlyph::ChevronRight : UiGlyph::ChevronDown);
@@ -1162,7 +1176,9 @@ void AiPane::Add(std::wstring role, std::wstring text, std::string item) {
     message.text = std::move(text);
     message.item = std::move(item);
     message.group = displayGroup_;
-    message.process = message.role == L"工具";
+    message.process = message.role == L"工具" || (busy_ && message.role == L"AI" && !displayGroup_.empty());
+    if (message.process && !message.group.empty() && initializedGroups_.insert(message.group).second)
+        collapsedGroups_.insert(message.group);
     messages_.push_back(std::move(message));
     Reflow(true);
 }
@@ -1175,10 +1191,10 @@ void AiPane::SetStatus(const std::wstring &text) {
 void AiPane::UpdateActions() {
     const bool ready = client_.Ready();
     SetWindowTextW(Control(Send), L"发送");
-    EnableWindow(Control(Send), ready && !busy_);
+    EnableWindow(Control(Send), ready && !busy_ && !directoryPending_);
     EnableWindow(Control(StopTurn), ready && busy_ && !stopRequested_);
     for (int id : {Analyze, Observe, HistoryButton, New})
-        EnableWindow(Control(id), ready && !busy_);
+        EnableWindow(Control(id), ready && !busy_ && !directoryPending_);
     EnableWindow(Control(Target), !busy_);
     EnableWindow(Control(Analyze), ready && !busy_ && !target_.empty());
     EnableWindow(Control(Observe), ready && !busy_ && !target_.empty());
@@ -1326,7 +1342,7 @@ void AiPane::SendPrompt(std::wstring text) {
         ShowConnection();
         return;
     }
-    if (busy_)
+    if (busy_ || directoryPending_)
         return;
     if (text.empty())
         text = Text(Control(Input));
@@ -1338,6 +1354,7 @@ void AiPane::SendPrompt(std::wstring text) {
     }
     pendingPrompt_ = text;
     taskAuthorized_ = true;
+    recoveryUsed_ = false;
     powerContext_ = nullptr;
     nativeItems_.clear();
     turnTarget_ = target_;
@@ -1350,6 +1367,7 @@ void AiPane::SendPrompt(std::wstring text) {
         attachmentTarget_.clear();
     }
     displayGroup_ = "local:" + std::to_string(nextRequest_);
+    collapsedGroups_.insert(displayGroup_);
     waitingReply_ = true;
     Add(L"我", text);
     SetWindowTextW(Control(Input), L"");
@@ -1360,20 +1378,24 @@ void AiPane::SendPrompt(std::wstring text) {
     stopRequested_ = false;
     observedTool_ = false;
     turnStarted_ = GetTickCount64();
+    groupStates_[displayGroup_] = L"正在处理";
+    Add(L"工具", L"正在分析请求；设备操作以随后实际工具记录为准。", "local:process-start");
     if (thread_.empty()) {
-        if (!Request(ai::Operation::NewConversation, {{"cwd", Utf8(settings_.workingDirectory)}, {"defaultModel", serverDefaultModel_}}, "start")) {
+        if (!Request(ai::Operation::NewConversation, {{"cwd", Utf8(workspaceDirectory_)}, {"defaultModel", serverDefaultModel_}}, "start")) {
             busy_ = false;
             pendingPrompt_.clear();
         }
-    } else
+    } else {
+        RememberThread(thread_,text.substr(0,40));
         StartTurn();
+    }
     SetStatus(L"正在请求模型；推理与工具能力以实际响应为准…");
     UpdateActions();
 }
 void AiPane::StartTurn() {
     Json params = {{"conversationId", thread_},
                    {"defaultModel", serverDefaultModel_},
-                   {"cwd", Utf8(settings_.workingDirectory)},
+                   {"cwd", Utf8(workspaceDirectory_)},
                    {"text", Utf8(pendingPrompt_) + "\n\n[SerialCtl associated terminal session: " + turnTarget_ +
                                 "; label: " + Utf8(turnTargetLabel_) +
                                 "; selected session read/write enabled; no per-command confirmation. "
@@ -1390,6 +1412,7 @@ void AiPane::Stop() {
     restoreOnConfig_ = false;
     nativeItems_.clear();
     stopRequested_ = true;
+    if(!displayGroup_.empty()) groupStates_[displayGroup_]=L"正在停止";
     waitingReply_ = false;
     Reflow();
     completionDeadline_ = 0;
@@ -1416,7 +1439,9 @@ void AiPane::NewConversation() {
     finishedTurns_.clear();
     displayGroup_.clear();
     collapsedGroups_.clear();
+    initializedGroups_.clear();
     groupStates_.clear();
+    groupDurations_.clear();
     waitingReply_ = false;
     ClearTextSelection();
     messages_.clear();
@@ -1437,8 +1462,9 @@ void AiPane::Action(int id) {
         if (busy_ && !stopRequested_) Stop();
     } else if (id == Connect)
         ShowConnection();
-    else if (id == New)
-        NewConversation();
+    else if (id == New) {
+        if (ChooseWorkspace()) NewConversation();
+    }
     else if (id == HistoryButton)
         ShowHistory();
     else if (id == Bottom) {
@@ -1532,7 +1558,7 @@ void AiPane::Poll() {
         } catch (...) {
         }
     }
-    if (busy_ && waitingReply_)
+    if (busy_)
         InvalidateRect(transcript_, nullptr, FALSE);
     std::deque<Json> batch;
     {
@@ -1551,7 +1577,20 @@ void AiPane::Poll() {
                       L" 事件，请检查服务端返回格式；设备命令不自动重发");
         }
     }
-    if (!pendingObservation_.is_null() && (GetTickCount64() >= observeDeadline_ || stopRequested_)) {
+    if (directoryPending_ && GetTickCount64() >= directoryDeadline_) {
+        for (auto it = requests_.begin(); it != requests_.end();)
+            if (it->second.purpose == "home" || it->second.purpose == "directory" || it->second.purpose == "directory-fallback")
+                it = requests_.erase(it);
+            else ++it;
+        DirectoryFailure(L"目录查询超时；可以手动填写路径后重试，终端连接保持正常");
+    }
+    if (!pendingObservation_.is_null()) {
+        const auto after = pendingObservation_["arguments"].value("after", std::uint64_t(0));
+        const auto current = devices_("read", {{"sessionId", turnTarget_}, {"lines", 500}, {"after", after}});
+        const bool settled = !current.contains("error") && current.value("cursor", std::uint64_t(0)) > after &&
+            current.contains("lastOutputAgeMs") && current["lastOutputAgeMs"].is_number() &&
+            current["lastOutputAgeMs"].get<std::uint64_t>() >= 150;
+        if (GetTickCount64() >= observeDeadline_ || stopRequested_ || current.contains("error") || settled) {
         auto request = pendingObservation_;
         pendingObservation_ = nullptr;
         auto args = request["arguments"];
@@ -1559,6 +1598,7 @@ void AiPane::Poll() {
             "read", {{"sessionId", turnTarget_}, {"lines", 500}, {"after", args.value("after", std::uint64_t(0))}});
         Reply(request["requestId"], result, !result.contains("error"));
         Add(L"工具", L"持续观察完成 · " + Wide(result.dump()));
+        }
     }
     // Some compatible gateways omit turn/completed. A final agent item can
     // finish after a short quiet interval; any subsequent activity cancels it.
@@ -1610,6 +1650,14 @@ void AiPane::Event(const Json &e) {
         return;
     }
     if (event == "disconnected") {
+        if(busy_ && !displayGroup_.empty()) {
+            groupStates_[displayGroup_]=stopRequested_?L"已停止":L"连接中断";
+            if(turnStarted_) groupDurations_[displayGroup_]=GetTickCount64()-turnStarted_;
+        }
+        directoryPending_ = false;
+        workspaceAccept_ = false;
+        directoryChildren_ = Json::array();
+        verifiedDirectory_.clear();
         taskAuthorized_ = false;
         restoreOnConfig_ = false;
         PostMessageW(GetParent(window_), AiStateChanged, 0, 0);
@@ -1643,6 +1691,24 @@ void AiPane::Event(const Json &e) {
         auto purpose = found->second.purpose;
         const auto requestTurn = found->second.turn;
         requests_.erase(found);
+        if (purpose == "home" || purpose == "directory" || purpose == "directory-fallback") {
+            if (purpose == "home") {
+                serverHome_.clear();
+                if (!e.contains("error")) {
+                    auto home = e.at("result").value("stdout", std::string());
+                    while (!home.empty() && (home.back() == '\n' || home.back() == '\r')) home.pop_back();
+                    if (ai::ValidWorkspacePath(home)) serverHome_ = Wide(home);
+                }
+                BrowseDirectory(settings_.workingDirectory.empty() ? L"/home/linux" : settings_.workingDirectory, true);
+            } else if (e.contains("error")) {
+                if (purpose == "directory" && e.value("code", 0) == -32601) {
+                    if (!Request(ai::Operation::DirectoryFallback, {{"path", Utf8(directoryPath_)}}, "directory-fallback"))
+                        DirectoryFailure(L"服务器不支持目录浏览；可手动填写项目路径");
+                } else DirectoryFailure(Wide(e.at("error").get<std::string>()));
+            } else DirectoryResult(e.at("result"), purpose == "directory-fallback");
+            UpdateActions();
+            return;
+        }
         if (e.contains("error")) {
             if (purpose == "config") { restoreOnConfig_ = false; busy_ = false; }
             SetStatus(Wide(ai::ExplainServiceError(e.at("error").get<std::string>())));
@@ -1667,6 +1733,7 @@ void AiPane::Event(const Json &e) {
                        {"status", "interrupted"}});
         } else if (purpose == "start") {
             thread_ = result.at("conversationId").get<std::string>();
+            if (ai::ValidWorkspacePath(result.value("cwd", std::string()))) workspaceDirectory_ = Wide(result["cwd"].get<std::string>());
             RememberThread(thread_, pendingPrompt_.empty() ? L"新会话" : pendingPrompt_.substr(0, 40));
             if (stopRequested_) {
                 busy_ = false;
@@ -1688,7 +1755,7 @@ void AiPane::Event(const Json &e) {
                 busy_ = true;
                 turnStarted_ = GetTickCount64();
                 if (!Request(ai::Operation::RestoreConversation, {{"conversationId", thread_}, {"defaultModel", serverDefaultModel_},
-                    {"cwd", Utf8(settings_.workingDirectory)}}, "resume")) busy_ = false;
+                    {"cwd", Utf8(workspaceDirectory_)}}, "resume")) busy_ = false;
             } else {
                 busy_ = false;
                 if (messages_.empty())
@@ -1697,6 +1764,9 @@ void AiPane::Event(const Json &e) {
                         L"我可以帮助你分析终端日志、定位嵌入式问题、阅读和修改服务器代码，并执行必要的调试命令。\n\n"
                         L"请选择关联终端，或告诉我服务器项目路径和需要解决的问题。");
             }
+            directoryPending_ = true;
+            directoryDeadline_ = GetTickCount64() + 8000;
+            if (!Request(ai::Operation::ServerHome, Json::object(), "home")) DirectoryFailure(L"暂时无法获取服务器目录");
         } else if (purpose == "resume") {
             ClearTextSelection();
             messages_.clear();
@@ -1705,8 +1775,11 @@ void AiPane::Event(const Json &e) {
             displayLimitReached_ = false;
             scroll_ = {};
             thread_ = result.at("conversationId").get<std::string>();
+            if (ai::ValidWorkspacePath(result.value("cwd", std::string()))) workspaceDirectory_ = Wide(result["cwd"].get<std::string>());
             collapsedGroups_.clear();
+            initializedGroups_.clear();
             groupStates_.clear();
+            groupDurations_.clear();
             displayGroup_.clear();
             std::map<std::string, std::string> outcomes;
             for (const auto &message : result.value("messages", Json::array())) {
@@ -1715,7 +1788,7 @@ void AiPane::Event(const Json &e) {
                 Add(Wide(message.at("role").get<std::string>()), Wide(message.at("text").get<std::string>()),
                     message.value("messageId", std::string()));
                 if (messages_.size() > count)
-                    messages_.back().process = messages_.back().process || message.value("process", false);
+                    messages_.back().process = messages_.back().role == L"工具" || message.value("process", false);
                 if (!displayGroup_.empty()) {
                     outcomes[displayGroup_] = message.value("status", std::string());
                     if (message.value("failedStep", false))
@@ -1727,8 +1800,8 @@ void AiPane::Event(const Json &e) {
                 groupStates_[group] = outcome == "completed" ? (failedStep ? L"已完成 · 含失败记录" : L"已完成")
                                       : outcome == "failed" ? L"失败"
                                       : outcome == "interrupted" ? L"已停止" : L"状态待确认";
-                if (outcome == "completed")
-                    CollapseCompletedProcess(group);
+                collapsedGroups_.insert(group);
+                if (outcome == "completed") CollapseCompletedProcess(group);
             }
             displayGroup_.clear();
             waitingReply_ = false;
@@ -1789,8 +1862,19 @@ void AiPane::Event(const Json &e) {
         observedTool_ = true;
         return;
     }
-    if (event == "taskActivity" || event == "serialToolRequest" || event == "textDelta")
+    if (event == "taskActivity" || event == "serialToolRequest" || event == "textStarted" || event == "textDelta")
         completionDeadline_ = 0;
+    if (event == "textStarted" && !stopRequested_) {
+        const auto id = e.value("messageId", std::string());
+        auto found = std::find_if(messages_.begin(), messages_.end(), [&](const Message &m) { return m.item == id && m.role == L"AI"; });
+        if (found == messages_.end()) {
+            Add(L"AI", L"", id);
+            found = std::find_if(messages_.begin(), messages_.end(), [&](const Message &m) { return m.item == id && m.role == L"AI"; });
+        }
+        if (found != messages_.end()) found->process = !e.value("final", false);
+        Reflow();
+        return;
+    }
     if ((event == "textDelta" || event == "textComplete") && !stopRequested_) {
         waitingReply_ = false;
         const auto id = e.value("messageId", std::string());
@@ -1834,6 +1918,7 @@ void AiPane::Event(const Json &e) {
         }
     } else if (event == "taskFinished") {
         waitingReply_ = false;
+        if(!displayGroup_.empty() && turnStarted_) groupDurations_[displayGroup_]=GetTickCount64()-turnStarted_;
         const auto outcome = e.value("status", std::string());
         const bool failedStep = groupStates_[displayGroup_] == L"含失败记录";
         groupStates_[displayGroup_] = stopRequested_           ? L"已停止"
@@ -1987,6 +2072,20 @@ void AiPane::ServerRequest(const Json &e) {
         Reply(e["requestId"], {{"error", "Tool target must match the explicitly associated terminal session"}}, false);
         return;
     }
+    if (tool == "serialctl_screen" || tool == "serialctl_text" || tool == "serialctl_key" ||
+        tool == "serialctl_boot_arm" || tool == "serialctl_boot_status" || tool == "serialctl_recover") {
+        if (tool == "serialctl_recover" && recoveryUsed_) {
+            Reply(e["requestId"], {{"error", "One recovery was already submitted; query its action instead"}}, false);
+            return;
+        }
+        const auto method = tool.substr(std::string("serialctl_").size());
+        const auto result = devices_(method, args);
+        if (tool == "serialctl_recover" && !result.contains("error")) recoveryUsed_ = true;
+        Reply(e["requestId"], result, !result.contains("error"));
+        observedTool_ = true;
+        Add(L"工具", Wide(tool) + L" · " + turnTargetLabel_ + L"\n" + Wide(args.dump()) + L"\n" + Wide(result.dump()));
+        return;
+    }
     if (tool == "serialctl_read") {
         auto r = devices_("read", args);
         Reply(e["requestId"], r, !r.contains("error"));
@@ -2005,7 +2104,7 @@ void AiPane::ServerRequest(const Json &e) {
         }
         pendingObservation_ = e;
         pendingObservation_["arguments"] = args;
-        pendingObservation_["arguments"]["after"] = current.value("cursor", std::uint64_t(0));
+        pendingObservation_["arguments"]["after"] = args.value("after", current.value("cursor", std::uint64_t(0)));
         const int seconds = std::clamp(args.value("seconds", 3), 1, 10);
         observeDeadline_ = GetTickCount64() + seconds * 1000;
         observedTool_ = true;
@@ -2046,7 +2145,21 @@ AiPane::Json AiPane::History() const {
 }
 void AiPane::RememberThread(const std::string &id, const std::wstring &title) {
     const auto profile = Utf8(Profile(settings_));
-    const auto entries = ai::RememberHistory(History(), id, Utf8(title.substr(0, 40)), profile);
+    auto previous = History();
+    auto label = Utf8(title.substr(0,40));
+    for (auto &record : previous) {
+        if (!ai::WorkspaceProfileMatches(record.value("profile",std::string()),profile)) continue;
+        const auto cwd = ai::StoredWorkspace(record);
+        record["profile"] = profile;
+        if (!cwd.empty()) record["cwd"] = cwd;
+        if (record.value("id",std::string()) == id) label = record.value("title",label);
+    }
+    auto entries = ai::RememberHistory(previous, id, label, profile);
+    if (!entries.empty()) {
+        entries[0]["cwd"] = Utf8(workspaceDirectory_);
+        for (const auto &session : targetSnapshot_)
+            if (session.value("id", std::string()) == target_) entries[0]["targetKey"] = ai::WorkspaceTargetIdentity(session);
+    }
     HKEY key = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\AI", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key,
                         nullptr) == ERROR_SUCCESS) {
@@ -2065,8 +2178,11 @@ void AiPane::ShowHistory() {
     popup.font = font_;
     popup.canCompact = client_.Ready() && !thread_.empty();
     for (const auto &e : History())
-        if (e.value("profile", std::string()) == Utf8(Profile(settings_)))
+        if (ai::WorkspaceProfileMatches(e.value("profile", std::string()), Utf8(Profile(settings_))))
             popup.entries.push_back(e);
+    std::stable_sort(popup.entries.begin(), popup.entries.end(), [&](const Json &a, const Json &b) {
+        return (ai::StoredWorkspace(a) == Utf8(workspaceDirectory_)) > (ai::StoredWorkspace(b) == Utf8(workspaceDirectory_));
+    });
     EmptyDialog d;
     const auto choice = UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &d.dialog, GetAncestor(window_, GA_ROOT),
                                                  HistoryPopup::Proc, reinterpret_cast<LPARAM>(&popup));
@@ -2080,13 +2196,184 @@ void AiPane::ShowHistory() {
         choice == IDOK && !popup.filtered.empty() ? static_cast<int>(popup.filtered[popup.selected]) + 1 : 0;
     if (chosen > 0 && static_cast<size_t>(chosen) <= visible.size()) {
         auto id = visible[chosen - 1].at("id").get<std::string>();
+        workspaceDirectory_ = Wide(ai::StoredWorkspace(visible[chosen - 1]));
+        const auto key = visible[chosen - 1].value("targetKey", std::string());
+        std::string restoredTarget;
+        unsigned matches = 0;
+        for (const auto &session : targetSnapshot_)
+            if (!key.empty() && ai::WorkspaceTargetIdentity(session) == key) { restoredTarget = session.at("id"); ++matches; }
+        SelectTarget(matches == 1 ? restoredTarget : std::string());
         taskAuthorized_ = false;
         busy_ = true;
         turnStarted_ = GetTickCount64();
-        if (!Request(ai::Operation::RestoreConversation, {{"conversationId", id}, {"defaultModel", serverDefaultModel_}, {"cwd", Utf8(settings_.workingDirectory)}}, "resume"))
+        if (!Request(ai::Operation::RestoreConversation, {{"conversationId", id}, {"defaultModel", serverDefaultModel_}}, "resume"))
             busy_ = false;
         UpdateActions();
     }
+}
+void AiPane::SaveWorkspaceDefault(const std::wstring &path) {
+    settings_.workingDirectory = path;
+    std::wstring error;
+    if (!ai::SaveServerSettings(settings_, error)) SetStatus(error);
+}
+void AiPane::PopulateDirectories() {
+    for (HWND h : {dialog_, workspaceDialog_}) {
+        if (!h) continue;
+        auto combo = GetDlgItem(h, Directory);
+        const auto draft = Text(combo);
+        SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+        if (!verifiedDirectory_.empty()) SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(verifiedDirectory_.c_str()));
+        for (const auto &path : directoryChildren_) {
+            auto wide = Wide(path.get<std::string>());
+            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(wide.c_str()));
+        }
+        SetWindowTextW(combo, (directoryPending_ ? draft : verifiedDirectory_).c_str());
+    }
+}
+void AiPane::BrowseDirectory(const std::wstring &path, bool initial) {
+    if (!ai::ValidWorkspacePath(Utf8(path))) {
+        DirectoryFailure(L"请填写 Linux 绝对路径，例如 /home/linux/project");
+        return;
+    }
+    directoryPath_ = path;
+    directoryInitial_ = initial;
+    directoryPending_ = true;
+    directoryDeadline_ = GetTickCount64() + 8000;
+    for (HWND h : {dialog_, workspaceDialog_}) if (h) SetDlgItemTextW(h, Note, L"正在查询服务器目录…");
+    if (!client_.Ready() || !Request(ai::Operation::ReadDirectory, {{"path", Utf8(path)}}, "directory"))
+        DirectoryFailure(L"连接建立后可浏览目录；也可以手动填写项目路径");
+    UpdateActions();
+}
+void AiPane::DirectoryResult(const Json &result, bool fallback) {
+    Json children = Json::array();
+    if (fallback) {
+        if (result.value("exitCode", -1) != 0) {
+            DirectoryFailure(Wide(result.value("stderr", std::string("目录不可访问"))));
+            return;
+        }
+        auto output = result.value("stdout", std::string());
+        size_t start = 0;
+        while (start < output.size() && children.size() < 500) {
+            const auto end = output.find('\0', start);
+            if (end == std::string::npos) break; // Never accept a truncated name.
+            const auto path = output.substr(start, end - start);
+            const auto parent = Utf8(directoryPath_);
+            if (ai::ValidWorkspacePath(path) && ai::WorkspaceParent(path) == (parent.size() > 1 && parent.back() == '/' ? parent.substr(0,parent.size()-1) : parent))
+                children.push_back(path);
+            start = end + 1;
+        }
+    } else {
+        if (!result.contains("entries") || !result["entries"].is_array()) {
+            DirectoryFailure(L"服务器目录响应格式不兼容；可以手动填写项目路径");
+            return;
+        }
+        children = ai::WorkspaceDirectories(Utf8(directoryPath_), result["entries"]);
+    }
+    directoryPending_ = false;
+    verifiedDirectory_ = directoryPath_;
+    directoryChildren_ = std::move(children);
+    PopulateDirectories();
+    if (directoryInitial_ && settings_.workingDirectory.empty()) {
+        SaveWorkspaceDefault(verifiedDirectory_);
+        if (thread_.empty()) workspaceDirectory_ = verifiedDirectory_;
+    }
+    const auto note = L"已读取 " + std::to_wstring(directoryChildren_.size()) + L" 个子目录；可下拉选择或填写完整路径";
+    for (HWND h : {dialog_, workspaceDialog_}) if (h) SetDlgItemTextW(h, Note, note.c_str());
+    if (workspaceDialog_ && workspaceAccept_) UiEndOwnedDialog(workspaceDialog_, IDOK);
+}
+void AiPane::DirectoryFailure(const std::wstring &message) {
+    if (directoryInitial_ && settings_.workingDirectory.empty() && !serverHome_.empty() && directoryPath_ != serverHome_) {
+        BrowseDirectory(serverHome_, true);
+        return;
+    }
+    directoryPending_ = false;
+    workspaceAccept_ = false;
+    for (HWND h : {dialog_, workspaceDialog_}) if (h) SetDlgItemTextW(h, Note, message.c_str());
+    UpdateActions();
+}
+bool AiPane::ChooseWorkspace() {
+    if (!client_.Ready() || busy_ || directoryPending_ || workspaceDialog_ || dialog_) return false;
+    EmptyDialog dialog;
+    const auto result = UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &dialog.dialog, GetAncestor(window_, GA_ROOT),
+        WorkspaceProc, reinterpret_cast<LPARAM>(this));
+    if (result != IDOK) return false;
+    workspaceDirectory_ = directoryPath_;
+    SaveWorkspaceDefault(workspaceDirectory_);
+    return true;
+}
+INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, DWLP_USER));
+    if (m == WM_INITDIALOG) {
+        self = reinterpret_cast<AiPane *>(l);
+        SetWindowLongPtrW(h, DWLP_USER, l);
+        self->workspaceDialog_ = h;
+        self->workspaceAccept_ = false;
+        SetWindowTextW(h, L"新建 AI 会话 · 工作空间");
+        UiResizeDialog(h, self->dpi_, 436, 224);
+        auto add = [&](const wchar_t *type, const wchar_t *text, int id, int x, int y, int width, int height, DWORD extra) {
+            auto c = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | extra, self->D(x), self->D(y), self->D(width), self->D(height),
+                h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
+            SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), TRUE);
+            if (_wcsicmp(type,L"COMBOBOX") == 0) UiStyleField(c, &self->style_);
+            if (_wcsicmp(type,L"BUTTON") == 0) UiStyleButton(c);
+            return c;
+        };
+        add(L"STATIC",L"服务器项目目录",-1,16,16,404,24,0);
+        auto combo = add(L"COMBOBOX",L"",Directory,16,40,252,240,CBS_DROPDOWN | CBS_AUTOHSCROLL | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
+        SendMessageW(combo,CB_SETITEMHEIGHT,static_cast<WPARAM>(-1),self->D(24));
+        SendMessageW(combo,CB_SETDROPPEDWIDTH,self->D(404),0);
+        SendMessageW(combo,CB_LIMITTEXT,4096,0);
+        add(L"BUTTON",L"上级",DirectoryUp,280,40,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"刷新",DirectoryRefresh,356,40,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"STATIC",L"选择源码或资料目录。已有会话保留各自的目录。",Note,16,84,404,56,0);
+        add(L"BUTTON",L"取消",IDCANCEL,216,172,96,36,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"新建",IDOK,324,172,96,36,BS_OWNERDRAW | WS_TABSTOP);
+        auto path = self->settings_.workingDirectory.empty() ? self->workspaceDirectory_ : self->settings_.workingDirectory;
+        if (path.empty()) path = self->serverHome_.empty() ? L"/home/linux" : self->serverHome_;
+        SetWindowTextW(combo,path.c_str());
+        self->BrowseDirectory(path);
+        Center(h,GetWindow(h,GW_OWNER));
+        UiDialogViewport::Fit(h,self->dpi_);
+        SetTimer(h,1,100,nullptr);
+        return TRUE;
+    }
+    if (!self) return FALSE;
+    if (m == WM_TIMER) {
+        EnableWindow(GetDlgItem(h,IDOK), self->client_.Ready() && !self->directoryPending_);
+        for (int id : {DirectoryUp,DirectoryRefresh}) EnableWindow(GetDlgItem(h,id),self->client_.Ready() && !self->directoryPending_);
+        return TRUE;
+    }
+    if (m == WM_COMMAND) {
+        const int id = LOWORD(w);
+        if (id == IDCANCEL) { self->workspaceAccept_ = false; UiEndOwnedDialog(h,IDCANCEL); return TRUE; }
+        if (self->directoryPending_) return TRUE;
+        const auto path = Text(GetDlgItem(h,Directory));
+        if (id == IDOK) {
+            if (path.empty()) { self->directoryPath_.clear(); UiEndOwnedDialog(h,IDOK); }
+            else if (path == self->verifiedDirectory_) { self->directoryPath_ = path; UiEndOwnedDialog(h,IDOK); }
+            else { self->workspaceAccept_ = true; self->BrowseDirectory(path); }
+        } else if (id == DirectoryUp) self->BrowseDirectory(Wide(ai::WorkspaceParent(Utf8(path))));
+        else if (id == DirectoryRefresh) self->BrowseDirectory(path);
+        else if (id == Directory && HIWORD(w) == CBN_SELCHANGE) {
+            const auto index = SendDlgItemMessageW(h,Directory,CB_GETCURSEL,0,0);
+            if (index >= 0) {
+                const auto length = SendDlgItemMessageW(h,Directory,CB_GETLBTEXTLEN,index,0);
+                std::wstring selected(static_cast<size_t>(length)+1,L'\0');
+                SendDlgItemMessageW(h,Directory,CB_GETLBTEXT,index,reinterpret_cast<LPARAM>(selected.data())); selected.resize(length);
+                self->BrowseDirectory(selected);
+            }
+        }
+        return TRUE;
+    }
+    if (m == WM_CLOSE) { SendMessageW(h,WM_COMMAND,IDCANCEL,0); return TRUE; }
+    if (m == WM_DRAWITEM) return SendMessageW(self->window_,m,w,l);
+    if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORDLG) {
+        const auto c=UiAiTheme(self->dark_); auto dc=reinterpret_cast<HDC>(w); const bool field=EditColorMessage(m,l);
+        SetTextColor(dc,c.text); SetBkColor(dc,field?c.field:c.surface);
+        return reinterpret_cast<INT_PTR>(field?self->fieldBrush_:self->surfaceBrush_);
+    }
+    if (m == WM_DESTROY) { KillTimer(h,1); self->workspaceDialog_=nullptr; self->workspaceAccept_=false; return TRUE; }
+    return FALSE;
 }
 void AiPane::ShowConnection() {
     if (dialog_ || closing_)
@@ -2119,7 +2406,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 else
                     UiStyleButton(c);
             }
-            if (_wcsicmp(type, L"EDIT") == 0)
+            if (_wcsicmp(type, L"EDIT") == 0 || _wcsicmp(type,L"COMBOBOX") == 0)
                 UiStyleField(c, &self->style_);
             return c;
         };
@@ -2135,7 +2422,15 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         add(L"BUTTON", L"记住密码（Windows 安全存储）", Remember, 16, 216, 404, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
         CheckDlgButton(h, Remember, self->settings_.rememberPassword ? BST_CHECKED : BST_UNCHECKED);
         add(L"STATIC", L"服务器项目目录（可选，Linux 绝对路径）", -1, 16, 256, 404, 24);
-        add(L"EDIT", self->settings_.workingDirectory.c_str(), Directory, 16, 280, 404, 28, ES_AUTOHSCROLL | WS_TABSTOP);
+        auto directories = add(L"COMBOBOX", L"", Directory, 16, 280, 252, 240,
+            CBS_DROPDOWN | CBS_AUTOHSCROLL | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
+        SendMessageW(directories, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), self->D(24));
+        SendMessageW(directories, CB_SETDROPPEDWIDTH, self->D(404), 0);
+        SendMessageW(directories, CB_LIMITTEXT, 4096, 0);
+        self->PopulateDirectories();
+        SetWindowTextW(directories,self->settings_.workingDirectory.c_str());
+        add(L"BUTTON",L"上级",DirectoryUp,280,280,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"刷新",DirectoryRefresh,356,280,64,28,BS_OWNERDRAW | WS_TABSTOP);
         add(L"STATIC", L"连接检测", -1, 16, 332, 196, 28);
         add(L"BUTTON", L"测试连接", Test, 316, 324, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
         add(L"STATIC", self->status_.c_str(), Note, 16, 372, 404, 32);
@@ -2154,8 +2449,10 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_TIMER) {
         const bool running = self->client_.Running();
         const bool ready = self->client_.Ready();
-        for (int id : {Host, Port, Username, Password, Remember, Directory})
+        for (int id : {Host, Port, Username, Password, Remember})
             EnableWindow(GetDlgItem(h, id), !running);
+        EnableWindow(GetDlgItem(h,Directory), !self->directoryPending_ && !self->busy_);
+        for (int id : {DirectoryUp,DirectoryRefresh}) EnableWindow(GetDlgItem(h,id),ready && !self->busy_ && !self->directoryPending_);
         EnableWindow(GetDlgItem(h, Test), !running);
         EnableWindow(GetDlgItem(h, HostReverify), !running);
         const auto host = Text(GetDlgItem(h, Host)), portText = Text(GetDlgItem(h, Port));
@@ -2164,10 +2461,10 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const std::wstring identity = port && !TrustedPuttyHostKey(host, static_cast<uint16_t>(port)).empty()
             ? L"主机身份已保存" : L"连接时核验主机身份";
         if (Text(GetDlgItem(h, HostIdentity)) != identity) SetDlgItemTextW(h, HostIdentity, identity.c_str());
-        EnableWindow(GetDlgItem(h, IDOK), ready || !running);
+        EnableWindow(GetDlgItem(h, IDOK), (ready && !self->busy_ && !self->directoryPending_) || !running);
         if (ready)
             SetDlgItemTextW(h, IDOK, L"进入对话");
-        if (ready && self->dialogEnter_)
+        if (ready && self->dialogEnter_ && !self->busy_ && !self->directoryPending_)
             UiEndOwnedDialog(h, IDOK);
         return TRUE;
     }
@@ -2180,7 +2477,26 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         if (id == IDOK && self->client_.Ready()) {
+            const auto path = Text(GetDlgItem(h,Directory));
+            if (!path.empty() && !ai::ValidWorkspacePath(Utf8(path))) {
+                SetDlgItemTextW(h,Note,L"请填写 Linux 绝对路径，或留空使用服务器默认目录"); return TRUE;
+            }
+            self->SaveWorkspaceDefault(path);
+            if (self->thread_.empty()) self->workspaceDirectory_ = path;
             UiEndOwnedDialog(h, IDOK);
+            return TRUE;
+        }
+        if (id == DirectoryUp || id == DirectoryRefresh || (id == Directory && HIWORD(w) == CBN_SELCHANGE)) {
+            if (!self->client_.Ready() || self->directoryPending_ || self->busy_) return TRUE;
+            auto path = Text(GetDlgItem(h,Directory));
+            if (id == Directory && HIWORD(w) == CBN_SELCHANGE) {
+                const auto index = SendDlgItemMessageW(h,Directory,CB_GETCURSEL,0,0);
+                if (index < 0) return TRUE;
+                const auto length = SendDlgItemMessageW(h,Directory,CB_GETLBTEXTLEN,index,0);
+                path.resize(static_cast<size_t>(length)+1);
+                SendDlgItemMessageW(h,Directory,CB_GETLBTEXT,index,reinterpret_cast<LPARAM>(path.data())); path.resize(length);
+            }
+            self->BrowseDirectory(id == DirectoryUp ? Wide(ai::WorkspaceParent(Utf8(path))) : path);
             return TRUE;
         }
         if (id == Test || id == IDOK || id == HostReverify) {
@@ -2211,6 +2527,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (Profile(s) != Profile(self->settings_))
                 self->NewConversation();
             self->settings_ = s;
+            if (self->thread_.empty()) self->workspaceDirectory_ = s.workingDirectory;
             self->needsPassword_ = false;
             self->dialogEnter_ = id == IDOK;
             self->SetStatus(L"正在连接并检测 SSH / Codex / App Server…");

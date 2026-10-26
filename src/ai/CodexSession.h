@@ -37,7 +37,8 @@ class CodexSession {
                         if (wire.contains("error"))
                             event({{"event", "response"},
                                    {"token", token},
-                                   {"error", wire["error"].value("message", std::string("Request rejected"))}});
+                                   {"error", wire["error"].value("message", std::string("Request rejected"))},
+                                   {"code", wire["error"].value("code", 0)}});
                         else {
                             try {
                                 event({{"event", "response"},

@@ -91,6 +91,49 @@ void CheckHostKeyDialogs(HWND parent, HFONT font) {
 
 namespace serialctl {
 struct AiPaneTestAccess {
+    struct WorkspaceProbe { AiPane *pane; bool dark; int dpi; std::string error; };
+    static void CALLBACK WorkspaceTick(HWND parent,UINT,UINT_PTR timer,DWORD) {
+        auto p=reinterpret_cast<WorkspaceProbe*>(GetPropW(parent,L"SerialCtl.TestWorkspace"));
+        if(!p || !p->pane->workspaceDialog_) return;
+        auto &pane=*p->pane;const HWND dialog=pane.workspaceDialog_;
+        try {
+            auto pending=std::find_if(pane.requests_.begin(),pane.requests_.end(),[](const auto &r) {return r.second.purpose=="directory";});
+            if(pending==pane.requests_.end()) throw std::runtime_error("Workspace browser did not query existing App Server connection");
+            pane.Event({{"event","response"},{"token",pending->first},{"result",{{"entries",ai::Json::array({
+                {{"fileName","src"},{"isDirectory",true}},{{"fileName","docs"},{"isDirectory",true}},{{"fileName","file.c"},{"isDirectory",false}}})}}}});
+            auto combo=GetDlgItem(dialog,208);
+            if(SendMessageW(combo,CB_GETCOUNT,0,0)!=3) throw std::runtime_error("Workspace dropdown lost actual child directories");
+            RECT field{},up{},refresh{},client{};
+            GetWindowRect(combo,&field);GetWindowRect(GetDlgItem(dialog,211),&up);GetWindowRect(GetDlgItem(dialog,212),&refresh);
+            if(field.right>=up.left || up.right>=refresh.left || field.bottom-field.top < MulDiv(24,p->dpi,96))
+                throw std::runtime_error("Workspace directory/up/refresh controls overlap or clip");
+            GetClientRect(dialog,&client);RECT ok{};GetWindowRect(GetDlgItem(dialog,IDOK),&ok);MapWindowPoints(nullptr,dialog,reinterpret_cast<POINT*>(&ok),2);
+            if(ok.bottom>client.bottom || ok.right>client.right) throw std::runtime_error("Workspace footer escaped modal");
+            ui_test::SaveUiEvidence(dialog,L"v207-workspace-"+std::wstring(p->dark?L"dark":L"light")+L"-"+std::to_wstring(p->dpi)+L"dpi.png");
+        } catch(const std::exception &e) {p->error=e.what();}
+        KillTimer(parent,timer);PostMessageW(dialog,WM_COMMAND,IDCANCEL,0);
+    }
+    static void CheckWorkspaceDialogs(AiPane &pane) {
+        const auto previousCwd=pane.workspaceDirectory_;const auto previousThread=pane.thread_;
+        const auto font=pane.font_;const int dpi=pane.dpi_;const auto dark=pane.dark_;
+        for(int scale : {96,120,144,192}) for(bool theme : {false,true}) {
+            auto scaled=CreateFontW(-MulDiv(15,scale,96),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+            pane.font_=scaled;pane.dpi_=scale;pane.style_.dpi=scale;pane.style_.font=scaled;pane.Theme(theme);
+            pane.directoryPending_=false;pane.busy_=false;
+            WorkspaceProbe probe{&pane,theme,scale,{}};
+            auto parent=GetAncestor(pane.window_,GA_ROOT);
+            SetPropW(parent,L"SerialCtl.TestWorkspace",reinterpret_cast<HANDLE>(&probe));
+            SetTimer(parent,9207,50,WorkspaceTick);
+            const bool changed=pane.ChooseWorkspace();
+            KillTimer(parent,9207);RemovePropW(parent,L"SerialCtl.TestWorkspace");
+            pane.font_=font;pane.style_.font=font;DeleteObject(scaled);
+            if(!probe.error.empty()) throw std::runtime_error(probe.error);
+            if(changed || pane.workspaceDirectory_!=previousCwd || pane.thread_!=previousThread)
+                throw std::runtime_error("Canceling workspace dialog changed the current conversation");
+        }
+        pane.dpi_=dpi;pane.style_.dpi=dpi;pane.Theme(dark);
+    }
     static void Run(AiPane &pane) {
         auto require = [](bool value, const char *error) {
             if (!value)
@@ -286,7 +329,7 @@ struct AiPaneTestAccess {
         pane.Add(L"工具", L"退出码 1", "failed-tool");
         const auto failedTool = pane.messages_.size() - 1;
         pane.Add(L"AI", L"已根据日志完成分析", "recovered-final");
-        require(!pane.messages_[failedTool].folded, "Running process must stay expanded");
+        require(pane.messages_[failedTool].folded, "Running process must default to collapsed");
         pane.Event({{"event", "taskFinished"}, {"status", "completed"}});
         require(pane.messages_[failedTool].folded && !pane.messages_.back().folded &&
                     pane.groupStates_["failed-fixture"] == L"已完成 · 含失败记录",
@@ -301,8 +344,8 @@ struct AiPaneTestAccess {
             pane.Event({{"event", "textComplete"}, {"messageId", "progress"}, {"text", "Checking logs"}, {"final", true}});
             pane.Add(L"工具", L"完整工具输出", "phase-less-tool");
             pane.Event({{"event", "textComplete"}, {"messageId", "answer"}, {"text", "Final diagnosis"}, {"final", true}});
-            require(!pane.messages_[0].process && !pane.messages_[1].folded,
-                    "Process collapsed before the turn actually finished");
+            require(!pane.messages_[0].process && pane.messages_[1].folded,
+                    "New tool process did not default to collapsed");
             const std::wstring palette = dark ? L"dark" : L"light";
             ui_test::SaveUiEvidence(pane.transcript_, L"v205-process-" + palette + L"-running.png",
                                  [&](HDC dc) { pane.PaintTranscript(dc); });
@@ -329,7 +372,8 @@ struct AiPaneTestAccess {
             pane.stopRequested_ = outcome == "interrupted";
             pane.Add(L"工具", L"未完成输出", "unfinished-tool");
             pane.Event({{"event", "taskFinished"}, {"status", outcome}});
-            require(!pane.messages_.front().folded, "Failed or stopped turn hid its unresolved process");
+            require(pane.messages_.front().folded && !pane.groupStates_["unfinished-turn"].empty(),
+                    "Failed/stopped process must retain a visible collapsed outcome");
         }
         pane.NewConversation();
         pane.stopRequested_ = false;
@@ -412,6 +456,7 @@ struct AiPaneTestAccess {
         while (!pane.client_.Ready() && GetTickCount64() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         require(pane.client_.Ready(), "Offline process fixture did not become ready");
+        CheckWorkspaceDialogs(pane);
         unsigned writes = 0;
         unsigned powerWrites = 0, powerActions = 0;
         pane.devices_ = [&](const std::string &operation, const ai::Json &args) {

@@ -54,7 +54,14 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr window, int id);
+    [DllImport("user32.dll", EntryPoint="GetDlgItem")] static extern IntPtr NativeGetDlgItem(IntPtr window,int id);
+    public static IntPtr GetDlgItem(IntPtr window,int id) {
+        var direct=NativeGetDlgItem(window,id); if(direct!=IntPtr.Zero) return direct;
+        IntPtr found=IntPtr.Zero;
+        EnumChildWindows(window,delegate(IntPtr child,IntPtr ignored) {
+            if(GetDlgCtrlID(child)==id) {found=child; return false;} return true;
+        },IntPtr.Zero); return found;
+    }
     [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="GetPropW")] public static extern IntPtr GetProp(IntPtr window, string name);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SetText(IntPtr window, uint message, IntPtr wParam, string text);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr ReadText(IntPtr window, uint message, IntPtr wParam, StringBuilder text);
@@ -253,19 +260,31 @@ public static class SerialCtlUiSmoke {
             }
         } finally {SelectObject(dc,previous);DeleteObject(font);ReleaseDC(pane,dc);}
     }
-    public static void AssertPowerScrollLane(IntPtr pane) {
+    public static void AssertPowerResponsive(IntPtr pane) {
         RECT client; GetClientRect(pane,out client);
+        foreach(int id in new [] {10,11,12,13,40,41,42,44,90,91,92,93,248}) {
+            var child=GetDlgItem(pane,id); if(!IsWindowVisible(child)) continue;
+            RECT r; GetWindowRect(child,out r); MapWindowPoints(IntPtr.Zero,pane,ref r,2);
+            if(r.Left<0 || r.Right>client.Right || r.Top<0 || r.Bottom>client.Bottom || r.Right-r.Left<28 || r.Bottom-r.Top<24)
+                throw new Exception("Power fixed header/footer escaped or clipped id="+id);
+        }
+        var first=GetDlgItem(pane,20); var body=GetAncestor(first,1);
+        if(body==IntPtr.Zero || body==pane) throw new Exception("Missing clipped power scroll body");
+        RECT view; GetWindowRect(body,out view); MapWindowPoints(IntPtr.Zero,pane,ref view,2);
+        RECT footer; GetWindowRect(GetDlgItem(pane,248),out footer); MapWindowPoints(IntPtr.Zero,pane,ref footer,2);
+        if(view.Left<0 || view.Right>client.Right || view.Top<0 || view.Bottom>footer.Top || view.Bottom-view.Top<48)
+            throw new Exception("Power scroll body overlaps fixed actions");
         IntPtr dc=GetDC(pane); int dpi=GetDeviceCaps(dc,88); ReleaseDC(pane,dc);
-        int laneLeft=client.Right-(16*dpi+48)/96;
-        string failure=null;
-        EnumChildWindows(pane,delegate(IntPtr child,IntPtr ignored) {
+        int laneLeft=view.Right-(16*dpi+48)/96;
+        EnumChildWindows(body,delegate(IntPtr child,IntPtr ignored) {
             if(!IsWindowVisible(child)) return true;
-            RECT rect; GetWindowRect(child,out rect); MapWindowPoints(IntPtr.Zero,pane,ref rect,2);
-            if(rect.Right>laneLeft) failure="Power control overlaps required scrollbar lane: "+GetDlgCtrlID(child);
-            return failure==null;
+            RECT r; GetWindowRect(child,out r); MapWindowPoints(IntPtr.Zero,pane,ref r,2);
+            if(r.Bottom>view.Top && r.Top<view.Bottom && (r.Left<view.Left || r.Right>laneLeft+1 || r.Bottom<=r.Top))
+                throw new Exception("Power body field overlaps scroll lane/has invalid size id="+GetDlgCtrlID(child));
+            return true;
         },IntPtr.Zero);
-        if(failure!=null) throw new Exception(failure);
     }
+    public static void AssertPowerScrollLane(IntPtr pane) { AssertPowerResponsive(pane); }
     public static IntPtr Dialog(uint processId, string title) {
         IntPtr found = IntPtr.Zero;
         EnumWindows(delegate(IntPtr window, IntPtr ignored) {
@@ -600,17 +619,12 @@ foreach ($architecture in @('x64')) {
             $dialog = Wait-Dialog $application.Id '连接电源'
             Start-Sleep -Milliseconds 200
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
-            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-unavailable"
-            $notice = New-Object System.Text.StringBuilder 256
-            [SerialCtlUiSmoke]::ReadText([SerialCtlUiSmoke]::GetDlgItem($dialog,-1),0x000D,[IntPtr]$notice.Capacity,$notice) | Out-Null
-            if ($notice.ToString() -ne '该功能暂未开放，请等待后续开放。') { throw 'Power notice is missing or incorrect.' }
-            foreach ($id in @(100,101,102,103,109)) {
-                if ([SerialCtlUiSmoke]::GetDlgItem($dialog,$id) -ne [IntPtr]::Zero) {
-                    throw 'Unavailable power connection must not create device discovery or driver controls.'
-                }
+            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-connection"
+            foreach ($id in @(100,101,102,103)) {
+                if ([SerialCtlUiSmoke]::GetDlgItem($dialog,$id) -eq [IntPtr]::Zero) { throw "Power connection field missing: $id" }
             }
-            Capture-Window $dialog "$architecture-$theme-power-unavailable"
-            Click-Control $dialog 1
+            Capture-Window $dialog "$architecture-$theme-power-connection"
+            Click-Control $dialog 2
             Start-Sleep -Milliseconds 250
             if ([SerialCtlUiSmoke]::IsIconic($application.MainWindowHandle)) { throw 'Main window minimized after power modal.' }
             foreach ($control in @(112,118,119,115)) {
@@ -620,40 +634,15 @@ foreach ($architecture in @('x64')) {
             Start-Sleep -Milliseconds 250
             Test-GlobalControls $application.MainWindowHandle $powerPane $application.Id "$architecture-$theme-power-monitor"
             Capture-Window $application.MainWindowHandle "$architecture-$theme-power-layout"
-            $ch1=New-Object SerialCtlUiSmoke+RECT; $ch2=New-Object SerialCtlUiSmoke+RECT; $ch3=New-Object SerialCtlUiSmoke+RECT
-            [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($powerPane,20),[ref]$ch1)|Out-Null
-            [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($powerPane,21),[ref]$ch2)|Out-Null
-            [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($powerPane,22),[ref]$ch3)|Out-Null
-            if ($ch1.Top -ne $ch2.Top -or $ch2.Top -ne $ch3.Top -or $ch1.Right -ge $ch2.Left -or $ch2.Right -ge $ch3.Left) { throw 'Power channel cards are not three distinct columns.' }
-            $powerBounds=New-Object SerialCtlUiSmoke+RECT
-            [SerialCtlUiSmoke]::GetClientRect($powerPane,[ref]$powerBounds)|Out-Null
-            $powerWidth=$powerBounds.Right
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,10,($powerWidth-204),0,96,36)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,11,($powerWidth-96),0,96,36)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,80,72,52,160,36)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,81,($powerWidth-320),52,104,36)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,12,($powerWidth-204),52,96,36)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,13,($powerWidth-96),52,96,36)
-            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,10,11)
-            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,81,12)
-            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,12,13)
-            [SerialCtlUiSmoke]::AssertPowerSelectors($powerPane,90,4,336,$expectedUiFace)
-            [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,103,($powerWidth-256),384,72,28)
-            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,103,100)
-            [SerialCtlUiSmoke]::AssertPowerGap($powerPane,100,101)
+            [SerialCtlUiSmoke]::AssertPowerResponsive($powerPane)
+            $monitor = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,307)
+            if (-not [SerialCtlUiSmoke]::IsWindowVisible($monitor)) { throw 'Power live terminal selector missing.' }
             # The approved views are captured from the real EXE with no hardware or fake measurements.
             foreach ($tab in @(91,92,93)) {
                 Click-Control $powerPane $tab
                 Start-Sleep -Milliseconds 200
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-power-tab-$tab"
-                if($tab -eq 91) {
-                    [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,40,0,499,[int](($powerWidth-196)/2),36)
-                    [SerialCtlUiSmoke]::AssertPowerGap($powerPane,40,41)
-                    [SerialCtlUiSmoke]::AssertPowerGap($powerPane,41,42)
-                    [SerialCtlUiSmoke]::AssertPowerGap($powerPane,42,44)
-                    [SerialCtlUiSmoke]::AssertPowerSelectors($powerPane,110,5,384,$expectedUiFace)
-                }
-                if($tab -eq 92) { [SerialCtlUiSmoke]::AssertPowerBounds($powerPane,202,132,451,[int](($powerWidth-144)/2),28) }
+                [SerialCtlUiSmoke]::AssertPowerResponsive($powerPane)
             }
             Click-Control $powerPane 92
             Click-Control $powerPane 190

@@ -70,6 +70,7 @@ class AiPane {
     static LRESULT CALLBACK TranscriptProc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK InputProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static INT_PTR CALLBACK ConnectProc(HWND, UINT, WPARAM, LPARAM);
+    static INT_PTR CALLBACK WorkspaceProc(HWND, UINT, WPARAM, LPARAM);
     static INT_PTR CALLBACK ValueProc(HWND, UINT, WPARAM, LPARAM);
     HWND Child(const wchar_t *, const wchar_t *, int, DWORD = 0);
     void Layout();
@@ -89,6 +90,12 @@ class AiPane {
     void StartTurn();
     void Stop();
     void NewConversation();
+    bool ChooseWorkspace();
+    void BrowseDirectory(const std::wstring &, bool initial = false);
+    void DirectoryResult(const Json &, bool fallback);
+    void PopulateDirectories();
+    void DirectoryFailure(const std::wstring &);
+    void SaveWorkspaceDefault(const std::wstring &);
     void ShowDisplayLimit();
     bool displayLimitReached_ = false;
     void Add(std::wstring role, std::wstring text, std::string item = {});
@@ -105,7 +112,9 @@ class AiPane {
     RECT composerBounds_{}, waitingBounds_{};
     std::string displayGroup_;
     std::set<std::string> collapsedGroups_;
+    std::set<std::string> initializedGroups_;
     std::map<std::string, std::wstring> groupStates_;
+    std::map<std::string, ULONGLONG> groupDurations_;
     std::vector<std::wstring> targetLabels_;
     std::wstring compactTargetLabel_, targetTooltip_;
     Json targetSnapshot_;
@@ -131,6 +140,11 @@ class AiPane {
     UiFieldStyle style_{&dark_, nullptr, 96};
     ai::CodexSession client_;
     ai::ServerSettings settings_;
+    std::wstring workspaceDirectory_, directoryPath_, verifiedDirectory_, serverHome_;
+    Json directoryChildren_ = Json::array();
+    HWND workspaceDialog_ = nullptr;
+    bool directoryPending_ = false, directoryInitial_ = false, workspaceAccept_ = false;
+    ULONGLONG directoryDeadline_ = 0;
     DeviceRequest devices_;
     std::atomic<bool> closing_{false};
     std::mutex eventsMutex_;
@@ -156,6 +170,7 @@ class AiPane {
     std::string attachmentTarget_;
     bool busy_ = false, stopRequested_ = false, observedTool_ = false, dialogEnter_ = false, connectionError_ = false;
     bool taskAuthorized_ = false, restoreOnConfig_ = false;
+    bool recoveryUsed_ = false;
     size_t messageBytes_ = 0;
     Json pendingObservation_;
     Json powerContext_;

@@ -6,6 +6,10 @@
 #include <gdiplus.h>
 #include <iostream>
 #include <stdexcept>
+#include <shellapi.h>
+#include <shlobj.h>
+#include <filesystem>
+#include <fstream>
 
 namespace serialctl {
 namespace {
@@ -37,6 +41,18 @@ Json Wait(PowerService& power, Json action) {
 }
 }
 struct AiDeviceTestAccess {
+    static LRESULT CALLBACK FixtureParent(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data) {
+        if(m==WM_DRAWITEM || m==WM_MEASUREITEM) return reinterpret_cast<MainWindow*>(data)->HandleMessage(m,w,l);
+        return DefSubclassProc(h,m,w,l);
+    }
+    static HWND PowerControl(HWND pane, int id) {
+        struct Search { int id; HWND found; } search{id,nullptr};
+        EnumChildWindows(pane, [](HWND child,LPARAM param)->BOOL {
+            auto &s=*reinterpret_cast<Search*>(param);
+            if(GetDlgCtrlID(child)==s.id) { s.found=child; return FALSE; } return TRUE;
+        },reinterpret_cast<LPARAM>(&search));
+        return search.found;
+    }
     static void Run(HWND parent) {
         MainWindow main;
         main.measurePaint_ = true;
@@ -54,6 +70,8 @@ struct AiDeviceTestAccess {
         SetWindowPos(parent, nullptr, 0, 0, size.right - size.left, size.bottom - size.top, SWP_NOZORDER);
         RECT viewport{};
         main.CreateControls();
+        SetWindowSubclass(parent,FixtureParent,9207,reinterpret_cast<DWORD_PTR>(&main));
+        SendMessageW(main.commandList_,LB_SETITEMHEIGHT,0,66);
         GetClientRect(parent, &viewport);
         LONG previousNavigationRight = 0;
         for (HWND button : main.toolbarButtons_) {
@@ -224,7 +242,7 @@ struct AiDeviceTestAccess {
                         "Mouse focus must restore neutral navigation");
             }
             for (int id : {90, 91, 110, 190}) {
-                HWND button = GetDlgItem(main.powerPane_.Handle(), id);
+                HWND button = PowerControl(main.powerPane_.Handle(), id);
                 const auto normal = render(button, 0, true);
                 Require(normal != RGB(31, 79, 216), "Power selector latched accent fill");
                 const auto down = render(button, ODS_SELECTED, true);
@@ -310,11 +328,56 @@ struct AiDeviceTestAccess {
             const std::string command = mode == 4 ? u8"echo 中文" : "echo evidence";
             const auto result = main.AiDeviceRequest("command", {{"sessionId", id}, {"command", command}});
             Require(!result.contains("error") && result["execution"] == "unknown", "Terminal submission incorrectly failed or claimed execution");
-            const std::wstring ending = mode == 4 ? L"\r\n" : mode == 0 ? L"\n" : L"\r";
+            const std::wstring ending = mode == 4 ? L"\r\n" : L"\r";
             auto expected = WideToMultiByte((mode == 4 ? L"echo 中文" : L"echo evidence") + ending, transports[mode]->input);
             Require(transports[mode]->sent == Bytes(expected.begin(), expected.end()), "AI wrote wrong target, encoding or line ending");
         }
+        {
+            const auto sshId="session-1";
+            auto &ssh=*main.sessions_[0];
+            ssh.terminal.Feed(L"\x1b[?1049h\x1b[?2004h\x1b[>1u\x1b[2;1H真实 TUI 内容",L"");
+            auto text=main.AiDeviceRequest("text",{{"sessionId",sshId},{"text","hello"}});
+            Require(!text.contains("error") && transports[0]->sent==Bytes({'\x1b','[','2','0','0','~','h','e','l','l','o','\x1b','[','2','0','1','~'}),"TUI text must bracket paste without auto Enter");
+            auto enter=main.AiDeviceRequest("key",{{"sessionId",sshId},{"key","Enter"}});
+            const std::string enhanced="\x1b[13u";
+            Require(!enter.contains("error") && transports[0]->sent==Bytes(enhanced.begin(),enhanced.end()),"AI real Enter must honor negotiated keyboard mode");
+            const auto screen=main.AiDeviceRequest("screen",{{"sessionId",sshId}});
+            Require(screen["alternateScreen"]==true && screen["text"].get<std::string>().find(u8"真实 TUI 内容")!=std::string::npos,"AI must read rendered VT screen, not raw ANSI logs");
+            Require(main.AiDeviceRequest("text",{{"sessionId",sshId},{"text",std::string(1,3)}}).contains("error"),"Text path must not accept disguised control keys");
+            Require(main.AiDeviceRequest("key",{{"sessionId","session-5"},{"key","Enter"}}).contains("error"),"CMD line submission must retain its separate semantics");
+            ssh.terminal.Feed(L"\x1b[?1049l",L"");
+        }
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
+        {
+            const auto writes=transports[4]->writes;
+            main.commands_={CommandItem(L"A",L"echo A"),CommandItem(L"B",L"echo B"),CommandItem(L"C",L"echo C")};
+            main.commandsDirty_=false; main.RefreshCommandList();
+            RECT row{}; SendMessageW(main.commandList_,LB_GETITEMRECT,0,reinterpret_cast<LPARAM>(&row));
+            const int h=row.bottom-row.top;
+            auto begin=MAKELPARAM(12,h/2), moved=MAKELPARAM(12,h*2+h/2);
+            SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
+            SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
+            RECT ghost{}; GetWindowRect(main.commandDragGhost_,&ghost); MapWindowPoints(nullptr,main.commandList_,reinterpret_cast<POINT*>(&ghost),2);
+            Require(main.commandDragGhost_ && ghost.top==h*2 && main.commands_[0].name==L"A","Drag must follow pointer without committing order");
+            ui_test::SaveUiEvidence(main.commandList_,L"v207-command-drag-held.png");
+            SendMessageW(main.commandList_,WM_KEYDOWN,VK_ESCAPE,0);
+            Require(!main.commandDragGhost_ && main.commands_[0].name==L"A" && !main.commandsDirty_,"Esc must restore original command order");
+            SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
+            SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
+            SendMessageW(main.commandList_,WM_LBUTTONUP,0,moved);
+            Require(main.commands_[2].name==L"A" && transports[4]->writes==writes,"Only release commits reorder; drag never executes");
+            const auto file=std::filesystem::temp_directory_path()/(L"serialctl-drop-"+std::to_wstring(GetCurrentProcessId())+L".txt");
+            {std::ofstream stream(file);stream<<"echo imported-only\n";}
+            main.commandsDirty_=false;
+            const auto name=file.wstring();
+            auto handle=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(name.size()+2)*sizeof(wchar_t));
+            auto data=static_cast<DROPFILES*>(GlobalLock(handle)); data->pFiles=sizeof(DROPFILES);data->fWide=TRUE;
+            memcpy(reinterpret_cast<char*>(data)+sizeof(DROPFILES),name.c_str(),(name.size()+1)*sizeof(wchar_t)); GlobalUnlock(handle);
+            SendMessageW(main.commandList_,WM_DROPFILES,reinterpret_cast<WPARAM>(handle),0);
+            Require(main.commands_.size()==1 && main.commands_[0].commands[0]==L"echo imported-only" && transports[4]->writes==writes,
+                "Dropped UTF-8 file must use import without executing device input");
+            std::filesystem::remove(file); main.commandsDirty_=false;
+        }
         main.commands_ = {CommandItem(L"click regression", L"echo once")};
         main.RefreshCommandList();
         RECT actionRow{};
@@ -485,8 +548,28 @@ struct AiDeviceTestAccess {
         Require(main.AiDeviceRequest("read", {{"sessionId", "session-1"}}).contains("error"), "Disconnected terminal read accepted");
 
         Require(main.powerPane_.Handle() != nullptr, "Cannot create real power pane");
+        main.powerMonitorSession_="session-2";
+        main.ShowPowerPage();
+        Require(main.powerVisible_ && !main.aiVisible_ && IsWindowVisible(main.powerPane_.Handle()) &&
+            IsWindowVisible(main.terminal_) && !IsWindowVisible(main.commandList_),"Power page must share the actual selected terminal and hide original sidebar");
+        RECT powerRect{},liveRect{};
+        GetWindowRect(main.powerPane_.Handle(),&powerRect);GetWindowRect(main.terminal_,&liveRect);
+        Require(std::abs((powerRect.right-powerRect.left)-(liveRect.right-liveRect.left))<=1,"Power monitor must start at independent 50:50 ratio");
+        for(bool dark : {false,true}) {
+            main.darkMode_=dark; main.ApplyTheme();
+            for(int tab : {90,91,92,93}) {
+                SendMessageW(main.powerPane_.Handle(),WM_COMMAND,tab,0);
+                ui_test::SaveUiEvidence(parent,L"v207-power-"+std::wstring(dark?L"dark":L"light")+L"-tab-"+std::to_wstring(tab)+L".png");
+                const auto footer=PowerControl(main.powerPane_.Handle(),248);
+                RECT control{};GetWindowRect(footer,&control);
+                Require(control.top>=powerRect.top && control.bottom<=powerRect.bottom,"Power recovery footer escaped the page");
+            }
+        }
+        main.powerMonitorCollapsed_=true;main.LayoutControls(viewport.right,viewport.bottom);
+        Require(!IsWindowVisible(main.terminal_),"Collapsed power monitor must not leave terminal overlay");
+        main.powerMonitorCollapsed_=false;main.LayoutControls(viewport.right,viewport.bottom);
         for (int i = 0; i < 3; ++i)
-            SendMessageW(GetDlgItem(main.powerPane_.Handle(), 20 + i), BM_SETCHECK, i == 1 ? BST_UNCHECKED : BST_CHECKED, 0);
+            SendMessageW(PowerControl(main.powerPane_.Handle(), 20 + i), BM_SETCHECK, i == 1 ? BST_UNCHECKED : BST_CHECKED, 0);
         Require(Wait(main.powerService_, main.powerService_.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed", "Controlled power backend not connected");
         auto state = main.AiDeviceRequest("power.get", {});
         Require(state["connected"] == true && state["selectedChannels"] == Json::array({1,3}), "Power status/GUI channel selection not exposed");
@@ -499,9 +582,9 @@ struct AiDeviceTestAccess {
         Require(main.AiDeviceRequest("power.action", {{"id", on["id"]}})["state"] == "completed", "Power action cannot be queried");
         auto channels = main.powerService_.State()["channels"];
         Require(channels[0]["output"] == true && channels[1]["output"] == false && channels[2]["output"] == true, "Power affected an unchecked channel");
-        SendMessageW(GetDlgItem(main.powerPane_.Handle(), 20), BM_SETCHECK, BST_UNCHECKED, 0);
+        SendMessageW(PowerControl(main.powerPane_.Handle(), 20), BM_SETCHECK, BST_UNCHECKED, 0);
         Require(main.AiDeviceRequest("power.output", args).contains("error"), "Changed channel selection was silently redirected");
-        SendMessageW(GetDlgItem(main.powerPane_.Handle(), 20), BM_SETCHECK, BST_CHECKED, 0);
+        SendMessageW(PowerControl(main.powerPane_.Handle(), 20), BM_SETCHECK, BST_CHECKED, 0);
         args["enabled"] = false; args["requestId"] = "ai-device-fixture-off";
         Require(Wait(main.powerService_, main.AiDeviceRequest("power.output", args))["state"] == "completed", "Power OFF failed");
         Require(main.powerService_.State()["channels"][0]["output"] == false && main.powerService_.State()["channels"][2]["output"] == false, "Power OFF readback incorrect");

@@ -463,12 +463,12 @@ void TerminalModel::ExecuteEscape(wchar_t character, TerminalFeedResult& result)
     case L'7':
         screen.savedRow = screen.cursorRow;
         screen.savedColumn = screen.cursorColumn;
-        savedAttributes_ = attributes_;
+        screen.savedAttributes = attributes_;
         break;
     case L'8':
         screen.cursorRow = std::max(0, std::min(rows_ - 1, screen.savedRow));
         screen.cursorColumn = std::max(0, std::min(columns_ - 1, screen.savedColumn));
-        attributes_ = savedAttributes_;
+        attributes_ = screen.savedAttributes;
         break;
     case L'D': LineFeed(result); break;
     case L'M': ReverseIndex(); break;
@@ -486,7 +486,8 @@ void TerminalModel::ExecuteEscape(wchar_t character, TerminalFeedResult& result)
 
 std::vector<int> TerminalModel::ParseParameters(std::wstring text, wchar_t& prefix) const {
     prefix = 0;
-    if (!text.empty() && (text.front() == L'?' || text.front() == L'>' || text.front() == L'!')) {
+    if (!text.empty() && (text.front() == L'?' || text.front() == L'>' || text.front() == L'!' ||
+                         text.front() == L'<' || text.front() == L'=')) {
         prefix = text.front();
         text.erase(text.begin());
     }
@@ -566,14 +567,40 @@ void TerminalModel::ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& resul
         }
         break;
     case L's':
+        if (prefix) break;
         screen.savedRow = screen.cursorRow;
         screen.savedColumn = screen.cursorColumn;
-        savedAttributes_ = attributes_;
+        screen.savedAttributes = attributes_;
         break;
     case L'u':
+        // Kitty keyboard negotiation shares its final byte with legacy SCORC.
+        // Queries and mode changes must never move the cursor or clear wrap.
+        if (prefix == L'?') {
+            if (responseRole_ == ResponseRole::Owner)
+                result.response += "\x1b[?" + std::to_string(screen.keyboardFlags) + "u";
+            return;
+        }
+        if (prefix == L'>' || prefix == L'=') {
+            if (prefix == L'>' && screen.keyboardStack.size() < 16)
+                screen.keyboardStack.push_back(screen.keyboardFlags);
+            const unsigned flags = static_cast<unsigned>(parameters[0]) & 1u;
+            const int mode = Parameter(parameters, 1, 1);
+            if (mode == 1) screen.keyboardFlags = flags;
+            else if (mode == 2) screen.keyboardFlags |= flags;
+            else if (mode == 3) screen.keyboardFlags &= ~flags;
+            return;
+        }
+        if (prefix == L'<') {
+            for (int count = std::min(amount, 16); count > 0; --count) {
+                screen.keyboardFlags = screen.keyboardStack.empty() ? 0 : screen.keyboardStack.back();
+                if (!screen.keyboardStack.empty()) screen.keyboardStack.pop_back();
+            }
+            return;
+        }
+        if (prefix) return;
         screen.cursorRow = std::max(0, std::min(rows_ - 1, screen.savedRow));
         screen.cursorColumn = std::max(0, std::min(columns_ - 1, screen.savedColumn));
-        attributes_ = savedAttributes_;
+        attributes_ = screen.savedAttributes;
         break;
     case L'r': {
         const int top = Parameter(parameters, 0, 1) - 1;
@@ -602,6 +629,20 @@ void TerminalModel::ExecuteCsi(wchar_t finalCharacter, TerminalFeedResult& resul
         else if (parameters[0] == 6) {
             result.response += "\x1b[" + std::to_string(screen.cursorRow + 1) + ";" +
                 std::to_string(screen.cursorColumn + 1) + "R";
+        }
+        break;
+    case L'p':
+        if (prefix == L'?' && !csiBuffer_.empty() && csiBuffer_.back() == L'$' &&
+            responseRole_ == ResponseRole::Owner) {
+            const int mode = parameters[0];
+            const bool known = mode == 1 || mode == 7 || mode == 25 || mode == 1000 || mode == 1002 ||
+                mode == 1003 || mode == 1006 || mode == 1007 || mode == 1049 || mode == 2004 || mode == 2026;
+            const bool enabled = mode == 1 ? applicationCursorKeys_ : mode == 7 ? autoWrap_ :
+                mode == 25 ? cursorVisible_ : mode == 1006 ? sgrMouse_ : mode == 1007 ? alternateScroll_ :
+                mode == 1049 ? alternateScreen_ : mode == 2004 ? bracketedPaste_ : mode == mouseTracking_;
+            result.response += "\x1b[?" + std::to_string(mode) + ";" +
+                std::to_string(known ? (enabled ? 1 : 2) : 0) + "$y";
+            return;
         }
         break;
     case L'c':
@@ -667,15 +708,23 @@ void TerminalModel::SetPrivateMode(int mode, bool enabled) {
         if (enabled) {
             screen.savedRow = screen.cursorRow;
             screen.savedColumn = screen.cursorColumn;
-            savedAttributes_ = attributes_;
+            screen.savedAttributes = attributes_;
         } else {
             screen.cursorRow = screen.savedRow;
             screen.cursorColumn = screen.savedColumn;
-            attributes_ = savedAttributes_;
+            attributes_ = screen.savedAttributes;
         }
         break;
     }
     case 1049: SwitchAlternateScreen(enabled, true); break;
+    case 1000:
+    case 1002:
+    case 1003:
+        if (enabled) mouseTracking_ = mode;
+        else if (mouseTracking_ == mode) mouseTracking_ = 0;
+        break;
+    case 1006: sgrMouse_ = enabled; break;
+    case 1007: alternateScroll_ = enabled; break;
     case 2004: bracketedPaste_ = enabled; break;
     default: break;
     }
@@ -684,21 +733,107 @@ void TerminalModel::SetPrivateMode(int mode, bool enabled) {
 void TerminalModel::SwitchAlternateScreen(bool enabled, bool saveCursor) {
     if (enabled == alternateScreen_) return;
     if (enabled) {
+        primaryModes_ = (autoWrap_ ? 1u : 0u) | (originMode_ ? 2u : 0u) | (insertMode_ ? 4u : 0u) |
+            (cursorVisible_ ? 8u : 0u) | (applicationCursorKeys_ ? 16u : 0u) |
+            (bracketedPaste_ ? 32u : 0u) | (sgrMouse_ ? 64u : 0u) | (alternateScroll_ ? 128u : 0u) |
+            (static_cast<unsigned>(mouseTracking_) << 8);
         if (saveCursor) {
             primary_.savedRow = primary_.cursorRow;
             primary_.savedColumn = primary_.cursorColumn;
-            savedAttributes_ = attributes_;
+            primary_.savedAttributes = attributes_;
         }
         alternate_ = BlankScreen();
         alternateScreen_ = true;
     } else {
         alternateScreen_ = false;
+        autoWrap_ = (primaryModes_ & 1) != 0;
+        originMode_ = (primaryModes_ & 2) != 0;
+        insertMode_ = (primaryModes_ & 4) != 0;
+        cursorVisible_ = (primaryModes_ & 8) != 0;
+        applicationCursorKeys_ = (primaryModes_ & 16) != 0;
+        bracketedPaste_ = (primaryModes_ & 32) != 0;
+        sgrMouse_ = (primaryModes_ & 64) != 0;
+        alternateScroll_ = (primaryModes_ & 128) != 0;
+        mouseTracking_ = static_cast<int>(primaryModes_ >> 8);
         if (saveCursor) {
             primary_.cursorRow = std::max(0, std::min(rows_ - 1, primary_.savedRow));
             primary_.cursorColumn = std::max(0, std::min(columns_ - 1, primary_.savedColumn));
-            attributes_ = savedAttributes_;
+            attributes_ = primary_.savedAttributes;
         }
     }
+}
+
+std::wstring TerminalModel::ScreenText(size_t maximumRows) const {
+    std::wstring text;
+    const auto &lines = ActiveScreen().lines;
+    for (size_t row = 0; row < lines.size() && row < maximumRows; ++row) {
+        const auto &line = lines[row];
+        std::wstring value;
+        for (size_t col = 0; col < line.used && col < line.cells.size(); ++col)
+            if (!line.cells[col].continuation) value += line.cells[col].character;
+        while (!value.empty() && value.back() == L' ') value.pop_back();
+        text += value;
+        text += L'\n';
+    }
+    return text;
+}
+
+std::string TerminalModel::KeySequence(std::string name, unsigned modifiers) const {
+    if (name.empty() || name.size() > 64 || modifiers > 7) return {};
+    for (;;) {
+        if (name.rfind("Shift+", 0) == 0) { modifiers |= 1; name.erase(0, 6); }
+        else if (name.rfind("Alt+", 0) == 0) { modifiers |= 2; name.erase(0, 4); }
+        else if (name.rfind("Ctrl+", 0) == 0) { modifiers |= 4; name.erase(0, 5); }
+        else break;
+    }
+    const int code = name == "Enter" ? 13 : name == "Tab" ? 9 : name == "Escape" || name == "Esc" ? 27 :
+        name == "Backspace" ? 127 : name == "Space" ? 32 : name.size() == 1 ? static_cast<unsigned char>(name[0]) : 0;
+    const int parameter = 1 + static_cast<int>(modifiers);
+    if (code) {
+        if (code < 32 && name.size() == 1) return {};
+        if (KeyboardFlags() && (code == 13 || code == 9 || code == 27 || code == 127 || modifiers)) {
+            int key = code;
+            if (key >= 'A' && key <= 'Z') key += 'a' - 'A';
+            return "\x1b[" + std::to_string(key) + (modifiers ? ";" + std::to_string(parameter) : "") + "u";
+        }
+        if (name == "Tab" && modifiers == 1) return "\x1b[Z";
+        char value = static_cast<char>(code);
+        if (modifiers & 4) {
+            if (value == ' ' || value == '@') value = 0;
+            else if ((value >= 'a' && value <= 'z') || (value >= 'A' && value <= '_')) value &= 31;
+            else if (value == '?') value = 127;
+            else return {};
+        }
+        return (modifiers & 2 ? std::string("\x1b") : std::string()) + std::string(1, value);
+    }
+    char final = name == "Up" ? 'A' : name == "Down" ? 'B' : name == "Right" ? 'C' : name == "Left" ? 'D' :
+        name == "Home" ? 'H' : name == "End" ? 'F' : 0;
+    if (final) return modifiers ? "\x1b[1;" + std::to_string(parameter) + final :
+        std::string(applicationCursorKeys_ ? "\x1bO" : "\x1b[") + final;
+    if (name == "F1" || name == "F2" || name == "F3" || name == "F4") {
+        final = static_cast<char>('P' + name[1] - '1');
+        return modifiers ? "\x1b[1;" + std::to_string(parameter) + final : std::string("\x1bO") + final;
+    }
+    const int number = name == "Insert" ? 2 : name == "Delete" ? 3 : name == "PageUp" ? 5 : name == "PageDown" ? 6 :
+        name == "F5" ? 15 : name == "F6" ? 17 : name == "F7" ? 18 : name == "F8" ? 19 :
+        name == "F9" ? 20 : name == "F10" ? 21 : name == "F11" ? 23 : name == "F12" ? 24 : 0;
+    return number ? "\x1b[" + std::to_string(number) + (modifiers ? ";" + std::to_string(parameter) : "") + "~" : "";
+}
+
+std::string TerminalModel::MouseSequence(int button, int column, int row, unsigned modifiers, bool release) const {
+    if (!mouseTracking_ || modifiers > 7 || column < 0 || row < 0 || column >= columns_ || row >= rows_) return {};
+    const int flags = button | ((modifiers & 1) ? 4 : 0) | ((modifiers & 2) ? 8 : 0) | ((modifiers & 4) ? 16 : 0);
+    if (sgrMouse_)
+        return "\x1b[<" + std::to_string(flags) + ";" + std::to_string(column + 1) + ";" +
+            std::to_string(row + 1) + (release ? "m" : "M");
+    if (column >= 223 || row >= 223) return {};
+    return std::string("\x1b[M") + static_cast<char>(32 + (release ? 3 : flags)) +
+        static_cast<char>(33 + column) + static_cast<char>(33 + row);
+}
+
+std::string TerminalModel::WheelSequence(bool up, int column, int row, unsigned modifiers) const {
+    if (mouseTracking_) return MouseSequence(up ? 64 : 65, column, row, modifiers);
+    return alternateScreen_ && alternateScroll_ ? KeySequence(up ? "Up" : "Down", modifiers) : "";
 }
 
 void TerminalModel::AppendLogCharacter(
@@ -922,6 +1057,10 @@ void TerminalModel::Reset() {
     cursorVisible_ = true;
     applicationCursorKeys_ = false;
     bracketedPaste_ = false;
+    mouseTracking_ = 0;
+    sgrMouse_ = false;
+    alternateScroll_ = true;
+    primaryModes_ = 0;
     autoWrap_ = true;
     originMode_ = false;
     insertMode_ = false;

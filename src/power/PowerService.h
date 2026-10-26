@@ -13,7 +13,7 @@ class PowerService {
   public:
     PowerService();
     ~PowerService();
-    static constexpr bool ConnectionAvailable() { return false; }
+    static constexpr bool ConnectionAvailable() { return true; }
     static constexpr const char *ConnectionUnavailableMessage() {
         return u8"该功能暂未开放，请等待后续开放。";
     }
@@ -66,5 +66,6 @@ class PowerService {
     std::uint64_t next_ = 1;
     std::uint64_t pollAt_ = 0, taskAt_ = 0;
     unsigned pollInterval_ = 1000;
+    std::uint64_t recoveryNotBefore_[3]{};
 };
 } // namespace serialctl
