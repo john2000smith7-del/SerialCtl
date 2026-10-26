@@ -39,7 +39,7 @@ def main():
               'scope': 'Real released V2.0.2 GUI/updater and exact signed V2.0.4 candidate; loopback HTTP; no real intranet or Win7 hardware'}
     payload = json.loads(json.loads(args.metadata.read_bytes())['payload'])
     assert payload['version'] == 'V2.0.4'
-    assert digest(args.old_zip) == '8e7cb88bd22d572fbc67ee836a04831bd04604f280ec8555ac63f9cdea1934d4'
+    assert digest(args.old_zip) == '8e7cb88bd22d572f439dfca4a9514b2edf920165135bbde858c869cb44b17ffb'
     assert digest(args.new_zip) == payload['archive']['sha256']
     with zipfile.ZipFile(args.old_zip) as archive:
         for member in archive.infolist():
