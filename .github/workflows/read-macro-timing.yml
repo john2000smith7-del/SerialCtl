@@ -20,7 +20,7 @@ jobs:
         run: |
           python - <<'PY'
           import pathlib,json
-          for path in pathlib.Path('evidence').glob('*macro*.json'):
+          for path in pathlib.Path('evidence').rglob('*macro*.json'):
               r=json.loads(path.read_text(encoding='utf-8-sig'))
               print('MACRO_TIMING',path.name,json.dumps({k:r.get(k) for k in ('status','error','macro_clicks','macro_observations','input_trace','failed_observation')},ensure_ascii=False))
           PY
