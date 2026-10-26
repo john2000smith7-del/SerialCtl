@@ -1,11 +1,12 @@
 {
   "schema": 1,
-  "first_version": "V2.0.4",
+  "first_version": "V2.0.0",
+  "restored_in": "V2.0.4-r1",
   "algorithm": "RSA-2048 / RSA-SHA256",
-  "spki_sha256": "1b54f808072ac93c97d98d007a8e8c71d41a17834a0c5d810c614e9d75a05ae7",
-  "encrypted_backup": "serialctl-update-v2.0.4.encrypted.pem",
-  "encrypted_backup_sha256": "ed2f703fa5431b5c7c7e219e44d1ba4d873547a3b7a468cef064b0140b162a24",
-  "protection": "PKCS#8 PBES2 AES-256-CBC / PBKDF2-HMAC-SHA256 / 600000 iterations",
-  "recovery_password": "owner-held; never committed, uploaded to CI or included in application release",
-  "rotation": "user authorized after unsuccessful historical-key recovery; old clients require one manual deployment"
+  "spki_sha256": "196b703ac1274da483936513794f0c03eb7be806c302db4d932b30378a78a21a",
+  "encrypted_backup": null,
+  "encrypted_backup_sha256": null,
+  "backup_status": "Recovered original private key remains outside Git; no encrypted repository backup exists for this active identity",
+  "historical_identity": "replacement-v2.0.4.json",
+  "rotation": "Owner authorized restoring the recovered original identity so original V2.0.2 clients can update directly"
 }

@@ -3,6 +3,7 @@
 import argparse
 import getpass
 import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -11,6 +12,22 @@ import tempfile
 from new_update_feed import trusted_public_der
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+
+
+def active_backup(identity, trust_header):
+    """Choose only a backup explicitly bound to the current client identity."""
+    identity = Path(identity)
+    receipt = json.loads(identity.read_text(encoding="utf-8"))
+    expected = hashlib.sha256(trusted_public_der(Path(trust_header))).hexdigest()
+    if receipt.get("spki_sha256") != expected:
+        raise ValueError("Backup identity does not match the current client")
+    name = receipt.get("encrypted_backup")
+    if not isinstance(name, str) or not name or Path(name).name != name:
+        raise ValueError("Active identity has no encrypted repository backup; use the recovered original private key")
+    backup = identity.parent / name
+    if hashlib.sha256(backup.read_bytes()).hexdigest() != receipt.get("encrypted_backup_sha256"):
+        raise ValueError("Encrypted backup digest mismatch")
+    return backup
 
 
 def restore_key(encrypted, output, *, password_file=None, password=None,
@@ -57,18 +74,20 @@ def restore_key(encrypted, output, *, password_file=None, password=None,
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--encrypted", type=Path,
-                        default=REPOSITORY / "release-signing/serialctl-update-v2.0.4.encrypted.pem")
+                        help="Owner-held encrypted copy of the active identity; historical identities are not selected automatically")
     parser.add_argument("--output", type=Path, required=True, help="Private key path outside the repository")
     parser.add_argument("--password-file", type=Path, help="Owner-held private recovery password file")
     parser.add_argument("--openssl", default="openssl")
     args = parser.parse_args()
     try:
+        encrypted = args.encrypted or active_backup(REPOSITORY / "release-signing/identity.json",
+                                                    REPOSITORY / "src/update/UpdateTrustKey.h")
         password = None if args.password_file else getpass.getpass("Private recovery password: ")
-        digest = restore_key(args.encrypted, args.output, password_file=args.password_file,
+        digest = restore_key(encrypted, args.output, password_file=args.password_file,
                              password=password, openssl=args.openssl)
         print("Recovered existing update identity; public SPKI SHA-256: " + digest)
     except (OSError, ValueError, subprocess.SubprocessError):
-        parser.exit(1, "Recovery failed; key not replaced. Check paths, recovery password and trusted identity.\n")
+        parser.exit(1, "Recovery failed; key not replaced. Check the active identity and matching owner-held encrypted backup/password. Historical backups cannot restore a different identity.\n")
 
 
 if __name__ == "__main__":
