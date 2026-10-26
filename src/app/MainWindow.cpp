@@ -4530,19 +4530,15 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
 }
 
 void MainWindow::ShowPowerPage() {
+    UiRedrawScope redraw(window_);
     aiVisible_ = false;
     KillTimer(window_, SideAnimationTimerId);
     rightPanelAnimating_ = false;
     rightPanelAnimatedWidth_ = -1;
     powerVisible_ = true;
     powerPageOpened_ = true;
-    RefreshPowerTargets();
-    SyncPowerTerminal();
     RefreshConnectionList();
-    RECT client{};
-    GetClientRect(window_, &client);
-    LayoutControls(client.right, client.bottom);
-    RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    SyncPowerTerminal();
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
 }
 
