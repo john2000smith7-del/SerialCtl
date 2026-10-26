@@ -1,0 +1,46 @@
+name: Capture real V2.0.5 Windows user manual steps
+on:
+  push:
+    branches: [verification/v205-autoupdate]
+    paths: [.github/workflows/v205-manual-capture.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  capture:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: candidate
+          run-id: 40257439975
+          github-token: ${{ github.token }}
+      - name: Install screenshot capture dependency
+        run: python -m pip install pillow==11.3.0
+      - name: Build documentation-only local transport fixture
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $dev = Join-Path $vs 'Common7/Tools/VsDevCmd.bat'
+          cmd /c "`"$dev`" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++17 /EHsc /utf-8 /MT /O2 /I third_party\json docs-capture\guide_plink.cpp /Fe:guide_plink.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Capture actual released GUI with non-production demonstration data
+        run: python docs-capture/capture_guide.py --zip candidate/SerialCtl-V2.0.5-Win7-x64.zip --plink guide_plink.exe --output manual-capture
+      - name: Expose bounded original screenshots and control coordinates
+        if: always()
+        shell: powershell
+        run: |
+          python -c "import pathlib,base64,json,hashlib; root=pathlib.Path('manual-capture'); [(print('GUIDE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted(root.glob('*.png'))]; [(print('GUIDE_META '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted(root.glob('*.json'))]"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-V2.0.5-user-manual-real-GUI
+          path: |
+            manual-capture/*.png
+            manual-capture/*.json
+          if-no-files-found: error
