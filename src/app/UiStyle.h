@@ -847,17 +847,28 @@ inline LRESULT CALLBACK UiComboEditProc(HWND h,UINT message,WPARAM w,LPARAM l,UI
 }
 inline void UiLayoutComboEdit(HWND combo,const UiFieldStyle &style) {
     if((GetWindowLongPtrW(combo,GWL_STYLE)&3)!=CBS_DROPDOWN) return;
+    if(GetPropW(combo,L"SerialCtl.ComboLayout")) return;
     COMBOBOXINFO info{sizeof(info)}; if(!GetComboBoxInfo(combo,&info) || !info.hwndItem) return;
     const auto d=[&](int n){return MulDiv(n,style.dpi,96);};
     RECT r{};GetClientRect(combo,&r);
     const auto edit=info.hwndItem;
-    SetWindowLongPtrW(edit,GWL_STYLE,GetWindowLongPtrW(edit,GWL_STYLE)&~WS_BORDER);
-    SetWindowLongPtrW(edit,GWL_EXSTYLE,GetWindowLongPtrW(edit,GWL_EXSTYLE)&~WS_EX_CLIENTEDGE);
+    SetPropW(combo,L"SerialCtl.ComboLayout",reinterpret_cast<HANDLE>(1));
+    const auto editStyle=GetWindowLongPtrW(edit,GWL_STYLE),extended=GetWindowLongPtrW(edit,GWL_EXSTYLE);
+    const bool frameChanged=(editStyle&WS_BORDER)||(extended&WS_EX_CLIENTEDGE);
+    if(frameChanged) {
+        SetWindowLongPtrW(edit,GWL_STYLE,editStyle&~WS_BORDER);
+        SetWindowLongPtrW(edit,GWL_EXSTYLE,extended&~WS_EX_CLIENTEDGE);
+    }
     SetWindowSubclass(edit,UiComboEditProc,84,0);
-    SendMessageW(edit,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,0);
+    if(SendMessageW(edit,EM_GETMARGINS,0,0)) SendMessageW(edit,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,0);
     const int height=UiEditTextHeight(edit,std::max(1L,r.bottom-d(8)));
-    SetWindowPos(edit,nullptr,d(8),std::max(0,(static_cast<int>(r.bottom)-height)/2),
-        std::max(1L,r.right-d(40)),height,SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
+    RECT actual{};GetWindowRect(edit,&actual);MapWindowPoints(nullptr,combo,reinterpret_cast<POINT*>(&actual),2);
+    const RECT desired{d(8),std::max(0,(static_cast<int>(r.bottom)-height)/2),r.right-d(32),
+        std::max(0,(static_cast<int>(r.bottom)-height)/2)+height};
+    if(frameChanged || !EqualRect(&actual,&desired))
+        SetWindowPos(edit,nullptr,desired.left,desired.top,std::max(1L,desired.right-desired.left),height,
+            SWP_NOZORDER|SWP_NOACTIVATE|(frameChanged?SWP_FRAMECHANGED:0));
+    RemovePropW(combo,L"SerialCtl.ComboLayout");
 }
 inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR reference) {
     auto *style = reinterpret_cast<UiFieldStyle *>(reference);
@@ -878,6 +889,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     if (!edit && message == WM_ERASEBKGND)
         return 1;
     if (!edit && (message == WM_PAINT || message == WM_PRINT || message == WM_PRINTCLIENT)) {
+        UiLayoutComboEdit(h,*style);
         PAINTSTRUCT ps{};
         HDC dc = message == WM_PAINT ? BeginPaint(h, &ps) : reinterpret_cast<HDC>(w);
         UiPaintComboField(h, dc, *style);
@@ -911,6 +923,14 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     if (!edit && (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK || message == WM_KEYDOWN ||
                  (message == CB_SHOWDROPDOWN && w)))
         UiPrepareComboPopup(h, style);
+    if(!edit && message==WM_LBUTTONDOWN && (GetWindowLongPtrW(h,GWL_STYLE)&3)==CBS_DROPDOWN) {
+        RECT r{};GetClientRect(h,&r);
+        if(GET_X_LPARAM(l)>=r.right-d(32)) {
+            COMBOBOXINFO info{sizeof(info)};if(GetComboBoxInfo(h,&info)) SetFocus(info.hwndItem);
+            SendMessageW(h,CB_SHOWDROPDOWN,!SendMessageW(h,CB_GETDROPPEDSTATE,0,0),0);
+            return 0;
+        }
+    }
     if (edit && message == WM_NCCALCSIZE) {
         LRESULT result = DefSubclassProc(h, message, w, l);
         RECT *rect = w ? &reinterpret_cast<NCCALCSIZE_PARAMS *>(l)->rgrc[0] : reinterpret_cast<RECT *>(l);
@@ -983,12 +1003,14 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     DWORD_PTR current = 0;
     if (!GetWindowSubclass(h, UiFieldProc, id, &current) || current != reference)
         return result;
-    if(!edit && (message==WM_SIZE || message==WM_SETFONT || message==CB_SETITEMHEIGHT)) UiLayoutComboEdit(h,*style);
+    if(!edit && (message==WM_SIZE || message==WM_SETFONT || message==WM_COMMAND || message==CB_SETITEMHEIGHT || message==WM_SETTEXT ||
+        message==CB_RESETCONTENT || message==CB_SETCURSEL || message==CB_SELECTSTRING || message==CB_SHOWDROPDOWN))
+        UiLayoutComboEdit(h,*style);
     if (!edit && message == WM_SETFONT)
         UiPrepareComboPopup(h, style);
     if (!edit && (hoverChanged || message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
                   message == WM_SETFONT || message == WM_SIZE || message == WM_KEYDOWN || message == WM_KEYUP ||
-                  message == WM_CHAR || message == WM_COMMAND || message == WM_MOUSEWHEEL ||
+                  message == WM_CHAR || message == WM_COMMAND || message == WM_MOUSEWHEEL || message==WM_SETTEXT ||
                   message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_LBUTTONDBLCLK ||
                   message == WM_CAPTURECHANGED || message == WM_CANCELMODE || message == WM_UPDATEUISTATE ||
                   message == WM_THEMECHANGED || message == WM_SYSCOLORCHANGE || message == CB_SETCURSEL ||
