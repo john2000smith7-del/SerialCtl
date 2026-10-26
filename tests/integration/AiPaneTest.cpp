@@ -1,10 +1,93 @@
 #include "AiPane.h"
+#include "HostKeyDialog.h"
 #include "UiTestEvidence.h"
 #include <chrono>
 #include <cmath>
 #include <gdiplus.h>
 #include <iostream>
 #include <stdexcept>
+
+
+namespace {
+struct HostDialogProbe {
+    bool accept = false, dark = false;
+    int dpi = 96;
+    HWND pending = nullptr;
+    std::wstring image;
+    std::string error;
+    std::wstring expectedNew;
+    static BOOL CALLBACK Find(HWND h, LPARAM data) {
+        auto self = reinterpret_cast<HostDialogProbe*>(data);
+        if (!IsWindowVisible(h) || !GetDlgItem(h, 4100) || !GetDlgItem(h, IDOK)) return TRUE;
+        if (self->pending != h) { self->pending = h; SetForegroundWindow(h); UpdateWindow(h); return TRUE; }
+        try {
+            auto require = [](bool ok, const char* why) { if (!ok) throw std::runtime_error(why); };
+            require(IsDlgButtonChecked(h, 4100) == BST_UNCHECKED && !IsWindowEnabled(GetDlgItem(h, IDOK)),
+                    "Host identity approval is preselected or enabled without verification");
+            RECT check{}, action{}, client{};
+            GetWindowRect(GetDlgItem(h, 4100), &check); GetWindowRect(GetDlgItem(h, IDOK), &action);
+            require(check.bottom < action.top, "Consent overlaps the fixed action row on a small work area");
+            MapWindowPoints(HWND_DESKTOP, h, reinterpret_cast<POINT*>(&action), 2); GetClientRect(h, &client);
+            require(action.left >= 0 && action.right <= client.right && action.bottom <= client.bottom,
+                    "Host identity actions escaped the visible dialog");
+            SendMessageW(h, WM_COMMAND, IDOK, 0);
+            require(IsWindow(h), "Enter/direct IDOK bypassed the verification checkbox");
+            wchar_t text[2048]{}; GetDlgItemTextW(h, 4102, text, 2048);
+            require(std::wstring(text).find(self->expectedNew) != std::wstring::npos,
+                    "New identity is truncated in the copyable native field");
+            serialctl::ui_test::SaveUiEvidence(h, self->image + L"-unchecked.png");
+            GetWindowRect(GetDlgItem(h, 4100), &check);
+            MapWindowPoints(HWND_DESKTOP, h, reinterpret_cast<POINT*>(&check), 2);
+            auto dc = GetDC(h);
+            const auto gap = GetPixel(dc, MulDiv(20, self->dpi, 96), check.bottom + MulDiv(4, self->dpi, 96));
+            ReleaseDC(h, dc);
+            require(gap == serialctl::UiTheme(self->dark).surface,
+                    "A scrolling fingerprint card painted across the fixed consent footer");
+            if (self->accept) {
+                SendDlgItemMessageW(h, 4100, BM_CLICK, 0, 0);
+                require(IsDlgButtonChecked(h, 4100) == BST_CHECKED && IsWindowEnabled(GetDlgItem(h, IDOK)),
+                        "Explicit verification did not enable the confirmation action");
+                serialctl::ui_test::SaveUiEvidence(h, self->image + L"-checked.png");
+            }
+        } catch (const std::exception& failure) { self->error = failure.what(); }
+        PostMessageW(h, WM_COMMAND, self->error.empty() && self->accept ? IDOK : IDCANCEL, 0);
+        return FALSE;
+    }
+    static void CALLBACK Tick(HWND parent, UINT, UINT_PTR, DWORD) {
+        auto self = reinterpret_cast<HostDialogProbe*>(GetPropW(parent, L"SerialCtl.TestHostDialog"));
+        if (self) EnumThreadWindows(GetCurrentThreadId(), Find, reinterpret_cast<LPARAM>(self));
+    }
+};
+void CheckHostKeyDialogs(HWND parent, HFONT font) {
+    using namespace serialctl;
+    const std::wstring oldKey = L"ssh-ed25519 255 SHA256:44uodpMmNt68MktdLXKNyvUzZhOewpe0uE2NpYtDoHM";
+    const std::wstring newKey = L"ssh-ed25519 255 SHA256:zjS0PTSjix4sGz1bW4OLroa4lt3rkVQawAcHWb+8nd0";
+    for (int dpi : {96, 192}) {
+    LOGFONTW metrics{}; GetObjectW(font, sizeof(metrics), &metrics); metrics.lfHeight = MulDiv(metrics.lfHeight, dpi, 96);
+    HFONT scaled = CreateFontIndirectW(&metrics);
+    for (bool dark : {false, true}) {
+        for (auto reason : {HostKeyReason::Changed, HostKeyReason::FirstConnection, HostKeyReason::Reverify}) {
+            HostKeyChallenge challenge{dpi == 96 ? L"192.0.2.20" : std::wstring(120, L'a') + L".example.invalid", 22, oldKey, newKey, reason};
+            if (reason == HostKeyReason::FirstConnection) challenge.previousFingerprint.clear();
+            HostDialogProbe probe;
+            probe.dark = dark;
+            probe.dpi = dpi;
+            probe.accept = reason != HostKeyReason::Reverify;
+            probe.expectedNew = newKey.substr(newKey.find(L"SHA256:"));
+            probe.image = std::wstring(L"v206-host-key-") + (dark ? L"dark-" : L"light-") + (dpi == 96 ? L"" : L"192dpi-") +
+                (reason == HostKeyReason::Changed ? L"changed" : reason == HostKeyReason::FirstConnection ? L"first" : L"reverify");
+            SetPropW(parent, L"SerialCtl.TestHostDialog", &probe);
+            SetTimer(parent, 9206, 50, HostDialogProbe::Tick);
+            const bool accepted = HostKeyDialog::Show(parent, challenge, scaled ? scaled : font, dark, dpi);
+            KillTimer(parent, 9206); RemovePropW(parent, L"SerialCtl.TestHostDialog");
+            if (!probe.error.empty()) throw std::runtime_error(probe.error);
+            if (accepted != probe.accept) throw std::runtime_error("Host identity dialog returned the wrong consent decision");
+        }
+    }
+    if (scaled) DeleteObject(scaled);
+    }
+}
+}
 
 namespace serialctl {
 struct AiPaneTestAccess {
@@ -323,7 +406,7 @@ struct AiPaneTestAccess {
         server.password = L"fixture-only-π";
         require(pane.client_.Connect(
                     server, [](ai::Json) {},
-                    [](const std::wstring &, std::uint16_t, const std::wstring &) { return true; }),
+                    [](const HostKeyChallenge&) { return true; }),
                 "Cannot connect offline process fixture");
         const auto deadline = GetTickCount64() + 10000;
         while (!pane.client_.Ready() && GetTickCount64() < deadline)
@@ -476,6 +559,7 @@ struct AiPaneTestAccess {
 } // namespace serialctl
 int main() {
     using namespace serialctl;
+    SetProcessDPIAware();
     INITCOMMONCONTROLSEX common{sizeof(common), ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&common);
     Gdiplus::GdiplusStartupInput startup;
@@ -489,6 +573,7 @@ int main() {
     {
         AiPane pane;
         try {
+            CheckHostKeyDialogs(parent, font);
             if (!pane.Create(parent, font, false, [](const std::string &method, const ai::Json &) {
                     if (method == "sessions")
                         return ai::Json::array({{{"id", "session-7"}, {"name", "192.0.2.20 / COM3"}}});

@@ -63,8 +63,7 @@ class AiPane {
         int measuredWidth = 0, measuredHeight = 0;
     };
     struct HostPrompt {
-        std::wstring host, fingerprint;
-        unsigned port;
+        HostKeyChallenge challenge;
         std::promise<bool> answer;
     };
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);

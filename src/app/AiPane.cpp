@@ -1,4 +1,5 @@
 #include "AiPane.h"
+#include "HostKeyDialog.h"
 #include "AiHistory.h"
 #include "Win32Helpers.h"
 #include "UiDialogViewport.h"
@@ -29,7 +30,9 @@ enum {
     Note,
     Test,
     Value,
-    Directory
+    Directory,
+    HostIdentity,
+    HostReverify
 };
 constexpr UINT_PTR Timer = 1;
 constexpr size_t MaxConversation = 4 * 1024 * 1024;
@@ -539,6 +542,15 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const bool hover = GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr;
         const bool pressed = enabled && (item.itemState & ODS_SELECTED);
         const auto visual = UiButtonVisual(c, enabled, pressed, hover, primary);
+        if (item.CtlID == HostReverify) {
+            if (pressed || hover) UiBox(dc, item.rcItem, pressed ? c.accent : c.raised,
+                                      pressed ? c.accent : c.raised, self->D(10));
+            Draw(dc, Text(item.hwndItem), item.rcItem, self->smallFont_,
+                 !enabled ? c.muted : pressed ? RGB(255, 255, 255) : UiAccentInk(self->dark_),
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->dpi_, UiFocusInk(self->dark_, pressed));
+            return TRUE;
+        }
         const bool iconOnly = item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
         if (!iconOnly || pressed || hover)
             UiBox(dc, item.rcItem, iconOnly && !pressed ? c.raised : visual.fill,
@@ -1513,11 +1525,8 @@ void AiPane::Poll() {
         prompt.reset();
     }
     if (prompt) {
-        auto description = L"首次连接 SSH 主机：" + prompt->host + L":" + std::to_wstring(prompt->port) + L"\n\n" +
-                           prompt->fingerprint +
-                           L"\n\n请通过可信渠道核对完整指纹。确认一致后才可选择“是”并保存主机身份。";
-        const bool approved = MessageBoxW(dialog_ ? dialog_ : GetAncestor(window_, GA_ROOT), description.c_str(),
-                                          L"核验 SSH 主机身份", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+        const bool approved = HostKeyDialog::Show(dialog_ ? dialog_ : GetAncestor(window_, GA_ROOT),
+            prompt->challenge, font_, dark_, dpi_, [this] { return closing_ || client_.Cancelled(); });
         try {
             prompt->answer.set_value(approved);
         } catch (...) {
@@ -2129,7 +2138,9 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         add(L"EDIT", self->settings_.workingDirectory.c_str(), Directory, 16, 280, 404, 28, ES_AUTOHSCROLL | WS_TABSTOP);
         add(L"STATIC", L"连接检测", -1, 16, 332, 196, 28);
         add(L"BUTTON", L"测试连接", Test, 316, 324, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"STATIC", self->status_.c_str(), Note, 16, 372, 404, 72);
+        add(L"STATIC", self->status_.c_str(), Note, 16, 372, 404, 32);
+        add(L"STATIC", L"", HostIdentity, 16, 416, 244, 32);
+        add(L"BUTTON", L"重新核验主机", HostReverify, 280, 416, 140, 32, BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON", L"取消", IDCANCEL, 216, 460, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 460, 96, 36,
             BS_OWNERDRAW | WS_TABSTOP);
@@ -2146,6 +2157,13 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         for (int id : {Host, Port, Username, Password, Remember, Directory})
             EnableWindow(GetDlgItem(h, id), !running);
         EnableWindow(GetDlgItem(h, Test), !running);
+        EnableWindow(GetDlgItem(h, HostReverify), !running);
+        const auto host = Text(GetDlgItem(h, Host)), portText = Text(GetDlgItem(h, Port));
+        unsigned port = 0;
+        try { size_t read = 0; const auto value = std::stoul(portText, &read); if (read == portText.size() && value <= 65535) port = static_cast<unsigned>(value); } catch (...) {}
+        const std::wstring identity = port && !TrustedPuttyHostKey(host, static_cast<uint16_t>(port)).empty()
+            ? L"主机身份已保存" : L"连接时核验主机身份";
+        if (Text(GetDlgItem(h, HostIdentity)) != identity) SetDlgItemTextW(h, HostIdentity, identity.c_str());
         EnableWindow(GetDlgItem(h, IDOK), ready || !running);
         if (ready)
             SetDlgItemTextW(h, IDOK, L"进入对话");
@@ -2165,7 +2183,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             UiEndOwnedDialog(h, IDOK);
             return TRUE;
         }
-        if (id == Test || id == IDOK) {
+        if (id == Test || id == IDOK || id == HostReverify) {
             if (self->client_.Running())
                 return TRUE;
             ai::ServerSettings s = self->settings_;
@@ -2178,7 +2196,8 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             s.port = 0;
             try {
                 size_t n = 0;
-                s.port = static_cast<unsigned>(std::stoul(port, &n));
+                const auto value = std::stoul(port, &n);
+                s.port = value <= 65535 ? static_cast<unsigned>(value) : 0;
                 if (n != port.size())
                     s.port = 0;
             } catch (...) {
@@ -2207,11 +2226,9 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     self->eventBytes_ += size;
                     self->events_.push_back(std::move(event));
                 },
-                [self](const std::wstring &host, uint16_t port, const std::wstring &key) {
+                [self](const HostKeyChallenge& challenge) {
                     auto prompt = std::make_shared<HostPrompt>();
-                    prompt->host = host;
-                    prompt->port = port;
-                    prompt->fingerprint = key;
+                    prompt->challenge = challenge;
                     auto answer = prompt->answer.get_future();
                     {
                         std::lock_guard<std::mutex> lock(self->eventsMutex_);
@@ -2221,7 +2238,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                         if (self->closing_ || self->client_.Cancelled())
                             return false;
                     return answer.get();
-                });
+                }, id == HostReverify);
             self->UpdateActions();
             return TRUE;
         }
@@ -2237,7 +2254,9 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const auto c = UiAiTheme(self->dark_);
         auto dc = reinterpret_cast<HDC>(w);
         const bool field = EditColorMessage(m, l);
-        SetTextColor(dc, field && !IsWindowEnabled(reinterpret_cast<HWND>(l)) ? c.muted : c.text);
+        const bool identity = GetDlgCtrlID(reinterpret_cast<HWND>(l)) == HostIdentity;
+        if (identity) SelectObject(dc, self->smallFont_);
+        SetTextColor(dc, identity || (field && !IsWindowEnabled(reinterpret_cast<HWND>(l))) ? c.muted : c.text);
         SetBkColor(dc, field ? c.field : c.surface);
         return reinterpret_cast<INT_PTR>(field ? self->fieldBrush_ : self->surfaceBrush_);
     }

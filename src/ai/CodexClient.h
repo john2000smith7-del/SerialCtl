@@ -25,7 +25,7 @@ class CodexClient {
   public:
     using Event = std::function<void(Json)>;
     ~CodexClient();
-    bool Connect(ServerSettings settings, Event event, HostKeyConfirmation confirm);
+    bool Connect(ServerSettings settings, Event event, HostKeyConfirmation confirm, bool reverifyHostKey = false);
     void Disconnect();
     void Shutdown();
     bool Running() const {
@@ -40,7 +40,7 @@ class CodexClient {
     bool Send(Json message);
 
   private:
-    void Run(ServerSettings, HostKeyConfirmation);
+    void Run(ServerSettings, HostKeyConfirmation, bool reverifyHostKey);
     void Emit(Json event);
     std::thread worker_;
     std::atomic<bool> stop_{false}, running_{false}, ready_{false};

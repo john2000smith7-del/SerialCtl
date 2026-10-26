@@ -509,6 +509,7 @@ private:
     HWND discoveryDialog_ = nullptr;
     std::uint16_t discoveryExplicitPort_ = 0;
     int pendingMode_ = 0;
+    bool pendingHostKeyReverify_ = false;
     SerialSettings pendingSerial_;
     std::wstring pendingHost_;
     std::wstring pendingUsername_;

@@ -413,7 +413,7 @@ public static class FakePlink {
             while (Console.ReadLine() != null) {}
             return 0;
         }
-        Console.WriteLine("The host key is not cached for this server\nkey fingerprint is:\nssh-ed25519 255 SHA256:ui-smoke-test");
+        Console.WriteLine("The host key is not cached for this server\nkey fingerprint is:\nssh-ed25519 255 SHA256:44uodpMmNt68MktdLXKNyvUzZhOewpe0uE2NpYtDoHM");
         return 1;
     }
 }
@@ -874,11 +874,11 @@ foreach ($architecture in @('x64')) {
             Capture-Window $dialog "$architecture-$theme-ssh-dialog"
             Click-Control $dialog 1
             Start-Sleep -Milliseconds 300
-            $confirmation = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('56Gu6K6kIFNTSCDkuLvmnLrouqvku70=')))
+            $confirmation = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5qC46aqMIFNTSCDkuLvmnLrouqvku70=')))
             Start-Sleep -Milliseconds 300
             Capture-Window $confirmation "$architecture-$theme-host-key"
-            $answer = if ($theme -eq 'light') { 7 } else { 6 }
-            Click-Control $confirmation $answer
+            if ($theme -eq 'dark') { Click-Control $confirmation 4100; Click-Control $confirmation 1 }
+            else { Click-Control $confirmation 2 }
             Start-Sleep -Milliseconds 1000
             $result = [IntPtr]::Zero
             if ([SerialCtlUiSmoke]::SendMessageTimeout($application.MainWindowHandle, 0, [IntPtr]::Zero,

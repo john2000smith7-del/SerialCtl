@@ -12,7 +12,7 @@ class CodexSession {
     ~CodexSession() {
         Shutdown();
     }
-    bool Connect(ServerSettings settings, Event event, HostKeyConfirmation confirm) {
+    bool Connect(ServerSettings settings, Event event, HostKeyConfirmation confirm, bool reverifyHostKey = false) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             operations_.clear();
@@ -61,7 +61,7 @@ class CodexSession {
                     event({{"event", "error"}, {"message", u8"Codex 事件格式不兼容；未执行该设备请求"}});
                 }
             },
-            std::move(confirm));
+            std::move(confirm), reverifyHostKey);
     }
     bool Request(Operation operation, std::uint64_t token, Json data) {
         std::lock_guard<std::mutex> lock(mutex_);

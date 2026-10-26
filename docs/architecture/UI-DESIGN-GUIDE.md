@@ -231,3 +231,11 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 - AI Send keeps its label and becomes disabled while a turn runs. A separate Stop action appears in the utility row, away from Send's hit target. Repeated activation of Send must never interrupt a turn.
 - Layout widths are stored as versioned 96-DPI logical values. Legacy pixel values are migrated using their saved DPI, or the current DPI when that historical value is unavailable.
 - Per-session transport status retains its reason and time. Background errors mark their own connection card; selecting it acknowledges the mark and restores that session's reason without overwriting another session's state.
+
+
+## V2.0.6 approved host identity recovery
+
+- SSH and AI connection dialogs add one compact identity-status row and a text-role “重新核验主机” action. Retain the existing fields and footer geometry; the AI row uses space already reserved for connection feedback. Disable the action while connecting/connected.
+- The shared native identity dialog is at most 600 logical px wide, fitting the monitor work area at high DPI, with 16 px insets, 12 px gaps and content-dependent height. Unknown hosts show one fingerprint card; changed or manually rechecked hosts show old/current cards. Use shared neutral card surfaces, 12 px radii, selectable read-only 13 px Consolas fingerprints, complete digest text and the normal theme-aware typography.
+- A native automatic checkbox starts unchecked. The primary action remains disabled and IDOK is rejected until explicit verification. Both 160 by 36 px footer actions align right with a 12 px gap. Close, Escape and cancellation preserve trust. Reuse the existing dialog viewport on small work areas.
+- Updating applies only to the displayed host and port. Clarify that connection recovery never replays AI commands. Password changes keep identity separate. No automatic acceptance, global cache deletion or new trust-management page.

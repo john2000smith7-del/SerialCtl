@@ -29,13 +29,7 @@ void Close(HANDLE &h) {
 }
 } // namespace
 bool IsAuthenticationFailure(const std::wstring &message) {
-    std::wstring lower = message;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
-    return lower.find(L"access denied") != std::wstring::npos ||
-           lower.find(L"authentication failed") != std::wstring::npos ||
-           lower.find(L"no supported authentication methods") != std::wstring::npos ||
-           lower.find(L"认证失败") != std::wstring::npos;
+    return IsPuttyAuthenticationFailure(message);
 }
 bool ForgetSavedServerPassword(const ServerSettings &s, std::wstring &error) {
     if (CredDeleteW(CredentialName(s).c_str(), CRED_TYPE_GENERIC, 0) || GetLastError() == ERROR_NOT_FOUND)
@@ -127,7 +121,7 @@ bool SaveServerSettings(const ServerSettings &s, std::wstring &error) {
 CodexClient::~CodexClient() {
     Shutdown();
 }
-bool CodexClient::Connect(ServerSettings settings, Event event, HostKeyConfirmation confirm) {
+bool CodexClient::Connect(ServerSettings settings, Event event, HostKeyConfirmation confirm, bool reverifyHostKey) {
     if (running_)
         return false;
     if (worker_.joinable())
@@ -141,9 +135,9 @@ bool CodexClient::Connect(ServerSettings settings, Event event, HostKeyConfirmat
     stop_ = false;
     ready_ = false;
     running_ = true;
-    worker_ = std::thread([this, settings = std::move(settings), confirm = std::move(confirm)]() mutable {
+    worker_ = std::thread([this, settings = std::move(settings), confirm = std::move(confirm), reverifyHostKey]() mutable {
         try {
-            Run(settings, confirm);
+            Run(settings, confirm, reverifyHostKey);
         } catch (const std::exception &) {
             Emit({{"event", "error"}, {"message", u8"Codex 通信或协议异常；连接已关闭"}});
         }
@@ -179,7 +173,7 @@ bool CodexClient::Send(Json message) {
     writes_.push_back(std::move(bytes));
     return true;
 }
-void CodexClient::Run(ServerSettings settings, HostKeyConfirmation confirm) {
+void CodexClient::Run(ServerSettings settings, HostKeyConfirmation confirm, bool reverifyHostKey) {
     std::wstring error;
     if (!ValidateServer(settings, error)) {
         Emit({{"event", "error"}, {"message", WideToMultiByte(error, CP_UTF8)}});
@@ -197,7 +191,7 @@ void CodexClient::Run(ServerSettings settings, HostKeyConfirmation confirm) {
     Emit({{"event", "status"}, {"message", u8"正在验证 SSH 连接与主机身份…"}});
     std::wstring fingerprint;
     if (!ResolvePuttyHostKey(plink, settings.host, static_cast<uint16_t>(settings.port), settings.username,
-                             settings.password, fingerprint, error, &stop_, confirm)) {
+                             settings.password, fingerprint, error, &stop_, confirm, reverifyHostKey)) {
         // SSH output is never retained as a transcript or diagnostic log.
         const bool auth = IsAuthenticationFailure(error);
         Emit({{"event", "error"},

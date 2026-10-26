@@ -3,6 +3,7 @@
 #include "TerminalDecoder.h"
 #include "MainWindow.h"
 #include "UiDialogViewport.h"
+#include "HostKeyDialog.h"
 
 #include "CmdConnection.h"
 #include "PlinkConnection.h"
@@ -324,9 +325,7 @@ struct ConnectionMessage {
     std::wstring error;
 };
 struct HostKeyRequest {
-    std::wstring host;
-    std::uint16_t port;
-    std::wstring fingerprint;
+    HostKeyChallenge challenge;
     std::promise<bool> decision;
 };
 using HostKeyMessage = std::shared_ptr<HostKeyRequest>;
@@ -2501,11 +2500,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             const auto& request = **hostMessage;
             bool accepted = false;
             if (!closing_ && !connectionCancel_.load()) {
-                const std::wstring prompt = L"首次连接该 SSH 主机：" + request.host + L":" +
-                    std::to_wstring(request.port) + L"\n\n主机指纹：\n" + request.fingerprint +
-                    L"\n\n请通过服务器管理员等独立渠道核对指纹。确认后将保存此指纹；密钥变化时会拒绝连接。\n\n是否信任此主机？";
-                accepted = MessageBoxW(window_, prompt.c_str(), L"确认 SSH 主机身份",
-                    MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+                accepted = HostKeyDialog::Show(window_, request.challenge, uiFont_, darkMode_, Ui::Dpi,
+                    [this] { return closing_ || connectionCancel_.load(); });
             }
             (*hostMessage)->decision.set_value(accepted);
         }
@@ -3186,6 +3182,15 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             }
             return;
         }
+        if (id == IDC_HOST_REVERIFY) {
+            DrawRoundedBox(dc, rect, Ui::Radius, pressed ? colors.accent : hovered ? colors.panelAlt : colors.panel,
+                           pressed ? colors.accent : hovered ? colors.panelAlt : colors.panel);
+            DrawTextSimple(dc, ControlText(item.hwndItem), rect,
+                !enabled ? colors.muted : pressed ? RGB(255, 255, 255) : UiAccentInk(darkMode_),
+                smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            UiButtonKeyboardFocus(dc, rect, item.itemState, Ui::Dpi, UiFocusInk(darkMode_, enabled && pressed));
+            return;
+        }
         if (id == IdAddCommand || id == IDC_COMMAND_ADD_STEP) {
             const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
             DrawRoundedBox(dc, rect, Ui::Radius,
@@ -3500,6 +3505,7 @@ void MainWindow::OpenConnectionDialog(int mode) {
         return;
     }
     pendingMode_ = mode;
+    pendingHostKeyReverify_ = false;
     if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_CONNECTION), window_, ConnectionDialogProc,
                          reinterpret_cast<LPARAM>(this)) == IDOK) {
         ConnectFromDialog();
@@ -3550,8 +3556,9 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         HDC dc = reinterpret_cast<HDC>(wParam);
         SetBkMode(dc, TRANSPARENT);
         const HWND control = reinterpret_cast<HWND>(lParam);
-        SetTextColor(dc, GetDlgCtrlID(control) == IDC_DIALOG_ERROR ? colors.danger : colors.text);
-        if (GetDlgCtrlID(control) == IDC_DIALOG_ERROR)
+        SetTextColor(dc, GetDlgCtrlID(control) == IDC_DIALOG_ERROR ? colors.danger :
+                        GetDlgCtrlID(control) == IDC_HOST_IDENTITY ? colors.muted : colors.text);
+        if (GetDlgCtrlID(control) == IDC_DIALOG_ERROR || GetDlgCtrlID(control) == IDC_HOST_IDENTITY)
             SelectObject(dc, self->smallFont_);
         if (message == WM_CTLCOLOREDIT || message == WM_CTLCOLORLISTBOX) {
             SetBkColor(dc, colors.terminal);
@@ -3587,6 +3594,13 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         return TRUE;
     }
     if (message == WM_COMMAND) {
+        if (self->pendingMode_ == 0 &&
+            (LOWORD(wParam) == IDC_HOST || LOWORD(wParam) == IDC_PORT) && HIWORD(wParam) == EN_CHANGE) {
+            const auto host = Trim(ControlText(GetDlgItem(dialog, IDC_HOST)));
+            const auto port = ParsePositive(ControlText(GetDlgItem(dialog, IDC_PORT)));
+            const bool saved = port > 0 && port <= 65535 && !TrustedPuttyHostKey(host, static_cast<std::uint16_t>(port)).empty();
+            SetDlgItemTextW(dialog, IDC_HOST_IDENTITY, saved ? L"主机身份已保存" : L"连接时核验主机身份");
+        }
         if (self->pendingMode_ == 3 && (LOWORD(wParam) == IdSharedAdvancedPort || LOWORD(wParam) == IdSharedAutoPort)) {
             if (LOWORD(wParam) == IdSharedAdvancedPort) {
                 std::wstring value;
@@ -3608,13 +3622,14 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                 self->RefreshSerialPorts(dialog);
             return TRUE;
         }
-        if (LOWORD(wParam) == IDOK) {
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDC_HOST_REVERIFY) {
             std::wstring error;
             if (!self->ReadConnectionDialog(dialog, error)) {
                 SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, error.c_str());
                 InvalidateRect(GetDlgItem(dialog, IDC_DIALOG_ERROR), nullptr, TRUE);
                 return TRUE;
             }
+            self->pendingHostKeyReverify_ = LOWORD(wParam) == IDC_HOST_REVERIFY;
             UiEndOwnedDialog(dialog, IDOK);
             return TRUE;
         }
@@ -3630,6 +3645,8 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     const bool serial = pendingMode_ == 1;
     const bool ssh = pendingMode_ == 0;
     const bool share = pendingMode_ == 3;
+    ShowDialogItem(dialog, IDC_HOST_IDENTITY, ssh);
+    ShowDialogItem(dialog, IDC_HOST_REVERIFY, ssh);
     discoveryExplicitPort_ = 0;
     pendingRemoteInstance_.clear();
     const int serialSelectorIds[] = {IDC_SERIAL_LABEL, IDC_SERIAL};
@@ -3693,7 +3710,13 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         errorY = 140;
         buttonY = 152;
         dialogHeight = 178;
-    } else if (ssh || share) {
+    } else if (ssh) {
+        MoveDialogItemDlu(dialog, IDC_HOST_IDENTITY, margin, 76, 120, 14);
+        MoveDialogItemDlu(dialog, IDC_HOST_REVERIFY, 144, 72, 82, 18);
+        errorY = 94;
+        buttonY = 106;
+        dialogHeight = 132;
+    } else if (share) {
         errorY = 72;
         buttonY = 84;
         dialogHeight = 110;
@@ -3857,12 +3880,10 @@ void MainWindow::ConnectFromDialog() {
     if (pendingMode_ == 0) {
         connection = std::make_unique<PlinkConnection>(pendingHost_, pendingPort_, pendingUsername_,
             pendingPassword_, terminalVisibleColumns_, terminalVisibleRows_,
-            [this](const std::wstring& host, std::uint16_t port, const std::wstring& fingerprint) {
+            [this](const HostKeyChallenge& challenge) {
                 if (connectionCancel_.load()) return false;
                 auto request = std::make_shared<HostKeyRequest>();
-                request->host = host;
-                request->port = port;
-                request->fingerprint = fingerprint;
+                request->challenge = challenge;
                 auto decision = request->decision.get_future();
                 auto* message = new HostKeyMessage(request);
                 if (!PostMessageW(window_, MessageHostKey, 0, reinterpret_cast<LPARAM>(message))) {
@@ -3873,7 +3894,7 @@ void MainWindow::ConnectFromDialog() {
                     if (connectionCancel_.load()) return false;
                 }
                 return !connectionCancel_.load() && decision.get();
-            });
+            }, pendingHostKeyReverify_);
         sessionName = pendingUsername_ + L"@" + pendingHost_;
     } else if (pendingMode_ == 1) {
         connection = std::make_unique<SerialConnection>(pendingSerial_);

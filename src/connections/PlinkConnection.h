@@ -13,7 +13,8 @@ namespace serialctl {
 class PlinkConnection final : public IConnection {
 public:
     PlinkConnection(std::wstring host, std::uint16_t port, std::wstring username,
-        std::wstring password, int terminalColumns, int terminalRows, HostKeyConfirmation confirm = {});
+        std::wstring password, int terminalColumns, int terminalRows, HostKeyConfirmation confirm = {},
+        bool reverifyHostKey = false);
     ~PlinkConnection() override;
 
     bool Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) override;
@@ -38,6 +39,7 @@ private:
     PasswordPipe passwordPipe_;
     std::wstring hostKey_;
     HostKeyConfirmation confirmHostKey_;
+    bool reverifyHostKey_ = false;
     int terminalColumns_ = 80;
     int terminalRows_ = 24;
     std::wstring puttySessionName_;

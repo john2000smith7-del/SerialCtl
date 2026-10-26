@@ -13,12 +13,13 @@ PlinkConnection::PlinkConnection(
     std::wstring username,
     std::wstring password,
     int terminalColumns,
-    int terminalRows, HostKeyConfirmation confirm)
+    int terminalRows, HostKeyConfirmation confirm, bool reverifyHostKey)
     : host_(std::move(host)),
       port_(port),
       username_(std::move(username)),
       password_(std::move(password)),
       confirmHostKey_(std::move(confirm)),
+      reverifyHostKey_(reverifyHostKey),
       terminalColumns_(std::max(20, terminalColumns)),
       terminalRows_(std::max(4, terminalRows)) {}
 
@@ -34,7 +35,7 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
         return false;
     }
     if (!ResolvePuttyHostKey(plink, host_, port_, username_, password_,
-            hostKey_, error, &cancelStarting_, confirmHostKey_)) {
+            hostKey_, error, &cancelStarting_, confirmHostKey_, reverifyHostKey_)) {
         return false;
     }
     passwordPipe_.Reset();

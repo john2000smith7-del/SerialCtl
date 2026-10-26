@@ -54,9 +54,9 @@ int main() {
                         events.push_back(std::move(e));
                         wake.notify_all();
                     },
-                    [&](const std::wstring &, std::uint16_t, const std::wstring &key) {
+                    [&](const serialctl::HostKeyChallenge& challenge) {
                         ++confirmations;
-                        return key.find(L"serialctl-offline-fixture") != std::wstring::npos;
+                        return challenge.fingerprint.find(L"SHA256:44uodpMmNt68MktdLXKNyvUzZhOewpe0uE2NpYtDoHM") != std::wstring::npos;
                     }),
                 "Connect rejected");
         wait([](const Json &e) { return e.value("event", std::string()) == "ready"; });
@@ -101,7 +101,7 @@ int main() {
                         events.push_back(std::move(e));
                         wake.notify_all();
                     },
-                    [](const std::wstring &, std::uint16_t, const std::wstring &) { return false; }),
+                    [](const serialctl::HostKeyChallenge&) { return false; }),
                 "Domain session connect rejected");
         wait([](const Json &e) { return e.value("event", std::string()) == "ready"; });
         Require(session.Request(Operation::Models, 21, Json::object()), "Domain model request rejected");

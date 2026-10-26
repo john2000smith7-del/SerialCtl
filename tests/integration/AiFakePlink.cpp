@@ -39,7 +39,7 @@ int wmain(int argc, wchar_t **argv) {
         if (key)
             return 0;
         std::cerr << "The host key is not cached for this server\nkey fingerprint is:\nssh-ed25519 255 "
-                     "SHA256:serialctl-offline-fixture\n";
+                     "SHA256:44uodpMmNt68MktdLXKNyvUzZhOewpe0uE2NpYtDoHM\n";
         return 1;
     }
     std::string line;
