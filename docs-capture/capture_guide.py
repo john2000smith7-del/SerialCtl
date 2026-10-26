@@ -94,7 +94,10 @@ def main():
   user.SetForegroundWindow(h);time.sleep(.06)
   r=rect(h);user.SetCursorPos((r[0]+r[2])//2,(r[1]+r[3])//2)
   user.mouse_event(2,0,0,0,0);time.sleep(.07);user.mouse_event(4,0,0,0,0);time.sleep(.2)
- def fill(h,text):assert h;user.SendMessageW(h,0xc,0,c.cast(c.c_wchar_p(text),c.c_void_p).value)
+ def fill(h,text):
+  assert h
+  buffer=c.create_unicode_buffer(text)
+  user.SendMessageW(h,0xc,0,c.addressof(buffer))
  def rect(h):r=w.RECT();user.GetWindowRect(h,c.byref(r));return [r.left,r.top,r.right,r.bottom]
  def shot(h,name):
   user.SetForegroundWindow(h);time.sleep(.35);r=rect(h);ImageGrab.grab(bbox=tuple(r),all_screens=True).save(out/(name+'.png'))

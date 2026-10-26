@@ -150,7 +150,7 @@ def main():
                         break
             if confirmed and not (root/'guide-update-progress.png').exists():
                 for item in windows():
-                    if item['pid']==process.pid and user.GetDlgItem(item['window'],100):
+                    if item['pid']==process.pid and item['class']=='#32770' and user.GetDlgItem(item['window'],100):
                         shot(item['window'],'guide-update-progress.png')
                         break
             logs = list((install / '.serialctl-update').glob('*/update.log'))
