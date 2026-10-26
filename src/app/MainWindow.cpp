@@ -6189,7 +6189,7 @@ void MainWindow::RefreshPowerTargets() {
             eligible = session->mode == 1 || session->mode == 3;
         }
     }
-    if (ids != powerMonitorIds_ || labels != powerMonitorLabels_) {
+    if (ids != powerMonitorIds_ || labels != powerMonitorLabels_ || SendMessageW(powerMonitorTarget_,CB_GETCOUNT,0,0)==0) {
         powerMonitorIds_ = ids;
         powerMonitorLabels_ = labels;
         SendMessageW(powerMonitorTarget_, CB_RESETCONTENT, 0, 0);
