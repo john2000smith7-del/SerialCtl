@@ -2139,7 +2139,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         add(L"STATIC", L"连接检测", -1, 16, 332, 196, 28);
         add(L"BUTTON", L"测试连接", Test, 316, 324, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
         add(L"STATIC", self->status_.c_str(), Note, 16, 372, 404, 32);
-        add(L"STATIC", L"", HostIdentity, 16, 416, 244, 32);
+        add(L"STATIC", L"", HostIdentity, 16, 416, 244, 32, SS_CENTERIMAGE);
         add(L"BUTTON", L"重新核验主机", HostReverify, 280, 416, 140, 32, BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON", L"取消", IDCANCEL, 216, 460, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 460, 96, 36,
