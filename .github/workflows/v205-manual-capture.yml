@@ -29,13 +29,19 @@ jobs:
           $dev = Join-Path $vs 'Common7/Tools/VsDevCmd.bat'
           cmd /c "`"$dev`" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++17 /EHsc /utf-8 /MT /O2 /I third_party\json docs-capture\guide_plink.cpp /Fe:guide_plink.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Download authentic earlier version for update screenshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v2.0.4-r1 --repo $env:GITHUB_REPOSITORY --pattern SerialCtl-V2.0.4-Win7-x64.zip --dir old
+      - name: Capture genuine signed update confirmation and progress
+        run: python docs-capture/capture_update.py --old-zip old/SerialCtl-V2.0.4-Win7-x64.zip --new-zip candidate/SerialCtl-V2.0.5-Win7-x64.zip --metadata candidate-update.json --output manual-update
       - name: Capture actual released GUI with non-production demonstration data
         run: python docs-capture/capture_guide.py --zip candidate/SerialCtl-V2.0.5-Win7-x64.zip --plink guide_plink.exe --output manual-capture
       - name: Expose bounded original screenshots and control coordinates
         if: always()
         shell: powershell
         run: |
-          python -c "import pathlib,base64,json,hashlib; root=pathlib.Path('manual-capture'); [(print('GUIDE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted(root.glob('*.png'))]; [(print('GUIDE_META '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted(root.glob('*.json'))]"
+          python -c "import pathlib,base64,json,hashlib; root=pathlib.Path('manual-capture'); [(print('GUIDE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted(list(root.glob('*.png'))+list(pathlib.Path('manual-update').glob('*.png')))]; [(print('GUIDE_META '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted(root.glob('*.json'))]"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -43,4 +49,5 @@ jobs:
           path: |
             manual-capture/*.png
             manual-capture/*.json
+            manual-update/*.png
           if-no-files-found: error

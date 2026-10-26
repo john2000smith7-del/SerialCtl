@@ -17,7 +17,10 @@ class DemoSerial(socketserver.BaseRequestHandler):
  def handle(self):
   try:
    data=b''
-   while b'\r\n\r\n' not in data:data+=self.request.recv(4096)
+   while b'\r\n\r\n' not in data:
+    chunk=self.request.recv(4096)
+    if not chunk:return
+    data+=chunk
    key=re.search(rb'Sec-WebSocket-Key:\s*([^\r\n]+)',data,re.I)[1].decode()
    accept=base64.b64encode(hashlib.sha1((key+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
    self.request.sendall(('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Protocol: serialctl.v1\r\nSec-WebSocket-Accept: '+accept+'\r\n\r\n').encode())
@@ -86,7 +89,11 @@ def main():
   raise RuntimeError('Timed out: '+label+' '+repr([(caption(h),cls(h)) for h in windows()]))
  def dialog(word):return next((h for h in windows() if cls(h)=='#32770' and word in caption(h)),0)
  def child(h,i):return user.GetDlgItem(h,i)
- def click(h):assert h;user.PostMessageW(h,0xf5,0,0);time.sleep(.15)
+ def click(h):
+  assert h
+  user.SetForegroundWindow(h);time.sleep(.06)
+  r=rect(h);user.SetCursorPos((r[0]+r[2])//2,(r[1]+r[3])//2)
+  user.mouse_event(2,0,0,0,0);time.sleep(.07);user.mouse_event(4,0,0,0,0);time.sleep(.2)
  def fill(h,text):assert h;user.SendMessageW(h,0xc,0,c.cast(c.c_wchar_p(text),c.c_void_p).value)
  def rect(h):r=w.RECT();user.GetWindowRect(h,c.byref(r));return [r.left,r.top,r.right,r.bottom]
  def shot(h,name):
@@ -117,6 +124,11 @@ def main():
   click(child(pane,19));connect=wait(lambda:dialog('连接 AI 服务器'),'AI settings');shot(connect,'guide-ai-project-settings');click(child(connect,2))
   click(child(main_window,104));time.sleep(.5);shot(main_window,'guide-ai-dark')
   (out/'capture-receipt.json').write_text(json.dumps({'program':'SerialCtl V2.0.5','exe_sha256':'e4092b19324b2abc1b62a6b35f2ace653a7ab3764c970874859e5ca9218fb031','source':'e27b6b9ecffb6b9877c80233911c40000fd139a1','capture':'Real Windows desktop ImageGrab; unchanged released serialctl.exe','demo':'Documentation-only loopback serial gateway and offline Codex process; sample device/logs and AI text are demonstration data, no real SSH or physical device','status':'PASS'},indent=2))
+ except Exception:
+  for i,h in enumerate(windows()):
+   try:shot(h,'capture-failure-'+str(i))
+   except Exception:pass
+  raise
  finally:
   for h in windows():user.PostMessageW(h,0x10,0,0)
   try:process.wait(timeout=8)
