@@ -1,0 +1,55 @@
+name: Verify original V2.0.2 upgrade
+on:
+  push:
+    branches: [verification/v204-original-key-upgrade]
+    paths: [signed-update.json]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  upgrade:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require matching successful main build
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $run=gh api repos/$env:GITHUB_REPOSITORY/actions/runs/40251860466 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success' -or $run.head_sha -ne '32119cf8bf4cc64d4e1b499ff782defc8ac32f50' -or $run.head_branch -ne 'main') { throw 'Expected the verified original-identity build.' }
+          git diff --exit-code 32119cf8bf4cc64d4e1b499ff782defc8ac32f50 HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Product source changed after its verified build.' }
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: candidate
+          run-id: 40251860466
+          github-token: ${{ github.token }}
+      - name: Verify candidate signature and obtain authentic released V2.0.2
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python tools/new_update_feed.py --verify-archive candidate/SerialCtl-V2.0.4-Win7-x64.zip --metadata signed-update.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          curl.exe --fail --location --retry 2 --output "$env:RUNNER_TEMP/SerialCtl-V2.0.2-Win7-x64.zip" https://github.com/john2000smith7-del/SerialCtl/releases/download/v2.0.2-r2/SerialCtl-V2.0.2-Win7-x64.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run real original-client automatic upgrade and verify protected data
+        shell: powershell
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python tests/integration/verify_original_key_upgrade.py --old-zip "$env:RUNNER_TEMP/SerialCtl-V2.0.2-Win7-x64.zip" --new-zip candidate/SerialCtl-V2.0.4-Win7-x64.zip --metadata signed-update.json --output "$env:RUNNER_TEMP/original-client-upgrade"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-original-V2.0.2-upgrade
+          path: |
+            ${{ runner.temp }}/original-client-upgrade/upgrade-result.json
+            ${{ runner.temp }}/original-client-upgrade/installation/.serialctl-update/*/update.log
+          include-hidden-files: true
