@@ -70,6 +70,10 @@ struct AiDeviceTestAccess {
         SetWindowPos(parent, nullptr, 0, 0, size.right - size.left, size.bottom - size.top, SWP_NOZORDER);
         RECT viewport{};
         main.CreateControls();
+        main.RefreshPowerTargets();
+        Require(SendMessageW(main.powerMonitorTarget_,CB_GETCOUNT,0,0)==1 &&
+            SendMessageW(main.powerMonitorTarget_,CB_GETCURSEL,0,0)==0,
+            "Power terminal selector must show its placeholder before any session is connected");
         SetWindowSubclass(parent,FixtureParent,9207,reinterpret_cast<DWORD_PTR>(&main));
         SendMessageW(main.commandList_,LB_SETITEMHEIGHT,0,66);
         GetClientRect(parent, &viewport);
