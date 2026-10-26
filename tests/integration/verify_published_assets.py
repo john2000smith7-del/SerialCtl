@@ -11,7 +11,10 @@ metadata=(root/'update.json').read_bytes();assert metadata==Path('candidate-upda
 payload=json.loads(json.loads(metadata)['payload']);assert payload['version']==version
 archive=root/'SerialCtl-V2.0.7-Win7-x64.zip'
 def sha(p):
- with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+ h=hashlib.sha256()
+ with p.open('rb') as f:
+  for block in iter(lambda:f.read(1024*1024),b''):h.update(block)
+ return h.hexdigest()
 assert sha(archive)==payload['archive']['sha256'] and archive.stat().st_size==payload['archive']['size']
 subprocess.run(['python','tools/new_update_feed.py','--verify-archive',str(archive),'--metadata',str(root/'update.json')],check=True)
 with zipfile.ZipFile(archive) as z:
