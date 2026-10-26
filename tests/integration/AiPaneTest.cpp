@@ -103,6 +103,18 @@ struct AiPaneTestAccess {
                 {{"fileName","src"},{"isDirectory",true}},{{"fileName","docs"},{"isDirectory",true}},{{"fileName","file.c"},{"isDirectory",false}}})}}}});
             auto combo=GetDlgItem(dialog,208);
             if(SendMessageW(combo,CB_GETCOUNT,0,0)!=3) throw std::runtime_error("Workspace dropdown lost actual child directories");
+            RECT face{};GetClientRect(combo,&face);
+            const auto arrowPoint=MAKELPARAM(face.right-MulDiv(14,p->dpi,96),face.bottom/2);
+            SendMessageW(combo,WM_LBUTTONDOWN,MK_LBUTTON,arrowPoint);SendMessageW(combo,WM_LBUTTONUP,0,arrowPoint);
+            if(!SendMessageW(combo,CB_GETDROPPEDSTATE,0,0)) throw std::runtime_error("Painted directory arrow does not open native dropdown at scaled DPI");
+            SendMessageW(combo,CB_SHOWDROPDOWN,FALSE,0);
+            COMBOBOXINFO comboInfo{sizeof(comboInfo)};
+            if(!GetComboBoxInfo(combo,&comboInfo)) throw std::runtime_error("Workspace editable dropdown lacks native edit");
+            RECT comboBox{},editBox{};GetWindowRect(combo,&comboBox);GetWindowRect(comboInfo.hwndItem,&editBox);
+            const int inset=MulDiv(8,p->dpi,96),arrow=MulDiv(28,p->dpi,96);
+            if(editBox.left-comboBox.left!=inset || editBox.right>comboBox.right-arrow ||
+                std::abs((editBox.top-comboBox.top)-(comboBox.bottom-editBox.bottom))>1)
+                throw std::runtime_error("Editable directory reset lost its padding, centering or dropdown arrow space");
             RECT field{},up{},refresh{},client{};
             GetWindowRect(combo,&field);GetWindowRect(GetDlgItem(dialog,211),&up);GetWindowRect(GetDlgItem(dialog,212),&refresh);
             if(field.right>=up.left || up.right>=refresh.left || field.bottom-field.top < MulDiv(24,p->dpi,96))
