@@ -64,7 +64,7 @@ def main():
  env=os.environ.copy();profile=out/'profile';profile.mkdir();env['LOCALAPPDATA']=str(profile);env['APPDATA']=str(profile)
  process=subprocess.Popen([str(app/'serialctl.exe')],cwd=app,env=env)
  def caption(h):
-  b=c.create_unicode_buffer(2048);user.GetWindowTextW(h,b,len(b));return b.value
+  b=c.create_unicode_buffer(2048);user.SendMessageW(h,0xd,len(b),c.addressof(b));return b.value
  def cls(h):
   b=c.create_unicode_buffer(128);user.GetClassNameW(h,b,len(b));return b.value
  def windows():
