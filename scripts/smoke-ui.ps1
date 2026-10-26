@@ -877,7 +877,21 @@ foreach ($architecture in @('x64')) {
             $confirmation = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5qC46aqMIFNTSCDkuLvmnLrouqvku70=')))
             Start-Sleep -Milliseconds 300
             Capture-Window $confirmation "$architecture-$theme-host-key"
-            if ($theme -eq 'dark') { Click-Control $confirmation 4100; Click-Control $confirmation 1 }
+            if ($theme -eq 'dark') {
+                # WM_COMMAND does not toggle a native BS_AUTOCHECKBOX. Keep the
+                # real consent guard; use BM_CLICK in fast mode, actual mouse
+                # input in the separate desktop interaction audit.
+                if ($ActualMouse) { Click-Control $confirmation 4100 }
+                else { [SerialCtlUiSmoke]::Send([SerialCtlUiSmoke]::GetDlgItem($confirmation,4100),0x00F5,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null }
+                $verifiedUntil = [DateTime]::UtcNow.AddSeconds(2)
+                while (-not [SerialCtlUiSmoke]::IsWindowEnabled([SerialCtlUiSmoke]::GetDlgItem($confirmation,1)) -and [DateTime]::UtcNow -lt $verifiedUntil) {
+                    Start-Sleep -Milliseconds 20
+                }
+                if (-not [SerialCtlUiSmoke]::IsWindowEnabled([SerialCtlUiSmoke]::GetDlgItem($confirmation,1))) {
+                    throw 'Native host identity consent did not enable Connect.'
+                }
+                Click-Control $confirmation 1
+            }
             else { Click-Control $confirmation 2 }
             Start-Sleep -Milliseconds 1000
             $result = [IntPtr]::Zero
