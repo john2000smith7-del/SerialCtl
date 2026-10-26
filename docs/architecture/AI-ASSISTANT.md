@@ -92,3 +92,5 @@ SSH／AI 共用 HostKeyChallenge 与原生 HostKeyDialog。PuTTY 的有界 -v �
 BootInterrupt 在接收回调本地匹配分包提示，先于 GUI/模型往返；有限3次80ms间隔，超时/取消/传输失败停止。PowerService recover 从 OFF 确认时刻起设置10000ms单调期限，所有 ON 都不能绕过；中止保持 OFF，任务异常断开，不继续上电。AiPane 每轮最多一次；MainWindow 只允许 GUI 精确启用的板卡串口/通道绑定，要求5秒无新输出和观察证据，排除提示符/烧录等操作；不能把静默等同卡死。
 
 目录优先 fs/readDirectory，旧版 method-not-found 回退现有 command/exec 原生 argv find（单层、3秒、64KiB，无脚本/第二次SSH）。HOME 查询 printenv，路径为绝对路径、无换行/NUL、最多4096字节。目录名消毒、最多500项。每次选择限时，不阻塞串口。新线程使用独立 workspaceDirectory；resume 不覆盖服务器 cwd。历史兼容旧 profile:/project 路径，保存 cwd 与现有终端的稳定身份，只恢复唯一匹配。工作空间不隐式创建 Git worktree。
+
+取消使用本地递增代号，在接受停止/掉电/断线请求时立即使在途恢复失效；通道选择读回之后、实际ON之前再次检查，避免工作线程等待IO期间迟到的停止被排在上电之后。取消不依赖等待动作队列轮转。控制测试在该读回边界暂停线程后提交停止，核对真实模拟SCPI记录无ON。
