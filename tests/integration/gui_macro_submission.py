@@ -173,6 +173,7 @@ class MacroActions(GlobalActions):
             'row': [row.left, row.top, row.right, row.bottom], 'client': [client.left, client.top, client.right, client.bottom],
             'lane': lane, 'screen_point': [point.x, point.y], 'dpi': self.dpi, 'status_before': self.status()})
         self.click_window(listing, (point.x, point.y))
+        return point.x, point.y
 
     def remove_macro(self, index):
         before = self.query(self.control(112), 0x18b)
@@ -214,15 +215,15 @@ class MacroActions(GlobalActions):
         index = self.add_macro('ping -n 4 127.0.0.1 >nul & echo SCM_' + self.token + '_^FIRST',
                                'echo SCM_' + self.token + '_^SECOND', 5000)
         first_input = len(self.trace)
-        self.run_or_stop(index)
-        # Native progress is published after the first write succeeds. Waiting
-        # for its WebSocket copy can consume the double-click window before we
-        # send Stop. Observe the GUI here, then independently verify raw input
-        # events after both real clicks; do not loosen the timing requirement.
-        self.wait(lambda: '已提交 1/2' in self.status(), 'first macro step accepted in native GUI', 3)
-        first_step_status = self.status()
+        point = self.run_or_stop(index)
+        # Keep the two actual inputs contiguous. Re-querying the row and native
+        # status here consumed 532ms on a 500ms desktop, so that run never
+        # exercised a double-click. Both inputs dispatch serially in the real
+        # UI; verify acceptance and the exact Stop outcome afterwards instead.
         first_at = time.monotonic()
-        self.run_or_stop(index)
+        require(self.user.WindowFromPoint(POINT(*point)) == self.control(112),
+                'Rapid Stop must still hit the original command action')
+        self.click(point)
         presses = [item for item in self.trace[first_input:] if item['event'] == 'left_down']
         require(len(presses) == 2, 'Run/Stop must use exactly two real mouse presses')
         click_interval_ms = (presses[1]['seconds'] - presses[0]['seconds']) * 1000
@@ -237,7 +238,7 @@ class MacroActions(GlobalActions):
                                                   'click_interval_ms': click_interval_ms,
                                                   'system_double_click_ms': double_click_ms,
                                                   'timing_basis': 'actual left_down input trace',
-                                                  'first_step_native_status': first_step_status})
+                                                  'native_status_after_pair': status})
         self.screenshot('stopped-future-submission')
         self.observe(lambda: first_done in self.raw_output, 'already accepted command continues after Stop')
         while time.monotonic() - first_at < 5.5:
