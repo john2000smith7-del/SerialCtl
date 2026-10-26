@@ -1,0 +1,26 @@
+name: Inspect macro input timing
+on:
+  push:
+    branches: [verification/v204-original-key-upgrade]
+    paths: [.github/workflows/read-macro-timing.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-UI-evidence
+          path: evidence
+          run-id: 40251860466
+          github-token: ${{ github.token }}
+      - name: Read original observations
+        run: |
+          python - <<'PY'
+          import pathlib,json
+          for path in pathlib.Path('evidence').glob('*macro*.json'):
+              r=json.loads(path.read_text(encoding='utf-8-sig'))
+              print('MACRO_TIMING',path.name,json.dumps({k:r.get(k) for k in ('status','error','macro_clicks','macro_observations','input_trace','failed_observation')},ensure_ascii=False))
+          PY
