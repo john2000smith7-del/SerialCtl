@@ -1,6 +1,8 @@
 #include "PuttyHostKey.h"
 #include "Win32Helpers.h"
 #include <windows.h>
+#include <algorithm>
+#include <cwctype>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -121,10 +123,13 @@ int wmain(int argc, wchar_t** argv) {
                     "Changed-host dialog lost the old/new identity"); return false;
         }) && TrustedPuttyHostKey(accepted, 22) == Fingerprint, "Cancel replaced old identity");
         Write(RegistryPath, accepted + L":2222", Third);
-        Require(resolve(accepted, [](const HostKeyChallenge&) { return true; }) && key == Changed &&
+        auto alternateCase = accepted;
+        std::transform(alternateCase.begin(), alternateCase.end(), alternateCase.begin(),
+            [](wchar_t c) { return static_cast<wchar_t>(towupper(c)); });
+        Require(resolve(alternateCase, [](const HostKeyChallenge&) { return true; }) && key == Changed &&
                 TrustedPuttyHostKey(accepted, 22) == Changed && TrustedPuttyHostKey(accepted, 2222) == Third,
                 "Confirmed rotation did not replace only the selected endpoint");
-        Require(resolve(accepted) && key == Changed, "Shared SFTP cache retained the old pin after replacement");
+        Require(resolve(accepted) && key == Changed, "Shared SFTP cache retained an old pin after a different-case host update");
         Require(resolve(accepted, [&](const HostKeyChallenge& c) {
             Require(c.reason == HostKeyReason::Reverify && c.previousFingerprint == Changed && c.fingerprint == Changed,
                     "Manual recheck skipped a cached unchanged host"); return true;
