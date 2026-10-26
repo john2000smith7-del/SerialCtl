@@ -26,6 +26,18 @@ struct PowerServiceTestAccess {
     static void FailNextOutputReadback(PowerService &power) {
         power.FailNextOutputReadbackForTest();
     }
+    static void PauseRecoveryOn(PowerService &power) {
+        std::lock_guard<std::mutex> lock(power.mutex_);
+        power.testPauseRecoveryOn_=true;power.testRecoveryAtOn_=false;
+    }
+    static bool WaitRecoveryOn(PowerService &power) {
+        std::unique_lock<std::mutex> lock(power.mutex_);
+        return power.wake_.wait_for(lock,std::chrono::seconds(15),[&]{return power.testRecoveryAtOn_;});
+    }
+    static void ResumeRecoveryOn(PowerService &power) {
+        std::lock_guard<std::mutex> lock(power.mutex_);
+        power.testPauseRecoveryOn_=false;power.wake_.notify_all();
+    }
 };
 } // namespace serialctl
 using namespace serialctl;
@@ -75,6 +87,26 @@ void TestNativeRecoveryTimingAndCancel() {
     auto early=Wait(power,power.Submit({{"type","output"},{"channels",{1}},{"enabled",true}}));
     Expect(early.value("state","")=="failed" && power.State().value("connected",false) && power.State()["channels"][0]["output"]==false,
         "Even a direct ON cannot bypass the OFF interval; harmless rejection keeps transport alive");
+}
+
+void TestStopDuringRecoveryReadback() {
+    PowerService power;
+    Expect(Wait(power,power.Submit({{"type","connect"},{"backend","simulation"}})).value("state","")=="completed","Readback-race fixture connects controlled transport");
+    const auto ready=power.State();
+    PowerServiceTestAccess::PauseRecoveryOn(power);
+    auto recovery=power.Submit({{"type","recover"},{"channels",{1}},{"identity",ready["identity"]},{"mode",ready["mode"]}});
+    const bool paused=PowerServiceTestAccess::WaitRecoveryOn(power);
+    Expect(paused,"Worker reaches native post-select readback boundary after the full OFF interval");
+    auto stop=power.Submit({{"type","stop"}});
+    Expect(!stop.contains("error") && stop.value("state","")=="queued","Stop accepts immediately while device worker is inside output preparation");
+    PowerServiceTestAccess::ResumeRecoveryOn(power);
+    Expect(Wait(power,stop).value("state","")=="completed","Queued stop completes after readback resumes");
+    const auto action=power.Action(recovery.at("id"));
+    Expect(action.value("state","")=="canceled" && !action.contains("onStartedAt"),"Canceled recovery must never reach an ON submission");
+    const auto state=power.State();
+    Expect(state.value("connected",false) && state["channels"][0]["output"]==false,"Readback-time stop leaves the device connected and confirmed OFF");
+    for(const auto &line : state.value("testWrites",Json::array()))
+        Expect(line!="CHAN:OUTP ON","Actual simulated SCPI trace contains no ON after readback-time stop");
 }
 
 void TestSafetyAtCapacity(Json safety) {
@@ -196,6 +228,7 @@ void TestSafetyReadbackFailureAtCapacity() {
 
 int main() {
     TestNativeRecoveryTimingAndCancel();
+    TestStopDuringRecoveryReadback();
     TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "local"}});
     TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "network"}});
     TestSafetyAtCapacity({{"type", "stop"}, {"source", "local"}});
