@@ -1,0 +1,64 @@
+name: Verify V2.0.8 signed upgrade and native UI
+on:
+  push:
+    branches: [verification/v208-final]
+    paths: [candidate-update.json]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require the exact successful main Windows build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = gh api repos/$env:GITHUB_REPOSITORY/actions/runs/40428586115 | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne '4caac7c12618aac34d1ea4a5656d850ed1363e4d' -or $run.head_branch -ne 'main') { throw 'Exact source build was not successful' }
+          git diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Production source differs from the tested candidate' }
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: candidate
+          run-id: 40428586115
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-UI-evidence
+          path: native-evidence
+          run-id: 40428586115
+          github-token: ${{ github.token }}
+      - name: Verify exact signed candidate and download authentic V2.0.7-r1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tools/new_update_feed.py --verify-archive candidate/SerialCtl-V2.0.8-Win7-x64.zip --metadata candidate-update.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release download v2.0.7 --repo $env:GITHUB_REPOSITORY --pattern SerialCtl-V2.0.7-Win7-x64.zip --dir old
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run released V2.0.7 GUI through confirmation, download, install and restart
+        shell: powershell
+        run: |
+          python tests/integration/verify_release_upgrade.py --old-zip old/SerialCtl-V2.0.7-Win7-x64.zip --new-zip candidate/SerialCtl-V2.0.8-Win7-x64.zip --metadata candidate-update.json --output "$env:RUNNER_TEMP/v208-upgrade"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Expose small native screenshots for independent visual review
+        if: always()
+        shell: powershell
+        run: |
+          python -c "import base64,pathlib; [(print('SERIALCTL_NATIVE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted((p for p in pathlib.Path('native-evidence').rglob('*.png') if p.name in {'v208-pet-96-light.png','v208-pet-120-light.png','v208-pet-144-light.png','v208-pet-192-light.png','v208-pet-96-dark.png','v208-pet-120-dark.png','v208-pet-144-dark.png','v208-pet-192-dark.png','v208-pet-settings-96-light.png','v208-pet-settings-120-light.png','v208-pet-settings-144-light.png','v208-pet-settings-192-light.png','v208-pet-settings-96-dark.png','v208-pet-settings-120-dark.png','v208-pet-settings-144-dark.png','v208-pet-settings-192-dark.png','v208-pet-menu-light.png','v208-pet-menu-dark.png','v208-ai-pet-main-light.png','v208-ai-pet-main-dark.png'}))]"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-V2.0.8-signed-upgrade
+          path: ${{ runner.temp }}/v208-upgrade/upgrade-result.json
+          if-no-files-found: error
