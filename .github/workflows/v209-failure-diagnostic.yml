@@ -1,0 +1,29 @@
+name: Read V2.0.9 failed GUI evidence
+on:
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Extract selected UI smoke evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir evidence
+          gh run download 40453417961 --repo "$GITHUB_REPOSITORY" --name SerialCtl-UI-evidence --dir evidence
+          python - <<'PY'
+          import pathlib,base64
+          root=pathlib.Path('evidence')
+          files=list(root.rglob('*'))
+          print('SELECTED_FILES',*[str(p) for p in files if p.is_file() and ('command-draft' in p.name or 'unsaved-close' in p.name or 'lifecycle' in p.name)],sep='\n')
+          for name in ('x64-command-draft.png','x64-unsaved-close.png'):
+              found=[p for p in files if p.is_file() and p.name == name]
+              if found:
+                  print('IMAGE64 '+name+' '+base64.b64encode(found[0].read_bytes()).decode('ascii'))
+          PY
