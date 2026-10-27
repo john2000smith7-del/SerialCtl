@@ -1,5 +1,7 @@
 name: Read V2.0.9 failed GUI evidence
 on:
+  push:
+    branches: [diagnostic/v209-smoke]
   workflow_dispatch:
 permissions:
   actions: read
