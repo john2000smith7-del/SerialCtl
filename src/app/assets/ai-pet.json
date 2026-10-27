@@ -1,0 +1,167 @@
+{
+  "frames": 36,
+  "columns": 8,
+  "rows": 5,
+  "cell": 256,
+  "baseline": 240,
+  "body": 208,
+  "sha256": "a5756dc56b815b708cb8ed6a1f0027367b697bab6d86d62d277c28d1cfdd2bb8",
+  "reference": "https://github.com/fornarwhal/deepseek-whale-girl-icon",
+  "license": "CC-BY-NC-SA-4.0",
+  "generated_states_sha256": "286d720ee506932c0678bf0abe572c55b391734f5afbce61374e4edf1e2ed2e8",
+  "rejected_pose": "original frame16 is excluded; slot16 is the reviewed corrected cross",
+  "state_slots": {
+    "idle": 28,
+    "wave": [
+      29,
+      30,
+      31
+    ],
+    "thinking": 32,
+    "working": 33,
+    "done": 34,
+    "concern": 35
+  },
+  "inputs": [
+    {
+      "slot": 0,
+      "source": "o0",
+      "sha256": "8a3e31ee23b7eabbae57c321e1934a26a210334cfeb2835ce877027fb5795384"
+    },
+    {
+      "slot": 1,
+      "source": "o1",
+      "sha256": "9a3bcac8572609023f36e0d9282cff6acb4683c2570662188bffdee57ddfe301"
+    },
+    {
+      "slot": 2,
+      "source": "o2",
+      "sha256": "55b064533046e742215fc1c2cbd5e1aa1cab9870b85e45803cce8071c0fdbab8"
+    },
+    {
+      "slot": 3,
+      "source": "o3",
+      "sha256": "4480b532d32d72c24aa6123fed40f8d533012cfa85f437d676635ded9d70a631"
+    },
+    {
+      "slot": 4,
+      "source": "o4",
+      "sha256": "15993ca055bb7f42e85178fb067379f38574aa8d039efc61c8549ebd02619ea0"
+    },
+    {
+      "slot": 5,
+      "source": "o5",
+      "sha256": "f56f2e373d91ec5d58124e7cd826fe7f4903203a4cb456789c90309921c29727"
+    },
+    {
+      "slot": 6,
+      "source": "o6",
+      "sha256": "bfcb13a11df6bd1e7000099f81356a8d82578ff625d0c64dd5db4526162bd767"
+    },
+    {
+      "slot": 7,
+      "source": "o7",
+      "sha256": "a800bb47b57b724f067f4bdd58db53c634af1cd35ae8f7366ca8cb818583b060"
+    },
+    {
+      "slot": 8,
+      "source": "o8",
+      "sha256": "715406fc6f3b1d570e51f53e69469b7efdd7571d9b367c804f726eeb58ffdf9f"
+    },
+    {
+      "slot": 9,
+      "source": "o9",
+      "sha256": "42088dfe7542b68a886992e903363b07e5134df68c8fc9f86a184edcf6075a02"
+    },
+    {
+      "slot": 10,
+      "source": "o10",
+      "sha256": "4034227c1917e3f7b1029a28cde277ca60b98c1d467d5d12853c8e04f336c4ea"
+    },
+    {
+      "slot": 11,
+      "source": "o11",
+      "sha256": "23445aee56e301253bc1fdbb9700cb4ff032832b47509fcb68bcbb37ce0b284b"
+    },
+    {
+      "slot": 12,
+      "source": "o12",
+      "sha256": "1ed70bd70fb75f8678f5f9bda5a8b809684c5f408bcda4934ecae730175fc92c"
+    },
+    {
+      "slot": 13,
+      "source": "o13",
+      "sha256": "6e4b3d4dc1788170ec3d8c64d4a47e4d3398973d9daa126e5d3b8ea4c035f116"
+    },
+    {
+      "slot": 14,
+      "source": "o14",
+      "sha256": "3711826dab96351db6e09e03291929d4d9a5d608f5f4ec3109be7b2b3358974c"
+    },
+    {
+      "slot": 15,
+      "source": "o15",
+      "sha256": "fc3bbbafec310888f818fdcc23501c9c042d3015c7079cc669984086eb507b5e"
+    },
+    {
+      "slot": 16,
+      "source": "c2",
+      "sha256": "2de46a2363abbeff0cb167ad5d4b300df0cdbc97dff8d19d1c70086ad8c9db07"
+    },
+    {
+      "slot": 17,
+      "source": "o17",
+      "sha256": "6d0389e38c2c61f37768031bc39cd70aac2a6833b8dbfd50f808fadf41ed6b65"
+    },
+    {
+      "slot": 18,
+      "source": "o18",
+      "sha256": "7394ca8b49061a40bfd88cbefaefd6f4a2d405489a19a50a08a59ff9f2ef86f5"
+    },
+    {
+      "slot": 19,
+      "source": "o19",
+      "sha256": "9d513c5492c7bb2063da74e1a08c8babe18aae2e1db0265718e1d52539fe50d6"
+    },
+    {
+      "slot": 20,
+      "source": "o20",
+      "sha256": "33a2f631731cdc83cc055eb704d30b8da5527bfb7a79ba436d0961838064bc38"
+    },
+    {
+      "slot": 21,
+      "source": "o21",
+      "sha256": "88c42f16d314ca171120ef00fb7ace9364bc00f006d4471a132d53581193715b"
+    },
+    {
+      "slot": 22,
+      "source": "o22",
+      "sha256": "d1f3297476883a19d34059eb4dc3a038dd341310edc07edbaa7ef46f5b228028"
+    },
+    {
+      "slot": 23,
+      "source": "o23",
+      "sha256": "f5e838850e5a3915b44a3c99f87c5679ee90eadc4978099c56a4350a7fbfdd80"
+    },
+    {
+      "slot": 24,
+      "source": "c0",
+      "sha256": "37fb8df495803fad37608ddb965a6e319a86db453506db587bb5d7836b7ef18b"
+    },
+    {
+      "slot": 25,
+      "source": "c1",
+      "sha256": "6af782576c8e21969d3ca0e7642bae56f89419ae0884bd1fb8808ec63e2abbcf"
+    },
+    {
+      "slot": 26,
+      "source": "c2",
+      "sha256": "2de46a2363abbeff0cb167ad5d4b300df0cdbc97dff8d19d1c70086ad8c9db07"
+    },
+    {
+      "slot": 27,
+      "source": "c3",
+      "sha256": "83e2dd37132a80995799d924721d507c9a98b25144eb7b3a9e9940ac86a58d9b"
+    }
+  ]
+}

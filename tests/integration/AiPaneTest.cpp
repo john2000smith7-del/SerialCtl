@@ -558,11 +558,13 @@ struct AiPaneTestAccess {
                     {"messageId", "server:running"}, {"text", "ACTUAL_PROGRESS"}});
         pane.completionDeadline_ = GetTickCount64() - 1;
         pane.Poll();
+        require(pane.CompanionActivity() == pet::Activity::Working, "Pet did not track accepted native tool activity");
         require(pane.busy_ && pane.nativeItems_.count("server:running"),
                 "Compatibility completion interrupted an active native command");
         pane.Event({{"event", "serverTool"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
                     {"messageId", "server:running"}, {"completed", true}, {"appendStream", true}, {"text", "exit 2: ACTUAL_FAILURE"}});
         require(pane.nativeItems_.empty(), "Completed native command stayed pending");
+        require(pane.CompanionActivity() == pet::Activity::Thinking, "Pet did not leave tool activity after completion");
         size_t commandCards = 0;
         for (const auto& message : pane.messages_) if (message.item == "server:running") {
             ++commandCards;
@@ -587,6 +589,7 @@ struct AiPaneTestAccess {
         pane.completionDeadline_ = GetTickCount64() - 1;
         pane.Poll();
         require(!pane.busy_, "Gateway without turn/completed left the conversation stuck");
+        require(pane.CompanionActivity() == pet::Activity::Done, "Pet did not reflect successful task completion");
         pane.busy_ = true;
         pane.turn_ = "next-turn";
         pane.Event({{"event", "taskFinished"},
@@ -594,6 +597,7 @@ struct AiPaneTestAccess {
                     {"taskId", "turn-direct"},
                     {"status", "completed"}});
         require(pane.busy_ && pane.turn_ == "next-turn", "Late completion ended the following task");
+        require(pane.CompanionActivity() == pet::Activity::Done, "Stale completion changed the pet state");
         pane.requests_[999] = {"interrupt", "turn-direct"};
         pane.Event({{"event", "response"}, {"token", 999}, {"result", ai::Json::object()}});
         require(pane.busy_ && pane.turn_ == "next-turn", "Late interrupt acknowledgement ended the following task");
@@ -604,6 +608,7 @@ struct AiPaneTestAccess {
                     {"willRetry", false}});
         require(!pane.busy_ && pane.status_.find(L"CONTAINER_APIKEY") != std::wstring::npos,
                 "Missing server environment did not release busy state with its actual cause");
+        require(pane.CompanionActivity() == pet::Activity::Failed, "Pet celebrated a failed service call");
         pane.client_.Shutdown();
         HKEY key = nullptr;
         if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\TrustedHostKeys", 0, KEY_SET_VALUE, &key) ==

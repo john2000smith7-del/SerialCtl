@@ -98,7 +98,8 @@ enum class UiGlyph {
     Link,
     ChevronUp,
     Command,
-    Wrap
+    Wrap,
+    Pet
 };
 inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
     if (UiResourceGlyph(dc, bounds, color, static_cast<int>(icon)))

@@ -1,4 +1,5 @@
 #include "AiPane.h"
+#include "AiPetPane.h"
 #include "HostKeyDialog.h"
 #include "AiHistory.h"
 #include "Workspace.h"
@@ -23,6 +24,7 @@ enum {
     Connect,
     Bottom,
     StopTurn,
+    PetButton = 30,
     Host = 200,
     Port,
     Username,
@@ -378,17 +380,18 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     transcript_ = CreateWindowExW(0, wc.lpszClassName, L"AI 对话历史", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0, 0, 100,
                                   100, window_, nullptr, wc.hInstance, this);
     Child(L"BUTTON", L"连接", Connect, BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON", L"宠物", PetButton, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"历史", HistoryButton, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"新建", New, BS_OWNERDRAW | WS_TABSTOP);
     HWND tips = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP, 0, 0, 0, 0, window_,
                                 nullptr, GetModuleHandleW(nullptr), nullptr);
     tips_ = tips;
-    for (int id : {Connect, HistoryButton, New}) {
+    for (int id : {PetButton, Connect, HistoryButton, New}) {
         TOOLINFOW tip{sizeof(tip)};
         tip.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
         tip.hwnd = window_;
         tip.uId = reinterpret_cast<UINT_PTR>(Control(id));
-        tip.lpszText = const_cast<wchar_t *>(id == Connect         ? L"连接设置"
+        tip.lpszText = const_cast<wchar_t *>(id == PetButton ? L"AI 宠物助手" : id == Connect         ? L"连接设置"
                                              : id == HistoryButton ? L"历史会话"
                                                                    : L"新建会话");
         SendMessageW(tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tip));
@@ -560,20 +563,20 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->dpi_, UiFocusInk(self->dark_, pressed));
             return TRUE;
         }
-        const bool iconOnly = item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
+        const bool iconOnly = item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
         if (!iconOnly || pressed || hover)
             UiBox(dc, item.rcItem, iconOnly && !pressed ? c.raised : visual.fill,
                   iconOnly && !pressed ? c.raised : visual.border, self->D(10));
         UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->style_.dpi,
             UiFocusInk(self->dark_, enabled && (primary || pressed)));
-        if (item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New) {
+        if (item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New) {
             const int x = (item.rcItem.left + item.rcItem.right - self->D(18)) / 2,
                       y = (item.rcItem.top + item.rcItem.bottom - self->D(18)) / 2;
             RECT icon{x, y, x + self->D(18), y + self->D(18)};
             if (item.CtlID == Connect)
                 self->icons_.Draw(dc, ToolbarIcon::Settings, icon, self->dark_ || pressed);
             else
-                UiDrawGlyph(dc, icon, visual.ink, item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
+                UiDrawGlyph(dc, icon, visual.ink, item.CtlID == PetButton ? UiGlyph::Pet : item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
         } else
             Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
                  item.CtlID == StopTurn && enabled && !pressed ? c.danger : visual.ink,
@@ -608,6 +611,7 @@ void AiPane::Layout() {
     composerBounds_ = {0, composerTop, width, composerTop + D(96)};
     UiLayoutBatch b;
     const int historyLeft = width - D(108);
+    b.Move(Control(PetButton), historyLeft - D(40), 0, D(28), D(28));
     b.Move(Control(Connect), historyLeft, 0, D(28), D(28));
     b.Move(Control(HistoryButton), historyLeft + D(40), 0, D(28), D(28));
     b.Move(Control(New), historyLeft + D(80), 0, D(28), D(28));
@@ -639,13 +643,13 @@ void AiPane::Paint(HDC target) {
     const auto c = UiAiTheme(dark_);
     FillRect(dc, &r, surfaceBrush_);
     icons_.Draw(dc, ToolbarIcon::Ai, {0, D(4), D(20), D(24)}, dark_);
-    const bool compact = r.right < D(300);
+    const bool compact = r.right < D(340);
     Draw(dc, compact ? L"AI" : L"AI 助手", {D(28), 0, D(compact ? 52 : 128), D(28)}, font_, c.text);
     Draw(dc,
          client_.Ready()     ? (compact ? L"已连接" : L"● 已连接")
          : client_.Running() ? L"连接中…"
                              : L"未连接",
-         {D(compact ? 56 : 108), 0, r.right - D(120), D(28)}, smallFont_, c.muted);
+         {D(compact ? 56 : 108), 0, r.right - D(160), D(28)}, smallFont_, c.muted);
     UiSeparator(dc, 0, r.right, D(36), c.border);
     UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
     UiBox(dc, composerBounds_, c.field, GetFocus() == Control(Input) ? UiAccentInk(dark_) : c.border, D(12));
@@ -1190,6 +1194,8 @@ void AiPane::SetStatus(const std::wstring &text) {
 }
 void AiPane::UpdateActions() {
     const bool ready = client_.Ready();
+    if (!busy_ && companionActivity_ != pet::Activity::Done && companionActivity_ != pet::Activity::Failed && companionActivity_ != pet::Activity::Stopped)
+        SetCompanionActivity(ready ? pet::Activity::Idle : client_.Running() ? pet::Activity::Connecting : pet::Activity::Offline);
     SetWindowTextW(Control(Send), L"发送");
     EnableWindow(Control(Send), ready && !busy_ && !directoryPending_);
     EnableWindow(Control(StopTurn), ready && busy_ && !stopRequested_);
@@ -1318,6 +1324,8 @@ bool AiPane::Request(ai::Operation operation, Json params, const std::string &pu
     return true;
 }
 void AiPane::Reply(const Json &id, Json result, bool success) {
+    if (busy_ && !stopRequested_ && nativeItems_.empty() && companionActivity_ == pet::Activity::Working)
+        SetCompanionActivity(pet::Activity::Thinking);
     if (!success && !displayGroup_.empty())
         groupStates_[displayGroup_] = L"含失败记录";
     // JSON escapes and the tool-result string envelope can expand raw logs.
@@ -1372,6 +1380,7 @@ void AiPane::SendPrompt(std::wstring text) {
     Add(L"我", text);
     SetWindowTextW(Control(Input), L"");
     busy_ = true;
+    SetCompanionActivity(pet::Activity::Thinking);
     Reflow(true);
     turn_.clear();
     completionDeadline_ = 0;
@@ -1408,6 +1417,7 @@ void AiPane::StartTurn() {
         pendingPrompt_.clear();
 }
 void AiPane::Stop() {
+    SetCompanionActivity(pet::Activity::Stopped);
     taskAuthorized_ = false;
     restoreOnConfig_ = false;
     nativeItems_.clear();
@@ -1432,6 +1442,7 @@ void AiPane::Stop() {
 void AiPane::NewConversation() {
     if (busy_)
         return;
+    SetCompanionActivity(client_.Ready() ? pet::Activity::Idle : pet::Activity::Offline);
     taskAuthorized_ = false;
     restoreOnConfig_ = false;
     thread_.clear();
@@ -1455,7 +1466,16 @@ void AiPane::NewConversation() {
     Reflow();
     UpdateActions();
 }
+void AiPane::SetCompanionActivity(pet::Activity activity) {
+    if (companionActivity_ == activity) return;
+    companionActivity_ = activity;
+    PostMessageW(GetParent(window_), AiPetActivityChanged, 0, 0);
+}
 void AiPane::Action(int id) {
+    if (id == PetButton) {
+        PostMessageW(GetParent(window_), AiPetMenuRequested, 0, reinterpret_cast<LPARAM>(Control(PetButton)));
+        return;
+    }
     if (id == Send) {
         if (!busy_) SendPrompt();
     } else if (id == StopTurn) {
@@ -1613,6 +1633,7 @@ void AiPane::Poll() {
 void AiPane::Event(const Json &e) {
     const auto event = e.value("event", std::string());
     if (event == "ready") {
+        SetCompanionActivity(pet::Activity::Connecting);
         taskAuthorized_ = false;
         restoreOnConfig_ = !thread_.empty();
         busy_ = true;
@@ -1631,6 +1652,7 @@ void AiPane::Event(const Json &e) {
     if (event == "status" || event == "error") {
         SetStatus(Wide(e.value("message", std::string())));
         if (event == "error") {
+            SetCompanionActivity(pet::Activity::Failed);
             if (e.value("category", std::string()) == "authentication") {
                 std::wstring failure;
                 const bool erased = ai::ForgetSavedServerPassword(settings_, failure);
@@ -1650,6 +1672,7 @@ void AiPane::Event(const Json &e) {
         return;
     }
     if (event == "disconnected") {
+        SetCompanionActivity(pet::Activity::Offline);
         if(busy_ && !displayGroup_.empty()) {
             groupStates_[displayGroup_]=stopRequested_?L"已停止":L"连接中断";
             if(turnStarted_) groupDurations_[displayGroup_]=GetTickCount64()-turnStarted_;
@@ -1710,6 +1733,7 @@ void AiPane::Event(const Json &e) {
             return;
         }
         if (e.contains("error")) {
+            SetCompanionActivity(pet::Activity::Failed);
             if (purpose == "config") { restoreOnConfig_ = false; busy_ = false; }
             SetStatus(Wide(ai::ExplainServiceError(e.at("error").get<std::string>())));
             Add(L"状态", status_);
@@ -1834,6 +1858,7 @@ void AiPane::Event(const Json &e) {
         const auto id = e.value("messageId", std::string());
         if (event == "serverTool" && e.value("completed", false)) nativeItems_.erase(id);
         else nativeItems_.insert(id);
+        SetCompanionActivity(nativeItems_.empty() ? pet::Activity::Thinking : pet::Activity::Working);
         auto text = Wide(e.value("text", std::string()));
         auto message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
         if (message != messages_.end() && event == "serverTool" && e.value("completed", false) && e.value("appendStream", false))
@@ -1876,6 +1901,7 @@ void AiPane::Event(const Json &e) {
         return;
     }
     if ((event == "textDelta" || event == "textComplete") && !stopRequested_) {
+        SetCompanionActivity(pet::Activity::Replying);
         waitingReply_ = false;
         const auto id = e.value("messageId", std::string());
         const auto text = Wide(e.value("text", std::string()));
@@ -1920,6 +1946,7 @@ void AiPane::Event(const Json &e) {
         waitingReply_ = false;
         if(!displayGroup_.empty() && turnStarted_) groupDurations_[displayGroup_]=GetTickCount64()-turnStarted_;
         const auto outcome = e.value("status", std::string());
+        SetCompanionActivity(stopRequested_ || outcome == "interrupted" ? pet::Activity::Stopped : outcome == "failed" ? pet::Activity::Failed : outcome == "completed" ? pet::Activity::Done : pet::Activity::Idle);
         const bool failedStep = groupStates_[displayGroup_] == L"含失败记录";
         groupStates_[displayGroup_] = stopRequested_           ? L"已停止"
                                       : outcome == "failed"    ? L"失败"
@@ -1955,6 +1982,7 @@ void AiPane::Event(const Json &e) {
         RefreshTargets();
         UpdateActions();
     } else if (event == "serviceError") {
+        SetCompanionActivity(e.value("willRetry", false) ? pet::Activity::Thinking : pet::Activity::Failed);
         const auto explanation = Wide(ai::ExplainServiceError(e.value("message", std::string())));
         Add(L"状态", explanation);
         SetStatus(explanation);
@@ -2015,6 +2043,7 @@ void AiPane::ServerRequest(const Json &e) {
         Reply(e["requestId"], {{"error", "Invalid tool arguments"}}, false);
         return;
     }
+    SetCompanionActivity(pet::Activity::Working);
     if (tool == "serialctl_sessions") {
         auto r = devices_("sessions", args);
         Reply(e["requestId"], r);

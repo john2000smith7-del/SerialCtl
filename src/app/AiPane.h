@@ -1,5 +1,6 @@
 #pragma once
 #include "CodexSession.h"
+#include "AiPetModel.h"
 #include "ToolbarIcons.h"
 #include "UiStyle.h"
 #include <atomic>
@@ -21,6 +22,7 @@ class AiPane {
     HWND Handle() const {
         return window_;
     }
+    pet::Activity CompanionActivity() const { return companionActivity_; }
     void Theme(bool dark);
     void ShowConnection();
     void Shutdown();
@@ -41,6 +43,8 @@ class AiPane {
 #ifdef SERIALCTL_AI_TESTING
     friend struct AiPaneTestAccess;
 #endif
+    void SetCompanionActivity(pet::Activity);
+    pet::Activity companionActivity_ = pet::Activity::Offline;
     struct TextLine {
         RECT rect{};
         size_t start = 0, length = 0;

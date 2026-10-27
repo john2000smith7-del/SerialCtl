@@ -42,7 +42,7 @@ Json Wait(PowerService& power, Json action) {
 }
 struct AiDeviceTestAccess {
     static LRESULT CALLBACK FixtureParent(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data) {
-        if(m==WM_DRAWITEM || m==WM_MEASUREITEM) return reinterpret_cast<MainWindow*>(data)->HandleMessage(m,w,l);
+        if(m==WM_DRAWITEM || m==WM_MEASUREITEM || m==WM_PAINT || (m>=WM_CTLCOLORMSGBOX && m<=WM_CTLCOLORSTATIC)) return reinterpret_cast<MainWindow*>(data)->HandleMessage(m,w,l);
         return DefSubclassProc(h,m,w,l);
     }
     static HWND PowerControl(HWND pane, int id) {
@@ -69,12 +69,12 @@ struct AiDeviceTestAccess {
         AdjustWindowRectEx(&size, WS_OVERLAPPEDWINDOW, FALSE, 0);
         SetWindowPos(parent, nullptr, 0, 0, size.right - size.left, size.bottom - size.top, SWP_NOZORDER);
         RECT viewport{};
+        SetWindowSubclass(parent,FixtureParent,9207,reinterpret_cast<DWORD_PTR>(&main));
         main.CreateControls();
         main.RefreshPowerTargets();
         Require(SendMessageW(main.powerMonitorTarget_,CB_GETCOUNT,0,0)==1 &&
             SendMessageW(main.powerMonitorTarget_,CB_GETCURSEL,0,0)==0,
             "Power terminal selector must show its placeholder before any session is connected");
-        SetWindowSubclass(parent,FixtureParent,9207,reinterpret_cast<DWORD_PTR>(&main));
         SendMessageW(main.commandList_,LB_SETITEMHEIGHT,0,66);
         GetClientRect(parent, &viewport);
         LONG previousNavigationRight = 0;
@@ -457,6 +457,20 @@ struct AiDeviceTestAccess {
             "Expanded monitor did not place actual terminal beside chat under its header");
         Require(main.rightPanelWidth_ == 320 && !main.rightPanelCollapsed_,
             "AI monitor changed terminal sidebar preference");
+        Require(IsWindowVisible(main.aiPet_.Handle()), "AI companion dock is not visible");
+        RECT dock{}, connectionRows{}, footer{};
+        GetWindowRect(main.aiPet_.Handle(), &dock); GetWindowRect(main.connectionList_, &connectionRows);
+        GetWindowRect(main.disconnectAllButton_, &footer);
+        Require(connectionRows.bottom + 8 <= dock.top && dock.bottom + 8 <= footer.top && connectionRows.bottom - connectionRows.top >= 120,
+                "Companion overlaps connection rows or disconnect footer");
+        for (const bool dark : {false, true}) {
+            main.darkMode_ = dark; main.ApplyTheme();
+            ui_test::SaveUiEvidence(parent, dark ? L"v208-ai-pet-main-dark.png" : L"v208-ai-pet-main-light.png");
+        }
+        main.LayoutControls(viewport.right, 420);
+        Require(!IsWindowVisible(main.aiPet_.Handle()), "Short window did not collapse pet dock");
+        main.LayoutControls(viewport.right, viewport.bottom);
+        Require(IsWindowVisible(main.aiPet_.Handle()), "Restored window did not restore pet dock");
         main.darkMode_ = true;
         main.ApplyTheme();
         for (HWND button : {main.aiWrapButton_, main.rightPanelToggleButton_}) {

@@ -2065,6 +2065,22 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     }
+    case AiPetActivityChanged:
+        aiPet_.Activity(aiPane_.CompanionActivity());
+        return 0;
+    case AiPetPreferencesChanged: {
+        petSettings_ = aiPet_.Preferences();
+        SaveUiState();
+        RECT client{}; GetClientRect(window_, &client);
+        LayoutControls(client.right, client.bottom);
+        return 0;
+    }
+    case AiPetMenuRequested: {
+        RECT anchor{};
+        GetWindowRect(reinterpret_cast<HWND>(lParam), &anchor);
+        aiPet_.ShowMenu({anchor.left, anchor.bottom + Ui::Space});
+        return 0;
+    }
     case AiStateChanged:
         RefreshConnectionList();
         EnableWindow(disconnectButton_, aiVisible_ ? aiPane_.Busy() : activeSession_ != nullptr);
@@ -2671,6 +2687,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         DestroyWindow(window_);
         return 0;
     case WM_DESTROY:
+        aiPet_.Shutdown();
         if (uiFont_) DeleteObject(uiFont_);
         if (smallFont_) DeleteObject(smallFont_);
         if (titleFont_) DeleteObject(titleFont_);
@@ -2755,6 +2772,7 @@ void MainWindow::CreateControls() {
     SetWindowSubclass(terminal_, TerminalSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 
     aiPane_.Create(window_, uiFont_, darkMode_, [this](const std::string& method, const Json& params) { return AiDeviceRequest(method, params); });
+    aiPet_.Create(window_, uiFont_, darkMode_, petSettings_);
     powerPane_.Create(window_, uiFont_, darkMode_, &powerService_);
     powerPane_.SetLogExportHandler([this](bool csv, const std::wstring &path, SessionLogger::ExportPoint point) {
         const auto slash = point.root.find_last_of(L"\\/");
@@ -2867,10 +2885,18 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(connectionHeader_, leftInnerLeft, headerTop + 4, leftInnerRight - leftInnerLeft - Ui::Scale(64),
                Ui::Scale(24), TRUE);
     batch.Move(disconnectButton_, leftInnerRight - Ui::Scale(56), headerTop, Ui::Scale(56), Ui::CompactHeight, TRUE);
+    const int connectionHeight = std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding -
+        Ui::CompactHeight - Ui::Space - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space : 0));
+    const int desiredPetHeight = aiPet_.DesiredHeight();
+    const int petHeight = aiVisible_ && desiredPetHeight &&
+        connectionHeight >= Ui::Scale(120) + desiredPetHeight + Ui::Space ? desiredPetHeight : 0;
     batch.Move(connectionList_, leftInnerLeft, leftListTop, leftInnerRight - leftInnerLeft,
-               std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding - Ui::CompactHeight - Ui::Space - leftListTop -
-                                           (statusHeight_ ? statusHeight_ + Ui::Space : 0)),
-               TRUE);
+               connectionHeight - (petHeight ? petHeight + Ui::Space : 0), TRUE);
+    if (aiPet_.Handle()) {
+        batch.Move(aiPet_.Handle(), leftInnerLeft, leftListTop + connectionHeight - petHeight,
+                   leftInnerRight - leftInnerLeft, std::max(1, petHeight), TRUE);
+        batch.Show(aiPet_.Handle(), petHeight ? SW_SHOW : SW_HIDE);
+    }
 
     batch.Move(disconnectAllButton_, leftInnerLeft, sideCardBottom - Ui::PanelPadding - Ui::CompactHeight,
                leftInnerRight - leftInnerLeft, Ui::CompactHeight, FALSE);
@@ -3009,6 +3035,7 @@ void MainWindow::LayoutControls(int width, int height) {
     // here with ShowWindow would expose its old bounds before the batch applies.
     QueueSidebarVisibility(batch, sftpContentWidth);
     batch.Commit();
+    aiPet_.Present(aiVisible_, petHeight != 0);
     UpdateTerminalDimensions();
 }
 
@@ -3604,6 +3631,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
 void MainWindow::ApplyTheme() {
     powerPane_.Theme(darkMode_);
     aiPane_.Theme(darkMode_);
+    aiPet_.Theme(darkMode_);
     const Palette colors = Colors(darkMode_);
     if (windowBrush_) DeleteObject(windowBrush_);
     if (panelBrush_) DeleteObject(panelBrush_);
@@ -6250,6 +6278,13 @@ void MainWindow::LoadUiState() {
         directory = DirectoryOf(modulePath);
     }
     const std::wstring path = JoinLocalPath(directory, L"settings.ini");
+    petSettings_.enabled = GetPrivateProfileIntW(L"Pet", L"Enabled", 1, path.c_str()) != 0;
+    petSettings_.follow = GetPrivateProfileIntW(L"Pet", L"Follow", 1, path.c_str()) != 0;
+    petSettings_.opening = GetPrivateProfileIntW(L"Pet", L"Opening", 1, path.c_str()) != 0;
+    petSettings_.size = static_cast<int>(GetPrivateProfileIntW(L"Pet", L"Size", 96, path.c_str()));
+    petSettings_.x = static_cast<int>(GetPrivateProfileIntW(L"Pet", L"X", 500, path.c_str()));
+    petSettings_.y = static_cast<int>(GetPrivateProfileIntW(L"Pet", L"Y", 500, path.c_str()));
+    petSettings_.Normalize();
     const bool logical = GetPrivateProfileIntW(L"Layout", L"LayoutVersion", 0, path.c_str()) >= 2;
     const int savedDpi = std::clamp(static_cast<int>(GetPrivateProfileIntW(
         L"Layout", L"SavedDpi", Ui::Dpi, path.c_str())), 48, 768);
@@ -6283,6 +6318,12 @@ void MainWindow::SaveUiState() const {
         directory = DirectoryOf(modulePath);
     }
     const std::wstring path = JoinLocalPath(directory, L"settings.ini");
+    auto petValue = [&](const wchar_t *key, int value) {
+        WritePrivateProfileStringW(L"Pet", key, std::to_wstring(value).c_str(), path.c_str());
+    };
+    petValue(L"Enabled", petSettings_.enabled); petValue(L"Follow", petSettings_.follow);
+    petValue(L"Opening", petSettings_.opening); petValue(L"Size", petSettings_.size);
+    petValue(L"X", petSettings_.x); petValue(L"Y", petSettings_.y);
     auto logicalWidth = [&](const wchar_t *key, int pixels) {
         WritePrivateProfileStringW(L"Layout", key, std::to_wstring(MulDiv(pixels, 96, Ui::Dpi)).c_str(), path.c_str());
     };

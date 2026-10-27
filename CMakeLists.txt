@@ -56,6 +56,7 @@ file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/serialctl.ico" SERIALCTL_
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/serialctl-light.ico" SERIALCTL_LIGHT_ICON_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-black.png" SERIALCTL_TOOLBAR_BLACK_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-white.png" SERIALCTL_TOOLBAR_WHITE_PATH)
+file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/ai-pet.png" SERIALCTL_AI_PET_PATH)
 foreach(asset surface-fill surface-stroke utility-icons)
     string(REPLACE "-" "_" variable "${asset}")
     string(TOUPPER "${variable}" variable)
@@ -165,6 +166,7 @@ add_executable(serialctl WIN32
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
     src/app/AiPane.cpp
+    src/app/AiPetPane.cpp
     src/ai/CodexClient.cpp
     src/connections/PasswordPipe.cpp
     src/update/UpdateArchive.cpp
@@ -244,6 +246,15 @@ if(BUILD_TESTING)
     add_dependencies(ai_client_test ai_fake_plink)
     add_test(NAME ai_client COMMAND ai_client_test)
     set_tests_properties(ai_client PROPERTIES TIMEOUT 45)
+    add_executable(ai_pet_model_test tests/unit/AiPetModelTest.cpp)
+    serialctl_configure_native_target(ai_pet_model_test CONSOLE)
+    add_test(NAME ai_pet_model COMMAND ai_pet_model_test)
+    add_executable(ai_pet_pane_test tests/integration/AiPetPaneTest.cpp src/app/AiPetPane.cpp "${SERIALCTL_GENERATED_DIR}/ui-assets.rc")
+    serialctl_configure_native_target(ai_pet_pane_test CONSOLE)
+    target_compile_definitions(ai_pet_pane_test PRIVATE SERIALCTL_AI_TESTING)
+    target_link_libraries(ai_pet_pane_test PRIVATE ole32 msimg32 comctl32 gdiplus gdi32 user32)
+    add_test(NAME ai_pet_pane COMMAND ai_pet_pane_test)
+    set_tests_properties(ai_pet_pane PROPERTIES TIMEOUT 35 RUN_SERIAL TRUE)
     add_executable(ai_pane_test tests/integration/AiPaneTest.cpp src/app/AiPane.cpp src/app/ToolbarIcons.cpp src/ai/CodexClient.cpp
         src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(ai_pane_test CONSOLE)

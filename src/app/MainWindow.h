@@ -2,6 +2,7 @@
 #include "BootInterrupt.h"
 
 #include "AiPane.h"
+#include "AiPetPane.h"
 #include "ApiServer.h"
 #include "CmdLineEditor.h"
 #include "Connection.h"
@@ -366,6 +367,8 @@ private:
     PowerService powerService_;
     PowerPane powerPane_;
     AiPane aiPane_;
+    AiPetPane aiPet_;
+    pet::Settings petSettings_;
     bool aiVisible_ = false, aiPageOpened_ = false;
     bool aiMonitorCollapsed_ = false;
     int aiMonitorWidth_ = 360;

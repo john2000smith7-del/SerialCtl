@@ -31,3 +31,7 @@ Copyright © 2018 National Instruments Corporation. All Rights Reserved.
 - 部署说明：https://knowledge.ni.com/KnowledgeArticleDetails?id=kA0VU00000043tl0AA&l=en-US
 
 此安装包包含厂商所需的 x86/x64 组件；SerialCtl 与 PuTTY 运行程序仅提供 x64。
+
+## AI companion artwork — whale maid
+
+The optional AI companion is a noncommercial derivative of the Q-style whale-maid artwork from <https://github.com/fornarwhal/deepseek-whale-girl-icon> (improved-1.png). Original character OC “溟月”: 上善无形; DeepSeek derivative: ZipZipPipe; repaired artwork: QYQCAMIAO. The SerialCtl companion's new poses and animation atlas were created from that reference with AI assistance. They are distributed under **Creative Commons Attribution–NonCommercial–ShareAlike 4.0 International**: <https://creativecommons.org/licenses/by-nc-sa/4.0/>. This artwork license is separate from the application code license. No official DeepSeek affiliation is implied. Source/provenance and atlas geometry are recorded in src/app/assets/ai-pet.json.
