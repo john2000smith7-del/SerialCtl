@@ -19,6 +19,7 @@ class AiPetPane {
         return model_.Preferences();
     }
     int DesiredHeight() const;
+    bool Desktop() const { return Preferences().desktop; }
     void Present(bool aiPage, bool available);
     void Theme(bool dark);
     void Activity(pet::Activity activity);
@@ -33,6 +34,10 @@ class AiPetPane {
     static INT_PTR CALLBACK SettingsProc(HWND, UINT, WPARAM, LPARAM);
     void Tick();
     void Paint(HDC);
+    void DesktopMode();
+    void PlaceDesktop();
+    void PaintDesktop();
+    void ReleaseDesktopPaint();
     void Action(int);
     void SettingsDialog();
     void Changed();
@@ -44,6 +49,12 @@ class AiPetPane {
     int dpi_ = 96;
     bool dark_ = false, available_ = false, dragging_ = false, moved_ = false, hover_ = false;
     bool keyboardFocus_ = true;
+    bool desktopMode_ = false, seenAi_ = false;
+    POINT dragWindow_{};
+    HDC desktopDc_ = nullptr;
+    HBITMAP desktopBitmap_ = nullptr, desktopOld_ = nullptr;
+    void *desktopPixels_ = nullptr;
+    SIZE desktopCanvas_{};
     POINT grab_{};
     pet::Settings dragStart_;
     pet::Model model_;

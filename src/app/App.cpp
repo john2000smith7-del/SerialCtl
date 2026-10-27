@@ -1,6 +1,7 @@
 #include "CmdConsoleBridge.h"
 #include "MainWindow.h"
 #include "UpdateInstaller.h"
+#include "GuiInstance.h"
 
 // Windows SDK GDI+ declarations require the COM/property types first.
 // clang-format off
@@ -18,6 +19,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
     int updateExitCode = 0;
     if (serialctl::update::HandleUpdateCommandLine(parameters, updateExitCode))
         return updateExitCode;
+    serialctl::GuiInstance guiInstance;
+    const auto instanceResult = guiInstance.Begin();
+    if (instanceResult == serialctl::GuiInstance::Result::Existing) return 0;
+    if (instanceResult == serialctl::GuiInstance::Result::Failed) {
+        MessageBoxW(nullptr, L"无法建立应用实例，请稍后重新打开。", L"SerialCtl", MB_OK | MB_ICONERROR);
+        return 1;
+    }
     serialctl::update::StartupGuard startup;
     std::wstring startupError;
     const auto startupAction = startup.Begin(parameters, startupError);
@@ -53,6 +61,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
         WSACleanup();
         return 1;
     }
+    guiInstance.Publish(mainWindow.Handle());
     if (!startup.Confirm(startupError, SERIALCTL_APP_VERSION)) {
         // The worker owns rollback. Close the just-created, idle GUI normally
         // without blocking its health timeout behind a modal error dialog.
@@ -63,11 +72,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
     if (startup.ShouldCheckForUpdate()) mainWindow.StartStartupUpdate();
 
     MSG message{};
-    while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (mainWindow.PreTranslate(message))
-            continue;
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
+    bool quit = false;
+    const HANDLE activation = guiInstance.Activation();
+    while (!quit) {
+        const auto wait = MsgWaitForMultipleObjects(1, &activation, FALSE, INFINITE, QS_ALLINPUT);
+        if (wait == WAIT_FAILED) break;
+        if (wait == WAIT_OBJECT_0) guiInstance.Activate();
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            if (message.message == WM_QUIT) { quit = true; break; }
+            if (mainWindow.PreTranslate(message)) continue;
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
     }
     WSACleanup();
     return static_cast<int>(message.wParam);

@@ -467,18 +467,20 @@ struct AiDeviceTestAccess {
             "Expanded monitor did not place actual terminal beside chat under its header");
         Require(main.rightPanelWidth_ == 320 && !main.rightPanelCollapsed_,
             "AI monitor changed terminal sidebar preference");
-        Require(IsWindowVisible(main.aiPet_.Handle()), "AI companion dock is not visible");
+        Require(IsWindowVisible(main.aiPet_.Handle()), "AI desktop companion is not visible");
         RECT dock{}, connectionRows{}, footer{};
         GetWindowRect(main.aiPet_.Handle(), &dock); GetWindowRect(main.connectionList_, &connectionRows);
         GetWindowRect(main.disconnectAllButton_, &footer);
-        Require(connectionRows.bottom + 8 <= dock.top && dock.bottom + 8 <= footer.top && connectionRows.bottom - connectionRows.top >= 120,
-                "Companion overlaps connection rows or disconnect footer");
+        Require(!(GetWindowLongPtrW(main.aiPet_.Handle(), GWL_STYLE) & WS_CHILD) &&
+                GetWindow(main.aiPet_.Handle(), GW_OWNER) == nullptr,
+                "Desktop companion must be unowned so main-window minimization cannot hide it");
+        Require(connectionRows.bottom + 8 <= footer.top, "Desktop companion still reserves connection-list space");
         for (const bool dark : {false, true}) {
             main.darkMode_ = dark; main.ApplyTheme();
             ui_test::SaveUiEvidence(parent, dark ? L"v208-ai-pet-main-dark.png" : L"v208-ai-pet-main-light.png");
         }
         main.LayoutControls(viewport.right, 420);
-        Require(!IsWindowVisible(main.aiPet_.Handle()), "Short window did not collapse pet dock");
+        Require(IsWindowVisible(main.aiPet_.Handle()), "Short main window hid the desktop companion");
         main.LayoutControls(viewport.right, viewport.bottom);
         Require(IsWindowVisible(main.aiPet_.Handle()), "Restored window did not restore pet dock");
         main.darkMode_ = true;

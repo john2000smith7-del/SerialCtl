@@ -209,6 +209,7 @@ private:
     void OpenConnectionDialog(int mode);
     void ConfigureConnectionDialog(HWND dialog);
     void RefreshSerialPorts(HWND dialog);
+    void CompleteSerialPortScan(HWND dialog);
     void DiscoverSharedSerialPorts(HWND dialog);
     bool ReadConnectionDialog(HWND dialog, std::wstring& error);
     void ConnectFromDialog();
@@ -544,6 +545,12 @@ private:
     std::uint16_t pendingPort_ = 0;
     std::wstring pendingRemoteSerial_, pendingRemoteLabel_;
     std::vector<SerialPortInfo> serialPorts_;
+    struct SerialPortScan {
+        std::atomic<bool> done{false};
+        std::vector<SerialPortInfo> ports;
+        std::wstring error;
+    };
+    std::shared_ptr<SerialPortScan> serialPortScan_;
     std::string pendingRemoteInstance_;
     CommandItem pendingCommand_;
     std::wstring pendingSftpInputTitle_;

@@ -3,6 +3,7 @@
 #include "HostKeyDialog.h"
 #include "AiHistory.h"
 #include "Workspace.h"
+#include "ToolPresentation.h"
 #include "Win32Helpers.h"
 #include "UiDialogViewport.h"
 #include <chrono>
@@ -619,18 +620,16 @@ void AiPane::Layout() {
     b.Move(Control(Analyze), 0, contextTop, D(96), D(28));
     b.Move(Control(Observe), D(108), contextTop, D(96), D(28));
     const int bottomWidth = std::min(D(128), std::max(D(96), width - D(108)));
-    b.Move(Control(Bottom), busy_ ? 0 : std::max(0, width - bottomWidth), contextTop, bottomWidth, D(28));
-    b.Show(Control(Bottom), scroll_.unread ? SW_SHOW : SW_HIDE);
-    b.Show(Control(Analyze), busy_ ? SW_HIDE : SW_SHOW);
-    b.Show(Control(Observe), scroll_.unread || busy_ ? SW_HIDE : SW_SHOW);
+    // A floating action inside the transcript, never in the utility row.
+    b.Move(Control(Bottom), std::max(0, (width - bottomWidth) / 2), std::max(top, contextTop - D(44)), bottomWidth, D(28));
     b.Move(Control(StopTurn), width - D(64), contextTop, D(64), D(28));
-    b.Show(Control(StopTurn), busy_ ? SW_SHOW : SW_HIDE);
     b.Move(Control(Input), D(12), composerTop + D(8), std::max(D(80), width - D(24)), D(40));
     b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(176), std::max(D(112), width - D(104))), D(220));
     b.ComboVisibleHeight(Control(Target), D(28));
     b.Show(Control(Model), SW_HIDE);
     b.Move(Control(Send), width - D(72), composerTop + D(60), D(64), D(28));
     b.Commit();
+    UpdateTranscriptActions();
     layoutWidth_ = width;
     Reflow();
     InvalidateRect(window_, nullptr, FALSE);
@@ -648,6 +647,7 @@ void AiPane::Paint(HDC target) {
     Draw(dc,
          client_.Ready()     ? (compact ? L"已连接" : L"● 已连接")
          : client_.Running() ? L"连接中…"
+         : busy_             ? L"连接中断"
                              : L"未连接",
          {D(compact ? 56 : 108), 0, r.right - D(160), D(28)}, smallFont_, c.muted);
     UiSeparator(dc, 0, r.right, D(36), c.border);
@@ -672,6 +672,11 @@ void AiPane::CollapseCompletedProcess(const std::string &group) {
     collapsedGroups_.insert(group);
 }
 void AiPane::Reflow(bool appended) {
+    if (deferReflow_) {
+        reflowPending_ = true;
+        appendPending_ = appendPending_ || appended;
+        return;
+    }
     if (!transcript_)
         return;
     RECT r{};
@@ -738,12 +743,22 @@ void AiPane::Reflow(bool appended) {
                 size_t offset = 0;
                 do {
                     const size_t remaining = line.size() - offset;
-                    int fit = 0;
                     SIZE size{};
-                    if (remaining)
-                        GetTextExtentExPointW(dc, line.data() + offset, static_cast<int>(remaining),
-                                              std::max(D(40), w - D(32)), &fit, nullptr, &size);
-                    size_t length = remaining ? std::max<size_t>(1, static_cast<size_t>(fit)) : 0;
+                    size_t length = 0;
+                    int used = 0;
+                    const int available = std::max(D(40), w - D(32));
+                    // Measure bounded chunks, not the complete remaining suffix
+                    // for every row of a very long log/JSON line (quadratic).
+                    while (length < remaining && used < available) {
+                        const int chunk = static_cast<int>(std::min<size_t>(256, remaining - length));
+                        int fit = 0;
+                        GetTextExtentExPointW(dc, line.data() + offset + length, chunk,
+                                             available - used, &fit, nullptr, &size);
+                        length += static_cast<size_t>(std::max(0, fit));
+                        if (fit < chunk) break;
+                        used += size.cx;
+                    }
+                    if (remaining && !length) length = 1;
                     length = std::min(length, remaining);
                     // Never split a UTF-16 pair. Prefer a word boundary in prose.
                     if (length < remaining && length && line[offset + length] >= 0xdc00 &&
@@ -790,8 +805,15 @@ void AiPane::Reflow(bool appended) {
     }
     scroll_.Layout(y, r.bottom, appended);
     InvalidateRect(transcript_, nullptr, FALSE);
-    ShowWindow(Control(Bottom), scroll_.unread ? SW_SHOW : SW_HIDE);
-    ShowWindow(Control(Observe), scroll_.unread ? SW_HIDE : SW_SHOW);
+    UpdateTranscriptActions();
+}
+void AiPane::UpdateTranscriptActions() {
+    ShowWindow(Control(Bottom), scroll_.unread ? SW_SHOWNA : SW_HIDE);
+    ShowWindow(Control(Analyze), busy_ ? SW_HIDE : SW_SHOWNA);
+    ShowWindow(Control(Observe), busy_ ? SW_HIDE : SW_SHOWNA);
+    ShowWindow(Control(StopTurn), busy_ ? SW_SHOWNA : SW_HIDE);
+    if (scroll_.unread) SetWindowPos(Control(Bottom), HWND_TOP, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 RECT AiPane::ScrollThumb() const {
     RECT r{};
@@ -859,6 +881,9 @@ void AiPane::PaintTranscript(HDC target) {
         }
         UiDrawGlyph(dc, {box.right - D(34), box.bottom - D(26), box.right - D(18), box.bottom - D(10)},
                     m.role == L"我" ? RGB(255, 255, 255) : c.muted, UiGlyph::Copy);
+        if (!m.technical.empty())
+            Draw(dc, L"技术详情", {box.left + D(16), box.bottom - D(32), box.left + D(96), box.bottom - D(4)},
+                 smallFont_, UiAccentInk(dark_));
         for (const auto &p : m.paragraphs) {
             RECT b = p.rect;
             OffsetRect(&b, box.left, box.top);
@@ -875,6 +900,8 @@ void AiPane::PaintTranscript(HDC target) {
             for (const auto &line : p.lines) {
                 RECT row = line.rect;
                 OffsetRect(&row, box.left, box.top);
+                if (row.bottom <= 0) continue;
+                if (row.top >= r.bottom) break;
                 const auto text = p.text.substr(line.start, line.length);
                 ExtTextOutW(dc, row.left, row.top, ETO_CLIPPED, &row, text.c_str(), static_cast<UINT>(text.size()),
                             nullptr);
@@ -901,7 +928,7 @@ void AiPane::PaintTranscript(HDC target) {
             SelectObject(dc, old);
         }
     }
-    if (busy_ && waitingReply_) {
+    if (busy_ && waitingReply_ && !IsRectEmpty(&waitingBounds_)) {
         RECT box = waitingBounds_;
         OffsetRect(&box, 0, -scroll_.offset);
         UiBox(dc, box, c.field, c.border, D(12));
@@ -922,8 +949,7 @@ void AiPane::PaintTranscript(HDC target) {
 void AiPane::Scroll(int pixels) {
     scroll_.Move(pixels);
     InvalidateRect(transcript_, nullptr, FALSE);
-    ShowWindow(Control(Bottom), scroll_.unread ? SW_SHOW : SW_HIDE);
-    ShowWindow(Control(Observe), scroll_.unread ? SW_HIDE : SW_SHOW);
+    UpdateTranscriptActions();
 }
 LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, GWLP_USERDATA));
@@ -975,15 +1001,18 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                         self->collapsedGroups_.erase(message.group);
                     else
                         self->collapsedGroups_.insert(message.group);
-                    for (auto &entry : self->messages_)
-                        if (entry.group == message.group)
-                            entry.measuredLength = SIZE_MAX;
+                    // Existing measurements remain valid when a group opens;
+                    // only entries whose header decoration changed remeasure.
                     self->ClearTextSelection();
                     self->Reflow();
                     return 0;
                 }
                 self->selectedMessage_ = i;
                 const auto b = self->messages_[i].bounds;
+                if (!message.technical.empty() && p.y >= b.bottom - self->D(32) && p.x < b.left + self->D(104)) {
+                    self->ShowTechnicalDetails(i);
+                    return 0;
+                }
                 if (p.y >= b.bottom - self->D(32) && p.x >= b.right - self->D(72)) {
                     self->ClearTextSelection();
                     self->Copy(self->messages_[i].text);
@@ -1168,23 +1197,94 @@ void AiPane::ShowDisplayLimit() {
     messages_.push_back(std::move(notice));
     Reflow(true);
 }
-void AiPane::Add(std::wstring role, std::wstring text, std::string item) {
-    if (messages_.size() >= 2000 || messageBytes_ + text.size() * sizeof(wchar_t) > MaxConversation) {
+void AiPane::Add(std::wstring role, std::wstring text, std::string item, std::wstring technical) {
+    if (messages_.size() >= 2000 || messageBytes_ + (text.size() + technical.size()) * sizeof(wchar_t) > MaxConversation) {
         SetStatus(L"当前对话显示已达上限，请新建会话；服务器历史仍保留");
         ShowDisplayLimit();
         return;
     }
-    messageBytes_ += text.size() * sizeof(wchar_t);
+    messageBytes_ += (text.size() + technical.size()) * sizeof(wchar_t);
     Message message;
     message.role = std::move(role);
     message.text = std::move(text);
     message.item = std::move(item);
+    message.technical = std::move(technical);
     message.group = displayGroup_;
     message.process = message.role == L"工具" || (busy_ && message.role == L"AI" && !displayGroup_.empty());
     if (message.process && !message.group.empty() && initializedGroups_.insert(message.group).second)
         collapsedGroups_.insert(message.group);
     messages_.push_back(std::move(message));
     Reflow(true);
+}
+void AiPane::AddTool(const std::string &tool, const Json &args, const Json &result, const std::wstring &target) {
+    auto technical = Wide(Json{{"tool", tool}, {"arguments", args}, {"result", result}}.dump(2));
+    if (technical.size() > 32768) {
+        technical.resize(32768);
+        if (!technical.empty() && technical.back() >= 0xd800 && technical.back() <= 0xdbff) technical.pop_back();
+        technical += L"\r\n[技术详情预览已截断，原始工具结果仍正常传递]";
+    }
+    Add(L"工具", Wide(ai::ToolText(tool, args, result, Utf8(target))), {}, std::move(technical));
+}
+void AiPane::ShowTechnicalDetails(size_t index) {
+    if (index >= messages_.size() || messages_[index].technical.empty()) return;
+    struct Details {
+        AiPane *pane;
+        std::wstring text;
+        static INT_PTR CALLBACK Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
+            auto p = reinterpret_cast<Details *>(GetWindowLongPtrW(h, DWLP_USER));
+            if (m == WM_INITDIALOG) {
+                p = reinterpret_cast<Details *>(l);
+                SetWindowLongPtrW(h, DWLP_USER, reinterpret_cast<LONG_PTR>(p));
+                SetWindowTextW(h, L"工具技术详情");
+                UiResizeDialog(h, p->pane->dpi_, 640, 420);
+                auto field = CreateWindowExW(0, L"EDIT", p->text.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                    ES_MULTILINE | ES_READONLY | ES_AUTOHSCROLL | ES_AUTOVSCROLL | WS_VSCROLL | WS_HSCROLL,
+                    0, 0, 1, 1, h, reinterpret_cast<HMENU>(101), GetModuleHandleW(nullptr), nullptr);
+                SendMessageW(field, WM_SETFONT, reinterpret_cast<WPARAM>(p->pane->codeFont_), FALSE);
+                UiStyleField(field, &p->pane->style_);
+                for (int id : {102, IDCANCEL}) {
+                    auto button = CreateWindowExW(0, L"BUTTON", id == 102 ? L"复制" : L"关闭",
+                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 1, 1, h,
+                        reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
+                    SendMessageW(button, WM_SETFONT, reinterpret_cast<WPARAM>(p->pane->font_), FALSE);
+                    UiStyleButton(button);
+                }
+                SendMessageW(h, WM_SIZE, 0, 0);
+                Center(h, GetWindow(h, GW_OWNER));
+                UiDialogViewport::Fit(h, p->pane->dpi_);
+                return TRUE;
+            }
+            if (!p) return FALSE;
+            auto self = p->pane;
+            if (m == WM_SIZE) {
+                RECT r{}; GetClientRect(h, &r);
+                const int pad = self->D(16), gap = self->D(12), height = self->D(36), width = self->D(96);
+                MoveWindow(GetDlgItem(h, 101), pad, pad, std::max(1L, r.right - pad * 2),
+                           std::max(1L, r.bottom - pad * 2 - gap - height), TRUE);
+                MoveWindow(GetDlgItem(h, 102), r.right - pad - width * 2 - gap, r.bottom - pad - height, width, height, TRUE);
+                MoveWindow(GetDlgItem(h, IDCANCEL), r.right - pad - width, r.bottom - pad - height, width, height, TRUE);
+                return TRUE;
+            }
+            if (m == WM_COMMAND) {
+                if (LOWORD(w) == 102) self->Copy(p->text);
+                else if (LOWORD(w) == IDCANCEL || LOWORD(w) == IDOK) UiEndOwnedDialog(h, IDCANCEL);
+                return TRUE;
+            }
+            if (m == WM_DRAWITEM || m == WM_MEASUREITEM) return AiPane::Proc(self->window_, m, w, l);
+            if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT) {
+                const auto c = UiAiTheme(self->dark_);
+                const bool field = reinterpret_cast<HWND>(l) == GetDlgItem(h, 101);
+                SetTextColor(reinterpret_cast<HDC>(w), c.text);
+                SetBkColor(reinterpret_cast<HDC>(w), field ? c.field : c.surface);
+                return reinterpret_cast<INT_PTR>(field ? self->fieldBrush_ : self->surfaceBrush_);
+            }
+            return FALSE;
+        }
+    } data{this, messages_[index].technical};
+    struct Template { DLGTEMPLATE dialog{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME, 0, 0, 0, 0, 320, 220};
+        WORD menu = 0, cls = 0, title = 0; } t;
+    UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &t.dialog, GetAncestor(window_, GA_ROOT), Details::Proc,
+                             reinterpret_cast<LPARAM>(&data));
 }
 void AiPane::SetStatus(const std::wstring &text) {
     status_ = text;
@@ -1198,7 +1298,7 @@ void AiPane::UpdateActions() {
         SetCompanionActivity(ready ? pet::Activity::Idle : client_.Running() ? pet::Activity::Connecting : pet::Activity::Offline);
     SetWindowTextW(Control(Send), L"发送");
     EnableWindow(Control(Send), ready && !busy_ && !directoryPending_);
-    EnableWindow(Control(StopTurn), ready && busy_ && !stopRequested_);
+    EnableWindow(Control(StopTurn), busy_ && !stopRequested_);
     for (int id : {Analyze, Observe, HistoryButton, New})
         EnableWindow(Control(id), ready && !busy_ && !directoryPending_);
     EnableWindow(Control(Target), !busy_);
@@ -1553,6 +1653,9 @@ void AiPane::Shutdown() {
         devices_("release", {{"sessionId", turnTarget_}});
 }
 void AiPane::Poll() {
+    if (polling_) return;
+    polling_ = true;
+    struct PollGuard { bool &flag; ~PollGuard() { flag = false; } } pollGuard{polling_};
     if (copiedUntil_ && copiedUntil_ <= GetTickCount64()) {
         copiedUntil_ = 0;
         InvalidateRect(transcript_, nullptr, FALSE);
@@ -1580,13 +1683,18 @@ void AiPane::Poll() {
     }
     if (busy_)
         InvalidateRect(transcript_, nullptr, FALSE);
-    std::deque<Json> batch;
-    {
-        std::lock_guard<std::mutex> l(eventsMutex_);
-        batch.swap(events_);
-        eventBytes_ = 0;
-    }
-    for (const auto &e : batch) {
+    const auto sliceStarted = GetTickCount64();
+    deferReflow_ = true;
+    for (unsigned count = 0; count < 64 && (count == 0 || GetTickCount64() - sliceStarted < 6); ++count) {
+        Json e;
+        {
+            std::lock_guard<std::mutex> l(eventsMutex_);
+            if (events_.empty()) break;
+            const auto bytes = events_.front().dump().size();
+            e = std::move(events_.front());
+            events_.pop_front();
+            eventBytes_ = bytes > eventBytes_ ? 0 : eventBytes_ - bytes;
+        }
         try {
             Event(e);
         } catch (const std::exception &) {
@@ -1596,6 +1704,12 @@ void AiPane::Poll() {
             SetStatus(L"无法处理 Codex 的 " + Wide(e.value("event", std::string("unknown"))) +
                       L" 事件，请检查服务端返回格式；设备命令不自动重发");
         }
+    }
+    deferReflow_ = false;
+    if (reflowPending_) {
+        const bool appended = appendPending_;
+        reflowPending_ = appendPending_ = false;
+        Reflow(appended);
     }
     if (directoryPending_ && GetTickCount64() >= directoryDeadline_) {
         for (auto it = requests_.begin(); it != requests_.end();)
@@ -1617,7 +1731,7 @@ void AiPane::Poll() {
         auto result = devices_(
             "read", {{"sessionId", turnTarget_}, {"lines", 500}, {"after", args.value("after", std::uint64_t(0))}});
         Reply(request["requestId"], result, !result.contains("error"));
-        Add(L"工具", L"持续观察完成 · " + Wide(result.dump()));
+        AddTool("serialctl_observe", args, result, turnTargetLabel_);
         }
     }
     // Some compatible gateways omit turn/completed. A final agent item can
@@ -1722,7 +1836,7 @@ void AiPane::Event(const Json &e) {
                     while (!home.empty() && (home.back() == '\n' || home.back() == '\r')) home.pop_back();
                     if (ai::ValidWorkspacePath(home)) serverHome_ = Wide(home);
                 }
-                BrowseDirectory(settings_.workingDirectory.empty() ? L"/home/linux" : settings_.workingDirectory, true);
+                BrowseDirectory(settings_.workingDirectory.empty() ? L"/home/linux/workspace" : settings_.workingDirectory, true);
             } else if (e.contains("error")) {
                 if (purpose == "directory" && e.value("code", 0) == -32601) {
                     if (!Request(ai::Operation::DirectoryFallback, {{"path", Utf8(directoryPath_)}}, "directory-fallback"))
@@ -2054,7 +2168,7 @@ void AiPane::ServerRequest(const Json &e) {
         powerContext_ = devices_("power.get", Json::object());
         Reply(e["requestId"], powerContext_, !powerContext_.contains("error"));
         observedTool_ = true;
-        Add(L"工具", L"读取电源状态\n" + Wide(powerContext_.dump()));
+        AddTool(tool, args, powerContext_);
         return;
     }
     if (tool == "serialctl_power_action") {
@@ -2066,7 +2180,7 @@ void AiPane::ServerRequest(const Json &e) {
         auto result = devices_("power.action", {{"id", id}});
         Reply(e["requestId"], result, !result.contains("error"));
         observedTool_ = true;
-        Add(L"工具", L"查询电源执行结果\n" + Wide(result.dump()));
+        AddTool(tool, args, result);
         return;
     }
     if (tool == "serialctl_power_output") {
@@ -2093,8 +2207,7 @@ void AiPane::ServerRequest(const Json &e) {
         powerContext_ = nullptr; // A later write must read current selection/state again.
         Reply(e["requestId"], result, !result.contains("error"));
         observedTool_ = true;
-        Add(L"工具", result.contains("error") ? L"电源操作未提交：" + Wide(result.dump())
-            : L"电源操作已提交；需查询 action ID 核对各通道回读，不自动重发\n" + Wide(result.dump()));
+        AddTool(tool, args, result);
         return;
     }
     if (args.value("sessionId", std::string()) != turnTarget_ || turnTarget_.empty()) {
@@ -2112,15 +2225,14 @@ void AiPane::ServerRequest(const Json &e) {
         if (tool == "serialctl_recover" && !result.contains("error")) recoveryUsed_ = true;
         Reply(e["requestId"], result, !result.contains("error"));
         observedTool_ = true;
-        Add(L"工具", Wide(tool) + L" · " + turnTargetLabel_ + L"\n" + Wide(args.dump()) + L"\n" + Wide(result.dump()));
+        AddTool(tool, args, result, turnTargetLabel_);
         return;
     }
     if (tool == "serialctl_read") {
         auto r = devices_("read", args);
         Reply(e["requestId"], r, !r.contains("error"));
         observedTool_ = true;
-        Add(L"工具", L"读取终端日志 · " + Wide(turnTarget_) + L" · " + (r.contains("error") ? L"失败" : L"完成") +
-                         L"\n" + Wide(r.dump()).substr(0, 200));
+        AddTool(tool, args, r, turnTargetLabel_);
     } else if (tool == "serialctl_observe") {
         if (!pendingObservation_.is_null()) {
             Reply(e["requestId"], {{"error", "An observation is already pending"}}, false);
@@ -2148,8 +2260,7 @@ void AiPane::ServerRequest(const Json &e) {
             L"目标：" + turnTargetLabel_ + L"（" + Wide(turnTarget_) + L"）\n```\n" + Wide(command) + L"\n```");
         const auto result = devices_("command", args);
         observedTool_ = true;
-        Add(L"工具", result.contains("error") ? L"命令未提交：" + Wide(result.dump())
-                                              : L"命令已提交；继续读取设备回显确认结果，不自动重发");
+        AddTool(tool, args, result, turnTargetLabel_);
         Reply(e["requestId"], result, !result.contains("error"));
     } else
         Reply(e["requestId"], {{"error", "Unknown SerialCtl tool"}}, false);
@@ -2358,7 +2469,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         add(L"BUTTON",L"取消",IDCANCEL,216,172,96,36,BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON",L"新建",IDOK,324,172,96,36,BS_OWNERDRAW | WS_TABSTOP);
         auto path = self->settings_.workingDirectory.empty() ? self->workspaceDirectory_ : self->settings_.workingDirectory;
-        if (path.empty()) path = self->serverHome_.empty() ? L"/home/linux" : self->serverHome_;
+        if (path.empty()) path = L"/home/linux/workspace";
         SetWindowTextW(combo,path.c_str());
         self->BrowseDirectory(path);
         Center(h,GetWindow(h,GW_OWNER));
@@ -2560,14 +2671,43 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             self->needsPassword_ = false;
             self->dialogEnter_ = id == IDOK;
             self->SetStatus(L"正在连接并检测 SSH / Codex / App Server…");
+            {
+                std::lock_guard<std::mutex> lock(self->eventsMutex_);
+                self->events_.clear(); self->eventBytes_ = 0; self->eventOverflowed_ = false;
+            }
             self->client_.Connect(
                 std::move(s),
                 [self](Json event) {
                     std::lock_guard<std::mutex> lock(self->eventsMutex_);
+                    if (self->eventOverflowed_) return;
                     const auto size = event.dump().size();
                     if (self->eventBytes_ + size > 8 * 1024 * 1024 || self->events_.size() > 2048) {
+                        // Do not lose the terminal lifecycle notification behind
+                        // a full queue and leave the GUI "busy but offline".
+                        // Cancel the transport before discarding queued requests;
+                        // none of those requests may later execute device writes.
+                        self->eventOverflowed_ = true;
                         self->client_.Disconnect();
+                        self->events_.clear();
+                        self->events_.push_back({{"event", "error"}, {"message",
+                            u8"AI 输出超过界面缓冲上限，已中断连接。部分过程未显示；可重连恢复历史，设备指令不会自动重发。"}});
+                        self->events_.push_back({{"event", "disconnected"}});
+                        self->eventBytes_ = self->events_[0].dump().size() + self->events_[1].dump().size();
                         return;
+                    }
+                    const auto kind = event.value("event", std::string());
+                    if (!self->events_.empty() && (kind == "textDelta" || kind == "serverToolDelta")) {
+                        auto &last = self->events_.back();
+                        if (last.value("event", std::string()) == kind &&
+                            last.value("messageId", std::string()) == event.value("messageId", std::string()) &&
+                            last.value("conversationId", std::string()) == event.value("conversationId", std::string()) &&
+                            last.value("taskId", std::string()) == event.value("taskId", std::string()) &&
+                            last.value("text", std::string()).size() + event.value("text", std::string()).size() <= 16384) {
+                            const auto previous = last.dump().size();
+                            last["text"] = last.value("text", std::string()) + event.value("text", std::string());
+                            self->eventBytes_ = self->eventBytes_ - previous + last.dump().size();
+                            return;
+                        }
                     }
                     self->eventBytes_ += size;
                     self->events_.push_back(std::move(event));

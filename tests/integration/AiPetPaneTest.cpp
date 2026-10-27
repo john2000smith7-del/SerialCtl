@@ -220,6 +220,49 @@ struct AiPetPaneTestAccess {
         }
         Check(observedOpening, "Native timer failed to play opening after four seconds");
         pane.Present(false, false);
+        auto desktop = original;
+        desktop.desktop = true; desktop.opening = false;
+        pane.model_.Configure(desktop, GetTickCount64());
+        pane.Present(true, true); pane.Tick();
+        Check(!(GetWindowLongPtrW(pane.Handle(), GWL_STYLE) & WS_CHILD) && GetWindow(pane.Handle(), GW_OWNER) == nullptr,
+              "Desktop pet retained a minimizing owner or child style");
+        Check((GetWindowLongPtrW(pane.Handle(), GWL_EXSTYLE) & (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)) ==
+              (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE), "Desktop presentation lost transparency/no-activation styles");
+        Check(pane.desktopPixels_ && static_cast<unsigned char *>(pane.desktopPixels_)[3] == 0,
+              "Transparent desktop corner has an opaque rectangular background");
+        const auto foreground = GetForegroundWindow();
+        ShowWindow(parent, SW_MINIMIZE); pane.Tick();
+        Check(IsWindowVisible(pane.Handle()), "Main-window minimization hid the unowned desktop pet");
+        pane.Present(false, false); pane.Tick();
+        Check(IsWindowVisible(pane.Handle()) && pane.model_.Active(), "Leaving AI hid the desktop pet");
+        Check(GetForegroundWindow() != pane.Handle(), "Background pet animation stole activation");
+        ShowWindow(parent, SW_RESTORE);
+        if (foreground && IsWindow(foreground)) SetForegroundWindow(foreground);
+        POINT oldCursor{}; GetCursorPos(&oldCursor);
+        const POINT grabDesktop{(pane.sprite_.left + pane.sprite_.right) / 2, (pane.sprite_.top + pane.sprite_.bottom) / 2};
+        POINT screenPoint = grabDesktop; ClientToScreen(pane.Handle(), &screenPoint); SetCursorPos(screenPoint.x, screenPoint.y);
+        const auto beforeDrag = pane.Preferences();
+        SendMessageW(pane.Handle(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(grabDesktop.x, grabDesktop.y));
+        SetCursorPos(screenPoint.x - 40, screenPoint.y - 30);
+        SendMessageW(pane.Handle(), WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(grabDesktop.x - 40, grabDesktop.y - 30));
+        SendMessageW(pane.Handle(), WM_LBUTTONUP, 0, MAKELPARAM(grabDesktop.x - 40, grabDesktop.y - 30));
+        Check(pane.Preferences().desktopX < beforeDrag.desktopX && pane.Preferences().desktopY < beforeDrag.desktopY,
+              "Desktop dragging did not follow global mouse coordinates");
+        SetCursorPos(oldCursor.x, oldCursor.y);
+        for (bool dark : {false, true}) {
+            pane.Theme(dark); pane.Tick();
+            ui_test::SaveUiEvidence(pane.Handle(), dark ? L"v209-desktop-pet-dark.png" : L"v209-desktop-pet-light.png");
+        }
+        desktop.desktopX = -100000; desktop.desktopY = 100000;
+        pane.model_.Configure(desktop, GetTickCount64()); pane.PlaceDesktop();
+        RECT positioned{}; GetWindowRect(pane.Handle(), &positioned);
+        MONITORINFO mi{sizeof(mi)}; GetMonitorInfoW(MonitorFromWindow(pane.Handle(), MONITOR_DEFAULTTONEAREST), &mi);
+        Check(positioned.left >= mi.rcWork.left && positioned.top >= mi.rcWork.top &&
+              positioned.right <= mi.rcWork.right && positioned.bottom <= mi.rcWork.bottom,
+              "Restored desktop position escaped a changed monitor work area");
+        pane.model_.Configure(original, GetTickCount64()); pane.Present(true, true);
+        Check((GetWindowLongPtrW(pane.Handle(), GWL_STYLE) & WS_CHILD) && GetParent(pane.Handle()) == parent,
+              "Returning the desktop pet to its dock failed");
     }
 };
 } // namespace serialctl
@@ -238,7 +281,8 @@ int main() {
     {
         AiPetPane pane;
         try {
-            Check(pane.Create(parent, font, false, {}), "Cannot decode embedded native pet asset");
+            pet::Settings docked; docked.desktop = false;
+            Check(pane.Create(parent, font, false, docked), "Cannot decode embedded native pet asset");
             AiPetPaneTestAccess::Run(pane, parent);
             std::cout << "AI pet: native asset, both themes/four DPI scales, bounded dock, delayed/cancelled opening "
                          "and state restoration PASS\n";

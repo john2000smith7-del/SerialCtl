@@ -65,6 +65,7 @@ ServerSettings LoadServerSettings() {
     s.username = ReadString(key, L"Username");
     if (s.username.empty()) s.username = L"linux";
     s.workingDirectory = ReadString(key, L"WorkingDirectory");
+    if (s.workingDirectory.empty()) s.workingDirectory = L"/home/linux/workspace";
     DWORD port = 22, size = sizeof(port), type = REG_DWORD;
     RegQueryValueExW(key, L"Port", nullptr, &type, reinterpret_cast<BYTE *>(&port), &size);
     s.port = port > 0 && port <= 65535 ? port : 22;

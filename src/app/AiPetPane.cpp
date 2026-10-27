@@ -5,7 +5,7 @@
 
 namespace serialctl {
 namespace {
-enum Command { Toggle = 1, Idle, Wave, Boxing, Stop, Small, Medium, Large, Hide, Settings };
+enum Command { Toggle = 1, Idle, Wave, Boxing, Stop, Small, Medium, Large, Hide, Settings, DockMode, ShowMain };
 constexpr UINT_PTR PaintTimer = 1;
 void Label(HDC dc, HFONT font, COLORREF ink, const std::wstring &text, RECT r,
            UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
@@ -27,7 +27,7 @@ struct Popup {
         return MulDiv(n, dpi, 96);
     }
     int MainHeight() const {
-        return D(16 + 32 * 5 + 8);
+        return D(16 + 32 * 7 + 8);
     }
     int SubCount() const {
         return sub == 1 ? 4 : 3;
@@ -39,7 +39,8 @@ struct Popup {
         return std::max(MainHeight(), sub ? SubTop() + D(16 + 32 * SubCount()) : 0);
     }
     std::wstring MainText(int i) const {
-        const wchar_t *rows[] = {L"跟随 AI 状态", L"播放动作", L"宠物大小", L"收起宠物", L"宠物设置…"};
+        const wchar_t *rows[] = {L"跟随 AI 状态", L"播放动作", L"宠物大小", L"", L"打开主窗口", L"收起宠物", L"宠物设置…"};
+        if (i == 3) return prefs.desktop ? L"返回窗口内" : L"桌面悬浮";
         return i == 0 && !prefs.enabled ? L"显示宠物" : rows[i];
     }
     std::wstring SubText(int i) const {
@@ -49,7 +50,7 @@ struct Popup {
     }
     RECT Row(int column, int index) const {
         const int left = column ? width + D(12) : 0, top = column ? SubTop() : 0;
-        const int y = top + D(8) + index * row + (!column && index == 4 ? D(8) : 0);
+        const int y = top + D(8) + index * row + (!column && index == 6 ? D(8) : 0);
         return {left + D(4), y, left + width - D(4), y + row};
     }
     void Resize() {
@@ -93,7 +94,7 @@ struct Popup {
             Resize();
             return;
         }
-        Close(index == 0 ? Toggle : index == 3 ? Hide : Settings);
+        Close(index == 0 ? Toggle : index == 3 ? DockMode : index == 4 ? ShowMain : index == 5 ? Hide : Settings);
     }
     void Paint(HDC target) {
         RECT bounds{};
@@ -109,7 +110,7 @@ struct Popup {
             UiBox(dc, {width + D(12), SubTop(), width * 2 + D(12), SubTop() + D(16 + 32 * SubCount())}, c.surface,
                   c.border, D(12));
         for (int column = 0; column <= (sub ? 1 : 0); ++column)
-            for (int i = 0; i < (column ? SubCount() : 5); ++i) {
+            for (int i = 0; i < (column ? SubCount() : 7); ++i) {
                 const auto r = Row(column, i);
                 const bool active = column ? inSub && i == subSelected : !inSub && i == selected;
                 if (active)
@@ -129,13 +130,13 @@ struct Popup {
                     UiDrawGlyph(dc, icon, ink, UiGlyph::Run);
                 else if (column && i == 3)
                     UiDrawGlyph(dc, icon, ink, UiGlyph::Stop);
-                else if (!column && i == 4)
+                else if (!column && i == 6)
                     UiDrawGlyph(dc, icon, ink, UiGlyph::Pet);
                 if (!column && (i == 1 || i == 2))
                     UiDrawGlyph(dc, {r.right - D(22), icon.top, r.right - D(6), icon.bottom}, ink,
                                 UiGlyph::ChevronRight);
             }
-        UiSeparator(dc, D(12), width - D(12), D(8 + 32 * 4 + 4), c.border);
+        UiSeparator(dc, D(12), width - D(12), D(8 + 32 * 6 + 4), c.border);
     }
     static LRESULT CALLBACK Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         auto p = reinterpret_cast<Popup *>(GetWindowLongPtrW(h, GWLP_USERDATA));
@@ -169,7 +170,7 @@ struct Popup {
                         break;
                     }
             if (!found)
-                for (int i = 0; i < 5; ++i) {
+                for (int i = 0; i < 7; ++i) {
                     const auto r = p->Row(0, i);
                     if (PtInRect(&r, point)) {
                         p->selected = i;
@@ -194,7 +195,7 @@ struct Popup {
         }
         if (m == WM_KEYDOWN) {
             auto &selected = p->inSub ? p->subSelected : p->selected;
-            const int count = p->inSub ? p->SubCount() : 5;
+            const int count = p->inSub ? p->SubCount() : 7;
             if (w == VK_ESCAPE) {
                 p->Close();
                 return 0;
@@ -243,6 +244,7 @@ struct Popup {
         wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         RegisterClassW(&wc);
         const HWND previous = GetFocus();
+        const HWND foreground = GetForegroundWindow();
         window = CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"AI 宠物菜单", WS_POPUP, 0, 0, width,
                                  MainHeight(), owner, nullptr, wc.hInstance, this);
         if (!window)
@@ -265,9 +267,12 @@ struct Popup {
             DispatchMessageW(&message);
         }
         if (IsWindow(owner)) {
-            SetForegroundWindow(owner);
-            if (IsWindow(previous) && IsWindowEnabled(previous))
-                SetFocus(previous);
+            if (GetWindowLongPtrW(owner, GWL_EXSTYLE) & WS_EX_NOACTIVATE) {
+                if (IsWindow(foreground)) SetForegroundWindow(foreground);
+            } else {
+                SetForegroundWindow(owner);
+                if (IsWindow(previous) && IsWindowEnabled(previous)) SetFocus(previous);
+            }
         }
         return result;
     }
@@ -318,9 +323,16 @@ int AiPetPane::DesiredHeight() const {
 }
 void AiPetPane::Present(bool aiPage, bool available) {
     const auto now = GetTickCount64();
+    seenAi_ = seenAi_ || aiPage;
+    DesktopMode();
+    model_.Persistent(Desktop() && seenAi_, now);
     model_.Page(aiPage, now);
-    available_ = aiPage && available && model_.Active();
+    available_ = Desktop() ? seenAi_ && model_.Active() : aiPage && available && model_.Active();
     if (window_) {
+        if (Desktop()) {
+            PlaceDesktop();
+            ShowWindow(window_, available_ ? SW_SHOWNOACTIVATE : SW_HIDE);
+        }
         if (available_)
             SetTimer(window_, PaintTimer, 40, nullptr);
         else
@@ -332,6 +344,7 @@ void AiPetPane::Theme(bool dark) {
     dark_ = dark;
     if (window_)
         InvalidateRect(window_, nullptr, FALSE);
+    if (desktopMode_ && available_) PaintDesktop();
 }
 void AiPetPane::Activity(pet::Activity state) {
     model_.SetActivity(state, GetTickCount64());
@@ -344,6 +357,7 @@ void AiPetPane::Shutdown() {
         DestroyWindow(window_);
     }
     window_ = nullptr;
+    ReleaseDesktopPaint();
     image_.reset();
     if (small_)
         DeleteObject(small_);
@@ -352,16 +366,143 @@ void AiPetPane::Shutdown() {
 void AiPetPane::Tick() {
     if (!window_)
         return;
-    const bool present = available_ && IsWindowVisible(window_) && IsWindowEnabled(parent_) && !IsIconic(parent_);
+    const bool present = available_ && IsWindowVisible(window_) &&
+        (Desktop() ? IsWindowEnabled(window_) : IsWindowEnabled(parent_) && !IsIconic(parent_));
     sample_ = model_.At(GetTickCount64(), present);
-    if (present)
-        InvalidateRect(window_, nullptr, FALSE);
+    if (present) {
+        if (desktopMode_) PaintDesktop();
+        else InvalidateRect(window_, nullptr, FALSE);
+    }
     if (GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", nullptr, 0)) {
         SetPropW(window_, L"SerialCtl.PetPose", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(sample_.pose + 1)));
         SetPropW(window_, L"SerialCtl.PetAction",
                  reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(model_.CurrentAction()) + 1));
         SetPropW(window_, L"SerialCtl.PetHop", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(sample_.hop + 1)));
     }
+}
+void AiPetPane::ReleaseDesktopPaint() {
+    if (desktopDc_ && desktopOld_) SelectObject(desktopDc_, desktopOld_);
+    if (desktopBitmap_) DeleteObject(desktopBitmap_);
+    if (desktopDc_) DeleteDC(desktopDc_);
+    desktopDc_ = nullptr; desktopBitmap_ = desktopOld_ = nullptr;
+    desktopPixels_ = nullptr; desktopCanvas_ = {};
+}
+void AiPetPane::DesktopMode() {
+    if (!window_ || desktopMode_ == Desktop()) return;
+    ShowWindow(window_, SW_HIDE);
+    desktopMode_ = Desktop();
+    if (desktopMode_) {
+        SetParent(window_, nullptr);
+        SetWindowLongPtrW(window_, GWLP_HWNDPARENT, 0); // Unowned: owner minimization must not hide it.
+        SetWindowLongPtrW(window_, GWL_STYLE, WS_POPUP);
+        SetWindowLongPtrW(window_, GWL_EXSTYLE, WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+    } else {
+        SetWindowPos(window_, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        SetWindowLongPtrW(window_, GWL_EXSTYLE, 0);
+        SetWindowLongPtrW(window_, GWL_STYLE, WS_CHILD | WS_TABSTOP | WS_CLIPSIBLINGS);
+        SetParent(window_, parent_);
+        ReleaseDesktopPaint();
+    }
+    SetWindowPos(window_, nullptr, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+void AiPetPane::PlaceDesktop() {
+    if (!window_ || !desktopMode_) return;
+    auto prefs = Preferences();
+    const int width = D(224), height = DesiredHeight() + D(24);
+    POINT point{prefs.desktopX, prefs.desktopY};
+    const bool initial = point.x == -2147483647 || point.y == -2147483647;
+    MONITORINFO info{sizeof(info)};
+    GetMonitorInfoW(initial ? MonitorFromWindow(parent_, MONITOR_DEFAULTTONEAREST)
+                           : MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST), &info);
+    const int margin = D(12);
+    if (initial) point = {info.rcWork.right - width - margin, info.rcWork.bottom - height - margin};
+    point.x = std::clamp(point.x, info.rcWork.left + margin, std::max(info.rcWork.left + margin, info.rcWork.right - width - margin));
+    point.y = std::clamp(point.y, info.rcWork.top + margin, std::max(info.rcWork.top + margin, info.rcWork.bottom - height - margin));
+    RECT current{}; GetWindowRect(window_, &current);
+    const auto ex = GetWindowLongPtrW(window_, GWL_EXSTYLE);
+    if (current.left != point.x || current.top != point.y || current.right - current.left != width ||
+        current.bottom - current.top != height || ((ex & WS_EX_TOPMOST) != 0) != prefs.topmost)
+        SetWindowPos(window_, prefs.topmost ? HWND_TOPMOST : HWND_NOTOPMOST, point.x, point.y, width, height, SWP_NOACTIVATE);
+    if (prefs.desktopX != point.x || prefs.desktopY != point.y) {
+        prefs.desktopX = point.x; prefs.desktopY = point.y;
+        model_.Configure(prefs, GetTickCount64());
+        if (!dragging_) Changed();
+    }
+}
+void AiPetPane::PaintDesktop() {
+    if (!window_ || !image_ || !image_->bitmap) return;
+    RECT bounds{}; GetWindowRect(window_, &bounds);
+    const int width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
+    if (width <= 0 || height <= 0) return;
+    if (desktopCanvas_.cx != width || desktopCanvas_.cy != height) {
+        ReleaseDesktopPaint();
+        BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        info.bmiHeader.biWidth = width; info.bmiHeader.biHeight = -height;
+        info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB;
+        desktopDc_ = CreateCompatibleDC(nullptr);
+        desktopBitmap_ = CreateDIBSection(desktopDc_, &info, DIB_RGB_COLORS, &desktopPixels_, nullptr, 0);
+        if (!desktopDc_ || !desktopBitmap_ || !desktopPixels_) { ReleaseDesktopPaint(); return; }
+        desktopOld_ = reinterpret_cast<HBITMAP>(SelectObject(desktopDc_, desktopBitmap_));
+        desktopCanvas_ = {width, height};
+    }
+    memset(desktopPixels_, 0, static_cast<size_t>(width) * height * 4);
+    {
+        Gdiplus::Bitmap bitmap(width, height, width * 4, PixelFormat32bppPARGB, static_cast<BYTE *>(desktopPixels_));
+        Gdiplus::Graphics g(&bitmap);
+        g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+        g.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
+        const auto c = UiTheme(dark_);
+        auto color = [](COLORREF v) { return Gdiplus::Color(255, GetRValue(v), GetGValue(v), GetBValue(v)); };
+        auto box = [&](RECT r, COLORREF fill, COLORREF stroke, int radius) {
+            Gdiplus::GraphicsPath path;
+            const float d = static_cast<float>(radius * 2), x = static_cast<float>(r.left), y = static_cast<float>(r.top);
+            const float w = static_cast<float>(r.right - r.left), h = static_cast<float>(r.bottom - r.top);
+            path.AddArc(x, y, d, d, 180, 90); path.AddArc(x + w - d, y, d, d, 270, 90);
+            path.AddArc(x + w - d, y + h - d, d, d, 0, 90); path.AddArc(x, y + h - d, d, d, 90, 90);
+            path.CloseFigure();
+            Gdiplus::SolidBrush brush(color(fill)); Gdiplus::Pen pen(color(stroke), 1.f);
+            g.FillPath(&brush, &path); g.DrawPath(&pen, &path);
+        };
+        const double body = D(Preferences().size), scale = body / 208.0, side = 256 * scale;
+        const double travel = std::max(0.0, (width - side) / 2 - D(4));
+        const double x = width / 2.0 + std::clamp(sample_.x * body, -travel, travel);
+        const double base = height - D(8), lift = sample_.lift * body;
+        const double top = base - 240 * scale * sample_.breath - lift;
+        sprite_ = {static_cast<LONG>(x - side / 2), static_cast<LONG>(top),
+                   static_cast<LONG>(x + side / 2), static_cast<LONG>(top + side)};
+        Gdiplus::SolidBrush shadow(Gdiplus::Color(32, 80, 85, 100));
+        g.FillEllipse(&shadow, static_cast<float>(x - body * .32), static_cast<float>(base - D(2)),
+                      static_cast<float>(body * .64), static_cast<float>(D(6)));
+        const unsigned pose = std::min(sample_.pose, 35u);
+        g.DrawImage(image_->bitmap.get(), Gdiplus::RectF(static_cast<float>(x - side / 2), static_cast<float>(top),
+            static_cast<float>(side), static_cast<float>(side * sample_.breath)),
+            static_cast<float>((pose % 8) * 256), static_cast<float>((pose / 8) * 256), 256.f, 256.f, Gdiplus::UnitPixel);
+        LOGFONTW lf{}; GetObjectW(small_, sizeof(lf), &lf);
+        Gdiplus::Font font(desktopDc_, &lf);
+        Gdiplus::SolidBrush ink(color(c.text));
+        Gdiplus::StringFormat format; format.SetAlignment(Gdiplus::StringAlignmentCenter);
+        format.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        format.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+        format.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+        if (!sample_.label.empty()) {
+            const int y = std::max(D(32), static_cast<int>(top) - D(36));
+            box({D(4), y, width - D(4), y + D(28)}, c.surface, c.border, D(10));
+            g.DrawString(sample_.label.c_str(), -1, &font,
+                Gdiplus::RectF(static_cast<float>(D(12)), static_cast<float>(y), static_cast<float>(width - D(24)),
+                               static_cast<float>(D(28))), &format, &ink);
+        }
+        menu_ = {width - D(28), D(4), width - D(4), D(28)};
+        if (hover_) {
+            box(menu_, c.raised, c.border, D(10));
+            g.DrawString(L"…", -1, &font, Gdiplus::RectF(static_cast<float>(menu_.left), static_cast<float>(menu_.top),
+                static_cast<float>(D(24)), static_cast<float>(D(24))), &format, &ink);
+        }
+    }
+    POINT destination{bounds.left, bounds.top}, source{};
+    BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+    UpdateLayeredWindow(window_, nullptr, &destination, &desktopCanvas_, desktopDc_, &source, 0, &blend, ULW_ALPHA);
 }
 void AiPetPane::Paint(HDC target) {
     RECT r{};
@@ -427,7 +568,7 @@ void AiPetPane::Changed() {
 }
 void AiPetPane::ShowMenu(POINT point) {
     Popup popup;
-    popup.owner = parent_;
+    popup.owner = desktopMode_ ? window_ : parent_;
     popup.font = font_;
     popup.dark = dark_;
     popup.dpi = dpi_;
@@ -444,6 +585,12 @@ void AiPetPane::Action(int action) {
         SettingsDialog();
         return;
     }
+    if (action == ShowMain) {
+        ShowWindowAsync(parent_, IsIconic(parent_) ? SW_RESTORE : SW_SHOW);
+        const HWND modal = GetLastActivePopup(parent_);
+        SetForegroundWindow(modal && IsWindowVisible(modal) ? modal : parent_);
+        return;
+    }
     if (action == Toggle) {
         if (!settings.enabled)
             settings.enabled = true;
@@ -451,6 +598,8 @@ void AiPetPane::Action(int action) {
             settings.follow = !settings.follow;
     } else if (action == Hide)
         settings.enabled = false;
+    else if (action == DockMode)
+        settings.desktop = !settings.desktop;
     else if (action >= Small && action <= Large)
         settings.size = action == Small ? 96 : action == Medium ? 120 : 144;
     else if (action == Stop)
@@ -462,6 +611,8 @@ void AiPetPane::Action(int action) {
     } else
         model_.Configure(settings, now);
     Changed();
+    DesktopMode();
+    if (desktopMode_) PlaceDesktop();
     Tick();
 }
 LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -476,12 +627,18 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_PAINT) {
         PAINTSTRUCT ps{};
         auto dc = BeginPaint(h, &ps);
-        self->Paint(dc);
+        if (!self->desktopMode_) self->Paint(dc);
         EndPaint(h, &ps);
+        if (self->desktopMode_) self->PaintDesktop();
         return 0;
     }
     if (m == WM_ERASEBKGND)
         return 1;
+    if (m == WM_MOUSEACTIVATE && self->desktopMode_) return MA_NOACTIVATE;
+    if ((m == WM_DISPLAYCHANGE || m == WM_SETTINGCHANGE) && self->desktopMode_) {
+        self->PlaceDesktop(); self->PaintDesktop();
+    }
+    if (m == WM_CLOSE) { self->Action(Hide); return 0; }
     if (m == WM_TIMER && w == PaintTimer) {
         self->Tick();
         return 0;
@@ -500,6 +657,18 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             InvalidateRect(h, nullptr, FALSE);
         }
         if (self->dragging_ && (w & MK_LBUTTON)) {
+            if (self->desktopMode_) {
+                POINT cursor{}; GetCursorPos(&cursor);
+                const int dx = cursor.x - self->grab_.x, dy = cursor.y - self->grab_.y;
+                if (abs(dx) > GetSystemMetrics(SM_CXDRAG) || abs(dy) > GetSystemMetrics(SM_CYDRAG)) self->moved_ = true;
+                if (self->moved_) {
+                    auto p = self->Preferences();
+                    p.desktopX = self->dragWindow_.x + dx; p.desktopY = self->dragWindow_.y + dy;
+                    self->model_.Configure(p, GetTickCount64());
+                    self->PlaceDesktop();
+                }
+                return 0;
+            }
             const int dx = GET_X_LPARAM(l) - self->grab_.x, dy = GET_Y_LPARAM(l) - self->grab_.y;
             if (abs(dx) > GetSystemMetrics(SM_CXDRAG) || abs(dy) > GetSystemMetrics(SM_CYDRAG))
                 self->moved_ = true;
@@ -530,7 +699,7 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         self->keyboardFocus_ = false;
         InvalidateRect(h, nullptr, FALSE);
-        SetFocus(h);
+        if (!self->desktopMode_) SetFocus(h);
         if (PtInRect(&self->menu_, p)) {
             ClientToScreen(h, &p);
             self->ShowMenu(p);
@@ -541,6 +710,11 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             self->moved_ = false;
             self->grab_ = p;
             self->dragStart_ = self->Preferences();
+            if (self->desktopMode_) {
+                GetCursorPos(&self->grab_);
+                RECT bounds{}; GetWindowRect(h, &bounds);
+                self->dragWindow_ = {bounds.left, bounds.top};
+            }
             SetCapture(h);
         }
         return 0;
@@ -559,6 +733,7 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_CAPTURECHANGED && self->dragging_) {
         self->dragging_ = false;
         self->model_.Configure(self->dragStart_, GetTickCount64());
+        if (self->desktopMode_) self->PlaceDesktop();
         InvalidateRect(h, nullptr, FALSE);
         return 0;
     }
@@ -585,6 +760,7 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         else if (w == VK_ESCAPE) {
             if (self->dragging_) {
                 self->model_.Configure(self->dragStart_, GetTickCount64());
+                if (self->desktopMode_) self->PlaceDesktop();
                 self->dragging_ = false;
                 if (GetCapture() == h)
                     ReleaseCapture();
@@ -623,9 +799,11 @@ void AiPetPane::SettingsDialog() {
         DLGTEMPLATE d{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME, 0, 0, 0, 0, 238, 180};
         WORD menu = 0, cls = 0, title = 0;
     } dialog;
-    if (DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &dialog.d, parent_, SettingsProc,
+    if (DialogBoxIndirectParamW(GetModuleHandleW(nullptr), &dialog.d, desktopMode_ ? window_ : parent_, SettingsProc,
                                 reinterpret_cast<LPARAM>(&data)) == IDOK) {
         model_.Configure(data.draft, GetTickCount64());
+        DesktopMode();
+        if (desktopMode_) PlaceDesktop();
         Changed();
         Tick();
     }
@@ -656,30 +834,34 @@ INT_PTR CALLBACK AiPetPane::SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         child(L"BUTTON", L"显示 AI 宠物助手", 101, BS_AUTOCHECKBOX | WS_TABSTOP, 16, 16, 328, 28);
         child(L"BUTTON", L"跟随 AI 的任务状态", 102, BS_AUTOCHECKBOX | WS_TABSTOP, 16, 52, 328, 28);
         child(L"BUTTON", L"打开 AI 后自动演示（4 秒后）", 103, BS_AUTOCHECKBOX | WS_TABSTOP, 16, 88, 328, 28);
-        for (int id : {101, 102, 103})
+        child(L"BUTTON", L"桌面悬浮，最小化后继续显示", 106, BS_AUTOCHECKBOX | WS_TABSTOP, 16, 124, 328, 28);
+        child(L"BUTTON", L"置于其他窗口之上", 107, BS_AUTOCHECKBOX | WS_TABSTOP, 16, 160, 328, 28);
+        for (int id : {101, 102, 103, 106, 107})
             SendDlgItemMessageW(h, id, BM_SETCHECK,
                                 (id == 101   ? data->draft.enabled
                                  : id == 102 ? data->draft.follow
-                                             : data->draft.opening)
+                                 : id == 103 ? data->draft.opening
+                                 : id == 106 ? data->draft.desktop : data->draft.topmost)
                                     ? BST_CHECKED
                                     : BST_UNCHECKED,
                                 0);
-        child(L"STATIC", L"宠物大小", -1, SS_LEFT, 16, 132, 328, 20);
+        EnableWindow(GetDlgItem(h, 107), data->draft.desktop);
+        child(L"STATIC", L"宠物大小", -1, SS_LEFT, 16, 204, 328, 20);
         HWND combo = child(L"COMBOBOX", L"", 104, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_TABSTOP,
-                           16, 156, 328, 180);
+                           16, 228, 328, 180);
         UiStyleField(combo, &data->style);
         for (const wchar_t *text : {L"小（96）", L"中（120）", L"大（144）"})
             SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
         SendMessageW(combo, CB_SETCURSEL, data->draft.size == 96 ? 0 : data->draft.size == 120 ? 1 : 2, 0);
-        child(L"BUTTON", L"恢复停靠位置", 105, BS_OWNERDRAW | WS_TABSTOP, 16, 196, 140, 28);
-        child(L"BUTTON", L"取消", IDCANCEL, BS_OWNERDRAW | WS_TABSTOP, 140, 248, 96, 36);
-        child(L"BUTTON", L"保存", IDOK, BS_OWNERDRAW | WS_TABSTOP, 248, 248, 96, 36);
-        RECT r{0, 0, self->D(360), self->D(300)};
+        child(L"BUTTON", L"恢复默认位置", 105, BS_OWNERDRAW | WS_TABSTOP, 16, 268, 140, 28);
+        child(L"BUTTON", L"取消", IDCANCEL, BS_OWNERDRAW | WS_TABSTOP, 140, 320, 96, 36);
+        child(L"BUTTON", L"保存", IDOK, BS_OWNERDRAW | WS_TABSTOP, 248, 320, 96, 36);
+        RECT r{0, 0, self->D(360), self->D(372)};
         AdjustWindowRectEx(&r, WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME, FALSE, 0);
         RECT owner{};
-        GetWindowRect(self->parent_, &owner);
+        GetWindowRect(GetWindow(h, GW_OWNER), &owner);
         MONITORINFO monitor{sizeof(monitor)};
-        GetMonitorInfoW(MonitorFromWindow(self->parent_, MONITOR_DEFAULTTONEAREST), &monitor);
+        GetMonitorInfoW(MonitorFromWindow(GetWindow(h, GW_OWNER), MONITOR_DEFAULTTONEAREST), &monitor);
         const int margin = self->D(12), width = r.right - r.left, height = r.bottom - r.top;
         const int x = std::clamp(static_cast<int>(owner.left + (owner.right - owner.left - width) / 2),
                                  static_cast<int>(monitor.rcWork.left) + margin,
@@ -701,6 +883,11 @@ INT_PTR CALLBACK AiPetPane::SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const int id = LOWORD(w);
         if (id == 105) {
             data->draft.x = data->draft.y = 500;
+            data->draft.desktopX = data->draft.desktopY = -2147483647;
+            return TRUE;
+        }
+        if (id == 106) {
+            EnableWindow(GetDlgItem(h, 107), IsDlgButtonChecked(h, 106) == BST_CHECKED);
             return TRUE;
         }
         if (id == IDCANCEL) {
@@ -711,6 +898,8 @@ INT_PTR CALLBACK AiPetPane::SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             data->draft.enabled = IsDlgButtonChecked(h, 101) == BST_CHECKED;
             data->draft.follow = IsDlgButtonChecked(h, 102) == BST_CHECKED;
             data->draft.opening = IsDlgButtonChecked(h, 103) == BST_CHECKED;
+            data->draft.desktop = IsDlgButtonChecked(h, 106) == BST_CHECKED;
+            data->draft.topmost = IsDlgButtonChecked(h, 107) == BST_CHECKED;
             const auto selected = SendDlgItemMessageW(h, 104, CB_GETCURSEL, 0, 0);
             data->draft.size = selected == 1 ? 120 : selected == 2 ? 144 : 96;
             data->draft.Normalize();

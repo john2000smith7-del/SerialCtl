@@ -9,7 +9,8 @@
 
 namespace serialctl::ai {
 struct ServerSettings {
-    std::wstring host, username, password, workingDirectory;
+    std::wstring host, username, password;
+    std::wstring workingDirectory = L"/home/linux/workspace";
     unsigned port = 22;
     bool rememberPassword = false;
 };

@@ -185,6 +185,10 @@ private:
     mutable std::vector<size_t> projectionStarts_;
     mutable std::vector<TerminalLine> projectedLines_;
     mutable std::vector<bool> projectionReady_;
+    mutable std::vector<size_t> projectionMaximum_;
+    std::uint64_t historyRevision_ = 0;
+    mutable std::uint64_t projectedHistoryRevision_ = ~std::uint64_t(0);
+    mutable size_t projectedHistorySize_ = 0;
     mutable std::uint64_t nextLogicalId_ = 1;
     int columns_ = 80;
     int rows_ = 24;

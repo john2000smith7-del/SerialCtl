@@ -414,6 +414,31 @@ void TestCmdEditor() {
 
 int main() {
     {
+        // Incremental projection must match a fresh, single-pass VT replay.
+        for (const size_t history : {size_t(120), size_t(20000)}) {
+            serialctl::TerminalModel incremental(40, 12, history), replay(40, 12, history);
+            incremental.SetLineWrapView(false); replay.SetLineWrapView(false);
+            std::wstring stream;
+            for (int i = 0; i < 600; ++i) stream += L"row " + std::to_wstring(i) + L" " + std::wstring(i % 90, L'x') + L"中文\r\n";
+            stream += L"\x1b[?1049h\x1b[H\x1b[2JTUI repaint\x1b[4;3Hcontent\x1b[?1049l\r\nreturned shell";
+            for (size_t offset = 0; offset < stream.size(); offset += 37) {
+                incremental.Feed(stream.substr(offset, 37), L"T");
+                incremental.MaximumDisplayColumns();
+                if (incremental.DisplayLineCount()) incremental.LineText(incremental.DisplayLineCount() - 1);
+            }
+            replay.Feed(stream, L"T");
+            Expect(incremental.PlainText(false) == replay.PlainText(false), "incremental history cache changed terminal contents");
+            Expect(incremental.DisplayLineCount() == replay.DisplayLineCount() &&
+                   incremental.MaximumDisplayColumns() == replay.MaximumDisplayColumns(),
+                   "incremental projection width/count diverged after trim or TUI exit");
+            incremental.Resize(55, 14); replay.Resize(55, 14);
+            Expect(incremental.PlainText(false) == replay.PlainText(false), "resizing reused stale terminal projection");
+            incremental.ClearScrollback(); replay.ClearScrollback();
+            incremental.Feed(L"\r\nnew", L"T"); replay.Feed(L"\r\nnew", L"T");
+            Expect(incremental.PlainText(false) == replay.PlainText(false), "clearing history reused stale projection");
+        }
+    }
+    {
         serialctl::TerminalModel view(5, 6);
         view.Feed(L"ABC中文DEF\r\nHARD", L"device source");
         const auto raw = view.PlainText(false);

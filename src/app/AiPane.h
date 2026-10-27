@@ -58,7 +58,7 @@ class AiPane {
         std::vector<TextLine> lines;
     };
     struct Message {
-        std::wstring role, text, streamedOutput;
+        std::wstring role, text, streamedOutput, technical;
         std::string item, group;
         bool process = false, hidden = false, folded = false, groupHeader = false;
         RECT bounds{};
@@ -81,6 +81,9 @@ class AiPane {
     void Paint(HDC);
     void PaintTranscript(HDC);
     void Reflow(bool appended = false);
+    void UpdateTranscriptActions();
+    void ShowTechnicalDetails(size_t);
+    void AddTool(const std::string &, const Json &, const Json &, const std::wstring &target = {});
     void CollapseCompletedProcess(const std::string &group);
     void Scroll(int pixels);
     RECT ScrollThumb() const;
@@ -102,7 +105,7 @@ class AiPane {
     void SaveWorkspaceDefault(const std::wstring &);
     void ShowDisplayLimit();
     bool displayLimitReached_ = false;
-    void Add(std::wstring role, std::wstring text, std::string item = {});
+    void Add(std::wstring role, std::wstring text, std::string item = {}, std::wstring technical = {});
     void SetStatus(const std::wstring &);
     void UpdateActions();
     void ShowHistory();
@@ -113,6 +116,8 @@ class AiPane {
     std::wstring SelectedText() const;
     void ClearTextSelection();
     bool waitingReply_ = false, needsPassword_ = false;
+    bool deferReflow_ = false, reflowPending_ = false, appendPending_ = false;
+    bool polling_ = false;
     RECT composerBounds_{}, waitingBounds_{};
     std::string displayGroup_;
     std::set<std::string> collapsedGroups_;
@@ -154,6 +159,7 @@ class AiPane {
     std::mutex eventsMutex_;
     std::deque<Json> events_;
     size_t eventBytes_ = 0;
+    bool eventOverflowed_ = false; // protected by eventsMutex_
     std::shared_ptr<HostPrompt> hostPrompt_;
     std::vector<Message> messages_;
     ai::ChatScroll scroll_;

@@ -9,6 +9,8 @@ enum class Activity { Offline, Connecting, Idle, Thinking, Working, Replying, Do
 enum class Action { None, Idle, Wave, Boxing };
 struct Settings {
     bool enabled = true, follow = true, opening = true;
+    bool desktop = true, topmost = true;
+    int desktopX = -2147483647, desktopY = -2147483647;
     int size = 96, x = 500, y = 500;
     void Normalize() {
         if (size != 96 && size != 120 && size != 144)
@@ -40,7 +42,11 @@ class Model {
         return action_;
     }
     bool Active() const {
-        return page_ && settings_.enabled;
+        return (page_ || persistent_) && settings_.enabled;
+    }
+    void Persistent(bool value, std::uint64_t now) {
+        persistent_ = value;
+        if (!persistent_ && !page_) Stop(now);
     }
     std::uint64_t OpeningDue() const {
         return due_;
@@ -57,6 +63,11 @@ class Model {
         if (page_ == active)
             return;
         page_ = active;
+        if (persistent_) {
+            if (active && Active() && settings_.opening && action_ == Action::None) due_ = now + OpeningDelay;
+            else if (!active) due_ = 0;
+            return;
+        }
         Stop(now);
         paused_ = false;
         if (Active() && settings_.opening)
@@ -229,7 +240,7 @@ class Model {
     Settings settings_;
     Activity activity_ = Activity::Offline;
     Action action_ = Action::None;
-    bool page_ = false, opening_ = false, paused_ = false;
+    bool page_ = false, persistent_ = false, opening_ = false, paused_ = false;
     std::uint64_t due_ = 0, actionAt_ = 0, activityAt_ = 0, pauseAt_ = 0;
 };
 } // namespace serialctl::pet

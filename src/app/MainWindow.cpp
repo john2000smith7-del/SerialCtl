@@ -72,6 +72,8 @@ constexpr UINT_PTR SideAnimationTimerId = 4003;
 constexpr UINT_PTR LogExportTimerId = 4004;
 constexpr UINT_PTR CommandDragTimerId = 4005;
 constexpr UINT_PTR BootPulseTimerId = 4006;
+constexpr UINT_PTR ReceivePumpTimerId = 4007;
+constexpr UINT_PTR SerialScanTimerId = 4008;
 constexpr int IdCommandDragGhost = 9020;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
 constexpr std::uint32_t MaximumCommandIntervalMs = 60000;
@@ -1633,6 +1635,7 @@ LRESULT CALLBACK MainWindow::DialogControlSubclassProc(HWND window, UINT message
 LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     auto* self = reinterpret_cast<MainWindow*>(referenceData);
+    if (message == WM_ERASEBKGND && self->draggingCommandIndex_ >= 0) return 1;
     if (message == WM_DRAWITEM && reinterpret_cast<DRAWITEMSTRUCT*>(lParam)->CtlID == IdCommandDragGhost) {
         self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam));
         return TRUE;
@@ -2322,6 +2325,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         PollLogExport();
         return 0;
     case WM_TIMER:
+        if (wParam == ReceivePumpTimerId) {
+            KillTimer(window_, ReceivePumpTimerId);
+            return HandleMessage(MessageData, 0, 0);
+        }
         if (wParam == BootPulseTimerId) {
             bool active = false;
             for (const auto &session : sessions_) {
@@ -2508,16 +2515,25 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         break;
     }
     case MessageData: {
-        std::deque<ReceivedItem> received;
         std::set<std::uint64_t> overflow;
         {
             std::lock_guard<std::mutex> lock(receivedMutex_);
-            received.swap(received_);
-            receivedBytes_.clear();
             overflow.swap(receiveOverflow_);
-            receivePosted_ = false;
         }
-        for (auto& item : received) {
+        const auto started = GetTickCount64();
+        for (unsigned count = 0; count < 32 && (count == 0 || GetTickCount64() - started < 6); ++count) {
+            ReceivedItem item;
+            {
+                std::lock_guard<std::mutex> lock(receivedMutex_);
+                if (received_.empty()) break;
+                item = std::move(received_.front());
+                received_.pop_front();
+                auto found = receivedBytes_.find(item.sessionId);
+                if (found != receivedBytes_.end()) {
+                    found->second -= std::min(found->second, item.data.size());
+                    if (!found->second) receivedBytes_.erase(found);
+                }
+            }
             if (pendingSession_ && item.sessionId == pendingSession_->id) {
                 if (pendingConnectionBytes_ + item.data.size() <= 4 * 1024 * 1024) {
                     pendingConnectionBytes_ += item.data.size();
@@ -2530,6 +2546,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 AppendData(item.sessionId, item.data, item.codePage, item.arrival);
             else
                 AppendInput(item);
+        }
+        {
+            std::lock_guard<std::mutex> lock(receivedMutex_);
+            receivePosted_ = false;
+            if (!received_.empty() || !receiveOverflow_.empty())
+                receivePosted_ = SetTimer(window_, ReceivePumpTimerId, 10, nullptr) != 0;
         }
         for (auto id : overflow) {
             SessionState* session = FindSession(id);
@@ -2888,11 +2910,11 @@ void MainWindow::LayoutControls(int width, int height) {
     const int connectionHeight = std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding -
         Ui::CompactHeight - Ui::Space - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space : 0));
     const int desiredPetHeight = aiPet_.DesiredHeight();
-    const int petHeight = aiVisible_ && desiredPetHeight &&
+    const int petHeight = !aiPet_.Desktop() && aiVisible_ && desiredPetHeight &&
         connectionHeight >= Ui::Scale(120) + desiredPetHeight + Ui::Space ? desiredPetHeight : 0;
     batch.Move(connectionList_, leftInnerLeft, leftListTop, leftInnerRight - leftInnerLeft,
                connectionHeight - (petHeight ? petHeight + Ui::Space : 0), TRUE);
-    if (aiPet_.Handle()) {
+    if (aiPet_.Handle() && !aiPet_.Desktop()) {
         batch.Move(aiPet_.Handle(), leftInnerLeft, leftListTop + connectionHeight - petHeight,
                    leftInnerRight - leftInnerLeft, std::max(1, petHeight), TRUE);
         batch.Show(aiPet_.Handle(), petHeight ? SW_SHOW : SW_HIDE);
@@ -3471,20 +3493,23 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
         RECT card{rect.left, rect.top + Ui::Gap / 2, rect.right - rightInset, rect.bottom - (Ui::Gap - Ui::Gap / 2)};
-        DrawRoundedBox(dc, card, Ui::CardRadius, colors.panelAlt, selected ? colors.muted : colors.border);
+        const COLORREF cardFill = ghost ? colors.accent : colors.panelAlt;
+        const COLORREF mainInk = ghost ? RGB(255, 255, 255) : colors.text;
+        const COLORREF secondaryInk = ghost ? RGB(255, 255, 255) : colors.muted;
+        DrawRoundedBox(dc, card, Ui::CardRadius, cardFill, ghost ? colors.accent : selected ? colors.muted : colors.border);
         const int cy = (card.top + card.bottom) / 2;
         RECT marker{card.left + Ui::Scale(8), cy - Ui::Scale(8), card.left + Ui::Scale(24), cy + Ui::Scale(8)};
-        UiDrawGlyph(dc, marker, colors.muted, UiGlyph::Command);
+        UiDrawGlyph(dc, marker, secondaryInk, UiGlyph::Command);
         const CommandActionRects actions = GetCommandActionRects(card);
         RECT title{card.left + Ui::Scale(32), card.top + Ui::Scale(9), actions.run.left - Ui::Space, card.top + Ui::Scale(30)};
         RECT value{card.left + Ui::Scale(32), card.top + Ui::Scale(31), actions.run.left - Ui::Space, card.bottom - Ui::Scale(6)};
-        DrawTextSimple(dc, command.name, title, colors.text, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, command.name, title, mainInk, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         const bool macro = command.commands.size() > 1;
         const std::wstring summary = macro ?
             L"宏 · " + std::to_wstring(command.commands.size()) + L" 条指令 · " +
                 std::to_wstring(command.intervalMs) + L" ms" :
             (command.commands.empty() ? std::wstring() : command.commands.front());
-        DrawTextSimple(dc, summary, value, colors.muted, smallFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextSimple(dc, summary, value, secondaryInk, smallFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         const bool connected = connection_ && connection_->IsConnected();
         const bool sequenceRunning = runningCommandIndex_ >= 0;
@@ -3498,27 +3523,27 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool editDown =
             editable && pressedCommandIndex_ == static_cast<int>(item.itemID) && pressedCommandAction_ == 2;
         DrawRoundedBox(dc, actions.run, Ui::Radius,
-                       runDown                ? colors.accent
+                       ghost || runDown       ? colors.accent
                        : hoverRun && runnable ? colors.panel
                                               : colors.panelAlt,
-                       runDown ? colors.accent : colors.panelAlt);
+                       ghost || runDown ? colors.accent : colors.panelAlt);
         DrawRoundedBox(dc, actions.edit, Ui::Radius,
-                       editDown                ? colors.accent
+                       ghost || editDown       ? colors.accent
                        : hoverEdit && editable ? colors.panel
                                                : colors.panelAlt,
-                       editDown ? colors.accent : colors.panelAlt);
+                       ghost || editDown ? colors.accent : colors.panelAlt);
 
         RECT runIcon = actions.run;
         InflateRect(&runIcon, -Ui::Scale(6), -Ui::Scale(6));
         UiDrawGlyph(dc, runIcon,
-                    runDown    ? RGB(255, 255, 255)
+                    ghost || runDown ? RGB(255, 255, 255)
                     : runnable ? colors.text
                                : colors.muted,
                     isRunning ? UiGlyph::Stop : UiGlyph::Run);
         if (isRunning)
             DrawCommandProgress(dc, actions.run, submittedCommandSteps_, command.commands.size(),
                 colors.border, colors.accent);
-        DrawEditIcon(dc, actions.edit, editDown ? RGB(255, 255, 255) : editable ? colors.muted : colors.border);
+        DrawEditIcon(dc, actions.edit, ghost || editDown ? RGB(255, 255, 255) : editable ? colors.muted : colors.border);
     } else if (item.CtlID == IdSftpList && item.itemID < sftpEntries_.size()) {
         const SftpEntry& entry = sftpEntries_[item.itemID];
         OverlayScrollMetrics scrollMetrics;
@@ -3745,6 +3770,9 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
     if (message == WM_TIMER && wParam == DiscoveryTimerId) {
         KillTimer(dialog, DiscoveryTimerId); self->DiscoverSharedSerialPorts(dialog); return TRUE;
     }
+    if (message == WM_TIMER && wParam == SerialScanTimerId) {
+        self->CompleteSerialPortScan(dialog); return TRUE;
+    }
     if (message == WM_CLOSE) {
         UiEndOwnedDialog(dialog, IDCANCEL);
         return TRUE;
@@ -3922,9 +3950,30 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
 }
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {
+    if (!serialPortScan_ || serialPortScan_->done) {
+        serialPortScan_ = std::make_shared<SerialPortScan>();
+        // The job owns no HWND or MainWindow reference. Closing a dialog cannot
+        // block on a slow SetupAPI driver or deliver to a recycled dialog handle.
+        std::thread([job = serialPortScan_] {
+            try { job->ports = EnumerateSerialPorts(); }
+            catch (...) { job->error = L"串口枚举失败，请检查设备后刷新。"; }
+            job->done = true;
+        }).detach();
+    }
     HWND ports = GetDlgItem(dialog, IDC_SERIAL);
     SendMessageW(ports, CB_RESETCONTENT, 0, 0);
-    serialPorts_ = EnumerateSerialPorts();
+    SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"正在查找串口…"));
+    SendMessageW(ports, CB_SETCURSEL, 0, 0);
+    EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
+    EnableWindow(GetDlgItem(dialog, IDC_SERIAL_REFRESH), FALSE);
+    SetTimer(dialog, SerialScanTimerId, 40, nullptr);
+}
+void MainWindow::CompleteSerialPortScan(HWND dialog) {
+    if (!serialPortScan_ || !serialPortScan_->done) return;
+    KillTimer(dialog, SerialScanTimerId);
+    HWND ports = GetDlgItem(dialog, IDC_SERIAL);
+    SendMessageW(ports, CB_RESETCONTENT, 0, 0);
+    serialPorts_ = serialPortScan_->ports;
     int count = 0;
     for (const auto &port : serialPorts_) {
         auto label = port.friendlyName;
@@ -3936,9 +3985,10 @@ void MainWindow::RefreshSerialPorts(HWND dialog) {
     if (count == 0) {
         SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未检测到串口"));
     }
-    SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"");
+    SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, serialPortScan_->error.c_str());
     SendMessageW(ports, CB_SETCURSEL, 0, 0);
     EnableWindow(GetDlgItem(dialog, IDOK), !((pendingMode_ == 1 || pendingMode_ == 3) && count == 0));
+    EnableWindow(GetDlgItem(dialog, IDC_SERIAL_REFRESH), TRUE);
     InvalidateRect(ports, nullptr, TRUE);
     InvalidateRect(GetDlgItem(dialog, IDC_DIALOG_ERROR), nullptr, TRUE);
 }
@@ -4890,6 +4940,14 @@ void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data) {
 void MainWindow::QueueReceived(ReceivedItem item) {
     if (closing_)
         return;
+    if (item.source.empty() && item.data.size() > 16384) {
+        for (size_t offset = 0; offset < item.data.size(); offset += 16384) {
+            const auto end = std::min(offset + 16384, item.data.size());
+            QueueReceived({item.sessionId, Bytes(item.data.begin() + offset, item.data.begin() + end),
+                           item.codePage, {}, item.arrival});
+        }
+        return;
+    }
     const auto id = item.sessionId;
     std::lock_guard<std::mutex> lock(receivedMutex_);
     auto &bytes = receivedBytes_[id];
@@ -4898,7 +4956,8 @@ void MainWindow::QueueReceived(ReceivedItem item) {
     else {
         bytes += item.data.size();
         if (!received_.empty() && item.source.empty() && received_.back().source.empty() &&
-            received_.back().sessionId == id && received_.back().codePage == item.codePage)
+            received_.back().sessionId == id && received_.back().codePage == item.codePage &&
+            received_.back().data.size() + item.data.size() <= 16384)
             received_.back().data.insert(received_.back().data.end(), item.data.begin(), item.data.end());
         else
             received_.push_back(std::move(item));
@@ -6284,6 +6343,10 @@ void MainWindow::LoadUiState() {
     petSettings_.enabled = GetPrivateProfileIntW(L"Pet", L"Enabled", 1, path.c_str()) != 0;
     petSettings_.follow = GetPrivateProfileIntW(L"Pet", L"Follow", 1, path.c_str()) != 0;
     petSettings_.opening = GetPrivateProfileIntW(L"Pet", L"Opening", 1, path.c_str()) != 0;
+    petSettings_.desktop = GetPrivateProfileIntW(L"Pet", L"Desktop", 1, path.c_str()) != 0;
+    petSettings_.topmost = GetPrivateProfileIntW(L"Pet", L"Topmost", 1, path.c_str()) != 0;
+    petSettings_.desktopX = static_cast<int>(GetPrivateProfileIntW(L"Pet", L"DesktopX", -2147483647, path.c_str()));
+    petSettings_.desktopY = static_cast<int>(GetPrivateProfileIntW(L"Pet", L"DesktopY", -2147483647, path.c_str()));
     petSettings_.size = static_cast<int>(GetPrivateProfileIntW(L"Pet", L"Size", 96, path.c_str()));
     petSettings_.x = static_cast<int>(GetPrivateProfileIntW(L"Pet", L"X", 500, path.c_str()));
     petSettings_.y = static_cast<int>(GetPrivateProfileIntW(L"Pet", L"Y", 500, path.c_str()));
@@ -6326,6 +6389,8 @@ void MainWindow::SaveUiState() const {
     };
     petValue(L"Enabled", petSettings_.enabled); petValue(L"Follow", petSettings_.follow);
     petValue(L"Opening", petSettings_.opening); petValue(L"Size", petSettings_.size);
+    petValue(L"Desktop", petSettings_.desktop); petValue(L"Topmost", petSettings_.topmost);
+    petValue(L"DesktopX", petSettings_.desktopX); petValue(L"DesktopY", petSettings_.desktopY);
     petValue(L"X", petSettings_.x); petValue(L"Y", petSettings_.y);
     auto logicalWidth = [&](const wchar_t *key, int pixels) {
         WritePrivateProfileStringW(L"Layout", key, std::to_wstring(MulDiv(pixels, 96, Ui::Dpi)).c_str(), path.c_str());
@@ -7757,14 +7822,35 @@ void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
             point.y > client.bottom - Ui::Scale(28) ? std::min(static_cast<int>(commands_.size()) - 1, top + 1) : top;
         if (next != top) SendMessageW(commandList_, LB_SETTOPINDEX, next, 0);
     }
+    const int previousDrop = commandDropIndex_;
     const DWORD hit = static_cast<DWORD>(SendMessageW(commandList_, LB_ITEMFROMPOINT, 0,
         MAKELPARAM(std::clamp<int>(point.x, 0, std::max(0L, client.right - 1)),
                    std::clamp<int>(point.y, 0, std::max(0L, client.bottom - 1)))));
     if (LOWORD(hit) < commands_.size()) commandDropIndex_ = LOWORD(hit);
     const int height = static_cast<int>(SendMessageW(commandList_, LB_GETITEMHEIGHT, 0, 0));
-    SetWindowPos(commandDragGhost_, HWND_TOP, 0, point.y - commandDragGrab_.y, client.right,
-        height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    RedrawWindow(commandList_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    RECT old{}; GetWindowRect(commandDragGhost_, &old);
+    MapWindowPoints(nullptr, commandList_, reinterpret_cast<POINT*>(&old), 2);
+    const int y = point.y - commandDragGrab_.y;
+    if (IsWindowVisible(commandDragGhost_) && old.top == y && old.right == client.right && old.bottom - old.top == height && previousDrop == commandDropIndex_)
+        return;
+    if (old.right != client.right || !IsWindowVisible(commandDragGhost_)) {
+        OverlayScrollMetrics metrics;
+        const int inset = GetOverlayScrollMetrics(commandList_, metrics) ? Ui::OverlayScrollLaneWidth : 0;
+        // Restrict the preview to the card silhouette, excluding row background.
+        SetWindowRgn(commandDragGhost_, CreateRoundRectRgn(0, Ui::Gap / 2, client.right - inset,
+            height - Ui::Gap / 2, Ui::CardRadius * 2, Ui::CardRadius * 2), FALSE);
+    }
+    SetWindowPos(commandDragGhost_, HWND_TOP, 0, y, client.right, height,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOCOPYBITS | SWP_NOREDRAW);
+    RECT dirty{0, std::min(old.top, static_cast<LONG>(y)), client.right,
+        std::max(old.bottom, static_cast<LONG>(y + height))};
+    if (previousDrop != commandDropIndex_ || edgeScroll) {
+        RECT first{}, last{};
+        SendMessageW(commandList_, LB_GETITEMRECT, std::min(previousDrop, commandDropIndex_), reinterpret_cast<LPARAM>(&first));
+        SendMessageW(commandList_, LB_GETITEMRECT, std::max(previousDrop, commandDropIndex_), reinterpret_cast<LPARAM>(&last));
+        dirty.top = std::min(dirty.top, first.top); dirty.bottom = std::max(dirty.bottom, last.bottom);
+    }
+    RedrawWindow(commandList_, &dirty, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
 void MainWindow::EndCommandDrag(bool commit) {

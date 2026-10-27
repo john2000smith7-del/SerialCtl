@@ -333,12 +333,14 @@ void TerminalModel::ScrollUp(int count, TerminalFeedResult* result) {
 }
 
 void TerminalModel::ClearHistory() {
+    ++historyRevision_;
     history_.clear();
     historyCells_ = 0;
     historyLogicalLines_ = 0;
 }
 
 void TerminalModel::RecountHistory() {
+    ++historyRevision_;
     historyCells_ = 0;
     historyLogicalLines_ = 0;
     std::uint64_t previous = 0;
@@ -356,6 +358,7 @@ void TerminalModel::TrimHistory() {
         historyCells_ -= std::max<size_t>(1, history_.front().used);
         const auto id = history_.front().logicalId;
         history_.pop_front();
+        ++historyRevision_;
         if (history_.empty() || history_.front().logicalId != id)
             --historyLogicalLines_;
     }
@@ -1115,19 +1118,42 @@ const TerminalLine &TerminalModel::RawDisplayLine(size_t index) const {
 void TerminalModel::EnsureProjection() const {
     if (!projectionDirty_)
         return;
-    projectionStarts_.clear();
-    projectedLines_.clear();
-    projectionReady_.clear();
+    // Completed history rows are immutable until trimming, clearing or resize.
+    // Preserve their projections and revisit only the last historical logical
+    // line plus the changed screen. A TUI repaint must not rebuild 20k rows.
+    size_t keep = 0, start = 0;
+    if (!alternateScreen_ && projectedHistoryRevision_ == historyRevision_ &&
+        projectedHistorySize_ && projectedHistorySize_ <= HistorySize() && !projectionStarts_.empty()) {
+        auto boundary = std::upper_bound(projectionStarts_.begin(), projectionStarts_.end(), projectedHistorySize_ - 1);
+        if (boundary != projectionStarts_.begin()) {
+            --boundary;
+            keep = static_cast<size_t>(boundary - projectionStarts_.begin());
+            start = *boundary;
+        }
+    }
+    projectionStarts_.resize(keep);
+    projectedLines_.resize(keep);
+    projectionReady_.resize(keep);
+    projectionMaximum_.resize(keep);
     const size_t count = HistorySize() + ActiveScreen().lines.size();
-    for (size_t i = 0; i < count; ++i) {
+    for (size_t i = start; i < count; ++i) {
         const auto &line = RawDisplayLine(i);
-        if (!i || !RawDisplayLine(i - 1).wrapped || !line.logicalId ||
+        if (i == start || !RawDisplayLine(i - 1).wrapped || !line.logicalId ||
             line.logicalId != RawDisplayLine(i - 1).logicalId ||
             line.logicalOffset <= RawDisplayLine(i - 1).logicalOffset)
             projectionStarts_.push_back(i);
     }
     projectedLines_.resize(projectionStarts_.size());
     projectionReady_.resize(projectionStarts_.size(), false);
+    for (size_t i = keep; i < projectionStarts_.size(); ++i) {
+        const size_t end = i + 1 < projectionStarts_.size() ? projectionStarts_[i + 1] : count;
+        const auto &first = RawDisplayLine(projectionStarts_[i]);
+        const auto &last = RawDisplayLine(end - 1);
+        const size_t width = last.logicalOffset - first.logicalOffset + last.used;
+        projectionMaximum_.push_back(std::max(i ? projectionMaximum_.back() : size_t(0), width));
+    }
+    projectedHistoryRevision_ = historyRevision_;
+    projectedHistorySize_ = HistorySize();
     projectionDirty_ = false;
 }
 size_t TerminalModel::DisplayLineCount() const {
@@ -1140,13 +1166,7 @@ size_t TerminalModel::MaximumDisplayColumns() const {
     size_t maximum = static_cast<size_t>(columns_);
     if (!lineWrapView_ && !alternateScreen_) {
         EnsureProjection();
-        const size_t count = HistorySize() + ActiveScreen().lines.size();
-        for (size_t i = 0; i < projectionStarts_.size(); ++i) {
-            const size_t end = i + 1 < projectionStarts_.size() ? projectionStarts_[i + 1] : count;
-            const auto &first = RawDisplayLine(projectionStarts_[i]);
-            const auto &last = RawDisplayLine(end - 1);
-            maximum = std::max(maximum, last.logicalOffset - first.logicalOffset + last.used);
-        }
+        if (!projectionMaximum_.empty()) maximum = std::max(maximum, projectionMaximum_.back());
     } else {
         for (size_t i = 0; i < DisplayLineCount(); ++i)
             maximum = std::max(maximum, DisplayLine(i).cells.size());

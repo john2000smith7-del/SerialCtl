@@ -40,6 +40,12 @@ double Parse(const std::wstring &text) {
         throw std::runtime_error("请输入有效数值");
     return n;
 }
+struct ResourceScan {
+    std::atomic<bool> done{false};
+    int kind = 0;
+    Json usb = Json::array();
+    std::vector<std::wstring> ports;
+};
 struct ConnectionDialog {
     PowerPane *pane;
     HFONT font;
@@ -47,6 +53,7 @@ struct ConnectionDialog {
     PowerService *service;
     HWND kind, resource, port, baud, bits, parity, stop, error, driver;
     Json usb;
+    std::shared_ptr<ResourceScan> scan;
 };
 } // namespace
 PowerPane::~PowerPane() {
@@ -1413,6 +1420,29 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (!data)
         return FALSE;
+    if (m == WM_TIMER && w == 209) {
+        if (!data->scan || !data->scan->done) return TRUE;
+        KillTimer(h, 209);
+        const int kind = static_cast<int>(SendMessageW(data->kind, CB_GETCURSEL, 0, 0));
+        if (kind != data->scan->kind) return TRUE;
+        HWND combo = kind == 0 ? data->resource : data->port;
+        SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+        if (kind == 0) {
+            data->usb = data->scan->usb;
+            for (const auto &s : data->usb) {
+                const auto text = Wide(s);
+                SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+            }
+        } else for (const auto &text : data->scan->ports)
+            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+        const bool any = SendMessageW(combo, CB_GETCOUNT, 0, 0) > 0;
+        SendMessageW(combo, CB_SETCURSEL, 0, 0);
+        EnableWindow(GetDlgItem(h, IDOK), any);
+        EnableWindow(GetDlgItem(h, 103), TRUE);
+        SetWindowTextW(data->error, any ? L"" : kind == 0 && !PowerService::VisaAvailable()
+            ? L"未安装 VISA，请安装发布包中的 USB 驱动。" : L"未发现设备，请检查连接后刷新。");
+        return TRUE;
+    }
     if (m == WM_DRAWITEM || m == WM_MEASUREITEM)
         return Proc(data->pane->window_, m, w, l);
     if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORLISTBOX ||
@@ -1454,37 +1484,26 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ShowWindow(data->port, kind == 1 ? SW_SHOW : SW_HIDE);
             ShowWindow(GetDlgItem(h, 103), SW_SHOW);
             ShowWindow(data->driver, driverNeeded ? SW_SHOW : SW_HIDE);
-            if (kind == 0) {
-                SendMessageW(data->resource, CB_RESETCONTENT, 0, 0);
-                data->usb = PowerService::UsbResources();
-                for (const auto &s : data->usb) {
-                    auto text = Wide(s);
-                    SendMessageW(data->resource, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
-                }
-                SendMessageW(data->resource, CB_SETCURSEL, 0, 0);
-                SetWindowTextW(data->error, !PowerService::VisaAvailable() ? L"未安装 VISA，请安装发布包中的 USB 驱动。"
-                                            : data->usb.empty()            ? L"未发现 USB 电源，请检查连接后刷新。"
-                                                                           : L"");
-            } else {
-                if (kind == 1) {
-                    auto previous = data->pane->Text(data->port);
-                    SendMessageW(data->port, CB_RESETCONTENT, 0, 0);
-                    wchar_t target[1024]{};
-                    for (int index = 1; index <= 256; ++index) {
-                        std::wstring name = L"COM" + std::to_wstring(index);
-                        if (QueryDosDeviceW(name.c_str(), target, 1024))
-                            SendMessageW(data->port, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
+            HWND combo = kind == 0 ? data->resource : data->port;
+            SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"正在查找设备…"));
+            SendMessageW(combo, CB_SETCURSEL, 0, 0);
+            EnableWindow(GetDlgItem(h, IDOK), FALSE);
+            EnableWindow(GetDlgItem(h, 103), FALSE);
+            auto job = data->scan = std::make_shared<ResourceScan>();
+            job->kind = kind;
+            std::thread([job] {
+                try {
+                    if (job->kind == 0) job->usb = PowerService::UsbResources();
+                    else for (int index = 1; index <= 256; ++index) {
+                        const auto name = L"COM" + std::to_wstring(index);
+                        wchar_t target[1024]{};
+                        if (QueryDosDeviceW(name.c_str(), target, 1024)) job->ports.push_back(name);
                     }
-                    if (previous.empty())
-                        SendMessageW(data->port, CB_SETCURSEL, 0, 0);
-                    else {
-                        auto index = SendMessageW(data->port, CB_FINDSTRINGEXACT, -1,
-                                                  reinterpret_cast<LPARAM>(previous.c_str()));
-                        SendMessageW(data->port, CB_SETCURSEL, index == CB_ERR ? 0 : index, 0);
-                    }
-                }
-                SetWindowTextW(data->error, L"");
-            }
+                } catch (...) { }
+                job->done = true;
+            }).detach();
+            SetTimer(h, 209, 40, nullptr);
             return TRUE;
         }
         if (id == 109) {

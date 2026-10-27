@@ -91,6 +91,62 @@ void CheckHostKeyDialogs(HWND parent, HFONT font) {
 
 namespace serialctl {
 struct AiPaneTestAccess {
+    static void CALLBACK TechnicalTick(HWND parent, UINT, UINT_PTR timer, DWORD) {
+        struct Find {
+            static BOOL CALLBACK Each(HWND h, LPARAM) {
+                wchar_t title[128]{}; GetWindowTextW(h, title, 128);
+                if (std::wstring(title) != L"工具技术详情") return TRUE;
+                ui_test::SaveUiEvidence(h, L"v209-tool-technical-details.png");
+                PostMessageW(h, WM_COMMAND, IDCANCEL, 0);
+                return FALSE;
+            }
+        };
+        EnumThreadWindows(GetCurrentThreadId(), Find::Each, 0);
+        KillTimer(parent, timer);
+    }
+    static void CheckV209(AiPane &pane) {
+        auto check = [](bool value, const char *why) { if (!value) throw std::runtime_error(why); };
+        pane.busy_ = false; pane.NewConversation();
+        pane.busy_ = true; pane.waitingReply_ = true; pane.displayGroup_ = "v209-tools";
+        const ai::Json result{{"sessionId", "session-1"}, {"text", u8"当前屏幕第一行\n当前屏幕第二行"},
+            {"cursor", 8490}, {"alternateScreen", true}, {"truncated", false}};
+        pane.AddTool("serialctl_screen", {{"sessionId", "session-1"}}, result, L"SSH");
+        check(pane.messages_.front().folded && IsRectEmpty(&pane.waitingBounds_),
+              "Tool process or waiting placeholder escaped its group");
+        check(pane.messages_.front().text.find(L"sessionId") == std::wstring::npos &&
+              pane.messages_.front().text.find(L"第一行\n当前屏幕第二行") != std::wstring::npos &&
+              pane.messages_.front().technical.find(L"sessionId") != std::wstring::npos,
+              "Readable tool text and optional technical envelope were not separated");
+        for (bool dark : {false, true}) {
+            pane.Theme(dark);
+            pane.collapsedGroups_.erase("v209-tools"); pane.Reflow();
+            ui_test::SaveUiEvidence(pane.transcript_, dark ? L"v209-readable-tools-dark.png" : L"v209-readable-tools-light.png",
+                [&](HDC dc) { pane.PaintTranscript(dc); });
+            const auto parent = GetAncestor(pane.window_, GA_ROOT);
+            SetTimer(parent, 9209, 40, TechnicalTick);
+            pane.ShowTechnicalDetails(0);
+            KillTimer(parent, 9209);
+        }
+        pane.busy_ = false;
+        pane.scroll_.unread = true; pane.Layout();
+        RECT latest{}, observe{}, overlap{};
+        GetWindowRect(pane.Control(20), &latest); GetWindowRect(pane.Control(16), &observe);
+        check(IsWindowVisible(pane.Control(16)) && !IntersectRect(&overlap, &latest, &observe),
+              "Jump-to-latest still replaces/overlaps Observe");
+        pane.NewConversation(); pane.busy_ = true; pane.displayGroup_ = "v209-burst";
+        pane.Add(L"AI", L"", "burst");
+        for (int i = 0; i < 800; ++i)
+            pane.events_.push_back({{"event", "textDelta"}, {"messageId", "burst"}, {"text", "0123456789"}});
+        const auto started = GetTickCount64();
+        pane.Poll();
+        check(!pane.events_.empty(), "A single UI poll drained the whole output burst");
+        while (!pane.events_.empty()) pane.Poll();
+        check(pane.messages_.front().text.size() == 8000, "Sliced UI delivery lost or duplicated deltas");
+        pane.collapsedGroups_.erase("v209-burst"); pane.Reflow();
+        std::cout << "[TIMING] v209 800 streamed events and long-line expand " << GetTickCount64() - started << "ms\n";
+        check(GetTickCount64() - started < 5000, "Bounded long-line rendering remained unresponsive");
+        pane.busy_ = false; pane.NewConversation();
+    }
     struct WorkspaceProbe { AiPane *pane; bool dark; int dpi; std::string error; };
     static void CALLBACK WorkspaceTick(HWND parent,UINT,UINT_PTR timer,DWORD) {
         auto p=reinterpret_cast<WorkspaceProbe*>(GetPropW(parent,L"SerialCtl.TestWorkspace"));
@@ -147,6 +203,7 @@ struct AiPaneTestAccess {
         pane.dpi_=dpi;pane.style_.dpi=dpi;pane.Theme(dark);
     }
     static void Run(AiPane &pane) {
+        CheckV209(pane);
         auto require = [](bool value, const char *error) {
             if (!value)
                 throw std::runtime_error(error);
