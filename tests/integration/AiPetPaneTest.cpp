@@ -230,6 +230,12 @@ struct AiPetPaneTestAccess {
               (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE), "Desktop presentation lost transparency/no-activation styles");
         Check(pane.desktopPixels_ && static_cast<unsigned char *>(pane.desktopPixels_)[3] == 0,
               "Transparent desktop corner has an opaque rectangular background");
+        {
+            const auto pixels = static_cast<unsigned char *>(pane.desktopPixels_);
+            bool visible = false;
+            for (LONG i = 0; i < pane.desktopCanvas_.cx * pane.desktopCanvas_.cy; ++i) if (pixels[i * 4 + 3]) { visible = true; break; }
+            Check(visible, "Layered pet rendered a completely transparent frame");
+        }
         const auto foreground = GetForegroundWindow();
         ShowWindow(parent, SW_MINIMIZE); pane.Tick();
         Check(IsWindowVisible(pane.Handle()), "Main-window minimization hid the unowned desktop pet");
@@ -251,7 +257,13 @@ struct AiPetPaneTestAccess {
         SetCursorPos(oldCursor.x, oldCursor.y);
         for (bool dark : {false, true}) {
             pane.Theme(dark); pane.Tick();
-            ui_test::SaveUiEvidence(pane.Handle(), dark ? L"v209-desktop-pet-dark.png" : L"v209-desktop-pet-light.png");
+            ui_test::SaveUiEvidence(pane.Handle(), dark ? L"v209-desktop-pet-dark.png" : L"v209-desktop-pet-light.png", [&](HDC dc) {
+                RECT area{}; GetClientRect(pane.Handle(), &area);
+                auto brush = CreateSolidBrush(UiTheme(dark).window); FillRect(dc, &area, brush); DeleteObject(brush);
+                BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+                AlphaBlend(dc, 0, 0, pane.desktopCanvas_.cx, pane.desktopCanvas_.cy, pane.desktopDc_,
+                    0, 0, pane.desktopCanvas_.cx, pane.desktopCanvas_.cy, blend);
+            });
         }
         desktop.desktopX = -100000; desktop.desktopY = 100000;
         pane.model_.Configure(desktop, GetTickCount64()); pane.PlaceDesktop();

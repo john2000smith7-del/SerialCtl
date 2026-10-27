@@ -89,6 +89,7 @@ class AiPane {
     RECT ScrollThumb() const;
     void Action(int);
     void Poll();
+    void QueueEvent(Json);
     void Event(const Json &);
     void ServerRequest(const Json &);
     bool Request(ai::Operation, Json, const std::string &purpose);

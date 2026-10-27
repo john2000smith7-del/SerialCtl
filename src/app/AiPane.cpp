@@ -1652,6 +1652,41 @@ void AiPane::Shutdown() {
     if (devices_)
         devices_("release", {{"sessionId", turnTarget_}});
 }
+void AiPane::QueueEvent(Json event) {
+    std::lock_guard<std::mutex> lock(eventsMutex_);
+    if (eventOverflowed_) return;
+    const auto size = event.dump().size();
+    if (eventBytes_ + size > 8 * 1024 * 1024 || events_.size() > 2048) {
+        // Do not lose the terminal lifecycle notification behind
+        // a full queue and leave the GUI "busy but offline".
+        // Cancel the transport before discarding queued requests;
+        // none of those requests may later execute device writes.
+        eventOverflowed_ = true;
+        client_.Disconnect();
+        events_.clear();
+        events_.push_back({{"event", "error"}, {"message",
+            u8"AI 输出超过界面缓冲上限，已中断连接。部分过程未显示；可重连恢复历史，设备指令不会自动重发。"}});
+        events_.push_back({{"event", "disconnected"}});
+        eventBytes_ = events_[0].dump().size() + events_[1].dump().size();
+        return;
+    }
+    const auto kind = event.value("event", std::string());
+    if (!events_.empty() && (kind == "textDelta" || kind == "serverToolDelta")) {
+        auto &last = events_.back();
+        if (last.value("event", std::string()) == kind &&
+            last.value("messageId", std::string()) == event.value("messageId", std::string()) &&
+            last.value("conversationId", std::string()) == event.value("conversationId", std::string()) &&
+            last.value("taskId", std::string()) == event.value("taskId", std::string()) &&
+            last.value("text", std::string()).size() + event.value("text", std::string()).size() <= 16384) {
+            const auto previous = last.dump().size();
+            last["text"] = last.value("text", std::string()) + event.value("text", std::string());
+            eventBytes_ = eventBytes_ - previous + last.dump().size();
+            return;
+        }
+    }
+    eventBytes_ += size;
+    events_.push_back(std::move(event));
+}
 void AiPane::Poll() {
     if (polling_) return;
     polling_ = true;
@@ -2677,41 +2712,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
             self->client_.Connect(
                 std::move(s),
-                [self](Json event) {
-                    std::lock_guard<std::mutex> lock(self->eventsMutex_);
-                    if (self->eventOverflowed_) return;
-                    const auto size = event.dump().size();
-                    if (self->eventBytes_ + size > 8 * 1024 * 1024 || self->events_.size() > 2048) {
-                        // Do not lose the terminal lifecycle notification behind
-                        // a full queue and leave the GUI "busy but offline".
-                        // Cancel the transport before discarding queued requests;
-                        // none of those requests may later execute device writes.
-                        self->eventOverflowed_ = true;
-                        self->client_.Disconnect();
-                        self->events_.clear();
-                        self->events_.push_back({{"event", "error"}, {"message",
-                            u8"AI 输出超过界面缓冲上限，已中断连接。部分过程未显示；可重连恢复历史，设备指令不会自动重发。"}});
-                        self->events_.push_back({{"event", "disconnected"}});
-                        self->eventBytes_ = self->events_[0].dump().size() + self->events_[1].dump().size();
-                        return;
-                    }
-                    const auto kind = event.value("event", std::string());
-                    if (!self->events_.empty() && (kind == "textDelta" || kind == "serverToolDelta")) {
-                        auto &last = self->events_.back();
-                        if (last.value("event", std::string()) == kind &&
-                            last.value("messageId", std::string()) == event.value("messageId", std::string()) &&
-                            last.value("conversationId", std::string()) == event.value("conversationId", std::string()) &&
-                            last.value("taskId", std::string()) == event.value("taskId", std::string()) &&
-                            last.value("text", std::string()).size() + event.value("text", std::string()).size() <= 16384) {
-                            const auto previous = last.dump().size();
-                            last["text"] = last.value("text", std::string()) + event.value("text", std::string());
-                            self->eventBytes_ = self->eventBytes_ - previous + last.dump().size();
-                            return;
-                        }
-                    }
-                    self->eventBytes_ += size;
-                    self->events_.push_back(std::move(event));
-                },
+                [self](Json event) { self->QueueEvent(std::move(event)); },
                 [self](const HostKeyChallenge& challenge) {
                     auto prompt = std::make_shared<HostPrompt>();
                     prompt->challenge = challenge;

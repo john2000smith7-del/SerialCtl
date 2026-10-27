@@ -146,6 +146,14 @@ struct AiPaneTestAccess {
         std::cout << "[TIMING] v209 800 streamed events and long-line expand " << GetTickCount64() - started << "ms\n";
         check(GetTickCount64() - started < 5000, "Bounded long-line rendering remained unresponsive");
         pane.busy_ = false; pane.NewConversation();
+        pane.busy_ = pane.taskAuthorized_ = true; pane.displayGroup_ = "overload-turn";
+        for (int i = 0; i < 2052; ++i) pane.QueueEvent({{"event", "taskActivity"}});
+        check(pane.eventOverflowed_ && pane.events_.size() == 2, "Queue overload lost its diagnostic/disconnect pair");
+        pane.Poll();
+        check(!pane.busy_ && !pane.taskAuthorized_ && pane.status_.find(L"缓冲上限") != std::wstring::npos,
+              "Overflow left a busy but disconnected task or concealed lost display data");
+        pane.eventOverflowed_ = false;
+        pane.NewConversation();
     }
     struct WorkspaceProbe { AiPane *pane; bool dark; int dpi; std::string error; };
     static void CALLBACK WorkspaceTick(HWND parent,UINT,UINT_PTR timer,DWORD) {

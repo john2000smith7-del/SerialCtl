@@ -10,6 +10,9 @@ namespace serialctl {
 class GuiInstance {
   public:
     enum class Result { Primary, Existing, Failed };
+    GuiInstance() = default;
+    GuiInstance(const GuiInstance &) = delete;
+    GuiInstance &operator=(const GuiInstance &) = delete;
     ~GuiInstance() {
         if (window_ && IsWindow(window_)) RemovePropW(window_, name_.c_str());
         if (activation_) CloseHandle(activation_);
