@@ -146,6 +146,13 @@ struct AiPaneTestAccess {
         std::cout << "[TIMING] v209 800 streamed events and long-line expand " << GetTickCount64() - started << "ms\n";
         check(GetTickCount64() - started < 5000, "Bounded long-line rendering remained unresponsive");
         pane.busy_ = false; pane.NewConversation();
+        pane.Add(L"AI", std::wstring(120000, L'x'), "large-final");
+        pane.scroll_.offset = pane.scroll_.Maximum() / 2;
+        const auto paintStarted = GetTickCount64();
+        ui_test::SaveUiEvidence(pane.transcript_, L"v209-large-message-viewport.png", [&](HDC dc) { pane.PaintTranscript(dc); });
+        std::cout << "[TIMING] v209 120k-character message visible-area paint " << GetTickCount64() - paintStarted << "ms\n";
+        check(GetTickCount64() - paintStarted < 3000, "Visible-area painting allocated/painted the complete long card");
+        pane.NewConversation();
         pane.busy_ = pane.taskAuthorized_ = true; pane.displayGroup_ = "overload-turn";
         for (int i = 0; i < 2052; ++i) pane.QueueEvent({{"event", "taskActivity"}});
         check(pane.eventOverflowed_ && pane.events_.size() == 2, "Queue overload lost its diagnostic/disconnect pair");
@@ -154,6 +161,15 @@ struct AiPaneTestAccess {
               "Overflow left a busy but disconnected task or concealed lost display data");
         pane.eventOverflowed_ = false;
         pane.NewConversation();
+        pane.busy_ = true; pane.displayGroup_ = "queued-final";
+        pane.completionDeadline_ = GetTickCount64() - 1;
+        for (int i = 0; i < 70; ++i) pane.QueueEvent({{"event", "status"}, {"message", "pending"}});
+        pane.QueueEvent({{"event", "taskActivity"}});
+        pane.Poll();
+        check(pane.busy_ && !pane.events_.empty(), "Quiet completion ended a turn with queued activity");
+        while (!pane.events_.empty()) pane.Poll();
+        check(pane.busy_ && pane.completionDeadline_ == 0, "Queued activity failed to cancel quiet completion");
+        pane.busy_ = false; pane.NewConversation();
     }
     struct WorkspaceProbe { AiPane *pane; bool dark; int dpi; std::string error; };
     static void CALLBACK WorkspaceTick(HWND parent,UINT,UINT_PTR timer,DWORD) {
@@ -460,13 +476,15 @@ struct AiPaneTestAccess {
             {"conversationId", "restored-thread"}, {"messages", {
                 {{"role", "AI"}, {"text", "Checking"}, {"messageId", "restored-progress"},
                  {"group", "restored-turn"}, {"status", "completed"}, {"failedStep", true}},
-                {{"role", "工具"}, {"text", "exit 1"}, {"messageId", "restored-tool"},
+                {{"role", "工具"}, {"text", "exit \x1b[31m1\x1b[0m"}, {"messageId", "server:restored-tool"},
                  {"group", "restored-turn"}, {"status", "completed"}, {"failedStep", true}},
                 {{"role", "AI"}, {"text", "Diagnosis"}, {"messageId", "restored-answer"},
                  {"group", "restored-turn"}, {"status", "completed"}, {"failedStep", true}}}}}}});
         require(pane.messages_[0].folded && pane.messages_[1].hidden && !pane.messages_[2].process &&
                     pane.groupStates_["restored-turn"] == L"已完成 · 含失败记录",
                 "Restoring a completed turn reopened its process or lost failed-step information");
+        require(pane.messages_[1].text == L"exit 1" && pane.messages_[1].technical.find(L"\\u001b") != std::wstring::npos,
+                "Restored native output leaked ANSI or discarded its raw technical evidence");
         pane.NewConversation();
         pane.thread_ = "fixture";
         pane.NewConversation();
@@ -636,6 +654,19 @@ struct AiPaneTestAccess {
             require(message.text == L"exit 2: ACTUAL_FAILURE\nACTUAL_PROGRESS", "Native result did not replace its progress");
         }
         require(commandCards == 1, "Native tool stream duplicated its message frame");
+        pane.Event({{"event", "serverTool"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
+                    {"messageId", "server:ansi"}, {"completed", false}, {"text", "diagnose"}});
+        pane.Event({{"event", "serverToolDelta"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
+                    {"messageId", "server:ansi"}, {"text", "\x1b[3"}});
+        pane.Event({{"event", "serverToolDelta"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
+                    {"messageId", "server:ansi"}, {"text", "1mRED\x1b[0m"}});
+        auto ansi = std::find_if(pane.messages_.begin(), pane.messages_.end(), [](const auto &m) { return m.item == "server:ansi"; });
+        require(ansi != pane.messages_.end() && ansi->text == L"diagnoseRED", "Split ANSI escape leaked during streaming");
+        pane.Event({{"event", "serverTool"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
+                    {"messageId", "server:ansi"}, {"completed", true}, {"appendStream", true}, {"text", "finished"}});
+        ansi = std::find_if(pane.messages_.begin(), pane.messages_.end(), [](const auto &m) { return m.item == "server:ansi"; });
+        require(ansi->text == L"finished\nRED" && ansi->technical.find(L"\\u001b") != std::wstring::npos,
+                "Completed native output must be readable and retain original escape codes in technical details");
         pane.Event({{"event", "textComplete"},
                     {"conversationId", "fixture"},
                     {"taskId", "turn-direct"},

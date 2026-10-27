@@ -811,8 +811,15 @@ foreach ($architecture in @('x64')) {
         $application.Refresh()
         if ($application.HasExited) { throw 'Cancel did not preserve draft window.' }
         Click-Control $application.MainWindowHandle 132
-        Start-Sleep -Milliseconds 300
-        if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -eq $before) { throw 'Explicit Save did not persist draft.' }
+        # Click-Control posts an asynchronous WM_COMMAND. Under concurrent CMD
+        # output the GUI must get an opportunity to process it before checking
+        # disk; keep a bounded wait and require the actual file contents below.
+        $saveDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        do {
+            Start-Sleep -Milliseconds 50
+            $saved = (Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before
+        } while (-not $saved -and [DateTime]::UtcNow -lt $saveDeadline)
+        if (-not $saved) { throw 'Explicit Save did not persist draft within five seconds.' }
         if (-not (Get-Content $commandsFile -Raw).Contains('echo ui-draft')) { throw 'Saved command missing.' }
         $lifecycleScript = if ($ActualMouse) { 'tests/integration/gui_user_lifecycle.py' } else { 'tests/integration/gui_disconnect_smoke.py' }
         & python (Join-Path $root $lifecycleScript) $native $application.MainWindowHandle.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')

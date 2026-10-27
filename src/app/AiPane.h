@@ -58,7 +58,7 @@ class AiPane {
         std::vector<TextLine> lines;
     };
     struct Message {
-        std::wstring role, text, streamedOutput, technical;
+        std::wstring role, text, streamedOutput, nativeBase, technical;
         std::string item, group;
         bool process = false, hidden = false, folded = false, groupHeader = false;
         RECT bounds{};

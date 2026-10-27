@@ -83,6 +83,16 @@ struct EmptyDialog {
     DLGTEMPLATE dialog{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME, 0, 0, 0, 0, 270, 260};
     WORD menu = 0, cls = 0, title = 0;
 };
+void TranscriptBox(HDC dc, RECT box, const RECT &viewport, COLORREF fill, COLORREF border, int radius) {
+    RECT visible{};
+    if (!IntersectRect(&visible, &box, &viewport)) return;
+    // Moving an invisible cap to just beyond the viewport preserves exactly
+    // the visible round corners/straight edges. Never allocate a bitmap for
+    // the entire height of a multi-thousand-line expanded log.
+    box.top = std::max(box.top, viewport.top - radius);
+    box.bottom = std::min(box.bottom, viewport.bottom + radius);
+    UiBox(dc, box, fill, border, radius);
+}
 void Center(HWND window, HWND owner) {
     RECT r{}, p{};
     GetWindowRect(window, &r);
@@ -862,7 +872,7 @@ void AiPane::PaintTranscript(HDC target) {
         OffsetRect(&box, 0, -scroll_.offset);
         if (box.bottom < 0 || box.top > r.bottom)
             continue;
-        UiBox(dc, box, m.role == L"我" ? c.accent : UiTheme(dark_).surface, m.role == L"我" ? c.accent : c.border,
+        TranscriptBox(dc, box, r, m.role == L"我" ? c.accent : UiTheme(dark_).surface, m.role == L"我" ? c.accent : c.border,
               D(12));
         if (m.groupHeader) {
             const auto count = std::count_if(messages_.begin(), messages_.end(),
@@ -890,7 +900,7 @@ void AiPane::PaintTranscript(HDC target) {
             if (b.bottom < 0 || b.top > r.bottom)
                 continue;
             if (p.style == 2)
-                UiBox(dc, b, m.role == L"我" ? UiAccentInset() : c.raised, m.role == L"我" ? UiAccentInset() : c.raised,
+                TranscriptBox(dc, b, r, m.role == L"我" ? UiAccentInset() : c.raised, m.role == L"我" ? UiAccentInset() : c.raised,
                       D(4));
             auto old = SelectObject(dc, ParagraphFont(p.style));
             SetBkMode(dc, TRANSPARENT);
@@ -1771,7 +1781,12 @@ void AiPane::Poll() {
     }
     // Some compatible gateways omit turn/completed. A final agent item can
     // finish after a short quiet interval; any subsequent activity cancels it.
-    if (busy_ && nativeItems_.empty() && completionDeadline_ && GetTickCount64() >= completionDeadline_ && pendingObservation_.is_null() &&
+    bool queuedEvents = false;
+    {
+        std::lock_guard<std::mutex> l(eventsMutex_);
+        queuedEvents = !events_.empty();
+    }
+    if (busy_ && !queuedEvents && nativeItems_.empty() && completionDeadline_ && GetTickCount64() >= completionDeadline_ && pendingObservation_.is_null() &&
         requests_.empty())
         Event({{"event", "taskFinished"}, {"conversationId", thread_}, {"taskId", turn_}, {"status", "completed"}});
     if (busy_ && turnStarted_ && GetTickCount64() - turnStarted_ > 10 * 60 * 1000) {
@@ -1958,8 +1973,19 @@ void AiPane::Event(const Json &e) {
             for (const auto &message : result.value("messages", Json::array())) {
                 displayGroup_ = message.value("group", std::string());
                 const auto count = messages_.size();
-                Add(Wide(message.at("role").get<std::string>()), Wide(message.at("text").get<std::string>()),
-                    message.value("messageId", std::string()));
+                const auto role = Wide(message.at("role").get<std::string>());
+                const auto id = message.value("messageId", std::string());
+                auto raw = Wide(message.at("text").get<std::string>());
+                std::wstring technical;
+                if (role == L"工具" && id.rfind("server:", 0) == 0) {
+                    if (raw.find(L'\x1b') != std::wstring::npos) {
+                        auto preview = raw.substr(0, 16384);
+                        if (!preview.empty() && preview.back() >= 0xd800 && preview.back() <= 0xdbff) preview.pop_back();
+                        technical = Wide(Json{{"nativeOutput", Utf8(preview)}, {"truncated", raw.size() > preview.size()}}.dump(2));
+                    }
+                    raw = Wide(ai::PreviewText(Utf8(raw), 65536));
+                }
+                Add(role, std::move(raw), id, std::move(technical));
                 if (messages_.size() > count)
                     messages_.back().process = messages_.back().role == L"工具" || message.value("process", false);
                 if (!displayGroup_.empty()) {
@@ -2008,30 +2034,43 @@ void AiPane::Event(const Json &e) {
         if (event == "serverTool" && e.value("completed", false)) nativeItems_.erase(id);
         else nativeItems_.insert(id);
         SetCompanionActivity(nativeItems_.empty() ? pet::Activity::Thinking : pet::Activity::Working);
-        auto text = Wide(e.value("text", std::string()));
+        const auto raw = Wide(e.value("text", std::string()));
         auto message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
-        if (message != messages_.end() && event == "serverTool" && e.value("completed", false) && e.value("appendStream", false))
-            text += L"\n" + message->streamedOutput;
-        bool accepted = false;
         if (message == messages_.end()) {
-            Add(L"工具", text, id);
+            Add(L"工具", L"", id);
             message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
-            accepted = message != messages_.end();
-        } else {
-            const auto oldBytes = message->text.size() * sizeof(wchar_t);
-            auto next = event == "serverToolDelta" ? message->text + text : text;
-            if (next.size() > 65536) next.resize(65536);
-            if (messageBytes_ - oldBytes + next.size() * sizeof(wchar_t) <= MaxConversation) {
-                accepted = true;
-                messageBytes_ = messageBytes_ - oldBytes + next.size() * sizeof(wchar_t);
-                message->text = std::move(next); message->measuredLength = SIZE_MAX; Reflow(true);
-            }
         }
         if (message != messages_.end()) {
-            if (event == "serverToolDelta" && accepted) {
-                message->streamedOutput += text;
-                if (message->streamedOutput.size() > 65536) message->streamedOutput.resize(65536);
-            } else if (e.value("completed", false)) message->streamedOutput.clear();
+            const bool completed = event == "serverTool" && e.value("completed", false);
+            if (event == "serverToolDelta") {
+                message->streamedOutput += raw;
+                if (message->streamedOutput.size() > 65536) {
+                    message->streamedOutput.resize(65536);
+                    if (message->streamedOutput.back() >= 0xd800 && message->streamedOutput.back() <= 0xdbff)
+                        message->streamedOutput.pop_back();
+                }
+            } else if (!completed) {
+                message->nativeBase = raw;
+                message->streamedOutput.clear();
+            }
+            const auto completeRaw = completed ? raw + (e.value("appendStream", false) ? L"\n" + message->streamedOutput : L"")
+                                               : message->nativeBase + message->streamedOutput;
+            const auto next = Wide(ai::PreviewText(Utf8(completeRaw), 65536));
+            std::wstring technical;
+            if (completed && completeRaw.find(L'\x1b') != std::wstring::npos) {
+                auto rawPreview = completeRaw.substr(0, 16384);
+                if (!rawPreview.empty() && rawPreview.back() >= 0xd800 && rawPreview.back() <= 0xdbff) rawPreview.pop_back();
+                technical = Wide(Json{{"nativeOutput", Utf8(rawPreview)}, {"truncated", completeRaw.size() > rawPreview.size()}}.dump(2));
+            }
+            const auto oldBytes = (message->text.size() + message->technical.size()) * sizeof(wchar_t);
+            const auto newBytes = (next.size() + technical.size()) * sizeof(wchar_t);
+            // ShowDisplayLimit may append and reallocate the message vector.
+            if (completed) { message->streamedOutput.clear(); message->nativeBase.clear(); }
+            if (messageBytes_ - oldBytes + newBytes <= MaxConversation) {
+                messageBytes_ = messageBytes_ - oldBytes + newBytes;
+                message->text = next; message->technical = std::move(technical);
+                message->measuredLength = SIZE_MAX; Reflow(true);
+            } else ShowDisplayLimit();
         }
         observedTool_ = true;
         return;
