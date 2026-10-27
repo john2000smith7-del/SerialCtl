@@ -4776,7 +4776,10 @@ void MainWindow::SendCommand(size_t index) {
         AppendStatus(L"请先建立连接，再执行常用命令。", true);
         return;
     }
-    const auto now = GetTickCount64();
+    ULONGLONG now = GetTickCount64();
+#ifdef SERIALCTL_AI_TESTING
+    if (commandClock_) now = commandClock_();
+#endif
     if (lastCommandIndex_ == static_cast<int>(index) && lastCommandSession_ == activeSession_->id &&
         now - lastCommandActivation_ < std::max<DWORD>(350, GetDoubleClickTime()))
         return; // One activation across mouse double-clicks and held Enter.
