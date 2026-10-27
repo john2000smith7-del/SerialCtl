@@ -9,7 +9,7 @@ void Check(bool ok, const char *why) {
         throw std::runtime_error(why);
 }
 std::wstring evidenceName;
-bool menuTest = false, saveDialog = false, modalObserved = false;
+bool menuTest = false, saveDialog = false, modalObserved = false, modalFits = true;
 HWND FindNative(const wchar_t *cls) {
     struct Search {
         const wchar_t *cls;
@@ -35,6 +35,14 @@ void CALLBACK ModalTimer(HWND, UINT, UINT_PTR timer, DWORD) {
     if (!h)
         return;
     modalObserved = true;
+    if (!menuTest) {
+        RECT r{};
+        GetWindowRect(h, &r);
+        MONITORINFO monitor{sizeof(monitor)};
+        GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &monitor);
+        modalFits = r.left >= monitor.rcWork.left && r.top >= monitor.rcWork.top && r.right <= monitor.rcWork.right &&
+                    r.bottom <= monitor.rcWork.bottom;
+    }
     KillTimer(nullptr, timer);
     if (menuTest) {
         SendMessageW(h, WM_KEYDOWN, VK_DOWN, 0);
@@ -97,6 +105,7 @@ struct AiPetPaneTestAccess {
                 saveDialog = false;
                 SetTimer(nullptr, 0, 50, ModalTimer);
                 pane.SettingsDialog();
+                Check(modalFits, "Pet settings escaped the monitor work area at high DPI");
                 Check(pane.Preferences().opening == original.opening, "Cancel modified pet settings");
                 DeleteObject(pane.font_);
                 pane.font_ = old;
