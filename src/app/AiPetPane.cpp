@@ -672,9 +672,18 @@ INT_PTR CALLBACK AiPetPane::SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         AdjustWindowRectEx(&r, WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME, FALSE, 0);
         RECT owner{};
         GetWindowRect(self->parent_, &owner);
-        SetWindowPos(h, nullptr, owner.left + (owner.right - owner.left - (r.right - r.left)) / 2,
-                     owner.top + (owner.bottom - owner.top - (r.bottom - r.top)) / 2, r.right - r.left,
-                     r.bottom - r.top, SWP_NOZORDER);
+        MONITORINFO monitor{sizeof(monitor)};
+        GetMonitorInfoW(MonitorFromWindow(self->parent_, MONITOR_DEFAULTTONEAREST), &monitor);
+        const int margin = self->D(12), width = r.right - r.left, height = r.bottom - r.top;
+        const int x = std::clamp(static_cast<int>(owner.left + (owner.right - owner.left - width) / 2),
+                                 static_cast<int>(monitor.rcWork.left) + margin,
+                                 std::max(static_cast<int>(monitor.rcWork.left) + margin,
+                                          static_cast<int>(monitor.rcWork.right) - width - margin));
+        const int y = std::clamp(static_cast<int>(owner.top + (owner.bottom - owner.top - height) / 2),
+                                 static_cast<int>(monitor.rcWork.top) + margin,
+                                 std::max(static_cast<int>(monitor.rcWork.top) + margin,
+                                          static_cast<int>(monitor.rcWork.bottom) - height - margin));
+        SetWindowPos(h, nullptr, x, y, width, height, SWP_NOZORDER);
         UiDialogViewport::Fit(h, self->dpi_);
         return TRUE;
     }

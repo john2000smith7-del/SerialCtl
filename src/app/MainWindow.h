@@ -56,6 +56,7 @@ public:
 private:
 #ifdef SERIALCTL_AI_TESTING
     friend struct AiDeviceTestAccess;
+    std::function<ULONGLONG()> commandClock_; // Deterministic input timing in native UI tests only.
 #endif
     enum class SessionFocus { Terminal, Preserve, AiPreview, PowerPreview };
     enum class SftpTransferDirection { Upload, Download };

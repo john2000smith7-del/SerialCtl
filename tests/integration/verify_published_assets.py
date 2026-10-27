@@ -1,6 +1,6 @@
 import hashlib,json,os,subprocess,zipfile
 from pathlib import Path
-source='4caac7c12618aac34d1ea4a5656d850ed1363e4d';version='V2.0.8';tag='v2.0.8';repo=os.environ['GITHUB_REPOSITORY']
+source='451aba52572f24c4c70d19113499a495ff0e0a1c';version='V2.0.8';tag='v2.0.8';repo=os.environ['GITHUB_REPOSITORY']
 root=Path(os.environ['RUNNER_TEMP'])/'v208-published';root.mkdir()
 release=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/releases/tags/{tag}']))
 expected={'SerialCtl-V2.0.8-Win7-x64.zip','update.json'}

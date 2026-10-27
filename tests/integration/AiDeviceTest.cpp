@@ -395,10 +395,20 @@ struct AiDeviceTestAccess {
         SendMessageW(main.commandList_, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(-10, -10));
         SendMessageW(main.commandList_, WM_LBUTTONUP, 0, MAKELPARAM(-10, -10));
         Require(transports[4]->writes == writes, "Dragging out of Run failed to cancel");
+        // Full-window GDI rendering can exceed the OS double-click interval on
+        // a hosted desktop. Control event time rather than weakening the guard.
+        ULONGLONG clickTime = GetTickCount64();
+        const auto realClickStart = clickTime;
+        main.commandClock_ = [&] { return clickTime; };
         for (int i = 0; i < 5; ++i) {
+            ++clickTime;
             SendMessageW(main.commandList_, i == 1 ? WM_LBUTTONDBLCLK : WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
             SendMessageW(main.commandList_, WM_LBUTTONUP, 0, runPoint);
         }
+        main.commandClock_ = {};
+        std::cout << "[CLICK TIMING] Five input activations over 5 controlled milliseconds; native render wall time="
+                  << GetTickCount64()-realClickStart << "ms, guard=" << std::max<DWORD>(350,GetDoubleClickTime())
+                  << "ms, submitted=" << transports[4]->writes-writes << '\n';
         Require(transports[4]->writes == writes + 1, "Rapid Run clicks submitted duplicate commands");
         main.lastCommandActivation_ = 0;
         main.commands_[0].commands.push_back(L"echo should-not-run");
