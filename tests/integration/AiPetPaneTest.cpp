@@ -86,10 +86,18 @@ struct AiPetPaneTestAccess {
                         Check(pane.sprite_.left >= -2 && pane.sprite_.right <= width + 2,
                               "Pet exceeds the connection lane");
                     }
-                    if (size == 96)
+                    if (size == 96) {
                         ui_test::SaveUiEvidence(
                             pane.Handle(), L"v208-pet-" + std::to_wstring(dpi) + (dark ? L"-dark.png" : L"-light.png"),
                             [&](HDC dc) { pane.Paint(dc); });
+                        pane.hover_ = true;
+                        ui_test::SaveUiEvidence(pane.Handle(),
+                                                L"v208-pet-hover-" + std::to_wstring(dpi) +
+                                                    (dark ? L"-dark.png" : L"-light.png"),
+                                                [&](HDC dc) { pane.Paint(dc); });
+                        Check(pane.menu_.bottom <= pane.sprite_.top, "Pet menu overlaps the character and status lane");
+                        pane.hover_ = false;
+                    }
                 }
         for (int dpi : {96, 120, 144, 192})
             for (bool dark : {false, true}) {
@@ -164,6 +172,15 @@ struct AiPetPaneTestAccess {
         }
         const POINT grab{(pane.sprite_.left + pane.sprite_.right) / 2, (pane.sprite_.top + pane.sprite_.bottom) / 2};
         SendMessageW(pane.Handle(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(grab.x, grab.y));
+        auto focusPixel = [&] {
+            HDC dc = GetDC(pane.Handle());
+            pane.Paint(dc);
+            const auto pixel = GetPixel(dc, 2, pane.DesiredHeight() / 2);
+            ReleaseDC(pane.Handle(), dc);
+            return pixel;
+        };
+        const auto mousePixel = focusPixel();
+        Check(mousePixel == UiTheme(pane.dark_).surface, "Mouse activation left a keyboard focus outline");
         SendMessageW(pane.Handle(), WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(grab.x + 8, grab.y));
         {
             HDC dc = GetDC(pane.Handle());
@@ -173,6 +190,8 @@ struct AiPetPaneTestAccess {
         Check((pane.sprite_.left + pane.sprite_.right) / 2 >= grab.x + 6, "Pet dragging did not follow the mouse");
         SendMessageW(pane.Handle(), WM_LBUTTONUP, 0, MAKELPARAM(grab.x + 8, grab.y));
         Check(pane.model_.CurrentAction() == pet::Action::None, "Dragging unexpectedly started an action");
+        SendMessageW(pane.Handle(), WM_KEYDOWN, VK_RIGHT, 0);
+        Check(focusPixel() != mousePixel, "Keyboard activation lost its focus cue");
         pane.Present(false, false);
         Check(!pane.available_, "Hidden component retained active timer state");
         pane.Present(true, true);

@@ -43,6 +43,7 @@ class AiPetPane {
     HFONT font_ = nullptr, small_ = nullptr;
     int dpi_ = 96;
     bool dark_ = false, available_ = false, dragging_ = false, moved_ = false, hover_ = false;
+    bool keyboardFocus_ = true;
     POINT grab_{};
     pet::Settings dragStart_;
     pet::Model model_;
