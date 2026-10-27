@@ -409,7 +409,7 @@ void AiPetPane::Paint(HDC target) {
         InflateRect(&bubble, -D(8), 0);
         Label(dc, small_, c.text, sample_.label, bubble, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
     }
-    menu_ = {width - D(28), D(40), width - D(4), D(64)};
+    menu_ = {width - D(28), D(4), width - D(4), D(28)};
     if (hover_ || GetFocus() == window_) {
         UiBox(dc, menu_, c.raised, c.border, D(10));
         const int cy = (menu_.top + menu_.bottom) / 2;
@@ -418,7 +418,7 @@ void AiPetPane::Paint(HDC target) {
             UiBox(dc, dot, c.text, c.text, D(1));
         }
     }
-    if (GetFocus() == window_)
+    if (GetFocus() == window_ && keyboardFocus_)
         UiFocusOutline(dc, {D(2), D(2), width - D(2), height - D(2)}, D(10), dpi_, UiFocusInk(dark_));
 }
 void AiPetPane::Changed() {
@@ -487,6 +487,8 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     if (m == WM_SIZE || m == WM_SETFOCUS || m == WM_KILLFOCUS) {
+        if (m == WM_SETFOCUS && (GetKeyState(VK_TAB) & 0x8000))
+            self->keyboardFocus_ = true;
         InvalidateRect(h, nullptr, FALSE);
         return 0;
     }
@@ -526,6 +528,8 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (m == WM_LBUTTONDOWN) {
         POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+        self->keyboardFocus_ = false;
+        InvalidateRect(h, nullptr, FALSE);
         SetFocus(h);
         if (PtInRect(&self->menu_, p)) {
             ClientToScreen(h, &p);
@@ -570,6 +574,8 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_GETDLGCODE)
         return DLGC_WANTARROWS;
     if (m == WM_KEYDOWN) {
+        self->keyboardFocus_ = true;
+        InvalidateRect(h, nullptr, FALSE);
         if (w == VK_APPS || (w == VK_F10 && (GetKeyState(VK_SHIFT) & 0x8000))) {
             POINT p{self->menu_.left, self->menu_.top};
             ClientToScreen(h, &p);
