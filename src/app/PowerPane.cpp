@@ -1467,7 +1467,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         int kind = static_cast<int>(SendMessageW(data->kind, CB_GETCURSEL, 0, 0));
-        if (id == 100 || id == 103) {
+        if ((id == 100 && HIWORD(w) == CBN_SELCHANGE) || (id == 103 && HIWORD(w) == BN_CLICKED)) {
             auto d = [data](int x) { return MulDiv(x, data->pane->dpi_, 96); };
             const bool driverNeeded = kind == 0 && !PowerService::VisaAvailable();
             int footer = kind == 1 ? 268 : driverNeeded ? 264 : 200;

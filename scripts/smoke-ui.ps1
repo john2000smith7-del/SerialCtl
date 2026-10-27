@@ -454,6 +454,7 @@ foreach ($architecture in @('x64')) {
     # First launch the exact packaged program with its exact packaged dependencies.
     Set-Content -LiteralPath (Join-Path $settingsDirectory 'settings.ini') -Value "[Layout]`nRightPanelWidth=260`nRightPanelCollapsed=0" -Encoding ASCII
     $application = Start-Process -FilePath (Join-Path $native 'serialctl.exe') -PassThru
+    $mainWindowHandle = [IntPtr]::Zero
     try {
         if (-not $application.WaitForInputIdle(10000)) { throw 'Packaged application did not become idle.' }
         $application.Refresh()
@@ -467,6 +468,10 @@ foreach ($architecture in @('x64')) {
             Set-Content -LiteralPath (Join-Path $OutputDirectory 'startup.txt') -Value $diagnostic
             throw $diagnostic
         }
+        # A desktop pet is an unowned top-level tool window. Process.Refresh()
+        # can subsequently return that window as MainWindowHandle instead of
+        # the application window. Retain the actual owner for later assertions.
+        $mainWindowHandle = $application.MainWindowHandle
         if ($ActualMouse) {
             foreach ($startupTheme in @('light','dark')) {
                 if ($startupTheme -eq 'dark') {
@@ -810,7 +815,7 @@ foreach ($architecture in @('x64')) {
         Start-Sleep -Milliseconds 200
         $application.Refresh()
         if ($application.HasExited) { throw 'Cancel did not preserve draft window.' }
-        Click-Control $application.MainWindowHandle 132
+        Click-Control $mainWindowHandle 132
         # Click-Control posts an asynchronous WM_COMMAND. Under concurrent CMD
         # output the GUI must get an opportunity to process it before checking
         # disk; keep a bounded wait and require the actual file contents below.
@@ -822,16 +827,16 @@ foreach ($architecture in @('x64')) {
         if (-not $saved) { throw 'Explicit Save did not persist draft within five seconds.' }
         if (-not (Get-Content $commandsFile -Raw).Contains('echo ui-draft')) { throw 'Saved command missing.' }
         $lifecycleScript = if ($ActualMouse) { 'tests/integration/gui_user_lifecycle.py' } else { 'tests/integration/gui_disconnect_smoke.py' }
-        & python (Join-Path $root $lifecycleScript) $native $application.MainWindowHandle.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')
+        & python (Join-Path $root $lifecycleScript) $native $mainWindowHandle.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')
         if ($ActualMouse -and $LASTEXITCODE -eq 2) { $behaviorFailures.Add('Real connection list Home/End behavior failed; see gui-lifecycle.json. Remaining cases continue.') }
         elseif ($LASTEXITCODE -ne 0) { throw 'GUI connection list / all-disconnect process cleanup failed.' }
         Capture-Desktop "$architecture-all-disconnected"
-        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        [SerialCtlUiSmoke]::PostMessage($mainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
         if (-not $application.WaitForExit(10000)) { throw 'Packaged application did not close normally.' }
         if ($application.ExitCode -ne 0) { throw 'Packaged application exit code was not zero.' }
     } catch {
         Capture-Desktop "$architecture-failure-desktop"
-        if($application.MainWindowHandle -ne [IntPtr]::Zero){Capture-Window $application.MainWindowHandle "$architecture-failure-window"}
+        if($mainWindowHandle -ne [IntPtr]::Zero){Capture-Window $mainWindowHandle "$architecture-failure-window"}
         $failureLogs=Join-Path $env:APPDATA 'SerialCtl/logs'
         if(Test-Path $failureLogs){Get-ChildItem $failureLogs -Filter '*.log' | ForEach-Object {Copy-Item $_.FullName (Join-Path $OutputDirectory ('failure-'+$_.Name)) -Force}}
         throw
