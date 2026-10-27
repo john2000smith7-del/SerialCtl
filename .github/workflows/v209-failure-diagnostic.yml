@@ -18,13 +18,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir evidence
-          gh run download 40483329139 --repo "$GITHUB_REPOSITORY" --name SerialCtl-UI-evidence --dir evidence
+          gh run download 40528015664 --repo "$GITHUB_REPOSITORY" --name SerialCtl-V2.0.9-signed-upgrade --dir evidence
           python - <<'PY'
           import pathlib,base64
           root=pathlib.Path('evidence')
           files=list(root.rglob('*'))
           print('SELECTED_FILES',*[str(p) for p in files if p.is_file() and ('command-draft' in p.name or 'unsaved-close' in p.name or 'lifecycle' in p.name)],sep='\n')
-          for name in ('x64-command-draft.png','x64-unsaved-close.png','x64-failure-desktop.png','x64-failure-window.png'):
+          for name in ('v209-packaged-ai-desktop.png','v209-packaged-minimized-desktop.png'):
               found=[p for p in files if p.is_file() and p.name == name]
               if found:
                   print('IMAGE64 '+name+' '+base64.b64encode(found[0].read_bytes()).decode('ascii'))
