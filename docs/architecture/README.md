@@ -18,11 +18,11 @@ SerialCtl 是原生 C++17/Win32 桌面应用。窗口线程负责 UI、会话状
 serial / socket / plink / CMD worker
         ↓ callback
 MainWindow::PostData
-        ├─ ApiServer::Publish → per-client bounded queue → event-woken sender
-        └─ coalesced WM_APP → UI thread → incremental decoder → TerminalModel
-                                                   ├─ terminal paint
-                                                   ├─ async logger queue → disk worker
-                                                   └─ scoped terminal response
+        ├─ QueueReceived → WM_APP → UI thread → decoder → TerminalModel
+        │                                                ├─ terminal paint
+        │                                                ├─ logger → disk worker
+        │                                                └─ scoped terminal response
+        └─ EnqueuePublish → bounded publisher → per-client queue → sender
 ```
 
 本地串口/CMD 的终端输入、粘贴、命令宏和网络输入直接进入 SessionService，再进入同一 QueuedConnection 有界 FIFO。原始串口字节不经文本解码；CMD 本地 Unicode 草稿按回车提交，网络也只提交完整命令行，代码页按真实控制台状态或本地显式编码选择处理。SSH/Telnet 保留各自的终端键盘规则。拖动期间批量移动控件，结束后提交最终终端网格；通过 Telnet NAWS 或定制 Plink 通道通知远端。
@@ -52,4 +52,10 @@ PostData 先投递本地接收，再将 WebSocket 发布交给独立、可停止
 
 CMD 私有控制台桥接进程为 stdout 批次附带输入/输出代码页元数据，父进程缓存并保持手动覆盖；元数据不进入外部 WebSocket 或日志字节。终端历史行和历史投影是不可变共享快照，输入预览缓存仅由 UI 线程使用，const 读取不构成多线程安全承诺。
 
-完整控制器职责迁移及全部现场验收尚未完成，逐项状态见 ../audit/V2.0.10-ARCH-FINAL-ACCEPTANCE.md。
+TerminalViewport 负责终端原生绘制、GDI 缓冲和指针/选区，TerminalViewportController 负责网格、滚动和预览状态。CommandMacroController 拥有宏模型、文件持久化和运行计划；AiDeviceBridge 接收显式目标/上下文并拥有观察和设备策略。SftpController 持有传输队列、取消和两个后台线程；UI 只处理布局、对话框和可注销通知。
+
+会话注册变更与输出发布共用有序的后台交接，避免窗口线程等待网关全局锁；队列溢出保留最新会话快照并明确标记历史缺口。关闭先发取消并保留对象与 HWND，后台完成连接、日志、网络、SFTP、电源及枚举回收后才销毁窗口。全部断开和连接完成也不会等待未结束的启动线程。
+
+远程自动发现一次解析后并行探测既有端口。数字 IP 直接解析；域名通过同一 serialctl.exe 的受限私有解析进程处理，父进程控制超时、取消并回收子进程，以保留 Windows 7 支持；不会引入外部分发的解析程序。地址候选与启动协议阶段使用共同的单调时限。
+
+真实硬件、完整 DPI 和性能矩阵仍需现场验证，逐项状态见 ../audit/V2.0.10-ARCH-FINAL-ACCEPTANCE.md。
