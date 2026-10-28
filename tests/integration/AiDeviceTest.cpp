@@ -653,9 +653,13 @@ struct AiDeviceTestAccess {
             main.LayoutControls(viewport.right, viewport.bottom);
             // Exercise the application's ordinary message-loop dispatch, which
             // also delivers RDW_INTERNALPAINT without an invalid client region.
+            unsigned dispatched = 0, paints = 0;
             const auto paintOpportunity = [&] {
                 MSG next{};
-                if (PeekMessageW(&next, parent, 0, 0, PM_REMOVE)) DispatchMessageW(&next);
+                if (PeekMessageW(&next, nullptr, 0, 0, PM_REMOVE)) {
+                    ++dispatched; if (next.message == WM_PAINT) ++paints;
+                    TranslateMessage(&next); DispatchMessageW(&next);
+                }
             };
             Json samples = Json::array();
             for (int sample = 0; sample < 16; ++sample) {
@@ -704,6 +708,12 @@ struct AiDeviceTestAccess {
                     "Background terminal backlog buried the visible serial echo");
             auto backlogDeadline = GetTickCount64() + 5000;
             while (!main.received_.empty() && GetTickCount64() < backlogDeadline) paintOpportunity();
+            if (!main.received_.empty())
+                std::cerr << "FAILED receive continuation state: remaining=" << main.received_.size()
+                          << " continuation=" << main.receiveContinuation_ << " posted=" << main.receivePosted_
+                          << " dispatched=" << dispatched << " paints=" << paints
+                          << " update=" << GetUpdateRect(parent, nullptr, FALSE)
+                          << " queueStatus=" << GetQueueStatus(QS_PAINT | QS_POSTMESSAGE) << std::endl;
             Require(main.received_.empty(), "Visible-session priority starved background terminal output");
             main.activeSession_->terminal.Clear();
             for (int i = 0; i < 64; ++i) main.QueueReceived({2, Bytes(16384, 'x'), CP_UTF8, {}, 0});
