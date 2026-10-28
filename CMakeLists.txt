@@ -163,6 +163,7 @@ endfunction()
 add_executable(serialctl WIN32
     src/app/App.cpp
     src/app/MainWindow.cpp
+    src/app/CommandMacroController.cpp
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
     src/app/AiPane.cpp
@@ -458,6 +459,11 @@ if(BUILD_TESTING)
     target_link_libraries(websocket_deadline_test PRIVATE ws2_32 advapi32)
     add_test(NAME websocket_deadline COMMAND websocket_deadline_test)
     set_tests_properties(websocket_deadline PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE)
+    add_executable(command_macro_test tests/unit/CommandMacroTest.cpp src/app/CommandMacroController.cpp)
+    serialctl_configure_native_target(command_macro_test CONSOLE)
+    target_link_libraries(command_macro_test PRIVATE ole32)
+    add_test(NAME command_macro COMMAND command_macro_test)
+    set_tests_properties(command_macro PROPERTIES TIMEOUT 20)
     add_executable(terminal_preview_test tests/unit/TerminalPreviewTest.cpp src/terminal/TerminalModel.cpp)
     serialctl_configure_native_target(terminal_preview_test CONSOLE)
     target_link_libraries(terminal_preview_test PRIVATE psapi)

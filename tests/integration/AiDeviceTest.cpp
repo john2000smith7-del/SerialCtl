@@ -264,8 +264,8 @@ struct AiDeviceTestAccess {
                         "Power selector mouse focus retained press color");
             }
         }
-        const auto commandDraft = main.commands_;
-        main.commands_ = {CommandItem(L"Controlled command", L"echo fixture")};
+        const auto commandDraft = main.macro_.Items();
+        main.macro_.Replace({CommandItem(L"Controlled command", L"echo fixture")}, false);
         MoveWindow(main.commandList_, 0, 0, 280, 200, TRUE);
         main.RefreshCommandList();
         for (const bool dark : {false, true}) {
@@ -298,7 +298,7 @@ struct AiDeviceTestAccess {
             DeleteDC(dc);
             ReleaseDC(parent, screen);
         }
-        main.commands_ = commandDraft;
+        main.macro_.Replace(commandDraft, false);
         main.RefreshCommandList();
         main.aiVisible_ = main.powerVisible_ = false;
         main.darkMode_ = false;
@@ -363,8 +363,8 @@ struct AiDeviceTestAccess {
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
         {
             const auto writes=transports[4]->writes;
-            main.commands_={CommandItem(L"A",L"echo A"),CommandItem(L"B",L"echo B"),CommandItem(L"C",L"echo C")};
-            main.commandsDirty_=false; main.RefreshCommandList();
+            main.macro_.Replace({CommandItem(L"A",L"echo A"),CommandItem(L"B",L"echo B"),CommandItem(L"C",L"echo C")}, false);
+            main.macro_.MarkSaved(); main.RefreshCommandList();
             RECT row{}; SendMessageW(main.commandList_,LB_GETITEMRECT,0,reinterpret_cast<LPARAM>(&row));
             const int h=row.bottom-row.top;
             // Start in the text area (not just the small left-hand icon), and
@@ -372,44 +372,44 @@ struct AiDeviceTestAccess {
             const int bodyX = std::min<int>(row.right - 90, row.left + 60);
             auto begin=MAKELPARAM(bodyX,h/2), moved=MAKELPARAM(bodyX+25,h*2+h/2);
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
-            Require(!main.commandDragGhost_ && !main.commandsDirty_,"Pressing a card without moving must not start a drag");
+            Require(!main.commandDragGhost_ && !main.macro_.Dirty(),"Pressing a card without moving must not start a drag");
             if (GetSystemMetrics(SM_CXDRAG) / 2 > 1 && GetSystemMetrics(SM_CYDRAG) / 2 > 1) {
                 SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(bodyX+1,h/2+1));
                 Require(!main.commandDragGhost_,"Sub-threshold pointer movement must remain a click");
             }
             SendMessageW(main.commandList_,WM_LBUTTONUP,0,begin);
-            Require(!main.commandDragGhost_ && !main.commandsDirty_,"Releasing a click must not reorder commands");
+            Require(!main.commandDragGhost_ && !main.macro_.Dirty(),"Releasing a click must not reorder commands");
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
             SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
-            Require(main.commandDragGhost_ && main.commands_[0].name==L"A","Dragging card text must create a preview without committing order");
+            Require(main.commandDragGhost_ && main.macro_.Items()[0].name==L"A","Dragging card text must create a preview without committing order");
             RECT ghost{}; GetWindowRect(main.commandDragGhost_,&ghost); MapWindowPoints(nullptr,main.commandList_,reinterpret_cast<POINT*>(&ghost),2);
             Require(ghost.top==h*2 && ghost.left==25,"Drag preview must track pointer in both dimensions");
             ui_test::SaveUiEvidence(main.commandList_,L"v207-command-drag-held.png");
             SendMessageW(main.commandList_,WM_KEYDOWN,VK_ESCAPE,0);
-            Require(!main.commandDragGhost_ && main.commands_[0].name==L"A" && !main.commandsDirty_,"Esc must restore original command order");
+            Require(!main.commandDragGhost_ && main.macro_.Items()[0].name==L"A" && !main.macro_.Dirty(),"Esc must restore original command order");
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
             SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
             SendMessageW(main.commandList_,WM_LBUTTONUP,0,moved);
-            Require(main.commands_[2].name==L"A" && transports[4]->writes==writes,"Only release commits reorder; drag never executes");
-            main.commandsDirty_=false;
+            Require(main.macro_.Items()[2].name==L"A" && transports[4]->writes==writes,"Only release commits reorder; drag never executes");
+            main.macro_.MarkSaved();
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
             SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(-24,h+h/2));
             SendMessageW(main.commandList_,WM_LBUTTONUP,0,MAKELPARAM(-24,h+h/2));
-            Require(!main.commandDragGhost_ && !main.commandsDirty_ && main.commands_[0].name==L"B" && main.commands_[2].name==L"A",
+            Require(!main.commandDragGhost_ && !main.macro_.Dirty() && main.macro_.Items()[0].name==L"B" && main.macro_.Items()[2].name==L"A",
                 "Releasing outside the list must cancel reorder");
             const auto file=std::filesystem::temp_directory_path()/(L"serialctl-drop-"+std::to_wstring(GetCurrentProcessId())+L".txt");
             {std::ofstream stream(file);stream<<"echo imported-only\n";}
-            main.commandsDirty_=false;
+            main.macro_.MarkSaved();
             const auto name=file.wstring();
             auto handle=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(name.size()+2)*sizeof(wchar_t));
             auto data=static_cast<DROPFILES*>(GlobalLock(handle)); data->pFiles=sizeof(DROPFILES);data->fWide=TRUE;
             memcpy(reinterpret_cast<char*>(data)+sizeof(DROPFILES),name.c_str(),(name.size()+1)*sizeof(wchar_t)); GlobalUnlock(handle);
             SendMessageW(main.commandList_,WM_DROPFILES,reinterpret_cast<WPARAM>(handle),0);
-            Require(main.commands_.size()==1 && main.commands_[0].commands[0]==L"echo imported-only" && transports[4]->writes==writes,
+            Require(main.macro_.Items().size()==1 && main.macro_.Items()[0].commands[0]==L"echo imported-only" && transports[4]->writes==writes,
                 "Dropped UTF-8 file must use import without executing device input");
-            std::filesystem::remove(file); main.commandsDirty_=false;
+            std::filesystem::remove(file); main.macro_.MarkSaved();
         }
-        main.commands_ = {CommandItem(L"click regression", L"echo once")};
+        main.macro_.Replace({CommandItem(L"click regression", L"echo once")}, false);
         main.RefreshCommandList();
         RECT actionRow{};
         SendMessageW(main.commandList_, LB_GETITEMRECT, 0, reinterpret_cast<LPARAM>(&actionRow));
@@ -437,13 +437,15 @@ struct AiDeviceTestAccess {
                   << GetTickCount64()-realClickStart << "ms, guard=" << std::max<DWORD>(350,GetDoubleClickTime())
                   << "ms, submitted=" << transports[4]->writes-writes << '\n';
         Require(transports[4]->writes == writes + 1, "Rapid Run clicks submitted duplicate commands");
-        main.lastCommandActivation_ = 0;
-        main.commands_[0].commands.push_back(L"echo should-not-run");
-        main.commands_[0].intervalMs = 10000;
+        main.macro_.ClearActivation();
+        auto plan = main.macro_.Items()[0];
+        plan.commands.push_back(L"echo should-not-run");
+        plan.intervalMs = 10000;
+        main.macro_.Update(0, std::move(plan));
         main.SendCommand(0);
-        Require(main.runningCommandIndex_ == 0, "Macro did not enter running state");
+        Require(main.macro_.RunningIndex() == 0, "Macro did not enter running state");
         SendMessageW(main.commandList_, WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
-        Require(main.runningCommandIndex_ == -1 && transports[4]->writes == writes + 2,
+        Require(main.macro_.RunningIndex() == -1 && transports[4]->writes == writes + 2,
                 "Immediate Stop was blocked by Run's repeat guard");
         SendMessageW(main.commandList_, WM_LBUTTONUP, 0, runPoint);
         main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
@@ -465,7 +467,7 @@ struct AiDeviceTestAccess {
         main.SwitchSession(0, MainWindow::SessionFocus::Preserve);
         Require(!main.sftpThread_.joinable(), "Selecting disconnected SSH started a redundant SFTP process");
         transports[0]->connected = true;
-        main.commands_ = commandDraft;
+        main.macro_.Replace(commandDraft, false);
         main.RefreshCommandList();
         // Reuse the real terminal HWND and session model, not a copied AI log.
         main.ShowAiPage(false);

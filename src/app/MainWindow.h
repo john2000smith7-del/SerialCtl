@@ -17,6 +17,7 @@
 #include "TerminalViewportController.h"
 #include "PaintBuffer.h"
 #include "BackgroundCleanup.h"
+#include "CommandMacroController.h"
 #include "ToolbarIcons.h"
 #include <deque>
 #include <functional>
@@ -37,16 +38,6 @@
 namespace serialctl {
 
 class UiLayoutBatch;
-
-struct CommandItem {
-    std::wstring name;
-    std::vector<std::wstring> commands;
-    std::uint32_t intervalMs = 500;
-
-    CommandItem() = default;
-    CommandItem(std::wstring itemName, std::wstring command)
-        : name(std::move(itemName)), commands{std::move(command)} {}
-};
 
 class MainWindow {
 public:
@@ -244,7 +235,7 @@ private:
     void CopyTerminalSelection(bool selectAll);
     void SendCommand(size_t index);
     void SendNextCommandStep();
-    enum class CommandSequenceEnd { Silent, Submitted, UserStopped, Interrupted };
+    using CommandSequenceEnd = CommandMacroController::End;
     void StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail = {});
     void PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
@@ -413,8 +404,6 @@ private:
     HWND rightPanelToggleButton_ = nullptr;
     HWND commandList_ = nullptr;
     HWND saveCommandsButton_ = nullptr;
-    bool commandsDirty_ = false;
-    bool commandsFileProtected_ = false;
     HWND importButton_ = nullptr;
     HWND exportButton_ = nullptr;
     HWND addCommandButton_ = nullptr;
@@ -445,7 +434,7 @@ private:
     std::wstring logExportMainStatus_;
     std::uint64_t nextSessionId_ = 1;
     std::wstring activeConnectionName_;
-    std::vector<CommandItem> commands_;
+    CommandMacroController macro_;
     int draggingCommandIndex_ = -1;
     int commandDropIndex_ = -1;
     int pendingCommandDragIndex_ = -1;
@@ -458,14 +447,6 @@ private:
     int hoveredCommandAction_ = 0;
     int pressedCommandIndex_ = -1, pressedCommandAction_ = 0;
     int armedCommandIndex_ = -1, armedCommandAction_ = 0;
-    int lastCommandIndex_ = -1;
-    std::uint64_t lastCommandSession_ = 0;
-    ULONGLONG lastCommandActivation_ = 0;
-    int runningCommandIndex_ = -1;
-    size_t submittedCommandSteps_ = 0;
-    std::uint64_t runningCommandSessionId_ = 0;
-    UINT runningCommandCodePage_ = CP_UTF8;
-    std::wstring runningCommandLineEnding_;
     HWND scrollingList_ = nullptr;
     bool connectionListKeyboardInput_ = false;
     int scrollingThumbOffset_ = 0;

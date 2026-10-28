@@ -76,8 +76,8 @@ constexpr UINT_PTR ReceivePumpTimerId = 4007;
 constexpr UINT_PTR SerialScanTimerId = 4008;
 constexpr int IdCommandDragGhost = 9020;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
-constexpr std::uint32_t MaximumCommandIntervalMs = 60000;
-constexpr size_t MaximumCommandSteps = 10;
+constexpr auto MaximumCommandIntervalMs = CommandMacroController::MaximumIntervalMs;
+constexpr auto MaximumCommandSteps = CommandMacroController::MaximumSteps;
 
 enum ControlId {
     IdSsh = 100,
@@ -631,53 +631,6 @@ DWORD ParsePositive(const std::wstring& text, DWORD fallback = 0) {
     return end && *end == L'\0' && value > 0 ? static_cast<DWORD>(value) : fallback;
 }
 
-bool ParseMacroHeader(const std::wstring& line, std::uint32_t& intervalMs) {
-    constexpr wchar_t Prefix[] = L"[[macro interval=";
-    constexpr wchar_t Suffix[] = L"]]";
-    const size_t prefixLength = std::size(Prefix) - 1;
-    const size_t suffixLength = std::size(Suffix) - 1;
-    if (line.size() <= prefixLength + suffixLength || line.rfind(Prefix, 0) != 0 ||
-        line.compare(line.size() - suffixLength, suffixLength, Suffix) != 0)
-        return false;
-    const std::wstring value = line.substr(prefixLength,
-        line.size() - prefixLength - suffixLength);
-    const DWORD parsed = ParsePositive(value);
-    if (parsed == 0 || parsed > MaximumCommandIntervalMs) return false;
-    intervalMs = parsed;
-    return true;
-}
-
-std::wstring EscapeSingleCommandLine(std::wstring line) {
-    const size_t firstContent = line.find_first_not_of(L'\\');
-    const std::wstring content = firstContent == std::wstring::npos ? std::wstring() : line.substr(firstContent);
-    if (content.rfind(L"#", 0) == 0 || content.rfind(L"[[", 0) == 0)
-        line.insert(line.begin(), L'\\');
-    return line;
-}
-
-std::wstring EscapeMacroCommandLine(std::wstring line) {
-    const size_t firstContent = line.find_first_not_of(L'\\');
-    if (firstContent != std::wstring::npos && line.substr(firstContent) == L"[[/macro]]")
-        line.insert(line.begin(), L'\\');
-    return line;
-}
-
-bool UnescapeSingleCommandLine(std::wstring& line) {
-    const size_t firstContent = line.find_first_not_of(L'\\');
-    if (firstContent == 0 || firstContent == std::wstring::npos) return false;
-    const std::wstring content = line.substr(firstContent);
-    if (content.rfind(L"#", 0) != 0 && content.rfind(L"[[", 0) != 0) return false;
-    line.erase(0, 1);
-    return true;
-}
-
-void UnescapeMacroCommandLine(std::wstring& line) {
-    const size_t firstContent = line.find_first_not_of(L'\\');
-    if (firstContent != 0 && firstContent != std::wstring::npos &&
-        line.substr(firstContent) == L"[[/macro]]")
-        line.erase(0, 1);
-}
-
 void AddComboItems(HWND combo, std::initializer_list<const wchar_t*> items, int selection) {
     for (const wchar_t* item : items) {
         SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item));
@@ -1189,7 +1142,7 @@ bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     // actual device work is still protected and defers installation.
     return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && !connectionCleanup_.Busy() && sessions_.empty() &&
            !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
-           !disconnectAllPending_ && !disconnectAllInProgress_ && !commandsDirty_ && runningCommandIndex_ < 0 &&
+           !disconnectAllPending_ && !disconnectAllInProgress_ && !macro_.Dirty() && macro_.RunningIndex() < 0 &&
            !sftpBusy_ && !activeSftpTransferId_ && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
            draggingCommandIndex_ < 0 && !sftpColumnDragging_ && !GetCapture() &&
            (IsWindowEnabled(window_) || updateRequired_);
@@ -1699,7 +1652,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
     }
     if (message == WM_KEYDOWN && (wParam == VK_RETURN || wParam == VK_SPACE || wParam == VK_F2)) {
         const auto index = SendMessageW(window, LB_GETCURSEL, 0, 0);
-        if (index != LB_ERR && self->runningCommandIndex_ < 0) {
+        if (index != LB_ERR && self->macro_.RunningIndex() < 0) {
             if (wParam == VK_F2) self->EditCommand(static_cast<size_t>(index));
             else if (!(lParam & (1LL << 30))) self->SendCommand(static_cast<size_t>(index));
         }
@@ -1715,7 +1668,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
         RECT item{}, client{};
         const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         GetClientRect(window, &client);
-        bool inside = PointInRect(client, point) && index < static_cast<int>(self->commands_.size()) &&
+        bool inside = PointInRect(client, point) && index < static_cast<int>(self->macro_.Items().size()) &&
                       SendMessageW(window, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&item)) != LB_ERR;
         if (inside) {
             OverlayScrollMetrics scroll;
@@ -1725,7 +1678,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             inside = PointInRect(action == 1 ? actions.run : actions.edit, point);
         }
         InvalidateRect(window, nullptr, FALSE);
-        if (inside && self->runningCommandIndex_ < 0) {
+        if (inside && self->macro_.RunningIndex() < 0) {
             if (action == 1) self->SendCommand(static_cast<size_t>(index));
             else self->EditCommand(static_cast<size_t>(index));
         }
@@ -1745,7 +1698,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             point.x >= client.right - Ui::OverlayScrollLaneWidth)
             return DefSubclassProc(window, message, wParam, lParam);
         const DWORD hit = static_cast<DWORD>(SendMessageW(window, LB_ITEMFROMPOINT, 0, MAKELPARAM(point.x, point.y)));
-        if (!HIWORD(hit) && LOWORD(hit) < self->commands_.size()) {
+        if (!HIWORD(hit) && LOWORD(hit) < self->macro_.Items().size()) {
             const int index = static_cast<int>(LOWORD(hit));
             RECT itemRect{};
             SendMessageW(window, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&itemRect));
@@ -1764,14 +1717,14 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             TrackMouseEvent(&tracking);
             RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             if (PointInRect(actions.run, point)) {
-                if (self->runningCommandIndex_ == index) {
+                if (self->macro_.RunningIndex() == index) {
                     // Stopping further submissions is a safety action and is
                     // never delayed by the Run repeat guard or mouse capture.
                     self->StopCommandSequence(CommandSequenceEnd::UserStopped);
                     return 0;
                 }
                 const bool writable = self->connection_ && self->connection_->IsConnected();
-                if (writable && self->runningCommandIndex_ < 0) {
+                if (writable && self->macro_.RunningIndex() < 0) {
                     self->armedCommandIndex_ = index;
                     self->armedCommandAction_ = 1;
                     SetCapture(window);
@@ -1784,14 +1737,14 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             if (message == WM_LBUTTONDBLCLK)
                 return DefSubclassProc(window, message, wParam, lParam);
             if (PointInRect(actions.edit, point)) {
-                if (self->runningCommandIndex_ < 0) {
+                if (self->macro_.RunningIndex() < 0) {
                     self->armedCommandIndex_ = index;
                     self->armedCommandAction_ = 2;
                     SetCapture(window);
                 }
                 return 0;
             }
-            if (PointInRect(card, point) && self->runningCommandIndex_ < 0) {
+            if (PointInRect(card, point) && self->macro_.RunningIndex() < 0) {
                 self->pendingCommandDragIndex_ = index;
                 self->commandDragOrigin_ = point;
                 self->commandDragGrab_ = {point.x - itemRect.left, point.y - itemRect.top};
@@ -1842,7 +1795,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
         const DWORD hit = static_cast<DWORD>(SendMessageW(window, LB_ITEMFROMPOINT, 0, MAKELPARAM(point.x, point.y)));
         int hoverIndex = -1;
         int hoverAction = 0;
-        if (!HIWORD(hit) && LOWORD(hit) < self->commands_.size()) {
+        if (!HIWORD(hit) && LOWORD(hit) < self->macro_.Items().size()) {
             RECT itemRect{};
             OverlayScrollMetrics metrics;
             SendMessageW(window, LB_GETITEMRECT, LOWORD(hit), reinterpret_cast<LPARAM>(&itemRect));
@@ -2551,7 +2504,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         if (id == IdCommandList && notification == LBN_DBLCLK) {
             const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
-            if (connection_ && selected != LB_ERR && runningCommandIndex_ < 0)
+            if (connection_ && selected != LB_ERR && macro_.RunningIndex() < 0)
                 SendCommand(static_cast<size_t>(selected));
             return 0;
         }
@@ -2673,7 +2626,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             }
             if (session && session == activeSession_) {
                 SetConnectedUi(connection_ && connection_->IsConnected());
-                if (runningCommandIndex_ >= 0 && (!connection_ || !connection_->IsConnected()))
+                if (macro_.RunningIndex() >= 0 && (!connection_ || !connection_->IsConnected()))
                     StopCommandSequence(CommandSequenceEnd::Interrupted, status->text);
                 else
                     AppendStatus(status->text, status->isError);
@@ -2749,7 +2702,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return reinterpret_cast<LRESULT>(panelBrush_);
     }
     case WM_CLOSE:
-        if (commandsDirty_) {
+        if (macro_.Dirty()) {
             const int choice = MessageBoxW(window_, L"命令或顺序尚未保存。是否保存后退出？", L"保存命令", MB_YESNOCANCEL | MB_ICONQUESTION);
             if (choice == IDCANCEL || (choice == IDYES && !SaveCommands())) return 0;
         }
@@ -3570,13 +3523,13 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         subtitle.left += Ui::Scale(12);
         DrawTextSimple(dc, state, subtitle, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
-    } else if (item.CtlID == IdCommandList && item.itemID < commands_.size()) {
+    } else if (item.CtlID == IdCommandList && item.itemID < macro_.Items().size()) {
         const bool ghost = source.itemData == ~ULONG_PTR(0);
         const bool sourceDragging = !ghost && draggingCommandIndex_ == static_cast<int>(item.itemID);
         HBRUSH background = CreateSolidBrush(colors.panel);
         FillRect(dc, &rect, background);
         DeleteObject(background);
-        const CommandItem& command = commands_[item.itemID];
+        const CommandItem& command = macro_.Items()[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
@@ -3604,8 +3557,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         DrawTextSimple(dc, summary, value, secondaryInk, smallFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         const bool connected = connection_ && connection_->IsConnected();
-        const bool sequenceRunning = runningCommandIndex_ >= 0;
-        const bool isRunning = runningCommandIndex_ == static_cast<int>(item.itemID);
+        const bool sequenceRunning = macro_.RunningIndex() >= 0;
+        const bool isRunning = macro_.RunningIndex() == static_cast<int>(item.itemID);
         const bool runnable = !sourceDragging && connected && (!sequenceRunning || isRunning);
         const bool editable = !sourceDragging && !sequenceRunning;
         const bool hoverRun = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 1;
@@ -3635,13 +3588,13 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                                : colors.muted,
                     isRunning ? UiGlyph::Stop : UiGlyph::Run);
         if (isRunning)
-            DrawCommandProgress(dc, actions.run, submittedCommandSteps_, command.commands.size(),
+            DrawCommandProgress(dc, actions.run, macro_.Accepted(), command.commands.size(),
                 colors.border, colors.accent);
         DrawEditIcon(dc, actions.edit, ghost || editDown ? RGB(255, 255, 255) : editable ? colors.muted : colors.border);
         if (!ghost && draggingCommandIndex_ >= 0 && commandDragInside_ && commandInsertIndex_ >= 0) {
             const bool above = commandInsertIndex_ == static_cast<int>(item.itemID);
-            const bool belowLast = commandInsertIndex_ == static_cast<int>(commands_.size()) &&
-                item.itemID + 1 == commands_.size();
+            const bool belowLast = commandInsertIndex_ == static_cast<int>(macro_.Items().size()) &&
+                item.itemID + 1 == macro_.Items().size();
             if (above || belowLast) {
                 const int y = above ? rect.top + Ui::Gap / 4 : rect.bottom - Ui::Gap / 4;
                 HPEN pen = CreatePen(PS_SOLID, std::max(2, Ui::Scale(2)), colors.accent);
@@ -4337,7 +4290,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     const std::uint64_t id = pendingSession_->id;
     sessions_.push_back(std::move(pendingSession_));
     RefreshConnectionList();
-    const bool interruptedMacro = runningCommandIndex_ >= 0;
+    const bool interruptedMacro = macro_.RunningIndex() >= 0;
     SwitchSession(sessions_.size() - 1);
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     {
@@ -4373,7 +4326,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
 
 void MainWindow::Disconnect() {
     if (!activeSession_) return;
-    const bool interruptedMacro = runningCommandIndex_ >= 0 && !closing_;
+    const bool interruptedMacro = macro_.RunningIndex() >= 0 && !closing_;
     StopCommandSequence(interruptedMacro ? CommandSequenceEnd::Interrupted : CommandSequenceEnd::Silent,
                         L"用户断开当前连接");
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
@@ -4425,7 +4378,7 @@ void MainWindow::DisconnectAll() {
     aiPane_.Disconnect();
     aiVisible_ = false; aiPageOpened_ = false;
     disconnectAllInProgress_ = true;
-    const bool interruptedMacro = runningCommandIndex_ >= 0 && !closing_;
+    const bool interruptedMacro = macro_.RunningIndex() >= 0 && !closing_;
     StopCommandSequence(interruptedMacro ? CommandSequenceEnd::Interrupted : CommandSequenceEnd::Silent,
                         L"用户断开全部连接");
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
@@ -4648,7 +4601,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
             {"mouseCaptured", session->terminal.MouseCaptured()}, {"cursor", session->aiCursor}};
     }
     if (method == "key") {
-        if (runningCommandIndex_ >= 0 || session->mode == 4)
+        if (macro_.RunningIndex() >= 0 || session->mode == 4)
             return error("Named keys require an idle interactive serial, Telnet or SSH terminal; CMD uses complete lines");
         const auto bytes = session->terminal.KeySequence(params.value("key", std::string()));
         if (bytes.empty()) return error("Unsupported key; use Enter, Ctrl+C, Escape, Tab, arrows or function keys");
@@ -4684,7 +4637,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
             {"execution", "unknown"}, {"noOutputIsNotHangProof", true}};
     }
     if (method == "command" || method == "text") {
-        if (runningCommandIndex_ >= 0) return error("A command macro is in progress; stop it before sending an AI command");
+        if (macro_.RunningIndex() >= 0) return error("A command macro is in progress; stop it before sending an AI command");
         const auto command = params.value(method == "command" ? "command" : "text", std::string());
         if (method == "command" ? !ai::ValidCommand(command) :
             command.empty() || command.size() > 4096 || std::any_of(command.begin(),command.end(),[](unsigned char c) {
@@ -4750,7 +4703,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     }
     if (focus != SessionFocus::PowerPreview) { powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE); }
     if (!aiVisible_) ShowWindow(terminal_, SW_SHOW);
-    const bool interruptedMacro = runningCommandIndex_ >= 0 &&
+    const bool interruptedMacro = macro_.RunningIndex() >= 0 &&
         activeSession_ && activeSession_ != sessions_[index].get();
     if (interruptedMacro)
         StopCommandSequence(CommandSequenceEnd::Interrupted, L"用户切换当前会话");
@@ -4835,7 +4788,7 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
 }
 
 void MainWindow::SendTerminalCharacter(wchar_t character) {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     if (!activeSession_ || !connection_ || !connection_->IsConnected()) return;
     ScrollTerminalToBottom();
     if (selectedMode_ == 4) {
@@ -4879,7 +4832,7 @@ void MainWindow::SendTerminalCharacter(wchar_t character) {
 }
 
 void MainWindow::SendTerminalKey(WPARAM key, bool shift, bool control, bool alt) {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     if (!activeSession_) return;
     ScrollTerminalToBottom();
     if (selectedMode_ == 4) {
@@ -4939,7 +4892,7 @@ void MainWindow::SendTerminalKey(WPARAM key, bool shift, bool control, bool alt)
 }
 
 void MainWindow::SendCommand(size_t index) {
-    if (index >= commands_.size() || commands_[index].commands.empty() || runningCommandIndex_ >= 0) return;
+    if (index >= macro_.Items().size() || macro_.Items()[index].commands.empty() || macro_.Running()) return;
     if (!connection_ || !connection_->IsConnected() || !activeSession_) {
         AppendStatus(L"请先建立连接，再执行常用命令。", true);
         return;
@@ -4948,99 +4901,61 @@ void MainWindow::SendCommand(size_t index) {
 #ifdef SERIALCTL_AI_TESTING
     if (commandClock_) now = commandClock_();
 #endif
-    if (lastCommandIndex_ == static_cast<int>(index) && lastCommandSession_ == activeSession_->id &&
-        now - lastCommandActivation_ < std::max<DWORD>(350, GetDoubleClickTime()))
-        return; // One activation across mouse double-clicks and held Enter.
-    const CommandItem& command = commands_[index];
+    if (macro_.Duplicate(index, activeSession_->id, now, std::max<DWORD>(350, GetDoubleClickTime()))) return;
+    const CommandItem& command = macro_.Items()[index];
     if (command.commands.size() == 1) {
         const std::wstring text = command.commands.front() + SelectedLineEnding();
         const std::string encoded = EncodeTerminalText(text);
         if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text)) {
-            lastCommandIndex_ = static_cast<int>(index);
-            lastCommandSession_ = activeSession_->id;
-            lastCommandActivation_ = now;
+            macro_.Activated(index, activeSession_->id, now);
             AppendStatus(L"已提交命令；执行结果见输出：" + command.commands.front(), false);
         }
         return;
     }
-
-    runningCommandIndex_ = static_cast<int>(index);
-    lastCommandIndex_ = static_cast<int>(index);
-    lastCommandSession_ = activeSession_->id;
-    lastCommandActivation_ = now;
-    submittedCommandSteps_ = 0;
-    runningCommandSessionId_ = activeSession_->id;
-    runningCommandCodePage_ = SelectedCodePage();
-    runningCommandLineEnding_ = SelectedLineEnding();
+    if (!macro_.Begin(index, activeSession_->id, SelectedCodePage(), SelectedLineEnding())) return;
+    macro_.Activated(index, activeSession_->id, now);
     UpdateCommandActions();
     InvalidateRect(commandList_, nullptr, FALSE);
     SendNextCommandStep();
 }
 
 void MainWindow::SendNextCommandStep() {
-    if (runningCommandIndex_ < 0 || runningCommandIndex_ >= static_cast<int>(commands_.size())) return;
-    const CommandItem& command = commands_[static_cast<size_t>(runningCommandIndex_)];
-    if (!activeSession_ || activeSession_->id != runningCommandSessionId_ || !connection_ ||
-        !connection_->IsConnected() || submittedCommandSteps_ >= command.commands.size()) {
+    if (!macro_.Running()) return;
+    std::wstring text;
+    if (!macro_.Next(activeSession_ ? activeSession_->id : 0, connection_ && connection_->IsConnected(), text)) {
         StopCommandSequence(CommandSequenceEnd::Interrupted, L"连接或当前会话已变化");
         return;
     }
-
-    const std::wstring& step = command.commands[submittedCommandSteps_];
-    const std::wstring text = step + runningCommandLineEnding_;
-    const std::string encoded =
-        selectedMode_ == 4 ? EncodeTerminalText(text) : WideToMultiByte(text, runningCommandCodePage_);
+    const std::string encoded = selectedMode_ == 4 ? EncodeTerminalText(text) : WideToMultiByte(text, macro_.CodePage());
     if (!SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text)) {
         StopCommandSequence(CommandSequenceEnd::Interrupted, statusText_);
         return;
     }
-
-    ++submittedCommandSteps_;
+    macro_.Accept();
     InvalidateRect(commandList_, nullptr, FALSE);
-    if (submittedCommandSteps_ >= command.commands.size()) {
+    if (macro_.Complete()) {
         StopCommandSequence(CommandSequenceEnd::Submitted);
         return;
     }
-
-    AppendStatus(L"宏“" + command.name + L"”已提交 " +
-        std::to_wstring(submittedCommandSteps_) + L"/" + std::to_wstring(command.commands.size()) +
+    AppendStatus(L"宏“" + macro_.Name() + L"”已提交 " +
+        std::to_wstring(macro_.Accepted()) + L"/" + std::to_wstring(macro_.Total()) +
         L" 条，等待下一次提交；执行结果见输出。", false);
     KillTimer(window_, StatusTimerId);
-    if (!SetTimer(window_, CommandTimerId, command.intervalMs, nullptr)) {
+    if (!SetTimer(window_, CommandTimerId, macro_.Interval(), nullptr))
         StopCommandSequence(CommandSequenceEnd::Interrupted, L"计时器创建失败");
-    }
 }
 
 void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail) {
-    if (runningCommandIndex_ < 0) return;
-    std::wstring name;
-    size_t total = submittedCommandSteps_;
-    if (runningCommandIndex_ < static_cast<int>(commands_.size())) {
-        name = commands_[static_cast<size_t>(runningCommandIndex_)].name;
-        total = commands_[static_cast<size_t>(runningCommandIndex_)].commands.size();
-    }
-    const auto count = std::to_wstring(submittedCommandSteps_) + L"/" + std::to_wstring(total);
-    // detail can alias statusText_; snapshot it before AppendStatus replaces it.
-    const std::wstring reason = detail;
-    auto* owner = FindSession(runningCommandSessionId_);
+    const auto completion = macro_.Stop(end, detail);
+    if (!completion.active) return;
+    auto* owner = FindSession(completion.session);
     KillTimer(window_, CommandTimerId);
-    runningCommandIndex_ = -1;
-    submittedCommandSteps_ = 0;
-    runningCommandSessionId_ = 0;
-    runningCommandLineEnding_.clear();
     UpdateCommandActions();
     InvalidateRect(commandList_, nullptr, FALSE);
-    if (end == CommandSequenceEnd::Submitted)
-        AppendStatus(L"宏“" + name + L"”已提交 " + count + L" 条；执行结果见输出。", false);
-    else if (end == CommandSequenceEnd::UserStopped)
-        AppendStatus(L"宏“" + name + L"”已停止后续提交（" + count +
-                     L"）；已提交内容可能继续执行，结果见输出。", false);
-    else if (end == CommandSequenceEnd::Interrupted)
-        AppendStatus(L"宏“" + name + L"”后续提交已中断（" + count + L"）：" + reason +
-                     L"；已提交内容执行状态未知，请检查连接和输出，不自动重发。", true);
+    if (!completion.message.empty()) AppendStatus(completion.message, completion.error);
     if (owner && end != CommandSequenceEnd::Silent) {
         owner->lastStatus = statusText_;
-        owner->lastStatusIsError = end == CommandSequenceEnd::Interrupted;
+        owner->lastStatusIsError = completion.error;
         owner->unreadStatus = owner != activeSession_;
         GetLocalTime(&owner->statusTime);
     }
@@ -5305,7 +5220,7 @@ void MainWindow::StartLogExport(const std::wstring &source, const std::wstring &
                                 std::uint64_t total, LogExportTask task) {
     PollLogExport();
     if (logExportJob_) {
-        if (!statusIsError_ && runningCommandIndex_ < 0)
+        if (!statusIsError_ && macro_.RunningIndex() < 0)
             AppendStatus(L"已有日志正在导出，可在设置中取消", false);
         return;
     }
@@ -5321,7 +5236,7 @@ void MainWindow::StartLogExport(const std::wstring &source, const std::wstring &
     logExportNotice_ = L"正在准备日志快照 · " + source;
     powerPane_.SetLogExportBusy(true);
     logExportMainStatus_.clear();
-    if (!statusIsError_ && runningCommandIndex_ < 0) {
+    if (!statusIsError_ && macro_.RunningIndex() < 0) {
         AppendStatus(logExportNotice_, false);
         logExportMainStatus_ = logExportNotice_;
     }
@@ -5348,7 +5263,7 @@ void MainWindow::StartLogExport(const std::wstring &source, const std::wstring &
         if (measurePaint_) RemovePropW(window_, L"SerialCtl.LogExportBusy");
         powerPane_.SetLogExportBusy(false);
         logExportNotice_ = L"无法启动后台日志导出，原目标文件未替换";
-        if (!statusIsError_ && runningCommandIndex_ < 0) AppendStatus(logExportNotice_, true);
+        if (!statusIsError_ && macro_.RunningIndex() < 0) AppendStatus(logExportNotice_, true);
     }
 }
 
@@ -5383,7 +5298,7 @@ void MainWindow::PollLogExport() {
         logExportNotice_ = std::move(notice);
         // Export feedback must not hide a device fault or an unknown macro
         // outcome. The instance note in Settings always retains this feedback.
-        if (!statusIsError_ && runningCommandIndex_ < 0 &&
+        if (!statusIsError_ && macro_.RunningIndex() < 0 &&
             (statusText_.empty() || statusText_ == logExportMainStatus_)) {
             AppendStatus(logExportNotice_, failed);
             logExportMainStatus_ = logExportNotice_;
@@ -5529,7 +5444,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         enable(IdMenuSelectAll, hasSession && self->activeSession_->terminal.DisplayLineCount() > 0);
         enable(IdMenuCopy, hasSession && self->HasTerminalSelection());
         enable(IdSendSelectionToAi, hasSession && self->HasTerminalSelection());
-        enable(IdMenuPaste, connected && self->runningCommandIndex_ < 0 &&
+        enable(IdMenuPaste, connected && self->macro_.RunningIndex() < 0 &&
             IsClipboardFormatAvailable(CF_UNICODETEXT));
     };
     if (message == WM_INITDIALOG) {
@@ -5797,7 +5712,7 @@ void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
 }
 
 void MainWindow::PasteToTerminal() {
-    if (runningCommandIndex_ >= 0 || !activeSession_ || !connection_ || !connection_->IsConnected()) return;
+    if (macro_.RunningIndex() >= 0 || !activeSession_ || !connection_ || !connection_->IsConnected()) return;
     if (!OpenClipboard(terminal_)) {
         AppendStatus(L"剪贴板正被其他程序使用，请重试粘贴", true);
         return;
@@ -6706,7 +6621,7 @@ void MainWindow::EditSftpPath() {
     }
 }
 void MainWindow::QueryTerminalDirectory(bool installHook) {
-    if (!activeSession_ || selectedMode_ != 0 || runningCommandIndex_ >= 0) return;
+    if (!activeSession_ || selectedMode_ != 0 || macro_.RunningIndex() >= 0) return;
     const auto sessionId = activeSession_->id;
     const wchar_t* prompt = installHook ? L"请确认终端已回到空闲 Bash/Zsh 提示符。将为当前 Shell 安装目录通知，不修改远端配置文件。继续？" : L"请确认终端已回到空闲 Shell 提示符。将在此终端执行 pwd 并更新 SFTP 路径。继续？";
     if (MessageBoxW(window_, prompt, L"获取终端目录", MB_OKCANCEL | MB_ICONQUESTION) != IDOK || !activeSession_ || activeSession_->id != sessionId) return;
@@ -6841,8 +6756,8 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     static const wchar_t hookLabel[] = L"启用当前 Shell 目录通知…";
     AppendMenuW(menu, MF_OWNERDRAW | (!available ? MF_GRAYED : 0), IdMenuSftpPath, pathLabel);
     AppendMenuW(menu, MF_OWNERDRAW | (!activeSession_ ? MF_GRAYED : 0) | (activeSession_ && activeSession_->sftpFollowTerminal ? MF_CHECKED : 0), IdMenuSftpFollow, followLabel);
-    AppendMenuW(menu, MF_OWNERDRAW | (!available || runningCommandIndex_ >= 0 ? MF_GRAYED : 0), IdMenuSftpPwd, pwdLabel);
-    AppendMenuW(menu, MF_OWNERDRAW | (!available || runningCommandIndex_ >= 0 ? MF_GRAYED : 0), IdMenuSftpHook, hookLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (!available || macro_.RunningIndex() >= 0 ? MF_GRAYED : 0), IdMenuSftpPwd, pwdLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (!available || macro_.RunningIndex() >= 0 ? MF_GRAYED : 0), IdMenuSftpHook, hookLabel);
     AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
     AppendMenuW(menu, MF_OWNERDRAW | (!available || !anyFiles ? MF_GRAYED : 0),
         IdMenuSftpDownload, downloadLabel);
@@ -7771,138 +7686,41 @@ void MainWindow::LoadCommands() {
     const std::wstring path = DefaultCommandsPath();
     if (!LoadCommandsFromFile(path, error)) {
         if (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            commandsFileProtected_ = true;
+            macro_.ProtectFile(true);
             AppendStatus(error + L" 原文件已保留，可导入有效文件后保存。", true);
             return;
         }
-        commands_ = {{L"帮助", L"help"}, {L"打印环境变量", L"printenv"}, {L"存储设备", L"mmc list"},
-            {L"复位", L"reset"}, {L"启动", L"boot"}};
+        macro_.Replace({{L"帮助", L"help"}, {L"打印环境变量", L"printenv"}, {L"存储设备", L"mmc list"},
+            {L"复位", L"reset"}, {L"启动", L"boot"}}, false);
         SaveCommands();
     }
 }
 
 bool MainWindow::SaveCommands() {
-    if (commandsFileProtected_) { AppendStatus(L"命令文件读取失败，原文件已保护。请导入有效文件。", true); return false; }
+    if (macro_.FileProtected()) { AppendStatus(L"命令文件读取失败，原文件已保护。请导入有效文件。", true); return false; }
     std::wstring error;
     if (!SaveCommandsToFile(DefaultCommandsPath(), error)) { if (window_) AppendStatus(error, true); return false; }
-    commandsDirty_ = false;
+    macro_.MarkSaved();
     UpdateCommandActions();
     if (window_) AppendStatus(L"命令及顺序已保存", false);
     return true;
 }
 void MainWindow::MarkCommandsDirty() {
-    commandsDirty_ = true;
+    macro_.MarkDirty();
     UpdateCommandActions();
 }
 
 bool MainWindow::LoadCommandsFromFile(const std::wstring& path, std::wstring& error) {
-    FILE* file = nullptr;
-    if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file) { error = L"无法打开命令文件。"; return false; }
-    fseek(file, 0, SEEK_END);
-    const long size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    if (size < 0 || size > 4 * 1024 * 1024) { fclose(file); error = L"命令文件大小无效或超过 4 MB。"; return false; }
-    std::string bytes(static_cast<size_t>(size), '\0');
-    if (!bytes.empty() && fread(bytes.data(), 1, bytes.size(), file) != bytes.size()) { fclose(file); error = L"命令文件读取失败。"; return false; }
-    fclose(file);
-    if (bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF &&
-        static_cast<unsigned char>(bytes[1]) == 0xBB && static_cast<unsigned char>(bytes[2]) == 0xBF) bytes.erase(0, 3);
-    if (!bytes.empty() && !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0)) { error = L"命令文件不是有效 UTF-8。"; return false; }
-    const std::wstring content = MultiByteToWide(reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size(), CP_UTF8);
-    std::vector<CommandItem> parsed;
-    std::wstring pendingName;
-    CommandItem pendingMacro;
-    bool readingMacro = false;
-    size_t start = 0;
-    while (start <= content.size()) {
-        const size_t end = content.find(L'\n', start);
-        std::wstring line = Trim(content.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start));
-        if (!line.empty()) {
-            if (readingMacro) {
-                if (line == L"[[/macro]]") {
-                    if (pendingMacro.commands.empty()) {
-                        error = L"宏中没有有效指令。";
-                        return false;
-                    }
-                    if (pendingMacro.name.empty()) pendingMacro.name = pendingMacro.commands.front();
-                    parsed.push_back(std::move(pendingMacro));
-                    pendingMacro = {};
-                    readingMacro = false;
-                } else {
-                    UnescapeMacroCommandLine(line);
-                    pendingMacro.commands.push_back(std::move(line));
-                    if (pendingMacro.commands.size() > MaximumCommandSteps) {
-                        error = L"每个宏最多包含 " + std::to_wstring(MaximumCommandSteps) + L" 条指令。";
-                        return false;
-                    }
-                }
-            } else if (UnescapeSingleCommandLine(line)) {
-                parsed.push_back({pendingName.empty() ? line : pendingName, line});
-                pendingName.clear();
-            } else if (line.front() == L'#') {
-                pendingName = Trim(line.substr(1));
-            } else {
-                std::uint32_t intervalMs = 0;
-                if (ParseMacroHeader(line, intervalMs)) {
-                    pendingMacro = {};
-                    pendingMacro.name = pendingName;
-                    pendingMacro.intervalMs = intervalMs;
-                    pendingName.clear();
-                    readingMacro = true;
-                } else if (line.rfind(L"[[macro", 0) == 0) {
-                    error = L"宏开始标记无效，指令间隔必须是 1 到 60000 毫秒。";
-                    return false;
-                } else if (line == L"[[/macro]]") {
-                    error = L"命令文件中存在没有开始标记的宏结束行。";
-                    return false;
-                } else {
-                    parsed.push_back({pendingName.empty() ? line : pendingName, line});
-                    pendingName.clear();
-                }
-            }
-        }
-        if (end == std::wstring::npos) break;
-        start = end + 1;
-    }
-    if (readingMacro) {
-        error = L"命令文件中的宏缺少 [[/macro]] 结束标记。";
-        return false;
-    }
-    commands_ = std::move(parsed);
-    return true;
+    return macro_.LoadFile(path, error);
 }
 
 bool MainWindow::SaveCommandsToFile(const std::wstring& path, std::wstring& error) const {
-    FILE* file = nullptr;
-    const std::wstring temporary = path + L".tmp";
-    if (_wfopen_s(&file, temporary.c_str(), L"wb") != 0 || !file) { error = L"无法保存命令文件。"; return false; }
-    bool wrote = true;
-    const unsigned char bom[] = {0xEF, 0xBB, 0xBF};
-    wrote = fwrite(bom, 1, sizeof(bom), file) == sizeof(bom);
-    for (const CommandItem& item : commands_) {
-        std::wstring block = L"#" + item.name + L"\r\n";
-        if (item.commands.size() > 1) {
-            block += L"[[macro interval=" + std::to_wstring(item.intervalMs) + L"]]\r\n";
-            for (const std::wstring& command : item.commands)
-                block += EscapeMacroCommandLine(command) + L"\r\n";
-            block += L"[[/macro]]\r\n";
-        } else if (!item.commands.empty()) {
-            block += EscapeSingleCommandLine(item.commands.front()) + L"\r\n";
-        }
-        const std::string utf8 = WideToMultiByte(block, CP_UTF8);
-        if (fwrite(utf8.data(), 1, utf8.size(), file) != utf8.size()) wrote = false;
-    }
-    if (fflush(file) != 0) wrote = false;
-    if (fclose(file) != 0) wrote = false;
-    if (!wrote || !MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        DeleteFileW(temporary.c_str()); error = L"保存失败，原命令文件已保留。"; return false;
-    }
-    return true;
+    return macro_.SaveFile(path, error);
 }
 
 void MainWindow::RefreshCommandList() {
     SendMessageW(commandList_, LB_RESETCONTENT, 0, 0);
-    for (const CommandItem& item : commands_)
+    for (const CommandItem& item : macro_.Items())
         SendMessageW(commandList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.name.c_str()));
     UpdateCommandActions();
     InvalidateRect(commandList_, nullptr, TRUE);
@@ -7911,12 +7729,12 @@ void MainWindow::RefreshCommandList() {
 void MainWindow::UpdateCommandActions() {
     if (!deleteCommandButton_ || !commandList_) return;
     const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
-    const bool idle = runningCommandIndex_ < 0;
-    EnableWindow(saveCommandsButton_, commandsDirty_ && idle && !commandsFileProtected_);
-    SetWindowTextW(saveCommandsButton_, commandsDirty_ ? L"保存*" : L"保存");
+    const bool idle = macro_.RunningIndex() < 0;
+    EnableWindow(saveCommandsButton_, macro_.Dirty() && idle && !macro_.FileProtected());
+    SetWindowTextW(saveCommandsButton_, macro_.Dirty() ? L"保存*" : L"保存");
     InvalidateRect(saveCommandsButton_, nullptr, TRUE);
     EnableWindow(deleteCommandButton_, idle && selected != LB_ERR &&
-        selected < static_cast<LRESULT>(commands_.size()));
+        selected < static_cast<LRESULT>(macro_.Items().size()));
     EnableWindow(importButton_, idle);
     EnableWindow(addCommandButton_, idle);
 
@@ -7939,7 +7757,7 @@ void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
         const int top = static_cast<int>(SendMessageW(commandList_, LB_GETTOPINDEX, 0, 0));
         const int rowHeight = std::max(1, static_cast<int>(SendMessageW(commandList_, LB_GETITEMHEIGHT, 0, 0)));
         const int visibleRows = std::max(1, static_cast<int>(client.bottom / rowHeight));
-        const int lastTop = std::max(0, static_cast<int>(commands_.size()) - visibleRows);
+        const int lastTop = std::max(0, static_cast<int>(macro_.Items().size()) - visibleRows);
         const int next = point.y < Ui::Scale(28) ? std::max(0, top - 1) :
             point.y > client.bottom - Ui::Scale(28) ? std::min(lastTop, top + 1) : top;
         if (next != top) {
@@ -7949,15 +7767,15 @@ void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
     }
     const int previousInsertion = commandInsertIndex_;
     const int previousDrop = commandDropIndex_;
-    if (commandDragInside_ && !commands_.empty()) {
+    if (commandDragInside_ && !macro_.Items().empty()) {
         const DWORD hit = static_cast<DWORD>(SendMessageW(commandList_, LB_ITEMFROMPOINT, 0,
             MAKELPARAM(point.x, point.y)));
-        const int row = std::min<int>(LOWORD(hit), static_cast<int>(commands_.size()) - 1);
+        const int row = std::min<int>(LOWORD(hit), static_cast<int>(macro_.Items().size()) - 1);
         RECT item{};
         if (SendMessageW(commandList_, LB_GETITEMRECT, row, reinterpret_cast<LPARAM>(&item)) != LB_ERR) {
             commandInsertIndex_ = row + (point.y >= (item.top + item.bottom) / 2 ? 1 : 0);
             commandDropIndex_ = commandInsertIndex_ - (commandInsertIndex_ > draggingCommandIndex_ ? 1 : 0);
-            commandDropIndex_ = std::clamp(commandDropIndex_, 0, static_cast<int>(commands_.size()) - 1);
+            commandDropIndex_ = std::clamp(commandDropIndex_, 0, static_cast<int>(macro_.Items().size()) - 1);
         }
     }
     POINT screen = point;
@@ -7974,9 +7792,9 @@ void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
         InvalidateRect(commandList_, nullptr, FALSE);
     } else if (previousInsertion != commandInsertIndex_ || wasInside != commandDragInside_) {
         for (int insertion : {previousInsertion, commandInsertIndex_}) {
-            if (insertion < 0 || commands_.empty()) continue;
+            if (insertion < 0 || macro_.Items().empty()) continue;
             RECT row{};
-            const int index = std::min(insertion, static_cast<int>(commands_.size()) - 1);
+            const int index = std::min(insertion, static_cast<int>(macro_.Items().size()) - 1);
             if (SendMessageW(commandList_, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&row)) != LB_ERR)
                 InvalidateRect(commandList_, &row, FALSE);
         }
@@ -7995,12 +7813,7 @@ void MainWindow::EndCommandDrag(bool commit) {
 }
 
 void MainWindow::MoveCommand(size_t from, size_t to) {
-    if (runningCommandIndex_ >= 0 || from >= commands_.size() || to >= commands_.size() || from == to) return;
-    CommandItem item = commands_[from];
-    commands_.erase(commands_.begin() + static_cast<std::ptrdiff_t>(from));
-    to = std::min(to, commands_.size());
-    commands_.insert(commands_.begin() + static_cast<std::ptrdiff_t>(to), std::move(item));
-    MarkCommandsDirty();
+    if (!macro_.Move(from, to)) return;
     RefreshCommandList();
     SendMessageW(commandList_, LB_SETCURSEL, static_cast<WPARAM>(to), 0);
     UpdateCommandActions();
@@ -8008,7 +7821,7 @@ void MainWindow::MoveCommand(size_t from, size_t to) {
 }
 
 void MainWindow::ImportCommands() {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     wchar_t path[MAX_PATH]{};
     const std::wstring initialDirectory = InitialCommandDirectory();
     OPENFILENAMEW dialog{};
@@ -8024,24 +7837,14 @@ void MainWindow::ImportCommands() {
 }
 
 void MainWindow::ImportCommandFile(const std::wstring& path) {
-    if (runningCommandIndex_ >= 0 || path.empty()) return;
-    if (commandsDirty_) {
+    if (macro_.RunningIndex() >= 0 || path.empty()) return;
+    if (macro_.Dirty()) {
         const int choice = MessageBoxW(window_, L"当前命令尚未保存。导入前是否保存？", L"导入命令", MB_YESNOCANCEL | MB_ICONQUESTION);
         if (choice == IDCANCEL || (choice == IDYES && !SaveCommands())) return;
     }
     RememberCommandDirectory(path);
     std::wstring error;
-    auto previousCommands = commands_;
-    if (!LoadCommandsFromFile(path, error)) { AppendStatus(error, true); return; }
-    if (commandsFileProtected_) {
-        const std::wstring backup = DefaultCommandsPath() + L".unreadable-" + std::to_wstring(GetTickCount64()) + L".bak";
-        if (!CopyFileW(DefaultCommandsPath().c_str(), backup.c_str(), TRUE)) {
-            commands_ = std::move(previousCommands);
-            AppendStatus(L"无法备份原命令文件，尚未允许覆盖。", true); return;
-        }
-        commandsFileProtected_ = false;
-    }
-    MarkCommandsDirty();
+    if (!macro_.ImportFile(path, DefaultCommandsPath(), error)) { AppendStatus(error, true); return; }
     RefreshCommandList();
     AppendStatus(L"已导入常用命令。", false);
 }
@@ -8330,17 +8133,17 @@ INT_PTR CALLBACK MainWindow::CommandDialogProc(HWND dialog, UINT message, WPARAM
 }
 
 void MainWindow::AddCommand() {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     pendingCommand_ = {};
     pendingCommand_.commands.push_back(L"");
     pendingCommand_.intervalMs = DefaultCommandIntervalMs;
     editingCommandIndex_ = -1;
     if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
                          reinterpret_cast<LPARAM>(this)) == IDOK) {
-        commands_.push_back(pendingCommand_);
+        macro_.Append(pendingCommand_);
         MarkCommandsDirty();
         RefreshCommandList();
-        SendMessageW(commandList_, LB_SETCURSEL, commands_.size() - 1, 0);
+        SendMessageW(commandList_, LB_SETCURSEL, macro_.Items().size() - 1, 0);
         UpdateCommandActions();
     }
     RedrawWindow(window_, nullptr, nullptr,
@@ -8348,12 +8151,12 @@ void MainWindow::AddCommand() {
 }
 
 void MainWindow::EditCommand(size_t index) {
-    if (runningCommandIndex_ >= 0 || index >= commands_.size()) return;
-    pendingCommand_ = commands_[index];
+    if (macro_.RunningIndex() >= 0 || index >= macro_.Items().size()) return;
+    pendingCommand_ = macro_.Items()[index];
     editingCommandIndex_ = static_cast<int>(index);
     if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
                          reinterpret_cast<LPARAM>(this)) == IDOK) {
-        commands_[index] = pendingCommand_;
+        macro_.Update(index, pendingCommand_);
         MarkCommandsDirty();
         RefreshCommandList();
         SendMessageW(commandList_, LB_SETCURSEL, index, 0);
@@ -8365,10 +8168,10 @@ void MainWindow::EditCommand(size_t index) {
 }
 
 void MainWindow::DeleteSelectedCommand() {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
     if (selected == LB_ERR) return;
-    commands_.erase(commands_.begin() + selected);
+    macro_.Erase(static_cast<size_t>(selected));
     MarkCommandsDirty();
     RefreshCommandList();
 }
