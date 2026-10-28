@@ -60,7 +60,13 @@ struct AiDeviceTestAccess {
             main.CreateControls();
             main.ApplyTheme();
             ShowWindow(parent, SW_SHOW);
-            SetWindowPos(parent, HWND_TOPMOST, 0, 0, 1400, 850, SWP_SHOWWINDOW);
+            RECT workArea{};
+            if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0))
+                throw std::runtime_error("Cannot determine desktop work area");
+            const int wide = (std::min)(1400, static_cast<int>(workArea.right - workArea.left) - 20);
+            const int tall = (std::min)(850, static_cast<int>(workArea.bottom - workArea.top) - 20);
+            if (wide < 800 || tall < 600) throw std::runtime_error("Desktop work area is too small for the benchmark");
+            SetWindowPos(parent, HWND_TOPMOST, workArea.left, workArea.top, wide, tall, SWP_SHOWWINDOW);
             SetForegroundWindow(parent);
             RECT viewport{};
             GetClientRect(parent, &viewport);
@@ -95,8 +101,8 @@ struct AiDeviceTestAccess {
             }
             resizeMessages = 0;
             for (int i = 0; i < 40; ++i) {
-                const int width = i % 2 ? 1320 : 1400;
-                const int height = i % 2 ? 800 : 850;
+                const int width = i % 2 ? wide - 80 : wide;
+                const int height = i % 2 ? tall - 50 : tall;
                 const auto started = std::chrono::steady_clock::now();
                 if (!SetWindowPos(parent, nullptr, 0, 0, width, height,
                                   SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE))
@@ -106,9 +112,11 @@ struct AiDeviceTestAccess {
                 resizes.push_back(std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - started).count());
                 RECT bounds{};
-                if (!GetWindowRect(parent, &bounds) || bounds.right - bounds.left != width ||
-                    bounds.bottom - bounds.top != height)
-                    throw std::runtime_error("Requested resize did not change window bounds");
+                if (!GetWindowRect(parent, &bounds)) throw std::runtime_error("Cannot read resized window bounds");
+                if (bounds.right - bounds.left != width || bounds.bottom - bounds.top != height)
+                    throw std::runtime_error("Requested resize " + std::to_string(width) + "x" +
+                        std::to_string(height) + " yielded " + std::to_string(bounds.right - bounds.left) + "x" +
+                        std::to_string(bounds.bottom - bounds.top));
             }
             if (resizeMessages < 39) throw std::runtime_error("Resize did not reach the production WM_SIZE handler");
             const auto wallMs = std::chrono::duration<double, std::milli>(

@@ -93,8 +93,12 @@ jobs:
                 $binary = $suite.binary
                 $path = Join-Path $evidence "$kind-$label-$round.txt"
                 Write-Host "Running $kind $label round $round"
-                $lines = & (Join-Path $build $binary) 2>&1
-                $status = $LASTEXITCODE
+                $previousPreference = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
+                try {
+                  $lines = & (Join-Path $build $binary) 2>&1
+                  $status = $LASTEXITCODE
+                } finally { $ErrorActionPreference = $previousPreference }
                 [IO.File]::WriteAllLines($path, [string[]]$lines, $noBom)
                 if ($status -ne 0) { Get-Content $path; throw "$kind $label round $round exited $status" }
               }
