@@ -995,9 +995,6 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             command["_recoveryEpoch"].get<std::uint64_t>() != recoveryCancelEpoch_.load()) action["state"] = "canceled";
         action["error"] = e.what();
         action["timestamp"] = Timestamp();
-        auto failureRecord = action.dump();
-        log_.WriteStatus(MultiByteToWide(reinterpret_cast<const std::uint8_t *>(failureRecord.data()),
-                                         failureRecord.size(), CP_UTF8));
         if (command.value("type", std::string()) == "connect" || communication) {
             Disconnect();
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1005,10 +1002,13 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 actions_[job.first]["state"] = "canceled";
             queue_.clear();
         }
-        action["state"] = "failed";
-        action["error"] = e.what();
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_["error"] = e.what();
+        // A canceled recovery keeps its "canceled" state and must not pollute the
+        // global error; only real failures update state_["error"]. The status log
+        // is written once, after the common record below.
+        if (action["state"] == "failed") {
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["error"] = e.what();
+        }
     }
     action["timestamp"] = Timestamp();
     log_.WriteStatus(

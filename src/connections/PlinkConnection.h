@@ -53,7 +53,8 @@ private:
     std::atomic_bool cancelStarting_{false};
     std::atomic<bool> stopping_{false};
     std::thread readThread_;
-    std::mutex writeMutex_;
+    mutable std::mutex writeMutex_;
+    std::atomic<bool> readerDone_{true};
     DataCallback onData_;
     StatusCallback onStatus_;
 };

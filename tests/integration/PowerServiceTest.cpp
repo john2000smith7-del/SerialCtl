@@ -109,6 +109,29 @@ void TestStopDuringRecoveryReadback() {
         Expect(line!="CHAN:OUTP ON","Actual simulated SCPI trace contains no ON after readback-time stop");
 }
 
+void TestQueuedRecoveryCanceledBeforeStart() {
+    PowerService power;
+    Expect(Wait(power,power.Submit({{"type","connect"},{"backend","simulation"}})).value("state","")=="completed","Queued-cancel fixture connects controlled transport");
+    const auto ready=power.State();
+    const bool paused=PowerServiceTestAccess::Pause(power);
+    Expect(paused,"Worker pauses before the recovery is executed");
+    if(!paused) return;
+    auto recovery=power.Submit({{"type","recover"},{"channels",{1}},{"identity",ready["identity"]},{"mode",ready["mode"]}});
+    Expect(!recovery.contains("error") && recovery.value("state","")=="queued","Recovery waits in the queue while the worker is paused");
+    auto stop=power.Submit({{"type","stop"}});
+    Expect(!stop.contains("error"),"Stop is accepted while recovery is still queued");
+    PowerServiceTestAccess::Resume(power);
+    Expect(Wait(power,stop).value("state","")=="completed","Stop completes after the worker resumes");
+    const auto action=Wait(power,recovery);
+    Expect(action.value("state","")=="canceled","Recovery canceled before start reports canceled, not failed");
+    Expect(!action.contains("onStartedAt"),"Recovery canceled before start never reaches ON");
+    const auto state=power.State();
+    Expect(!state.contains("error"),"Canceled recovery does not pollute the global error state");
+    Expect(state["channels"][0]["output"]==false,"Recovery canceled before start leaves the channel OFF");
+    for(const auto &line : state.value("testWrites",Json::array()))
+        Expect(line!="CHAN:OUTP ON","Canceled queued recovery issues no ON command");
+}
+
 void TestSafetyAtCapacity(Json safety) {
     PowerService power;
     Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
@@ -229,6 +252,7 @@ void TestSafetyReadbackFailureAtCapacity() {
 int main() {
     TestNativeRecoveryTimingAndCancel();
     TestStopDuringRecoveryReadback();
+    TestQueuedRecoveryCanceledBeforeStart();
     TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "local"}});
     TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "network"}});
     TestSafetyAtCapacity({{"type", "stop"}, {"source", "local"}});

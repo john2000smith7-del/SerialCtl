@@ -5,6 +5,9 @@
 #include <utility>
 namespace serialctl::ws {
 inline constexpr size_t MaxMessage = 128 * 1024;
+// Hard limit for finishing a started frame or fragmented message. Idle time between
+// messages is deliberately not limited by this value.
+inline constexpr DWORD FrameTimeoutMs = 10000;
 inline constexpr const char *Protocol = "serialctl.v1";
 inline constexpr const char *Path = "/serialctl";
 struct Error : std::runtime_error {
@@ -44,15 +47,20 @@ class Stream {
     void Timeout(DWORD timeout) {
         readTimeout_ = timeout;
     }
+    void FrameTimeout(DWORD timeout) {
+        frameTimeout_ = timeout;
+    }
     Message Receive(); // control frames returned, fragments reassembled, strict RFC 6455
   private:
-    void Exact(void *, size_t);
+    void Exact(void *, size_t, bool idleWait);
     SOCKET socket_;
     bool client_;
     Bytes buffered_, fragment_;
     unsigned fragmentOpcode_ = 0;
     HANDLE readCancel_ = nullptr;
     DWORD readTimeout_ = INFINITE;
+    DWORD frameTimeout_ = INFINITE;
+    ULONGLONG frameDeadline_ = 0;
 };
 // Client handshake validates accept key and subprotocol. Socket ownership stays with caller.
 Bytes UpgradeClient(SOCKET, const std::wstring &host, unsigned port);

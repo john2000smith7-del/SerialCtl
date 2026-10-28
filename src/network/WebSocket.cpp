@@ -238,7 +238,7 @@ Bytes ClosePayload(unsigned code, const std::string &reason) {
     b.insert(b.end(), reason.begin(), reason.begin() + std::min<size_t>(reason.size(), 123));
     return b;
 }
-void Stream::Exact(void *data, size_t n) {
+void Stream::Exact(void *data, size_t n, bool idleWait) {
     if (readCancel_ && WaitForSingleObject(readCancel_, 0) == WAIT_OBJECT_0)
         throw Error(1006, "CANCELED");
     auto p = static_cast<std::uint8_t *>(data);
@@ -260,21 +260,45 @@ void Stream::Exact(void *data, size_t n) {
                 throw Error(1011, "READ_EVENT_FAILED");
             WSABUF buffer{static_cast<ULONG>(std::min<size_t>(n, 65536)), reinterpret_cast<char *>(p)};
             DWORD received = 0, flags = 0;
-            bool ok = false;
+            bool ok = false, frameTimedOut = false;
             if (WSARecv(socket_, &buffer, 1, &received, &flags, &io, nullptr) == 0)
                 ok = true;
             else if (WSAGetLastError() == WSA_IO_PENDING) {
+                // Two-layer timeout: while idle between frames only readTimeout_ applies
+                // (INFINITE on the server, so a silent monitoring client is never
+                // dropped). Once a frame or fragmented message has started, the
+                // hard frameDeadline_ also applies.
+                DWORD wait = readTimeout_;
+                bool frameLimited = false;
+                if (!idleWait && frameTimeout_ != INFINITE) {
+                    const auto now = GetTickCount64();
+                    if (now >= frameDeadline_) {
+                        CancelIoEx(reinterpret_cast<HANDLE>(socket_), &io);
+                        WSAGetOverlappedResult(socket_, &io, &received, TRUE, &flags);
+                        WSACloseEvent(io.hEvent);
+                        throw Error(1008, "FRAME_TIMEOUT");
+                    }
+                    const auto remaining = static_cast<DWORD>(std::min<ULONGLONG>(frameDeadline_ - now, 0x7fffffff));
+                    if (wait == INFINITE || remaining < wait) {
+                        wait = remaining;
+                        frameLimited = true;
+                    }
+                }
                 HANDLE waits[] = {readCancel_, io.hEvent};
-                auto signal = WaitForMultipleObjects(2, waits, FALSE, readTimeout_);
+                auto signal = WaitForMultipleObjects(2, waits, FALSE, wait);
                 if (signal == WAIT_OBJECT_0 + 1)
                     ok = WSAGetOverlappedResult(socket_, &io, &received, FALSE, &flags) != FALSE;
                 else {
+                    if (signal == WAIT_TIMEOUT && frameLimited)
+                        frameTimedOut = true;
                     CancelIoEx(reinterpret_cast<HANDLE>(socket_), &io);
                     // The OVERLAPPED stack storage must outlive cancellation completion.
                     WSAGetOverlappedResult(socket_, &io, &received, TRUE, &flags);
                 }
             }
             WSACloseEvent(io.hEvent);
+            if (frameTimedOut)
+                throw Error(1008, "FRAME_TIMEOUT");
             if (!ok)
                 throw Error(1006, "CANCELED_OR_DISCONNECTED_OR_TIMEOUT");
             got = static_cast<int>(received);
@@ -311,7 +335,12 @@ bool Stream::Send(unsigned op, const Bytes &bytes, bool fin) {
 Stream::Message Stream::Receive() {
     for (;;) {
         std::uint8_t h[2];
-        Exact(h, 2);
+        // Waiting for the first byte of a new message is idle time; inside a
+        // fragmented message it is not.
+        Exact(h, 1, fragmentOpcode_ == 0);
+        if (fragmentOpcode_ == 0 && frameTimeout_ != INFINITE)
+            frameDeadline_ = GetTickCount64() + frameTimeout_;
+        Exact(h + 1, 1, false);
         bool fin = (h[0] & 128) != 0, mask = (h[1] & 128) != 0;
         unsigned op = h[0] & 15;
         if ((h[0] & 112) || mask == client_ || !(op == 0 || op == 1 || op == 2 || op == 8 || op == 9 || op == 10))
@@ -320,13 +349,13 @@ Stream::Message Stream::Receive() {
         unsigned marker = unsigned(n);
         if (n == 126) {
             std::uint8_t x[2];
-            Exact(x, 2);
+            Exact(x, 2, false);
             n = (unsigned(x[0]) << 8) | x[1];
             if (n < 126)
                 throw Error(1002, "NONCANONICAL_LENGTH");
         } else if (n == 127) {
             std::uint8_t x[8];
-            Exact(x, 8);
+            Exact(x, 8, false);
             if (x[0] & 128)
                 throw Error(1002, "INVALID_LENGTH");
             n = 0;
@@ -341,9 +370,9 @@ Stream::Message Stream::Receive() {
             throw Error(1009, "MESSAGE_TOO_LARGE");
         std::uint8_t key[4]{};
         if (mask)
-            Exact(key, 4);
+            Exact(key, 4, false);
         Bytes b(static_cast<size_t>(n));
-        Exact(b.data(), b.size());
+        Exact(b.data(), b.size(), false);
         if (mask)
             for (size_t i = 0; i < b.size(); ++i)
                 b[i] ^= key[i % 4];

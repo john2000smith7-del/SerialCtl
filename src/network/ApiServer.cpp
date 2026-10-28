@@ -313,6 +313,8 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
                       {"historyBytes", MaxHistoryBytes}});
         Trace(c, "upgraded");
         ws::Stream stream(c->socket, false, std::move(tail), c->readCancel);
+        // Idle monitoring clients are legal; only started-but-unfinished frames time out.
+        stream.FrameTimeout(ws::FrameTimeoutMs);
         while (running_) {
             auto m = stream.Receive();
             if (!running_ || WaitForSingleObject(c->readCancel, 0) == WAIT_OBJECT_0)

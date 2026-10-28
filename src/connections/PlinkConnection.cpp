@@ -4,6 +4,7 @@
 #include "Win32Helpers.h"
 
 #include <array>
+#include <utility>
 
 namespace serialctl {
 
@@ -148,6 +149,7 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
     }
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
+    readerDone_ = false;
     readThread_ = std::thread(&PlinkConnection::ReadLoop, this);
     if (onStatus_) {
         onStatus_(L"SSH 已启动：" + host_ + L":" + std::to_wstring(port_), false);
@@ -156,31 +158,66 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
 }
 
 void PlinkConnection::Stop() {
+    // Anonymous pipes are synchronous: outputRead_ must stay open until the
+    // reader thread has been joined, otherwise a blocked ReadFile would use a
+    // closed handle.
+    // 1) Announce the stop.
     stopping_ = true;
-    if (inputWrite_) {
-        CloseHandle(inputWrite_);
-        inputWrite_ = nullptr;
+
+    // 2) Close the write end under writeMutex_ so plink receives EOF. A Send()
+    // blocked in WriteFile on a full pipe holds the mutex; terminate the
+    // child to break that write instead of deadlocking.
+    {
+        std::unique_lock<std::mutex> lock(writeMutex_, std::try_to_lock);
+        for (int attempt = 0; !lock.owns_lock() && attempt < 30; ++attempt) {
+            Sleep(10);
+            lock.try_lock();
+        }
+        if (!lock.owns_lock()) {
+            if (process_) TerminateProcess(process_, 0);
+            lock.lock();
+        }
+        if (HANDLE writeHandle = std::exchange(inputWrite_, nullptr)) {
+            CloseHandle(writeHandle);
+        }
     }
+
+    // 3) Short wait for plink to exit on EOF, then terminate it so the child
+    // releases its end of the output pipe.
     if (process_) {
-        if (WaitForSingleObject(process_, 1000) == WAIT_TIMEOUT) {
+        if (WaitForSingleObject(process_, 100) == WAIT_TIMEOUT) {
             TerminateProcess(process_, 0);
             WaitForSingleObject(process_, 1000);
         }
     }
+
+    // 4) Cancel any pending synchronous read and join the reader thread.
+    if (readThread_.joinable()) {
+        if (outputRead_) {
+            const HANDLE threadHandle = reinterpret_cast<HANDLE>(readThread_.native_handle());
+            for (int attempt = 0; !readerDone_ && attempt < 200; ++attempt) {
+                CancelSynchronousIo(threadHandle);
+                Sleep(10);
+            }
+        }
+        readThread_.join();
+    }
+
+    // 5) Only now release the handles the reader thread may have been using.
     if (outputRead_) {
         CloseHandle(outputRead_);
         outputRead_ = nullptr;
-    }
-    if (readThread_.joinable()) {
-        readThread_.join();
     }
     if (processThread_) {
         CloseHandle(processThread_);
         processThread_ = nullptr;
     }
-    if (process_) {
-        CloseHandle(process_);
-        process_ = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(writeMutex_);
+        if (process_) {
+            CloseHandle(process_);
+            process_ = nullptr;
+        }
     }
     CloseResizeChannel();
     DeletePuttySession();
@@ -191,7 +228,7 @@ void PlinkConnection::Stop() {
 
 bool PlinkConnection::Send(const Bytes& data, std::wstring& error) {
     std::lock_guard<std::mutex> lock(writeMutex_);
-    if (!IsConnected() || !inputWrite_) {
+    if (!process_ || !inputWrite_ || WaitForSingleObject(process_, 0) != WAIT_TIMEOUT) {
         error = L"SSH 尚未连接";
         return false;
     }
@@ -205,6 +242,7 @@ bool PlinkConnection::Send(const Bytes& data, std::wstring& error) {
 }
 
 bool PlinkConnection::IsConnected() const {
+    std::lock_guard<std::mutex> lock(writeMutex_);
     return process_ && WaitForSingleObject(process_, 0) == WAIT_TIMEOUT;
 }
 
@@ -235,6 +273,7 @@ void PlinkConnection::ReadLoop() {
         }
         onStatus_(L"SSH 进程已结束，退出码 " + std::to_wstring(exitCode), exitCode != 0);
     }
+    readerDone_ = true;
 }
 
 std::wstring PlinkConnection::FindPlink() {
