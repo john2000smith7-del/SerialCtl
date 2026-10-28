@@ -236,6 +236,10 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(ui_settings_writer_test tests/unit/UiSettingsWriterTest.cpp)
+    serialctl_configure_native_target(ui_settings_writer_test CONSOLE)
+    add_test(NAME ui_settings_writer COMMAND ui_settings_writer_test)
+    set_tests_properties(ui_settings_writer PROPERTIES TIMEOUT 20)
     add_executable(cancellable_io_test tests/integration/CancellableIoTest.cpp)
     serialctl_configure_native_target(cancellable_io_test CONSOLE)
     target_link_libraries(cancellable_io_test PRIVATE advapi32 ole32)

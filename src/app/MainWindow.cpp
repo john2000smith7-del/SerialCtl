@@ -867,6 +867,7 @@ void MainWindow::WaitForShutdown() {
     if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
     JoinLogExport();
     connectionCleanup_.Drain();
+    uiSettingsWriter_.Stop();
 }
 
 void MainWindow::FinishShutdown() {
@@ -5652,7 +5653,8 @@ void MainWindow::LoadUiState() {
         GetModuleFileNameW(nullptr, modulePath, static_cast<DWORD>(std::size(modulePath)));
         directory = DirectoryOf(modulePath);
     }
-    const std::wstring path = JoinLocalPath(directory, L"settings.ini");
+    uiSettingsPath_ = JoinLocalPath(directory, L"settings.ini");
+    const std::wstring &path = uiSettingsPath_;
     petSettings_.enabled = GetPrivateProfileIntW(L"Pet", L"Enabled", 1, path.c_str()) != 0;
     petSettings_.follow = GetPrivateProfileIntW(L"Pet", L"Follow", 1, path.c_str()) != 0;
     petSettings_.opening = GetPrivateProfileIntW(L"Pet", L"Opening", 1, path.c_str()) != 0;
@@ -5689,42 +5691,40 @@ void MainWindow::LoadUiState() {
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
 }
 
-void MainWindow::SaveUiState() const {
-    std::wstring directory = DirectoryOf(DefaultCommandsPath());
-    if (directory.empty()) {
-        wchar_t modulePath[MAX_PATH]{};
-        GetModuleFileNameW(nullptr, modulePath, static_cast<DWORD>(std::size(modulePath)));
-        directory = DirectoryOf(modulePath);
+void MainWindow::SaveUiState() {
+    // LoadUiState normally resolves this once at startup. The fallback supports
+    // native fixtures that construct controls without sending WM_CREATE.
+    if (uiSettingsPath_.empty()) {
+        std::wstring directory = DirectoryOf(DefaultCommandsPath());
+        if (directory.empty()) {
+            wchar_t modulePath[MAX_PATH]{};
+            GetModuleFileNameW(nullptr, modulePath, static_cast<DWORD>(std::size(modulePath)));
+            directory = DirectoryOf(modulePath);
+        }
+        uiSettingsPath_ = JoinLocalPath(directory, L"settings.ini");
     }
-    const std::wstring path = JoinLocalPath(directory, L"settings.ini");
-    auto petValue = [&](const wchar_t *key, int value) {
-        WritePrivateProfileStringW(L"Pet", key, std::to_wstring(value).c_str(), path.c_str());
+    UiSettingsWriter::Snapshot snapshot;
+    snapshot.path = uiSettingsPath_;
+    auto add = [&](const wchar_t *section, const wchar_t *key, int value) {
+        snapshot.entries.push_back({section, key, std::to_wstring(value)});
     };
-    petValue(L"Enabled", petSettings_.enabled); petValue(L"Follow", petSettings_.follow);
-    petValue(L"Opening", petSettings_.opening); petValue(L"Size", petSettings_.size);
-    petValue(L"Desktop", petSettings_.desktop); petValue(L"Topmost", petSettings_.topmost);
-    petValue(L"DesktopX", petSettings_.desktopX); petValue(L"DesktopY", petSettings_.desktopY);
-    petValue(L"X", petSettings_.x); petValue(L"Y", petSettings_.y);
-    auto logicalWidth = [&](const wchar_t *key, int pixels) {
-        WritePrivateProfileStringW(L"Layout", key, std::to_wstring(MulDiv(pixels, 96, Ui::Dpi)).c_str(), path.c_str());
-    };
-    logicalWidth(L"RightPanelWidth96", rightPanelWidth_);
-    logicalWidth(L"SftpNameWidth96", sftpNameWidth_);
-    logicalWidth(L"AiMonitorWidth96", aiMonitorWidth_);
-    WritePrivateProfileStringW(L"Layout", L"SavedDpi", std::to_wstring(Ui::Dpi).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"LayoutVersion", L"2", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"AiMonitorRatio", std::to_wstring(aiMonitorRatio_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"AiMonitorWrap", aiMonitorWrap_ ? L"1" : L"0", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"PowerMonitorRatio", std::to_wstring(powerMonitorRatio_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"PowerMonitorCollapsed", powerMonitorCollapsed_ ? L"1" : L"0", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"PowerMonitorWrap", powerMonitorWrap_ ? L"1" : L"0", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"AiMonitorWidth", std::to_wstring(aiMonitorWidth_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"AiMonitorCollapsed", aiMonitorCollapsed_ ? L"1" : L"0", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"SftpNameWidth", std::to_wstring(sftpNameWidth_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"RightPanelWidth",
-        std::to_wstring(rightPanelWidth_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"RightPanelCollapsed",
-        rightPanelCollapsed_ ? L"1" : L"0", path.c_str());
+    add(L"Pet", L"Enabled", petSettings_.enabled); add(L"Pet", L"Follow", petSettings_.follow);
+    add(L"Pet", L"Opening", petSettings_.opening); add(L"Pet", L"Size", petSettings_.size);
+    add(L"Pet", L"Desktop", petSettings_.desktop); add(L"Pet", L"Topmost", petSettings_.topmost);
+    add(L"Pet", L"DesktopX", petSettings_.desktopX); add(L"Pet", L"DesktopY", petSettings_.desktopY);
+    add(L"Pet", L"X", petSettings_.x); add(L"Pet", L"Y", petSettings_.y);
+    add(L"Layout", L"RightPanelWidth96", MulDiv(rightPanelWidth_, 96, Ui::Dpi));
+    add(L"Layout", L"SftpNameWidth96", MulDiv(sftpNameWidth_, 96, Ui::Dpi));
+    add(L"Layout", L"AiMonitorWidth96", MulDiv(aiMonitorWidth_, 96, Ui::Dpi));
+    add(L"Layout", L"SavedDpi", Ui::Dpi); add(L"Layout", L"LayoutVersion", 2);
+    add(L"Layout", L"AiMonitorRatio", aiMonitorRatio_); add(L"Layout", L"AiMonitorWrap", aiMonitorWrap_);
+    add(L"Layout", L"PowerMonitorRatio", powerMonitorRatio_);
+    add(L"Layout", L"PowerMonitorCollapsed", powerMonitorCollapsed_);
+    add(L"Layout", L"PowerMonitorWrap", powerMonitorWrap_);
+    add(L"Layout", L"AiMonitorWidth", aiMonitorWidth_); add(L"Layout", L"AiMonitorCollapsed", aiMonitorCollapsed_);
+    add(L"Layout", L"SftpNameWidth", sftpNameWidth_); add(L"Layout", L"RightPanelWidth", rightPanelWidth_);
+    add(L"Layout", L"RightPanelCollapsed", rightPanelCollapsed_);
+    uiSettingsWriter_.Submit(std::move(snapshot));
 }
 
 void MainWindow::SetRightPanelCollapsed(bool collapsed) {

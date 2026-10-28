@@ -20,6 +20,7 @@
 #include "BackgroundCleanup.h"
 #include "CommandMacroController.h"
 #include "AiDeviceBridge.h"
+#include "UiSettingsWriter.h"
 #include "ToolbarIcons.h"
 #include <deque>
 #include <functional>
@@ -225,7 +226,7 @@ private:
     void RefreshConnectionList();
 
     void LoadUiState();
-    void SaveUiState() const;
+    void SaveUiState();
     void SetRightPanelCollapsed(bool collapsed);
     bool SidebarCollapsed() const;
     int SidebarWidth() const;
@@ -333,6 +334,8 @@ private:
     AiPane aiPane_;
     AiPetPane aiPet_;
     pet::Settings petSettings_;
+    std::wstring uiSettingsPath_;
+    UiSettingsWriter uiSettingsWriter_;
     bool aiVisible_ = false, aiPageOpened_ = false;
     bool aiMonitorCollapsed_ = false;
     int aiMonitorWidth_ = 360;
