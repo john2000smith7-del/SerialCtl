@@ -2,6 +2,7 @@
 #include "BackgroundCleanup.h"
 #include "json.hpp"
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <filesystem>
 #include <future>

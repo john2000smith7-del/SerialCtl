@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <chrono>
 
 namespace serialctl {
 struct ApiServerTestAccess {

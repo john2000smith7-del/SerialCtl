@@ -14,7 +14,7 @@ jobs:
       CMAKE_BUILD_PARALLEL_LEVEL: 2
     steps:
       - uses: actions/checkout@v4
-      - name: Compile SSH lifecycle regression first
+      - name: Build and execute the new native regression targets first
         shell: powershell
         run: |
           $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/native-evidence"
@@ -24,7 +24,9 @@ jobs:
           $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
           $directory = Get-SerialCtlBuildDirectory -Architecture x64 -RepositoryRoot (Get-SerialCtlRepositoryRoot)
           Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure native diagnostics' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
-          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile SSH lifecycle fixture' -Arguments @('--build',$directory,'--config','Release','--target','ssh_lifecycle_test','--parallel','2')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile new regression targets' -Arguments @('--build',$directory,'--config','Release','--target','ssh_lifecycle_test','cancellable_io_test','websocket_deadline_test','terminal_preview_test','--parallel','2')
+          $ctest = Get-RequiredCommandPath -Name ctest.exe
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Run new native regressions' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(cancellable_io|ssh_lifecycle|websocket_deadline|terminal_preview)$')
       - name: Clean MSVC x64 build
         timeout-minutes: 15
         shell: powershell
@@ -54,7 +56,7 @@ jobs:
         run: |
           $native = "$env:RUNNER_TEMP/native-evidence/native-process.log"
           if (Test-Path $native) {
-            Get-Content $native | Select-String 'error|fatal|FAILED' | Select-Object -First 8 | ForEach-Object {
+            Select-String -Path $native -Pattern 'error|fatal|FAILED' -Context 0,3 | Select-Object -First 8 | ForEach-Object {
               $line = $_.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
               Write-Host "::notice title=Native verification failure::$line"
             }

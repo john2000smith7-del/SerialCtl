@@ -1,4 +1,5 @@
 #include "CancellableIo.h"
+#include <chrono>
 #include <future>
 #include <iostream>
 using namespace serialctl;

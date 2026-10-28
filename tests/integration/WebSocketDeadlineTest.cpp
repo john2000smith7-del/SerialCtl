@@ -1,4 +1,5 @@
 #include "GatewayFixture.h"
+#include <chrono>
 #include <future>
 using namespace serialctl;
 using namespace std::chrono_literals;
