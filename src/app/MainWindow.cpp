@@ -4332,11 +4332,17 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     const bool interruptedMacro = runningCommandIndex_ >= 0;
     SwitchSession(sessions_.size() - 1);
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
-    for (const auto &item : pendingConnectionData_) {
-        if (item.source.empty())
-            AppendData(id, item.data, item.codePage, item.arrival);
-        else
-            AppendInput(item);
+    {
+        // A remote subscription may replay a full history during startup.
+        // Transfer those older batches in front of live output, instead of
+        // parsing the whole replay synchronously in connection completion.
+        std::lock_guard<std::mutex> lock(receivedMutex_);
+        for (auto item = pendingConnectionData_.rbegin(); item != pendingConnectionData_.rend(); ++item) {
+            receivedBytes_[item->sessionId] += item->data.size();
+            received_.push_front(std::move(*item));
+        }
+        if (!received_.empty() && !receivePosted_)
+            receivePosted_ = PostMessageW(window_, MessageData, 0, 0) != FALSE;
     }
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;

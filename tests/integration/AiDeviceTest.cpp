@@ -695,6 +695,26 @@ struct AiDeviceTestAccess {
             wchar_t directory[32768]{};
             if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768))
                 std::ofstream(std::filesystem::path(directory) / L"serial-realtime-display.json") << evidence.dump(2);
+            auto pending = std::make_unique<MainWindow::SessionState>();
+            pending->id = 99; pending->mode = 3; pending->name = L"startup replay fixture";
+            pending->connection = std::make_shared<Transport>();
+            pending->logger = std::make_shared<SessionLogger>();
+            main.pendingSession_ = std::move(pending);
+            main.connectionCancel_ = false;
+            for (int i = 0; i < 64; ++i) main.pendingConnectionData_.push_back({99, Bytes(16384, 'y'), CP_UTF8, {}, 0});
+            main.pendingConnectionBytes_ = 64 * 16384;
+            const std::string live = "LIVE_AFTER_HISTORY";
+            main.QueueReceived({99, Bytes(live.begin(), live.end()), CP_UTF8, {}, 0});
+            main.CompleteConnection(true, L"");
+            Require(!main.received_.empty() && main.activeSession_->terminal.HistorySize() == 0,
+                    "Connection completion synchronously parsed the entire startup history");
+            Require(main.received_.front().data.front() == 'y' && main.received_.back().data == Bytes(live.begin(), live.end()),
+                    "Startup history was reordered behind newer live output");
+            const auto replayDeadline = GetTickCount64() + 5000;
+            main.HandleMessage(WM_APP + 1, 0, 0);
+            while (!main.received_.empty() && GetTickCount64() < replayDeadline) UpdateWindow(parent);
+            Require(main.received_.empty() && main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") != std::wstring::npos,
+                    "Sliced startup replay lost newer live data");
         }
         main.powerService_.Shutdown();
         main.aiPane_.Shutdown();
