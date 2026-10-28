@@ -42,7 +42,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
                 $observation=Get-Content -LiteralPath $loggerEvidence -Raw -Encoding UTF8 | ConvertFrom-Json | ConvertTo-Json -Depth 10 -Compress
                 Write-Host ('::notice title=Native logger export evidence::'+$observation)
             }
-            foreach ($record in @('ssh-lifecycle.json', 'terminal-preview.json', 'serial-realtime-display.json')) {
+            foreach ($record in @('ssh-lifecycle.json', 'terminal-preview.json', 'serial-realtime-display.json', 'sftp-controller.json')) {
                 $path = Join-Path $env:SERIALCTL_EVIDENCE_DIR $record
                 if (Test-Path -LiteralPath $path) {
                     $observation = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json | ConvertTo-Json -Depth 10 -Compress
