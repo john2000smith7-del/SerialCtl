@@ -667,7 +667,7 @@ struct AiDeviceTestAccess {
                 if (reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) != sample + 1) {
                     RECT client{}; GetClientRect(main.terminal_, &client);
                     std::lock_guard<std::mutex> lock(main.receivedMutex_);
-                    std::cerr << "Serial paint state: sample=" << sample
+                    std::cerr << "FAILED serial paint state: sample=" << sample
                               << " painted=" << reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe"))
                               << " decoded=" << main.activeSession_->paintProbe
                               << " pendingArrival=" << main.activeSession_->pendingProbeArrival
