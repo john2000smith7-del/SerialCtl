@@ -117,6 +117,7 @@ class CommandDrag(DesktopActions):
         require(not self.ghost(), "A stationary press incorrectly starts drag")
         self.capture_named(label + "-press")
         offsets = []
+        last_bounds = None
         for step in range(1, 9):
             p = (start[0] + (end[0] - start[0]) * step // 8,
                  start[1] + (end[1] - start[1]) * step // 8)
@@ -124,6 +125,12 @@ class CommandDrag(DesktopActions):
             time.sleep(.05)
             preview = self.await_ghost(True)
             bounds = self.rect(preview)
+            if last_bounds is not None:
+                deadline = time.monotonic() + 0.3
+                while bounds == last_bounds and time.monotonic() < deadline:
+                    time.sleep(.01)
+                    bounds = self.rect(preview)
+            last_bounds = bounds
             offsets.append((p[0] - bounds[0], p[1] - bounds[1]))
             self.capture_named(label + "-move-" + str(step))
         require(max(v[0] for v in offsets) - min(v[0] for v in offsets) <= 4 and

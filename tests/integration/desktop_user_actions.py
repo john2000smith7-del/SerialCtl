@@ -276,7 +276,6 @@ class DesktopActions:
     def move_mouse(self, point):
         x, y = map(int, point)
         require(self.user.SetCursorPos(x, y), "SetCursorPos failed: interactive desktop unavailable")
-        self.user.mouse_event(1, 0, 0, 0, 0)
         actual = POINT()
         moved = time.perf_counter()
         require(self.user.GetCursorPos(c.byref(actual)), "GetCursorPos failed")

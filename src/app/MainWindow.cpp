@@ -1825,7 +1825,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
                 SetWindowRgn(self->commandDragGhost_, CreateRoundRectRgn(0, Ui::Gap / 2,
                     client.right - inset, item.bottom - item.top - Ui::Gap / 2,
                     Ui::CardRadius * 2, Ui::CardRadius * 2), FALSE);
-                SetTimer(window, CommandDragTimerId, 40, nullptr);
+                SetTimer(window, CommandDragTimerId, 160, nullptr);
                 self->UpdateCommandDrag(point, false);
                 InvalidateRect(window, nullptr, FALSE);
             }
