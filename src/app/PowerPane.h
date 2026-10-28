@@ -2,6 +2,7 @@
 #include "PowerService.h"
 #include "UiStyle.h"
 #include "ToolbarIcons.h"
+#include "BackgroundCleanup.h"
 #include <array>
 #include <deque>
 #include <functional>
@@ -27,6 +28,7 @@ class PowerPane {
     Json RecoveryBinding();
 
   private:
+    BackgroundCleanup resourceScanWorkers_;
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK BodyProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static INT_PTR CALLBACK ConnectProc(HWND, UINT, WPARAM, LPARAM);

@@ -1013,6 +1013,7 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
 
 MainWindow::~MainWindow() {
     connectionCleanup_.Drain();
+    if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
     aiPane_.Shutdown();
     if (logExportJob_) logExportJob_->cancel.store(true);
     StopStartupUpdate();
@@ -4021,14 +4022,15 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {
     if (!serialPortScan_ || serialPortScan_->done) {
+        if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
         serialPortScan_ = std::make_shared<SerialPortScan>();
         // The job owns no HWND or MainWindow reference. Closing a dialog cannot
         // block on a slow SetupAPI driver or deliver to a recycled dialog handle.
-        std::thread([job = serialPortScan_] {
+        serialPortScanThread_ = std::thread([job = serialPortScan_] {
             try { job->ports = EnumerateSerialPorts(); }
             catch (...) { job->error = L"串口枚举失败，请检查设备后刷新。"; }
             job->done = true;
-        }).detach();
+        });
     }
     HWND ports = GetDlgItem(dialog, IDC_SERIAL);
     SendMessageW(ports, CB_RESETCONTENT, 0, 0);

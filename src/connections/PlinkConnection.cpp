@@ -2,6 +2,7 @@
 #include "ChildProcess.h"
 #include "PuttyHostKey.h"
 #include "Win32Helpers.h"
+#include "FilePaths.h"
 
 #include <array>
 #include <utility>
@@ -259,20 +260,16 @@ void PlinkConnection::ReadLoop() {
 }
 
 std::wstring PlinkConnection::FindPlink() {
-    std::array<wchar_t, MAX_PATH> modulePath{};
-    const DWORD length = GetModuleFileNameW(nullptr, modulePath.data(), static_cast<DWORD>(modulePath.size()));
-    if (length == 0 || length >= modulePath.size()) {
-        return {};
-    }
-    std::wstring directory(modulePath.data(), length);
+    std::wstring directory = ModuleFilePath();
+    if (directory.empty()) return {};
     const size_t slash = directory.find_last_of(L"\\/");
     if (slash != std::wstring::npos) {
         directory.resize(slash + 1);
     } else {
         directory.clear();
     }
-    const std::wstring candidate = directory + L"plink.exe";
-    return GetFileAttributesW(candidate.c_str()) != INVALID_FILE_ATTRIBUTES ? candidate : std::wstring{};
+    const std::wstring candidate = ExtendedFilePath(directory + L"plink.exe");
+    return !candidate.empty() && GetFileAttributesW(candidate.c_str()) != INVALID_FILE_ATTRIBUTES ? candidate : std::wstring{};
 }
 
 bool PlinkConnection::CreateResizeChannel(std::wstring& error) {

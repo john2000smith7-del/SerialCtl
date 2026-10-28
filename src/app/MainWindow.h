@@ -562,6 +562,7 @@ private:
         std::wstring error;
     };
     std::shared_ptr<SerialPortScan> serialPortScan_;
+    std::thread serialPortScanThread_;
     std::string pendingRemoteInstance_;
     CommandItem pendingCommand_;
     std::wstring pendingSftpInputTitle_;

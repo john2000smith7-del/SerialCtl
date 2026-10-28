@@ -52,6 +52,7 @@ bool CmdConnection::Start(DataCallback data, StatusCallback status, std::wstring
     process_ = pi.hProcess;
     processId_ = pi.dwProcessId;
     inputCodePage_ = outputCodePage_ = GetOEMCP();
+    consoleInputCodePage_ = consoleOutputCodePage_ = 0;
     manualCodePage_ = knownCodePage_ = false;
     job_ = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit{};

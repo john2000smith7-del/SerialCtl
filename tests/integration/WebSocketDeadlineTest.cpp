@@ -2,6 +2,11 @@
 #include <future>
 using namespace serialctl;
 using namespace std::chrono_literals;
+namespace serialctl {
+struct ApiServerTestAccess {
+    static size_t Clients(ApiServer& server) { std::lock_guard<std::mutex> lock(server.mutex_); return server.clients_.size(); }
+};
+}
 namespace {
 struct Pair {
     SOCKET writer = INVALID_SOCKET, reader = INVALID_SOCKET;
@@ -76,13 +81,24 @@ int main() {
             // Exercise the real server deadline and capacity, including cleanup
             // without a new accept to trigger reaping.
             test::Fixture fixture(18160, 18160);
-            std::vector<std::unique_ptr<GatewayClient>> clients;
+            std::vector<SOCKET> clients;
             for (size_t i = 0; i < ApiServer::MaxClients; ++i) {
-                auto client = std::make_unique<GatewayClient>(); client->Connect(L"127.0.0.1", fixture.server.Port());
-                clients.push_back(std::move(client));
+                std::wstring error;
+                auto socket = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(fixture.server.Port()), error);
+                auto tail = ws::UpgradeClient(socket, L"127.0.0.1", fixture.server.Port());
+                ws::Stream hello(socket, true, std::move(tail));
+                test::Expect(hello.Receive().opcode == 1, "hello before partial frame");
+                const unsigned char first = 0x81;
+                test::Expect(ws::SendAll(socket, &first, 1), "send single header byte");
+                clients.push_back(socket);
             }
-            clients.clear();
-            HANDLE timer = CreateEventW(nullptr, TRUE, FALSE, nullptr); WaitForSingleObject(timer, 500); CloseHandle(timer);
+            test::Expect(ApiServerTestAccess::Clients(fixture.server) == 128, "128 slow slots occupied");
+            const auto deadline = GetTickCount64() + ws::FrameTimeoutMs + 3000;
+            HANDLE timer = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            while (ApiServerTestAccess::Clients(fixture.server) && GetTickCount64() < deadline) WaitForSingleObject(timer, 10);
+            CloseHandle(timer);
+            test::Expect(ApiServerTestAccess::Clients(fixture.server) == 0, "slow clients reaped without a new accept");
+            for (auto socket : clients) closesocket(socket);
             GatewayClient healthy; healthy.Connect(L"127.0.0.1", fixture.server.Port());
             test::Expect(healthy.Request("resources").contains("resources"), "all client slots recover after disconnect");
             fixture.server.Stop();

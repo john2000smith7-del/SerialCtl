@@ -39,6 +39,7 @@ class ApiServer {
     Json Diagnostics();
 
   private:
+    friend struct ApiServerTestAccess;
     struct ClientState {
         SOCKET socket = INVALID_SOCKET;
         HANDLE readCancel = CreateEventW(nullptr, TRUE, FALSE, nullptr);
