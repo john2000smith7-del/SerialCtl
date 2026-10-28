@@ -103,7 +103,7 @@ SessionService::Json SessionService::Input(const std::string &id, const Bytes &b
         return Error("TARGET_NOT_OPEN", "Existing local session is disconnected");
     auto accepted = [&] {
         if (observer_)
-            observer_(id, batch, source);
+            observer_(id, batch, source, e->transport->InputCodePage());
     };
     auto queued = dynamic_cast<QueuedConnection *>(e->transport.get());
     if (!(queued ? queued->SendObserved(batch, error, accepted) : e->transport->Send(batch, error)))

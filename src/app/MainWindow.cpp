@@ -2256,10 +2256,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         RefreshCommandList();
         RefreshConnectionList();
         ApplyTheme();
-        sessionService_.ObserveInput([this](const std::string &id, const Bytes &bytes, const std::string &source) {
-            const auto state = sessionService_.State(id);
-            apiServer_.Publish(id, bytes, source.c_str(), "input", state.value("inputCodePage", UINT(0)));
-            QueueReceived({std::stoull(id.substr(8)), bytes, state.value("inputCodePage", UINT(0)), source, 0});
+        sessionService_.ObserveInputWithCodePage([this](const std::string &id, const Bytes &bytes,
+                                                       const std::string &source, unsigned codePage) {
+            // Accepted input is queued for publication before the writer wakes,
+            // preserving input/output event order without waiting for fan-out.
+            apiServer_.EnqueuePublish(id, bytes, source.c_str(), "input", codePage);
+            QueueReceived({std::stoull(id.substr(8)), bytes, codePage, source, 0});
         });
         { std::wstring error;
           if (!apiServer_.Start([this](const auto& method, const auto& path, const auto& body) {
@@ -5039,13 +5041,13 @@ void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring&
 }
 
 void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage) {
+    if (closing_) return;
     LARGE_INTEGER arrival{};
     if (measurePaint_)
         QueryPerformanceCounter(&arrival);
     QueueReceived({sessionId, data, codePage, {}, arrival.QuadPart});
-    // Local display never waits for WebSocket history/fan-out to acquire its
-    // locks, serialize events, or enqueue output for slow remote subscribers.
-    apiServer_.Publish("session-" + std::to_string(sessionId), data, "device", "output", codePage);
+    // Neither this batch nor the next device read waits for network fan-out.
+    apiServer_.EnqueuePublish("session-" + std::to_string(sessionId), data, "device", "output", codePage);
 }
 void MainWindow::QueueReceived(ReceivedItem item) {
     if (closing_)
@@ -5116,7 +5118,7 @@ void MainWindow::AppendInput(const ReceivedItem &item) {
 void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError) {
     if (closing_) return;
     const auto utf8=WideToMultiByte(text,CP_UTF8);
-    apiServer_.Publish("session-"+std::to_string(sessionId),Bytes(utf8.begin(),utf8.end()),"connection",isError?"error":"status");
+    apiServer_.EnqueuePublish("session-"+std::to_string(sessionId),Bytes(utf8.begin(),utf8.end()),"connection",isError?"error":"status");
     auto* status = new StatusMessage{sessionId, text, isError};
     if (!PostMessageW(window_, MessageStatus, 0, reinterpret_cast<LPARAM>(status))) delete status;
 }

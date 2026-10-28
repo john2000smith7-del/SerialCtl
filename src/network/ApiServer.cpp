@@ -88,11 +88,19 @@ bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsi
         return false;
     }
     handler_ = std::move(handler);
+    { std::lock_guard<std::mutex> lock(publicationMutex_); publicationStopping_ = false; }
     running_ = true;
     accept_ = std::thread(&ApiServer::Accept, this);
     return true;
 }
 void ApiServer::Stop() {
+    {
+        std::lock_guard<std::mutex> lock(publicationMutex_);
+        publicationStopping_ = true;
+        publications_.clear(); publicationBytes_ = 0; publicationGap_ = false;
+        publicationWake_.notify_all();
+    }
+    if (publisher_.joinable()) publisher_.join();
     running_ = false;
     if (stopEvent_ != WSA_INVALID_EVENT)
         WSASetEvent(stopEvent_);
@@ -538,6 +546,63 @@ void ApiServer::CacheResponse(const std::shared_ptr<ClientState> &c, const std::
     }
 }
 
+bool ApiServer::EnqueuePublish(const std::string& target, const Bytes& data, const char* source,
+                               const char* kind, unsigned codePage) {
+    if (data.empty()) return true;
+    std::lock_guard<std::mutex> lock(publicationMutex_);
+    if (publicationStopping_) return false;
+    if (!publisher_.joinable()) publisher_ = std::thread(&ApiServer::PublishPending, this);
+    if (publicationGap_) return false;
+    if (publications_.size() >= 4096 || data.size() > 8 * 1024 * 1024 - publicationBytes_) {
+        // Local terminal/logging continue. Remote observers must reconnect and
+        // receive an explicit history gap rather than silently lose output.
+        publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+        publicationWake_.notify_one();
+        return false;
+    }
+    publications_.push_back({target, source, kind, data, codePage});
+    publicationBytes_ += data.size();
+    publicationWake_.notify_one();
+    return true;
+}
+void ApiServer::PublishPending() {
+    for (;;) {
+        Publication event;
+        bool gap = false;
+        {
+            std::unique_lock<std::mutex> lock(publicationMutex_);
+            publicationWake_.wait(lock, [this] {
+                return publicationStopping_ || publicationGap_ || !publications_.empty();
+            });
+            if (publicationStopping_) return;
+            gap = publicationGap_;
+            publicationGap_ = false;
+            if (!gap) {
+                event = std::move(publications_.front()); publications_.pop_front();
+                publicationBytes_ -= event.data.size();
+            }
+        }
+        try {
+            if (gap) PublicationGap();
+            else Publish(event.resource, event.data, event.source.c_str(), event.kind.c_str(), event.codePage);
+        } catch (...) {
+            // Retain ownership of the worker and invalidate remote continuity.
+            // Never propagate serialization failures into device reception.
+            try { PublicationGap(); } catch (...) {}
+        }
+    }
+}
+void ApiServer::PublicationGap() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& target : sessions_) {
+        auto& history = histories_[target];
+        historyBytes_ -= history.bytes;
+        history.bytes = 0; history.events.clear(); ++history.seq;
+    }
+    for (const auto& client : clients_)
+        if (!client->subscriptions.empty())
+            Close(client, 1013, "HISTORY_GAP: publication backlog exceeded; reconnect with cursor");
+}
 void ApiServer::Publish(const std::string &target, const Bytes &data, const char *source, const char *kind,
                         unsigned codePage) {
     if (data.empty())

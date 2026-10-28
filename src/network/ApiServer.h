@@ -35,6 +35,10 @@ class ApiServer {
     }
     void Publish(const std::string &resource, const Bytes &, const char *source = "device", const char *kind = "output",
                  unsigned codePage = 0);
+    // Desktop I/O handoff: only copies into a bounded FIFO; no server/client
+    // mutex, JSON/Base64 work or socket I/O on the caller's thread.
+    bool EnqueuePublish(const std::string &resource, const Bytes &, const char *source = "device",
+                        const char *kind = "output", unsigned codePage = 0);
     Json Events(const std::string &, std::uint64_t after);
     Json Diagnostics();
 
@@ -67,6 +71,19 @@ class ApiServer {
         std::uint64_t seq = 0;
         size_t bytes = 0;
     };
+    struct Publication {
+        std::string resource, source, kind;
+        Bytes data;
+        unsigned codePage = 0;
+    };
+    void PublishPending();
+    void PublicationGap();
+    std::mutex publicationMutex_;
+    std::condition_variable publicationWake_;
+    std::deque<Publication> publications_;
+    size_t publicationBytes_ = 0;
+    bool publicationStopping_ = false, publicationGap_ = false;
+    std::thread publisher_;
     void Accept();
     void Client(const std::shared_ptr<ClientState> &);
     void Send(const std::shared_ptr<ClientState> &);

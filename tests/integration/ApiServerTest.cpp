@@ -1,6 +1,14 @@
 #include "GatewayFixture.h"
 #include "GatewayHistoryBoundary.h"
 #include "SharedSerialConnection.h"
+#include <future>
+namespace serialctl {
+struct ApiServerTestAccess {
+    static std::unique_lock<std::mutex> HoldPublication(ApiServer& server) {
+        return std::unique_lock<std::mutex>(server.mutex_);
+    }
+};
+}
 using namespace test;
 int stage = 0;
 int main() {
@@ -8,6 +16,40 @@ int main() {
     try {
         TestHistoryMessageBoundaries();
         Fixture f;
+        {
+            const auto before = f.server.Events("session-3", 0)["cursor"].get<std::uint64_t>();
+            auto gate = ApiServerTestAccess::HoldPublication(f.server);
+            auto producer = std::async(std::launch::async, [&] {
+                for (unsigned i = 0; i < 16; ++i)
+                    if (!f.server.EnqueuePublish("session-3", Bytes{static_cast<std::uint8_t>(i)},
+                                                 i % 2 ? "device" : "gui", i % 2 ? "output" : "input", 936))
+                        return false;
+                return true;
+            });
+            struct ReleaseBeforeJoin {
+                std::unique_lock<std::mutex>& gate;
+                ~ReleaseBeforeJoin() { if (gate.owns_lock()) gate.unlock(); }
+            } release{gate};
+            Expect(producer.wait_for(std::chrono::seconds(1)) == std::future_status::ready,
+                   "publication handoff must not acquire server fan-out mutex");
+            Expect(producer.get(), "bounded publication handoff accepts ordinary input/output");
+            gate.unlock();
+            Wait([&] { return f.server.Events("session-3", before)["cursor"] == before + 16; });
+            const auto events = f.server.Events("session-3", before)["events"];
+            for (unsigned i = 0; i < 16; ++i)
+                Expect(events[i]["seq"] == before + i + 1 && events[i]["codePage"] == 936 &&
+                           Decode64(events[i]["data"]) == Bytes{static_cast<std::uint8_t>(i)} &&
+                           events[i]["kind"] == (i % 2 ? "output" : "input"),
+                       "asynchronous publications preserve bytes, metadata and input/output order");
+            const auto cursor = before + 16;
+            Expect(!f.server.EnqueuePublish("session-3", Bytes(8 * 1024 * 1024 + 1, 'x')),
+                   "publication queue has a hard memory bound");
+            Wait([&] { return f.server.Events("session-3", cursor)["gap"] == true; });
+            Expect(f.server.Events("session-3", cursor)["events"].empty(),
+                   "publication overflow must explicitly invalidate history continuity");
+            Expect(f.server.EnqueuePublish("session-3", Bytes{'r'}), "publication resumes after an explicit gap");
+            Wait([&] { return f.server.Events("session-3", cursor + 1)["events"].size() == 1; });
+        }
         Peer p(f.server.Port());
         int seq = 0;
         auto request = [&](const std::string &op, const std::string &id, const Json &params = Json::object()) {

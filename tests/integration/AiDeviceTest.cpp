@@ -649,14 +649,17 @@ struct AiDeviceTestAccess {
             main.LayoutControls(viewport.right, viewport.bottom);
             Json samples = Json::array();
             for (int sample = 0; sample < 16; ++sample) {
-                // Hold the REAL gateway publication lock: local reception and
-                // actual terminal painting must finish before network fan-out.
+                // Hold the REAL gateway publication lock: sustained device
+                // reception must return, and paint, before network fan-out.
                 auto gate = ApiServerTestAccess::HoldPublication(main.apiServer_);
                 const auto marker = "SERIALCTL_PAINT_" + std::string(3 - std::to_string(sample).size(), '0') + std::to_string(sample);
                 auto receive = std::async(std::launch::async, [&main, marker] {
                     main.PostData(2, Bytes(marker.begin(), marker.end()), CP_UTF8);
                 });
                 struct ReleaseBeforeJoin { std::unique_lock<std::mutex>& gate; ~ReleaseBeforeJoin() { if (gate.owns_lock()) gate.unlock(); } } release{gate};
+                Require(receive.wait_for(std::chrono::seconds(1)) == std::future_status::ready,
+                        "Device receive callback still waits for network publication");
+                receive.get();
                 MSG notification{};
                 const auto deadline = GetTickCount64() + 1000;
                 bool posted = false;
@@ -678,10 +681,8 @@ struct AiDeviceTestAccess {
                 }
                 Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == sample + 1,
                         "Received serial marker did not reach actual terminal painting before return");
-                Require(receive.wait_for(std::chrono::milliseconds(0)) == std::future_status::timeout,
-                        "Network lock gate was not exercising blocked fan-out");
                 samples.push_back(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintUsec")));
-                gate.unlock(); receive.get();
+                gate.unlock();
             }
             for (int i = 0; i < 32; ++i) main.QueueReceived({3, Bytes(16384, 'b'), CP_UTF8, {}, 0});
             main.receiveFairness_ = 0;
