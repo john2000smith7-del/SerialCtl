@@ -246,7 +246,7 @@ private:
     void SendNextCommandStep();
     enum class CommandSequenceEnd { Silent, Submitted, UserStopped, Interrupted };
     void StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail = {});
-    void PostData(std::uint64_t sessionId, const Bytes& data);
+    void PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
     void AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage = 0, LONGLONG arrival = 0);
     void QueueReceived(ReceivedItem);
@@ -539,6 +539,7 @@ private:
     std::uint64_t paintSample_ = 0;
     std::set<std::uint64_t> receiveOverflow_;
     bool receivePosted_ = false;
+    bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.
     std::set<std::uint64_t> loggerErrorsShown_;
 
     std::thread discoveryThread_;

@@ -5,8 +5,9 @@ using namespace serialctl;
 using namespace std::chrono_literals;
 int main() {
     for (int i = 0; i < 64; ++i) {
-        HANDLE writer = nullptr, childRead = nullptr, reader = nullptr, childWrite = nullptr;
-        if (!CreateChildIoPipe(writer, childRead, true) || !CreateChildIoPipe(reader, childWrite, false)) return 1;
+        HANDLE writer = nullptr, childRead = nullptr;
+        if (!CreateChildIoPipe(writer, childRead, true, true)) return 1;
+        const auto reader = writer; // The production serial path shares ONE overlapped file handle.
         HANDLE stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         CancellableIo readIo, writeIo;
         auto blockedRead = std::async(std::launch::async, [&] { char byte; DWORD n; return readIo.Transfer(reader, &byte, 1, false, stop, n); });
@@ -20,7 +21,7 @@ int main() {
         if (blockedWrite.wait_for(1s) != std::future_status::ready || blockedRead.wait_for(1s) != std::future_status::ready || blockedWrite.get() || blockedRead.get()) return 6;
         // Cancellation already signaled before submission is also deterministic.
         if (writeIo.Transfer(writer, &byte, 1, true, stop, n) || GetLastError() != ERROR_OPERATION_ABORTED) return 7;
-        for (HANDLE handle : {writer, childRead, reader, childWrite, stop}) CloseHandle(handle);
+        for (HANDLE handle : {writer, childRead, stop}) CloseHandle(handle);
     }
     std::cout << "64 full-duplex, blocked write/read and pre-submission cancellation cycles passed\n";
     return 0;

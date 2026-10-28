@@ -2439,6 +2439,13 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (memory) { const int state = SaveDC(memory); PaintWindow(memory); BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY); RestoreDC(memory,state); }
         else PaintWindow(dc);
         EndPaint(window_, &paint);
+        // WM_PAINT is dispatched after queued user input. Continue a sustained
+        // receive stream here instead of adding a 10 ms timer per data slice or
+        // posting an endless chain of higher-priority application messages.
+        if (receiveContinuation_ && !closing_) {
+            receiveContinuation_ = false;
+            HandleMessage(MessageData, 0, 0);
+        }
         return 0;
     }
     case WM_DRAWITEM:
@@ -2606,12 +2613,23 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         {
             std::lock_guard<std::mutex> lock(receivedMutex_);
             receivePosted_ = false;
-            if (!received_.empty() || !receiveOverflow_.empty())
-                receivePosted_ = SetTimer(window_, ReceivePumpTimerId, 10, nullptr) != 0;
+            if (!received_.empty() || !receiveOverflow_.empty()) {
+                if (IsWindowVisible(window_) && !IsIconic(window_)) {
+                    receiveContinuation_ = InvalidateRect(window_, nullptr, FALSE) != FALSE;
+                    receivePosted_ = receiveContinuation_;
+                } else
+                    receivePosted_ = SetTimer(window_, ReceivePumpTimerId, 10, nullptr) != 0;
+            }
         }
+        // Present accepted output now; ordinary WM_PAINT delivery can otherwise
+        // remain behind a steady stream of data/AI/network notifications.
+        if (terminal_ && IsWindowVisible(terminal_) && !IsIconic(window_)) UpdateWindow(terminal_);
         for (auto id : overflow) {
             SessionState* session = FindSession(id);
-            if (session && session->connection) session->connection->Stop();
+            if (session && session->connection) {
+                auto transport = session->connection;
+                connectionCleanup_.Retire([transport] { transport->Stop(); });
+            }
             PostStatus(id, L"接收数据超过缓冲上限，已停止连接以避免丢失后继续显示。", true);
         }
         return 0;
@@ -4247,7 +4265,8 @@ void MainWindow::ConnectFromDialog() {
                                     connection->Send(Bytes(bytes.begin(), bytes.end()), error);
                                 boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8));
                             }
-                            PostData(sessionId, data);
+                            const auto connection = transport.lock();
+                            PostData(sessionId, data, connection ? connection->OutputCodePage() : 0);
                         },
                         [this, sessionId](const std::wstring& text, bool isError) {
                             PostStatus(sessionId, text, isError);
@@ -5002,14 +5021,14 @@ void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring&
     }
 }
 
-void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data) {
+void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage) {
     LARGE_INTEGER arrival{};
     if (measurePaint_)
         QueryPerformanceCounter(&arrival);
-    const auto state = sessionService_.State("session-" + std::to_string(sessionId));
-    const UINT codePage = state.value("outputCodePage", UINT(0));
-    apiServer_.Publish("session-" + std::to_string(sessionId), data, "device", "output", codePage);
     QueueReceived({sessionId, data, codePage, {}, arrival.QuadPart});
+    // Local display never waits for WebSocket history/fan-out to acquire its
+    // locks, serialize events, or enqueue output for slow remote subscribers.
+    apiServer_.Publish("session-" + std::to_string(sessionId), data, "device", "output", codePage);
 }
 void MainWindow::QueueReceived(ReceivedItem item) {
     if (closing_)

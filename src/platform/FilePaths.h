@@ -20,7 +20,8 @@ inline std::wstring ModuleFilePath() {
 inline bool CreateUniqueTemporaryFile(const std::wstring& directory, std::wstring& path) {
     GUID guid{}; wchar_t token[40]{};
     if (FAILED(CoCreateGuid(&guid)) || !StringFromGUID2(guid, token, 40)) return false;
-    path = ExtendedFilePath(directory + L"\\SCT-" + token + L".tmp");
+    const bool slash = !directory.empty() && (directory.back() == L'\\' || directory.back() == L'/');
+    path = ExtendedFilePath(directory + (slash ? L"" : L"\\") + L"SCT-" + token + L".tmp");
     if (path.empty()) { SetLastError(ERROR_FILENAME_EXCED_RANGE); return false; }
     HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY, nullptr);
     if (file == INVALID_HANDLE_VALUE) return false;

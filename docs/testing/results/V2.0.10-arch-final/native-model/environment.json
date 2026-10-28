@@ -1,0 +1,13 @@
+{
+  "platform": "Linux-6.18.55-x86_64-with-glibc2.41",
+  "cpu": "AMD EPYC 9V45 96-Core Processor",
+  "compiler": "g++ (Debian 14.2.0-19) 14.2.0",
+  "flags": "-std=c++17 -O2",
+  "baselineCommit": "9d70d93abb068e808b9159c5fb8a7227aaf9c7bd",
+  "candidateCommit": "4927eb0b9642f8b9030d67c100c3aba9e9d00949",
+  "wcharBytes": 4,
+  "samplesPerScenario": 30,
+  "load": "single process, 80x24 grid, 0/2000/20000 history input lines, 60 characters and CRLF each; long-line projections populated before measurement",
+  "method": "steady_clock times PreviewInput only; full text validated outside measurement; current RSS sampled from /proc/self/statm before and while preview alive",
+  "limitation": "one paired run of 30 samples each; RSS is allocator/process dependent, not an allocation count or Windows working-set result"
+}

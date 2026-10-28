@@ -324,7 +324,7 @@ void TerminalModel::ScrollUp(int count, TerminalFeedResult* result) {
             historyCells_ += std::max<size_t>(1, line.used);
             if (history_.empty() || history_.back()->logicalId != line.logicalId)
                 ++historyLogicalLines_;
-            history_.push_back(std::make_shared<const TerminalLine>(screen.lines.front()));
+            history_.push_back(std::make_shared<const TerminalLine>(std::move(screen.lines.front())));
             TrimHistory();
             if (result) ++result->scrollbackAdded;
         }

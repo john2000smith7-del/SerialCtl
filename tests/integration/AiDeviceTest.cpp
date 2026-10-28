@@ -10,8 +10,14 @@
 #include <shlobj.h>
 #include <filesystem>
 #include <fstream>
+#include <future>
 
 namespace serialctl {
+struct ApiServerTestAccess {
+    static std::unique_lock<std::mutex> HoldPublication(ApiServer& server) {
+        return std::unique_lock<std::mutex>(server.mutex_);
+    }
+};
 namespace {
 void Require(bool ok, const char* reason) {
     if (!ok) { std::cerr << "FAILED: " << reason << std::endl; throw std::runtime_error(reason); }
@@ -637,6 +643,48 @@ struct AiDeviceTestAccess {
         Require(Wait(main.powerService_, main.AiDeviceRequest("power.output", args))["state"] == "completed", "Power OFF failed");
         Require(main.powerService_.State()["channels"][0]["output"] == false && main.powerService_.State()["channels"][2]["output"] == false, "Power OFF readback incorrect");
         Require(main.AiDeviceRequest("power.parameters", {{"voltage", 30}}).contains("error"), "AI gained unrequested parameter operation");
+        {
+            main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
+            main.LayoutControls(viewport.right, viewport.bottom);
+            Json samples = Json::array();
+            for (int sample = 0; sample < 16; ++sample) {
+                // Hold the REAL gateway publication lock: local reception and
+                // actual terminal painting must finish before network fan-out.
+                auto gate = ApiServerTestAccess::HoldPublication(main.apiServer_);
+                const auto marker = "SERIALCTL_PAINT_" + std::string(3 - std::to_string(sample).size(), '0') + std::to_string(sample);
+                auto receive = std::async(std::launch::async, [&main, marker] {
+                    main.PostData(2, Bytes(marker.begin(), marker.end()), CP_UTF8);
+                });
+                struct ReleaseBeforeJoin { std::unique_lock<std::mutex>& gate; ~ReleaseBeforeJoin() { if (gate.owns_lock()) gate.unlock(); } } release{gate};
+                MSG notification{};
+                const auto deadline = GetTickCount64() + 1000;
+                bool posted = false;
+                while (!(posted = PeekMessageW(&notification, parent, WM_APP + 1, WM_APP + 1, PM_REMOVE) != FALSE) && GetTickCount64() < deadline)
+                    MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_POSTMESSAGE);
+                Require(posted, "Local serial display waited for the gateway lock");
+                main.HandleMessage(notification.message, notification.wParam, notification.lParam);
+                Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == sample + 1,
+                        "Received serial marker did not reach actual terminal painting before return");
+                Require(receive.wait_for(std::chrono::milliseconds(0)) == std::future_status::timeout,
+                        "Network lock gate was not exercising blocked fan-out");
+                samples.push_back(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintUsec")));
+                gate.unlock(); receive.get();
+            }
+            main.activeSession_->terminal.Clear();
+            for (int i = 0; i < 64; ++i) main.QueueReceived({2, Bytes(16384, 'x'), CP_UTF8, {}, 0});
+            main.HandleMessage(WM_APP + 1, 0, 0);
+            Require(main.received_.empty() || main.receiveContinuation_, "Visible serial backlog reintroduced a receive timer");
+            const auto deadline = GetTickCount64() + 5000;
+            while (!main.received_.empty() && GetTickCount64() < deadline) UpdateWindow(parent);
+            Require(main.received_.empty(), "Paint-driven serial receive continuation stopped making progress");
+            const Json evidence{{"callbackToPaintUsec", samples}, {"samples", 16}, {"gatewayLockHeldDuringPaint", true},
+                                {"visibleBacklogScheduling", "paint opportunities without a receive timer"},
+                                {"scope", "actual Win32 terminal painter and receive handoff with controlled serial bytes; no UART/driver latency claim"}};
+            std::cout << evidence.dump() << '\n';
+            wchar_t directory[32768]{};
+            if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768))
+                std::ofstream(std::filesystem::path(directory) / L"serial-realtime-display.json") << evidence.dump(2);
+        }
         main.powerService_.Shutdown();
         main.aiPane_.Shutdown();
         DestroyWindow(parent);

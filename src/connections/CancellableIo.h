@@ -42,7 +42,7 @@ private:
 
 // CreatePipe cannot provide overlapped parent handles. The child still gets a
 // normal inheritable byte pipe; restrict the named endpoint to this user/SYSTEM.
-inline bool CreateChildIoPipe(HANDLE& parent, HANDLE& child, bool parentWrites) {
+inline bool CreateChildIoPipe(HANDLE& parent, HANDLE& child, bool parentWrites, bool duplex = false) {
     parent = child = nullptr;
     HANDLE token = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return false;
@@ -62,12 +62,12 @@ inline bool CreateChildIoPipe(HANDLE& parent, HANDLE& child, bool parentWrites) 
     if (FAILED(CoCreateGuid(&guid)) || !StringFromGUID2(guid, unique, 40)) { LocalFree(descriptor); return false; }
     const std::wstring name = L"\\\\.\\pipe\\SerialCtl-IO-" + std::wstring(unique);
     SECURITY_ATTRIBUTES sa{sizeof(sa), descriptor, FALSE};
-    parent = CreateNamedPipeW(name.c_str(), (parentWrites ? PIPE_ACCESS_OUTBOUND : PIPE_ACCESS_INBOUND) |
+    parent = CreateNamedPipeW(name.c_str(), (duplex ? PIPE_ACCESS_DUPLEX : parentWrites ? PIPE_ACCESS_OUTBOUND : PIPE_ACCESS_INBOUND) |
         FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
         1, 65536, 65536, 0, &sa);
     sa.bInheritHandle = TRUE;
     if (parent != INVALID_HANDLE_VALUE)
-        child = CreateFileW(name.c_str(), parentWrites ? GENERIC_READ : GENERIC_WRITE, 0, &sa,
+        child = CreateFileW(name.c_str(), duplex ? GENERIC_READ | GENERIC_WRITE : parentWrites ? GENERIC_READ : GENERIC_WRITE, 0, &sa,
                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     const DWORD code = GetLastError();
     LocalFree(descriptor);
