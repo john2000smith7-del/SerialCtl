@@ -50,6 +50,39 @@ int main() {
             Expect(f.server.EnqueuePublish("session-3", Bytes{'r'}), "publication resumes after an explicit gap");
             Wait([&] { return f.server.Events("session-3", cursor + 1)["events"].size() == 1; });
         }
+        {
+            Fixture registry(19040, 19055);
+            auto gate = ApiServerTestAccess::HoldPublication(registry.server);
+            auto producer = std::async(std::launch::async, [&] {
+                return registry.server.EnqueueSessions({"session-3", "session-5", "session-99"}) &&
+                       registry.server.EnqueuePublish("session-99", Bytes{'z'});
+            });
+            struct ReleaseGate {
+                std::unique_lock<std::mutex> &lock;
+                ~ReleaseGate() { if (lock.owns_lock()) lock.unlock(); }
+            } release{gate};
+            Expect(producer.wait_for(std::chrono::seconds(1)) == std::future_status::ready && producer.get(),
+                   "session registration must not wait for the server fan-out lock");
+            gate.unlock();
+            Wait([&] { return registry.server.Events("session-99", 0)["events"].size() == 1; });
+            Expect(Decode64(registry.server.Events("session-99", 0)["events"][0]["data"]) == Bytes{'z'},
+                   "session registration must precede its first queued bytes");
+            Expect(registry.server.EnqueueSessions({"session-3", "session-5"}) &&
+                   registry.server.EnqueuePublish("session-3", Bytes{'b'}),
+                   "queue session removal and ordering barrier");
+            Wait([&] { return registry.server.Events("session-3", 0)["events"].size() == 1; });
+            Expect(registry.server.Events("session-99", 0)["events"].empty(),
+                   "queued session removal must retire its history before later output");
+            auto overflowGate = ApiServerTestAccess::HoldPublication(registry.server);
+            Expect(registry.server.EnqueueSessions({"session-3", "session-5", "session-99"}) &&
+                   !registry.server.EnqueuePublish("session-99", Bytes(8 * 1024 * 1024 + 1, 'x')),
+                   "bounded queue must explicitly reject an oversized output");
+            overflowGate.unlock();
+            Wait([&] { return registry.server.Events("session-99", 0)["gap"] == true; });
+            Expect(registry.server.EnqueuePublish("session-99", Bytes{'r'}),
+                   "the latest session snapshot must survive a publication gap");
+            Wait([&] { return registry.server.Events("session-99", 1)["events"].size() == 1; });
+        }
         Peer p(f.server.Port());
         int seq = 0;
         auto request = [&](const std::string &op, const std::string &id, const Json &params = Json::object()) {

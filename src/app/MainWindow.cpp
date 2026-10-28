@@ -3978,7 +3978,7 @@ void MainWindow::ConnectFromDialog() {
             resource["friendlyName"] = WideToMultiByte(pendingSerial_.friendlyName, CP_UTF8);
         }
         sessionService_.Register(resource, session->connection);
-        apiServer_.SetSessions(sessionService_.Ids());
+        apiServer_.EnqueueSessions(sessionService_.Ids());
     }
     pendingSession_ = std::move(session);
     pendingConnectionData_.clear();
@@ -4027,7 +4027,7 @@ void MainWindow::ConnectFromDialog() {
         });
     } catch (...) {
         sessionService_.Unregister("session-" + std::to_string(sessionId));
-        apiServer_.SetSessions(sessionService_.Ids());
+        apiServer_.EnqueueSessions(sessionService_.Ids());
         pendingSession_.reset();
         AppendStatus(L"无法启动连接工作线程。", true);
     }
@@ -4044,7 +4044,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
             pendingSession_->password.clear();
         }
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
-        apiServer_.SetSessions(sessionService_.Ids());
+        apiServer_.EnqueueSessions(sessionService_.Ids());
         pendingSession_.reset();
         pendingConnectionData_.clear();
         pendingConnectionBytes_ = 0;
@@ -4105,7 +4105,7 @@ void MainWindow::Disconnect() {
     const size_t index = static_cast<size_t>(found - sessions_.begin());
     AiDeviceRequest("release", {{"sessionId", "session-" + std::to_string((*found)->id)}});
     sessionService_.Unregister("session-" + std::to_string((*found)->id));
-    apiServer_.SetSessions(sessionService_.Ids());
+    apiServer_.EnqueueSessions(sessionService_.Ids());
     auto transport = (*found)->connection;
     auto log = (*found)->logger;
     connectionCleanup_.Retire([transport, log] { transport->Stop(); log->Stop(); });
@@ -4142,7 +4142,7 @@ void MainWindow::DisconnectAll() {
         cancelledConnectionPending_ = true;
         pendingSession_->connection->CancelStart();
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
-        apiServer_.SetSessions(sessionService_.Ids());
+        apiServer_.EnqueueSessions(sessionService_.Ids());
     }
     sftp_.CancelIo();
     while (!sessions_.empty()) {
@@ -5522,7 +5522,6 @@ void MainWindow::SetConnectedUi(bool connected) {
 }
 
 void MainWindow::RefreshConnectionList() {
-    apiServer_.SetSessions(sessionService_.Ids());
     size_t selectedIndex = 0;
     if (activeSession_) {
         const auto selected = std::find_if(sessions_.begin(), sessions_.end(),

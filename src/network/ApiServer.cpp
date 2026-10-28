@@ -104,6 +104,7 @@ void ApiServer::Stop() {
         std::lock_guard<std::mutex> lock(publicationMutex_);
         publicationStopping_ = true;
         publications_.clear(); publicationBytes_ = 0; publicationGap_ = false;
+        latestPublicationSessions_.reset();
         publicationWake_.notify_all();
     }
     if (publisher_.joinable()) publisher_.join();
@@ -563,8 +564,34 @@ bool ApiServer::EnqueuePublish(const std::string& target, const Bytes& data, con
         publicationWake_.notify_one();
         return false;
     }
-    publications_.push_back({target, source, kind, data, codePage});
+    publications_.push_back({target, source, kind, data, codePage, {}, data.size()});
     publicationBytes_ += data.size();
+    publicationWake_.notify_one();
+    return true;
+}
+bool ApiServer::EnqueueSessions(std::vector<std::string> sessions) {
+    // Allocate the immutable snapshot before locking the short handoff mutex.
+    auto snapshot = std::make_shared<const std::vector<std::string>>(std::move(sessions));
+    constexpr size_t maximum = 8 * 1024 * 1024;
+    size_t charge = sizeof(Publication);
+    for (const auto &id : *snapshot) {
+        if (charge > maximum || id.size() + sizeof(std::string) > maximum - charge) {
+            charge = maximum + 1;
+            break;
+        }
+        charge += id.size() + sizeof(std::string);
+    }
+    std::lock_guard<std::mutex> lock(publicationMutex_);
+    if (publicationStopping_) return false;
+    if (!publisher_.joinable()) publisher_ = std::thread(&ApiServer::PublishPending, this);
+    latestPublicationSessions_ = snapshot;
+    if (publicationGap_ || publications_.size() >= 4096 || charge > maximum - publicationBytes_) {
+        publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+    } else {
+        Publication update;
+        update.sessions = std::move(snapshot); update.charge = charge;
+        publications_.push_back(std::move(update)); publicationBytes_ += charge;
+    }
     publicationWake_.notify_one();
     return true;
 }
@@ -572,6 +599,7 @@ void ApiServer::PublishPending() {
     for (;;) {
         Publication event;
         bool gap = false;
+        std::shared_ptr<const std::vector<std::string>> gapSessions;
         {
             std::unique_lock<std::mutex> lock(publicationMutex_);
             publicationWake_.wait(lock, [this] {
@@ -580,13 +608,17 @@ void ApiServer::PublishPending() {
             if (publicationStopping_) return;
             gap = publicationGap_;
             publicationGap_ = false;
-            if (!gap) {
+            if (gap) gapSessions = latestPublicationSessions_;
+            else {
                 event = std::move(publications_.front()); publications_.pop_front();
-                publicationBytes_ -= event.data.size();
+                publicationBytes_ -= event.charge;
             }
         }
         try {
-            if (gap) PublicationGap();
+            if (gap) {
+                if (gapSessions) SetSessions(*gapSessions);
+                PublicationGap();
+            } else if (event.sessions) SetSessions(*event.sessions);
             else Publish(event.resource, event.data, event.source.c_str(), event.kind.c_str(), event.codePage);
         } catch (...) {
             // Retain ownership of the worker and invalidate remote continuity.

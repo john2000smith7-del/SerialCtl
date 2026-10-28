@@ -26,6 +26,8 @@ class ApiServer {
     void RequestStop();
     void Stop();
     void SetSessions(const std::vector<std::string> &);
+    // Serialize session changes with output handoffs without taking the fan-out lock on the GUI thread.
+    bool EnqueueSessions(std::vector<std::string>);
     bool Running() const {
         return running_;
     }
@@ -77,6 +79,8 @@ class ApiServer {
         std::string resource, source, kind;
         Bytes data;
         unsigned codePage = 0;
+        std::shared_ptr<const std::vector<std::string>> sessions;
+        size_t charge = 0;
     };
     void PublishPending();
     void PublicationGap();
@@ -84,6 +88,7 @@ class ApiServer {
     std::condition_variable publicationWake_;
     std::deque<Publication> publications_;
     size_t publicationBytes_ = 0;
+    std::shared_ptr<const std::vector<std::string>> latestPublicationSessions_;
     bool publicationStopping_ = false, publicationGap_ = false;
     std::thread publisher_;
     void Accept();
