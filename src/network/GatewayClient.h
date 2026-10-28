@@ -33,6 +33,7 @@ class GatewayClient {
     void Live() {
         ws::SocketOptions(socket_);
         stream_->Timeout(INFINITE);
+        stream_->CancelToken(nullptr);
     }
 
   private:

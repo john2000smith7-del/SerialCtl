@@ -1,5 +1,6 @@
 #include "CmdConnection.h"
 #include "ChildProcess.h"
+#include "CmdConsoleBridge.h"
 #include "Win32Helpers.h"
 #include <algorithm>
 #include <array>
@@ -148,42 +149,44 @@ bool CmdConnection::SendPrepared(const Bytes &bytes, std::wstring &error) {
     }
     return true;
 }
-void CmdConnection::ReadCodePages() {
-    std::lock_guard<std::mutex> lock(consoleQueryMutex);
-    if (manualCodePage_)
-        return;
-    // Query the real hidden Win7 console after chcp. Never detach an existing
-    // caller console; users launching from a console can select encoding manually.
-    if (GetConsoleWindow() || !processId_ || !AttachConsole(processId_))
-        return;
-    auto in = GetConsoleCP(), out = GetConsoleOutputCP();
-    FreeConsole();
-    if (in)
-        inputCodePage_ = in;
-    if (out)
-        outputCodePage_ = out;
-    knownCodePage_ = in != 0 && out != 0;
-}
 void CmdConnection::OverrideTextCodePage(unsigned page) {
     {
         std::lock_guard<std::mutex> lock(consoleQueryMutex);
         manualCodePage_ = page != 0;
-        knownCodePage_ = false;
-        inputCodePage_ = outputCodePage_ = page ? page : GetOEMCP();
+        knownCodePage_ = !page && consoleInputCodePage_ && consoleOutputCodePage_;
+        inputCodePage_ = page ? page : consoleInputCodePage_ ? consoleInputCodePage_ : GetOEMCP();
+        outputCodePage_ = page ? page : consoleOutputCodePage_ ? consoleOutputCodePage_ : GetOEMCP();
     }
-    if (!page)
-        ReadCodePages();
 }
 
 void CmdConnection::Read() {
     std::array<std::uint8_t, 16384> buffer{};
+    auto exact = [&](void* data, DWORD size) {
+        auto bytes = static_cast<std::uint8_t*>(data);
+        while (size && !stopping_) {
+            DWORD count = 0;
+            if (!ReadFile(output_, bytes, size, &count, nullptr) || !count) return false;
+            bytes += count; size -= count;
+        }
+        return size == 0;
+    };
     for (;;) {
-        DWORD count = 0;
-        if (!ReadFile(output_, buffer.data(), static_cast<DWORD>(buffer.size()), &count, nullptr) || !count)
+        CmdOutputHeader header{};
+        if (!exact(&header, sizeof(header)) || !header.size || header.size > buffer.size() ||
+            !exact(buffer.data(), header.size))
             break;
-        ReadCodePages();
+        {
+            std::lock_guard<std::mutex> lock(consoleQueryMutex);
+            consoleInputCodePage_ = header.inputCodePage;
+            consoleOutputCodePage_ = header.outputCodePage;
+            if (!manualCodePage_) {
+                if (header.inputCodePage) inputCodePage_ = header.inputCodePage;
+                if (header.outputCodePage) outputCodePage_ = header.outputCodePage;
+                knownCodePage_ = header.inputCodePage && header.outputCodePage;
+            }
+        }
         if (data_)
-            data_(Bytes(buffer.begin(), buffer.begin() + count));
+            data_(Bytes(buffer.begin(), buffer.begin() + header.size));
     }
     connected_ = false;
     if (!stopping_ && status_)

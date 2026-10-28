@@ -30,9 +30,9 @@ class CmdConnection final : public IConnection {
 
   private:
     void Read();
-    void ReadCodePages();
     DWORD processId_ = 0;
     std::atomic<unsigned> inputCodePage_{0}, outputCodePage_{0};
+    unsigned consoleInputCodePage_ = 0, consoleOutputCodePage_ = 0;
     std::atomic_bool manualCodePage_{false}, knownCodePage_{false};
     HANDLE process_ = nullptr, job_ = nullptr, input_ = nullptr, output_ = nullptr;
     std::atomic_bool connected_{false}, stopping_{false};

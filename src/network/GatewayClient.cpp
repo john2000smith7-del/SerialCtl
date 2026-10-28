@@ -10,11 +10,12 @@ void GatewayClient::Connect(const std::wstring &host, unsigned port, const std::
     try {
         if (cancel && *cancel)
             throw std::runtime_error("CONNECT_CANCELED");
-        auto tail = ws::UpgradeClient(socket_, host, port);
+        auto tail = ws::UpgradeClient(socket_, host, port, cancel);
         readCancel_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!readCancel_)
             throw std::runtime_error("READ_CANCEL_EVENT_FAILED");
-        stream_ = std::make_unique<ws::Stream>(socket_, true, std::move(tail), readCancel_, 3000);
+        stream_ = std::make_unique<ws::Stream>(socket_, true, std::move(tail), readCancel_, timeout);
+        stream_->CancelToken(cancel);
         hello_ = Receive();
         if (cancel && *cancel)
             throw std::runtime_error("CONNECT_CANCELED");

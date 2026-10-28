@@ -145,7 +145,18 @@ Json ApiServer::Diagnostics() {
 void ApiServer::Accept() {
     WSAEVENT waits[] = {stopEvent_, acceptEvent_};
     while (running_) {
-        auto signaled = WSAWaitForMultipleEvents(2, waits, FALSE, WSA_INFINITE, FALSE);
+        // Reap finished readers even when no subsequent client connects. Joining
+        // happens outside mutex_: reader completion may still call Trace().
+        std::vector<std::shared_ptr<ClientState>> retired;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto it = clients_.begin(); it != clients_.end();)
+                if ((*it)->finished) { retired.push_back(*it); it = clients_.erase(it); }
+                else ++it;
+        }
+        for (auto& client : retired) client->reader.join();
+        auto signaled = WSAWaitForMultipleEvents(2, waits, FALSE, 100, FALSE);
+        if (signaled == WSA_WAIT_TIMEOUT) continue;
         if (!running_ || signaled != WSA_WAIT_EVENT_0 + 1)
             break;
         WSANETWORKEVENTS events{};
@@ -370,7 +381,17 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
     }
     shutdown(c->socket, SD_BOTH);
     closesocket(c->socket);
-    c->finished = true;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        c->subscriptions.clear();
+    }
+    c->responses.clear();
+    c->responseOrder.clear();
+    {
+        std::lock_guard<std::mutex> lock(c->mutex);
+        c->queue.clear(); c->queued = 0;
+        c->finished = true;
+    }
 }
 void ApiServer::SetSessions(const std::vector<std::string> &list) {
     std::lock_guard<std::mutex> l(mutex_);

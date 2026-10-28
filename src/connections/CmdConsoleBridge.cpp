@@ -22,6 +22,8 @@ bool ReadExact(HANDLE input, void *data, size_t size) {
 }
 void Report(HANDLE output, const char *text) {
     DWORD written = 0;
+    CmdOutputHeader header{static_cast<std::uint32_t>(strlen(text)), GetConsoleCP(), GetConsoleOutputCP()};
+    WriteFile(output, &header, sizeof(header), &written, nullptr);
     WriteFile(output, text, static_cast<DWORD>(strlen(text)), &written, nullptr);
 }
 bool FeedConsole(HANDLE input, HANDLE console, HANDLE process) {
@@ -90,7 +92,11 @@ int RunCmdConsoleBridge() {
     // The parent created a hidden, private Win7 console. Avoid inheriting its IPC
     // input in CMD: that would retain the pipe and reintroduce byte-wise decoding.
     SetHandleInformation(input, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(output, HANDLE_FLAG_INHERIT, 0);
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
+    HANDLE childOutputRead = nullptr, childOutputWrite = nullptr;
+    if (!CreatePipe(&childOutputRead, &childOutputWrite, &security, 65536)) return 3;
+    SetHandleInformation(childOutputRead, HANDLE_FLAG_INHERIT, 0);
     const auto console = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                                      &security, OPEN_EXISTING, 0, nullptr);
     if (console == INVALID_HANDLE_VALUE) {
@@ -106,18 +112,34 @@ int RunCmdConsoleBridge() {
     startup.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
     startup.wShowWindow = SW_HIDE;
     startup.hStdInput = console;
-    startup.hStdOutput = output;
-    startup.hStdError = output;
+    startup.hStdOutput = childOutputWrite;
+    startup.hStdError = childOutputWrite;
     PROCESS_INFORMATION child{};
     // This dedicated process owns only these inheritable standard handles.
     // Legacy console handles must inherit within the same console on Win7;
     // they must not be duplicated across consoles/placed in a kernel handle list.
     if (!CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &startup, &child)) {
+        CloseHandle(childOutputRead); CloseHandle(childOutputWrite);
         CloseHandle(console);
         Report(output, "SerialCtl CMD creation failed\r\n");
         return 4;
     }
     CloseHandle(child.hThread);
+    CloseHandle(childOutputWrite);
+    std::thread receiver([&] {
+        std::array<char, 16384> bytes{};
+        DWORD count = 0;
+        while (ReadFile(childOutputRead, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr) && count) {
+            const CmdOutputHeader header{count, GetConsoleCP(), GetConsoleOutputCP()};
+            DWORD sent = 0;
+            if (!WriteFile(output, &header, sizeof(header), &sent, nullptr) || sent != sizeof(header)) break;
+            DWORD offset = 0;
+            while (offset < count) {
+                if (!WriteFile(output, bytes.data() + offset, count - offset, &sent, nullptr) || !sent) return;
+                offset += sent;
+            }
+        }
+    });
     std::thread feeder([&] {
         if (!FeedConsole(input, console, child.hProcess))
             TerminateProcess(child.hProcess, 1);
@@ -129,6 +151,10 @@ int RunCmdConsoleBridge() {
     while (WaitForSingleObject(thread, 10) == WAIT_TIMEOUT)
         CancelSynchronousIo(thread);
     feeder.join();
+    // The parent owns the entire job tree. Drain until EOF in normal operation;
+    // on parent shutdown the job closes all remaining child write endpoints.
+    receiver.join();
+    CloseHandle(childOutputRead);
     DWORD result = 0;
     GetExitCodeProcess(child.hProcess, &result);
     CloseHandle(child.hProcess);

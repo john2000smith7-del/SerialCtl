@@ -3,6 +3,7 @@
 #include <map>
 #include <stdexcept>
 #include <utility>
+#include <atomic>
 namespace serialctl::ws {
 inline constexpr size_t MaxMessage = 128 * 1024;
 // Hard limit for finishing a started frame or fragmented message. Idle time between
@@ -28,7 +29,7 @@ struct Header {
     std::map<std::string, std::string> fields;
 };
 // Reads only the HTTP header, retaining any coalesced WebSocket bytes.
-Header ReadHeader(SOCKET, Bytes &, DWORD timeout = 1500);
+Header ReadHeader(SOCKET, Bytes &, DWORD timeout = 1500, const std::atomic_bool* cancel = nullptr);
 std::string Lower(std::string);
 bool Token(const std::string &, const std::string &);
 bool Utf8(const Bytes &);
@@ -38,6 +39,10 @@ class Stream {
     Stream(SOCKET socket, bool client, Bytes buffered = {}, HANDLE readCancel = nullptr, DWORD timeout = INFINITE)
         : socket_(socket), client_(client), buffered_(std::move(buffered)), readCancel_(readCancel),
           readTimeout_(timeout) {}
+    ~Stream() { if (readEvent_ != WSA_INVALID_EVENT) WSACloseEvent(readEvent_); }
+    Stream(const Stream&) = delete;
+    Stream& operator=(const Stream&) = delete;
+    void CancelToken(const std::atomic_bool* cancel) { cancelToken_ = cancel; }
     // Caller serializes sends; server has exactly one sender per socket.
     bool Send(unsigned opcode, const Bytes &, bool final = true);
     struct Message {
@@ -56,6 +61,9 @@ class Stream {
     SOCKET socket_;
     bool client_;
     Bytes buffered_, fragment_;
+    size_t bufferedOffset_ = 0;
+    WSAEVENT readEvent_ = WSA_INVALID_EVENT;
+    const std::atomic_bool* cancelToken_ = nullptr;
     unsigned fragmentOpcode_ = 0;
     HANDLE readCancel_ = nullptr;
     DWORD readTimeout_ = INFINITE;
@@ -63,5 +71,5 @@ class Stream {
     ULONGLONG frameDeadline_ = 0;
 };
 // Client handshake validates accept key and subprotocol. Socket ownership stays with caller.
-Bytes UpgradeClient(SOCKET, const std::wstring &host, unsigned port);
+Bytes UpgradeClient(SOCKET, const std::wstring &host, unsigned port, const std::atomic_bool* cancel = nullptr);
 } // namespace serialctl::ws

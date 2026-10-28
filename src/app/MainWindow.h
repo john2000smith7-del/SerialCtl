@@ -14,6 +14,9 @@
 #include "SftpModel.h"
 #include "TerminalDecoder.h"
 #include "TerminalModel.h"
+#include "TerminalViewportController.h"
+#include "PaintBuffer.h"
+#include "BackgroundCleanup.h"
 #include "ToolbarIcons.h"
 #include <deque>
 #include <functional>
@@ -518,6 +521,9 @@ private:
     bool statusIsError_ = false;
 
     std::thread connectionThread_;
+    BackgroundCleanup connectionCleanup_;
+    PaintBuffer windowPaintBuffer_, terminalPaintBuffer_;
+    TerminalViewportController terminalViewport_;
     std::atomic_bool connectionCancel_{false};
     std::unique_ptr<SessionState> pendingSession_;
     std::vector<ReceivedItem> pendingConnectionData_;

@@ -25,7 +25,15 @@ jobs:
         shell: powershell
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/serialctl-build.txt"
-          try { ./scripts/release.ps1 } finally { Stop-Transcript }
+          try { ./scripts/release.ps1 }
+          catch {
+            $failure = $_
+            Get-Content "$env:RUNNER_TEMP/serialctl-build.txt" -Tail 40 | ForEach-Object {
+              $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+              Write-Host "::error title=Windows build failure::$line"
+            }
+            throw $failure
+          } finally { Stop-Transcript }
       - name: Launch packaged applications and capture UI
         shell: powershell
         run: |
@@ -64,6 +72,8 @@ jobs:
           if ($archive.Count -ne 1) { throw 'Expected exactly one verified release archive.' }
           python tools/new_update_feed.py --describe-archive $archive[0].FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sha = (Get-FileHash $archive[0].FullName -Algorithm SHA256).Hash
+          Write-Host "::notice title=Verified portable ZIP::$($archive[0].Name) SHA256=$sha"
       - name: Upload verified portable bundle
         uses: actions/upload-artifact@v4
         with:

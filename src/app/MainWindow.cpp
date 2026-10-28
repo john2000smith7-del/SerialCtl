@@ -1012,6 +1012,7 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
 }
 
 MainWindow::~MainWindow() {
+    connectionCleanup_.Drain();
     aiPane_.Shutdown();
     if (logExportJob_) logExportJob_->cancel.store(true);
     StopStartupUpdate();
@@ -1185,7 +1186,7 @@ bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     // appeared in the service snapshot. A modal owner and mouse capture exclude
     // edits and ongoing gestures. Explicit consent may follow harmless UI use;
     // actual device work is still protected and defers installation.
-    return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && sessions_.empty() &&
+    return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && !connectionCleanup_.Busy() && sessions_.empty() &&
            !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
            !disconnectAllPending_ && !disconnectAllInProgress_ && !commandsDirty_ && runningCommandIndex_ < 0 &&
            !sftpBusy_ && !activeSftpTransferId_ && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
@@ -2433,9 +2434,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         PAINTSTRUCT paint{};
         HDC dc = BeginPaint(window_, &paint);
         RECT rect{};GetClientRect(window_,&rect);
-        HDC memory=CreateCompatibleDC(dc);HBITMAP bitmap=CreateCompatibleBitmap(dc,std::max(1L,rect.right),std::max(1L,rect.bottom));
-        if(memory&&bitmap){auto previous=SelectObject(memory,bitmap);PaintWindow(memory);BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY);SelectObject(memory,previous);}else PaintWindow(dc);
-        if(bitmap)DeleteObject(bitmap);if(memory)DeleteDC(memory);
+        HDC memory = windowPaintBuffer_.Get(dc, rect.right, rect.bottom, Ui::Dpi);
+        if (memory) { const int state = SaveDC(memory); PaintWindow(memory); BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY); RestoreDC(memory,state); }
+        else PaintWindow(dc);
         EndPaint(window_, &paint);
         return 0;
     }
@@ -2743,6 +2744,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         // Device shutdown and transport cleanup take precedence over waiting
         // for a canceled export to finish destination filesystem I/O.
         StopLogExport();
+        connectionCleanup_.Drain();
         {
             MSG pending{};
             while (PeekMessageW(&pending, window_, MessageApi, MessageApi, PM_REMOVE)) delete reinterpret_cast<ApiRequestMessage*>(pending.lParam);
@@ -3760,8 +3762,8 @@ void MainWindow::OpenConnectionDialog(int mode) {
         ConnectFromDialog();
     }
     discoveryCancel_ = true;
-    if (discoveryThread_.joinable()) discoveryThread_.join();
     discoveryDialog_ = nullptr;
+    ++discoveryGeneration_;
     RedrawWindow(window_, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
@@ -4349,8 +4351,10 @@ void MainWindow::Disconnect() {
     AiDeviceRequest("release", {{"sessionId", "session-" + std::to_string((*found)->id)}});
     sessionService_.Unregister("session-" + std::to_string((*found)->id));
     apiServer_.SetSessions(sessionService_.Ids());
-    (*found)->connection->Stop();
-    (*found)->logger->Stop();
+    auto transport = (*found)->connection;
+    auto log = (*found)->logger;
+    connectionCleanup_.Retire([transport, log] { transport->Stop(); log->Stop(); });
+    terminalViewport_.Clear();
     sessions_.erase(found);
     activeSession_ = nullptr;
     connection_ = nullptr;
@@ -5895,20 +5899,20 @@ void MainWindow::PaintTerminal(HDC dc) {
     GetClientRect(terminal_, &client);
     if (client.right <= 0 || client.bottom <= 0) return;
     const Palette colors = Colors(darkMode_);
-    HDC buffer = CreateCompatibleDC(dc);
-    HBITMAP bitmap = CreateCompatibleBitmap(dc, client.right, client.bottom);
-    HBITMAP oldBitmap = reinterpret_cast<HBITMAP>(SelectObject(buffer, bitmap));
+    HDC buffer = terminalPaintBuffer_.Get(dc, client.right, client.bottom, Ui::Dpi);
+    if (!buffer) buffer = dc;
+    const int savedBuffer = SaveDC(buffer);
     HBRUSH background = CreateSolidBrush(colors.terminal);
     FillRect(buffer, &client, background);
     DeleteObject(background);
 
     if (activeSession_) {
         const TerminalModel& model = activeSession_->terminal;
-        std::unique_ptr<TerminalModel> preview;
+        const TerminalModel* preview = nullptr;
         if (activeSession_->mode == 4 && !activeSession_->cmdEditor.Text().empty() &&
             activeSession_->terminalScrollOffset == 0)
-            preview = std::make_unique<TerminalModel>(
-                model.PreviewInput(activeSession_->cmdEditor.Text(), activeSession_->cmdEditor.Cursor()));
+            preview = &terminalViewport_.Preview(model, activeSession_->cmdEditor.Text(), activeSession_->cmdEditor.Cursor());
+        else terminalViewport_.Clear();
         auto displayLine = [&](size_t i) -> const TerminalLine & {
             return preview && !model.LineWrapView()      ? preview->DisplayLine(i)
                    : preview && i >= model.HistorySize() ? preview->DisplayLine(i - model.HistorySize())
@@ -6083,9 +6087,7 @@ void MainWindow::PaintTerminal(HDC dc) {
         SetPropW(terminal_, L"SerialCtl.PaintProbe", reinterpret_cast<HANDLE>(activeSession_->paintProbe));
         activeSession_->pendingProbeArrival = 0;
     }
-    SelectObject(buffer, oldBitmap);
-    DeleteObject(bitmap);
-    DeleteDC(buffer);
+    RestoreDC(buffer, savedBuffer);
 }
 
 void MainWindow::ScrollTerminal(int lines) {
