@@ -651,6 +651,12 @@ struct AiDeviceTestAccess {
         {
             main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
             main.LayoutControls(viewport.right, viewport.bottom);
+            // A paint-latency measurement needs an exposed native surface.
+            // Earlier cases create an independent topmost desktop companion;
+            // IsWindowVisible alone does not mean this fixture is unobscured.
+            SetWindowPos(parent, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetForegroundWindow(parent);
+            RedrawWindow(parent, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
             // Exercise the application's ordinary message-loop dispatch, which
             // also delivers RDW_INTERNALPAINT without an invalid client region.
             unsigned dispatched = 0, paints = 0;
@@ -683,6 +689,8 @@ struct AiDeviceTestAccess {
                 main.HandleMessage(notification.message, notification.wParam, notification.lParam);
                 if (reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) != sample + 1) {
                     RECT client{}; GetClientRect(main.terminal_, &client);
+                    RECT clip{}; HDC surface = GetDC(main.terminal_);
+                    const int region = GetClipBox(surface, &clip); ReleaseDC(main.terminal_, surface);
                     std::lock_guard<std::mutex> lock(main.receivedMutex_);
                     std::cerr << "FAILED serial paint state: sample=" << sample
                               << " painted=" << reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe"))
@@ -691,6 +699,7 @@ struct AiDeviceTestAccess {
                               << " active=" << main.activeSession_->id << " queued=" << main.received_.size()
                               << " visible=" << IsWindowVisible(main.terminal_) << " iconic=" << IsIconic(parent)
                               << " client=" << client.right << 'x' << client.bottom
+                              << " clip=" << region << ':' << clip.left << ',' << clip.top << ',' << clip.right << ',' << clip.bottom
                               << " update=" << GetUpdateRect(main.terminal_, nullptr, FALSE) << std::endl;
                 }
                 Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == sample + 1,
@@ -759,6 +768,7 @@ struct AiDeviceTestAccess {
             }
             Require(main.received_.empty() && main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") != std::wstring::npos,
                     "Sliced startup replay lost newer live data");
+            SetWindowPos(parent, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         }
         main.powerService_.Shutdown();
         main.aiPane_.Shutdown();
