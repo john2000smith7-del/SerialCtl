@@ -63,6 +63,17 @@ int main() {
             ssh.CancelStart(); Require(start.wait_for(1500ms) == std::future_status::ready && !start.get(), "startup cancellation");
             ssh.Stop(); CloseHandle(ready);
         }
+        {
+            PlinkConnection crash(L"serialctl-lifecycle-crash", 22, L"fixture", L"", 80, 24);
+            HANDLE ended = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            Require(crash.Start({}, [&](const std::wstring&, bool failure) { if (failure) SetEvent(ended); }, error), "crash fixture start");
+            Require(WaitForSingleObject(ended, 3000) == WAIT_OBJECT_0 && !crash.IsConnected(), "sudden child exit updates atomic connection state");
+            crash.Stop(); crash.Stop(); CloseHandle(ended);
+            HKEY key = nullptr;
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\TrustedHostKeys", 0, KEY_SET_VALUE, &key) == ERROR_SUCCESS) {
+                RegDeleteValueW(key, L"serialctl-lifecycle-crash:22"); RegCloseKey(key);
+            }
+        }
         SetEnvironmentVariableW(L"SERIALCTL_SSH_READY", nullptr);
         DWORD handlesAfter = 0; GetProcessHandleCount(GetCurrentProcess(), &handlesAfter);
         Require(handlesAfter <= handlesBefore + 3 && Threads() <= threadsBefore + 1, "SSH handle/thread growth");
