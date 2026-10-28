@@ -49,7 +49,9 @@ Json Wait(PowerService& power, Json action) {
 }
 struct AiDeviceTestAccess {
     static LRESULT CALLBACK FixtureParent(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data) {
-        if(m==WM_DRAWITEM || m==WM_MEASUREITEM || m==WM_PAINT || (m>=WM_CTLCOLORMSGBOX && m<=WM_CTLCOLORSTATIC)) return reinterpret_cast<MainWindow*>(data)->HandleMessage(m,w,l);
+        if(m==WM_DRAWITEM || m==WM_MEASUREITEM || m==WM_PAINT || m==WM_TIMER ||
+           (m>=WM_APP && m<=WM_APP+100) || (m>=WM_CTLCOLORMSGBOX && m<=WM_CTLCOLORSTATIC))
+            return reinterpret_cast<MainWindow*>(data)->HandleMessage(m,w,l);
         return DefSubclassProc(h,m,w,l);
     }
     static HWND PowerControl(HWND pane, int id) {
@@ -650,8 +652,8 @@ struct AiDeviceTestAccess {
             // Exercise the application's ordinary message-loop dispatch, which
             // also delivers RDW_INTERNALPAINT without an invalid client region.
             const auto paintOpportunity = [&] {
-                MSG paint{};
-                if (PeekMessageW(&paint, parent, WM_PAINT, WM_PAINT, PM_REMOVE)) DispatchMessageW(&paint);
+                MSG next{};
+                if (PeekMessageW(&next, parent, 0, 0, PM_REMOVE)) DispatchMessageW(&next);
             };
             Json samples = Json::array();
             for (int sample = 0; sample < 16; ++sample) {
