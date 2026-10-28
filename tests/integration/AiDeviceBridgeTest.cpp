@@ -54,7 +54,9 @@ int main() {
               request("key", {{"key", "Enter"}}).contains("error") && transport->writes == writes,
               "macro gate prevents interleaved AI writes");
         context.macroRunning = false;
-        Check(!request("boot_arm").contains("error") && pulse && state.boot->Status(now).state == "armed", "boot policy requests UI scheduling without retaining GUI");
+        const auto armed = request("boot_arm");
+        Check(armed.value("state", "") == "armed" && armed.value("error", "unexpected").empty() &&
+              pulse && state.boot->Status(now).state == "armed", "boot policy requests UI scheduling without retaining GUI");
         request("release");
         Check(state.boot->Status(now).state == "canceled" && !pulse, "turn release cancels capture and clears scheduling output");
         for (unsigned i = 0; i < 300; ++i)
