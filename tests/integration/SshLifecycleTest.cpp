@@ -57,10 +57,17 @@ int main() {
             cleanup.Retire([ssh] { ssh->Stop(); });
             Require(GetTickCount64() - start < 100, "UI retirement blocked");
             cleanup.Drain();
-            elapsed.push_back(GetTickCount64() - start);
-            Require(elapsed.back() < 1500, "stop deadline");
-            Require(writer.wait_for(0ms) == std::future_status::ready, "writer survived Stop");
+            const auto stoppedAfter = GetTickCount64() - start;
+            Require(stoppedAfter < 1500, "stop deadline");
+            // Stop drains the transport write under its mutex. The caller still
+            // needs to publish its promise AFTER returning from Send; that is a
+            // separate scheduling step. Keep the same 1500 ms total deadline
+            // rather than incorrectly requiring a zero-time future transition.
+            Require(writer.wait_for(std::chrono::milliseconds(1500 - stoppedAfter)) == std::future_status::ready,
+                    "writer did not finish within the stop deadline");
             writer.get(); sender.join(); ssh->Stop();
+            elapsed.push_back(GetTickCount64() - start);
+            Require(elapsed.back() < 1500, "stop and sender completion deadline");
             Require(!ssh->IsConnected(), "repeat Stop state");
             HKEY key = nullptr;
             if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\TrustedHostKeys", 0, KEY_SET_VALUE, &key) == ERROR_SUCCESS) {
