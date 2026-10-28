@@ -540,6 +540,7 @@ private:
     std::set<std::uint64_t> receiveOverflow_;
     bool receivePosted_ = false;
     bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.
+    unsigned receiveFairness_ = 0;
     std::set<std::uint64_t> loggerErrorsShown_;
 
     std::thread discoveryThread_;

@@ -2583,14 +2583,25 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             std::lock_guard<std::mutex> lock(receivedMutex_);
             overflow.swap(receiveOverflow_);
         }
-        const auto started = GetTickCount64();
-        for (unsigned count = 0; count < 32 && (count == 0 || GetTickCount64() - started < 6); ++count) {
+        const auto started = std::chrono::steady_clock::now();
+        for (unsigned count = 0; count < 32 && (count == 0 ||
+             std::chrono::steady_clock::now() - started < std::chrono::milliseconds(2)); ++count) {
             ReceivedItem item;
             {
                 std::lock_guard<std::mutex> lock(receivedMutex_);
                 if (received_.empty()) break;
-                item = std::move(received_.front());
-                received_.pop_front();
+                auto next = received_.begin();
+                // Preserve order within each session while giving the visible
+                // terminal three of every four opportunities during overload.
+                // Background sessions still progress; they cannot bury a key's
+                // echo behind megabytes of unrelated output.
+                if (activeSession_ && (++receiveFairness_ % 4) != 0) {
+                    const auto visible = std::find_if(received_.begin(), received_.end(),
+                        [this](const ReceivedItem& entry) { return entry.sessionId == activeSession_->id; });
+                    if (visible != received_.end()) next = visible;
+                }
+                item = std::move(*next);
+                received_.erase(next);
                 auto found = receivedBytes_.find(item.sessionId);
                 if (found != receivedBytes_.end()) {
                     found->second -= std::min(found->second, item.data.size());

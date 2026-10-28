@@ -670,6 +670,17 @@ struct AiDeviceTestAccess {
                 samples.push_back(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintUsec")));
                 gate.unlock(); receive.get();
             }
+            for (int i = 0; i < 32; ++i) main.QueueReceived({3, Bytes(16384, 'b'), CP_UTF8, {}, 0});
+            main.receiveFairness_ = 0;
+            LARGE_INTEGER arrival{}; QueryPerformanceCounter(&arrival);
+            const std::string visibleMarker = "SERIALCTL_PAINT_200";
+            main.QueueReceived({2, Bytes(visibleMarker.begin(), visibleMarker.end()), CP_UTF8, {}, arrival.QuadPart});
+            main.HandleMessage(WM_APP + 1, 0, 0);
+            Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == 201,
+                    "Background terminal backlog buried the visible serial echo");
+            auto backlogDeadline = GetTickCount64() + 5000;
+            while (!main.received_.empty() && GetTickCount64() < backlogDeadline) UpdateWindow(parent);
+            Require(main.received_.empty(), "Visible-session priority starved background terminal output");
             main.activeSession_->terminal.Clear();
             for (int i = 0; i < 64; ++i) main.QueueReceived({2, Bytes(16384, 'x'), CP_UTF8, {}, 0});
             main.HandleMessage(WM_APP + 1, 0, 0);

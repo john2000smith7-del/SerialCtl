@@ -1,0 +1,57 @@
+name: Native regression diagnostics
+on:
+  push:
+    branches: [feat/v2.0.10-arch-final]
+    paths: [.github/workflows/windows-native-diagnostics.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      SERIALCTL_EVIDENCE_DIR: ${{ runner.temp }}/native-evidence
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clean MSVC x64 build
+        timeout-minutes: 15
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/native-evidence" -Force | Out-Null
+          Start-Transcript "$env:RUNNER_TEMP/native-evidence/build.txt"
+          try {
+            ./scripts/check.ps1 -SourceOnly
+            ./scripts/build.ps1 -Architecture x64 -Configuration Release -Clean
+          } finally { Stop-Transcript }
+      - name: All CTest including interactive serial regressions
+        timeout-minutes: 8
+        shell: powershell
+        run: |
+          Start-Transcript "$env:RUNNER_TEMP/native-evidence/tests.txt"
+          try { ./scripts/test.ps1 -Architecture x64 -Configuration Release } finally { Stop-Transcript }
+      - name: Exact PE dependencies and Win7 imports
+        shell: powershell
+        run: |
+          Start-Transcript "$env:RUNNER_TEMP/native-evidence/pe.txt"
+          try { ./scripts/check.ps1 -Architecture x64 -Configuration Release } finally { Stop-Transcript }
+      - name: Retain bounded diagnostic excerpts
+        if: always()
+        shell: powershell
+        run: |
+          foreach ($name in @('build.txt','tests.txt','pe.txt','ctest-x64.txt')) {
+            $path = "$env:RUNNER_TEMP/native-evidence/$name"
+            if (Test-Path $path) {
+              Get-Content $path -Tail 50 | ForEach-Object {
+                $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+                Write-Host "::notice title=$name::$line"
+              }
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-native-regression-diagnostics
+          path: ${{ runner.temp }}/native-evidence/
+          if-no-files-found: warn
