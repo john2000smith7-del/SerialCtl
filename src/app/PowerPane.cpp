@@ -1492,7 +1492,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             EnableWindow(GetDlgItem(h, 103), FALSE);
             auto job = data->scan = std::make_shared<ResourceScan>();
             job->kind = kind;
-            data->pane->resourceScanWorkers_.Retire([job] {
+            data->pane->resourceScanWorkers_[kind == 0 ? 0 : 1].Retire([job] {
                 try {
                     if (job->kind == 0) job->usb = PowerService::UsbResources();
                     else for (int index = 1; index <= 256; ++index) {

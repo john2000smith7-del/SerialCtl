@@ -28,7 +28,7 @@ class PowerPane {
     Json RecoveryBinding();
 
   private:
-    BackgroundCleanup resourceScanWorkers_;
+    BackgroundCleanup resourceScanWorkers_[2]; // A slow VISA scan must not delay RS232 enumeration.
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK BodyProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static INT_PTR CALLBACK ConnectProc(HWND, UINT, WPARAM, LPARAM);
