@@ -1,5 +1,10 @@
 name: Desktop user interaction audit
 on:
+  # A deliberate workflow-file update on the feature branch runs the same
+  # desktop audit against the matching successful Windows build.
+  push:
+    branches: [feat/v2.0.10-arch-final]
+    paths: [.github/workflows/desktop-interaction.yml]
   workflow_run:
     workflows: [Windows Win7 release build]
     types: [completed]
@@ -14,8 +19,41 @@ permissions:
   contents: read
   actions: read
 jobs:
+  resolve-feature-build:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      build_run: ${{ steps.find.outputs.build_run }}
+    steps:
+      - name: Wait for the Windows build of this exact commit
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 90); do
+            record="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow windows-build.yml --commit "$TARGET_SHA" \
+              --limit 10 --json databaseId,status,conclusion \
+              --jq 'if length > 0 then .[0] | [.databaseId, .status, .conclusion] | @tsv else "" end')"
+            IFS=$'\t' read -r run_id status conclusion <<< "$record"
+            if [[ "${status:-}" == "completed" ]]; then
+              if [[ "${conclusion:-}" != "success" ]]; then
+                echo "Matching Windows build $run_id ended with $conclusion" >&2
+                exit 1
+              fi
+              echo "build_run=$run_id" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Matching Windows build did not complete in time" >&2
+          exit 1
   desktop:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve-feature-build
+    if: ${{ always() && ((github.event_name == 'push' && needs.resolve-feature-build.result == 'success') || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')) }}
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
@@ -26,7 +64,7 @@ jobs:
       - name: Verify tested program source matches production on this commit
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN: ${{ inputs.build_run || github.event.workflow_run.id }}
+          BUILD_RUN: ${{ needs.resolve-feature-build.outputs.build_run || inputs.build_run || github.event.workflow_run.id }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -44,7 +82,7 @@ jobs:
         with:
           name: SerialCtl-Win7-portable
           path: bin
-          run-id: ${{ inputs.build_run || github.event.workflow_run.id }}
+          run-id: ${{ needs.resolve-feature-build.outputs.build_run || inputs.build_run || github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - name: Install test-only lossless screen encoder
         run: python -m pip install imageio-ffmpeg==0.6.0
