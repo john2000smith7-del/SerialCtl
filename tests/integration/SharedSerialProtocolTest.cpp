@@ -72,6 +72,12 @@ int main() {
         Expect(!c.IsConnected(), "cancel joins reader");
         Expect(c.Start({}, {}, error), "desktop reconnect");
         c.Stop();
+        SharedSerialConnection canceled(L"127.0.0.1", static_cast<std::uint16_t>(f.server.Port()), L"COM3");
+        canceled.CancelStart();
+        Expect(!canceled.Start({}, {}, error) && error.find(L"取消") != std::wstring::npos,
+               "Cancel before startup must not reopen the remote serial connection");
+        Expect(canceled.Start({}, {}, error), "A fresh startup after consuming cancellation must be allowed");
+        canceled.Stop();
         std::cout << "Native remote client discovery, first byte, binary and reconnect passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

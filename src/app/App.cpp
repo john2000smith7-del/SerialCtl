@@ -2,6 +2,7 @@
 #include "MainWindow.h"
 #include "UpdateInstaller.h"
 #include "GuiInstance.h"
+#include "NetworkConnect.h"
 
 // Windows SDK GDI+ declarations require the COM/property types first.
 // clang-format off
@@ -11,9 +12,18 @@
 #include <objidl.h>
 #include <propidl.h>
 #include <gdiplus.h>
+#include <shellapi.h>
 // clang-format on
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCommand) {
+    if (std::wstring(parameters).rfind(serialctl::NetworkResolverArgument, 0) == 0) {
+        int count = 0;
+        auto arguments = CommandLineToArgvW(GetCommandLineW(), &count);
+        const int result = arguments && count == 3 && std::wstring(arguments[1]) == serialctl::NetworkResolverArgument
+            ? serialctl::RunNetworkResolver(arguments[2]) : 1;
+        if (arguments) LocalFree(arguments);
+        return result;
+    }
     if (std::wstring(parameters) == L"--serialctl-cmd-bridge")
         return serialctl::RunCmdConsoleBridge();
     int updateExitCode = 0;

@@ -101,9 +101,16 @@ std::string AcceptKey(const std::string &key) {
         throw Error(1011, "SHA1_FAILED");
     return Base64(digest);
 }
-bool SendAll(SOCKET s, const void *data, size_t n) {
+bool SendAll(SOCKET s, const void *data, size_t n, ULONGLONG deadline, const std::atomic_bool *cancel) {
     auto p = static_cast<const char *>(data);
     while (n) {
+        if (cancel && cancel->load()) return false;
+        if (deadline) {
+            const auto now = GetTickCount64();
+            if (now >= deadline) return false;
+            const DWORD left = static_cast<DWORD>(std::min<ULONGLONG>(deadline - now, 0x7fffffff));
+            setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&left), sizeof(left));
+        }
         int k = send(s, p, int(std::min<size_t>(n, 65536)), 0);
         if (k <= 0)
             return false;
@@ -257,6 +264,12 @@ void Stream::Exact(void *data, size_t n, bool idleWait) {
             (cancelToken_ && cancelToken_->load())) throw Error(1006, "CANCELED");
         DWORD wait = readTimeout_;
         bool frameLimited = false;
+        if (absoluteDeadline_) {
+            const auto now = GetTickCount64();
+            if (now >= absoluteDeadline_) throw Error(1006, "READ_TIMEOUT");
+            const auto left = static_cast<DWORD>(std::min<ULONGLONG>(absoluteDeadline_ - now, 0x7fffffff));
+            if (wait == INFINITE || left < wait) wait = left;
+        }
         if (!idleWait && frameTimeout_ != INFINITE) {
             const auto now = GetTickCount64();
             if (now >= frameDeadline_) throw Error(1008, "FRAME_TIMEOUT");
@@ -340,7 +353,7 @@ bool Stream::Send(unsigned op, const Bytes &bytes, bool fin) {
     }
     for (size_t i = 0; i < bytes.size(); ++i)
         frame.push_back(bytes[i] ^ (client_ ? masking[i % 4] : 0));
-    return SendAll(socket_, frame.data(), frame.size());
+    return SendAll(socket_, frame.data(), frame.size(), absoluteDeadline_, cancelToken_);
 }
 Stream::Message Stream::Receive() {
     for (;;) {
@@ -425,18 +438,24 @@ Stream::Message Stream::Receive() {
         return {op, std::move(b)};
     }
 }
-Bytes UpgradeClient(SOCKET s, const std::wstring &host, unsigned port, const std::atomic_bool* cancel) {
-    SocketOptions(s, 1500);
+Bytes UpgradeClient(SOCKET s, const std::wstring &host, unsigned port, const std::atomic_bool* cancel, DWORD timeout) {
+    const auto deadline = GetTickCount64() + timeout;
+    SocketOptions(s, timeout);
     auto key = Base64(RandomBytes(16));
+    auto authority = WideToMultiByte(host, CP_UTF8);
+    if (authority.find(':') != std::string::npos && (authority.empty() || authority.front() != '['))
+        authority = "[" + authority + "]";
     auto request =
-        "GET " + std::string(Path) + " HTTP/1.1\r\nHost: " + WideToMultiByte(host, CP_UTF8) + ":" +
+        "GET " + std::string(Path) + " HTTP/1.1\r\nHost: " + authority + ":" +
         std::to_string(port) +
         "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: " +
         Protocol + "\r\nSec-WebSocket-Key: " + key + "\r\n\r\n";
-    if (!SendAll(s, request.data(), request.size()))
+    if (!SendAll(s, request.data(), request.size(), deadline, cancel))
         throw Error(1006, "HANDSHAKE_SEND_FAILED");
     Bytes tail;
-    auto h = ReadHeader(s, tail, 1500, cancel);
+    const auto now = GetTickCount64();
+    if (now >= deadline) throw Error(1006, "HANDSHAKE_CLOSED_OR_TIMEOUT");
+    auto h = ReadHeader(s, tail, static_cast<DWORD>(deadline - now), cancel);
     if (h.first.rfind("HTTP/1.1 503", 0) == 0 && h.fields["sec-websocket-protocol"] == Protocol &&
         !h.fields["x-serialctl-instance"].empty())
         throw Error(1013, "CLIENT_LIMIT", h.fields["x-serialctl-instance"]);

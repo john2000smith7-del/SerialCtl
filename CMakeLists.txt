@@ -183,6 +183,7 @@ add_executable(serialctl WIN32
     src/network/GatewayClient.cpp
     src/network/SessionService.cpp
     src/connections/ChildProcess.cpp
+    src/connections/NetworkConnect.cpp
     src/connections/CmdConnection.cpp
     src/connections/CmdConsoleBridge.cpp
     src/connections/QueuedConnection.cpp
@@ -363,7 +364,8 @@ if(BUILD_TESTING)
     add_test(NAME cmd_connection COMMAND cmd_connection_test)
     set(GATEWAY_TEST_SOURCES src/network/ApiServer.cpp src/network/WebSocket.cpp
         src/network/GatewayClient.cpp src/network/SessionService.cpp
-        src/connections/QueuedConnection.cpp src/connections/SharedSerialConnection.cpp)
+        src/connections/QueuedConnection.cpp src/connections/SharedSerialConnection.cpp
+        src/connections/NetworkConnect.cpp src/connections/ChildProcess.cpp)
     add_executable(api_server_test tests/integration/ApiServerTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(api_server_test CONSOLE)
     target_link_libraries(api_server_test PRIVATE ws2_32 advapi32)
@@ -385,10 +387,18 @@ if(BUILD_TESTING)
     add_executable(tcp_connection_test
         tests/integration/TcpConnectionTest.cpp
         src/connections/TcpConnection.cpp
+        src/connections/NetworkConnect.cpp
+        src/connections/ChildProcess.cpp
     )
     serialctl_configure_native_target(tcp_connection_test CONSOLE)
     target_link_libraries(tcp_connection_test PRIVATE ws2_32)
     add_test(NAME tcp_connection COMMAND tcp_connection_test)
+
+    add_executable(network_connect_test tests/integration/NetworkConnectTest.cpp ${GATEWAY_TEST_SOURCES})
+    serialctl_configure_native_target(network_connect_test CONSOLE)
+    target_link_libraries(network_connect_test PRIVATE ws2_32 advapi32)
+    add_test(NAME network_connect COMMAND network_connect_test)
+    set_tests_properties(network_connect PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 
     add_executable(terminal_model_test
         tests/unit/TerminalModelTest.cpp

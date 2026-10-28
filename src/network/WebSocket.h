@@ -22,7 +22,7 @@ Bytes Unbase64(const std::string &);
 std::string RandomHex(size_t bytes = 16);
 std::string AcceptKey(const std::string &);
 void FinishSend(SOCKET, DWORD grace = 250);
-bool SendAll(SOCKET, const void *, size_t);
+bool SendAll(SOCKET, const void *, size_t, ULONGLONG deadline = 0, const std::atomic_bool *cancel = nullptr);
 void SocketOptions(SOCKET, DWORD receiveTimeout = 0);
 struct Header {
     std::string first;
@@ -64,6 +64,7 @@ class Stream {
     void FrameTimeout(DWORD timeout) {
         frameTimeout_ = timeout;
     }
+    void Deadline(ULONGLONG deadline) { absoluteDeadline_ = deadline; }
     Message Receive(); // control frames returned, fragments reassembled, strict RFC 6455
   private:
     void Exact(void *, size_t, bool idleWait);
@@ -78,7 +79,9 @@ class Stream {
     DWORD readTimeout_ = INFINITE;
     DWORD frameTimeout_ = INFINITE;
     ULONGLONG frameDeadline_ = 0;
+    ULONGLONG absoluteDeadline_ = 0;
 };
 // Client handshake validates accept key and subprotocol. Socket ownership stays with caller.
-Bytes UpgradeClient(SOCKET, const std::wstring &host, unsigned port, const std::atomic_bool* cancel = nullptr);
+Bytes UpgradeClient(SOCKET, const std::wstring &host, unsigned port, const std::atomic_bool* cancel = nullptr,
+                    DWORD timeout = 1500);
 } // namespace serialctl::ws

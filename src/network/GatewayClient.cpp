@@ -1,21 +1,45 @@
 #include "GatewayClient.h"
 #include "NetworkConnect.h"
+#include "Win32Helpers.h"
+#include <algorithm>
 namespace serialctl {
 void GatewayClient::Connect(const std::wstring &host, unsigned port, const std::atomic_bool *cancel, DWORD timeout) {
+    ConnectUntil(host, port, cancel, GetTickCount64() + timeout);
+    // Generic synchronous users may issue later independent requests. The
+    // production startup/discovery paths use ConnectUntil until Live().
+    stream_->Deadline(0);
+    stream_->FrameTimeout(INFINITE);
+    stream_->Timeout(timeout);
+}
+void GatewayClient::ConnectUntil(const std::wstring &host, unsigned port, const std::atomic_bool *cancel,
+                                 ULONGLONG deadline) {
     Close();
     std::wstring error;
-    socket_ = ConnectTcpSocket(host, static_cast<std::uint16_t>(port), error, cancel, timeout);
+    TcpAddresses addresses;
+    if (!ResolveTcpAddresses(host, deadline, addresses, error, cancel))
+        throw std::runtime_error(WideToMultiByte(error, CP_UTF8));
+    ConnectUntil(host, port, addresses, cancel, deadline);
+}
+void GatewayClient::ConnectUntil(const std::wstring &host, unsigned port, const TcpAddresses &addresses,
+                                 const std::atomic_bool *cancel, ULONGLONG deadline) {
+    Close();
+    std::wstring error;
+    socket_ = ConnectTcpSocket(addresses, static_cast<std::uint16_t>(port), deadline, error, cancel);
     if (socket_ == INVALID_SOCKET)
         throw std::runtime_error(WideToMultiByte(error, CP_UTF8));
     try {
         if (cancel && *cancel)
             throw std::runtime_error("CONNECT_CANCELED");
-        auto tail = ws::UpgradeClient(socket_, host, port, cancel);
+        const auto now = GetTickCount64();
+        if (now >= deadline) throw std::runtime_error("CONNECT_TIMEOUT");
+        const auto remaining = static_cast<DWORD>(std::min<ULONGLONG>(deadline - now, 0x7fffffff));
+        auto tail = ws::UpgradeClient(socket_, host, port, cancel, remaining);
         readCancel_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!readCancel_)
             throw std::runtime_error("READ_CANCEL_EVENT_FAILED");
-        stream_ = std::make_unique<ws::Stream>(socket_, true, std::move(tail), readCancel_, timeout);
+        stream_ = std::make_unique<ws::Stream>(socket_, true, std::move(tail), readCancel_, INFINITE);
         stream_->CancelToken(cancel);
+        stream_->Deadline(deadline);
         hello_ = Receive();
         if (cancel && *cancel)
             throw std::runtime_error("CONNECT_CANCELED");
