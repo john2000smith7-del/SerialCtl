@@ -13,18 +13,23 @@ $archiveName = Get-SerialCtlArchiveName -RepositoryRoot $repositoryRoot
 $finalArchive = Join-Path $binRoot $archiveName
 
 Write-Host '==> Preflight source/version/dependency checks'
+if ($env:GITHUB_ACTIONS) { Write-Host '::notice title=Release stage::Source and dependency checks' }
 & (Join-Path $PSScriptRoot 'check.ps1') -Architecture All -Configuration Release -SourceOnly
 
 Write-Host '==> Clean x64 Release build'
+if ($env:GITHUB_ACTIONS) { Write-Host '::notice title=Release stage::Clean MSVC x64 Release build' }
 & (Join-Path $PSScriptRoot 'build.ps1') -Architecture All -Configuration Release -Clean
 
 Write-Host '==> x64 automated tests'
+if ($env:GITHUB_ACTIONS) { Write-Host '::notice title=Release stage::MSVC build passed; running all CTest cases' }
 & (Join-Path $PSScriptRoot 'test.ps1') -Architecture All -Configuration Release
 
 Write-Host '==> PE, version, dependency, and Win7 compatibility checks'
+if ($env:GITHUB_ACTIONS) { Write-Host '::notice title=Release stage::All CTest passed; checking PE/Win7 imports' }
 & (Join-Path $PSScriptRoot 'check.ps1') -Architecture All -Configuration Release
 
 Write-Host '==> Explicit-allowlist package and reopen verification'
+if ($env:GITHUB_ACTIONS) { Write-Host '::notice title=Release stage::PE checks passed; packaging and reopening full ZIP' }
 & (Join-Path $PSScriptRoot 'package.ps1') -Configuration Release -SkipCheck
 $candidateArchive = Get-SerialCtlCandidateArchivePath -RepositoryRoot $repositoryRoot
 if (-not (Test-Path -LiteralPath $candidateArchive -PathType Leaf)) {

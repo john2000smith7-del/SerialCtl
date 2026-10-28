@@ -38,7 +38,16 @@ class Stream {
   public:
     Stream(SOCKET socket, bool client, Bytes buffered = {}, HANDLE readCancel = nullptr, DWORD timeout = INFINITE)
         : socket_(socket), client_(client), buffered_(std::move(buffered)), readCancel_(readCancel),
-          readTimeout_(timeout) {}
+          readTimeout_(timeout) {
+        // Synchronous callers historically relied on SO_RCVTIMEO. The readiness
+        // wait must honor that socket budget too, rather than waiting forever
+        // before recv gets a chance to enforce it.
+        if (!readCancel_ && timeout == INFINITE) {
+            DWORD receiveTimeout = 0; int size = sizeof(receiveTimeout);
+            if (getsockopt(socket_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&receiveTimeout), &size) == 0 && receiveTimeout)
+                readTimeout_ = receiveTimeout;
+        }
+    }
     ~Stream() { if (readEvent_ != WSA_INVALID_EVENT) WSACloseEvent(readEvent_); }
     Stream(const Stream&) = delete;
     Stream& operator=(const Stream&) = delete;
