@@ -71,7 +71,8 @@ def main(directory):
             paint = json_run(directory / f"paint-{label}-{index}.txt", {"paintCount", "resizeCount"})
             if (preview["iterations"] != 30 or len(preview["samplesMs"]) != 30 or
                     paint["paintCount"] != 200 or len(paint["terminalPaintSamples"]) != 200 or
-                    paint["resizeCount"] != 40 or paint["resizeMessages"] < 39 or len(paint["gdiResizeRounds"]) != 3 or
+                    paint["resizeCount"] != 40 or len(paint["resizeSteadySamples"]) != 80 or
+                    paint["resizeMessages"] < 39 or len(paint["gdiResizeRounds"]) != 3 or
                     len(paint["inputSamples"]) != 1000 or
                     paint["inputBytes"] != 1000):
                 raise ValueError(f"Unexpected sample counts for {label} run {index}")
@@ -81,6 +82,7 @@ def main(directory):
                 preview["maxWorkingDuringPreviewBytes"] - preview["workingBeforeBytes"])
             paints.append({key: paint[key] for key in ("paintP50Ms", "paintP95Ms",
                           "terminalPaintP50Ms", "terminalPaintP95Ms", "resizeP50Ms", "resizeP95Ms",
+                          "resizeSteadyP50Ms", "resizeSteadyP95Ms",
                           "inputP50Ms", "inputP95Ms", "inputWallMs", "inputCpuMs", "inputBytesPerSecond",
                           "wallMs", "cpuMs", "gdiBeforeApp", "gdiWarm", "gdiAfterPaint", "gdiAfterTimedInput", "gdiAfterWork",
                           "gdiAfterApp", "peakWorkingSetBytes")})

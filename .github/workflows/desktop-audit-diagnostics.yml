@@ -48,8 +48,10 @@ jobs:
               result = json.loads(path.read_text(encoding='utf-8-sig'))
               print(json.dumps({'file': path.name, 'resizeP50Ms': result['resizeP50Ms'],
                   'resizeP95Ms': result['resizeP95Ms'], 'resizeSamples': result['resizeSamples'],
-                  'gdiWarm': result['gdiWarm'], 'gdiAfterPaint': result['gdiAfterPaint'],
-                  'gdiResizeRounds': result['gdiResizeRounds'], 'gdiAfterTimedInput': result['gdiAfterTimedInput'],
+                  'resizeSteadyP50Ms': result.get('resizeSteadyP50Ms'), 'resizeSteadyP95Ms': result.get('resizeSteadyP95Ms'),
+                  'resizeRoundSamples': result.get('resizeRoundSamples'),
+                  'gdiWarm': result['gdiWarm'], 'gdiAfterPaint': result.get('gdiAfterPaint'),
+                  'gdiResizeRounds': result.get('gdiResizeRounds'), 'gdiAfterTimedInput': result.get('gdiAfterTimedInput'),
                   'gdiAfterWork': result['gdiAfterWork']}, separators=(',', ':')))
           PY
       - uses: actions/upload-artifact@v4

@@ -93,7 +93,8 @@ struct AiDeviceTestAccess {
             FILETIME created{}, exited{}, kernelStart{}, userStart{}, kernelEnd{}, userEnd{};
             if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernelStart, &userStart))
                 throw std::runtime_error("Cannot read process CPU counters");
-            std::vector<double> paints, terminalPaints, resizes;
+            std::vector<double> paints, terminalPaints, resizes, steadyResizes;
+            std::vector<std::vector<double>> resizeRoundSamples;
             const auto wallStart = std::chrono::steady_clock::now();
             for (int i = 0; i < 200; ++i) {
                 paints.push_back(paintOnce(parent));
@@ -102,6 +103,7 @@ struct AiDeviceTestAccess {
             const auto afterPaintGdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
             std::vector<DWORD> resizeGdi;
             for (int round = 0; round < 3; ++round) {
+                std::vector<double> currentResizes;
                 resizeMessages = 0;
                 for (int i = 0; i < 40; ++i) {
                     const int width = i % 2 ? wide - 80 : wide;
@@ -115,6 +117,8 @@ struct AiDeviceTestAccess {
                     const double elapsed = std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - started).count();
                     if (round == 0) resizes.push_back(elapsed);
+                    else steadyResizes.push_back(elapsed);
+                    currentResizes.push_back(elapsed);
                     RECT bounds{};
                     if (!GetWindowRect(parent, &bounds)) throw std::runtime_error("Cannot read resized window bounds");
                     if (bounds.right - bounds.left != width || bounds.bottom - bounds.top != height)
@@ -123,6 +127,7 @@ struct AiDeviceTestAccess {
                             std::to_string(bounds.bottom - bounds.top));
                 }
                 if (resizeMessages < 39) throw std::runtime_error("Resize did not reach the production WM_SIZE handler");
+                resizeRoundSamples.push_back(std::move(currentResizes));
                 resizeGdi.push_back(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS));
             }
             const auto wallMs = std::chrono::duration<double, std::milli>(
@@ -165,11 +170,14 @@ struct AiDeviceTestAccess {
             std::sort(terminalPaints.begin(), terminalPaints.end());
             std::sort(inputs.begin(), inputs.end());
             std::sort(resizes.begin(), resizes.end());
+            std::sort(steadyResizes.begin(), steadyResizes.end());
             result = {{"clientWidth", viewport.right}, {"clientHeight", viewport.bottom},
                 {"paintSamples", paints}, {"paintP50Ms", paints[100]}, {"paintP95Ms", paints[190]},
                 {"terminalPaintSamples", terminalPaints}, {"terminalPaintP50Ms", terminalPaints[100]},
                 {"terminalPaintP95Ms", terminalPaints[190]},
                 {"resizeSamples", resizes}, {"resizeP50Ms", resizes[20]}, {"resizeP95Ms", resizes[38]},
+                {"resizeSteadySamples", steadyResizes}, {"resizeSteadyP50Ms", steadyResizes[40]},
+                {"resizeSteadyP95Ms", steadyResizes[76]}, {"resizeRoundSamples", resizeRoundSamples},
                 {"inputSamples", inputs}, {"inputP50Ms", inputs[500]}, {"inputP95Ms", inputs[950]},
                 {"inputWallMs", inputWallMs}, {"inputCpuMs", inputCpuMs}, {"inputBytes", timedInputBytes},
                 {"inputBytesPerSecond", 1000 * 1000 / inputWallMs},
