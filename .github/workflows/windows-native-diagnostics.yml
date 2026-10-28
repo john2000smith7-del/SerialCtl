@@ -45,7 +45,7 @@ jobs:
             if (Test-Path $path) {
               Get-Content $path -Tail 50 | ForEach-Object {
                 $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
-                Write-Host "::notice title=$name::$line"
+                Write-Host "::notice title=${name}::$line"
               }
             }
           }
