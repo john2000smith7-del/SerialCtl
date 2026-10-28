@@ -664,6 +664,18 @@ struct AiDeviceTestAccess {
                     MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_POSTMESSAGE);
                 Require(posted, "Local serial display waited for the gateway lock");
                 main.HandleMessage(notification.message, notification.wParam, notification.lParam);
+                if (reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) != sample + 1) {
+                    RECT client{}; GetClientRect(main.terminal_, &client);
+                    std::lock_guard<std::mutex> lock(main.receivedMutex_);
+                    std::cerr << "Serial paint state: sample=" << sample
+                              << " painted=" << reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe"))
+                              << " decoded=" << main.activeSession_->paintProbe
+                              << " pendingArrival=" << main.activeSession_->pendingProbeArrival
+                              << " active=" << main.activeSession_->id << " queued=" << main.received_.size()
+                              << " visible=" << IsWindowVisible(main.terminal_) << " iconic=" << IsIconic(parent)
+                              << " client=" << client.right << 'x' << client.bottom
+                              << " update=" << GetUpdateRect(main.terminal_, nullptr, FALSE) << std::endl;
+                }
                 Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == sample + 1,
                         "Received serial marker did not reach actual terminal painting before return");
                 Require(receive.wait_for(std::chrono::milliseconds(0)) == std::future_status::timeout,
