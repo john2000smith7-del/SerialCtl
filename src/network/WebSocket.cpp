@@ -24,20 +24,29 @@ std::string Base64(const Bytes &bytes) {
 Bytes Unbase64(const std::string &text) {
     if (text.size() % 4 || text.size() > MaxMessage)
         throw Error(1007, "INVALID_BASE64");
-    const std::string digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    // Constant-time lookup instead of a linear search of the alphabet per character.
+    static const std::array<std::int8_t, 256> table = [] {
+        std::array<std::int8_t, 256> value{};
+        value.fill(-1);
+        const char *digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        for (int i = 0; i < 64; ++i)
+            value[static_cast<unsigned char>(digits[i])] = static_cast<std::int8_t>(i);
+        return value;
+    }();
     Bytes out;
+    out.reserve(text.size() / 4 * 3);
     for (size_t i = 0; i < text.size(); i += 4) {
         unsigned n = 0;
         int padding = 0;
         for (size_t j = 0; j < 4; ++j) {
-            auto pos = digits.find(text[i + j]);
+            const int pos = table[static_cast<unsigned char>(text[i + j])];
             if (text[i + j] == '=') {
                 if (j < 2 || i + 4 != text.size())
                     throw Error(1007, "INVALID_BASE64");
                 ++padding;
                 n <<= 6;
             } else {
-                if (pos == std::string::npos || padding)
+                if (pos < 0 || padding)
                     throw Error(1007, "INVALID_BASE64");
                 n = (n << 6) | unsigned(pos);
             }
