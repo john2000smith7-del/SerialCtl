@@ -84,6 +84,37 @@ jobs:
           path: bin
           run-id: ${{ needs.resolve-feature-build.outputs.build_run || inputs.build_run || github.event.workflow_run.id }}
           github-token: ${{ github.token }}
+      - name: Verify the packaged resolver child mode
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archives = @(Get-ChildItem bin -Filter '*.zip')
+          if ($archives.Count -ne 1) { throw 'Expected exactly one verified portable ZIP.' }
+          $resolverDir = Join-Path $env:RUNNER_TEMP 'serialctl-resolver-payload'
+          Expand-Archive -LiteralPath $archives[0].FullName -DestinationPath $resolverDir -Force
+          $programs = @(Get-ChildItem -LiteralPath $resolverDir -Filter 'serialctl.exe' -Recurse)
+          if ($programs.Count -ne 1) { throw 'Expected one packaged serialctl.exe.' }
+          $info = New-Object System.Diagnostics.ProcessStartInfo
+          $info.FileName = $programs[0].FullName
+          $info.Arguments = '--serialctl-network-resolver localhost'
+          $info.UseShellExecute = $false
+          $info.RedirectStandardOutput = $true
+          $info.CreateNoWindow = $true
+          $child = [System.Diagnostics.Process]::Start($info)
+          try {
+            if (-not $child.WaitForExit(5000)) {
+              $child.Kill()
+              $child.WaitForExit()
+              throw 'Packaged resolver child did not finish within its smoke-test budget.'
+            }
+            if ($child.ExitCode -ne 0) { throw "Packaged resolver child exited $($child.ExitCode)." }
+            $reader = New-Object System.IO.BinaryReader($child.StandardOutput.BaseStream)
+            $status = $reader.ReadInt32()
+            $count = $reader.ReadUInt32()
+            if ($status -ne 0 -or $count -lt 1 -or $count -gt 64) { throw 'Packaged resolver returned an invalid localhost result.' }
+            [ordered]@{ status='PASS'; addresses=$count; scope='packaged serialctl.exe private resolver mode, localhost' } |
+              ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/resolver-child-smoke.json" -Encoding UTF8
+          } finally { $child.Dispose() }
       - name: Install test-only lossless screen encoder
         run: python -m pip install imageio-ffmpeg==0.6.0
       - name: Run actual mouse and keyboard interactions on packaged application
