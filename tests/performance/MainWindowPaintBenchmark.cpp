@@ -99,26 +99,32 @@ struct AiDeviceTestAccess {
                 paints.push_back(paintOnce(parent));
                 terminalPaints.push_back(paintOnce(main.terminal_));
             }
-            resizeMessages = 0;
-            for (int i = 0; i < 40; ++i) {
-                const int width = i % 2 ? wide - 80 : wide;
-                const int height = i % 2 ? tall - 50 : tall;
-                const auto started = std::chrono::steady_clock::now();
-                if (!SetWindowPos(parent, nullptr, 0, 0, width, height,
-                                  SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE))
-                    throw std::runtime_error("Cannot resize paint fixture");
-                UpdateWindow(parent);
-                GdiFlush();
-                resizes.push_back(std::chrono::duration<double, std::milli>(
-                    std::chrono::steady_clock::now() - started).count());
-                RECT bounds{};
-                if (!GetWindowRect(parent, &bounds)) throw std::runtime_error("Cannot read resized window bounds");
-                if (bounds.right - bounds.left != width || bounds.bottom - bounds.top != height)
-                    throw std::runtime_error("Requested resize " + std::to_string(width) + "x" +
-                        std::to_string(height) + " yielded " + std::to_string(bounds.right - bounds.left) + "x" +
-                        std::to_string(bounds.bottom - bounds.top));
+            const auto afterPaintGdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
+            std::vector<DWORD> resizeGdi;
+            for (int round = 0; round < 3; ++round) {
+                resizeMessages = 0;
+                for (int i = 0; i < 40; ++i) {
+                    const int width = i % 2 ? wide - 80 : wide;
+                    const int height = i % 2 ? tall - 50 : tall;
+                    const auto started = std::chrono::steady_clock::now();
+                    if (!SetWindowPos(parent, nullptr, 0, 0, width, height,
+                                      SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE))
+                        throw std::runtime_error("Cannot resize paint fixture");
+                    UpdateWindow(parent);
+                    GdiFlush();
+                    const double elapsed = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - started).count();
+                    if (round == 0) resizes.push_back(elapsed);
+                    RECT bounds{};
+                    if (!GetWindowRect(parent, &bounds)) throw std::runtime_error("Cannot read resized window bounds");
+                    if (bounds.right - bounds.left != width || bounds.bottom - bounds.top != height)
+                        throw std::runtime_error("Requested resize " + std::to_string(width) + "x" +
+                            std::to_string(height) + " yielded " + std::to_string(bounds.right - bounds.left) + "x" +
+                            std::to_string(bounds.bottom - bounds.top));
+                }
+                if (resizeMessages < 39) throw std::runtime_error("Resize did not reach the production WM_SIZE handler");
+                resizeGdi.push_back(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS));
             }
-            if (resizeMessages < 39) throw std::runtime_error("Resize did not reach the production WM_SIZE handler");
             const auto wallMs = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - wallStart).count();
             if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernelEnd, &userEnd))
@@ -143,6 +149,14 @@ struct AiDeviceTestAccess {
                 throw std::runtime_error("Cannot read final input CPU counters");
             const auto inputCpuMs = double(ticks(kernelEnd) + ticks(userEnd) - ticks(kernelStart) - ticks(userStart)) / 10000;
             if (transport->sentBytes != 1000) throw std::runtime_error("Input benchmark lost or added bytes");
+            const auto timedInputBytes = transport->sentBytes;
+            const auto afterInputGdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
+            for (int i = 0; i < 1000; ++i) {
+                SendMessageW(main.terminal_, WM_CHAR, L'a', 1);
+                UpdateWindow(main.terminal_);
+                GdiFlush();
+            }
+            if (transport->sentBytes != 2000) throw std::runtime_error("Repeated input lost or added bytes");
             const auto afterGdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
             PROCESS_MEMORY_COUNTERS memory{};
             if (!GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory)))
@@ -157,11 +171,12 @@ struct AiDeviceTestAccess {
                 {"terminalPaintP95Ms", terminalPaints[190]},
                 {"resizeSamples", resizes}, {"resizeP50Ms", resizes[20]}, {"resizeP95Ms", resizes[38]},
                 {"inputSamples", inputs}, {"inputP50Ms", inputs[500]}, {"inputP95Ms", inputs[950]},
-                {"inputWallMs", inputWallMs}, {"inputCpuMs", inputCpuMs}, {"inputBytes", transport->sentBytes},
+                {"inputWallMs", inputWallMs}, {"inputCpuMs", inputCpuMs}, {"inputBytes", timedInputBytes},
                 {"inputBytesPerSecond", 1000 * 1000 / inputWallMs},
                 {"paintCount", paints.size()}, {"resizeCount", resizes.size()}, {"resizeMessages", resizeMessages},
                 {"wallMs", wallMs}, {"cpuMs", cpuMs}, {"gdiBeforeApp", resourcesBefore},
-                {"gdiWarm", warmGdi}, {"gdiAfterWork", afterGdi}, {"peakWorkingSetBytes", memory.PeakWorkingSetSize},
+                {"gdiWarm", warmGdi}, {"gdiAfterPaint", afterPaintGdi}, {"gdiResizeRounds", resizeGdi},
+                {"gdiAfterTimedInput", afterInputGdi}, {"gdiAfterWork", afterGdi}, {"peakWorkingSetBytes", memory.PeakWorkingSetSize},
                 {"scope", "actual MainWindow and terminal paint/layout and WM_CHAR local echo through a visible Win32 fixture with 1000 seeded lines and fake transport; no UART, physical keyboard or display scan"}};
             main.aiPet_.Shutdown();
             main.powerService_.Shutdown();

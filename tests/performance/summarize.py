@@ -71,7 +71,8 @@ def main(directory):
             paint = json_run(directory / f"paint-{label}-{index}.txt", {"paintCount", "resizeCount"})
             if (preview["iterations"] != 30 or len(preview["samplesMs"]) != 30 or
                     paint["paintCount"] != 200 or len(paint["terminalPaintSamples"]) != 200 or
-                    paint["resizeCount"] != 40 or len(paint["inputSamples"]) != 1000 or
+                    paint["resizeCount"] != 40 or paint["resizeMessages"] < 39 or len(paint["gdiResizeRounds"]) != 3 or
+                    len(paint["inputSamples"]) != 1000 or
                     paint["inputBytes"] != 1000):
                 raise ValueError(f"Unexpected sample counts for {label} run {index}")
             previews.append({key: preview[key] for key in ("p50Ms", "p95Ms", "workingBeforeBytes",
@@ -81,8 +82,10 @@ def main(directory):
             paints.append({key: paint[key] for key in ("paintP50Ms", "paintP95Ms",
                           "terminalPaintP50Ms", "terminalPaintP95Ms", "resizeP50Ms", "resizeP95Ms",
                           "inputP50Ms", "inputP95Ms", "inputWallMs", "inputCpuMs", "inputBytesPerSecond",
-                          "wallMs", "cpuMs", "gdiBeforeApp", "gdiWarm", "gdiAfterWork",
+                          "wallMs", "cpuMs", "gdiBeforeApp", "gdiWarm", "gdiAfterPaint", "gdiAfterTimedInput", "gdiAfterWork",
                           "gdiAfterApp", "peakWorkingSetBytes")})
+            for round in range(3):
+                paints[-1][f"gdiResizeRound{round + 1}"] = paint["gdiResizeRounds"][round]
             networks.append(network_run(directory / f"network-{label}-{index}.txt"))
         output[label]["preview"] = medians(previews)
         output[label]["paint"] = medians(paints)
