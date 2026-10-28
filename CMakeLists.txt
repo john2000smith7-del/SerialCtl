@@ -169,6 +169,7 @@ add_executable(serialctl WIN32
     src/app/AiPane.cpp
     src/app/AiPetPane.cpp
     src/ai/CodexClient.cpp
+    src/ai/AiDeviceBridge.cpp
     src/connections/PasswordPipe.cpp
     src/update/UpdateArchive.cpp
     src/update/UpdateInflate.cpp
@@ -459,6 +460,13 @@ if(BUILD_TESTING)
     target_link_libraries(websocket_deadline_test PRIVATE ws2_32 advapi32)
     add_test(NAME websocket_deadline COMMAND websocket_deadline_test)
     set_tests_properties(websocket_deadline PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE)
+    add_executable(ai_device_bridge_test tests/integration/AiDeviceBridgeTest.cpp
+        src/ai/AiDeviceBridge.cpp src/terminal/TerminalModel.cpp src/network/SessionService.cpp
+        src/connections/QueuedConnection.cpp src/power/PowerService.cpp src/logging/SessionLogger.cpp)
+    serialctl_configure_native_target(ai_device_bridge_test CONSOLE)
+    target_link_libraries(ai_device_bridge_test PRIVATE ole32 shell32 ws2_32)
+    add_test(NAME ai_device_bridge COMMAND ai_device_bridge_test)
+    set_tests_properties(ai_device_bridge PROPERTIES TIMEOUT 20)
     add_executable(command_macro_test tests/unit/CommandMacroTest.cpp src/app/CommandMacroController.cpp)
     serialctl_configure_native_target(command_macro_test CONSOLE)
     target_link_libraries(command_macro_test PRIVATE ole32)

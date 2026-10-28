@@ -18,6 +18,7 @@
 #include "PaintBuffer.h"
 #include "BackgroundCleanup.h"
 #include "CommandMacroController.h"
+#include "AiDeviceBridge.h"
 #include "ToolbarIcons.h"
 #include <deque>
 #include <functional>
@@ -103,18 +104,7 @@ private:
         std::string source; // empty for output, nonempty for accepted input
         LONGLONG arrival = 0;
     };
-    struct SessionState {
-        struct AiOutput { std::uint64_t seq; std::wstring timestamp; std::string text; };
-        std::deque<AiOutput> aiOutput;
-        std::uint64_t aiCursor = 0;
-        ULONGLONG aiLastReceivedAt = 0, aiCommandAt = 0;
-        ULONGLONG aiObservedAt = 0;
-        std::uint64_t aiCommandNumber = 0, aiCommandCursor = 0;
-        std::string aiCommandText, recoveryAction;
-        std::shared_ptr<BootInterrupt> boot = std::make_shared<BootInterrupt>();
-        size_t aiBytes = 0;
-        bool aiTruncated = false;
-        std::string aiTransportNotice;
+    struct SessionState : AiDeviceBridge::State {
         std::wstring lastStatus;
         bool lastStatusIsError = false, unreadStatus = false;
         SYSTEMTIME statusTime{};
@@ -215,7 +205,6 @@ private:
     void ShowPowerPage();
     void ShowAiPage(bool connect = true);
     Json AiDeviceRequest(const std::string&, const Json&);
-    Json SendAiBytes(SessionState&, const Bytes&);
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
     void SendTerminalCharacter(wchar_t character);
@@ -362,6 +351,7 @@ private:
     std::vector<std::uint64_t> connectionListIds_;
     SessionService sessionService_;
     PowerService powerService_;
+    AiDeviceBridge aiDeviceBridge_{powerService_, sessionService_};
     PowerPane powerPane_;
     AiPane aiPane_;
     AiPetPane aiPet_;
