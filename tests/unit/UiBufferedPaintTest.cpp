@@ -234,6 +234,10 @@ int main() {
     TestItem({13, 33, 131, 91}, true);
     TestFallback();
     TestCurveCoverage();
+    // UiBox itself retains shared rounded-surface resources. Warm those exact
+    // dimensions before measuring PaintBuffer ownership, so the assertion only
+    // counts persistent DC/bitmap cleanup rather than first-use renderer caches.
+    for (int width : {80, 160, 96}) { Surface warm; Paint(warm.dc, RECT{0, 0, width, 128}); }
     {
         const auto before = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
         {

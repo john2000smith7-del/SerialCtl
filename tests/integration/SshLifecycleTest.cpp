@@ -18,6 +18,12 @@ DWORD Threads() {
 }
 int main() {
     try {
+        // MSVC std::async uses a reusable process thread pool. Establish it and
+        // GUID/pipe runtime state before comparing steady-state resources.
+        std::async(std::launch::async, [] {}).get();
+        HANDLE warmParent = nullptr, warmChild = nullptr;
+        Require(CreateChildIoPipe(warmParent, warmChild, true), "warm pipe runtime");
+        CloseHandle(warmParent); CloseHandle(warmChild);
         DWORD handlesBefore = 0; GetProcessHandleCount(GetCurrentProcess(), &handlesBefore);
         const auto threadsBefore = Threads();
         std::vector<ULONGLONG> elapsed;
