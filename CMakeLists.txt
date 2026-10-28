@@ -421,6 +421,7 @@ if(BUILD_TESTING)
     add_executable(sftp_client_test tests/integration/SftpClientTest.cpp src/sftp/SftpClient.cpp src/sftp/SftpModel.cpp
         src/connections/PuttyHostKey.cpp src/connections/PasswordPipe.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(sftp_client_test CONSOLE)
+    target_compile_definitions(sftp_client_test PRIVATE SERIALCTL_SFTP_TESTING)
     target_link_libraries(sftp_client_test PRIVATE advapi32 ole32)
     set_target_properties(sftp_client_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sftp-fixture")
     add_dependencies(sftp_client_test sftp_fake_process)

@@ -66,11 +66,15 @@ public:
         std::wstring& error, const std::atomic_bool* cancel = nullptr) const;
 
 private:
+#ifdef SERIALCTL_SFTP_TESTING
+    friend struct SftpClientTestAccess;
+#endif
     enum class TransferKind { None, Upload, Download };
     bool RunBatch(const std::wstring& commands, DWORD timeoutMilliseconds,
         std::wstring& output, std::wstring& error, TransferKind transferKind = TransferKind::None,
         std::uint64_t totalBytes = 0, const SftpProgressCallback& progress = {},
-        const std::atomic_bool* cancel = nullptr) const;
+        const std::atomic_bool* cancel = nullptr, bool* launched = nullptr,
+        std::uint64_t deadline = 0) const;
     static std::wstring FindPsftp();
     static std::wstring FindPlink();
 

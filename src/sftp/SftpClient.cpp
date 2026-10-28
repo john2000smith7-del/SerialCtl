@@ -157,19 +157,22 @@ bool SftpClient::Upload(
     std::uint64_t totalBytes = 0;
     LocalFileSize(localPath, totalBytes);
     std::wstring output;
+    bool launched = false;
     const std::wstring renameCommand = replaceExisting ?
         L"serialctl-replace-exact " : L"serialctl-rename-exact ";
     const bool success = RunBatch(L"cd " + remote + L"\nput " + local + L" " + temporary +
         L"\n" + renameCommand + temporary + L" " + name + L"\nquit\n",
-        10 * 60 * 1000, output, error, TransferKind::Upload, totalBytes, progress, cancel);
-    if (!success) {
+        10 * 60 * 1000, output, error, TransferKind::Upload, totalBytes, progress, cancel, &launched);
+    if (!success && launched) {
         // Cancellation used to return here and leave the remote .tmp behind. The
         // cleanup is bounded (10 s), only removes the unique name generated for this
         // upload, and deliberately ignores the already-set cancel flag.
         std::wstring cleanupOutput;
         std::wstring cleanupError;
-        RunBatch(L"cd " + remote + L"\nserialctl-remove-exact " + temporaryExact + L"\nquit\n",
-            10000, cleanupOutput, cleanupError, TransferKind::None, 0, {}, nullptr);
+        const auto deadline = GetTickCount64() + 10000;
+        if (!RunBatch(L"cd " + remote + L"\nserialctl-remove-exact " + temporaryExact + L"\nquit\n",
+                10000, cleanupOutput, cleanupError, TransferKind::None, 0, {}, nullptr, nullptr, deadline))
+            OutputDebugStringW(L"SerialCtl: SFTP upload temporary cleanup did not complete.\n");
     }
     return success;
 }
@@ -281,7 +284,9 @@ bool SftpClient::ChangeMode(const std::vector<std::wstring>& paths,
 bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMilliseconds,
     std::wstring& output, std::wstring& error, TransferKind transferKind,
     std::uint64_t totalBytes, const SftpProgressCallback& progress,
-    const std::atomic_bool* cancel) const {
+    const std::atomic_bool* cancel, bool* launched, std::uint64_t deadline) const {
+    if (launched) *launched = false;
+    if (deadline && GetTickCount64() >= deadline) { error = L"SFTP 操作超时。"; return false; }
     const std::wstring psftp = FindPsftp();
     if (psftp.empty()) {
         error = L"未找到 psftp.exe。请保留它与 serialctl.exe 位于同一目录。";
@@ -290,10 +295,11 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
     const std::wstring plink = FindPlink();
     std::wstring hostKey;
     if (plink.empty() || !ResolvePuttyHostKey(plink, host_, port_, username_, password_,
-            hostKey, error, cancel)) {
+            hostKey, error, cancel, {}, false, deadline)) {
         if (plink.empty()) error = L"未找到 plink.exe，无法验证 SFTP 主机密钥。";
         return false;
     }
+    if (deadline && GetTickCount64() >= deadline) { error = L"SFTP 操作超时。"; return false; }
     PasswordPipe password;
     if (!password_.empty() && !password.Open(password_, error)) return false;
 
@@ -353,6 +359,10 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
         DeleteFileW(batchPath.c_str());
         return false;
     }
+    if (deadline && GetTickCount64() >= deadline) {
+        CloseHandle(nullInput); CloseHandle(outputWrite); CloseHandle(outputRead);
+        DeleteFileW(batchPath.c_str()); error = L"SFTP 操作超时。"; return false;
+    }
     PROCESS_INFORMATION process{};
     const BOOL created = CreateProcessW(psftp.c_str(), commandBuffer.data(), nullptr, nullptr, TRUE,
         CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr,
@@ -367,6 +377,7 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
         return false;
     }
 
+    if (launched) *launched = true;
     std::string bytes;
     const DWORD started = GetTickCount();
     DWORD lastActivityTick = started;
@@ -440,7 +451,10 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
                 lastProgressTick = now;
             }
         }
-        if (WaitForSingleObject(process.hProcess, read == PipeRead::More ? 0 : 20) == WAIT_OBJECT_0) break;
+        if (WaitForSingleObject(process.hProcess, read == PipeRead::More ? 0 : 20) == WAIT_OBJECT_0) {
+            timedOut = deadline && GetTickCount64() >= deadline;
+            break;
+        }
         if (cancel && cancel->load()) {
             cancelled = true;
             TerminateProcess(process.hProcess, 1);
@@ -448,7 +462,7 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
             break;
         }
         const DWORD timeoutStart = transferKind == TransferKind::None ? started : lastActivityTick;
-        if (now - timeoutStart >= timeoutMilliseconds) {
+        if (now - timeoutStart >= timeoutMilliseconds || (deadline && GetTickCount64() >= deadline)) {
             timedOut = true;
             TerminateProcess(process.hProcess, 1);
             WaitForSingleObject(process.hProcess, 1000);
