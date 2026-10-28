@@ -28,6 +28,7 @@ public:
         status_.prompt = std::move(prompt);
         bytes_ = std::move(bytes);
         tail_.clear();
+        tailStartsLine_ = true;
         deadline_ = now + seconds * 1000ull;
         nextSend_ = 0;
         return true;
@@ -39,7 +40,8 @@ public:
         for (size_t offset = 0; offset < size; offset += 512) {
             tail_.append(data + offset, std::min<size_t>(512, size - offset));
             const auto at = tail_.rfind(status_.prompt);
-            if (at != std::string::npos && (at == 0 || tail_[at - 1] == '\r' || tail_[at - 1] == '\n') &&
+            if (at != std::string::npos && ((at == 0 && tailStartsLine_) ||
+                 (at > 0 && (tail_[at - 1] == '\r' || tail_[at - 1] == '\n'))) &&
                 (at + status_.prompt.size() == tail_.size() || tail_[at + status_.prompt.size()] == ' ')) {
                 status_.state = "entered";
                 status_.entered = true;
@@ -50,7 +52,13 @@ public:
                 status_.state = "interrupting";
                 nextSend_ = now;
             }
-            if (tail_.size() > 1024) tail_.erase(0, tail_.size() - 1024);
+            if (tail_.size() > 1024) {
+                // After trimming, offset 0 is a real line start only if the dropped
+                // byte before it was a line terminator.
+                const size_t drop = tail_.size() - 1024;
+                tailStartsLine_ = tail_[drop - 1] == '\r' || tail_[drop - 1] == '\n';
+                tail_.erase(0, drop);
+            }
         }
         return Step(now);
     }
@@ -87,6 +95,7 @@ private:
     mutable std::mutex mutex_;
     Snapshot status_;
     std::string bytes_, tail_;
+    bool tailStartsLine_ = true;
     std::uint64_t deadline_ = 0, nextSend_ = 0;
 };
 } // namespace serialctl

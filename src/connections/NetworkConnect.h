@@ -1,6 +1,7 @@
 #pragma once
 #include "Connection.h"
 #include "Win32Helpers.h"
+#include <algorithm>
 #include <atomic>
 #include <ws2tcpip.h>
 
@@ -22,8 +23,16 @@ inline SOCKET ConnectTcpSocket(const std::wstring& host, std::uint16_t port,
     SOCKET connected = INVALID_SOCKET;
     const DWORD started = GetTickCount();
     int lastError = WSAETIMEDOUT;
-    for (ADDRINFOW* address = addresses; address; address = address->ai_next) {
+    // Total budget stays timeoutMs, but each candidate only gets a share of what is
+    // left, so a blackholed first address cannot starve the remaining ones.
+    int remainingCandidates = 0;
+    for (ADDRINFOW* address = addresses; address; address = address->ai_next) ++remainingCandidates;
+    for (ADDRINFOW* address = addresses; address; address = address->ai_next, --remainingCandidates) {
         if ((cancel && cancel->load()) || GetTickCount() - started >= timeoutMs) break;
+        const DWORD remainingTotal = timeoutMs - (GetTickCount() - started);
+        const DWORD slice = (std::max)((std::min)(remainingTotal, DWORD(500)),
+            remainingTotal / static_cast<DWORD>((std::max)(remainingCandidates, 1)));
+        const DWORD candidateStarted = GetTickCount();
         SOCKET candidate = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
         if (candidate == INVALID_SOCKET) continue;
         u_long nonBlocking = 1;
@@ -35,7 +44,8 @@ inline SOCKET ConnectTcpSocket(const std::wstring& host, std::uint16_t port,
         bool ready = result == 0;
         lastError = ready ? 0 : WSAGetLastError();
         if (!ready && lastError == WSAEWOULDBLOCK) {
-            while (!(cancel && cancel->load()) && GetTickCount() - started < timeoutMs) {
+            while (!(cancel && cancel->load()) && GetTickCount() - started < timeoutMs &&
+                GetTickCount() - candidateStarted < slice) {
                 fd_set writable{}, failed{};
                 FD_ZERO(&writable); FD_ZERO(&failed);
                 FD_SET(candidate, &writable); FD_SET(candidate, &failed);

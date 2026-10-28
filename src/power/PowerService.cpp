@@ -597,12 +597,23 @@ Json PowerService::Submit(const Json &command) {
         } else
             queue_.emplace_back(id, std::move(queued));
         while (actions_.size() > 256) {
-            auto it = std::find_if(actions_.begin(), actions_.end(), [](const auto &item) {
-                return item.second["state"] != "queued" && item.second["state"] != "running";
-            });
-            if (it == actions_.end())
+            // Evict the oldest finished action (lowest numeric id). Map key order is
+            // lexicographic ("power-action-10" < "power-action-9"), so it cannot be
+            // used as age; queued/running actions are never evicted.
+            const auto sequence = [](const std::string &key) {
+                const auto digits = key.find_last_not_of("0123456789");
+                return digits + 1 < key.size() ? std::stoull(key.substr(digits + 1)) : std::uint64_t(0);
+            };
+            auto oldest = actions_.end();
+            for (auto it = actions_.begin(); it != actions_.end(); ++it) {
+                if (it->second["state"] == "queued" || it->second["state"] == "running")
+                    continue;
+                if (oldest == actions_.end() || sequence(it->first) < sequence(oldest->first))
+                    oldest = it;
+            }
+            if (oldest == actions_.end())
                 break;
-            actions_.erase(it);
+            actions_.erase(oldest);
         }
         wake_.notify_one();
         return action;

@@ -459,6 +459,7 @@ void SessionLogger::Run()
             offset += written;
             written_ += written;
         }
+        bool terminal = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             writing_ = false;
@@ -469,9 +470,14 @@ void SessionLogger::Run()
                 failure_ = failure;
                 queue_.clear();
                 queued_ = 0;
+                terminal = true;
             }
             wake_.notify_all();
         }
+        // A write failure is terminal: leave the loop so writerAlive_ is cleared and
+        // waiting exporters are released instead of idling until Stop().
+        if (terminal)
+            break;
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);

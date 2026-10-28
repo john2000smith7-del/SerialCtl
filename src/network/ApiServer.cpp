@@ -548,18 +548,18 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
             h.events.pop_front();
         }
         while (historyBytes_ > 16 * 1024 * 1024) {
-            bool removed = false;
+            // Fairness: trim the session holding the most history first instead of
+            // always draining whichever session sorts first by key.
+            History *largest = nullptr;
             for (auto &old : histories_)
-                if (!old.second.events.empty()) {
-                    auto n = old.second.events.front().dump().size();
-                    old.second.bytes -= n;
-                    historyBytes_ -= n;
-                    old.second.events.pop_front();
-                    removed = true;
-                    break;
-                }
-            if (!removed)
+                if (!old.second.events.empty() && (!largest || old.second.bytes > largest->bytes))
+                    largest = &old.second;
+            if (!largest)
                 break;
+            auto n = largest->events.front().dump().size();
+            largest->bytes -= n;
+            historyBytes_ -= n;
+            largest->events.pop_front();
         }
     }
 }

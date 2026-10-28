@@ -29,6 +29,16 @@ int main() {
         std::string chinese;
         for (int i = 0; i < 3000; ++i) chinese += u8"中";
         Check(!Json(PreviewText(chinese)).dump(-1, ' ', true).empty(), "Bounded UTF-8 preview broke encoding");
+        // 4096 is not a multiple of 3: the cut lands inside a character. A cut that
+        // lands exactly on a character boundary must keep the final complete character.
+        std::string exact;
+        for (int i = 0; i < 2000; ++i) exact += u8"中";
+        const auto trimmed = PreviewText(exact, 3000);
+        const auto marker = trimmed.find(u8"\n…");
+        Check(marker != std::string::npos && marker == 3000, "Complete trailing UTF-8 character was dropped");
+        const auto partial = PreviewText(exact, 3001);
+        const auto partialMarker = partial.find(u8"\n…");
+        Check(partialMarker != std::string::npos && partialMarker == 3000, "Partial trailing UTF-8 character was kept");
         text = ToolText("serialctl_screen", Json::object(), {{"error", "Connection closed"}}, "SSH");
         Check(text.find(u8"失败") != std::string::npos && text.find(u8"已读取") == std::string::npos,
               "Failed read appeared successful");

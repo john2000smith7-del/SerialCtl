@@ -164,11 +164,13 @@ bool SftpClient::Upload(
         L"\n" + renameCommand + temporary + L" " + name + L"\nquit\n",
         10 * 60 * 1000, output, error, TransferKind::Upload, totalBytes, progress, cancel);
     if (!success) {
-        if (cancel && cancel->load()) return false;
+        // Cancellation used to return here and leave the remote .tmp behind. The
+        // cleanup is bounded (10 s), only removes the unique name generated for this
+        // upload, and deliberately ignores the already-set cancel flag.
         std::wstring cleanupOutput;
         std::wstring cleanupError;
         RunBatch(L"cd " + remote + L"\nserialctl-remove-exact " + temporaryExact + L"\nquit\n",
-            10000, cleanupOutput, cleanupError, TransferKind::None, 0, {}, cancel);
+            10000, cleanupOutput, cleanupError, TransferKind::None, 0, {}, nullptr);
     }
     return success;
 }
