@@ -727,6 +727,16 @@ struct AiDeviceTestAccess {
             const auto replayDeadline = GetTickCount64() + 5000;
             main.HandleMessage(WM_APP + 1, 0, 0);
             while (!main.received_.empty() && GetTickCount64() < replayDeadline) UpdateWindow(parent);
+            if (!main.received_.empty() || main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) {
+                const auto text = main.activeSession_->terminal.PlainText(false);
+                std::cerr << "FAILED startup replay state: remaining=" << main.received_.size()
+                          << " continuation=" << main.receiveContinuation_ << " posted=" << main.receivePosted_
+                          << " update=" << GetUpdateRect(parent, nullptr, FALSE)
+                          << " active=" << main.activeSession_->id << " textLength=" << text.size()
+                          << " elapsed=" << GetTickCount64() - (replayDeadline - 5000)
+                          << " tail=" << WideToMultiByte(text.substr(text.size() > 64 ? text.size() - 64 : 0), CP_UTF8)
+                          << std::endl;
+            }
             Require(main.received_.empty() && main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") != std::wstring::npos,
                     "Sliced startup replay lost newer live data");
         }
