@@ -1,5 +1,8 @@
 name: Inspect desktop audit evidence
 on:
+  push:
+    branches: [feat/v2.0.10-arch-final]
+    paths: [.github/workflows/desktop-audit-diagnostics.yml]
   workflow_dispatch:
     inputs:
       audit_run:
@@ -18,7 +21,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: SerialCtl-desktop-review
-          run-id: ${{ inputs.audit_run }}
+          run-id: ${{ inputs.audit_run || '40785811830' }}
           github-token: ${{ github.token }}
           path: desktop-evidence
       - name: Print failed input observations from the original report
