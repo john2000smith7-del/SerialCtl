@@ -14,7 +14,7 @@
 #include "SftpModel.h"
 #include "TerminalDecoder.h"
 #include "TerminalModel.h"
-#include "TerminalViewportController.h"
+#include "TerminalViewport.h"
 #include "PaintBuffer.h"
 #include "BackgroundCleanup.h"
 #include "CommandMacroController.h"
@@ -104,7 +104,7 @@ private:
         std::string source; // empty for output, nonempty for accepted input
         LONGLONG arrival = 0;
     };
-    struct SessionState : AiDeviceBridge::State {
+    struct SessionState : AiDeviceBridge::State, TerminalViewport::State {
         std::wstring lastStatus;
         bool lastStatusIsError = false, unreadStatus = false;
         SYSTEMTIME statusTime{};
@@ -113,21 +113,9 @@ private:
         std::wstring name;
         std::shared_ptr<IConnection> connection;
         std::shared_ptr<SessionLogger> logger;
-        TerminalModel terminal;
-        int terminalScrollOffset = 0;
-        int terminalHorizontalOffset = 0;
-        bool terminalHasNewOutput = false;
-        std::wstring terminalTitle;
         int lineEndingIndex = 0;
         UINT codePage = CP_UTF8;
-        TerminalDecoder decoder;
-        CmdLineEditor cmdEditor;
-        bool cmdInteractionWarning = false;
         bool rawTrace = false;
-        // Opt-in test telemetry tags actual stdout, never the local input echo.
-        std::wstring paintProbeText;
-        INT_PTR paintProbe = 0;
-        LONGLONG pendingProbeArrival = 0;
         std::wstring host;
         std::wstring remoteCom;
         bool udpRaw = false, udpReceived = false;
@@ -211,6 +199,7 @@ private:
     void SendTerminalKey(WPARAM key, bool shift, bool control, bool alt);
     void PasteToTerminal();
     void PaintTerminal(HDC dc);
+    TerminalViewport::Options TerminalViewportOptions() const;
     void UpdateTerminalDimensions();
     void ScrollTerminal(int lines);
     void ScrollTerminalHorizontal(int columns);
@@ -440,24 +429,7 @@ private:
     HWND scrollingList_ = nullptr;
     bool connectionListKeyboardInput_ = false;
     int scrollingThumbOffset_ = 0;
-    bool terminalSelecting_ = false;
-    bool terminalSelectionActive_ = false;
-    size_t terminalSelectionAnchorLine_ = 0;
-    int terminalSelectionAnchorColumn_ = 0;
-    size_t terminalSelectionFocusLine_ = 0;
-    int terminalSelectionFocusColumn_ = 0;
-    bool terminalScrollbarDragging_ = false;
-    int terminalScrollbarThumbOffset_ = 0;
-    bool terminalHorizontalScrollbarDragging_ = false;
-    int terminalHorizontalScrollbarThumbOffset_ = 0;
-    int terminalWheelRemainder_ = 0;
-    int terminalHorizontalWheelRemainder_ = 0;
-    int terminalZoomWheelRemainder_ = 0;
     int terminalFontHeight_ = 16;
-    int terminalCellWidth_ = 9;
-    int terminalLineHeight_ = 19;
-    int terminalVisibleRows_ = 24;
-    int terminalVisibleColumns_ = 80;
     std::wstring commandDirectory_;
     int rightPanelWidth_ = 360;
     bool rightPanelCollapsed_ = false;
@@ -493,8 +465,8 @@ private:
 
     std::thread connectionThread_;
     BackgroundCleanup connectionCleanup_;
-    PaintBuffer windowPaintBuffer_, terminalPaintBuffer_;
-    TerminalViewportController terminalViewport_;
+    PaintBuffer windowPaintBuffer_;
+    TerminalViewport terminalViewport_;
     std::atomic_bool connectionCancel_{false};
     std::unique_ptr<SessionState> pendingSession_;
     std::vector<ReceivedItem> pendingConnectionData_;
@@ -507,7 +479,6 @@ private:
     std::deque<ReceivedItem> received_;
     std::map<std::uint64_t, size_t> receivedBytes_;
     bool measurePaint_ = false;
-    std::uint64_t paintSample_ = 0;
     std::set<std::uint64_t> receiveOverflow_;
     bool receivePosted_ = false;
     bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.

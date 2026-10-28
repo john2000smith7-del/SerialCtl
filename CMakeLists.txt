@@ -163,6 +163,7 @@ endfunction()
 add_executable(serialctl WIN32
     src/app/App.cpp
     src/app/MainWindow.cpp
+    src/app/TerminalViewport.cpp
     src/app/CommandMacroController.cpp
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp

@@ -46,6 +46,23 @@ int main() {
                 Require(source.DisplayLine(i).cells.size() <= static_cast<size_t>(columns), "wrapped row width invariant");
             Require(source.MaximumDisplayColumns() == static_cast<size_t>(columns), "wrapped maximum invariant");
         }
+        TerminalViewportController::State view;
+        viewport.Metrics() = {9, 19, 2, 8};
+        view.terminal.Resize(8, 2);
+        view.terminal.Feed(L"one\r\ntwo\r\nthree\r\nfour", L"");
+        viewport.Scroll(view, 100000);
+        Require(view.terminalScrollOffset == static_cast<int>(view.terminal.DisplayLineCount()) - 2,
+                "viewport clamps upward history scrolling");
+        view.terminalHasNewOutput = true; viewport.ToBottom(view);
+        Require(!view.terminalScrollOffset && !view.terminalHasNewOutput, "viewport bottom clears unread-output marker");
+        view.terminal.Clear(); view.terminal.Feed(L"中A", L"");
+        size_t hitLine = 0; int hitColumn = -1;
+        Require(viewport.PointToCell(view, 8 + 9, 8, 8, 8, 200, hitLine, hitColumn) && hitColumn == 0,
+                "wide-character continuation hit maps to its leading cell");
+        viewport.Select(hitLine, 0, false); viewport.Select(hitLine, 2, true);
+        Require(viewport.SelectionText(view, false) == L"中A", "owned selection preserves wide text");
+        viewport.ClearSelection();
+        Require(viewport.SelectionText(view, false).empty(), "cleared viewport selection cannot copy stale text");
         std::sort(samples.begin(), samples.end());
         nlohmann::json result{{"samplesMs", samples}, {"p50Ms", samples[15]}, {"maxMs", samples.back()},
             {"logicalInputLines", 20000}, {"iterations", 30}, {"method", "preview creation and complete text validation; 80x24 grid, 60 chars per history row"}};

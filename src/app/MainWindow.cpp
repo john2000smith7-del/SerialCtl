@@ -2,6 +2,7 @@
 #include <chrono>
 #include "TerminalDecoder.h"
 #include "MainWindow.h"
+#include "TerminalViewportGeometry.h"
 #include "UiDialogViewport.h"
 #include "HostKeyDialog.h"
 
@@ -183,42 +184,7 @@ enum SftpTransferMenuId {
     IdMenuTransferClearFinished
 };
 
-namespace Ui {
-int Dpi=96;
-int Scale(int value) { return MulDiv(value,Dpi,96); }
-int Radius = 10;
-int CardRadius = 12;
-int Space = 8;
-int Gap = 12;
-int OverlayScrollLaneWidth = 16;
-int OverlayScrollThumbWidth = 5;
-int TerminalPadding = 8;
-int TerminalTimestampWidth = 112;
-int Section = 16;
-int ToolbarHeight = 72;
-constexpr int ToolbarButtonWidths[] = {89, 88, 98, 118, 92, 88, 80};
-constexpr int SettingsButtonWidth = 88;
-int StandardHeight = 36;
-int CompactHeight = 32;
-int SegmentHeight = 32;
-int SegmentWidth = 70;
-int PanelPadding = 16;
-int IconButtonSize = 28;
-int MinLeftWidth = 190;
-int MaxLeftWidth = 190;
-int MinRightWidth = 260;
-int MaxRightWidth = 650;
-int CollapsedRightWidth = 48;
-int MinCenterWidth = 400;
-int SftpTableRowHeight = 36;
-int SftpTransferRowHeight = 48;
-int SftpTransferDrawerHeight = 144;
-int TerminalFontMinimumHeight = 10;
-int TerminalFontMaximumHeight = 32;
-constexpr wchar_t HoverProperty[] = L"SerialCtl.ButtonHover";
-constexpr wchar_t FieldFrameProperty[] = L"SerialCtl.FieldFrame";
-constexpr wchar_t FieldEditProperty[] = L"SerialCtl.FieldEdit";
-}
+
 
 void ScaleUiMetrics(HWND window) {
     HDC dc=GetDC(window); int dpi=GetDeviceCaps(dc,LOGPIXELSX); ReleaseDC(window,dc);
@@ -392,118 +358,12 @@ std::wstring CurrentTerminalTimestamp() {
     return value;
 }
 
-COLORREF IndexedTerminalColor(int index, bool dark) {
-    static const std::array<COLORREF, 16> DarkColors = {
-        RGB(20, 20, 22), RGB(255, 95, 86), RGB(48, 209, 88), RGB(255, 214, 10),
-        RGB(64, 156, 255), RGB(191, 90, 242), RGB(100, 210, 255), RGB(229, 229, 234),
-        RGB(99, 99, 102), RGB(255, 105, 97), RGB(78, 230, 111), RGB(255, 224, 69),
-        RGB(94, 176, 255), RGB(218, 143, 255), RGB(112, 215, 255), RGB(255, 255, 255)};
-    static const std::array<COLORREF, 16> LightColors = {
-        RGB(29, 29, 31), RGB(198, 40, 40), RGB(24, 128, 56), RGB(151, 112, 0),
-        RGB(0, 102, 204), RGB(137, 49, 178), RGB(0, 125, 140), RGB(205, 205, 210),
-        RGB(99, 99, 102), RGB(215, 54, 54), RGB(35, 150, 70), RGB(176, 128, 0),
-        RGB(0, 122, 255), RGB(175, 82, 222), RGB(0, 145, 165), RGB(255, 255, 255)};
-    index = std::max(0, std::min(255, index));
-    if (index < 16) return dark ? DarkColors[static_cast<size_t>(index)] : LightColors[static_cast<size_t>(index)];
-    if (index < 232) {
-        const int value = index - 16;
-        const int blue = value % 6;
-        const int green = value / 6 % 6;
-        const int red = value / 36;
-        const auto component = [](int level) { return level == 0 ? 0 : 55 + level * 40; };
-        return RGB(component(red), component(green), component(blue));
-    }
-    const int gray = 8 + (index - 232) * 10;
-    return RGB(gray, gray, gray);
-}
-
-COLORREF ResolveTerminalColor(
-    const TerminalColor& color, COLORREF fallback, bool dark, bool bold) {
-    if (color.kind == TerminalColor::Kind::Rgb)
-        return RGB(color.red, color.green, color.blue);
-    if (color.kind == TerminalColor::Kind::Indexed) {
-        int index = color.index;
-        if (bold && index < 8) index += 8;
-        return IndexedTerminalColor(index, dark);
-    }
-    return fallback;
-}
-
-struct TerminalScrollMetrics {
-    bool visible = false;
-    RECT track{};
-    RECT thumb{};
-    int maximumOffset = 0;
-};
-
-TerminalScrollMetrics GetTerminalScrollMetrics(
-    HWND terminal, size_t totalLines, int visibleRows, int scrollOffset) {
-    TerminalScrollMetrics metrics;
-    RECT client{};
-    GetClientRect(terminal, &client);
-    visibleRows = std::max(1, visibleRows);
-    metrics.maximumOffset = std::max(0, static_cast<int>(totalLines) - visibleRows);
-    if (metrics.maximumOffset <= 0) return metrics;
-    metrics.visible = true;
-    metrics.track = {client.right - Ui::OverlayScrollLaneWidth, 8, client.right, client.bottom - 8};
-    const int trackHeight = std::max(1,
-        static_cast<int>(metrics.track.bottom - metrics.track.top));
-    const int thumbHeight = std::max(28,
-        trackHeight * std::min<int>(visibleRows, static_cast<int>(totalLines)) /
-            std::max<int>(1, static_cast<int>(totalLines)));
-    const int travel = std::max(1, trackHeight - thumbHeight);
-    // scrollOffset is measured upward from the newest line. The thumb is therefore
-    // at the bottom for offset zero and moves toward the top as the offset grows.
-    const int thumbTop = metrics.track.top + travel -
-        scrollOffset * travel / std::max(1, metrics.maximumOffset);
-    const int left = client.right - (Ui::OverlayScrollLaneWidth + Ui::OverlayScrollThumbWidth) / 2;
-    metrics.thumb = {left, thumbTop, left + Ui::OverlayScrollThumbWidth, thumbTop + thumbHeight};
-    return metrics;
-}
-
-struct TerminalHorizontalScrollMetrics {
-    bool visible = false;
-    RECT track{};
-    RECT thumb{};
-    int maximumOffset = 0;
-};
-
-TerminalHorizontalScrollMetrics GetTerminalHorizontalScrollMetrics(
-    HWND terminal, int textLeft, size_t totalColumns, int visibleColumns, int scrollOffset) {
-    TerminalHorizontalScrollMetrics metrics;
-    RECT client{};
-    GetClientRect(terminal, &client);
-    visibleColumns = std::max(1, visibleColumns);
-    metrics.maximumOffset = std::max(0,
-        static_cast<int>(totalColumns) - visibleColumns);
-    if (metrics.maximumOffset <= 0) return metrics;
-    metrics.visible = true;
-    metrics.track = {textLeft, client.bottom - Ui::OverlayScrollLaneWidth,
-        client.right - Ui::OverlayScrollLaneWidth, client.bottom};
-    const int trackWidth = std::max(1,
-        static_cast<int>(metrics.track.right - metrics.track.left));
-    const int thumbWidth = std::max(28,
-        trackWidth * std::min<int>(visibleColumns, static_cast<int>(totalColumns)) /
-            std::max<int>(1, static_cast<int>(totalColumns)));
-    const int travel = std::max(1, trackWidth - thumbWidth);
-    const int thumbLeft = metrics.track.left +
-        scrollOffset * travel / std::max(1, metrics.maximumOffset);
-    const int top = client.bottom -
-        (Ui::OverlayScrollLaneWidth + Ui::OverlayScrollThumbWidth) / 2;
-    metrics.thumb = {thumbLeft, top, thumbLeft + thumbWidth,
-        top + Ui::OverlayScrollThumbWidth};
-    return metrics;
-}
 
 void DrawRoundedBox(HDC dc, const RECT& rect, int radius, COLORREF fill, COLORREF border) {
     UiBox(dc, rect, fill, border, radius);
 }
 
-RECT TerminalNewOutputRect(const RECT& client, bool horizontalScroll) {
-    const LONG bottom = client.bottom - (horizontalScroll ? Ui::OverlayScrollLaneWidth + Ui::Scale(4) : Ui::Space);
-    return {client.right - Ui::Scale(126), bottom - Ui::Scale(30),
-        client.right - Ui::OverlayScrollLaneWidth - Ui::Space, bottom};
-}
+
 
 void ApplyDarkTitleBar(HWND window, bool dark) {
     HMODULE module = LoadLibraryW(L"dwmapi.dll");
@@ -1234,18 +1094,18 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         }
         const bool localHistory = !self->activeSession_ || !self->activeSession_->terminal.AlternateScreen();
         if (shift && localHistory && wParam == VK_PRIOR) {
-            self->ScrollTerminal(std::max(1, self->terminalVisibleRows_ - 1));
+            self->ScrollTerminal(std::max(1, self->terminalViewport_.Metrics().rows - 1));
             return 0;
         }
         if (shift && localHistory && wParam == VK_NEXT) {
-            self->ScrollTerminal(-std::max(1, self->terminalVisibleRows_ - 1));
+            self->ScrollTerminal(-std::max(1, self->terminalViewport_.Metrics().rows - 1));
             return 0;
         }
         if (shift && localHistory && wParam == VK_HOME) {
             if (self->activeSession_) {
                 const int maximum = std::max(0,
                     static_cast<int>(self->activeSession_->terminal.DisplayLineCount()) -
-                        self->terminalVisibleRows_);
+                        self->terminalViewport_.Metrics().rows);
                 self->activeSession_->terminalScrollOffset = maximum;
                 InvalidateRect(window, nullptr, FALSE);
             }
@@ -1271,8 +1131,8 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
             auto &model = self->activeSession_->terminal;
             POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             ScreenToClient(window, &point);
-            const int column = std::clamp<int>((point.x - Ui::TerminalPadding) / std::max(1, self->terminalCellWidth_), 0, model.Columns() - 1);
-            const int row = std::clamp<int>((point.y - Ui::TerminalPadding) / std::max(1, self->terminalLineHeight_), 0, model.Rows() - 1);
+            const int column = std::clamp<int>((point.x - Ui::TerminalPadding) / std::max(1, self->terminalViewport_.Metrics().cellWidth), 0, model.Columns() - 1);
+            const int row = std::clamp<int>((point.y - Ui::TerminalPadding) / std::max(1, self->terminalViewport_.Metrics().lineHeight), 0, model.Rows() - 1);
             const unsigned modifiers = ((keys & MK_SHIFT) ? 1u : 0u) | ((GetKeyState(VK_MENU) & 0x8000) ? 2u : 0u) |
                 ((keys & MK_CONTROL) ? 4u : 0u);
             const auto sequence = model.WheelSequence(delta > 0, column, row, modifiers);
@@ -1283,181 +1143,29 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
             }
         }
         if ((keys & MK_CONTROL) != 0) {
-            self->terminalZoomWheelRemainder_ += delta;
-            const int steps = self->terminalZoomWheelRemainder_ / WHEEL_DELTA;
-            self->terminalZoomWheelRemainder_ %= WHEEL_DELTA;
+            self->terminalViewport_.Input().zoomWheelRemainder += delta;
+            const int steps = self->terminalViewport_.Input().zoomWheelRemainder / WHEEL_DELTA;
+            self->terminalViewport_.Input().zoomWheelRemainder %= WHEEL_DELTA;
             if (steps != 0) self->ZoomTerminalFont(steps);
         } else {
-            self->terminalWheelRemainder_ += delta;
-            const int steps = self->terminalWheelRemainder_ / WHEEL_DELTA;
-            self->terminalWheelRemainder_ %= WHEEL_DELTA;
+            self->terminalViewport_.Input().wheelRemainder += delta;
+            const int steps = self->terminalViewport_.Input().wheelRemainder / WHEEL_DELTA;
+            self->terminalViewport_.Input().wheelRemainder %= WHEEL_DELTA;
             if (steps != 0) self->ScrollTerminal(steps * 3);
         }
         return 0;
     }
     if (message == WM_MOUSEHWHEEL) {
-        self->terminalHorizontalWheelRemainder_ += GET_WHEEL_DELTA_WPARAM(wParam);
-        const int steps = self->terminalHorizontalWheelRemainder_ / WHEEL_DELTA;
-        self->terminalHorizontalWheelRemainder_ %= WHEEL_DELTA;
+        self->terminalViewport_.Input().horizontalWheelRemainder += GET_WHEEL_DELTA_WPARAM(wParam);
+        const int steps = self->terminalViewport_.Input().horizontalWheelRemainder / WHEEL_DELTA;
+        self->terminalViewport_.Input().horizontalWheelRemainder %= WHEEL_DELTA;
         if (steps != 0) self->ScrollTerminalHorizontal(steps * 4);
         return 0;
     }
-    if (message == WM_LBUTTONDOWN) {
-        SetFocus(window);
-        if (!self->activeSession_) return 0;
-        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-        const TerminalModel& model = self->activeSession_->terminal;
-        const int timestampWidth =
-            self->timestampEnabled_ && !self->LiveMonitorPage() && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
-        const TerminalHorizontalScrollMetrics horizontalMetrics =
-            GetTerminalHorizontalScrollMetrics(window, Ui::TerminalPadding + timestampWidth,
-                model.MaximumDisplayColumns(), self->terminalVisibleColumns_,
-                self->activeSession_->terminalHorizontalOffset);
-        if (horizontalMetrics.visible && point.y >= horizontalMetrics.track.top &&
-            point.x >= horizontalMetrics.track.left && point.x < horizontalMetrics.track.right) {
-            if (PointInRect(horizontalMetrics.thumb, point)) {
-                self->terminalHorizontalScrollbarDragging_ = true;
-                self->terminalHorizontalScrollbarThumbOffset_ = point.x - horizontalMetrics.thumb.left;
-                SetCapture(window);
-            } else {
-                const int direction = point.x < horizontalMetrics.thumb.left ? -1 : 1;
-                self->ScrollTerminalHorizontal(
-                    direction * std::max(1, self->terminalVisibleColumns_ - 1));
-            }
-            return 0;
-        }
-        const TerminalScrollMetrics metrics = GetTerminalScrollMetrics(window,
-            self->activeSession_->terminal.DisplayLineCount(), self->terminalVisibleRows_,
-            self->activeSession_->terminalScrollOffset);
-        if (metrics.visible && point.x >= metrics.track.left) {
-            if (PointInRect(metrics.thumb, point)) {
-                self->terminalScrollbarDragging_ = true;
-                self->terminalScrollbarThumbOffset_ = point.y - metrics.thumb.top;
-                SetCapture(window);
-            } else {
-                const int direction = point.y < metrics.thumb.top ? 1 : -1;
-                self->ScrollTerminal(direction * std::max(1, self->terminalVisibleRows_ - 1));
-            }
-            return 0;
-        }
-        RECT client{};
-        GetClientRect(window, &client);
-        if (self->activeSession_->terminalHasNewOutput && self->activeSession_->terminalScrollOffset > 0 &&
-            PointInRect(TerminalNewOutputRect(client, horizontalMetrics.visible), point)) {
-            self->ScrollTerminalToBottom();
-            return 0;
-        }
-        size_t line = 0;
-        int column = 0;
-        if (self->TerminalPointToCell(point, line, column)) {
-            self->UpdateTerminalSelection(line, column, false);
-            self->terminalSelecting_ = true;
-            SetCapture(window);
-        }
+    const auto pointer = self->terminalViewport_.Pointer(window, message, lParam, self->activeSession_, self->TerminalViewportOptions());
+    if (pointer != TerminalViewport::PointerResult::Unhandled) {
+        if (pointer == TerminalViewport::PointerResult::CopySelection) self->CopyTerminalSelection(false);
         return 0;
-    }
-    if (message == WM_LBUTTONDBLCLK && self->activeSession_) {
-        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-        size_t lineIndex = 0;
-        int column = 0;
-        if (self->TerminalPointToCell(point, lineIndex, column)) {
-            const TerminalLine& line = self->activeSession_->terminal.DisplayLine(lineIndex);
-            const int columns = static_cast<int>(line.cells.size());
-            if (columns <= 0) return 0;
-            column = std::max(0, std::min(columns - 1, column));
-            const auto wordCharacter = [](wchar_t character) {
-                return character && (iswalnum(character) || wcschr(L"_./~:+-%@", character) != nullptr);
-            };
-            int first = column;
-            int last = column;
-            while (first > 0 && wordCharacter(line.cells[static_cast<size_t>(first - 1)].character)) --first;
-            while (last + 1 < columns && wordCharacter(line.cells[static_cast<size_t>(last + 1)].character)) ++last;
-            self->terminalSelectionAnchorLine_ = lineIndex;
-            self->terminalSelectionAnchorColumn_ = first;
-            self->terminalSelectionFocusLine_ = lineIndex;
-            self->terminalSelectionFocusColumn_ = last;
-            self->terminalSelectionActive_ = true;
-            self->terminalSelecting_ = false;
-            if (GetCapture() == window) ReleaseCapture();
-            InvalidateRect(window, nullptr, FALSE);
-            self->CopyTerminalSelection(false);
-        }
-        return 0;
-    }
-    if (message == WM_MOUSEMOVE && self->activeSession_) {
-        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-        if (self->terminalHorizontalScrollbarDragging_) {
-            const TerminalModel& model = self->activeSession_->terminal;
-            const int timestampWidth = self->timestampEnabled_ && !self->LiveMonitorPage() && !model.AlternateScreen()
-                                           ? Ui::TerminalTimestampWidth
-                                           : 0;
-            const TerminalHorizontalScrollMetrics metrics =
-                GetTerminalHorizontalScrollMetrics(window, Ui::TerminalPadding + timestampWidth,
-                    model.MaximumDisplayColumns(), self->terminalVisibleColumns_,
-                    self->activeSession_->terminalHorizontalOffset);
-            const int thumbWidth = static_cast<int>(metrics.thumb.right - metrics.thumb.left);
-            const int travel = std::max(1,
-                static_cast<int>(metrics.track.right - metrics.track.left) - thumbWidth);
-            const int desiredLeft = std::max(static_cast<int>(metrics.track.left),
-                std::min(static_cast<int>(metrics.track.right) - thumbWidth,
-                    static_cast<int>(point.x) - self->terminalHorizontalScrollbarThumbOffset_));
-            self->activeSession_->terminalHorizontalOffset = std::max(0,
-                std::min(metrics.maximumOffset,
-                    (desiredLeft - static_cast<int>(metrics.track.left)) *
-                        metrics.maximumOffset / travel));
-            InvalidateRect(window, nullptr, FALSE);
-            return 0;
-        }
-        if (self->terminalScrollbarDragging_) {
-            const TerminalScrollMetrics metrics = GetTerminalScrollMetrics(window,
-                self->activeSession_->terminal.DisplayLineCount(), self->terminalVisibleRows_,
-                self->activeSession_->terminalScrollOffset);
-            const int thumbHeight = static_cast<int>(metrics.thumb.bottom - metrics.thumb.top);
-            const int travel = std::max(1,
-                static_cast<int>(metrics.track.bottom - metrics.track.top) - thumbHeight);
-            const int desiredTop = std::max(static_cast<int>(metrics.track.top),
-                std::min(static_cast<int>(metrics.track.bottom) - thumbHeight,
-                    static_cast<int>(point.y) - self->terminalScrollbarThumbOffset_));
-            self->activeSession_->terminalScrollOffset = std::max(0,
-                std::min(metrics.maximumOffset,
-                    (static_cast<int>(metrics.track.top) + travel - desiredTop) *
-                        metrics.maximumOffset / travel));
-            self->activeSession_->terminalHasNewOutput =
-                self->activeSession_->terminalScrollOffset > 0;
-            InvalidateRect(window, nullptr, FALSE);
-            return 0;
-        }
-        if (self->terminalSelecting_) {
-            size_t line = 0;
-            int column = 0;
-            if (self->TerminalPointToCell(point, line, column))
-                self->UpdateTerminalSelection(line, column, true);
-            return 0;
-        }
-    }
-    if (message == WM_LBUTTONUP) {
-        if (self->terminalSelecting_) {
-            size_t line = 0;
-            int column = 0;
-            if (self->TerminalPointToCell({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}, line, column))
-                self->UpdateTerminalSelection(line, column, true);
-        }
-        const bool completedSelection = self->terminalSelecting_ && self->HasTerminalSelection();
-        self->terminalSelecting_ = false;
-        self->terminalScrollbarDragging_ = false;
-        self->terminalScrollbarThumbOffset_ = 0;
-        self->terminalHorizontalScrollbarDragging_ = false;
-        self->terminalHorizontalScrollbarThumbOffset_ = 0;
-        if (GetCapture() == window) ReleaseCapture();
-        if (completedSelection) self->CopyTerminalSelection(false);
-        return 0;
-    }
-    if (message == WM_CAPTURECHANGED) {
-        self->terminalSelecting_ = false;
-        self->terminalScrollbarDragging_ = false;
-        self->terminalScrollbarThumbOffset_ = 0;
-        self->terminalHorizontalScrollbarDragging_ = false;
-        self->terminalHorizontalScrollbarThumbOffset_ = 0;
     }
     if (message == WM_NCDESTROY) RemoveWindowSubclass(window, TerminalSubclassProc, subclassId);
     return DefSubclassProc(window, message, wParam, lParam);
@@ -4139,7 +3847,7 @@ void MainWindow::ConnectFromDialog() {
     std::wstring sessionName;
     if (pendingMode_ == 0) {
         connection = std::make_unique<PlinkConnection>(pendingHost_, pendingPort_, pendingUsername_,
-            pendingPassword_, terminalVisibleColumns_, terminalVisibleRows_,
+            pendingPassword_, terminalViewport_.Metrics().columns, terminalViewport_.Metrics().rows,
             [this](const HostKeyChallenge& challenge) {
                 if (connectionCancel_.load()) return false;
                 auto request = std::make_shared<HostKeyRequest>();
@@ -4171,7 +3879,7 @@ void MainWindow::ConnectFromDialog() {
     }
 
     auto session = std::make_unique<SessionState>();
-    session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
+    session->terminal.Resize(terminalViewport_.Metrics().columns, terminalViewport_.Metrics().rows);
     session->id = nextSessionId_++;
     session->mode = pendingMode_;
     // Only the desktop that owns the local COM answers terminal queries.
@@ -4914,7 +4622,7 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
             session->terminalHasNewOutput = true;
         }
         const int maximumOffset = std::max(0,
-            static_cast<int>(session->terminal.DisplayLineCount()) - terminalVisibleRows_);
+            static_cast<int>(session->terminal.DisplayLineCount()) - terminalViewport_.Metrics().rows);
         session->terminalScrollOffset = std::min(session->terminalScrollOffset, maximumOffset);
         InvalidateRect(terminal_, nullptr, FALSE);
     }
@@ -5476,11 +5184,11 @@ void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
         break;
     case IdMenuSelectAll:
         if (activeSession_ && activeSession_->terminal.DisplayLineCount() > 0) {
-            terminalSelectionAnchorLine_ = 0;
-            terminalSelectionAnchorColumn_ = 0;
-            terminalSelectionFocusLine_ = activeSession_->terminal.DisplayLineCount() - 1;
-            terminalSelectionFocusColumn_ = activeSession_->terminal.Columns();
-            terminalSelectionActive_ = true;
+            terminalViewport_.Input().anchorLine = 0;
+            terminalViewport_.Input().anchorColumn = 0;
+            terminalViewport_.Input().focusLine = activeSession_->terminal.DisplayLineCount() - 1;
+            terminalViewport_.Input().focusColumn = activeSession_->terminal.Columns();
+            terminalViewport_.Input().selectionActive = true;
             InvalidateRect(terminal_, nullptr, FALSE);
         }
         break;
@@ -5572,288 +5280,43 @@ void MainWindow::PasteToTerminal() {
 }
 
 void MainWindow::UpdateTerminalDimensions() {
-    if (!terminal_ || !terminalFont_ || rightPanelAnimating_ || rightPanelDragging_ || windowResizing_)
-        return;
-    RECT client{};
-    GetClientRect(terminal_, &client);
-    HDC dc = GetDC(terminal_);
-    HFONT previous = reinterpret_cast<HFONT>(SelectObject(dc, terminalFont_));
-    TEXTMETRICW metrics{};
-    GetTextMetricsW(dc, &metrics);
-    SIZE characterSize{};
-    GetTextExtentPoint32W(dc, L"M", 1, &characterSize);
-    SelectObject(dc, previous);
-    ReleaseDC(terminal_, dc);
-    terminalCellWidth_ = std::max(Ui::Scale(7), static_cast<int>(characterSize.cx));
-    terminalLineHeight_ = std::max(Ui::Scale(15), static_cast<int>(metrics.tmHeight) + Ui::Scale(2));
-    const bool showTimestamps =
-        timestampEnabled_ && !LiveMonitorPage() && activeSession_ && !activeSession_->terminal.AlternateScreen();
-    const int timestampWidth = showTimestamps ? Ui::TerminalTimestampWidth : 0;
-    const int contentWidth = std::max(1,
-        static_cast<int>(client.right) - Ui::TerminalPadding * 2 - timestampWidth - Ui::OverlayScrollLaneWidth);
-    const int contentHeight = std::max(1, static_cast<int>(client.bottom) - Ui::TerminalPadding * 2);
-    const int oldColumns = terminalVisibleColumns_, oldRows = terminalVisibleRows_;
-    terminalVisibleColumns_ = std::max(20, contentWidth / terminalCellWidth_);
-    terminalVisibleRows_ = std::max(2, contentHeight / terminalLineHeight_);
-
+    if (!terminal_) return;
+    const int oldColumns = terminalViewport_.Metrics().columns, oldRows = terminalViewport_.Metrics().rows;
+    const bool timestamps = timestampEnabled_ && !LiveMonitorPage() && activeSession_ && !activeSession_->terminal.AlternateScreen();
+    terminalViewport_.Measure(terminal_, terminalFont_, timestamps);
     for (const auto& session : sessions_) {
-        auto &model = session->terminal;
-        const size_t oldTop =
-            model.DisplayLineCount() > static_cast<size_t>(oldRows + session->terminalScrollOffset)
-                ? model.DisplayLineCount() - static_cast<size_t>(oldRows + session->terminalScrollOffset)
-                : 0;
-        auto readAnchor = model.CaptureAnchor(oldTop);
-        auto selectionAnchor = model.CaptureAnchor(terminalSelectionAnchorLine_, terminalSelectionAnchorColumn_);
-        auto selectionFocus = model.CaptureAnchor(terminalSelectionFocusLine_, terminalSelectionFocusColumn_);
-        model.SetLineWrapView(!LiveMonitorPage() || (powerVisible_ ? powerMonitorWrap_ : aiMonitorWrap_));
-        session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
-        if (session->terminalScrollOffset > 0) {
-            auto line = model.LocateAnchor(readAnchor).first;
-            session->terminalScrollOffset =
-                std::max(0, static_cast<int>(model.DisplayLineCount() - std::min(line, model.DisplayLineCount())) -
-                                terminalVisibleRows_);
-        }
-        if (session.get() == activeSession_ && terminalSelectionActive_) {
-            auto a = model.LocateAnchor(selectionAnchor), b = model.LocateAnchor(selectionFocus);
-            terminalSelectionAnchorLine_ = a.first;
-            terminalSelectionAnchorColumn_ = a.second;
-            terminalSelectionFocusLine_ = b.first;
-            terminalSelectionFocusColumn_ = b.second;
-        }
-        if (session->connection && (oldColumns != terminalVisibleColumns_ || oldRows != terminalVisibleRows_))
-            session->connection->ResizeTerminal(terminalVisibleColumns_, terminalVisibleRows_);
-        const int maximum = std::max(0,
-            static_cast<int>(session->terminal.DisplayLineCount()) - terminalVisibleRows_);
-        session->terminalScrollOffset = std::min(session->terminalScrollOffset, maximum);
-        const int maximumHorizontal = std::max(0,
-            static_cast<int>(session->terminal.MaximumDisplayColumns()) - terminalVisibleColumns_);
-        session->terminalHorizontalOffset = std::max(0,
-            std::min(session->terminalHorizontalOffset, maximumHorizontal));
+        terminalViewport_.Resize(*session, !LiveMonitorPage() || (powerVisible_ ? powerMonitorWrap_ : aiMonitorWrap_),
+                                 session.get() == activeSession_, oldRows);
+        if (session->connection && (oldColumns != terminalViewport_.Metrics().columns || oldRows != terminalViewport_.Metrics().rows))
+            session->connection->ResizeTerminal(terminalViewport_.Metrics().columns, terminalViewport_.Metrics().rows);
     }
     InvalidateRect(terminal_, nullptr, TRUE);
 }
 
+TerminalViewport::Options MainWindow::TerminalViewportOptions() const {
+    return {darkMode_, timestampEnabled_, LiveMonitorPage(), measurePaint_,
+            activeSession_ ? activeSession_->mode : -1, terminalFont_, smallFont_};
+}
+
 void MainWindow::PaintTerminal(HDC dc) {
-    RECT client{};
-    GetClientRect(terminal_, &client);
-    if (client.right <= 0 || client.bottom <= 0) return;
-    const Palette colors = Colors(darkMode_);
-    HDC buffer = terminalPaintBuffer_.Get(dc, client.right, client.bottom, Ui::Dpi);
-    if (!buffer) buffer = dc;
-    const int savedBuffer = SaveDC(buffer);
-    HBRUSH background = CreateSolidBrush(colors.terminal);
-    FillRect(buffer, &client, background);
-    DeleteObject(background);
-
-    if (activeSession_) {
-        const TerminalModel& model = activeSession_->terminal;
-        const TerminalModel* preview = nullptr;
-        if (activeSession_->mode == 4 && !activeSession_->cmdEditor.Text().empty() &&
-            activeSession_->terminalScrollOffset == 0)
-            preview = &terminalViewport_.Preview(model, activeSession_->cmdEditor.Text(), activeSession_->cmdEditor.Cursor());
-        else terminalViewport_.Clear();
-        auto displayLine = [&](size_t i) -> const TerminalLine & {
-            return preview && !model.LineWrapView()      ? preview->DisplayLine(i)
-                   : preview && i >= model.HistorySize() ? preview->DisplayLine(i - model.HistorySize())
-                                                         : model.DisplayLine(i);
-        };
-        const bool showTimestamps = timestampEnabled_ && !LiveMonitorPage() && !model.AlternateScreen();
-        const int padding = Ui::TerminalPadding;
-        const int timestampWidth = showTimestamps ? Ui::TerminalTimestampWidth : 0;
-        const int textLeft = padding + timestampWidth;
-        const size_t totalLines =
-            (preview ? (model.LineWrapView() ? model.HistorySize() : 0) + preview->DisplayLineCount()
-                     : model.DisplayLineCount());
-        const size_t totalColumns = preview ? preview->MaximumDisplayColumns() : model.MaximumDisplayColumns();
-        const int maximumHorizontalOffset = std::max(0,
-            static_cast<int>(totalColumns) - terminalVisibleColumns_);
-        activeSession_->terminalHorizontalOffset = std::max(0,
-            std::min(activeSession_->terminalHorizontalOffset, maximumHorizontalOffset));
-        const int horizontalOffset = activeSession_->terminalHorizontalOffset;
-        const int maximumOffset = std::max(0,
-            static_cast<int>(totalLines) - terminalVisibleRows_);
-        activeSession_->terminalScrollOffset = std::max(0,
-            std::min(activeSession_->terminalScrollOffset, maximumOffset));
-        const size_t topLine = totalLines > static_cast<size_t>(terminalVisibleRows_ +
-            activeSession_->terminalScrollOffset)
-            ? totalLines - static_cast<size_t>(terminalVisibleRows_ +
-                activeSession_->terminalScrollOffset)
-            : 0;
-        if (measurePaint_) {
-            SetPropW(terminal_, L"SerialCtl.CellWidth", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalCellWidth_)));
-            SetPropW(terminal_, L"SerialCtl.LineHeight", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalLineHeight_)));
-            SetPropW(terminal_, L"SerialCtl.TextLeft", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(textLeft)));
-            SetPropW(terminal_, L"SerialCtl.TextTop", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(padding)));
-            SetPropW(terminal_, L"SerialCtl.VisibleColumns", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalVisibleColumns_)));
-            SetPropW(terminal_, L"SerialCtl.VisibleRows", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalVisibleRows_)));
-            SetPropW(terminal_, L"SerialCtl.CmdDraftLength", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->cmdEditor.Text().size()) + 1));
-            const auto anchor = model.CaptureAnchor(topLine);
-            SetPropW(terminal_, L"SerialCtl.ScrollOffset",
-                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->terminalScrollOffset) + 1));
-            SetPropW(terminal_, L"SerialCtl.ReadAnchor", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(anchor.id)));
-            SetPropW(terminal_, L"SerialCtl.ReadOffset",
-                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(anchor.offset) + 1));
-            SetPropW(terminal_, L"SerialCtl.NewOutput",
-                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->terminalHasNewOutput) + 1));
-            SetPropW(terminal_, L"SerialCtl.CmdInteractionBlocked",
-                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->cmdInteractionWarning) + 1));
-        }
-
-        size_t selectionStartLine = terminalSelectionAnchorLine_;
-        size_t selectionEndLine = terminalSelectionFocusLine_;
-        int selectionStartColumn = terminalSelectionAnchorColumn_;
-        int selectionEndColumn = terminalSelectionFocusColumn_;
-        if (selectionStartLine > selectionEndLine ||
-            (selectionStartLine == selectionEndLine && selectionStartColumn > selectionEndColumn)) {
-            std::swap(selectionStartLine, selectionEndLine);
-            std::swap(selectionStartColumn, selectionEndColumn);
-        }
-
-        HFONT previousFont = reinterpret_cast<HFONT>(SelectObject(buffer, terminalFont_));
-        SetBkMode(buffer, TRANSPARENT);
-        for (int viewRow = 0; viewRow < terminalVisibleRows_; ++viewRow) {
-            const size_t lineIndex = topLine + static_cast<size_t>(viewRow);
-            if (lineIndex >= totalLines) break;
-            const TerminalLine &line = displayLine(lineIndex);
-            const int y = padding + viewRow * terminalLineHeight_;
-            if (showTimestamps && !line.timestamp.empty()) {
-                RECT timestampRect{padding, y, textLeft - Ui::Gap, y + terminalLineHeight_};
-                DrawTextSimple(buffer, line.timestamp, timestampRect, colors.muted,
-                    smallFont_, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
-            }
-
-            const int availableColumns = std::max(0,
-                (static_cast<int>(client.right) - textLeft - Ui::OverlayScrollLaneWidth) /
-                    terminalCellWidth_);
-            for (int viewColumn = 0; viewColumn < availableColumns; ++viewColumn) {
-                const int column = viewColumn + horizontalOffset;
-                if (column < 0 || static_cast<size_t>(column) >= line.cells.size()) break;
-                const TerminalCell& cell = line.cells[static_cast<size_t>(column)];
-                if (cell.continuation) continue;
-                const int width = static_cast<size_t>(column + 1) < line.cells.size() &&
-                    line.cells[static_cast<size_t>(column + 1)].continuation ? 2 : 1;
-                RECT cellRect{textLeft + viewColumn * terminalCellWidth_, y,
-                    textLeft + (viewColumn + width) * terminalCellWidth_, y + terminalLineHeight_};
-                const bool selected = terminalSelectionActive_ &&
-                    (lineIndex > selectionStartLine ||
-                        (lineIndex == selectionStartLine && column >= selectionStartColumn)) &&
-                    (lineIndex < selectionEndLine ||
-                        (lineIndex == selectionEndLine && column <= selectionEndColumn));
-                COLORREF foreground = ResolveTerminalColor(cell.attributes.foreground,
-                    colors.text, darkMode_, cell.attributes.bold);
-                COLORREF cellBackground = ResolveTerminalColor(cell.attributes.background,
-                    colors.terminal, darkMode_, false);
-                if (cell.attributes.inverse) std::swap(foreground, cellBackground);
-                if (selected) {
-                    cellBackground = colors.accentSoft;
-                    foreground = colors.text;
-                }
-                if (cellBackground != colors.terminal) {
-                    HBRUSH cellBrush = CreateSolidBrush(cellBackground);
-                    FillRect(buffer, &cellRect, cellBrush);
-                    DeleteObject(cellBrush);
-                }
-                if (cell.character != L' ') {
-                    SetTextColor(buffer, foreground);
-                    TextOutW(buffer, cellRect.left, cellRect.top,
-                        &cell.character, 1);
-                    if (cell.attributes.bold)
-                        TextOutW(buffer, cellRect.left + 1, cellRect.top,
-                            &cell.character, 1);
-                }
-                if (cell.attributes.underline) {
-                    HPEN underline = CreatePen(PS_SOLID, 1, foreground);
-                    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, underline));
-                    MoveToEx(buffer, cellRect.left, cellRect.bottom - 2, nullptr);
-                    LineTo(buffer, cellRect.right, cellRect.bottom - 2);
-                    SelectObject(buffer, oldPen);
-                    DeleteObject(underline);
-                }
-            }
-        }
-
-        if (GetFocus() == terminal_ && model.CursorVisible() &&
-            activeSession_->terminalScrollOffset == 0) {
-            const size_t cursorLine =
-                preview ? (model.LineWrapView() ? model.HistorySize() : 0) + preview->CursorDisplayLine()
-                        : model.CursorDisplayLine();
-            const int cursorColumn = (preview ? preview->CursorColumn() : model.CursorColumn()) - horizontalOffset;
-            if (cursorLine >= topLine &&
-                cursorLine < topLine + static_cast<size_t>(terminalVisibleRows_) &&
-                cursorColumn >= 0 && cursorColumn < terminalVisibleColumns_) {
-                const int viewRow = static_cast<int>(cursorLine - topLine);
-                RECT cursor{textLeft + cursorColumn * terminalCellWidth_,
-                    padding + viewRow * terminalLineHeight_,
-                    textLeft + (cursorColumn + 1) * terminalCellWidth_,
-                    padding + (viewRow + 1) * terminalLineHeight_};
-                HPEN cursorPen = CreatePen(PS_SOLID, 2, colors.accent);
-                HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, cursorPen));
-                MoveToEx(buffer, cursor.left, cursor.bottom - 1, nullptr);
-                LineTo(buffer, cursor.right, cursor.bottom - 1);
-                SelectObject(buffer, oldPen);
-                DeleteObject(cursorPen);
-            }
-        }
-        SelectObject(buffer, previousFont);
-
-        const TerminalScrollMetrics scroll = GetTerminalScrollMetrics(terminal_,
-            totalLines, terminalVisibleRows_, activeSession_->terminalScrollOffset);
-        if (scroll.visible)
-            DrawRoundedBox(buffer, scroll.thumb, Ui::Scale(3), colors.border, colors.border);
-        const TerminalHorizontalScrollMetrics horizontalScroll =
-            GetTerminalHorizontalScrollMetrics(terminal_, textLeft, totalColumns,
-                terminalVisibleColumns_, activeSession_->terminalHorizontalOffset);
-        if (horizontalScroll.visible)
-            DrawRoundedBox(buffer, horizontalScroll.thumb, Ui::Scale(3), colors.border, colors.border);
-
-        if (activeSession_->terminalHasNewOutput && activeSession_->terminalScrollOffset > 0) {
-            const RECT notification = TerminalNewOutputRect(client, horizontalScroll.visible);
-            DrawRoundedBox(buffer, notification, Ui::Radius, colors.accentSoft, colors.accent);
-            DrawTextSimple(buffer, L"↓  新输出", notification, UiAccentInk(darkMode_),
-                smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        }
-    }
-
-    BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
-    if (measurePaint_ && activeSession_ && activeSession_->pendingProbeArrival) {
-        LARGE_INTEGER now{}, frequency{};
-        QueryPerformanceCounter(&now);
-        QueryPerformanceFrequency(&frequency);
-        auto microseconds =
-            static_cast<INT_PTR>((now.QuadPart - activeSession_->pendingProbeArrival) * 1000000 / frequency.QuadPart);
-        SetPropW(terminal_, L"SerialCtl.PaintUsec", reinterpret_cast<HANDLE>(std::max<INT_PTR>(1, microseconds)));
-        SetPropW(terminal_, L"SerialCtl.PaintSample", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(++paintSample_)));
-        SetPropW(terminal_, L"SerialCtl.PaintProbe", reinterpret_cast<HANDLE>(activeSession_->paintProbe));
-        activeSession_->pendingProbeArrival = 0;
-    }
-    RestoreDC(buffer, savedBuffer);
+    terminalViewport_.Paint(dc, terminal_, activeSession_, TerminalViewportOptions());
 }
 
 void MainWindow::ScrollTerminal(int lines) {
     if (!activeSession_) return;
-    const int maximum = std::max(0,
-        static_cast<int>(activeSession_->terminal.DisplayLineCount()) - terminalVisibleRows_);
-    activeSession_->terminalScrollOffset = std::max(0,
-        std::min(maximum, activeSession_->terminalScrollOffset + lines));
-    if (activeSession_->terminalScrollOffset == 0)
-        activeSession_->terminalHasNewOutput = false;
+    terminalViewport_.Scroll(*activeSession_, lines);
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 void MainWindow::ScrollTerminalHorizontal(int columns) {
     if (!activeSession_) return;
-    const int maximum = std::max(0,
-        static_cast<int>(activeSession_->terminal.MaximumDisplayColumns()) -
-            terminalVisibleColumns_);
-    activeSession_->terminalHorizontalOffset = std::max(0,
-        std::min(maximum, activeSession_->terminalHorizontalOffset + columns));
+    terminalViewport_.ScrollHorizontal(*activeSession_, columns);
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 void MainWindow::ScrollTerminalToBottom() {
     if (!activeSession_) return;
-    activeSession_->terminalScrollOffset = 0;
-    activeSession_->terminalHasNewOutput = false;
+    terminalViewport_.ToBottom(*activeSession_);
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
@@ -5876,68 +5339,25 @@ void MainWindow::ZoomTerminalFont(int steps) {
 }
 
 bool MainWindow::TerminalPointToCell(POINT point, size_t& line, int& column) const {
-    if (!activeSession_) return false;
-    RECT client{};
-    GetClientRect(terminal_, &client);
-    const TerminalModel& model = activeSession_->terminal;
-    const int timestampWidth =
-        timestampEnabled_ && !LiveMonitorPage() && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
-    const int textLeft = Ui::TerminalPadding + timestampWidth;
-    const size_t totalLines = model.DisplayLineCount();
-    const size_t topLine = totalLines > static_cast<size_t>(terminalVisibleRows_ +
-        activeSession_->terminalScrollOffset)
-        ? totalLines - static_cast<size_t>(terminalVisibleRows_ +
-            activeSession_->terminalScrollOffset)
-        : 0;
-    const int row = std::max(0, std::min(terminalVisibleRows_ - 1,
-        (static_cast<int>(point.y) - Ui::TerminalPadding) / std::max(1, terminalLineHeight_)));
-    if (totalLines == 0 || point.x < textLeft ||
-        point.x >= client.right - Ui::OverlayScrollLaneWidth) return false;
-    line = std::min(totalLines - 1, topLine + static_cast<size_t>(row));
-    const TerminalLine& terminalLine = model.DisplayLine(line);
-    if (terminalLine.cells.empty()) return false;
-    const int viewColumn = (static_cast<int>(point.x) - textLeft) /
-        std::max(1, terminalCellWidth_);
-    column = std::max(0, std::min(static_cast<int>(terminalLine.cells.size()) - 1,
-        viewColumn + activeSession_->terminalHorizontalOffset));
-    if (column > 0 && terminalLine.cells[static_cast<size_t>(column)].continuation) --column;
-    return true;
+    return activeSession_ && terminalViewport_.PointToCell(terminal_, *activeSession_, point, TerminalViewportOptions(), line, column);
 }
 
 void MainWindow::UpdateTerminalSelection(size_t line, int column, bool extend) {
-    if (!extend) {
-        terminalSelectionAnchorLine_ = line;
-        terminalSelectionAnchorColumn_ = column;
-        terminalSelectionFocusLine_ = line;
-        terminalSelectionFocusColumn_ = column;
-        terminalSelectionActive_ = false;
-    } else {
-        terminalSelectionFocusLine_ = line;
-        terminalSelectionFocusColumn_ = column;
-        terminalSelectionActive_ = terminalSelectionAnchorLine_ != terminalSelectionFocusLine_ ||
-            terminalSelectionAnchorColumn_ != terminalSelectionFocusColumn_;
-    }
+    terminalViewport_.Select(line, column, extend);
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 void MainWindow::ClearTerminalSelection() {
-    terminalSelecting_ = false;
-    terminalSelectionActive_ = false;
+    terminalViewport_.ClearSelection();
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 bool MainWindow::HasTerminalSelection() const {
-    return activeSession_ && terminalSelectionActive_;
+    return activeSession_ && terminalViewport_.Input().selectionActive;
 }
 
 std::wstring MainWindow::TerminalSelectionText(bool selectAll) const {
-    if (!activeSession_) return {};
-    const TerminalModel& model = activeSession_->terminal;
-    if (selectAll) return model.PlainText(false);
-    if (!terminalSelectionActive_) return {};
-
-    return model.SelectedText(terminalSelectionAnchorLine_, terminalSelectionAnchorColumn_,
-        terminalSelectionFocusLine_, terminalSelectionFocusColumn_);
+    return activeSession_ ? terminalViewport_.SelectionText(*activeSession_, selectAll) : L"";
 }
 
 void MainWindow::CopyTerminalSelection(bool selectAll) {
