@@ -2434,12 +2434,15 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_ERASEBKGND:
         return 1;
     case WM_PAINT: {
+        const bool redraw = GetUpdateRect(window_, nullptr, FALSE) != FALSE;
         PAINTSTRUCT paint{};
         HDC dc = BeginPaint(window_, &paint);
-        RECT rect{};GetClientRect(window_,&rect);
-        HDC memory = windowPaintBuffer_.Get(dc, rect.right, rect.bottom, Ui::Dpi);
-        if (memory) { const int state = SaveDC(memory); PaintWindow(memory); BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY); RestoreDC(memory,state); }
-        else PaintWindow(dc);
+        if (redraw) {
+            RECT rect{};GetClientRect(window_,&rect);
+            HDC memory = windowPaintBuffer_.Get(dc, rect.right, rect.bottom, Ui::Dpi);
+            if (memory) { const int state = SaveDC(memory); PaintWindow(memory); BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY); RestoreDC(memory,state); }
+            else PaintWindow(dc);
+        }
         EndPaint(window_, &paint);
         // WM_PAINT is dispatched after queued user input. Continue a sustained
         // receive stream here instead of adding a 10 ms timer per data slice or
@@ -2628,7 +2631,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             receivePosted_ = false;
             if (!received_.empty() || !receiveOverflow_.empty()) {
                 if (IsWindowVisible(window_) && !IsIconic(window_)) {
-                    receiveContinuation_ = InvalidateRect(window_, nullptr, FALSE) != FALSE;
+                    // Request a normal low-priority paint opportunity without
+                    // invalidating/repainting the whole main-window chrome for
+                    // every terminal receive slice. Terminal output paints below.
+                    receiveContinuation_ = RedrawWindow(window_, nullptr, nullptr, RDW_INTERNALPAINT) != FALSE;
                     receivePosted_ = receiveContinuation_;
                 } else
                     receivePosted_ = SetTimer(window_, ReceivePumpTimerId, 10, nullptr) != 0;

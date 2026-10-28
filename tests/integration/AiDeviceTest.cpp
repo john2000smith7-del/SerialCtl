@@ -647,6 +647,12 @@ struct AiDeviceTestAccess {
         {
             main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
             main.LayoutControls(viewport.right, viewport.bottom);
+            // Exercise the application's ordinary message-loop dispatch, which
+            // also delivers RDW_INTERNALPAINT without an invalid client region.
+            const auto paintOpportunity = [&] {
+                MSG paint{};
+                if (PeekMessageW(&paint, parent, WM_PAINT, WM_PAINT, PM_REMOVE)) DispatchMessageW(&paint);
+            };
             Json samples = Json::array();
             for (int sample = 0; sample < 16; ++sample) {
                 // Hold the REAL gateway publication lock: sustained device
@@ -693,14 +699,14 @@ struct AiDeviceTestAccess {
             Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == 201,
                     "Background terminal backlog buried the visible serial echo");
             auto backlogDeadline = GetTickCount64() + 5000;
-            while (!main.received_.empty() && GetTickCount64() < backlogDeadline) UpdateWindow(parent);
+            while (!main.received_.empty() && GetTickCount64() < backlogDeadline) paintOpportunity();
             Require(main.received_.empty(), "Visible-session priority starved background terminal output");
             main.activeSession_->terminal.Clear();
             for (int i = 0; i < 64; ++i) main.QueueReceived({2, Bytes(16384, 'x'), CP_UTF8, {}, 0});
             main.HandleMessage(WM_APP + 1, 0, 0);
             Require(main.received_.empty() || main.receiveContinuation_, "Visible serial backlog reintroduced a receive timer");
             const auto deadline = GetTickCount64() + 5000;
-            while (!main.received_.empty() && GetTickCount64() < deadline) UpdateWindow(parent);
+            while (!main.received_.empty() && GetTickCount64() < deadline) paintOpportunity();
             Require(main.received_.empty(), "Paint-driven serial receive continuation stopped making progress");
             const Json evidence{{"callbackToPaintUsec", samples}, {"samples", 16}, {"gatewayLockHeldDuringPaint", true},
                                 {"visibleBacklogScheduling", "paint opportunities without a receive timer"},
@@ -726,7 +732,7 @@ struct AiDeviceTestAccess {
                     "Startup history was reordered behind newer live output");
             const auto replayDeadline = GetTickCount64() + 5000;
             main.HandleMessage(WM_APP + 1, 0, 0);
-            while (!main.received_.empty() && GetTickCount64() < replayDeadline) UpdateWindow(parent);
+            while (!main.received_.empty() && GetTickCount64() < replayDeadline) paintOpportunity();
             if (!main.received_.empty() || main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) {
                 const auto text = main.activeSession_->terminal.PlainText(false);
                 std::cerr << "FAILED startup replay state: remaining=" << main.received_.size()
