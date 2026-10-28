@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 namespace serialctl {
-inline std::wstring ExtendedFilePath(const std::wstring& path) {
-    if (path.size() < 248 || path.rfind(L"\\\\?\\", 0) == 0) return path;
+inline std::wstring ExtendedFilePath(const std::wstring& path, bool force = false) {
+    if ((!force && path.size() < 248) || path.rfind(L"\\\\?\\", 0) == 0) return path;
     std::vector<wchar_t> full(32768);
     const DWORD size = GetFullPathNameW(path.c_str(), static_cast<DWORD>(full.size()), full.data(), nullptr);
     if (!size || size >= full.size()) return {};

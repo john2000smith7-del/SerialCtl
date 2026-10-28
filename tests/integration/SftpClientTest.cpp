@@ -37,7 +37,9 @@ int main(int argc, char**) {
             if (waited != WAIT_OBJECT_0) TerminateProcess(process.hProcess, 1);
             DWORD code = 1; GetExitCodeProcess(process.hProcess, &code);
             CloseHandle(process.hProcess); CloseHandle(process.hThread);
-            fs::remove_all(ExtendedFilePath(root.wstring()));
+            // Keep the prefix on the short root too: recursive traversal will
+            // create longer child paths from it, beyond the Win32 MAX_PATH cap.
+            fs::remove_all(ExtendedFilePath(root.wstring(), true));
             Require(waited == WAIT_OBJECT_0 && code == 0, "SFTP resolves sibling executables and batch TEMP beyond MAX_PATH");
         }
         SftpClient overflow(L"pipe-overflow", 22, L"fixture", L"fixture-password");
