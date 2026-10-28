@@ -25,15 +25,20 @@ jobs:
         shell: powershell
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/serialctl-build.txt"
+          $transcriptOpen = $true
           try { ./scripts/release.ps1 }
           catch {
             $failure = $_
-            Get-Content "$env:RUNNER_TEMP/serialctl-build.txt" -Tail 40 | ForEach-Object {
+            Stop-Transcript
+            $transcriptOpen = $false
+            $reason = $failure.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Host "::error title=Release verification exception::$reason"
+            Get-Content "$env:RUNNER_TEMP/serialctl-build.txt" -Tail 80 | ForEach-Object {
               $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
               Write-Host "::error title=Windows build failure::$line"
             }
             throw $failure
-          } finally { Stop-Transcript }
+          } finally { if ($transcriptOpen) { Stop-Transcript } }
       - name: Launch packaged applications and capture UI
         shell: powershell
         run: |
