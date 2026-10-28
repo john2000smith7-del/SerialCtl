@@ -52,6 +52,20 @@ jobs:
         shell: powershell
         run: |
           ./scripts/smoke-update.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"
+      - name: Compare unchanged UI with accepted baseline on the same desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $baseline = "$env:RUNNER_TEMP/serialctl-baseline"
+          gh run download 40631971674 --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir $baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $old = @(Get-ChildItem $baseline -Filter '*.zip')
+          $new = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($old.Count -ne 1 -or $new.Count -ne 1) { throw 'Expected one exact baseline and candidate package.' }
+          python tests/integration/ui_freeze_compare.py --baseline $old[0].FullName --candidate $new[0].FullName --output "$env:RUNNER_TEMP/serialctl-ui"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Python Linux AI client protocol tests
         shell: powershell
         run: |
