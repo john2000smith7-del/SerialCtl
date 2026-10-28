@@ -93,7 +93,13 @@ bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsi
     accept_ = std::thread(&ApiServer::Accept, this);
     return true;
 }
+void ApiServer::RequestStop() {
+    running_ = false;
+    if (stopEvent_ != WSA_INVALID_EVENT)
+        WSASetEvent(stopEvent_);
+}
 void ApiServer::Stop() {
+    RequestStop();
     {
         std::lock_guard<std::mutex> lock(publicationMutex_);
         publicationStopping_ = true;
@@ -101,9 +107,6 @@ void ApiServer::Stop() {
         publicationWake_.notify_all();
     }
     if (publisher_.joinable()) publisher_.join();
-    running_ = false;
-    if (stopEvent_ != WSA_INVALID_EVENT)
-        WSASetEvent(stopEvent_);
     if (accept_.joinable())
         accept_.join();
     auto s = listen_.exchange(INVALID_SOCKET);

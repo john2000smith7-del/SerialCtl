@@ -22,6 +22,8 @@ class ApiServer {
         Stop();
     }
     bool Start(Handler, std::wstring &error, unsigned first = 7000, unsigned last = 7015);
+    // Request on the owner thread; Stop owns the joins and handle closure.
+    void RequestStop();
     void Stop();
     void SetSessions(const std::vector<std::string> &);
     bool Running() const {

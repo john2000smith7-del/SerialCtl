@@ -35,6 +35,21 @@ struct Transport : IConnection {
     unsigned InputCodePage() const override { return input; }
     unsigned OutputCodePage() const override { return CP_UTF8; }
 };
+struct HeldTransport : IConnection {
+    HANDLE release = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    HANDLE entered = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    std::atomic_bool connected{true}, cancelled{false};
+    ~HeldTransport() override { if (release) CloseHandle(release); if (entered) CloseHandle(entered); }
+    bool Start(DataCallback, StatusCallback, std::wstring&) override { return true; }
+    void CancelStart() override { cancelled = true; }
+    void Stop() override {
+        SetEvent(entered);
+        WaitForSingleObject(release, INFINITE);
+        connected = false;
+    }
+    bool IsConnected() const override { return connected; }
+    bool Send(const Bytes&, std::wstring&) override { return connected; }
+};
 Json Wait(PowerService& power, Json action) {
     Require(!action.contains("error"), "Power operation not accepted");
     const auto end = GetTickCount64() + 5000;
@@ -775,6 +790,109 @@ struct AiDeviceTestAccess {
         DestroyWindow(parent);
         for (auto font : {main.uiFont_, main.smallFont_, main.titleFont_, main.terminalFont_}) DeleteObject(font);
     }
+    static void RunShutdown() {
+        test::Wsa sockets;
+        MainWindow main;
+        Require(main.Create(GetModuleHandleW(nullptr), SW_SHOWNOACTIVATE), "Create native shutdown window");
+        const HWND window = main.window_;
+        auto startup = std::make_shared<HeldTransport>();
+        auto announced = std::make_shared<HeldTransport>();
+        auto pending = std::make_shared<HeldTransport>();
+        auto active = std::make_shared<HeldTransport>();
+        Require(startup->release && startup->entered && announced->release && announced->entered &&
+                pending->release && pending->entered &&
+                active->release && active->entered, "Create shutdown gates");
+        struct ReleaseGates {
+            std::shared_ptr<HeldTransport> startup, announced, pending, active;
+            ~ReleaseGates() { SetEvent(startup->release); SetEvent(announced->release);
+                              SetEvent(pending->release); SetEvent(active->release); }
+        } release{startup, announced, pending, active};
+        auto session = std::make_unique<MainWindow::SessionState>();
+        session->id = 500; session->mode = 3; session->name = L"held startup";
+        session->connection = pending; session->logger = std::make_shared<SessionLogger>();
+        main.pendingSession_ = std::move(session);
+        main.connectionThread_ = std::thread([startup] {
+            SetEvent(startup->entered);
+            WaitForSingleObject(startup->release, INFINITE);
+            // Simulate success immediately before cancellation was observed.
+        });
+        Require(WaitForSingleObject(startup->entered, 3000) == WAIT_OBJECT_0, "Held startup did not begin");
+        const auto disconnectStarted = GetTickCount64();
+        main.DisconnectAll();
+        const auto disconnectMs = GetTickCount64() - disconnectStarted;
+        Require(disconnectMs < 250, "Disconnect all waited for the held connection thread");
+        Require(pending->cancelled && main.pendingSession_ && main.cancelledConnectionPending_,
+                "Pending connection was freed before its worker finished");
+        SetEvent(startup->release);
+        auto pump = [] {
+            MSG message{};
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                if (message.message == WM_QUIT) continue;
+                TranslateMessage(&message); DispatchMessageW(&message);
+            }
+        };
+        const auto cancelledDeadline = GetTickCount64() + 5000;
+        while (main.pendingSession_ && GetTickCount64() < cancelledDeadline) { pump(); Sleep(1); }
+        Require(!main.pendingSession_ && !main.connectionThread_.joinable(),
+                "Canceled connection was not reclaimed after its worker finished");
+        Require(WaitForSingleObject(pending->entered, 3000) == WAIT_OBJECT_0 && pending->connected,
+                "Racing successful startup was not stopped by owned background cleanup");
+        pump();
+        Require(IsWindow(window), "Pending connection cleanup blocked or destroyed the window");
+        SetEvent(pending->release);
+
+        session = std::make_unique<MainWindow::SessionState>();
+        session->id = 502; session->mode = 3; session->name = L"held completion";
+        session->connection = std::make_shared<Transport>();
+        session->logger = std::make_shared<SessionLogger>();
+        main.pendingSession_ = std::move(session);
+        main.connectionThread_ = std::thread([announced] {
+            SetEvent(announced->entered);
+            WaitForSingleObject(announced->release, INFINITE);
+        });
+        Require(WaitForSingleObject(announced->entered, 3000) == WAIT_OBJECT_0, "Held completion did not begin");
+        main.connectionResultReady_ = true;
+        main.connectionResultSuccess_ = false;
+        const auto completionStarted = GetTickCount64();
+        main.FinishPendingConnection();
+        const auto completionMs = GetTickCount64() - completionStarted;
+        Require(completionMs < 250 && main.pendingSession_, "Connection notification joined an unfinished worker");
+        SetEvent(announced->release);
+        const auto completionDeadline = GetTickCount64() + 5000;
+        while (main.pendingSession_ && GetTickCount64() < completionDeadline) { pump(); Sleep(1); }
+        Require(!main.pendingSession_ && !main.connectionThread_.joinable(),
+                "Connection completion did not resume after worker exit");
+
+        session = std::make_unique<MainWindow::SessionState>();
+        session->id = 501; session->mode = 1; session->name = L"held live transport";
+        session->connection = active; session->logger = std::make_shared<SessionLogger>();
+        main.sessions_.push_back(std::move(session));
+        const auto closeStarted = GetTickCount64();
+        SendMessageW(window, WM_CLOSE, 0, 0);
+        const auto closeMs = GetTickCount64() - closeStarted;
+        Require(closeMs < 250, "Window close waited for the held transport");
+        Require(main.Closing() && IsWindow(window) && !IsWindowVisible(window),
+                "Window was destroyed before the held transport was reclaimed");
+        Require(WaitForSingleObject(active->entered, 3000) == WAIT_OBJECT_0, "Shutdown worker did not stop transport");
+        PostMessageW(window, WM_NULL, 0, 0);
+        pump();
+        Require(IsWindow(window) && active->connected, "Shutdown destroyed the window while the worker was held");
+        SendMessageW(window, WM_CLOSE, 0, 0);
+        Require(IsWindow(window), "Repeated close destroyed the window during cleanup");
+        SetEvent(active->release);
+        const auto closeDeadline = GetTickCount64() + 5000;
+        while (IsWindow(window) && GetTickCount64() < closeDeadline) { pump(); Sleep(1); }
+        Require(!IsWindow(window) && !active->connected && main.shutdownComplete_,
+                "Window or transport survived completed shutdown");
+        const Json evidence{{"disconnectAllMs", disconnectMs}, {"connectionCompletionMs", completionMs},
+                            {"closeHandlerMs", closeMs},
+                            {"pendingStartupHeld", true}, {"transportStopHeld", true},
+                            {"scope", "native window and message loop with controlled blocking transports; no hardware latency claim"}};
+        std::cout << evidence.dump() << '\n';
+        wchar_t directory[32768]{};
+        if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768))
+            std::ofstream(std::filesystem::path(directory) / L"shutdown-responsiveness.json") << evidence.dump(2);
+    }
 };
 }
 int main() {
@@ -782,7 +900,7 @@ int main() {
     Gdiplus::GdiplusStartupInput startup; ULONG_PTR token{}; Gdiplus::GdiplusStartup(&token, &startup, nullptr);
     HWND parent = CreateWindowExW(0,L"STATIC",L"AI device callback fixture",WS_OVERLAPPEDWINDOW,0,0,1000,700,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     int result = 0;
-    try { serialctl::AiDeviceTestAccess::Run(parent); std::cout << "[PASS] Actual desktop AI callback: five terminal types, received evidence, target/encoding/CRLF, adjustable live AI monitor and original sidebar, power ON/OFF readback and unchanged selection; controlled transports, no physical devices\n"; }
+    try { serialctl::AiDeviceTestAccess::Run(parent); serialctl::AiDeviceTestAccess::RunShutdown(); std::cout << "[PASS] Actual desktop AI callback and asynchronous connection/shutdown lifecycle; controlled transports, no physical devices\n"; }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; result = 1; }
     DestroyWindow(parent); Gdiplus::GdiplusShutdown(token); return result;
 }

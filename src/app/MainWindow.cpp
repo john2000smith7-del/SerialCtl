@@ -75,6 +75,8 @@ constexpr UINT_PTR CommandDragTimerId = 4005;
 constexpr UINT_PTR BootPulseTimerId = 4006;
 constexpr UINT_PTR ReceivePumpTimerId = 4007;
 constexpr UINT_PTR SerialScanTimerId = 4008;
+constexpr UINT_PTR ShutdownTimerId = 4009;
+constexpr UINT_PTR PendingConnectionTimerId = 4010;
 constexpr int IdCommandDragGhost = 9020;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
 constexpr auto MaximumCommandIntervalMs = CommandMacroController::MaximumIntervalMs;
@@ -293,6 +295,7 @@ struct ApiMessage { std::string method,path; Json body; std::promise<Json> resul
 using ApiRequestMessage = std::shared_ptr<ApiMessage>;
 
 struct ConnectionMessage {
+    std::uint64_t sessionId = 0;
     bool success = false;
     std::wstring error;
 };
@@ -801,14 +804,95 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
 }
 
 MainWindow::~MainWindow() {
-    sftp_.ClearCallbacks(); sftp_.CancelIo(); sftp_.Join();
-    connectionCleanup_.Drain();
-    if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
-    aiPane_.Shutdown();
+    RequestShutdown();
+    if (shutdownThread_.joinable()) {
+        shutdownThread_.join();
+        shutdownComplete_ = true;
+    }
+    if (!shutdownComplete_) {
+        WaitForShutdown();
+        shutdownComplete_ = true;
+    }
+    if (window_ && IsWindow(window_)) FinishShutdown();
+    else { StopStartupUpdate(); StopLogExport(); }
+}
+
+void MainWindow::RequestShutdown() {
+    if (closing_.exchange(true)) return;
+    // Signal every independent worker before waiting for any one of them.
+    discoveryCancel_ = true;
+    discoveryDialog_ = nullptr;
+    ++discoveryGeneration_;
+    updateCancel_ = true;
+    connectionCancel_ = true;
+    if (pendingSession_ && pendingSession_->connection) pendingSession_->connection->CancelStart();
+    if (pendingSession_ && pendingSession_->boot) pendingSession_->boot->Cancel();
+    for (const auto &session : sessions_) if (session->boot) session->boot->Cancel();
+    StopCommandSequence(CommandSequenceEnd::Silent);
+    aiPane_.BeginShutdown(); // Release its device binding while still on the UI thread.
+    powerPane_.BeginShutdown();
+    powerService_.RequestShutdown();
+    apiServer_.RequestStop();
+    sftp_.ClearCallbacks();
+    sftp_.CancelIo();
     if (logExportJob_) logExportJob_->cancel.store(true);
-    StopStartupUpdate();
+    if (logExportThread_.joinable())
+        CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
+    if (window_) {
+        for (const auto timer : {ReceivePumpTimerId, BootPulseTimerId, LogExportTimerId,
+                                  CommandTimerId, PendingConnectionTimerId}) KillTimer(window_, timer);
+    }
+    aiPet_.Shutdown();
+}
+
+void MainWindow::WaitForShutdown() {
+    // MainWindow, its session models and HWND stay alive until this returns.
+    // No worker retains a reference to a UI state that can be destroyed early.
+    apiServer_.Stop();
+    for (const auto &session : sessions_) {
+        if (session->connection) session->connection->Stop();
+        if (session->logger) session->logger->Stop();
+    }
+    if (connectionThread_.joinable()) connectionThread_.join();
+    if (pendingSession_) {
+        if (pendingSession_->connection) pendingSession_->connection->Stop();
+        if (pendingSession_->logger) pendingSession_->logger->Stop();
+    }
+    sftp_.Join();
+    aiPane_.WaitForShutdown();
     powerService_.Shutdown();
+    powerPane_.WaitForBackground();
+    if (updateThread_.joinable()) updateThread_.join();
+    if (discoveryThread_.joinable()) discoveryThread_.join();
+    if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
+    JoinLogExport();
+    connectionCleanup_.Drain();
+}
+
+void MainWindow::FinishShutdown() {
+    if (shutdownThread_.joinable()) {
+        if (WaitForSingleObject(reinterpret_cast<HANDLE>(shutdownThread_.native_handle()), 0) == WAIT_TIMEOUT)
+            return;
+        shutdownThread_.join();
+    }
+    shutdownComplete_ = true;
+    KillTimer(window_, ShutdownTimerId);
+    DrainShutdownMessages();
+    DestroyWindow(window_);
+}
+
+void MainWindow::DrainShutdownMessages() {
+    StopStartupUpdate();
     StopLogExport();
+    MSG pending{};
+    while (PeekMessageW(&pending, window_, MessageApi, MessageApi, PM_REMOVE)) delete reinterpret_cast<ApiRequestMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageDiscovery, MessageDiscovery, PM_REMOVE)) delete reinterpret_cast<DiscoveryMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageConnection, MessageConnection, PM_REMOVE)) delete reinterpret_cast<ConnectionMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageHostKey, MessageHostKey, PM_REMOVE)) delete reinterpret_cast<HostKeyMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageData, MessageData, PM_REMOVE)) delete reinterpret_cast<DataMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageStatus, MessageStatus, PM_REMOVE)) delete reinterpret_cast<StatusMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE)) {}
+    while (PeekMessageW(&pending, window_, MessageSftpProgress, MessageSftpProgress, PM_REMOVE)) {}
 }
 
 void MainWindow::StartStartupUpdate() {
@@ -1745,6 +1829,19 @@ bool MainWindow::PreTranslate(MSG& message) {
 }
 
 LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
+    if (closing_) {
+        // During shutdown only drain owned messages and poll the cleanup
+        // thread. Do not let queued input or timers mutate session models.
+        if (message == WM_CLOSE) return 0;
+        if (message == WM_TIMER) {
+            if (wParam == ShutdownTimerId) FinishShutdown();
+            return 0;
+        }
+        if (message != WM_DESTROY && message != MessageApi && message != MessageUpdatePrompt &&
+            message != MessageUpdate && message != MessageConnection && message != MessageDiscovery &&
+            message != MessageHostKey && message != MessageData && message != MessageStatus)
+            return DefWindowProcW(window_, message, wParam, lParam);
+    }
     // Includes direct control activation and window gestures, not just keyboard
     // messages. Once work has begun, never surprise the user with a later restart.
     if (message == WM_COMMAND || message == WM_ENTERSIZEMOVE) startupUpdateDeferred_ = true;
@@ -1786,6 +1883,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         std::unique_ptr<UpdatePrompt> prompt(reinterpret_cast<UpdatePrompt *>(lParam));
         if (!prompt)
             return 0;
+        if (closing_) { prompt->answer.set_value(false); return 0; }
         if (!CanInstallStartupUpdate(true)) {
             AppendStatus(L"已发现新版；当前任务不受影响，请空闲时重新启动以确认更新。", false);
             prompt->answer.set_value(false);
@@ -1818,8 +1916,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case MessageUpdate: {
         std::unique_ptr<update::UpdateResult> result(reinterpret_cast<update::UpdateResult*>(lParam));
         if (!result) return 0;
-        if (updateThread_.joinable()) updateThread_.join();
         if (closing_.load()) { DiscardUpdate(*result); return 0; }
+        if (updateThread_.joinable()) updateThread_.join();
         if (result->status == update::UpdateStatus::Ready) {
             if (!CanInstallStartupUpdate(true)) {
                 AppendStatus(L"已发现 " + std::wstring(result->version.begin(), result->version.end()) +
@@ -2021,6 +2119,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         PollLogExport();
         return 0;
     case WM_TIMER:
+        if (wParam == PendingConnectionTimerId) {
+            FinishPendingConnection();
+            return 0;
+        }
         if (wParam == ReceivePumpTimerId) {
             KillTimer(window_, ReceivePumpTimerId);
             return HandleMessage(MessageData, 0, 0);
@@ -2213,6 +2315,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         break;
     }
     case MessageData: {
+        if (closing_) return 0;
         std::set<std::uint64_t> overflow;
         {
             std::lock_guard<std::mutex> lock(receivedMutex_);
@@ -2244,6 +2347,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 }
             }
             if (pendingSession_ && item.sessionId == pendingSession_->id) {
+                if (cancelledConnectionPending_) continue;
                 if (pendingConnectionBytes_ + item.data.size() <= 4 * 1024 * 1024) {
                     pendingConnectionBytes_ += item.data.size();
                     pendingConnectionData_.push_back(std::move(item));
@@ -2285,6 +2389,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageStatus: {
         std::unique_ptr<StatusMessage> status(reinterpret_cast<StatusMessage*>(lParam));
+        if (closing_) return 0;
         if (status) {
             SessionState* session = FindSession(status->sessionId);
             auto* aiSession = session ? session : pendingSession_ && pendingSession_->id == status->sessionId ? pendingSession_.get() : nullptr;
@@ -2316,7 +2421,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageDiscovery: {
         std::unique_ptr<DiscoveryMessage> result(reinterpret_cast<DiscoveryMessage*>(lParam));
-        if (result->dialog != discoveryDialog_ || result->generation != discoveryGeneration_ || !IsWindow(result->dialog)) return 0;
+        if (closing_ || !result || result->dialog != discoveryDialog_ || result->generation != discoveryGeneration_ || !IsWindow(result->dialog)) return 0;
         HWND ports = GetDlgItem(result->dialog, IDC_SERIAL);
         SendMessageW(ports, CB_RESETCONTENT, 0, 0);
         for (const auto& name : result->names) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
@@ -2332,7 +2437,13 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageConnection: {
         std::unique_ptr<ConnectionMessage> result(reinterpret_cast<ConnectionMessage*>(lParam));
-        if (result) CompleteConnection(result->success, result->error);
+        if (closing_ || !result || !pendingSession_ || result->sessionId != pendingSession_->id) return 0;
+        if (!cancelledConnectionPending_) {
+            connectionResultReady_ = true;
+            connectionResultSuccess_ = result->success;
+            connectionResultError_ = std::move(result->error);
+        }
+        FinishPendingConnection();
         return 0;
     }
     case MessageHostKey: {
@@ -2383,52 +2494,29 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             const int choice = MessageBoxW(window_, L"命令或顺序尚未保存。是否保存后退出？", L"保存命令", MB_YESNOCANCEL | MB_ICONQUESTION);
             if (choice == IDCANCEL || (choice == IDYES && !SaveCommands())) return 0;
         }
-        discoveryCancel_ = true;
-        if (discoveryThread_.joinable()) discoveryThread_.join();
-        closing_ = true;
-        aiPane_.Shutdown();
-        if (logExportJob_) logExportJob_->cancel.store(true);
-        if (logExportThread_.joinable())
-            CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
-        StopStartupUpdate();
-        apiServer_.Stop();
-        powerService_.Shutdown();
-        connectionCancel_.store(true);
-        if (pendingSession_) pendingSession_->connection->CancelStart();
-        if (connectionThread_.joinable()) connectionThread_.join();
-        pendingSession_.reset();
-        StopCommandSequence(CommandSequenceEnd::Silent);
-        sftp_.ClearCallbacks(); sftp_.CancelIo();
-        while (!sessions_.empty()) {
-            activeSession_ = sessions_.back().get();
-            connection_ = activeSession_->connection.get();
-            logger_ = activeSession_->logger.get();
-            Disconnect();
-        }
         SaveUiState();
-        sftp_.Join();
-        // Device shutdown and transport cleanup take precedence over waiting
-        // for a canceled export to finish destination filesystem I/O.
-        StopLogExport();
-        connectionCleanup_.Drain();
-        {
-            MSG pending{};
-            while (PeekMessageW(&pending, window_, MessageApi, MessageApi, PM_REMOVE)) delete reinterpret_cast<ApiRequestMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageDiscovery, MessageDiscovery, PM_REMOVE)) delete reinterpret_cast<DiscoveryMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageConnection, MessageConnection, PM_REMOVE))
-                delete reinterpret_cast<ConnectionMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageHostKey, MessageHostKey, PM_REMOVE))
-                delete reinterpret_cast<HostKeyMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageData, MessageData, PM_REMOVE))
-                delete reinterpret_cast<DataMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageStatus, MessageStatus, PM_REMOVE))
-                delete reinterpret_cast<StatusMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE)) {}
-            while (PeekMessageW(&pending, window_, MessageSftpProgress, MessageSftpProgress, PM_REMOVE)) {}
+        RequestShutdown();
+        ShowWindow(window_, SW_HIDE);
+        try { shutdownThread_ = std::thread([this] { WaitForShutdown(); }); }
+        catch (...) { WaitForShutdown(); shutdownComplete_ = true; FinishShutdown(); return 0; }
+        // Poll a signaled thread handle; never join a still-running worker on
+        // the UI thread. A timer failure falls back to owned synchronous cleanup.
+        if (!SetTimer(window_, ShutdownTimerId, 10, nullptr)) {
+            shutdownThread_.join();
+            shutdownComplete_ = true;
+            FinishShutdown();
         }
-        DestroyWindow(window_);
         return 0;
     case WM_DESTROY:
+        // Covers external DestroyWindow and startup failure as well as WM_CLOSE.
+        // Child HWNDs cannot be destroyed while callbacks can still reach them.
+        if (!shutdownComplete_) {
+            RequestShutdown();
+            if (shutdownThread_.joinable()) shutdownThread_.join();
+            else WaitForShutdown();
+            shutdownComplete_ = true;
+            DrainShutdownMessages();
+        }
         aiPet_.Shutdown();
         if (uiFont_) DeleteObject(uiFont_);
         if (smallFont_) DeleteObject(smallFont_);
@@ -3895,12 +3983,15 @@ void MainWindow::ConnectFromDialog() {
     pendingSession_ = std::move(session);
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
+    connectionResultReady_ = false;
+    connectionResultError_.clear();
     connectionCancel_.store(false);
     AppendStatus(L"正在连接：" + pendingSession_->name, false);
     SessionState* pending = pendingSession_.get();
     try {
         connectionThread_ = std::thread([this, pending, sessionId] {
             auto result = std::make_unique<ConnectionMessage>();
+            result->sessionId = sessionId;
             try {
                 if (!connectionCancel_.load() && pending->logger->Start(pending->name, result->error)) {
                     result->success = pending->connection->Start(
@@ -3943,7 +4034,6 @@ void MainWindow::ConnectFromDialog() {
 }
 
 void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
-    if (connectionThread_.joinable()) connectionThread_.join();
     if (!pendingSession_) return;
     if (!success || closing_ || connectionCancel_.load()) {
         aiRemoteConnect_ = false;
@@ -4049,6 +4139,7 @@ void MainWindow::DisconnectAll() {
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     connectionCancel_ = true;
     if (pendingSession_) {
+        cancelledConnectionPending_ = true;
         pendingSession_->connection->CancelStart();
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
         apiServer_.SetSessions(sessionService_.Ids());
@@ -4060,9 +4151,7 @@ void MainWindow::DisconnectAll() {
         logger_ = activeSession_->logger.get();
         Disconnect();
     }
-    if (connectionThread_.joinable())
-        connectionThread_.join();
-    pendingSession_.reset();
+    if (cancelledConnectionPending_) FinishPendingConnection();
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
     {
@@ -4094,6 +4183,37 @@ void MainWindow::DisconnectAll() {
     AppendStatus(disconnected + (interruptedMacro ? L"；" + macroStatus : L""), interruptedMacro);
 }
 
+void MainWindow::FinishPendingConnection() {
+    if (!cancelledConnectionPending_ && !connectionResultReady_) return;
+    if (connectionThread_.joinable() &&
+        WaitForSingleObject(reinterpret_cast<HANDLE>(connectionThread_.native_handle()), 0) == WAIT_TIMEOUT) {
+        SetTimer(window_, PendingConnectionTimerId, 10, nullptr);
+        return;
+    }
+    KillTimer(window_, PendingConnectionTimerId);
+    if (connectionThread_.joinable()) connectionThread_.join();
+    if (!cancelledConnectionPending_) {
+        connectionResultReady_ = false;
+        auto error = std::move(connectionResultError_);
+        CompleteConnection(connectionResultSuccess_, error);
+        return;
+    }
+    connectionResultReady_ = false;
+    connectionResultError_.clear();
+    // Startup can succeed just before the cancel flag is observed. Retain and
+    // stop that transport off the UI thread even in that race.
+    if (pendingSession_) {
+        auto transport = pendingSession_->connection;
+        auto log = pendingSession_->logger;
+        connectionCleanup_.Retire([transport, log] {
+            if (transport) transport->Stop();
+            if (log) log->Stop();
+        });
+    }
+    pendingSession_.reset();
+    cancelledConnectionPending_ = false;
+}
+
 MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
     const auto found = std::find_if(sessions_.begin(), sessions_.end(),
         [id](const std::unique_ptr<SessionState>& item) { return item->id == id; });
@@ -4116,6 +4236,7 @@ void MainWindow::ShowAiPage(bool connect) {
 
 Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) {
     auto error = [](const std::string& text) -> Json { return {{"error", text}}; };
+    if (closing_ && method != "release") return error("Application closing");
     if (method == "connectRemote") {
         if (pendingSession_) return error("Another connection is being established");
         aiRemoteConnect_ = true;
@@ -4215,6 +4336,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
 }
 
 bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText) {
+    if (closing_) return false;
     if (!activeSession_ || !connection_ || !connection_->IsConnected()) {
         AppendStatus(L"请先建立连接。", true);
         return false;
@@ -4759,14 +4881,17 @@ void MainWindow::CancelLogExport() {
     PollLogExport();
 }
 
-void MainWindow::StopLogExport() {
-    if (logExportJob_) logExportJob_->cancel.store(true);
+void MainWindow::JoinLogExport() {
     if (logExportThread_.joinable()) {
         const HANDLE thread = reinterpret_cast<HANDLE>(logExportThread_.native_handle());
         while (WaitForSingleObject(thread, 50) == WAIT_TIMEOUT)
             CancelSynchronousIo(thread);
         logExportThread_.join();
     }
+}
+void MainWindow::StopLogExport() {
+    if (logExportJob_) logExportJob_->cancel.store(true);
+    JoinLogExport();
     if (window_) KillTimer(window_, LogExportTimerId);
     logExportJob_.reset();
 }

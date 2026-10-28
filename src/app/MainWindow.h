@@ -48,6 +48,7 @@ public:
     void StartStartupUpdate();
     bool PreTranslate(MSG& message);
     HWND Handle() const { return window_; }
+    bool Closing() const { return closing_.load(); }
 
 private:
 #ifdef SERIALCTL_AI_TESTING
@@ -208,6 +209,12 @@ private:
     void PollLogExport();
     void CancelLogExport();
     void StopLogExport();
+    void JoinLogExport();
+    void RequestShutdown();
+    void WaitForShutdown();
+    void FinishShutdown();
+    void DrainShutdownMessages();
+    void FinishPendingConnection();
     void SaveNetworkDiagnostics(HWND owner = nullptr);
     void ShowSettings();
     void ExecuteTerminalAction(UINT command, HWND owner = nullptr);
@@ -435,10 +442,15 @@ private:
     PaintBuffer windowPaintBuffer_;
     TerminalViewport terminalViewport_;
     std::atomic_bool connectionCancel_{false};
+    bool cancelledConnectionPending_ = false;
+    bool connectionResultReady_ = false, connectionResultSuccess_ = false;
+    std::wstring connectionResultError_;
     std::unique_ptr<SessionState> pendingSession_;
     std::vector<ReceivedItem> pendingConnectionData_;
     size_t pendingConnectionBytes_ = 0;
     std::atomic<bool> closing_{false};
+    std::thread shutdownThread_;
+    bool shutdownComplete_ = false;
     std::thread updateThread_;
     std::atomic<bool> updateCancel_{false};
     bool startupUpdateDeferred_ = false;

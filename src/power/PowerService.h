@@ -23,6 +23,7 @@ class PowerService {
     Json Action(const std::string &id);
     static Json UsbResources();
     static bool VisaAvailable();
+    void RequestShutdown();
     void Shutdown();
     bool ExportLog(bool csv, const std::wstring &path, std::wstring &error);
     SessionLogger::ExportPoint CaptureLogExportPoint(bool csv);

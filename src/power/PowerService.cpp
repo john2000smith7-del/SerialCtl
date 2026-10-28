@@ -1147,14 +1147,19 @@ void PowerService::Run() {
     }
     Disconnect();
 }
-void PowerService::Shutdown() {
+void PowerService::RequestShutdown() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        stopping_ = true;
-        ++recoveryCancelEpoch_;
+        if (!stopping_) {
+            stopping_ = true;
+            ++recoveryCancelEpoch_;
+        }
         queue_.clear();
         wake_.notify_all();
     }
+}
+void PowerService::Shutdown() {
+    RequestShutdown();
     if (thread_.joinable())
         thread_.join();
 }

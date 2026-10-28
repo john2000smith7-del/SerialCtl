@@ -71,6 +71,13 @@ PowerPane::~PowerPane() {
         DeleteObject(surfaceBrush_);
     if (panelBrush_) DeleteObject(panelBrush_);
 }
+void PowerPane::BeginShutdown() {
+    closing_ = true;
+    if (window_) KillTimer(window_, 1);
+}
+void PowerPane::WaitForBackground() {
+    for (auto &worker : resourceScanWorkers_) worker.Drain();
+}
 bool PowerPane::Create(HWND parent, HFONT font, bool dark, PowerService *service) {
     font_ = font;
     service_ = service;
@@ -1178,6 +1185,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (!self)
         return DefWindowProcW(h, m, w, l);
+    if (self->closing_ && (m == WM_TIMER || m == WM_COMMAND)) return 0;
     if (m == WM_CREATE) {
         self->Theme(self->dark_);
         self->body_ = CreateWindowExW(WS_EX_CONTROLPARENT,L"STATIC",L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_CLIPSIBLINGS,
