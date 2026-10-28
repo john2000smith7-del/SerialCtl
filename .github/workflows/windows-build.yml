@@ -34,6 +34,13 @@ jobs:
             $transcriptOpen = $false
             $reason = $failure.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
             Write-Host "::error title=Release verification exception::$reason"
+            $nativeLog = "$env:RUNNER_TEMP/serialctl-ui/native-process.log"
+            if (Test-Path $nativeLog) {
+              Get-Content $nativeLog | Select-String 'error|fatal|FAILED' | Select-Object -Last 40 | ForEach-Object {
+                $line = $_.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+                Write-Host "::error title=Native verification failure::$line"
+              }
+            }
             Get-Content "$env:RUNNER_TEMP/serialctl-build.txt" -Tail 80 | ForEach-Object {
               $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
               Write-Host "::error title=Windows build failure::$line"

@@ -41,9 +41,15 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          foreach ($name in @('build.txt','tests.txt','pe.txt','ctest-x64.txt')) {
+          foreach ($name in @('build.txt','tests.txt','pe.txt','ctest-x64.txt','native-process.log')) {
             $path = "$env:RUNNER_TEMP/native-evidence/$name"
             if (Test-Path $path) {
+              if ($name -eq 'native-process.log') {
+                Get-Content $path | Select-String 'error|fatal|FAILED' | Select-Object -Last 40 | ForEach-Object {
+                  $line = $_.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+                  Write-Host "::notice title=Native verification failure::$line"
+                }
+              }
               Get-Content $path -Tail 50 | ForEach-Object {
                 $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
                 Write-Host "::notice title=${name}::$line"
