@@ -14,6 +14,17 @@ jobs:
       CMAKE_BUILD_PARALLEL_LEVEL: 2
     steps:
       - uses: actions/checkout@v4
+      - name: Compile SSH lifecycle regression first
+        shell: powershell
+        run: |
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/native-evidence"
+          "SERIALCTL_EVIDENCE_DIR=$env:SERIALCTL_EVIDENCE_DIR" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64 -RepositoryRoot (Get-SerialCtlRepositoryRoot)
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure native diagnostics' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile SSH lifecycle fixture' -Arguments @('--build',$directory,'--config','Release','--target','ssh_lifecycle_test','--parallel','2')
       - name: Clean MSVC x64 build
         timeout-minutes: 15
         shell: powershell
@@ -41,16 +52,17 @@ jobs:
         if: always()
         shell: powershell
         run: |
+          $native = "$env:RUNNER_TEMP/native-evidence/native-process.log"
+          if (Test-Path $native) {
+            Get-Content $native | Select-String 'error|fatal|FAILED' | Select-Object -First 8 | ForEach-Object {
+              $line = $_.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+              Write-Host "::notice title=Native verification failure::$line"
+            }
+          }
           foreach ($name in @('build.txt','tests.txt','pe.txt','ctest-x64.txt','native-process.log')) {
             $path = "$env:RUNNER_TEMP/native-evidence/$name"
             if (Test-Path $path) {
-              if ($name -eq 'native-process.log') {
-                Get-Content $path | Select-String 'error|fatal|FAILED' | Select-Object -Last 40 | ForEach-Object {
-                  $line = $_.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
-                  Write-Host "::notice title=Native verification failure::$line"
-                }
-              }
-              Get-Content $path -Tail 50 | ForEach-Object {
+              Get-Content $path -Tail 8 | ForEach-Object {
                 $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
                 Write-Host "::notice title=${name}::$line"
               }

@@ -28,7 +28,8 @@ int main() {
             const auto eventName = L"Local\\SerialCtl.SSH." + std::to_wstring(GetCurrentProcessId());
             HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, eventName.c_str());
             SetEnvironmentVariableW(L"SERIALCTL_SSH_READY", eventName.c_str());
-            auto ssh = std::make_shared<PlinkConnection>(host, 22, L"fixture", L"", 80, 24, [](const auto&) { return true; });
+            HostKeyConfirmation confirm = [](const HostKeyChallenge&) { return true; };
+            auto ssh = std::make_shared<PlinkConnection>(host, std::uint16_t(22), L"fixture", L"", 80, 24, confirm);
             std::atomic<size_t> received{0};
             Require(ssh->Start([&](const Bytes& bytes) { received += bytes.size(); }, [](const auto&, bool) {}, error), "SSH fixture start");
             Require(WaitForSingleObject(ready, 3000) == WAIT_OBJECT_0, "child ready");
