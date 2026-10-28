@@ -1632,6 +1632,29 @@ LRESULT CALLBACK MainWindow::DialogControlSubclassProc(HWND window, UINT message
     return result;
 }
 
+LRESULT CALLBACK MainWindow::CommandDragGhostProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    auto* self = reinterpret_cast<MainWindow*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_NCCREATE) {
+        self = static_cast<MainWindow*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
+    }
+    if (message == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
+    if (message == WM_ERASEBKGND) return 1;
+    if (message == WM_PAINT && self) {
+        PAINTSTRUCT paint{};
+        HDC dc = BeginPaint(window, &paint);
+        DRAWITEMSTRUCT item{};
+        item.CtlID = IdCommandDragGhost;
+        item.hwndItem = window;
+        item.hDC = dc;
+        GetClientRect(window, &item.rcItem);
+        self->DrawOwnerItem(item);
+        EndPaint(window, &paint);
+        return 0;
+    }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
 LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
     UINT_PTR subclassId, DWORD_PTR referenceData) {
     auto* self = reinterpret_cast<MainWindow*>(referenceData);
@@ -1658,7 +1681,8 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
         self->UpdateCommandDrag(point, true);
         return 0;
     }
-    if (message == WM_KEYDOWN && wParam == VK_ESCAPE && self->draggingCommandIndex_ >= 0) {
+    if (message == WM_KEYDOWN && wParam == VK_ESCAPE &&
+        (self->draggingCommandIndex_ >= 0 || self->pendingCommandDragIndex_ >= 0)) {
         self->EndCommandDrag(false);
         return 0;
     }
@@ -1765,21 +1789,48 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
                 }
                 return 0;
             }
-            if (point.x <= itemRect.left + Ui::Scale(32) && self->runningCommandIndex_ < 0) {
-                self->draggingCommandIndex_ = index;
-                self->commandDropIndex_ = index;
-                self->commandDragGrab_ = {point.x, point.y - itemRect.top};
-                self->commandDragGhost_ = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_DISABLED | SS_OWNERDRAW,
-                    0, itemRect.top, itemRect.right, itemRect.bottom - itemRect.top, window,
-                    reinterpret_cast<HMENU>(IdCommandDragGhost), self->instance_, nullptr);
+            if (PointInRect(card, point) && self->runningCommandIndex_ < 0) {
+                self->pendingCommandDragIndex_ = index;
+                self->commandDragOrigin_ = point;
+                self->commandDragGrab_ = {point.x - itemRect.left, point.y - itemRect.top};
                 SetCapture(window);
-                SetTimer(window, CommandDragTimerId, 40, nullptr);
-                self->UpdateCommandDrag(point, false);
-                SetCursor(LoadCursorW(nullptr, IDC_SIZEALL));
                 return 0;
             }
         }
     } else if (message == WM_MOUSEMOVE) {
+        if (self->pendingCommandDragIndex_ >= 0 && self->draggingCommandIndex_ < 0) {
+            const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+            if (std::abs(point.x - self->commandDragOrigin_.x) >= std::max(1, GetSystemMetrics(SM_CXDRAG) / 2) ||
+                std::abs(point.y - self->commandDragOrigin_.y) >= std::max(1, GetSystemMetrics(SM_CYDRAG) / 2)) {
+                WNDCLASSW wc{};
+                wc.lpfnWndProc = CommandDragGhostProc;
+                wc.hInstance = self->instance_;
+                wc.lpszClassName = L"SerialCtlCommandDragGhost";
+                wc.hCursor = LoadCursorW(nullptr, IDC_SIZEALL);
+                RegisterClassW(&wc);
+                RECT client{}, item{};
+                GetClientRect(window, &client);
+                SendMessageW(window, LB_GETITEMRECT, self->pendingCommandDragIndex_, reinterpret_cast<LPARAM>(&item));
+                self->draggingCommandIndex_ = self->pendingCommandDragIndex_;
+                self->pendingCommandDragIndex_ = -1;
+                self->commandDropIndex_ = self->draggingCommandIndex_;
+                self->commandInsertIndex_ = self->draggingCommandIndex_;
+                self->commandDragInside_ = true;
+                self->commandDragGhost_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                    wc.lpszClassName, L"", WS_POPUP, 0, 0, client.right, item.bottom - item.top,
+                    self->window_, nullptr, self->instance_, self);
+                if (!self->commandDragGhost_) { self->EndCommandDrag(false); return 0; }
+                OverlayScrollMetrics metrics;
+                const int inset = GetOverlayScrollMetrics(window, metrics) ? Ui::OverlayScrollLaneWidth : 0;
+                SetWindowRgn(self->commandDragGhost_, CreateRoundRectRgn(0, Ui::Gap / 2,
+                    client.right - inset, item.bottom - item.top - Ui::Gap / 2,
+                    Ui::CardRadius * 2, Ui::CardRadius * 2), FALSE);
+                SetTimer(window, CommandDragTimerId, 160, nullptr);
+                self->UpdateCommandDrag(point, false);
+                InvalidateRect(window, nullptr, FALSE);
+            }
+            return 0;
+        }
         if (self->draggingCommandIndex_ >= 0) {
             self->UpdateCommandDrag({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}, false);
             SetCursor(LoadCursorW(nullptr, IDC_SIZEALL));
@@ -1825,6 +1876,9 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
         RECT client{}; GetClientRect(window, &client);
         self->UpdateCommandDrag(point, false);
         self->EndCommandDrag(PointInRect(client, point));
+        return 0;
+    } else if (message == WM_LBUTTONUP && self->pendingCommandDragIndex_ >= 0) {
+        self->EndCommandDrag(false);
         return 0;
     } else if (message == WM_CAPTURECHANGED) {
         self->EndCommandDrag(false);
@@ -3477,26 +3531,22 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         DrawTextSimple(dc, state, subtitle, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
     } else if (item.CtlID == IdCommandList && item.itemID < commands_.size()) {
-        int displayIndex = static_cast<int>(item.itemID);
         const bool ghost = source.itemData == ~ULONG_PTR(0);
-        if (!ghost && draggingCommandIndex_ >= 0 && commandDropIndex_ >= 0) {
-            if (displayIndex == commandDropIndex_) {
-                RECT slot = rect; InflateRect(&slot, 0, -Ui::Gap / 2);
-                DrawRoundedBox(dc, slot, Ui::CardRadius, colors.panel, colors.border);
-                return;
-            }
-            if (draggingCommandIndex_ < commandDropIndex_ && displayIndex >= draggingCommandIndex_ && displayIndex < commandDropIndex_) ++displayIndex;
-            else if (draggingCommandIndex_ > commandDropIndex_ && displayIndex > commandDropIndex_ && displayIndex <= draggingCommandIndex_) --displayIndex;
-        }
-        const CommandItem& command = commands_[static_cast<size_t>(displayIndex)];
+        const bool sourceDragging = !ghost && draggingCommandIndex_ == static_cast<int>(item.itemID);
+        HBRUSH background = CreateSolidBrush(colors.panel);
+        FillRect(dc, &rect, background);
+        DeleteObject(background);
+        const CommandItem& command = commands_[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
         RECT card{rect.left, rect.top + Ui::Gap / 2, rect.right - rightInset, rect.bottom - (Ui::Gap - Ui::Gap / 2)};
-        const COLORREF cardFill = ghost ? colors.accent : colors.panelAlt;
-        const COLORREF mainInk = ghost ? RGB(255, 255, 255) : colors.text;
+        const COLORREF cardFill = ghost ? (commandDragInside_ ? colors.accent : colors.muted)
+                                         : sourceDragging ? colors.panel : colors.panelAlt;
+        const COLORREF mainInk = ghost ? RGB(255, 255, 255) : sourceDragging ? colors.muted : colors.text;
         const COLORREF secondaryInk = ghost ? RGB(255, 255, 255) : colors.muted;
-        DrawRoundedBox(dc, card, Ui::CardRadius, cardFill, ghost ? colors.accent : selected ? colors.muted : colors.border);
+        DrawRoundedBox(dc, card, Ui::CardRadius, cardFill,
+                       ghost ? cardFill : sourceDragging ? colors.border : selected ? colors.muted : colors.border);
         const int cy = (card.top + card.bottom) / 2;
         RECT marker{card.left + Ui::Scale(8), cy - Ui::Scale(8), card.left + Ui::Scale(24), cy + Ui::Scale(8)};
         UiDrawGlyph(dc, marker, secondaryInk, UiGlyph::Command);
@@ -3505,7 +3555,9 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         RECT value{card.left + Ui::Scale(32), card.top + Ui::Scale(31), actions.run.left - Ui::Space, card.bottom - Ui::Scale(6)};
         DrawTextSimple(dc, command.name, title, mainInk, uiFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         const bool macro = command.commands.size() > 1;
-        const std::wstring summary = macro ?
+        const std::wstring summary = ghost ?
+            (commandDragInside_ && commandDropIndex_ >= 0 ? L"移至第 " + std::to_wstring(commandDropIndex_ + 1) + L" 项"
+                                                          : L"松开取消") : macro ?
             L"宏 · " + std::to_wstring(command.commands.size()) + L" 条指令 · " +
                 std::to_wstring(command.intervalMs) + L" ms" :
             (command.commands.empty() ? std::wstring() : command.commands.front());
@@ -3514,8 +3566,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool connected = connection_ && connection_->IsConnected();
         const bool sequenceRunning = runningCommandIndex_ >= 0;
         const bool isRunning = runningCommandIndex_ == static_cast<int>(item.itemID);
-        const bool runnable = connected && (!sequenceRunning || isRunning);
-        const bool editable = !sequenceRunning;
+        const bool runnable = !sourceDragging && connected && (!sequenceRunning || isRunning);
+        const bool editable = !sourceDragging && !sequenceRunning;
         const bool hoverRun = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 1;
         const bool hoverEdit = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 2;
         const bool runDown =
@@ -3523,15 +3575,17 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const bool editDown =
             editable && pressedCommandIndex_ == static_cast<int>(item.itemID) && pressedCommandAction_ == 2;
         DrawRoundedBox(dc, actions.run, Ui::Radius,
-                       ghost || runDown       ? colors.accent
+                       ghost                  ? cardFill
+                       : runDown              ? colors.accent
                        : hoverRun && runnable ? colors.panel
-                                              : colors.panelAlt,
-                       ghost || runDown ? colors.accent : colors.panelAlt);
+                                              : cardFill,
+                       ghost ? cardFill : runDown ? colors.accent : cardFill);
         DrawRoundedBox(dc, actions.edit, Ui::Radius,
-                       ghost || editDown       ? colors.accent
+                       ghost                   ? cardFill
+                       : editDown              ? colors.accent
                        : hoverEdit && editable ? colors.panel
-                                               : colors.panelAlt,
-                       ghost || editDown ? colors.accent : colors.panelAlt);
+                                               : cardFill,
+                       ghost ? cardFill : editDown ? colors.accent : cardFill);
 
         RECT runIcon = actions.run;
         InflateRect(&runIcon, -Ui::Scale(6), -Ui::Scale(6));
@@ -3544,6 +3598,20 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             DrawCommandProgress(dc, actions.run, submittedCommandSteps_, command.commands.size(),
                 colors.border, colors.accent);
         DrawEditIcon(dc, actions.edit, ghost || editDown ? RGB(255, 255, 255) : editable ? colors.muted : colors.border);
+        if (!ghost && draggingCommandIndex_ >= 0 && commandDragInside_ && commandInsertIndex_ >= 0) {
+            const bool above = commandInsertIndex_ == static_cast<int>(item.itemID);
+            const bool belowLast = commandInsertIndex_ == static_cast<int>(commands_.size()) &&
+                item.itemID + 1 == commands_.size();
+            if (above || belowLast) {
+                const int y = above ? rect.top + Ui::Gap / 4 : rect.bottom - Ui::Gap / 4;
+                HPEN pen = CreatePen(PS_SOLID, std::max(2, Ui::Scale(2)), colors.accent);
+                HGDIOBJ previous = SelectObject(dc, pen);
+                MoveToEx(dc, card.left + Ui::Scale(4), y, nullptr);
+                LineTo(dc, card.right - Ui::Scale(4), y);
+                SelectObject(dc, previous);
+                DeleteObject(pen);
+            }
+        }
     } else if (item.CtlID == IdSftpList && item.itemID < sftpEntries_.size()) {
         const SftpEntry& entry = sftpEntries_[item.itemID];
         OverlayScrollMetrics scrollMetrics;
@@ -7816,52 +7884,66 @@ void MainWindow::UpdateCommandActions() {
 void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
     if (draggingCommandIndex_ < 0 || !commandDragGhost_) return;
     RECT client{}; GetClientRect(commandList_, &client);
-    if (edgeScroll) {
+    const bool wasInside = commandDragInside_;
+    commandDragInside_ = PointInRect(client, point);
+    bool scrolled = false;
+    if (edgeScroll && commandDragInside_) {
         const int top = static_cast<int>(SendMessageW(commandList_, LB_GETTOPINDEX, 0, 0));
+        const int rowHeight = std::max(1, static_cast<int>(SendMessageW(commandList_, LB_GETITEMHEIGHT, 0, 0)));
+        const int visibleRows = std::max(1, static_cast<int>(client.bottom / rowHeight));
+        const int lastTop = std::max(0, static_cast<int>(commands_.size()) - visibleRows);
         const int next = point.y < Ui::Scale(28) ? std::max(0, top - 1) :
-            point.y > client.bottom - Ui::Scale(28) ? std::min(static_cast<int>(commands_.size()) - 1, top + 1) : top;
-        if (next != top) SendMessageW(commandList_, LB_SETTOPINDEX, next, 0);
+            point.y > client.bottom - Ui::Scale(28) ? std::min(lastTop, top + 1) : top;
+        if (next != top) {
+            SendMessageW(commandList_, LB_SETTOPINDEX, next, 0);
+            scrolled = true;
+        }
     }
+    const int previousInsertion = commandInsertIndex_;
     const int previousDrop = commandDropIndex_;
-    const DWORD hit = static_cast<DWORD>(SendMessageW(commandList_, LB_ITEMFROMPOINT, 0,
-        MAKELPARAM(std::clamp<int>(point.x, 0, std::max(0L, client.right - 1)),
-                   std::clamp<int>(point.y, 0, std::max(0L, client.bottom - 1)))));
-    if (LOWORD(hit) < commands_.size()) commandDropIndex_ = LOWORD(hit);
-    const int height = static_cast<int>(SendMessageW(commandList_, LB_GETITEMHEIGHT, 0, 0));
+    if (commandDragInside_ && !commands_.empty()) {
+        const DWORD hit = static_cast<DWORD>(SendMessageW(commandList_, LB_ITEMFROMPOINT, 0,
+            MAKELPARAM(point.x, point.y)));
+        const int row = std::min<int>(LOWORD(hit), static_cast<int>(commands_.size()) - 1);
+        RECT item{};
+        if (SendMessageW(commandList_, LB_GETITEMRECT, row, reinterpret_cast<LPARAM>(&item)) != LB_ERR) {
+            commandInsertIndex_ = row + (point.y >= (item.top + item.bottom) / 2 ? 1 : 0);
+            commandDropIndex_ = commandInsertIndex_ - (commandInsertIndex_ > draggingCommandIndex_ ? 1 : 0);
+            commandDropIndex_ = std::clamp(commandDropIndex_, 0, static_cast<int>(commands_.size()) - 1);
+        }
+    }
+    POINT screen = point;
+    ClientToScreen(commandList_, &screen);
     RECT old{}; GetWindowRect(commandDragGhost_, &old);
-    MapWindowPoints(nullptr, commandList_, reinterpret_cast<POINT*>(&old), 2);
-    const int y = point.y - commandDragGrab_.y;
-    if (IsWindowVisible(commandDragGhost_) && old.top == y && old.right == client.right && old.bottom - old.top == height && previousDrop == commandDropIndex_)
-        return;
-    if (old.right != client.right || !IsWindowVisible(commandDragGhost_)) {
-        OverlayScrollMetrics metrics;
-        const int inset = GetOverlayScrollMetrics(commandList_, metrics) ? Ui::OverlayScrollLaneWidth : 0;
-        // Restrict the preview to the card silhouette, excluding row background.
-        SetWindowRgn(commandDragGhost_, CreateRoundRectRgn(0, Ui::Gap / 2, client.right - inset,
-            height - Ui::Gap / 2, Ui::CardRadius * 2, Ui::CardRadius * 2), FALSE);
+    const int x = screen.x - commandDragGrab_.x, y = screen.y - commandDragGrab_.y;
+    if (!IsWindowVisible(commandDragGhost_) || old.left != x || old.top != y) {
+        SetWindowPos(commandDragGhost_, HWND_TOP, x, y, 0, 0,
+            SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
     }
-    SetWindowPos(commandDragGhost_, HWND_TOP, 0, y, client.right, height,
-        SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOCOPYBITS | SWP_NOREDRAW);
-    RECT dirty{0, std::min(old.top, static_cast<LONG>(y)), client.right,
-        std::max(old.bottom, static_cast<LONG>(y + height))};
-    if (previousDrop != commandDropIndex_ || edgeScroll) {
-        RECT first{}, last{};
-        SendMessageW(commandList_, LB_GETITEMRECT, std::min(previousDrop, commandDropIndex_), reinterpret_cast<LPARAM>(&first));
-        SendMessageW(commandList_, LB_GETITEMRECT, std::max(previousDrop, commandDropIndex_), reinterpret_cast<LPARAM>(&last));
-        dirty.top = std::min(dirty.top, first.top); dirty.bottom = std::max(dirty.bottom, last.bottom);
+    if (wasInside != commandDragInside_ || previousDrop != commandDropIndex_)
+        InvalidateRect(commandDragGhost_, nullptr, FALSE);
+    if (scrolled) {
+        InvalidateRect(commandList_, nullptr, FALSE);
+    } else if (previousInsertion != commandInsertIndex_ || wasInside != commandDragInside_) {
+        for (int insertion : {previousInsertion, commandInsertIndex_}) {
+            if (insertion < 0 || commands_.empty()) continue;
+            RECT row{};
+            const int index = std::min(insertion, static_cast<int>(commands_.size()) - 1);
+            if (SendMessageW(commandList_, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&row)) != LB_ERR)
+                InvalidateRect(commandList_, &row, FALSE);
+        }
     }
-    RedrawWindow(commandList_, &dirty, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
 void MainWindow::EndCommandDrag(bool commit) {
-    if (draggingCommandIndex_ < 0) return;
+    if (draggingCommandIndex_ < 0 && pendingCommandDragIndex_ < 0) return;
     const int from = draggingCommandIndex_, to = commandDropIndex_;
-    draggingCommandIndex_ = commandDropIndex_ = -1;
+    draggingCommandIndex_ = commandDropIndex_ = pendingCommandDragIndex_ = commandInsertIndex_ = -1;
     KillTimer(commandList_, CommandDragTimerId);
     if (commandDragGhost_) { DestroyWindow(commandDragGhost_); commandDragGhost_ = nullptr; }
     if (GetCapture() == commandList_) ReleaseCapture();
-    if (commit && to >= 0) MoveCommand(static_cast<size_t>(from), static_cast<size_t>(to));
-    InvalidateRect(commandList_, nullptr, TRUE);
+    if (commit && from >= 0 && to >= 0) MoveCommand(static_cast<size_t>(from), static_cast<size_t>(to));
+    InvalidateRect(commandList_, nullptr, FALSE);
 }
 
 void MainWindow::MoveCommand(size_t from, size_t to) {

@@ -174,6 +174,7 @@ private:
     static LRESULT CALLBACK CommandListSubclassProc(
         HWND window, UINT message, WPARAM wParam, LPARAM lParam,
         UINT_PTR subclassId, DWORD_PTR referenceData);
+    static LRESULT CALLBACK CommandDragGhostProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK OverlayListSubclassProc(
         HWND window, UINT message, WPARAM wParam, LPARAM lParam,
         UINT_PTR subclassId, DWORD_PTR referenceData);
@@ -444,6 +445,10 @@ private:
     std::vector<CommandItem> commands_;
     int draggingCommandIndex_ = -1;
     int commandDropIndex_ = -1;
+    int pendingCommandDragIndex_ = -1;
+    int commandInsertIndex_ = -1;
+    bool commandDragInside_ = true;
+    POINT commandDragOrigin_{};
     POINT commandDragGrab_{};
     HWND commandDragGhost_ = nullptr;
     int hoveredCommandIndex_ = -1;

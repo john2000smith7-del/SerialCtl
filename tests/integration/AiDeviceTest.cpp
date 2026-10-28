@@ -358,11 +358,23 @@ struct AiDeviceTestAccess {
             main.commandsDirty_=false; main.RefreshCommandList();
             RECT row{}; SendMessageW(main.commandList_,LB_GETITEMRECT,0,reinterpret_cast<LPARAM>(&row));
             const int h=row.bottom-row.top;
-            auto begin=MAKELPARAM(12,h/2), moved=MAKELPARAM(12,h*2+h/2);
+            // Start in the text area (not just the small left-hand icon), and
+            // require actual pointer movement before a drag preview appears.
+            const int bodyX = std::min<int>(row.right - 90, row.left + 60);
+            auto begin=MAKELPARAM(bodyX,h/2), moved=MAKELPARAM(bodyX+25,h*2+h/2);
+            SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
+            Require(!main.commandDragGhost_ && !main.commandsDirty_,"Pressing a card without moving must not start a drag");
+            if (GetSystemMetrics(SM_CXDRAG) / 2 > 1 && GetSystemMetrics(SM_CYDRAG) / 2 > 1) {
+                SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(bodyX+1,h/2+1));
+                Require(!main.commandDragGhost_,"Sub-threshold pointer movement must remain a click");
+            }
+            SendMessageW(main.commandList_,WM_LBUTTONUP,0,begin);
+            Require(!main.commandDragGhost_ && !main.commandsDirty_,"Releasing a click must not reorder commands");
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
             SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
+            Require(main.commandDragGhost_ && main.commands_[0].name==L"A","Dragging card text must create a preview without committing order");
             RECT ghost{}; GetWindowRect(main.commandDragGhost_,&ghost); MapWindowPoints(nullptr,main.commandList_,reinterpret_cast<POINT*>(&ghost),2);
-            Require(main.commandDragGhost_ && ghost.top==h*2 && main.commands_[0].name==L"A","Drag must follow pointer without committing order");
+            Require(ghost.top==h*2 && ghost.left==25,"Drag preview must track pointer in both dimensions");
             ui_test::SaveUiEvidence(main.commandList_,L"v207-command-drag-held.png");
             SendMessageW(main.commandList_,WM_KEYDOWN,VK_ESCAPE,0);
             Require(!main.commandDragGhost_ && main.commands_[0].name==L"A" && !main.commandsDirty_,"Esc must restore original command order");
@@ -370,6 +382,12 @@ struct AiDeviceTestAccess {
             SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
             SendMessageW(main.commandList_,WM_LBUTTONUP,0,moved);
             Require(main.commands_[2].name==L"A" && transports[4]->writes==writes,"Only release commits reorder; drag never executes");
+            main.commandsDirty_=false;
+            SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
+            SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(-24,h+h/2));
+            SendMessageW(main.commandList_,WM_LBUTTONUP,0,MAKELPARAM(-24,h+h/2));
+            Require(!main.commandDragGhost_ && !main.commandsDirty_ && main.commands_[0].name==L"B" && main.commands_[2].name==L"A",
+                "Releasing outside the list must cancel reorder");
             const auto file=std::filesystem::temp_directory_path()/(L"serialctl-drop-"+std::to_wstring(GetCurrentProcessId())+L".txt");
             {std::ofstream stream(file);stream<<"echo imported-only\n";}
             main.commandsDirty_=false;

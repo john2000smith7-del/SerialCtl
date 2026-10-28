@@ -32,6 +32,14 @@ jobs:
           python tests/integration/cmd_pipe_encoding_probe.py "$env:RUNNER_TEMP/serialctl-ui/cmd-pipe-encoding.json"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"
+      - name: Exercise command dragging with actual desktop mouse and frame capture
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archive.Count -ne 1) { throw 'Expected exactly one verified release archive.' }
+          python tests/integration/gui_command_drag_fixture.py --archive $archive[0].FullName --output "$env:RUNNER_TEMP/serialctl-command-drag"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise packaged update startup in real windows
         shell: powershell
         run: |
@@ -73,5 +81,8 @@ jobs:
             ${{ runner.temp }}/serialctl-ui/*.txt
             ${{ runner.temp }}/serialctl-ui/*.json
             ${{ runner.temp }}/serialctl-ui/*.log
+            ${{ runner.temp }}/serialctl-command-drag/*.png
+            ${{ runner.temp }}/serialctl-command-drag/*.json
+            ${{ runner.temp }}/serialctl-command-drag/*.txt
             ${{ runner.temp }}/serialctl-build.txt
           if-no-files-found: warn
