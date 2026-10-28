@@ -28,8 +28,10 @@ int main() {
         DWORD handlesBefore = 0; GetProcessHandleCount(GetCurrentProcess(), &handlesBefore);
         const auto threadsBefore = Threads();
         std::vector<ULONGLONG> elapsed;
+        nlohmann::json resourceTrace = nlohmann::json::array();
         std::wstring error;
         for (int index = 0; index < 16; ++index) {
+          {
             const std::wstring mode = index < 8 ? L"noread" : index < 12 ? L"flood" : L"echo";
             const auto host = L"serialctl-lifecycle-" + std::to_wstring(GetCurrentProcessId()) + mode;
             const auto eventName = L"Local\\SerialCtl.SSH." + std::to_wstring(GetCurrentProcessId());
@@ -73,7 +75,11 @@ int main() {
             if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\TrustedHostKeys", 0, KEY_SET_VALUE, &key) == ERROR_SUCCESS) {
                 RegDeleteValueW(key, (host + L":22").c_str()); RegCloseKey(key);
             }
+          }
+          DWORD count = 0; GetProcessHandleCount(GetCurrentProcess(), &count);
+          resourceTrace.push_back({{"cycle", index}, {"handles", count}, {"threads", Threads()}});
         }
+        DWORD afterCancel = 0; GetProcessHandleCount(GetCurrentProcess(), &afterCancel);
         {
             const auto eventName = L"Local\\SerialCtl.SSH.Cancel." + std::to_wstring(GetCurrentProcessId());
             HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, eventName.c_str());
@@ -104,11 +110,13 @@ int main() {
         SetEnvironmentVariableW(L"SERIALCTL_SSH_READY", nullptr);
         DWORD handlesAfter = 0; GetProcessHandleCount(GetCurrentProcess(), &handlesAfter);
         const auto threadsAfter = Threads();
+        std::cout << "resource_trace=" << nlohmann::json({{"cycles", resourceTrace}, {"afterCancel", afterCancel}}).dump() << '\n';
         std::cout << "resources handles=" << handlesBefore << "->" << handlesAfter << " threads=" << threadsBefore << "->" << threadsAfter << '\n';
         Require(handlesAfter <= handlesBefore + 3 && threadsAfter <= threadsBefore + 1, "SSH handle/thread growth");
         std::sort(elapsed.begin(), elapsed.end());
         nlohmann::json evidence{{"samples", elapsed}, {"maxMs", elapsed.back()}, {"p50Ms", elapsed[elapsed.size()/2]},
             {"handlesBefore", handlesBefore}, {"handlesAfter", handlesAfter}, {"threadsBefore", threadsBefore}, {"threadsAfter", threadsAfter},
+            {"resourceTrace", resourceTrace},
             {"scope", "controlled child processes, no SSH server or UART hardware"}};
         std::cout << evidence.dump() << '\n';
         wchar_t directory[32768]{};
