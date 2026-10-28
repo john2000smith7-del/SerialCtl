@@ -43,3 +43,13 @@ CMD保留原有不发送控制序列的提示。此约束只涉及合成回复�
 界面规则见 [UI-DESIGN-GUIDE.md](UI-DESIGN-GUIDE.md)，构建与交付规则见 [build-release.md](build-release.md)。
 
 V1.0.6：SessionService 持有现有本地串口/CMD 的同一 QueuedConnection；GUI 直接输入，WebSocket 网关按资源 ID 输入。设备工作线程调用 PostData 时立即 Publish，不等待 UI 绘制或日志写盘。每客户端独立 sender condition_variable 与有界队列，资源历史有序并显式报告缺口。远程 SerialCtl 和 Linux Python 都使用同一 serialctl.v1 入口；旧 SerialShareService 与辅助发现已移除。协议见 WEBSOCKET-PROTOCOL.md。CMD 草稿由本地 Unicode 行编辑器保存，提交后进入同一 FIFO；stdout、输入来源与原始字节记录分离。主屏幕保留逻辑行、重排软折行及锚点，备用屏幕保持 VT 网格。
+
+## V2.0.10 连接交互整改
+
+串口和 SSH 的父进程读写分别使用可取消重叠 I/O，关闭先通知取消、等待完成再释放句柄；SSH 连接状态不再取得发送互斥量。MainWindow 将已注销会话的 transport/logger 交给拥有线程的 BackgroundCleanup 回收，窗口销毁前 Drain。设备枚举任务保留所有权，无 detach；电源 VISA/RS232 扫描分别调度，避免慢 VISA 阻塞串口列表。
+
+PostData 先投递本地接收交接，再发布 WebSocket 历史/订阅事件。可见窗口用 steady_clock 的2ms预算处理每批至多32块、立即提交终端绘制，积压在下一次正常 WM_PAINT 机会继续，以保留输入优先级且不增加10ms接收定时等待。活动会话获得优先机会，每第四次仍处理全局队首，保持同一会话内的字节顺序。连接完成时的历史回放也进入同一批处理路径，放在已排队的更新数据之前。
+
+CMD 私有控制台桥接进程为 stdout 批次附带输入/输出代码页元数据，父进程缓存并保持手动覆盖；元数据不进入外部 WebSocket 或日志字节。终端历史行和历史投影是不可变共享快照，输入预览缓存仅由 UI 线程使用，const 读取不构成多线程安全承诺。
+
+完整控制器职责迁移及全部现场验收尚未完成，逐项状态见 ../audit/V2.0.10-ARCH-FINAL-ACCEPTANCE.md。
