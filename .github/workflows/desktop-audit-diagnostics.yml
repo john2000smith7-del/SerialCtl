@@ -1,0 +1,32 @@
+name: Inspect desktop audit evidence
+on:
+  workflow_dispatch:
+    inputs:
+      audit_run:
+        description: Desktop audit run ID whose original evidence will be inspected
+        required: true
+        default: '40785811830'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-desktop-review
+          run-id: ${{ inputs.audit_run }}
+          github-token: ${{ github.token }}
+          path: desktop-evidence
+      - name: Print failed input observations from the original report
+        shell: bash
+        run: |
+          python tests/performance/inspect_desktop_report.py desktop-evidence | tee desktop-diagnostics.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-desktop-failure-details
+          path: desktop-diagnostics.json
+          retention-days: 30
