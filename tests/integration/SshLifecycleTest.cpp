@@ -26,11 +26,15 @@ int main() {
         Require(CreateChildIoPipe(warmParent, warmChild, true), "warm pipe runtime");
         CloseHandle(warmParent); CloseHandle(warmChild);
         DWORD handlesBefore = 0; GetProcessHandleCount(GetCurrentProcess(), &handlesBefore);
-        const auto threadsBefore = Threads();
+        const DWORD coldHandles = handlesBefore;
+        auto threadsBefore = Threads();
         std::vector<ULONGLONG> elapsed;
         nlohmann::json resourceTrace = nlohmann::json::array();
         std::wstring error;
-        for (int index = 0; index < 16; ++index) {
+        // First complete cycle initializes process/CRT synchronization caches.
+        // The diagnostic trace established 123 -> 128 once, then exactly 128
+        // handles and four threads throughout all 16 cycles and edge cases.
+        for (int index = -1; index < 16; ++index) {
           {
             const std::wstring mode = index < 8 ? L"noread" : index < 12 ? L"flood" : L"echo";
             const auto host = L"serialctl-lifecycle-" + std::to_wstring(GetCurrentProcessId()) + mode;
@@ -78,8 +82,10 @@ int main() {
           }
           DWORD count = 0; GetProcessHandleCount(GetCurrentProcess(), &count);
           resourceTrace.push_back({{"cycle", index}, {"handles", count}, {"threads", Threads()}});
+          if (index < 0) { handlesBefore = count; threadsBefore = Threads(); elapsed.clear(); }
+          else Require(count <= handlesBefore + 3 && Threads() <= threadsBefore + 1, "per-cycle SSH resource growth");
         }
-        DWORD afterCancel = 0; GetProcessHandleCount(GetCurrentProcess(), &afterCancel);
+        DWORD afterCycles = 0; GetProcessHandleCount(GetCurrentProcess(), &afterCycles);
         {
             const auto eventName = L"Local\\SerialCtl.SSH.Cancel." + std::to_wstring(GetCurrentProcessId());
             HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, eventName.c_str());
@@ -110,12 +116,12 @@ int main() {
         SetEnvironmentVariableW(L"SERIALCTL_SSH_READY", nullptr);
         DWORD handlesAfter = 0; GetProcessHandleCount(GetCurrentProcess(), &handlesAfter);
         const auto threadsAfter = Threads();
-        std::cout << "resource_trace=" << nlohmann::json({{"cycles", resourceTrace}, {"afterCancel", afterCancel}}).dump() << '\n';
+        std::cout << "resource_trace=" << nlohmann::json({{"cycles", resourceTrace}, {"afterCycles", afterCycles}, {"coldHandles", coldHandles}}).dump() << '\n';
         std::cout << "resources handles=" << handlesBefore << "->" << handlesAfter << " threads=" << threadsBefore << "->" << threadsAfter << '\n';
         Require(handlesAfter <= handlesBefore + 3 && threadsAfter <= threadsBefore + 1, "SSH handle/thread growth");
         std::sort(elapsed.begin(), elapsed.end());
         nlohmann::json evidence{{"samples", elapsed}, {"maxMs", elapsed.back()}, {"p50Ms", elapsed[elapsed.size()/2]},
-            {"handlesBefore", handlesBefore}, {"handlesAfter", handlesAfter}, {"threadsBefore", threadsBefore}, {"threadsAfter", threadsAfter},
+            {"coldHandles", coldHandles}, {"handlesBefore", handlesBefore}, {"handlesAfter", handlesAfter}, {"threadsBefore", threadsBefore}, {"threadsAfter", threadsAfter},
             {"resourceTrace", resourceTrace},
             {"scope", "controlled child processes, no SSH server or UART hardware"}};
         std::cout << evidence.dump() << '\n';
