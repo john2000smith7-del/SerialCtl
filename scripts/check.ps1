@@ -156,6 +156,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     $testPrograms = @{
         'cancellable_io_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll')
         'websocket_deadline_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
+        'sftp_controller_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll')
         'ai_device_bridge_test.exe' = @('KERNEL32.dll', 'OLE32.dll', 'SHELL32.dll')
         'command_macro_test.exe' = @('KERNEL32.dll', 'OLE32.dll')
         'terminal_preview_test.exe' = @('KERNEL32.dll')

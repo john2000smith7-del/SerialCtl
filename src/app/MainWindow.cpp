@@ -313,22 +313,7 @@ struct DataMessage {
     Bytes data;
 };
 
-enum class SftpMessageKind { List, Upload, Download, Mutation };
-
-struct SftpMessage {
-    std::uint64_t sessionId = 0;
-    SftpMessageKind kind = SftpMessageKind::List;
-    bool success = false;
-    bool canceled = false;
-    std::uint64_t transferId = 0;
-    SftpListing listing;
-    std::wstring error;
-};
-
-struct SftpProgressMessage {
-    std::uint64_t transferId = 0;
-    SftpTransferProgress progress;
-};
+using SftpMessageKind = SftpController::Kind;
 
 struct Palette {
     COLORREF window;
@@ -721,16 +706,7 @@ bool IsSafeAutomaticLocalFileName(const std::wstring& name) {
     return true;
 }
 
-std::uint64_t LocalFileSize(const std::wstring& path) {
-    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) return 0;
-    LARGE_INTEGER size{};
-    const bool success = GetFileSizeEx(file, &size) != FALSE && size.QuadPart >= 0;
-    CloseHandle(file);
-    return success ? static_cast<std::uint64_t>(size.QuadPart) : 0;
-}
+
 
 std::wstring FileSizeText(std::uint64_t size) {
     wchar_t value[32]{};
@@ -825,6 +801,7 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
 }
 
 MainWindow::~MainWindow() {
+    sftp_.ClearCallbacks(); sftp_.CancelIo(); sftp_.Join();
     connectionCleanup_.Drain();
     if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
     aiPane_.Shutdown();
@@ -1003,7 +980,7 @@ bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && !connectionCleanup_.Busy() && sessions_.empty() &&
            !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
            !disconnectAllPending_ && !disconnectAllInProgress_ && !macro_.Dirty() && macro_.RunningIndex() < 0 &&
-           !sftpBusy_ && !activeSftpTransferId_ && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
+           !sftp_.Busy() && !sftp_.ActiveTransfer() && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
            draggingCommandIndex_ < 0 && !sftpColumnDragging_ && !GetCapture() &&
            (IsWindowEnabled(window_) || updateRequired_);
 }
@@ -1642,7 +1619,7 @@ LRESULT CALLBACK MainWindow::SftpListSubclassProc(HWND window, UINT message, WPA
     if (message == WM_MOUSEMOVE && window == self->sftpList_ && self->sftpTooltip_) {
         const DWORD hit = static_cast<DWORD>(SendMessageW(window, LB_ITEMFROMPOINT, 0, lParam));
         std::wstring text;
-        if (!HIWORD(hit) && LOWORD(hit) < self->sftpEntries_.size()) text = self->sftpEntries_[LOWORD(hit)].name;
+        if (!HIWORD(hit) && LOWORD(hit) < self->sftp_.Entries().size()) text = self->sftp_.Entries()[LOWORD(hit)].name;
         if (text != self->sftpHoverText_) {
             self->sftpHoverText_ = std::move(text);
             TOOLINFOW tool{sizeof(tool)}; tool.hwnd = window; tool.uId = reinterpret_cast<UINT_PTR>(window);
@@ -2196,8 +2173,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 InvalidateRect(window_, nullptr, TRUE);
             }
             else if (id == IdSftpClearTransfers) ClearFinishedSftpTransfers();
-            else if (id == IdSftpUp) RefreshSftp(ParentSftpRemotePath(sftpDirectory_));
-            else if (id == IdSftpRefresh) RefreshSftp(sftpDirectory_);
+            else if (id == IdSftpUp) RefreshSftp(ParentSftpRemotePath(sftp_.Directory()));
+            else if (id == IdSftpRefresh) RefreshSftp(sftp_.Directory());
             else if (id == IdSftpUpload) UploadSftp();
             else if (id == IdSftpDownload) DownloadSftp();
             return 0;
@@ -2230,7 +2207,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         if (id == IdSftpList && notification == LBN_SELCHANGE) {
-            SetSftpBusy(sftpBusy_);
+            SetSftpBusy(sftp_.Busy());
             return 0;
         }
         break;
@@ -2421,8 +2398,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (connectionThread_.joinable()) connectionThread_.join();
         pendingSession_.reset();
         StopCommandSequence(CommandSequenceEnd::Silent);
-        sftpOperationCancel_.store(true);
-        sftpTransferCancel_.store(true);
+        sftp_.ClearCallbacks(); sftp_.CancelIo();
         while (!sessions_.empty()) {
             activeSession_ = sessions_.back().get();
             connection_ = activeSession_->connection.get();
@@ -2430,8 +2406,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             Disconnect();
         }
         SaveUiState();
-        if (sftpThread_.joinable()) sftpThread_.join();
-        if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
+        sftp_.Join();
         // Device shutdown and transport cleanup take precedence over waiting
         // for a canceled export to finish destination filesystem I/O.
         StopLogExport();
@@ -2448,10 +2423,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 delete reinterpret_cast<DataMessage*>(pending.lParam);
             while (PeekMessageW(&pending, window_, MessageStatus, MessageStatus, PM_REMOVE))
                 delete reinterpret_cast<StatusMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE))
-                delete reinterpret_cast<SftpMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageSftpProgress, MessageSftpProgress, PM_REMOVE))
-                delete reinterpret_cast<SftpProgressMessage*>(pending.lParam);
+            while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE)) {}
+            while (PeekMessageW(&pending, window_, MessageSftpProgress, MessageSftpProgress, PM_REMOVE)) {}
         }
         DestroyWindow(window_);
         return 0;
@@ -2620,6 +2593,9 @@ void MainWindow::CreateControls() {
     RECT client{};
     GetClientRect(window_, &client);
     LayoutControls(client.right, client.bottom);
+    sftp_.SetCallbacks([target = window_] { PostMessageW(target, MessageSftp, 0, 0); },
+                       [target = window_] { PostMessageW(target, MessageSftpProgress, 0, 0); });
+
 }
 
 void MainWindow::LayoutControls(int width, int height) {
@@ -2907,7 +2883,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         DrawRoundedBox(dc, rect, Ui::Radius, colors.terminal, colors.border);
         sftpBreadcrumbHits_.clear();
         const std::wstring visibleText = ControlText(item.hwndItem);
-        if (visibleText != sftpDirectory_ || sftpDirectory_.empty()) {
+        if (visibleText != sftp_.Directory() || sftp_.Directory().empty()) {
             RECT textRect = rect;
             textRect.left += 10;
             textRect.right -= 10;
@@ -2915,7 +2891,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_PATH_ELLIPSIS);
             return;
         }
-        const std::vector<SftpBreadcrumb> crumbs = BuildSftpBreadcrumbs(sftpDirectory_);
+        const std::vector<SftpBreadcrumb> crumbs = BuildSftpBreadcrumbs(sftp_.Directory());
         HFONT oldFont = reinterpret_cast<HFONT>(SelectObject(dc, smallFont_));
         std::vector<int> widths;
         int totalWidth = 0;
@@ -3054,7 +3030,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if (id == IdSftpNameHeader || id == IdSftpSizeHeader || id == IdSftpModifiedHeader) {
             const SftpSortColumn column = id == IdSftpNameHeader ? SftpSortColumn::Name :
                 (id == IdSftpSizeHeader ? SftpSortColumn::Size : SftpSortColumn::Modified);
-            const bool active = sftpSortColumn_ == column;
+            const bool active = sftp_.SortColumn() == column;
             HBRUSH background = CreateSolidBrush(hovered ? colors.accentSoft : colors.panel);
             FillRect(dc, &rect, background);
             DeleteObject(background);
@@ -3065,7 +3041,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 active ? UiAccentInk(darkMode_) : colors.muted, smallFont_,
                 id == IdSftpNameHeader ? DT_LEFT | DT_VCENTER | DT_SINGLELINE :
                     DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-            if (active) DrawSortChevron(dc, rect, UiAccentInk(darkMode_), sftpSortAscending_);
+            if (active) DrawSortChevron(dc, rect, UiAccentInk(darkMode_), sftp_.SortAscending());
             HPEN line = CreatePen(PS_SOLID, 1, colors.border);
             HPEN oldLine = reinterpret_cast<HPEN>(SelectObject(dc, line));
             MoveToEx(dc, rect.left, rect.bottom - 1, nullptr);
@@ -3305,8 +3281,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 DeleteObject(pen);
             }
         }
-    } else if (item.CtlID == IdSftpList && item.itemID < sftpEntries_.size()) {
-        const SftpEntry& entry = sftpEntries_[item.itemID];
+    } else if (item.CtlID == IdSftpList && item.itemID < sftp_.Entries().size()) {
+        const SftpEntry& entry = sftp_.Entries()[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = Ui::OverlayScrollLaneWidth;
         RECT row{rect.left, rect.top, rect.right - rightInset, rect.bottom};
@@ -3345,8 +3321,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         LineTo(dc, row.right, row.bottom - 1);
         SelectObject(dc, oldDivider);
         DeleteObject(divider);
-    } else if (item.CtlID == IdSftpTransferList && item.itemID < sftpTransfers_.size()) {
-        const SftpTransferItem& transfer = sftpTransfers_[item.itemID];
+    } else if (item.CtlID == IdSftpTransferList && item.itemID < sftp_.Transfers().size()) {
+        const SftpTransferItem& transfer = sftp_.Transfers()[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
@@ -4031,17 +4007,7 @@ void MainWindow::Disconnect() {
                         L"用户断开当前连接");
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     const std::uint64_t disconnectedSessionId = activeSession_->id;
-    if (sftpOperationSessionId_ == disconnectedSessionId)
-        sftpOperationCancel_.store(true);
-    for (SftpTransferItem& item : sftpTransfers_) {
-        if (item.sessionId != disconnectedSessionId) continue;
-        if (item.state == SftpTransferState::Queued) {
-            item.state = SftpTransferState::Canceled;
-            item.error = L"连接已断开";
-        } else if (item.state == SftpTransferState::Running) {
-            sftpTransferCancel_.store(true);
-        }
-    }
+    sftp_.CancelSession(disconnectedSessionId);
     RefreshSftpTransferList();
     const auto found = std::find_if(sessions_.begin(), sessions_.end(),
         [this](const std::unique_ptr<SessionState>& item) { return item.get() == activeSession_; });
@@ -4067,8 +4033,7 @@ void MainWindow::Disconnect() {
         ClearTerminalSelection();
         InvalidateRect(terminal_, nullptr, TRUE);
         ShowSftpPanel(false);
-        sftpEntries_.clear();
-        sftpDirectory_ = L".";
+        sftp_.ClearView();
         SetConnectedUi(false);
     }
     AppendStatus(interruptedMacro ? macroStatus : L"已断开", interruptedMacro);
@@ -4088,8 +4053,7 @@ void MainWindow::DisconnectAll() {
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
         apiServer_.SetSessions(sessionService_.Ids());
     }
-    sftpOperationCancel_ = true;
-    sftpTransferCancel_ = true;
+    sftp_.CancelIo();
     while (!sessions_.empty()) {
         activeSession_ = sessions_.back().get();
         connection_ = activeSession_->connection.get();
@@ -4108,10 +4072,7 @@ void MainWindow::DisconnectAll() {
         receiveOverflow_.clear();
     }
     disconnectAllInProgress_ = false;
-    if (sftpThread_.joinable())
-        sftpThread_.join();
-    if (sftpTransferThread_.joinable())
-        sftpTransferThread_.join();
+
     if (powerService_.State().value("connected", false)) {
         auto action = powerService_.Submit({{"type", "disconnect"}, {"source", "local"}});
         if (action.contains("error")) {
@@ -4224,8 +4185,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     pendingUsername_ = activeSession_->username;
     pendingPassword_ = activeSession_->password;
     pendingPort_ = activeSession_->port;
-    sftpDirectory_ = activeSession_->sftpDirectory;
-    sftpEntries_ = activeSession_->sftpEntries;
+    sftp_.Select(*activeSession_);
     ClearTerminalSelection();
     UpdateTerminalDimensions();
     InvalidateRect(terminal_, nullptr, TRUE);
@@ -4236,7 +4196,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (focus != SessionFocus::AiPreview && focus != SessionFocus::PowerPreview && selectedMode_ == 0 && SftpClient::IsAvailable()) {
         ShowSftpPanel(true);
         RefreshSftpList();
-        if (!sameVisibleSession && connection_ && connection_->IsConnected() && !sftpBusy_) RefreshSftp();
+        if (!sameVisibleSession && connection_ && connection_->IsConnected() && !sftp_.Busy()) RefreshSftp();
     } else {
         ShowSftpPanel(false);
     }
@@ -4637,7 +4597,7 @@ void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
     if (!session.terminalDirectory.empty()) {
         if (session.terminalDirectory != session.sftpDirectory && session.terminalDirectory != session.pendingSftpDirectory) {
             session.pendingSftpDirectory = session.terminalDirectory;
-            if (&session == activeSession_ && !sftpBusy_) RefreshSftp(session.terminalDirectory);
+            if (&session == activeSession_ && !sftp_.Busy()) RefreshSftp(session.terminalDirectory);
         }
         if (session.terminalDirectoryFromOsc) return;
     }
@@ -4671,7 +4631,7 @@ void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
 
     session.pendingSftpDirectory = directory;
     session.terminalDirectory = directory;
-    if (&session == activeSession_ && !sftpBusy_) RefreshSftp(directory);
+    if (&session == activeSession_ && !sftp_.Busy()) RefreshSftp(directory);
 }
 
 void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
@@ -5427,7 +5387,7 @@ void MainWindow::SetConnectedUi(bool connected) {
     EnableWindow(sftpTabButton_, connected && selectedMode_ == 0 && SftpClient::IsAvailable());
 
 
-    SetSftpBusy(sftpBusy_);
+    SetSftpBusy(sftp_.Busy());
     UpdateCommandActions();
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
 
@@ -5709,21 +5669,20 @@ std::vector<size_t> MainWindow::SelectedSftpIndices() const {
     if (copied <= 0) return result;
     for (int index = 0; index < copied; ++index) {
         if (selected[static_cast<size_t>(index)] >= 0 &&
-            static_cast<size_t>(selected[static_cast<size_t>(index)]) < sftpEntries_.size())
+            static_cast<size_t>(selected[static_cast<size_t>(index)]) < sftp_.Entries().size())
             result.push_back(static_cast<size_t>(selected[static_cast<size_t>(index)]));
     }
     return result;
 }
 
 void MainWindow::SetSftpBusy(bool busy) {
-    sftpBusy_ = busy;
     const bool available = connection_ && selectedMode_ == 0 && !busy;
     const std::vector<size_t> selected = SelectedSftpIndices();
     const bool fileSelected = std::any_of(selected.begin(), selected.end(), [this](size_t index) {
-        return index < sftpEntries_.size() && !sftpEntries_[index].directory &&
-            sftpEntries_[index].pathSafe;
+        return index < sftp_.Entries().size() && !sftp_.Entries()[index].directory &&
+            sftp_.Entries()[index].pathSafe;
     });
-    EnableWindow(sftpUpButton_, available && sftpDirectory_ != L"/" && sftpDirectory_ != L".");
+    EnableWindow(sftpUpButton_, available && sftp_.Directory() != L"/" && sftp_.Directory() != L".");
     EnableWindow(sftpRefreshButton_, available);
     EnableWindow(sftpUploadButton_, available);
     EnableWindow(sftpDownloadButton_, available && fileSelected);
@@ -5732,83 +5691,51 @@ void MainWindow::SetSftpBusy(bool busy) {
         if (button) InvalidateRect(button, nullptr, TRUE);
 }
 
+SftpController::Endpoint MainWindow::SftpEndpoint(const SessionState& session) {
+    return {session.host, session.port, session.username, session.password};
+}
+
 void MainWindow::RefreshSftp(const std::wstring& directory) {
-    if (sftpBusy_ || !activeSession_ || !connection_ || selectedMode_ != 0) return;
-    if (sftpThread_.joinable()) sftpThread_.join();
-    const std::wstring requested = directory.empty() ? sftpDirectory_ : directory;
-    if (!directory.empty() && directory != activeSession_->pendingSftpDirectory && directory != activeSession_->sftpDirectory) {
+    if (closing_ || sftp_.Busy() || !activeSession_ || !connection_ || selectedMode_ != 0) return;
+    const std::wstring requested = directory.empty() ? sftp_.Directory() : directory;
+    if (!directory.empty() && directory != activeSession_->pendingSftpDirectory && directory != activeSession_->sftpDirectory)
         activeSession_->sftpFollowTerminal = false;
-    }
     activeSession_->pendingSftpDirectory.clear();
-    const std::uint64_t sessionId = activeSession_->id;
-    const std::wstring host = activeSession_->host;
-    const std::wstring username = activeSession_->username;
-    const std::wstring password = activeSession_->password;
-    const std::uint16_t port = activeSession_->port;
-    const HWND target = window_;
-    sftpOperationCancel_.store(false);
-    sftpOperationSessionId_ = sessionId;
     SetSftpBusy(true);
     SetWindowTextW(sftpPath_, L"正在读取…");
-    auto work = [target, sessionId, host, port, username, password, requested,
-        cancel = &sftpOperationCancel_] {
-        auto* result = new (std::nothrow) SftpMessage();
-        if (!result) return;
-        result->sessionId = sessionId;
-        result->kind = SftpMessageKind::List;
-        try {
-            SftpClient client(host, port, username, password);
-            result->success = client.List(requested, result->listing, result->error, cancel);
-        } catch (...) {
-            result->success = false;
-            result->error = L"SFTP 目录读取发生内部错误。";
-        }
-        if (!PostMessageW(target, MessageSftp, 0, reinterpret_cast<LPARAM>(result))) delete result;
-    };
-    try {
-        sftpThread_ = std::thread(std::move(work));
-    } catch (...) {
-        sftpOperationSessionId_ = 0;
-        SetSftpBusy(false);
-        SetWindowTextW(sftpPath_, sftpDirectory_.c_str());
+    if (!sftp_.List(activeSession_->id, SftpEndpoint(*activeSession_), requested)) {
+        SetSftpBusy(sftp_.Busy()); SetWindowTextW(sftpPath_, sftp_.Directory().c_str());
         AppendStatus(L"无法启动 SFTP 目录读取任务。", true);
     }
 }
 
 void MainWindow::RefreshSftpList() {
     std::vector<std::wstring> selectedNames;
-    for (size_t index : SelectedSftpIndices()) selectedNames.push_back(sftpEntries_[index].name);
-    SortSftpEntries(sftpEntries_, sftpSortColumn_, sftpSortAscending_);
-    if (activeSession_) activeSession_->sftpEntries = sftpEntries_;
+    for (size_t index : SelectedSftpIndices()) selectedNames.push_back(sftp_.Entries()[index].name);
+    sftp_.Sort(activeSession_);
     SendMessageW(sftpList_, LB_RESETCONTENT, 0, 0);
-    for (size_t index = 0; index < sftpEntries_.size(); ++index) {
-        const SftpEntry& entry = sftpEntries_[index];
+    for (size_t index = 0; index < sftp_.Entries().size(); ++index) {
+        const SftpEntry& entry = sftp_.Entries()[index];
         SendMessageW(sftpList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(entry.name.c_str()));
         if (std::find(selectedNames.begin(), selectedNames.end(), entry.name) != selectedNames.end())
             SendMessageW(sftpList_, LB_SETSEL, TRUE, static_cast<LPARAM>(index));
     }
-    SetWindowTextW(sftpPath_, sftpDirectory_.c_str());
+    SetWindowTextW(sftpPath_, sftp_.Directory().c_str());
     InvalidateRect(sftpPath_, nullptr, TRUE);
     InvalidateRect(sftpList_, nullptr, TRUE);
-    SetSftpBusy(sftpBusy_);
+    SetSftpBusy(sftp_.Busy());
 }
 
 void MainWindow::SetSftpSort(SftpSortColumn column) {
-    if (sftpSortColumn_ == column) sftpSortAscending_ = !sftpSortAscending_;
-    else {
-        sftpSortColumn_ = column;
-        sftpSortAscending_ = true;
-    }
-    RefreshSftpList();
-    for (HWND header : {sftpNameHeader_, sftpSizeHeader_, sftpModifiedHeader_})
-        InvalidateRect(header, nullptr, TRUE);
+    sftp_.ToggleSort(column); RefreshSftpList();
+    for (HWND header : {sftpNameHeader_, sftpSizeHeader_, sftpModifiedHeader_}) InvalidateRect(header, nullptr, TRUE);
 }
 
 void MainWindow::EditSftpPath() {
-    if (!activeSession_ || selectedMode_ != 0 || sftpBusy_) return;
+    if (!activeSession_ || selectedMode_ != 0 || sftp_.Busy()) return;
     const auto sessionId = activeSession_->id;
     std::wstring path;
-    if (PromptSftpValue(L"打开 SFTP 路径", L"远端目录（可粘贴 pwd 输出）", sftpDirectory_, SftpInputPurpose::Path, path)) {
+    if (PromptSftpValue(L"打开 SFTP 路径", L"远端目录（可粘贴 pwd 输出）", sftp_.Directory(), SftpInputPurpose::Path, path)) {
         if (!activeSession_ || activeSession_->id != sessionId) return;
         if (path == L"~") path = activeSession_->sftpHomeDirectory;
         else if (path.rfind(L"~/", 0) == 0) path = JoinSftpRemotePath(activeSession_->sftpHomeDirectory, path.substr(2));
@@ -5880,19 +5807,19 @@ LRESULT CALLBACK MainWindow::SftpHeaderSubclassProc(HWND window, UINT message, W
 }
 
 void MainWindow::NavigateSftp(size_t index) {
-    if (sftpBusy_ || index >= sftpEntries_.size()) return;
-    const SftpEntry& entry = sftpEntries_[index];
+    if (sftp_.Busy() || index >= sftp_.Entries().size()) return;
+    const SftpEntry& entry = sftp_.Entries()[index];
     if ((entry.directory || entry.symlink) && !entry.pathSafe) {
         AppendStatus(L"该远端名称包含无法安全写入 SFTP 命令的字符。", true);
     } else if (entry.directory || entry.symlink)
-        RefreshSftp(JoinSftpRemotePath(sftpDirectory_, entry.name));
+        RefreshSftp(JoinSftpRemotePath(sftp_.Directory(), entry.name));
     else DownloadSftp();
 }
 
 void MainWindow::NavigateSftpBreadcrumb(POINT point) {
-    if (sftpBusy_) return;
+    if (sftp_.Busy()) return;
     for (const SftpBreadcrumbHit& hit : sftpBreadcrumbHits_) {
-        if (PointInRect(hit.rect, point) && hit.path != sftpDirectory_) {
+        if (PointInRect(hit.rect, point) && hit.path != sftp_.Directory()) {
             RefreshSftp(hit.path);
             return;
         }
@@ -5905,32 +5832,32 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     ScreenToClient(sftpList_, &clientPoint);
     const DWORD hit = static_cast<DWORD>(SendMessageW(sftpList_, LB_ITEMFROMPOINT, 0,
         MAKELPARAM(clientPoint.x, clientPoint.y)));
-    if (!HIWORD(hit) && LOWORD(hit) < sftpEntries_.size()) {
+    if (!HIWORD(hit) && LOWORD(hit) < sftp_.Entries().size()) {
         const int index = LOWORD(hit);
         if (!SendMessageW(sftpList_, LB_GETSEL, index, 0)) {
             SendMessageW(sftpList_, LB_SETSEL, FALSE, -1);
             SendMessageW(sftpList_, LB_SETSEL, TRUE, index);
         }
         SendMessageW(sftpList_, LB_SETCARETINDEX, index, FALSE);
-        SetSftpBusy(sftpBusy_);
+        SetSftpBusy(sftp_.Busy());
     }
     const std::vector<size_t> selected = SelectedSftpIndices();
-    const bool available = connection_ && selectedMode_ == 0 && !sftpBusy_;
+    const bool available = connection_ && selectedMode_ == 0 && !sftp_.Busy();
     const bool one = selected.size() == 1;
     const bool allPathSafe = !selected.empty() &&
         std::all_of(selected.begin(), selected.end(), [this](size_t index) {
-            return sftpEntries_[index].pathSafe;
+            return sftp_.Entries()[index].pathSafe;
         });
     const bool allModeSafe = !selected.empty() &&
         std::all_of(selected.begin(), selected.end(), [this](size_t index) {
-            return sftpEntries_[index].pathSafe && !sftpEntries_[index].symlink;
+            return sftp_.Entries()[index].pathSafe && !sftp_.Entries()[index].symlink;
         });
     const bool anyFiles = std::any_of(selected.begin(), selected.end(), [this](size_t index) {
-        return !sftpEntries_[index].directory && sftpEntries_[index].pathSafe;
+        return !sftp_.Entries()[index].directory && sftp_.Entries()[index].pathSafe;
     });
     const bool oneDirectory = one &&
-        sftpEntries_[selected.front()].pathSafe &&
-        (sftpEntries_[selected.front()].directory || sftpEntries_[selected.front()].symlink);
+        sftp_.Entries()[selected.front()].pathSafe &&
+        (sftp_.Entries()[selected.front()].directory || sftp_.Entries()[selected.front()].symlink);
 
     HMENU menu = CreatePopupMenu();
     if (!menu) return;
@@ -5996,7 +5923,7 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     case IdMenuSftpChangeMode: ChangeSelectedSftpMode(); break;
     case IdMenuSftpCopyPath: CopySelectedSftpPaths(); break;
     case IdMenuSftpEnterDirectory: EnterSelectedSftpDirectoryInTerminal(); break;
-    case IdMenuSftpRefresh: RefreshSftp(sftpDirectory_); break;
+    case IdMenuSftpRefresh: RefreshSftp(sftp_.Directory()); break;
     default: break;
     }
 }
@@ -6006,13 +5933,13 @@ void MainWindow::ShowSftpTransferContextMenu(POINT screenPoint) {
     ScreenToClient(sftpTransferList_, &clientPoint);
     const DWORD hit = static_cast<DWORD>(SendMessageW(sftpTransferList_, LB_ITEMFROMPOINT, 0,
         MAKELPARAM(clientPoint.x, clientPoint.y)));
-    if (!HIWORD(hit) && LOWORD(hit) < sftpTransfers_.size())
+    if (!HIWORD(hit) && LOWORD(hit) < sftp_.Transfers().size())
         SendMessageW(sftpTransferList_, LB_SETCURSEL, LOWORD(hit), 0);
     const LRESULT selected = SendMessageW(sftpTransferList_, LB_GETCURSEL, 0, 0);
-    const bool valid = selected != LB_ERR && static_cast<size_t>(selected) < sftpTransfers_.size();
-    const SftpTransferState state = valid ? sftpTransfers_[static_cast<size_t>(selected)].state :
+    const bool valid = selected != LB_ERR && static_cast<size_t>(selected) < sftp_.Transfers().size();
+    const SftpTransferState state = valid ? sftp_.Transfers()[static_cast<size_t>(selected)].state :
         SftpTransferState::Completed;
-    const bool anyFinished = std::any_of(sftpTransfers_.begin(), sftpTransfers_.end(),
+    const bool anyFinished = std::any_of(sftp_.Transfers().begin(), sftp_.Transfers().end(),
         [](const SftpTransferItem& item) {
             return item.state == SftpTransferState::Completed ||
                 item.state == SftpTransferState::Failed ||
@@ -6042,28 +5969,28 @@ void MainWindow::ShowSftpTransferContextMenu(POINT screenPoint) {
     DeleteObject(menuBrush);
     PostMessageW(window_, WM_NULL, 0, 0);
     if (command == IdMenuTransferCancel && valid)
-        CancelSftpTransfer(sftpTransfers_[static_cast<size_t>(selected)].id);
+        CancelSftpTransfer(sftp_.Transfers()[static_cast<size_t>(selected)].id);
     else if (command == IdMenuTransferRetry && valid)
-        RetrySftpTransfer(sftpTransfers_[static_cast<size_t>(selected)].id);
+        RetrySftpTransfer(sftp_.Transfers()[static_cast<size_t>(selected)].id);
     else if (command == IdMenuTransferClearFinished)
         ClearFinishedSftpTransfers();
 }
 
 void MainWindow::HandleSftpDrop(HDROP drop) {
     if (!drop) return;
-    if (sftpBusy_ || !activeSession_ || !connection_ || selectedMode_ != 0) {
+    if (sftp_.Busy() || !activeSession_ || !connection_ || selectedMode_ != 0) {
         DragFinish(drop);
         return;
     }
     POINT point{};
     DragQueryPoint(drop, &point);
-    std::wstring remoteDirectory = sftpDirectory_;
+    std::wstring remoteDirectory = sftp_.Directory();
     const DWORD hit = static_cast<DWORD>(SendMessageW(sftpList_, LB_ITEMFROMPOINT, 0,
         MAKELPARAM(point.x, point.y)));
-    if (!HIWORD(hit) && LOWORD(hit) < sftpEntries_.size()) {
-        const SftpEntry& entry = sftpEntries_[LOWORD(hit)];
+    if (!HIWORD(hit) && LOWORD(hit) < sftp_.Entries().size()) {
+        const SftpEntry& entry = sftp_.Entries()[LOWORD(hit)];
         if (entry.directory && entry.pathSafe)
-            remoteDirectory = JoinSftpRemotePath(sftpDirectory_, entry.name);
+            remoteDirectory = JoinSftpRemotePath(sftp_.Directory(), entry.name);
     }
     const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
     unsigned int queued = 0;
@@ -6086,9 +6013,9 @@ void MainWindow::HandleSftpDrop(HDROP drop) {
 }
 
 void MainWindow::UploadSftp() {
-    if (sftpBusy_ || !activeSession_) return;
+    if (sftp_.Busy() || !activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto destination = sftpDirectory_;
+    const auto destination = sftp_.Directory();
     std::vector<wchar_t> paths(32768, L'\0');
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
@@ -6113,9 +6040,9 @@ void MainWindow::UploadSftp() {
 }
 
 void MainWindow::DownloadSftp() {
-    if (sftpBusy_ || !activeSession_) return;
+    if (sftp_.Busy() || !activeSession_) return;
     std::vector<size_t> selected = SelectedSftpIndices();
-    const auto entries = sftpEntries_;
+    const auto entries = sftp_.Entries();
     const size_t beforePathValidation = selected.size();
     selected.erase(std::remove_if(selected.begin(), selected.end(), [&entries](size_t index) {
         return entries[index].directory || !entries[index].pathSafe;
@@ -6124,7 +6051,7 @@ void MainWindow::DownloadSftp() {
         AppendStatus(L"已跳过不能安全下载的远端项目。", true);
     if (selected.empty() || !activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
+    const auto sourceDirectory = sftp_.Directory();
     if (selected.size() == 1) {
         const SftpEntry entry = entries[selected.front()];
         std::vector<wchar_t> path(std::max<size_t>(MAX_PATH, entry.name.size() + 1), L'\0');
@@ -6202,213 +6129,78 @@ void MainWindow::DownloadSftp() {
     }
 }
 
-bool MainWindow::StartSftpUpload(
-    const std::wstring& localPath, const std::wstring& remoteDirectory) {
+bool MainWindow::StartSftpUpload(const std::wstring& localPath, const std::wstring& remoteDirectory) {
     if (!activeSession_ || localPath.empty()) return false;
-    SftpTransferItem transfer;
-    transfer.id = nextSftpTransferId_++;
-    transfer.sessionId = activeSession_->id;
-    transfer.direction = SftpTransferDirection::Upload;
-    transfer.name = LocalFileNameOf(localPath);
-    transfer.localPath = localPath;
-    transfer.remotePath = remoteDirectory.empty() ? sftpDirectory_ : remoteDirectory;
-    if (transfer.remotePath == sftpDirectory_) {
-        const auto existing = std::find_if(sftpEntries_.begin(), sftpEntries_.end(),
-            [&transfer](const SftpEntry& entry) { return entry.name == transfer.name; });
-        if (existing != sftpEntries_.end()) {
-            if (existing->directory) {
-                AppendStatus(L"远端已有同名文件夹，无法上传该文件。", true);
-                return false;
-            }
-            transfer.replaceExisting = true;
-        }
-    }
-    transfer.total = LocalFileSize(localPath);
-    sftpTransfers_.push_back(std::move(transfer));
+    std::wstring error;
+    if (!sftp_.EnqueueUpload(activeSession_->id, localPath, remoteDirectory, error)) { AppendStatus(error, true); return false; }
     sftpTransferExpanded_ = true;
     RefreshSftpTransferList();
-    RECT client{};
-    GetClientRect(window_, &client);
-    LayoutControls(client.right, client.bottom);
-    StartNextSftpTransfer();
-    return true;
+    RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
+    StartNextSftpTransfer(); return true;
 }
 
-void MainWindow::StartSftpDownload(const std::wstring& remotePath,
-    const std::wstring& localPath, std::uint64_t expectedSize, bool replaceExisting) {
+void MainWindow::StartSftpDownload(const std::wstring& remotePath, const std::wstring& localPath,
+    std::uint64_t expectedSize, bool replaceExisting) {
     if (!activeSession_ || remotePath.empty() || localPath.empty()) return;
-    const bool alreadyQueued = std::any_of(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [&localPath](const SftpTransferItem& item) {
-            return item.direction == SftpTransferDirection::Download &&
-                (item.state == SftpTransferState::Queued ||
-                 item.state == SftpTransferState::Running) &&
-                ExistingLocalPathsReferToSameFile(item.localPath, localPath);
-        });
-    if (alreadyQueued) {
-        AppendStatus(L"已有任务正在写入同一本地路径，已跳过重复下载。", true);
-        return;
+    std::wstring error;
+    if (!sftp_.EnqueueDownload(activeSession_->id, remotePath, localPath, expectedSize, replaceExisting, error)) {
+        AppendStatus(error, true); return;
     }
-    SftpTransferItem transfer;
-    transfer.id = nextSftpTransferId_++;
-    transfer.sessionId = activeSession_->id;
-    transfer.direction = SftpTransferDirection::Download;
-    transfer.name = BaseNameSftpRemotePath(remotePath);
-    transfer.localPath = localPath;
-    transfer.remotePath = remotePath;
-    transfer.total = expectedSize;
-    transfer.replaceExisting = replaceExisting;
-    sftpTransfers_.push_back(std::move(transfer));
     sftpTransferExpanded_ = true;
     RefreshSftpTransferList();
-    RECT client{};
-    GetClientRect(window_, &client);
-    LayoutControls(client.right, client.bottom);
+    RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
     StartNextSftpTransfer();
 }
 
 void MainWindow::StartNextSftpTransfer() {
-    if (activeSftpTransferId_ != 0) return;
-    if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
+    if (closing_ || sftp_.ActiveTransfer()) return;
     for (;;) {
-        auto queued = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-            [](const SftpTransferItem& item) { return item.state == SftpTransferState::Queued; });
-        if (queued == sftpTransfers_.end()) {
+        const auto* queued = sftp_.Next();
+        if (!queued) {
             RefreshSftpTransferList();
-            if (sftpRefreshSessionId_ != 0) {
-                const std::uint64_t refreshSessionId = sftpRefreshSessionId_;
-                const std::wstring refreshDirectory = sftpRefreshDirectory_;
-                sftpRefreshSessionId_ = 0;
-                sftpRefreshDirectory_.clear();
-                if (!sftpBusy_ && activeSession_ && activeSession_->id == refreshSessionId &&
-                    sftpDirectory_ == refreshDirectory)
-                    RefreshSftp(refreshDirectory);
-            }
+            const auto refresh = sftp_.TakeRefresh();
+            if (refresh.first && !sftp_.Busy() && activeSession_ && activeSession_->id == refresh.first &&
+                sftp_.Directory() == refresh.second) RefreshSftp(refresh.second);
             return;
         }
-        SessionState* session = FindSession(queued->sessionId);
-        if (!session) {
-            queued->state = SftpTransferState::Canceled;
-            queued->error = L"连接已断开";
-            continue;
-        }
-
-        if (queued->replaceExisting) {
-            const bool upload = queued->direction == SftpTransferDirection::Upload;
-            const std::wstring target = upload ?
-                JoinSftpRemotePath(queued->remotePath, queued->name) : queued->localPath;
-            const std::wstring prompt = (upload ?
-                L"远端文件已存在，是否安全替换？\n\n" :
-                L"本地文件已存在，是否覆盖？\n\n") + target;
-            if (MessageBoxW(window_, prompt.c_str(),
-                    upload ? L"确认替换" : L"确认覆盖",
-                    MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) != IDOK) {
-                queued->state = SftpTransferState::Canceled;
-                queued->error = L"用户取消覆盖";
-                continue;
+        const auto task = *queued;
+        const auto* session = FindSession(task.sessionId);
+        if (!session) { sftp_.Cancel(task.id, L"连接已断开"); continue; }
+        const auto endpoint = SftpEndpoint(*session);
+        if (task.replaceExisting) {
+            const bool upload = task.direction == SftpTransferDirection::Upload;
+            const auto target = upload ? JoinSftpRemotePath(task.remotePath, task.name) : task.localPath;
+            const auto prompt = (upload ? L"远端文件已存在，是否安全替换？\n\n" : L"本地文件已存在，是否覆盖？\n\n") + target;
+            if (MessageBoxW(window_, prompt.c_str(), upload ? L"确认替换" : L"确认覆盖",
+                            MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) != IDOK) {
+                sftp_.Cancel(task.id, L"用户取消覆盖"); continue;
             }
         }
-
-        queued->state = SftpTransferState::Running;
-        queued->error.clear();
-        queued->percent = queued->total == 0 ? -1 : 0;
-        activeSftpTransferId_ = queued->id;
-        sftpTransferCancel_.store(false);
-        const SftpTransferItem task = *queued;
-        const std::wstring host = session->host;
-        const std::uint16_t port = session->port;
-        const std::wstring username = session->username;
-        const std::wstring password = session->password;
-        const HWND target = window_;
-        RefreshSftpTransferList();
-        auto work = [this, target, task, host, port, username, password] {
-            auto* result = new (std::nothrow) SftpMessage();
-            if (!result) return;
-            result->sessionId = task.sessionId;
-            result->transferId = task.id;
-            result->kind = task.direction == SftpTransferDirection::Upload ?
-                SftpMessageKind::Upload : SftpMessageKind::Download;
-            try {
-                SftpClient client(host, port, username, password);
-                const auto progress = [target, id = task.id](const SftpTransferProgress& value) {
-                    auto* update = new (std::nothrow) SftpProgressMessage();
-                    if (!update) return;
-                    update->transferId = id;
-                    update->progress = value;
-                    if (!PostMessageW(target, MessageSftpProgress, 0,
-                            reinterpret_cast<LPARAM>(update))) delete update;
-                };
-                if (task.direction == SftpTransferDirection::Upload)
-                    result->success = client.Upload(task.localPath, task.remotePath,
-                        task.replaceExisting, result->error, progress, &sftpTransferCancel_);
-                else
-                    result->success = client.Download(task.remotePath, task.localPath, task.total,
-                        task.replaceExisting, result->error, progress, &sftpTransferCancel_);
-                result->canceled = sftpTransferCancel_.load();
-            } catch (...) {
-                result->success = false;
-                result->error = L"SFTP 传输发生内部错误。";
-            }
-            if (!PostMessageW(target, MessageSftp, 0,
-                    reinterpret_cast<LPARAM>(result))) delete result;
-        };
-        try {
-            sftpTransferThread_ = std::thread(std::move(work));
-        } catch (...) {
-            queued->state = SftpTransferState::Failed;
-            queued->error = L"无法启动传输任务";
-            activeSftpTransferId_ = 0;
-            RefreshSftpTransferList();
-            continue;
-        }
-        return;
+        if (!FindSession(task.sessionId)) { sftp_.Cancel(task.id, L"连接已断开"); continue; }
+        if (!sftp_.Begin(task.id, endpoint)) { RefreshSftpTransferList(); continue; }
+        RefreshSftpTransferList(); return;
     }
 }
 
 void MainWindow::CancelSftpTransfer(std::uint64_t transferId) {
-    auto found = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [transferId](const SftpTransferItem& item) { return item.id == transferId; });
-    if (found == sftpTransfers_.end()) return;
-    if (found->state == SftpTransferState::Queued) {
-        found->state = SftpTransferState::Canceled;
-        found->error = L"传输已取消";
-        RefreshSftpTransferList();
-        StartNextSftpTransfer();
-    } else if (found->state == SftpTransferState::Running) {
-        sftpTransferCancel_.store(true);
-        found->error = L"正在取消…";
-        InvalidateRect(sftpTransferList_, nullptr, TRUE);
-    }
+    const auto& items = sftp_.Transfers();
+    const auto found = std::find_if(items.begin(), items.end(), [transferId](const auto& item) { return item.id == transferId; });
+    if (found == items.end()) return;
+    const auto state = found->state;
+    sftp_.Cancel(transferId);
+    if (state == SftpTransferState::Queued) { RefreshSftpTransferList(); StartNextSftpTransfer(); }
+    else if (state == SftpTransferState::Running) InvalidateRect(sftpTransferList_, nullptr, TRUE);
 }
 
 void MainWindow::RetrySftpTransfer(std::uint64_t transferId) {
-    auto found = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [transferId](const SftpTransferItem& item) { return item.id == transferId; });
-    if (found == sftpTransfers_.end() || (found->state != SftpTransferState::Failed &&
-        found->state != SftpTransferState::Canceled)) return;
-    if (!FindSession(found->sessionId)) {
-        found->error = L"原连接已断开，无法重试";
-        found->state = SftpTransferState::Failed;
-    } else {
-        found->state = SftpTransferState::Queued;
-        found->error.clear();
-        found->transferred = 0;
-        found->bytesPerSecond = 0;
-        found->remainingSeconds = 0;
-        found->percent = found->total == 0 ? -1 : 0;
-    }
-    RefreshSftpTransferList();
-    StartNextSftpTransfer();
+    const auto& items = sftp_.Transfers();
+    const auto found = std::find_if(items.begin(), items.end(), [transferId](const auto& item) { return item.id == transferId; });
+    if (found == items.end() || (found->state != SftpTransferState::Failed && found->state != SftpTransferState::Canceled)) return;
+    sftp_.Retry(transferId, FindSession(found->sessionId) != nullptr);
+    RefreshSftpTransferList(); StartNextSftpTransfer();
 }
 
-void MainWindow::ClearFinishedSftpTransfers() {
-    sftpTransfers_.erase(std::remove_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [](const SftpTransferItem& item) {
-            return item.state == SftpTransferState::Completed ||
-                item.state == SftpTransferState::Failed ||
-                item.state == SftpTransferState::Canceled;
-        }), sftpTransfers_.end());
-    RefreshSftpTransferList();
-}
+void MainWindow::ClearFinishedSftpTransfers() { sftp_.ClearFinished(); RefreshSftpTransferList(); }
 
 void MainWindow::RefreshSftpTransferList() {
     if (!sftpTransferList_) return;
@@ -6416,7 +6208,7 @@ void MainWindow::RefreshSftpTransferList() {
     int queued = 0;
     int running = 0;
     int finished = 0;
-    for (const SftpTransferItem& item : sftpTransfers_) {
+    for (const SftpTransferItem& item : sftp_.Transfers()) {
         SendMessageW(sftpTransferList_, LB_ADDSTRING, 0,
             reinterpret_cast<LPARAM>(item.name.c_str()));
         if (item.state == SftpTransferState::Queued) ++queued;
@@ -6426,8 +6218,8 @@ void MainWindow::RefreshSftpTransferList() {
     std::wstring title = L"传输";
     if (running > 0) title += L" · " + std::to_wstring(running) + L" 进行中";
     if (queued > 0) title += L" · " + std::to_wstring(queued) + L" 等待";
-    if (running == 0 && queued == 0 && !sftpTransfers_.empty())
-        title += L" · " + std::to_wstring(sftpTransfers_.size()) + L" 条记录";
+    if (running == 0 && queued == 0 && !sftp_.Transfers().empty())
+        title += L" · " + std::to_wstring(sftp_.Transfers().size()) + L" 条记录";
     SetWindowTextW(sftpTransferToggleButton_, title.c_str());
     EnableWindow(sftpClearTransfersButton_, finished > 0);
     InvalidateRect(sftpTransferToggleButton_, nullptr, TRUE);
@@ -6435,25 +6227,16 @@ void MainWindow::RefreshSftpTransferList() {
     InvalidateRect(sftpTransferList_, nullptr, TRUE);
 }
 
-void MainWindow::HandleSftpProgress(LPARAM value) {
-    std::unique_ptr<SftpProgressMessage> update(reinterpret_cast<SftpProgressMessage*>(value));
-    if (!update) return;
-    auto found = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [id = update->transferId](const SftpTransferItem& item) { return item.id == id; });
-    if (found == sftpTransfers_.end() || found->state != SftpTransferState::Running) return;
-    found->transferred = update->progress.transferred;
-    found->total = update->progress.total;
-    found->bytesPerSecond = update->progress.bytesPerSecond;
-    found->remainingSeconds = update->progress.remainingSeconds;
-    found->percent = update->progress.percent;
-    InvalidateRect(sftpTransferList_, nullptr, FALSE);
+void MainWindow::HandleSftpProgress(LPARAM) {
+    const auto update = sftp_.TakeProgress();
+    if (update && sftp_.ApplyProgress(*update)) InvalidateRect(sftpTransferList_, nullptr, FALSE);
 }
 
 void MainWindow::CreateSftpDirectory() {
     if (!activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
-    if (sftpBusy_) return;
+    const auto sourceDirectory = sftp_.Directory();
+    if (sftp_.Busy()) return;
     std::wstring name;
     if (PromptSftpValue(L"新建文件夹", L"文件夹名称", L"",
             SftpInputPurpose::Name, name))
@@ -6464,14 +6247,14 @@ void MainWindow::CreateSftpDirectory() {
 void MainWindow::RenameSelectedSftpEntry() {
     if (!activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
+    const auto sourceDirectory = sftp_.Directory();
     const std::vector<size_t> selected = SelectedSftpIndices();
-    if (sftpBusy_ || selected.size() != 1 || !sftpEntries_[selected.front()].pathSafe) return;
-    const SftpEntry entry = sftpEntries_[selected.front()];
+    if (sftp_.Busy() || selected.size() != 1 || !sftp_.Entries()[selected.front()].pathSafe) return;
+    const SftpEntry entry = sftp_.Entries()[selected.front()];
     std::wstring name;
     if (PromptSftpValue(L"重命名", L"新名称", entry.name,
             SftpInputPurpose::Name, name) && name != entry.name) {
-        if (std::any_of(sftpEntries_.begin(), sftpEntries_.end(),
+        if (std::any_of(sftp_.Entries().begin(), sftp_.Entries().end(),
                 [&name](const SftpEntry& other) { return other.name == name; })) {
             AppendStatus(L"远端已存在同名项目。", true);
             return;
@@ -6485,11 +6268,11 @@ void MainWindow::RenameSelectedSftpEntry() {
 void MainWindow::DeleteSelectedSftpEntries() {
     if (!activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
+    const auto sourceDirectory = sftp_.Directory();
     const std::vector<size_t> selected = SelectedSftpIndices();
-    if (sftpBusy_ || selected.empty()) return;
+    if (sftp_.Busy() || selected.empty()) return;
     if (std::any_of(selected.begin(), selected.end(), [this](size_t index) {
-            return !sftpEntries_[index].pathSafe || sftpEntries_[index].symlink;
+            return !sftp_.Entries()[index].pathSafe || sftp_.Entries()[index].symlink;
         })) {
         AppendStatus(L"所选项目含有无法安全修改权限的名称或符号链接。", true);
         return;
@@ -6498,7 +6281,7 @@ void MainWindow::DeleteSelectedSftpEntries() {
     std::vector<bool> directories;
     std::wstring prompt = L"确定删除以下远端项目？\n\n";
     for (size_t index : selected) {
-        const SftpEntry& entry = sftpEntries_[index];
+        const SftpEntry& entry = sftp_.Entries()[index];
         const std::wstring path = JoinSftpRemotePath(sourceDirectory, entry.name);
         paths.push_back(path);
         directories.push_back(entry.directory);
@@ -6514,20 +6297,20 @@ void MainWindow::DeleteSelectedSftpEntries() {
 void MainWindow::ChangeSelectedSftpMode() {
     if (!activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
+    const auto sourceDirectory = sftp_.Directory();
     const std::vector<size_t> selected = SelectedSftpIndices();
-    if (sftpBusy_ || selected.empty()) return;
+    if (sftp_.Busy() || selected.empty()) return;
     if (std::any_of(selected.begin(), selected.end(), [this](size_t index) {
-            return !sftpEntries_[index].pathSafe;
+            return !sftp_.Entries()[index].pathSafe;
         })) {
         AppendStatus(L"所选项目含有无法安全操作的远端名称。", true);
         return;
     }
     std::wstring mode = L"644";
-    if (selected.size() == 1 && sftpEntries_[selected.front()].directory) mode = L"755";
+    if (selected.size() == 1 && sftp_.Entries()[selected.front()].directory) mode = L"755";
     std::vector<std::wstring> paths;
     for (size_t index : selected)
-        paths.push_back(JoinSftpRemotePath(sourceDirectory, sftpEntries_[index].name));
+        paths.push_back(JoinSftpRemotePath(sourceDirectory, sftp_.Entries()[index].name));
     if (!PromptSftpValue(L"修改权限", L"权限（八进制，如 644）", mode,
             SftpInputPurpose::Mode, mode)) return;
     if (activeSession_ && activeSession_->id == sessionId) StartSftpMutation(SftpMutationKind::ChangeMode, paths, mode);
@@ -6538,7 +6321,7 @@ void MainWindow::CopySelectedSftpPaths() {
     std::wstring text;
     for (size_t index : selected) {
         if (!text.empty()) text += L"\r\n";
-        text += JoinSftpRemotePath(sftpDirectory_, sftpEntries_[index].name);
+        text += JoinSftpRemotePath(sftp_.Directory(), sftp_.Entries()[index].name);
     }
     if (SetClipboardText(window_, text)) AppendStatus(L"远端路径已复制", false);
 }
@@ -6546,9 +6329,9 @@ void MainWindow::CopySelectedSftpPaths() {
 void MainWindow::EnterSelectedSftpDirectoryInTerminal() {
     const std::vector<size_t> selected = SelectedSftpIndices();
     if (selected.size() != 1 || !activeSession_) return;
-    const SftpEntry entry = sftpEntries_[selected.front()];
+    const SftpEntry entry = sftp_.Entries()[selected.front()];
     if ((!entry.directory && !entry.symlink) || !entry.pathSafe) return;
-    const std::wstring path = JoinSftpRemotePath(sftpDirectory_, entry.name);
+    const std::wstring path = JoinSftpRemotePath(sftp_.Directory(), entry.name);
     const std::wstring text = L"cd -- " + QuoteShellArgument(path) + SelectedLineEnding();
     const std::string encoded = EncodeTerminalText(text);
     const Bytes bytes(encoded.begin(), encoded.end());
@@ -6557,53 +6340,12 @@ void MainWindow::EnterSelectedSftpDirectoryInTerminal() {
 }
 
 void MainWindow::StartSftpMutation(SftpMutationKind kind,
-    const std::vector<std::wstring>& paths, const std::wstring& value,
-    const std::vector<bool>& directories) {
-    if (sftpBusy_ || !activeSession_ || paths.empty()) return;
-    if (sftpThread_.joinable()) sftpThread_.join();
-    const std::uint64_t sessionId = activeSession_->id;
-    const std::wstring host = activeSession_->host;
-    const std::uint16_t port = activeSession_->port;
-    const std::wstring username = activeSession_->username;
-    const std::wstring password = activeSession_->password;
-    const HWND target = window_;
-    sftpOperationCancel_.store(false);
-    sftpOperationSessionId_ = sessionId;
+    const std::vector<std::wstring>& paths, const std::wstring& value, const std::vector<bool>& directories) {
+    if (closing_ || sftp_.Busy() || !activeSession_ || paths.empty()) return;
     SetSftpBusy(true);
     AppendStatus(L"正在执行 SFTP 操作…", false);
-    auto work = [target, sessionId, host, port, username, password,
-        kind, paths, value, directories, cancel = &sftpOperationCancel_] {
-        auto* result = new (std::nothrow) SftpMessage();
-        if (!result) return;
-        result->sessionId = sessionId;
-        result->kind = SftpMessageKind::Mutation;
-        try {
-            SftpClient client(host, port, username, password);
-            if (kind == SftpMutationKind::CreateDirectory) {
-                result->success = client.CreateDirectory(paths.front(), result->error, cancel);
-            } else if (kind == SftpMutationKind::Rename) {
-                result->success = paths.size() >= 2 &&
-                    client.Rename(paths[0], paths[1], result->error, cancel);
-            } else if (kind == SftpMutationKind::Delete) {
-                std::vector<SftpDeleteTarget> targets;
-                for (size_t index = 0; index < paths.size(); ++index)
-                    targets.push_back({paths[index], index < directories.size() && directories[index]});
-                result->success = client.Delete(targets, result->error, cancel);
-            } else {
-                result->success = client.ChangeMode(paths, value, result->error, cancel);
-            }
-        } catch (...) {
-            result->success = false;
-            result->error = L"SFTP 文件操作发生内部错误。";
-        }
-        if (!PostMessageW(target, MessageSftp, 0, reinterpret_cast<LPARAM>(result))) delete result;
-    };
-    try {
-        sftpThread_ = std::thread(std::move(work));
-    } catch (...) {
-        sftpOperationSessionId_ = 0;
-        SetSftpBusy(false);
-        AppendStatus(L"无法启动 SFTP 文件操作。", true);
+    if (!sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_), kind, paths, value, directories)) {
+        SetSftpBusy(sftp_.Busy()); AppendStatus(L"无法启动 SFTP 文件操作。", true);
     }
 }
 
@@ -6621,29 +6363,13 @@ bool MainWindow::PromptSftpValue(const std::wstring& title, const std::wstring& 
     return true;
 }
 
-void MainWindow::HandleSftpMessage(LPARAM value) {
-    std::unique_ptr<SftpMessage> result(reinterpret_cast<SftpMessage*>(value));
+void MainWindow::HandleSftpMessage(LPARAM) {
+    auto result = sftp_.TakeResult();
     if (!result) return;
     const bool transfer = result->kind == SftpMessageKind::Upload ||
         result->kind == SftpMessageKind::Download;
     if (transfer) {
-        if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
-        auto found = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-            [id = result->transferId](const SftpTransferItem& item) { return item.id == id; });
-        if (found != sftpTransfers_.end()) {
-            found->state = result->success ? SftpTransferState::Completed :
-                (result->canceled ? SftpTransferState::Canceled : SftpTransferState::Failed);
-            found->error = result->error;
-            if (result->success) {
-                found->percent = 100;
-                found->transferred = found->total;
-                if (found->direction == SftpTransferDirection::Upload) {
-                    sftpRefreshSessionId_ = found->sessionId;
-                    sftpRefreshDirectory_ = found->remotePath;
-                }
-            }
-        }
-        activeSftpTransferId_ = 0;
+        sftp_.Finish(*result, nullptr, false);
         SessionState* session = FindSession(result->sessionId);
         if (session == activeSession_) {
             const std::wstring action = result->kind == SftpMessageKind::Upload ? L"上传" : L"下载";
@@ -6658,12 +6384,11 @@ void MainWindow::HandleSftpMessage(LPARAM value) {
         return;
     }
 
-    if (sftpThread_.joinable()) sftpThread_.join();
-    sftpOperationSessionId_ = 0;
     SessionState* session = FindSession(result->sessionId);
-    SetSftpBusy(false);
+    const bool learnedHomeDirectory = sftp_.Finish(*result, session, session && session == activeSession_);
+    SetSftpBusy(sftp_.Busy());
     if (!session) {
-        if (activeSession_ && selectedMode_ == 0 && !sftpBusy_)
+        if (activeSession_ && selectedMode_ == 0 && !sftp_.Busy())
             RefreshSftp(activeSession_->sftpDirectory);
         return;
     }
@@ -6671,21 +6396,15 @@ void MainWindow::HandleSftpMessage(LPARAM value) {
     if (!result->success) {
         const std::wstring message = result->error.empty() ? L"SFTP 操作失败" : result->error;
         if (active) {
-            if (sftpPanelVisible_) SetWindowTextW(sftpPath_, sftpDirectory_.c_str());
+            if (sftpPanelVisible_) SetWindowTextW(sftpPath_, sftp_.Directory().c_str());
             AppendStatus(message, true);
             if (result->kind == SftpMessageKind::Mutation)
-                RefreshSftp(sftpDirectory_);
+                RefreshSftp(sftp_.Directory());
         } else if (session->logger) session->logger->WriteStatus(message);
         return;
     }
     if (result->kind == SftpMessageKind::List) {
-        const bool learnedHomeDirectory = session->sftpHomeDirectory.empty();
-        if (learnedHomeDirectory) session->sftpHomeDirectory = result->listing.directory;
-        session->sftpDirectory = result->listing.directory;
-        session->sftpEntries = std::move(result->listing.entries);
         if (active) {
-            sftpDirectory_ = session->sftpDirectory;
-            sftpEntries_ = session->sftpEntries;
             RefreshSftpList();
             AppendStatus(L"SFTP 目录已刷新", false);
         }
@@ -6697,11 +6416,11 @@ void MainWindow::HandleSftpMessage(LPARAM value) {
         }
         else if (learnedHomeDirectory)
             SyncSftpDirectoryFromTerminal(*session);
-        if (!active && activeSession_ && selectedMode_ == 0 && !sftpBusy_)
+        if (!active && activeSession_ && selectedMode_ == 0 && !sftp_.Busy())
             RefreshSftp(activeSession_->sftpDirectory);
     } else if (result->kind == SftpMessageKind::Mutation && active) {
         AppendStatus(L"SFTP 操作完成", false);
-        RefreshSftp(sftpDirectory_);
+        RefreshSftp(sftp_.Directory());
     }
 }
 

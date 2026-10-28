@@ -465,7 +465,7 @@ struct AiDeviceTestAccess {
                 "Selecting background session did not restore its failure reason");
         transports[0]->connected = false;
         main.SwitchSession(0, MainWindow::SessionFocus::Preserve);
-        Require(!main.sftpThread_.joinable(), "Selecting disconnected SSH started a redundant SFTP process");
+        Require(!main.sftp_.HasOperationThread(), "Selecting disconnected SSH started a redundant SFTP process");
         transports[0]->connected = true;
         main.macro_.Replace(commandDraft, false);
         main.RefreshCommandList();

@@ -196,6 +196,7 @@ add_executable(serialctl WIN32
     src/connections/TcpConnection.cpp
     src/logging/SessionLogger.cpp
     src/sftp/SftpClient.cpp
+    src/sftp/SftpController.cpp
     src/sftp/SftpModel.cpp
     src/terminal/TerminalModel.cpp
     "${SERIALCTL_GENERATED_DIR}/serialctl.rc"
@@ -461,6 +462,14 @@ if(BUILD_TESTING)
     target_link_libraries(websocket_deadline_test PRIVATE ws2_32 advapi32)
     add_test(NAME websocket_deadline COMMAND websocket_deadline_test)
     set_tests_properties(websocket_deadline PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE)
+    add_executable(sftp_controller_test tests/integration/SftpControllerTest.cpp src/sftp/SftpController.cpp
+        src/sftp/SftpClient.cpp src/sftp/SftpModel.cpp src/connections/PuttyHostKey.cpp
+        src/connections/PasswordPipe.cpp src/connections/ChildProcess.cpp)
+    serialctl_configure_native_target(sftp_controller_test CONSOLE)
+    target_compile_definitions(sftp_controller_test PRIVATE SERIALCTL_SFTP_TESTING)
+    target_link_libraries(sftp_controller_test PRIVATE ole32 advapi32)
+    add_test(NAME sftp_controller COMMAND sftp_controller_test)
+    set_tests_properties(sftp_controller PROPERTIES TIMEOUT 20)
     add_executable(ai_device_bridge_test tests/integration/AiDeviceBridgeTest.cpp
         src/ai/AiDeviceBridge.cpp src/terminal/TerminalModel.cpp src/network/SessionService.cpp
         src/connections/QueuedConnection.cpp src/power/PowerService.cpp src/logging/SessionLogger.cpp)

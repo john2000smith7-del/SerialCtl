@@ -11,6 +11,7 @@
 #include "SessionLogger.h"
 #include "SessionService.h"
 #include "SftpClient.h"
+#include "SftpController.h"
 #include "SftpModel.h"
 #include "TerminalDecoder.h"
 #include "TerminalModel.h"
@@ -54,9 +55,9 @@ private:
     std::function<ULONGLONG()> commandClock_; // Deterministic input timing in native UI tests only.
 #endif
     enum class SessionFocus { Terminal, Preserve, AiPreview, PowerPreview };
-    enum class SftpTransferDirection { Upload, Download };
-    enum class SftpTransferState { Queued, Running, Completed, Failed, Canceled };
-    enum class SftpMutationKind { CreateDirectory, Rename, Delete, ChangeMode };
+    using SftpTransferDirection = SftpController::Direction;
+    using SftpTransferState = SftpController::TransferState;
+    using SftpMutationKind = SftpController::Mutation;
     enum class SftpInputPurpose { Name, Mode, Path, Port };
 
     struct SettingsDialogState {
@@ -75,22 +76,7 @@ private:
     using LogExportTask = std::function<bool(std::wstring &, const std::atomic<bool> *,
                                             const SessionLogger::ExportProgress &)>;
 
-    struct SftpTransferItem {
-        std::uint64_t id = 0;
-        std::uint64_t sessionId = 0;
-        SftpTransferDirection direction = SftpTransferDirection::Upload;
-        SftpTransferState state = SftpTransferState::Queued;
-        std::wstring name;
-        std::wstring localPath;
-        std::wstring remotePath;
-        std::uint64_t transferred = 0;
-        std::uint64_t total = 0;
-        std::uint64_t bytesPerSecond = 0;
-        std::uint32_t remainingSeconds = 0;
-        int percent = -1;
-        std::wstring error;
-        bool replaceExisting = false;
-    };
+    using SftpTransferItem = SftpController::Transfer;
 
     struct SftpBreadcrumbHit {
         RECT rect{};
@@ -104,7 +90,7 @@ private:
         std::string source; // empty for output, nonempty for accepted input
         LONGLONG arrival = 0;
     };
-    struct SessionState : AiDeviceBridge::State, TerminalViewport::State {
+    struct SessionState : AiDeviceBridge::State, TerminalViewport::State, SftpController::Session {
         std::wstring lastStatus;
         bool lastStatusIsError = false, unreadStatus = false;
         SYSTEMTIME statusTime{};
@@ -122,13 +108,7 @@ private:
         std::wstring username;
         std::wstring password;
         std::uint16_t port = 0;
-        bool sftpFollowTerminal = true;
-        std::wstring terminalDirectory;
-        bool terminalDirectoryFromOsc = false;
-        std::wstring sftpDirectory = L".";
-        std::wstring sftpHomeDirectory;
-        std::wstring pendingSftpDirectory;
-        std::vector<SftpEntry> sftpEntries;
+
     };
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK TerminalSubclassProc(
@@ -250,6 +230,7 @@ private:
     void ShowSftpPanel(bool show);
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
     void RefreshSftp(const std::wstring& directory = {});
+    static SftpController::Endpoint SftpEndpoint(const SessionState&);
     void EditSftpPath();
     void QueryTerminalDirectory(bool installHook);
     void SftpColumnWidths(int width, int& name, int& size, int& modified) const;
@@ -438,29 +419,15 @@ private:
     bool rightPanelAnimating_ = false;
     int rightPanelAnimatedWidth_ = -1, rightPanelAnimationFrom_ = 0, rightPanelAnimationTo_ = 0;
     ULONGLONG rightPanelAnimationAt_ = 0;
+    SftpController sftp_;
     bool sftpPanelVisible_ = false;
-    bool sftpBusy_ = false;
-    std::wstring sftpDirectory_ = L".";
-    std::vector<SftpEntry> sftpEntries_;
-    SftpSortColumn sftpSortColumn_ = SftpSortColumn::Name;
-    bool sftpSortAscending_ = true;
     std::vector<SftpBreadcrumbHit> sftpBreadcrumbHits_;
     int sftpNameWidth_ = 180;
     int sftpColumnDragging_ = 0;
     int sftpColumnDragX_ = 0;
     int sftpColumnDragWidth_ = 0;
     int hoveredSftpBreadcrumb_ = -1;
-    std::thread sftpThread_;
-    std::atomic_bool sftpOperationCancel_{false};
-    std::uint64_t sftpOperationSessionId_ = 0;
-    std::vector<SftpTransferItem> sftpTransfers_;
-    std::thread sftpTransferThread_;
-    std::atomic_bool sftpTransferCancel_{false};
-    std::uint64_t nextSftpTransferId_ = 1;
-    std::uint64_t activeSftpTransferId_ = 0;
     bool sftpTransferExpanded_ = false;
-    std::uint64_t sftpRefreshSessionId_ = 0;
-    std::wstring sftpRefreshDirectory_;
     bool statusIsError_ = false;
 
     std::thread connectionThread_;
