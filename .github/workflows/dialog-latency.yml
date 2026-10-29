@@ -1,51 +1,67 @@
-name: Measure connection dialog latency on Windows
+name: Measure connection dialogs during sustained terminal output
 on:
   push:
     branches: [diagnostic/connection-dialog-latency]
-    paths: [.github/workflows/dialog-latency.yml, tests/performance/dialog_bench.cpp]
+    paths: [.github/workflows/dialog-latency.yml, tests/performance/dialog_bench.cpp, tests/performance/dialog_load.cpp]
 permissions:
   contents: read
+  actions: read
 jobs:
   measure:
     runs-on: windows-2022
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - name: Build native stopwatch
+      - name: Build native fixture tools
         shell: cmd
-        run: cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-bench.exe tests\performance\dialog_bench.cpp user32.lib
-      - name: Compare released applications on one Windows desktop
+        run: |
+          cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-bench.exe tests\performance\dialog_bench.cpp user32.lib
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-load.exe tests\performance\dialog_load.cpp
+      - name: Compare exact baseline and tested candidate on one Windows desktop
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
+          SERIALCTL_UI_METRICS: '1'
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Expected isolated hosted runner.' }
-          $out = Join-Path $env:RUNNER_TEMP 'dialog-baseline'
-          New-Item -ItemType Directory -Path $out | Out-Null
-          foreach ($version in @('2.0.9', '2.0.10')) {
-            $folder = Join-Path $out $version
-            New-Item -ItemType Directory -Path $folder | Out-Null
-            $archive = "SerialCtl-V$version-Win7-x64.zip"
-            gh release download "v$version" --repo $env:GITHUB_REPOSITORY --pattern $archive --dir $folder
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $expected = if ($version -eq '2.0.9') { 'e065555b4d10132d66fa59443a0aa883199c37bdeb61242213470efed3f4f2df' } else { 'd2bc0b00ca4f2917d533f0f16f23b3301b2baf259b69e0af360b17b90420be3b' }
-            if ((Get-FileHash (Join-Path $folder $archive) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Release archive hash mismatch.' }
-            Expand-Archive -LiteralPath (Join-Path $folder $archive) -DestinationPath (Join-Path $folder 'app')
-            Set-Content -LiteralPath (Join-Path $folder 'app/update.ini') -Value "[update]`r`nurl=" -Encoding ASCII
-            $config = Join-Path $env:APPDATA 'SerialCtl'
-            New-Item -ItemType Directory -Force -Path $config | Out-Null
-            Set-Content -LiteralPath (Join-Path $config 'settings.ini') -Value "[Layout]`r`nRightPanelCollapsed=0`r`n[Pet]`r`nEnabled=0" -Encoding ASCII
-            Write-Host "DIALOG_BASELINE_VERSION=$version"
-            & .\dialog-bench.exe (Join-Path $folder 'app/serialctl.exe') | Tee-Object -FilePath (Join-Path $out "v$version.log")
-            if ($LASTEXITCODE -ne 0) { throw "Dialog measurement exited with $LASTEXITCODE" }
+          $out = Join-Path $env:RUNNER_TEMP 'dialog-stream'
+          New-Item -ItemType Directory -Force -Path "$out/baseline", "$out/candidate" | Out-Null
+          gh release download v2.0.10 --repo $env:GITHUB_REPOSITORY --pattern 'SerialCtl-V2.0.10-Win7-x64.zip' --dir "$out/baseline"
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline download failed.' }
+          $candidateRun = 40912938093
+          gh run watch $candidateRun --repo $env:GITHUB_REPOSITORY --exit-status --interval 30
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate CI did not pass.' }
+          $candidate = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$candidateRun" | ConvertFrom-Json
+          if ($candidate.head_sha -ne 'c03bac3b38a0363d4401499e32ae3e642c98e1cc' -or $candidate.conclusion -ne 'success') { throw 'Expected exact successful candidate CI.' }
+          gh run download $candidateRun --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir "$out/candidate"
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed.' }
+          foreach ($name in @('baseline', 'candidate')) {
+            $zip = @(Get-ChildItem "$out/$name" -Filter '*.zip')
+            if ($zip.Count -ne 1) { throw 'Expected one exact package.' }
+            $hash = (Get-FileHash $zip[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            Write-Host "DIALOG_ARCHIVE=$name SHA256=$hash"
+            if ($name -eq 'baseline' -and $hash -ne 'd2bc0b00ca4f2917d533f0f16f23b3301b2baf259b69e0af360b17b90420be3b') { throw 'Baseline identity mismatch.' }
+            Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath "$out/$name/app"
+            Set-Content -LiteralPath "$out/$name/app/update.ini" -Value "[update]`r`nurl=" -Encoding ASCII
+          }
+          foreach ($theme in @('light', 'dark')) {
+            foreach ($name in @('baseline', 'candidate')) {
+              $config = Join-Path $env:APPDATA 'SerialCtl'
+              New-Item -ItemType Directory -Force -Path $config | Out-Null
+              Set-Content -LiteralPath (Join-Path $config 'settings.ini') -Value "[Layout]`r`nRightPanelCollapsed=0`r`n[Pet]`r`nEnabled=1" -Encoding ASCII
+              Write-Host "DIALOG_STREAM_CASE=$name/$theme"
+              & ./dialog-bench.exe "$out/$name/app/serialctl.exe" $theme "$pwd/dialog-load.exe" | Tee-Object -FilePath "$out/$name-$theme.log"
+              if ($LASTEXITCODE -ne 0) { throw "Invalid stream sample: $name/$theme exited $LASTEXITCODE" }
+            }
           }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: connection-dialog-baselines
-          path: ${{ runner.temp }}/dialog-baseline/*.log
+          name: connection-dialog-stream
+          path: ${{ runner.temp }}/dialog-stream/*.log
           if-no-files-found: warn
