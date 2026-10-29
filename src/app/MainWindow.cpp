@@ -5366,7 +5366,9 @@ void MainWindow::PasteToTerminal() {
 }
 
 void MainWindow::UpdateTerminalDimensions() {
-    if (!terminal_) return;
+    // Defer terminal reflow while native resize, sidebar dragging or animation
+    // is in progress; the corresponding completion handlers update it once.
+    if (!terminal_ || !terminalFont_ || rightPanelAnimating_ || rightPanelDragging_ || windowResizing_) return;
     const int oldColumns = terminalViewport_.Metrics().columns, oldRows = terminalViewport_.Metrics().rows;
     const bool timestamps = timestampEnabled_ && !LiveMonitorPage() && activeSession_ && !activeSession_->terminal.AlternateScreen();
     terminalViewport_.Measure(terminal_, terminalFont_, timestamps);

@@ -377,6 +377,35 @@ struct AiDeviceTestAccess {
         }
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
         {
+            // A real drag/animation changes child bounds many times. Keep the
+            // terminal grid stable until the operation finishes, then reflow.
+            for (bool MainWindow::*deferred : {&MainWindow::windowResizing_, &MainWindow::rightPanelDragging_,
+                                             &MainWindow::rightPanelAnimating_}) {
+                RECT bounds{};
+                GetWindowRect(main.terminal_, &bounds);
+                const int oldColumns = main.terminalViewport_.Metrics().columns;
+                const int oldRows = main.terminalViewport_.Metrics().rows;
+                const int modelColumns = main.sessions_[4]->terminal.Columns();
+                const int modelRows = main.sessions_[4]->terminal.Rows();
+                main.*deferred = true;
+                Require(SetWindowPos(main.terminal_, nullptr, 0, 0, bounds.right - bounds.left - 200,
+                                     bounds.bottom - bounds.top - 60, SWP_NOMOVE | SWP_NOZORDER) != FALSE,
+                        "Cannot resize terminal during deferred-reflow fixture");
+                main.UpdateTerminalDimensions();
+                Require(main.terminalViewport_.Metrics().columns == oldColumns &&
+                            main.terminalViewport_.Metrics().rows == oldRows &&
+                            main.sessions_[4]->terminal.Columns() == modelColumns &&
+                            main.sessions_[4]->terminal.Rows() == modelRows,
+                        "Terminal reflow must wait until drag, animation or resize completes");
+                main.*deferred = false;
+                main.UpdateTerminalDimensions();
+                Require(main.terminalViewport_.Metrics().columns != oldColumns &&
+                            main.sessions_[4]->terminal.Columns() == main.terminalViewport_.Metrics().columns,
+                        "Terminal dimensions must be committed after deferred reflow");
+                main.LayoutControls(viewport.right, viewport.bottom);
+            }
+        }
+        {
             const auto writes=transports[4]->writes;
             main.macro_.Replace({CommandItem(L"A",L"echo A"),CommandItem(L"B",L"echo B"),CommandItem(L"C",L"echo C")}, false);
             main.macro_.MarkSaved(); main.RefreshCommandList();
