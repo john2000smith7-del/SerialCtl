@@ -136,7 +136,7 @@ jobs:
         run: |
           # The controls probe captures visible desktop pixels with BitBlt.
           # Keep these separate from PrintWindow layout captures.
-          $images = @(Get-ChildItem "$env:RUNNER_TEMP/serialctl-ui" -Filter '*power-connection-controls-final.png')
+          $images = @(Get-ChildItem "$env:RUNNER_TEMP/serialctl-ui" -Filter '*power-connection-controls-*-controls-final.png')
           foreach ($image in $images) {
             $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($image.FullName))
             Write-Host "SERIALCTL_UI_REVIEW_BEGIN $($image.Name)"
