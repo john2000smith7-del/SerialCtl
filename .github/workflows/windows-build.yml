@@ -47,6 +47,21 @@ jobs:
             }
             throw $failure
           } finally { if ($transcriptOpen) { Stop-Transcript } }
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build connection dialog stopwatch
+        shell: cmd
+        run: cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-bench.exe tests\performance\ConnectionDialogBench.cpp user32.lib
+      - name: Measure connection dialog latency against the accepted release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archive.Count -ne 1) { throw 'Expected one verified archive.' }
+          ./tests/performance/MeasureConnectionDialogs.ps1 -CandidateArchive $archive[0].FullName -OutputDirectory "$env:RUNNER_TEMP/serialctl-dialog-latency"
       - name: Launch packaged applications and capture UI
         shell: powershell
         run: |
@@ -115,7 +130,7 @@ jobs:
           # These screenshots use only the isolated smoke fixture, with updates
           # disabled and no user credentials or physical devices. Chunking keeps
           # each log line short for visual review when artifact storage is unavailable.
-          foreach ($name in @('x64-packaged-light.png','x64-packaged-dark.png','x64-light-power-connection.png','x64-dark-power-connection.png')) {
+          foreach ($name in @('x64-packaged-light.png','x64-packaged-dark.png','x64-light-power-connection.png','x64-dark-power-connection.png','dialog-ssh-light.png','dialog-ssh-dark.png','dialog-telnet-light.png','dialog-telnet-dark.png','dialog-serial-light.png','dialog-serial-dark.png','v205-remote-light.png','v205-remote-dark.png')) {
             $path = Join-Path "$env:RUNNER_TEMP/serialctl-ui" $name
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
             $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
@@ -139,4 +154,5 @@ jobs:
             ${{ runner.temp }}/serialctl-command-drag/*.json
             ${{ runner.temp }}/serialctl-command-drag/*.txt
             ${{ runner.temp }}/serialctl-build.txt
+            ${{ runner.temp }}/serialctl-dialog-latency/*.log
           if-no-files-found: warn

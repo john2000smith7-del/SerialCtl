@@ -521,8 +521,11 @@ int DialogLabelHeight(HWND control) {
     return std::max(static_cast<int>(metrics.tmHeight), static_cast<int>(extent.cy));
 }
 
-void FitDialogLabels(HWND dialog) {
+void FitDialogLabels(HWND dialog, bool visibleOnly = false) {
     for (HWND child = GetWindow(dialog, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+        // WM_INITDIALOG runs before its parent is visible. IsWindowVisible
+        // would therefore exclude every child; inspect its own style instead.
+        if (visibleOnly && !(GetWindowLongPtrW(child, GWL_STYLE) & WS_VISIBLE)) continue;
         wchar_t name[32]{};
         GetClassNameW(child, name, static_cast<int>(std::size(name)));
         if (_wcsicmp(name, L"Static") != 0 || GetDlgCtrlID(child) == 0) continue;
@@ -3524,6 +3527,32 @@ void MainWindow::OpenConnectionDialog(int mode) {
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 
+// IDD_CONNECTION is shared by four immutable connection modes. Its template
+// contains every mode's controls, although most are hidden before it opens.
+// Avoid setting up rounded frames and dropdowns that cannot be shown in this
+// particular dialog; hidden native fields still retain their own data.
+static bool IsConnectionControlUsed(int mode, int id) {
+    switch (id) {
+    case IDC_SERIAL_LABEL: case IDC_SERIAL: case IDC_SERIAL_REFRESH:
+        return mode == 1 || mode == 3;
+    case IDC_BAUD_LABEL: case IDC_BAUD: case IDC_DATABITS_LABEL: case IDC_DATABITS:
+    case IDC_PARITY_LABEL: case IDC_PARITY: case IDC_STOPBITS_LABEL: case IDC_STOPBITS:
+    case IDC_FLOW_LABEL: case IDC_FLOW:
+        return mode == 1;
+    case IDC_HOST_LABEL: case IDC_HOST:
+        return mode != 1;
+    case IDC_PORT_LABEL: case IDC_PORT:
+        return mode == 0 || mode == 2;
+    case IDC_USER_LABEL: case IDC_USER: case IDC_PASSWORD_LABEL: case IDC_PASSWORD:
+    case IDC_HOST_IDENTITY: case IDC_HOST_REVERIFY:
+        return mode == 0;
+    case IDC_SHARE_LABEL: case IDC_SHARE_PORT: case IDC_DIALOG_NOTE:
+        return false;
+    default:
+        return true;
+    }
+}
+
 INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam) {
     MainWindow* self = reinterpret_cast<MainWindow*>(GetWindowLongPtrW(dialog, DWLP_USER));
     if (message == WM_INITDIALOG) {
@@ -3531,6 +3560,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(self));
         ApplyDarkTitleBar(dialog, self->darkMode_);
         for (HWND child = GetWindow(dialog, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+            if (!IsConnectionControlUsed(self->pendingMode_, GetDlgCtrlID(child))) continue;
             SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), TRUE);
             wchar_t className[32]{};
             GetClassNameW(child, className, static_cast<int>(std::size(className)));
@@ -3538,10 +3568,16 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                 if (_wcsicmp(className, L"Edit") == 0) {
                     PrepareDialogEditField(dialog, child, self);
                     SetWindowSubclass(child, DialogControlSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
-                } else
+                    // PrepareDialogEditField already refreshes the frame on
+                    // success. Retain a fallback if the frame could not be
+                    // created or registered as a window property.
+                    if (!GetPropW(child, Ui::FieldFrameProperty))
+                        SetWindowPos(child, nullptr, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                } else {
+                    // UiStyleField performs its own SWP_FRAMECHANGED.
                     UiStyleField(child, &self->dialogFieldStyle_);
-                SetWindowPos(child, nullptr, 0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                }
             } else if (_wcsicmp(className, L"Button") == 0) {
                 SetWindowSubclass(child, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
             }
@@ -3739,17 +3775,28 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     MoveDialogItemDlu(dialog, IDCANCEL, dialogWidth - 156, buttonY, 68, 18);
     MoveDialogItemDlu(dialog, IDOK, dialogWidth - 80, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight);
-    FitDialogLabels(dialog);
+    FitDialogLabels(dialog, true);
 
     const wchar_t* titles[] = {L"新建 SSH 连接", L"新建串口连接", L"新建 Telnet 连接", L"连接共享串口"};
     SetWindowTextW(dialog, titles[pendingMode_]);
     ShowWindow(GetDlgItem(dialog, IDC_DIALOG_NOTE), SW_HIDE);
-    SetDlgItemTextW(dialog, IDC_HOST, aiRemoteConnect_ ? L"" : L"127.0.0.1");
-    SetDlgItemTextW(dialog, IDC_PORT, pendingMode_ == 0 ? L"22" : pendingMode_ == 2 ? L"23" : L"7000");
+    if (!serial) {
+        SetDlgItemTextW(dialog, IDC_HOST, aiRemoteConnect_ ? L"" : L"127.0.0.1");
+        // The shared-serial dialog hides this field but still reads its
+        // default port when validating the connection.
+        SetDlgItemTextW(dialog, IDC_PORT, pendingMode_ == 0 ? L"22" : pendingMode_ == 2 ? L"23" : L"7000");
+    }
     SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"");
 
-    for (int id : {IDC_HOST, IDC_PORT, IDC_USER, IDC_PASSWORD, IDC_SHARE_PORT})
-        SendDlgItemMessageW(dialog, id, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
+    if (!serial) {
+        SendDlgItemMessageW(dialog, IDC_HOST, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
+        if (!share)
+            SendDlgItemMessageW(dialog, IDC_PORT, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
+        if (ssh) {
+            for (int id : {IDC_USER, IDC_PASSWORD})
+                SendDlgItemMessageW(dialog, id, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
+        }
+    }
 
     if (serial) {
         RefreshSerialPorts(dialog);
@@ -3762,17 +3809,23 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         discoveryDialog_ = dialog;
         SetTimer(dialog, DiscoveryTimerId, 500, nullptr);
     }
-    AddComboItems(GetDlgItem(dialog, IDC_BAUD), {L"9600", L"38400", L"57600", L"115200", L"230400", L"460800", L"921600", L"1500000"}, 3);
-    AddComboItems(GetDlgItem(dialog, IDC_DATABITS), {L"5", L"6", L"7", L"8"}, 3);
-    AddComboItems(GetDlgItem(dialog, IDC_PARITY), {L"无", L"奇", L"偶"}, 0);
-    AddComboItems(GetDlgItem(dialog, IDC_STOPBITS), {L"1", L"1.5", L"2"}, 0);
-    AddComboItems(GetDlgItem(dialog, IDC_FLOW), {L"无", L"CTS/RTS", L"XON/XOFF"}, 0);
-    UiLayoutBatch fields;
-    for (int id : {IDC_SERIAL, IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW})
-        fields.ComboVisibleHeight(GetDlgItem(dialog, id), Ui::Scale(28));
-    fields.Commit();
-    if (serial || share)
+    if (serial) {
+        AddComboItems(GetDlgItem(dialog, IDC_BAUD), {L"9600", L"38400", L"57600", L"115200", L"230400", L"460800", L"921600", L"1500000"}, 3);
+        AddComboItems(GetDlgItem(dialog, IDC_DATABITS), {L"5", L"6", L"7", L"8"}, 3);
+        AddComboItems(GetDlgItem(dialog, IDC_PARITY), {L"无", L"奇", L"偶"}, 0);
+        AddComboItems(GetDlgItem(dialog, IDC_STOPBITS), {L"1", L"1.5", L"2"}, 0);
+        AddComboItems(GetDlgItem(dialog, IDC_FLOW), {L"无", L"CTS/RTS", L"XON/XOFF"}, 0);
+    }
+    if (serial || share) {
+        UiLayoutBatch fields;
+        fields.ComboVisibleHeight(GetDlgItem(dialog, IDC_SERIAL), Ui::Scale(28));
+        if (serial) {
+            for (int id : {IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW})
+                fields.ComboVisibleHeight(GetDlgItem(dialog, id), Ui::Scale(28));
+        }
+        fields.Commit();
         MatchDialogControlHeight(dialog, share ? IDC_HOST : IDC_SERIAL, IDC_SERIAL_REFRESH);
+    }
 }
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {

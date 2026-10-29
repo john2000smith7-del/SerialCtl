@@ -110,6 +110,9 @@ void CheckSettled(HWND combo, const char *action) {
     }
 }
 void RunCase(HWND parent, bool ownerDrawn) {
+    // Connection forms assemble their controls before the parent is shown.
+    // Deferred hidden paints must still produce a correct first visible field.
+    ShowWindow(parent, SW_HIDE);
     const auto instance = GetModuleHandleW(nullptr);
     HWND combo = CreateWindowExW(0, L"COMBOBOX", L"",
                                  WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST |
@@ -130,6 +133,7 @@ void RunCase(HWND parent, bool ownerDrawn) {
     layout.Move(combo, 20, 40, MulDiv(220, style.dpi, 96), MulDiv(28, style.dpi, 96));
     layout.ComboVisibleHeight(combo, MulDiv(28, style.dpi, 96));
     layout.Commit();
+    ShowWindow(parent, SW_SHOW);
     SetFocus(combo);
     Pump();
     RECT normalized{};

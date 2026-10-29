@@ -136,6 +136,8 @@ struct AiDeviceTestAccess {
         const auto remote = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
                                                MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
         Require(remote != nullptr, "Remote connection dialog missing");
+        Require(MainWindow::ControlText(GetDlgItem(remote, IDC_PORT)) == L"7000",
+                "Remote discovery lost its hidden default service port");
         RECT dialogBounds{};
         GetClientRect(remote, &dialogBounds);
         for (int id : {IDC_HOST, IDC_SERIAL_REFRESH, IDC_SERIAL, IDC_DIALOG_ERROR, IDCANCEL, IDOK}) {
@@ -210,6 +212,12 @@ struct AiDeviceTestAccess {
         const auto local = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
                                               MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
         Require(local != nullptr, "Local serial dialog missing");
+        Require(MainWindow::ControlText(GetDlgItem(local, IDC_BAUD)) == L"115200" &&
+                SendDlgItemMessageW(local, IDC_DATABITS, CB_GETCURSEL, 0, 0) == 3 &&
+                SendDlgItemMessageW(local, IDC_PARITY, CB_GETCURSEL, 0, 0) == 0 &&
+                SendDlgItemMessageW(local, IDC_STOPBITS, CB_GETCURSEL, 0, 0) == 0 &&
+                SendDlgItemMessageW(local, IDC_FLOW, CB_GETCURSEL, 0, 0) == 0,
+                "Local serial form lost its 115200/8N1/no-flow defaults");
         for (const auto dialog : {local}) {
             RECT bounds{}, refresh{}, selector{};
             GetClientRect(dialog, &bounds);
@@ -227,7 +235,46 @@ struct AiDeviceTestAccess {
                 Require(field.bottom <= bounds.bottom, "Serial field escapes resized dialog");
             }
         }
+        for (const bool dark : {false, true}) {
+            main.darkMode_ = dark;
+            main.ApplyTheme();
+            ShowWindow(local, SW_SHOW);
+            ui_test::SaveUiEvidence(local, dark ? L"dialog-serial-dark.png" : L"dialog-serial-light.png");
+        }
         DestroyWindow(local);
+        // Each connection form must keep its own usable defaults even when
+        // setup work for the other modes is omitted. Never open a connection.
+        for (const int mode : {0, 2}) {
+            main.pendingMode_ = mode;
+            const auto network = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
+                MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
+            Require(network != nullptr, "Network connection dialog missing");
+            Require(MainWindow::ControlText(GetDlgItem(network, IDC_HOST)) == L"127.0.0.1" &&
+                    MainWindow::ControlText(GetDlgItem(network, IDC_PORT)) == (mode == 0 ? L"22" : L"23"),
+                    "Connection mode lost its default host or port");
+            Require(!IsWindowVisible(GetDlgItem(network, IDC_SERIAL)) &&
+                    !IsWindowVisible(GetDlgItem(network, IDC_BAUD)),
+                    "Network form exposes unrelated serial fields");
+            std::wstring error;
+            if (mode == 0) {
+                Require(!main.ReadConnectionDialog(network, error), "SSH must still require a username");
+                SetDlgItemTextW(network, IDC_USER, L"fixture");
+                SetDlgItemTextW(network, IDC_PASSWORD, L"fixture-password");
+            }
+            Require(main.ReadConnectionDialog(network, error) && main.pendingPort_ == (mode == 0 ? 22 : 23),
+                    "Network form cannot read its initialized settings");
+            for (const bool dark : {false, true}) {
+                main.darkMode_ = dark;
+                main.ApplyTheme();
+                ShowWindow(network, SW_SHOW);
+                ui_test::SaveUiEvidence(network, mode == 0 ?
+                    (dark ? L"dialog-ssh-dark.png" : L"dialog-ssh-light.png") :
+                    (dark ? L"dialog-telnet-dark.png" : L"dialog-telnet-light.png"));
+            }
+            DestroyWindow(network);
+        }
+        main.darkMode_ = false;
+        main.ApplyTheme();
         // Exercise actual production owner painters, preserving row/page selection separately from a held press.
         auto render = [&](HWND button, UINT state, bool power) {
             RECT rect{};

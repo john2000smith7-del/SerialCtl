@@ -1019,7 +1019,11 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
                   message == CB_DELETESTRING || (message == CB_SETITEMHEIGHT && static_cast<int>(w) == -1))) {
         // Native keyboard/list notifications also redraw through GetDC. Commit
         // one complete themed field before returning, not only after focus loss.
-        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        // During WM_INITDIALOG the parent is still hidden. Keep its fields
+        // invalidated for first display rather than synchronously painting
+        // every intermediate selection/size while assembling the form.
+        RedrawWindow(h, nullptr, nullptr,
+            RDW_INVALIDATE | (IsWindowVisible(h) ? RDW_UPDATENOW : 0));
     } else if (edit && (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
                         message == WM_SETFONT || message == WM_SIZE))
         RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);
