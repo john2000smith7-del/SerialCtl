@@ -108,6 +108,23 @@ jobs:
           path: bin/SerialCtl-*-Win7-x64.zip
           if-no-files-found: error
           retention-days: 30
+      - name: Export isolated UI review images through the build log
+        if: always()
+        shell: powershell
+        run: |
+          # These screenshots use only the isolated smoke fixture, with updates
+          # disabled and no user credentials or physical devices. Chunking keeps
+          # each log line short for visual review when artifact storage is unavailable.
+          foreach ($name in @('x64-packaged-light.png','x64-packaged-dark.png','x64-light-power-connection.png','x64-dark-power-connection.png')) {
+            $path = Join-Path "$env:RUNNER_TEMP/serialctl-ui" $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+            Write-Host "SERIALCTL_UI_REVIEW_BEGIN $name"
+            for ($offset = 0; $offset -lt $encoded.Length; $offset += 4096) {
+              Write-Host ("SERIALCTL_UI_REVIEW_DATA " + $encoded.Substring($offset, [Math]::Min(4096, $encoded.Length - $offset)))
+            }
+            Write-Host "SERIALCTL_UI_REVIEW_END $name"
+          }
       - name: Upload UI evidence
         if: always()
         uses: actions/upload-artifact@v4
