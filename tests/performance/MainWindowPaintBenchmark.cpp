@@ -34,19 +34,20 @@ struct AiDeviceTestAccess {
         nlohmann::json result;
         {
             MainWindow main;
-            MainWindow::SessionState session;
-            session.id = 1;
-            session.mode = 1;
+            auto session = std::make_unique<MainWindow::SessionState>();
+            session->id = 1;
+            session->mode = 1;
             auto transport = std::make_shared<BenchmarkTransport>();
-            session.connection = transport;
+            session->connection = transport;
             main.sessionService_.Register({{"id", "session-1"}, {"kind", "serial"}}, transport);
             main.selectedMode_ = 1;
             main.connection_ = transport.get();
             main.localEchoEnabled_ = true;
             std::wstring terminalContent;
             for (int i = 0; i < 1000; ++i) terminalContent += L"benchmark terminal content 0123456789\r\n";
-            session.terminal.Feed(terminalContent, L"");
-            main.activeSession_ = &session;
+            session->terminal.Feed(terminalContent, L"");
+            main.activeSession_ = session.get();
+            main.sessions_.push_back(std::move(session));
             const HWND parent = CreateWindowExW(0, L"STATIC", L"SerialCtl paint benchmark",
                 WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, 0, 0, 1400, 850, nullptr, nullptr,
                 GetModuleHandleW(nullptr), nullptr);
@@ -130,6 +131,31 @@ struct AiDeviceTestAccess {
                 resizeRoundSamples.push_back(std::move(currentResizes));
                 resizeGdi.push_back(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS));
             }
+            // Model an actual resize gesture: production defers terminal model
+            // reflow between WM_ENTERSIZEMOVE and WM_EXITSIZEMOVE.
+            std::vector<double> interactiveResizes;
+            const int initialColumns = main.activeSession_->terminal.Columns();
+            main.HandleMessage(WM_ENTERSIZEMOVE, 0, 0);
+            for (int i = 0; i < 80; ++i) {
+                const int width = i % 2 ? wide : wide - 80;
+                const int height = i % 2 ? tall : tall - 50;
+                const auto started = std::chrono::steady_clock::now();
+                if (!SetWindowPos(parent, nullptr, 0, 0, width, height,
+                                  SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE))
+                    throw std::runtime_error("Cannot resize interactive fixture");
+                UpdateWindow(parent);
+                GdiFlush();
+                interactiveResizes.push_back(std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - started).count());
+                if (main.activeSession_->terminal.Columns() != initialColumns)
+                    throw std::runtime_error("Terminal reflow was not deferred during interactive resize");
+            }
+            const auto commitStart = std::chrono::steady_clock::now();
+            main.HandleMessage(WM_EXITSIZEMOVE, 0, 0);
+            const auto resizeCommitMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - commitStart).count();
+            if (main.activeSession_->terminal.Columns() == initialColumns)
+                throw std::runtime_error("Terminal did not commit its final interactive dimensions");
             const auto wallMs = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - wallStart).count();
             if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernelEnd, &userEnd))
@@ -171,6 +197,7 @@ struct AiDeviceTestAccess {
             std::sort(inputs.begin(), inputs.end());
             std::sort(resizes.begin(), resizes.end());
             std::sort(steadyResizes.begin(), steadyResizes.end());
+            std::sort(interactiveResizes.begin(), interactiveResizes.end());
             result = {{"clientWidth", viewport.right}, {"clientHeight", viewport.bottom},
                 {"paintSamples", paints}, {"paintP50Ms", paints[100]}, {"paintP95Ms", paints[190]},
                 {"terminalPaintSamples", terminalPaints}, {"terminalPaintP50Ms", terminalPaints[100]},
@@ -178,6 +205,8 @@ struct AiDeviceTestAccess {
                 {"resizeSamples", resizes}, {"resizeP50Ms", resizes[20]}, {"resizeP95Ms", resizes[38]},
                 {"resizeSteadySamples", steadyResizes}, {"resizeSteadyP50Ms", steadyResizes[40]},
                 {"resizeSteadyP95Ms", steadyResizes[76]}, {"resizeRoundSamples", resizeRoundSamples},
+                {"interactiveResizeSamples", interactiveResizes}, {"interactiveResizeP50Ms", interactiveResizes[40]},
+                {"interactiveResizeP95Ms", interactiveResizes[76]}, {"resizeCommitMs", resizeCommitMs},
                 {"inputSamples", inputs}, {"inputP50Ms", inputs[500]}, {"inputP95Ms", inputs[950]},
                 {"inputWallMs", inputWallMs}, {"inputCpuMs", inputCpuMs}, {"inputBytes", timedInputBytes},
                 {"inputBytesPerSecond", 1000 * 1000 / inputWallMs},
@@ -195,6 +224,7 @@ struct AiDeviceTestAccess {
             main.sessionService_.Unregister("session-1");
             main.connection_ = nullptr;
             main.activeSession_ = nullptr;
+            main.sessions_.clear();
         }
         result["gdiAfterApp"] = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
         return result;
