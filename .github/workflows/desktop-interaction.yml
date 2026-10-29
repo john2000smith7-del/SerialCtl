@@ -130,6 +130,21 @@ jobs:
         run: |
           $files = @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Join-Path "$env:RUNNER_TEMP/serialctl-ui/payload" $_ } | Where-Object { Test-Path $_ }
           if ($files) { $files | ForEach-Object { Get-FileHash -LiteralPath $_ -Algorithm SHA256 } | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-executable-sha256.json" -Encoding UTF8 }
+      - name: Export actual desktop power notice images for visual review
+        if: always()
+        shell: powershell
+        run: |
+          # The controls probe captures visible desktop pixels with BitBlt.
+          # Keep these separate from PrintWindow layout captures.
+          $images = @(Get-ChildItem "$env:RUNNER_TEMP/serialctl-ui" -Filter '*power-connection-controls-final.png')
+          foreach ($image in $images) {
+            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($image.FullName))
+            Write-Host "SERIALCTL_UI_REVIEW_BEGIN $($image.Name)"
+            for ($offset = 0; $offset -lt $encoded.Length; $offset += 4096) {
+              Write-Host ("SERIALCTL_UI_REVIEW_DATA " + $encoded.Substring($offset, [Math]::Min(4096, $encoded.Length - $offset)))
+            }
+            Write-Host "SERIALCTL_UI_REVIEW_END $($image.Name)"
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
