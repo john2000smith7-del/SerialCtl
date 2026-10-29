@@ -591,6 +591,7 @@ void PowerPane::Refresh() {
     EnableWindow(buttons_[3], connected && !Selection().empty());
     EnableWindow(Control(81), connected && !running && !Selection().empty());
     EnableWindow(Control(80), !running && action_.empty());
+    EnableWindow(Control(103), PowerService::ConnectionAvailable());
     for (int i = 0; i < 3; ++i) {
         EnableWindow(voltage_[i], connected && !running);
         EnableWindow(current_[i], connected && !running);

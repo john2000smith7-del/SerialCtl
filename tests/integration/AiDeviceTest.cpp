@@ -655,6 +655,8 @@ struct AiDeviceTestAccess {
         main.ShowPowerPage();
         Require(main.powerVisible_ && !main.aiVisible_ && IsWindowVisible(main.powerPane_.Handle()) &&
             IsWindowVisible(main.terminal_) && !IsWindowVisible(main.commandList_),"Power page must share the actual selected terminal and hide original sidebar");
+        Require(!IsWindowEnabled(PowerControl(main.powerPane_.Handle(), 103)),
+                "Unavailable power sampling control must not accept changes that open rejection dialogs");
         RECT powerRect{},liveRect{};
         GetWindowRect(main.powerPane_.Handle(),&powerRect);GetWindowRect(main.terminal_,&liveRect);
         Require(std::abs((powerRect.right-powerRect.left)-(liveRect.right-liveRect.left))<=1,"Power monitor must start at independent 50:50 ratio");
