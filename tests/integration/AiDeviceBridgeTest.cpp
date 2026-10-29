@@ -32,6 +32,15 @@ int main() {
             params["sessionId"] = "session-42";
             return bridge.Request(method, params, targets, context, now, pulse);
         };
+        const auto initialPower = power.State();
+        Check(!PowerService::ConnectionAvailable() && !request("power.get")["connected"].get<bool>(),
+              "production AI bridge must report disconnected power");
+        for (const bool enabled : {false, true}) {
+            const auto result = request("power.output", {{"channels", {1}}, {"enabled", enabled},
+                                                         {"requestId", "disabled-power"}});
+            Check(result.contains("error") && !result.contains("id") && power.State() == initialPower,
+                  "AI cannot queue an action or change disabled power state");
+        }
         auto sent = request("command", {{"command", "echo test"}});
         Check(!sent.contains("error") && sent["commandId"] == 1 && transport->last.back() == '\r', "AI submits only to explicit existing session");
         Check(request("recover").contains("error"), "fresh command is not hang evidence");

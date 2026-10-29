@@ -285,12 +285,14 @@ struct PowerService::Transport {
     }
 };
 bool PowerService::VisaAvailable() {
+    if (!ConnectionAvailable()) return false;
     Visa visa;
     return visa.dll != nullptr;
 }
 Json PowerService::UsbResources() {
-    Visa visa;
     Json resources = Json::array();
+    if (!ConnectionAvailable()) return resources;
+    Visa visa;
     if (!visa.dll)
         return resources;
     Vi rm = 0, list = 0, count = 0;
@@ -354,10 +356,11 @@ Json PowerService::Action(const std::string &id) {
 Json PowerService::Submit(const Json &command) {
     try {
         const std::string type = command.at("type").get<std::string>();
-        if (type == "connect" && !ConnectionAvailable()) {
+        if (!ConnectionAvailable()) {
 #ifdef SERIALCTL_POWER_TESTING
-            // Only controlled test targets may exercise the in-memory backend.
-            if (command.value("backend", std::string()) != "simulation")
+            // Only controlled test targets may exercise the in-memory backend
+            // and its actions. Production rejects before queueing any operation.
+            if (type == "connect" && command.value("backend", std::string()) != "simulation")
 #endif
                 return {{"error", ConnectionUnavailableMessage()}, {"code", "FEATURE_NOT_AVAILABLE"}};
         }
