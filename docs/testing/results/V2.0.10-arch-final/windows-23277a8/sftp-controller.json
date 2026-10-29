@@ -1,0 +1,76 @@
+{
+  "cancelAcceptanceUsec": 0,
+  "cycles": 16,
+  "resourceTrace": [
+    {
+      "cycle": -1,
+      "handles": 107
+    },
+    {
+      "cycle": 0,
+      "handles": 107
+    },
+    {
+      "cycle": 1,
+      "handles": 107
+    },
+    {
+      "cycle": 2,
+      "handles": 107
+    },
+    {
+      "cycle": 3,
+      "handles": 107
+    },
+    {
+      "cycle": 4,
+      "handles": 107
+    },
+    {
+      "cycle": 5,
+      "handles": 107
+    },
+    {
+      "cycle": 6,
+      "handles": 107
+    },
+    {
+      "cycle": 7,
+      "handles": 107
+    },
+    {
+      "cycle": 8,
+      "handles": 107
+    },
+    {
+      "cycle": 9,
+      "handles": 107
+    },
+    {
+      "cycle": 10,
+      "handles": 107
+    },
+    {
+      "cycle": 11,
+      "handles": 107
+    },
+    {
+      "cycle": 12,
+      "handles": 107
+    },
+    {
+      "cycle": 13,
+      "handles": 107
+    },
+    {
+      "cycle": 14,
+      "handles": 107
+    },
+    {
+      "cycle": 15,
+      "handles": 107
+    }
+  ],
+  "scope": "owned SFTP controller workers with controlled backend; no network or hardware",
+  "warmHandles": 107
+}

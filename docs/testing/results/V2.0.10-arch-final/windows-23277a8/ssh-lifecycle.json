@@ -1,0 +1,115 @@
+{
+  "coldHandles": 117,
+  "handlesAfter": 122,
+  "handlesBefore": 122,
+  "maxMs": 110,
+  "p50Ms": 109,
+  "resourceTrace": [
+    {
+      "cycle": -1,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 0,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 1,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 2,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 3,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 4,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 5,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 6,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 7,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 8,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 9,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 10,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 11,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 12,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 13,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 14,
+      "handles": 122,
+      "threads": 4
+    },
+    {
+      "cycle": 15,
+      "handles": 122,
+      "threads": 4
+    }
+  ],
+  "samples": [
+    0,
+    0,
+    0,
+    0,
+    109,
+    109,
+    109,
+    109,
+    109,
+    109,
+    109,
+    110,
+    110,
+    110,
+    110,
+    110
+  ],
+  "scope": "controlled child processes, no SSH server or UART hardware",
+  "threadsAfter": 4,
+  "threadsBefore": 4
+}

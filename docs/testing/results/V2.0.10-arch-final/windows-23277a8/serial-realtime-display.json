@@ -1,0 +1,24 @@
+{
+  "callbackToPaintUsec": [
+    1365,
+    587,
+    825,
+    1170,
+    771,
+    814,
+    877,
+    957,
+    989,
+    1020,
+    980,
+    1054,
+    1089,
+    1142,
+    1188,
+    1280
+  ],
+  "gatewayLockHeldDuringPaint": true,
+  "samples": 16,
+  "scope": "actual Win32 terminal painter and receive handoff with controlled serial bytes; no UART/driver latency claim",
+  "visibleBacklogScheduling": "paint opportunities without a receive timer"
+}
