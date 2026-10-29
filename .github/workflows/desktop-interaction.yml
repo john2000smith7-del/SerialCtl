@@ -1,5 +1,10 @@
 name: Desktop user interaction audit
 on:
+  # A deliberate workflow-file update on the feature branch runs the same
+  # desktop audit against the matching successful Windows build.
+  push:
+    branches: [feat/v2.0.10-arch-final]
+    paths: [.github/workflows/desktop-interaction.yml]
   workflow_run:
     workflows: [Windows Win7 release build]
     types: [completed]
@@ -14,8 +19,41 @@ permissions:
   contents: read
   actions: read
 jobs:
+  resolve-feature-build:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      build_run: ${{ steps.find.outputs.build_run }}
+    steps:
+      - name: Wait for the Windows build of this exact commit
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 90); do
+            record="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow windows-build.yml --commit "$TARGET_SHA" \
+              --limit 10 --json databaseId,status,conclusion \
+              --jq 'if length > 0 then .[0] | [.databaseId, .status, .conclusion] | @tsv else "" end')"
+            IFS=$'\t' read -r run_id status conclusion <<< "$record"
+            if [[ "${status:-}" == "completed" ]]; then
+              if [[ "${conclusion:-}" != "success" ]]; then
+                echo "Matching Windows build $run_id ended with $conclusion" >&2
+                exit 1
+              fi
+              echo "build_run=$run_id" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Matching Windows build did not complete in time" >&2
+          exit 1
   desktop:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: resolve-feature-build
+    if: ${{ always() && ((github.event_name == 'push' && needs.resolve-feature-build.result == 'success') || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')) }}
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
@@ -26,7 +64,7 @@ jobs:
       - name: Verify tested program source matches production on this commit
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN: ${{ inputs.build_run || github.event.workflow_run.id }}
+          BUILD_RUN: ${{ needs.resolve-feature-build.outputs.build_run || inputs.build_run || github.event.workflow_run.id }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -44,8 +82,39 @@ jobs:
         with:
           name: SerialCtl-Win7-portable
           path: bin
-          run-id: ${{ inputs.build_run || github.event.workflow_run.id }}
+          run-id: ${{ needs.resolve-feature-build.outputs.build_run || inputs.build_run || github.event.workflow_run.id }}
           github-token: ${{ github.token }}
+      - name: Verify the packaged resolver child mode
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archives = @(Get-ChildItem bin -Filter '*.zip')
+          if ($archives.Count -ne 1) { throw 'Expected exactly one verified portable ZIP.' }
+          $resolverDir = Join-Path $env:RUNNER_TEMP 'serialctl-resolver-payload'
+          Expand-Archive -LiteralPath $archives[0].FullName -DestinationPath $resolverDir -Force
+          $programs = @(Get-ChildItem -LiteralPath $resolverDir -Filter 'serialctl.exe' -Recurse)
+          if ($programs.Count -ne 1) { throw 'Expected one packaged serialctl.exe.' }
+          $info = New-Object System.Diagnostics.ProcessStartInfo
+          $info.FileName = $programs[0].FullName
+          $info.Arguments = '--serialctl-network-resolver localhost'
+          $info.UseShellExecute = $false
+          $info.RedirectStandardOutput = $true
+          $info.CreateNoWindow = $true
+          $child = [System.Diagnostics.Process]::Start($info)
+          try {
+            if (-not $child.WaitForExit(5000)) {
+              $child.Kill()
+              $child.WaitForExit()
+              throw 'Packaged resolver child did not finish within its smoke-test budget.'
+            }
+            if ($child.ExitCode -ne 0) { throw "Packaged resolver child exited $($child.ExitCode)." }
+            $reader = New-Object System.IO.BinaryReader($child.StandardOutput.BaseStream)
+            $status = $reader.ReadInt32()
+            $count = $reader.ReadUInt32()
+            if ($status -ne 0 -or $count -lt 1 -or $count -gt 64) { throw 'Packaged resolver returned an invalid localhost result.' }
+            [ordered]@{ status='PASS'; addresses=$count; scope='packaged serialctl.exe private resolver mode, localhost' } |
+              ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/resolver-child-smoke.json" -Encoding UTF8
+          } finally { $child.Dispose() }
       - name: Install test-only lossless screen encoder
         run: python -m pip install imageio-ffmpeg==0.6.0
       - name: Run actual mouse and keyboard interactions on packaged application
@@ -61,6 +130,21 @@ jobs:
         run: |
           $files = @('serialctl.exe','plink.exe','psftp.exe') | ForEach-Object { Join-Path "$env:RUNNER_TEMP/serialctl-ui/payload" $_ } | Where-Object { Test-Path $_ }
           if ($files) { $files | ForEach-Object { Get-FileHash -LiteralPath $_ -Algorithm SHA256 } | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/program-executable-sha256.json" -Encoding UTF8 }
+      - name: Export actual desktop power notice images for visual review
+        if: always()
+        shell: powershell
+        run: |
+          # The controls probe captures visible desktop pixels with BitBlt.
+          # Keep these separate from PrintWindow layout captures.
+          $images = @(Get-ChildItem "$env:RUNNER_TEMP/serialctl-ui" -Filter '*power-connection-controls-*-controls-final.png')
+          foreach ($image in $images) {
+            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($image.FullName))
+            Write-Host "SERIALCTL_UI_REVIEW_BEGIN $($image.Name)"
+            for ($offset = 0; $offset -lt $encoded.Length; $offset += 4096) {
+              Write-Host ("SERIALCTL_UI_REVIEW_DATA " + $encoded.Substring($offset, [Math]::Min(4096, $encoded.Length - $offset)))
+            }
+            Write-Host "SERIALCTL_UI_REVIEW_END $($image.Name)"
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

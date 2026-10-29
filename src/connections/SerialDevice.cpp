@@ -8,6 +8,7 @@ namespace serialctl {
 
 SerialDevice::~SerialDevice() {
     Close();
+    if (stopEvent_) CloseHandle(stopEvent_);
 }
 
 bool SerialDevice::Open(const SerialSettings &settings, DataCallback onData, StatusCallback onStatus,
@@ -23,7 +24,7 @@ bool SerialDevice::Open(const SerialSettings &settings, DataCallback onData, Sta
     }
 
     HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
-                                FILE_ATTRIBUTE_NORMAL, nullptr);
+                                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
         const DWORD code = GetLastError();
         const auto detail = Win32ErrorMessage(code);
@@ -81,6 +82,8 @@ bool SerialDevice::Open(const SerialSettings &settings, DataCallback onData, Sta
     SetupComm(handle, 64 * 1024, 64 * 1024);
     // Do not discard bytes received during device setup/startup.
 
+    if (!stopEvent_) { CloseHandle(handle); error = L"创建串口取消事件失败"; return false; }
+    ResetEvent(stopEvent_);
     handle_ = handle;
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
@@ -93,8 +96,8 @@ bool SerialDevice::Open(const SerialSettings &settings, DataCallback onData, Sta
 void SerialDevice::Close() {
     stopping_ = true;
     connected_ = false;
+    if (stopEvent_) SetEvent(stopEvent_);
     if (readThread_.joinable()) {
-        CancelSynchronousIo(reinterpret_cast<HANDLE>(readThread_.native_handle()));
         readThread_.join();
     }
     std::lock_guard<std::mutex> writer(writeMutex_);
@@ -118,7 +121,8 @@ bool SerialDevice::Write(const Bytes &data, std::wstring &error) {
     size_t offset = 0;
     while (offset < data.size()) {
         DWORD written = 0;
-        if (!WriteFile(handle_, data.data() + offset, static_cast<DWORD>(data.size() - offset), &written, nullptr)) {
+        if (!writeIo_.Transfer(handle_, const_cast<std::uint8_t*>(data.data() + offset),
+                static_cast<DWORD>(data.size() - offset), true, stopEvent_, written)) {
             error = L"串口写入失败，执行状态未知：" + Win32ErrorMessage();
             return false;
         }
@@ -142,7 +146,7 @@ void SerialDevice::ReadLoop() {
     std::array<std::uint8_t, 16 * 1024> buffer{};
     while (!stopping_) {
         DWORD read = 0;
-        if (!ReadFile(handle_, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr)) {
+        if (!readIo_.Transfer(handle_, buffer.data(), static_cast<DWORD>(buffer.size()), false, stopEvent_, read)) {
             connected_ = false;
             if (!stopping_ && onStatus_) {
                 onStatus_(L"读取串口失败：" + Win32ErrorMessage(), true);
@@ -178,7 +182,7 @@ void SerialDevice::ReadLoop() {
             DWORD extra = 0;
             const DWORD capacity = static_cast<DWORD>(buffer.size()) - total;
             const DWORD requested = std::min(status.cbInQue, capacity);
-            if (!ReadFile(handle_, buffer.data() + total, requested, &extra, nullptr)) {
+            if (!readIo_.Transfer(handle_, buffer.data() + total, requested, false, stopEvent_, extra)) {
                 connected_ = false;
                 if (!stopping_ && onStatus_)
                     onStatus_(L"读取串口失败：" + Win32ErrorMessage(), true);

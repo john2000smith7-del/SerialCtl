@@ -1,0 +1,61 @@
+name: Inspect desktop audit evidence
+on:
+  push:
+    branches: [feat/v2.0.10-arch-final]
+    paths: [.github/workflows/desktop-audit-diagnostics.yml]
+  workflow_dispatch:
+    inputs:
+      audit_run:
+        description: Desktop audit run ID whose original evidence will be inspected
+        required: true
+        default: '40785811830'
+      benchmark_run:
+        description: Paired performance run ID whose resize samples will be inspected
+        required: true
+        default: '40789670203'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-desktop-review
+          run-id: ${{ inputs.audit_run || '40785811830' }}
+          github-token: ${{ github.token }}
+          path: desktop-evidence
+      - name: Print failed input observations from the original report
+        shell: bash
+        run: |
+          python tests/performance/inspect_desktop_report.py desktop-evidence | tee desktop-diagnostics.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-performance-comparison
+          run-id: ${{ inputs.benchmark_run || '40789670203' }}
+          github-token: ${{ github.token }}
+          path: performance-evidence
+      - name: Print every original resize distribution and GDI checkpoints
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in sorted(Path('performance-evidence').glob('paint-*.txt')):
+              result = json.loads(path.read_text(encoding='utf-8-sig'))
+              print(json.dumps({'file': path.name, 'resizeP50Ms': result['resizeP50Ms'],
+                  'resizeP95Ms': result['resizeP95Ms'], 'resizeSamples': result['resizeSamples'],
+                  'resizeSteadyP50Ms': result.get('resizeSteadyP50Ms'), 'resizeSteadyP95Ms': result.get('resizeSteadyP95Ms'),
+                  'resizeRoundSamples': result.get('resizeRoundSamples'),
+                  'gdiWarm': result['gdiWarm'], 'gdiAfterPaint': result.get('gdiAfterPaint'),
+                  'gdiResizeRounds': result.get('gdiResizeRounds'), 'gdiAfterTimedInput': result.get('gdiAfterTimedInput'),
+                  'gdiAfterWork': result['gdiAfterWork']}, separators=(',', ':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-desktop-failure-details
+          path: desktop-diagnostics.json
+          retention-days: 30

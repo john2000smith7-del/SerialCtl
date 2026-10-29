@@ -3,6 +3,7 @@
 #include "Connection.h"
 #include "PuttyHostKey.h"
 #include "PasswordPipe.h"
+#include "CancellableIo.h"
 
 #include <atomic>
 #include <mutex>
@@ -53,7 +54,10 @@ private:
     std::atomic_bool cancelStarting_{false};
     std::atomic<bool> stopping_{false};
     std::thread readThread_;
-    std::mutex writeMutex_;
+    mutable std::mutex writeMutex_;
+    HANDLE stopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    CancellableIo readIo_, writeIo_;
+    std::atomic_bool connected_{false};
     DataCallback onData_;
     StatusCallback onStatus_;
 };

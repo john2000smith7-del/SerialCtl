@@ -25,6 +25,15 @@ struct SessionLoggerTestAccess {
         }) && logger.failure_.empty();
     }
     static void FailCopyAfter(std::int64_t bytes) { SessionLogger::testCopyFailureAfter_.store(bytes); }
+    static void MakeWriterReadonly(SessionLogger& logger) {
+        std::lock_guard<std::mutex> lock(logger.mutex_);
+        CloseHandle(logger.file_);
+        logger.file_ = CreateFileW(logger.path_.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    }
+    static bool WriterExited(SessionLogger& logger) {
+        std::unique_lock<std::mutex> lock(logger.mutex_);
+        return logger.wake_.wait_for(lock, 2s, [&] { return !logger.writerAlive_; });
+    }
 };
 }
 namespace {
@@ -188,6 +197,21 @@ int main() {
         Check(logger.SaveCopy(fresh.wstring(), error) && Read(fresh) == "NEW" && logger.Error().empty(), "logging/export recovers after destination failures");
         logger.Stop();
         evidence["cases"].push_back({{"name", "stale generation rejects; empty CSV and later fresh export succeed"}});
+        Check(logger.Start(L"write-failure", error, true), "start write failure fixture");
+        roots.push_back(logger.Path());
+        SessionLoggerTestAccess::MakeWriterReadonly(logger);
+        logger.WriteRaw(Bytes{'f', 'a', 'i', 'l'});
+        const auto failedPoint = logger.CaptureExportPoint();
+        auto exporter = std::async(std::launch::async, [&] {
+            std::wstring message;
+            return logger.SaveCopy((directory / L"writer-failed.log").wstring(), failedPoint, message, nullptr);
+        });
+        Check(SessionLoggerTestAccess::WriterExited(logger), "failed writer exits without Stop");
+        Check(exporter.wait_for(2s) == std::future_status::ready && !exporter.get(), "failed writer wakes exporter");
+        Check(!logger.Error().empty(), "write failure is observable");
+        auto readPaths = std::async(std::launch::async, [&] { for (int i = 0; i < 10000; ++i) logger.Path(); });
+        logger.Stop(); readPaths.get();
+        evidence["cases"].push_back({{"name", "actual readonly source handle rejects WriteFile; writer exits and exporter wakes; concurrent Path/Stop"}});
         evidence["success"] = true;
     } catch (const std::exception &error) {
         evidence["success"] = false;

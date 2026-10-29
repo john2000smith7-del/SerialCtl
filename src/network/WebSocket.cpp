@@ -24,20 +24,29 @@ std::string Base64(const Bytes &bytes) {
 Bytes Unbase64(const std::string &text) {
     if (text.size() % 4 || text.size() > MaxMessage)
         throw Error(1007, "INVALID_BASE64");
-    const std::string digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    // Constant-time lookup instead of a linear search of the alphabet per character.
+    static const std::array<std::int8_t, 256> table = [] {
+        std::array<std::int8_t, 256> value{};
+        value.fill(-1);
+        const char *digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        for (int i = 0; i < 64; ++i)
+            value[static_cast<unsigned char>(digits[i])] = static_cast<std::int8_t>(i);
+        return value;
+    }();
     Bytes out;
+    out.reserve(text.size() / 4 * 3);
     for (size_t i = 0; i < text.size(); i += 4) {
         unsigned n = 0;
         int padding = 0;
         for (size_t j = 0; j < 4; ++j) {
-            auto pos = digits.find(text[i + j]);
+            const int pos = table[static_cast<unsigned char>(text[i + j])];
             if (text[i + j] == '=') {
                 if (j < 2 || i + 4 != text.size())
                     throw Error(1007, "INVALID_BASE64");
                 ++padding;
                 n <<= 6;
             } else {
-                if (pos == std::string::npos || padding)
+                if (pos < 0 || padding)
                     throw Error(1007, "INVALID_BASE64");
                 n = (n << 6) | unsigned(pos);
             }
@@ -92,9 +101,16 @@ std::string AcceptKey(const std::string &key) {
         throw Error(1011, "SHA1_FAILED");
     return Base64(digest);
 }
-bool SendAll(SOCKET s, const void *data, size_t n) {
+bool SendAll(SOCKET s, const void *data, size_t n, ULONGLONG deadline, const std::atomic_bool *cancel) {
     auto p = static_cast<const char *>(data);
     while (n) {
+        if (cancel && cancel->load()) return false;
+        if (deadline) {
+            const auto now = GetTickCount64();
+            if (now >= deadline) return false;
+            const DWORD left = static_cast<DWORD>(std::min<ULONGLONG>(deadline - now, 0x7fffffff));
+            setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&left), sizeof(left));
+        }
         int k = send(s, p, int(std::min<size_t>(n, 65536)), 0);
         if (k <= 0)
             return false;
@@ -143,11 +159,12 @@ bool Token(const std::string &s, const std::string &token) {
     }
     return false;
 }
-Header ReadHeader(SOCKET s, Bytes &tail, DWORD timeout) {
+Header ReadHeader(SOCKET s, Bytes &tail, DWORD timeout, const std::atomic_bool* cancel) {
     std::string header;
     std::array<char, 2048> b{};
     const auto deadline = GetTickCount64() + timeout;
     for (;;) {
+        if (cancel && cancel->load()) throw Error(1006, "CANCELED");
         auto end = header.find("\r\n\r\n");
         if (end != std::string::npos) {
             if (end > 8192) throw Error(1002, "HEADER_TOO_LARGE");
@@ -162,12 +179,14 @@ Header ReadHeader(SOCKET s, Bytes &tail, DWORD timeout) {
         const auto now = GetTickCount64();
         if (now >= deadline)
             throw Error(1002, "HANDSHAKE_CLOSED_OR_TIMEOUT");
-        const auto remaining = deadline - now;
+        const auto remaining = cancel ? std::min<ULONGLONG>(deadline - now, 25) : deadline - now;
         timeval wait{static_cast<long>(remaining / 1000), static_cast<long>((remaining % 1000) * 1000)};
         fd_set readable;
         FD_ZERO(&readable);
         FD_SET(s, &readable);
-        if (select(0, &readable, nullptr, nullptr, &wait) <= 0)
+        const auto selected = select(0, &readable, nullptr, nullptr, &wait);
+        if (!selected && cancel) continue;
+        if (selected <= 0)
             throw Error(1002, "HANDSHAKE_CLOSED_OR_TIMEOUT");
         int n = recv(s, b.data(), int(b.size()), 0);
         if (n <= 0)
@@ -238,52 +257,80 @@ Bytes ClosePayload(unsigned code, const std::string &reason) {
     b.insert(b.end(), reason.begin(), reason.begin() + std::min<size_t>(reason.size(), 123));
     return b;
 }
-void Stream::Exact(void *data, size_t n) {
-    if (readCancel_ && WaitForSingleObject(readCancel_, 0) == WAIT_OBJECT_0)
-        throw Error(1006, "CANCELED");
+void Stream::Exact(void *data, size_t n, bool idleWait) {
     auto p = static_cast<std::uint8_t *>(data);
-    size_t k = std::min(n, buffered_.size());
-    std::copy_n(buffered_.begin(), k, p);
-    buffered_.erase(buffered_.begin(), buffered_.begin() + k);
-    p += k;
-    n -= k;
     while (n) {
-        int got = 0;
-        if (!readCancel_)
-            got = recv(socket_, reinterpret_cast<char *>(p), int(std::min<size_t>(n, 65536)), 0);
-        else {
-            // A cancel event wakes overlapped socket reads on Win7 without closing
-            // and potentially reusing the SOCKET while the reader still owns it.
-            WSAOVERLAPPED io{};
-            io.hEvent = WSACreateEvent();
-            if (io.hEvent == WSA_INVALID_EVENT)
-                throw Error(1011, "READ_EVENT_FAILED");
-            WSABUF buffer{static_cast<ULONG>(std::min<size_t>(n, 65536)), reinterpret_cast<char *>(p)};
-            DWORD received = 0, flags = 0;
-            bool ok = false;
-            if (WSARecv(socket_, &buffer, 1, &received, &flags, &io, nullptr) == 0)
-                ok = true;
-            else if (WSAGetLastError() == WSA_IO_PENDING) {
-                HANDLE waits[] = {readCancel_, io.hEvent};
-                auto signal = WaitForMultipleObjects(2, waits, FALSE, readTimeout_);
+        if ((readCancel_ && WaitForSingleObject(readCancel_, 0) == WAIT_OBJECT_0) ||
+            (cancelToken_ && cancelToken_->load())) throw Error(1006, "CANCELED");
+        DWORD wait = readTimeout_;
+        bool frameLimited = false;
+        if (absoluteDeadline_) {
+            const auto now = GetTickCount64();
+            if (now >= absoluteDeadline_) throw Error(1006, "READ_TIMEOUT");
+            const auto left = static_cast<DWORD>(std::min<ULONGLONG>(absoluteDeadline_ - now, 0x7fffffff));
+            if (wait == INFINITE || left < wait) wait = left;
+        }
+        if (!idleWait && frameTimeout_ != INFINITE) {
+            const auto now = GetTickCount64();
+            if (now >= frameDeadline_) throw Error(1008, "FRAME_TIMEOUT");
+            const auto left = static_cast<DWORD>(std::min<ULONGLONG>(frameDeadline_ - now, 0x7fffffff));
+            if (wait == INFINITE || left <= wait) { wait = left; frameLimited = true; }
+        }
+        if (bufferedOffset_ < buffered_.size()) {
+            const auto take = std::min(n, buffered_.size() - bufferedOffset_);
+            std::copy_n(buffered_.begin() + bufferedOffset_, take, p);
+            bufferedOffset_ += take; p += take; n -= take;
+            continue;
+        }
+        buffered_.clear(); bufferedOffset_ = 0;
+        // Prefetch a batch, including subsequent frame headers. Avoid a separate
+        // kernel receive and event allocation for every byte of a small frame.
+        std::array<std::uint8_t, 16384> bytes{};
+        DWORD received = 0;
+        if (!readCancel_) {
+            fd_set readable; FD_ZERO(&readable); FD_SET(socket_, &readable);
+            timeval interval{static_cast<long>(wait / 1000), static_cast<long>((wait % 1000) * 1000)};
+            if (select(0, &readable, nullptr, nullptr, wait == INFINITE ? nullptr : &interval) <= 0)
+                throw Error(frameLimited ? 1008 : 1006, frameLimited ? "FRAME_TIMEOUT" : "READ_TIMEOUT");
+            const int got = recv(socket_, reinterpret_cast<char*>(bytes.data()), int(bytes.size()), 0);
+            if (got <= 0) throw Error(1006, "DISCONNECTED");
+            received = static_cast<DWORD>(got);
+        } else {
+            if (readEvent_ == WSA_INVALID_EVENT) readEvent_ = WSACreateEvent();
+            if (readEvent_ == WSA_INVALID_EVENT) throw Error(1011, "READ_EVENT_FAILED");
+            WSAResetEvent(readEvent_);
+            WSAOVERLAPPED io{}; io.hEvent = readEvent_;
+            WSABUF buffer{static_cast<ULONG>(bytes.size()), reinterpret_cast<char*>(bytes.data())};
+            DWORD flags = 0;
+            bool ok = WSARecv(socket_, &buffer, 1, &received, &flags, &io, nullptr) == 0;
+            if (!ok && WSAGetLastError() == WSA_IO_PENDING) {
+                const auto started = GetTickCount64();
+                HANDLE waits[]{readCancel_, readEvent_};
+                DWORD signal;
+                for (;;) {
+                    const auto elapsed = GetTickCount64() - started;
+                    if (cancelToken_ && cancelToken_->load()) { signal = WAIT_OBJECT_0; break; }
+                    if (wait != INFINITE && elapsed >= wait) { signal = WAIT_TIMEOUT; break; }
+                    const auto left = wait == INFINITE ? INFINITE : static_cast<DWORD>(wait - elapsed);
+                    signal = WaitForMultipleObjects(2, waits, FALSE, cancelToken_ ? std::min<DWORD>(left, 25) : left);
+                    if (signal != WAIT_TIMEOUT || !cancelToken_) break;
+                }
                 if (signal == WAIT_OBJECT_0 + 1)
                     ok = WSAGetOverlappedResult(socket_, &io, &received, FALSE, &flags) != FALSE;
                 else {
                     CancelIoEx(reinterpret_cast<HANDLE>(socket_), &io);
-                    // The OVERLAPPED stack storage must outlive cancellation completion.
                     WSAGetOverlappedResult(socket_, &io, &received, TRUE, &flags);
+                    if (signal == WAIT_TIMEOUT && frameLimited) throw Error(1008, "FRAME_TIMEOUT");
                 }
             }
-            WSACloseEvent(io.hEvent);
-            if (!ok)
-                throw Error(1006, "CANCELED_OR_DISCONNECTED_OR_TIMEOUT");
-            got = static_cast<int>(received);
+            if (!ok) throw Error(1006, "CANCELED_OR_DISCONNECTED_OR_TIMEOUT");
+            if (!received) throw Error(1006, "DISCONNECTED");
         }
-        if (got <= 0)
-            throw Error(1006, "DISCONNECTED");
-        p += got;
-        n -= got;
+        buffered_.assign(bytes.begin(), bytes.begin() + received);
     }
+    // Empty payloads still respect a started fragmented-message deadline.
+    if (!idleWait && frameTimeout_ != INFINITE && GetTickCount64() >= frameDeadline_)
+        throw Error(1008, "FRAME_TIMEOUT");
 }
 bool Stream::Send(unsigned op, const Bytes &bytes, bool fin) {
     Bytes frame{std::uint8_t((fin ? 128 : 0) | op)};
@@ -306,12 +353,17 @@ bool Stream::Send(unsigned op, const Bytes &bytes, bool fin) {
     }
     for (size_t i = 0; i < bytes.size(); ++i)
         frame.push_back(bytes[i] ^ (client_ ? masking[i % 4] : 0));
-    return SendAll(socket_, frame.data(), frame.size());
+    return SendAll(socket_, frame.data(), frame.size(), absoluteDeadline_, cancelToken_);
 }
 Stream::Message Stream::Receive() {
     for (;;) {
         std::uint8_t h[2];
-        Exact(h, 2);
+        // Waiting for the first byte of a new message is idle time; inside a
+        // fragmented message it is not.
+        Exact(h, 1, fragmentOpcode_ == 0);
+        if (fragmentOpcode_ == 0 && frameTimeout_ != INFINITE)
+            frameDeadline_ = GetTickCount64() + frameTimeout_;
+        Exact(h + 1, 1, false);
         bool fin = (h[0] & 128) != 0, mask = (h[1] & 128) != 0;
         unsigned op = h[0] & 15;
         if ((h[0] & 112) || mask == client_ || !(op == 0 || op == 1 || op == 2 || op == 8 || op == 9 || op == 10))
@@ -320,13 +372,13 @@ Stream::Message Stream::Receive() {
         unsigned marker = unsigned(n);
         if (n == 126) {
             std::uint8_t x[2];
-            Exact(x, 2);
+            Exact(x, 2, false);
             n = (unsigned(x[0]) << 8) | x[1];
             if (n < 126)
                 throw Error(1002, "NONCANONICAL_LENGTH");
         } else if (n == 127) {
             std::uint8_t x[8];
-            Exact(x, 8);
+            Exact(x, 8, false);
             if (x[0] & 128)
                 throw Error(1002, "INVALID_LENGTH");
             n = 0;
@@ -341,9 +393,9 @@ Stream::Message Stream::Receive() {
             throw Error(1009, "MESSAGE_TOO_LARGE");
         std::uint8_t key[4]{};
         if (mask)
-            Exact(key, 4);
+            Exact(key, 4, false);
         Bytes b(static_cast<size_t>(n));
-        Exact(b.data(), b.size());
+        Exact(b.data(), b.size(), false);
         if (mask)
             for (size_t i = 0; i < b.size(); ++i)
                 b[i] ^= key[i % 4];
@@ -386,18 +438,24 @@ Stream::Message Stream::Receive() {
         return {op, std::move(b)};
     }
 }
-Bytes UpgradeClient(SOCKET s, const std::wstring &host, unsigned port) {
-    SocketOptions(s, 1500);
+Bytes UpgradeClient(SOCKET s, const std::wstring &host, unsigned port, const std::atomic_bool* cancel, DWORD timeout) {
+    const auto deadline = GetTickCount64() + timeout;
+    SocketOptions(s, timeout);
     auto key = Base64(RandomBytes(16));
+    auto authority = WideToMultiByte(host, CP_UTF8);
+    if (authority.find(':') != std::string::npos && (authority.empty() || authority.front() != '['))
+        authority = "[" + authority + "]";
     auto request =
-        "GET " + std::string(Path) + " HTTP/1.1\r\nHost: " + WideToMultiByte(host, CP_UTF8) + ":" +
+        "GET " + std::string(Path) + " HTTP/1.1\r\nHost: " + authority + ":" +
         std::to_string(port) +
         "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: " +
         Protocol + "\r\nSec-WebSocket-Key: " + key + "\r\n\r\n";
-    if (!SendAll(s, request.data(), request.size()))
+    if (!SendAll(s, request.data(), request.size(), deadline, cancel))
         throw Error(1006, "HANDSHAKE_SEND_FAILED");
     Bytes tail;
-    auto h = ReadHeader(s, tail);
+    const auto now = GetTickCount64();
+    if (now >= deadline) throw Error(1006, "HANDSHAKE_CLOSED_OR_TIMEOUT");
+    auto h = ReadHeader(s, tail, static_cast<DWORD>(deadline - now), cancel);
     if (h.first.rfind("HTTP/1.1 503", 0) == 0 && h.fields["sec-websocket-protocol"] == Protocol &&
         !h.fields["x-serialctl-instance"].empty())
         throw Error(1013, "CLIENT_LIMIT", h.fields["x-serialctl-instance"]);

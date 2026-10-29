@@ -11,9 +11,16 @@
 #include "SessionLogger.h"
 #include "SessionService.h"
 #include "SftpClient.h"
+#include "SftpController.h"
 #include "SftpModel.h"
 #include "TerminalDecoder.h"
 #include "TerminalModel.h"
+#include "TerminalViewport.h"
+#include "PaintBuffer.h"
+#include "BackgroundCleanup.h"
+#include "CommandMacroController.h"
+#include "AiDeviceBridge.h"
+#include "UiSettingsWriter.h"
 #include "ToolbarIcons.h"
 #include <deque>
 #include <functional>
@@ -35,16 +42,6 @@ namespace serialctl {
 
 class UiLayoutBatch;
 
-struct CommandItem {
-    std::wstring name;
-    std::vector<std::wstring> commands;
-    std::uint32_t intervalMs = 500;
-
-    CommandItem() = default;
-    CommandItem(std::wstring itemName, std::wstring command)
-        : name(std::move(itemName)), commands{std::move(command)} {}
-};
-
 class MainWindow {
 public:
     ~MainWindow();
@@ -52,6 +49,7 @@ public:
     void StartStartupUpdate();
     bool PreTranslate(MSG& message);
     HWND Handle() const { return window_; }
+    bool Closing() const { return closing_.load(); }
 
 private:
 #ifdef SERIALCTL_AI_TESTING
@@ -59,9 +57,9 @@ private:
     std::function<ULONGLONG()> commandClock_; // Deterministic input timing in native UI tests only.
 #endif
     enum class SessionFocus { Terminal, Preserve, AiPreview, PowerPreview };
-    enum class SftpTransferDirection { Upload, Download };
-    enum class SftpTransferState { Queued, Running, Completed, Failed, Canceled };
-    enum class SftpMutationKind { CreateDirectory, Rename, Delete, ChangeMode };
+    using SftpTransferDirection = SftpController::Direction;
+    using SftpTransferState = SftpController::TransferState;
+    using SftpMutationKind = SftpController::Mutation;
     enum class SftpInputPurpose { Name, Mode, Path, Port };
 
     struct SettingsDialogState {
@@ -80,22 +78,7 @@ private:
     using LogExportTask = std::function<bool(std::wstring &, const std::atomic<bool> *,
                                             const SessionLogger::ExportProgress &)>;
 
-    struct SftpTransferItem {
-        std::uint64_t id = 0;
-        std::uint64_t sessionId = 0;
-        SftpTransferDirection direction = SftpTransferDirection::Upload;
-        SftpTransferState state = SftpTransferState::Queued;
-        std::wstring name;
-        std::wstring localPath;
-        std::wstring remotePath;
-        std::uint64_t transferred = 0;
-        std::uint64_t total = 0;
-        std::uint64_t bytesPerSecond = 0;
-        std::uint32_t remainingSeconds = 0;
-        int percent = -1;
-        std::wstring error;
-        bool replaceExisting = false;
-    };
+    using SftpTransferItem = SftpController::Transfer;
 
     struct SftpBreadcrumbHit {
         RECT rect{};
@@ -109,18 +92,7 @@ private:
         std::string source; // empty for output, nonempty for accepted input
         LONGLONG arrival = 0;
     };
-    struct SessionState {
-        struct AiOutput { std::uint64_t seq; std::wstring timestamp; std::string text; };
-        std::deque<AiOutput> aiOutput;
-        std::uint64_t aiCursor = 0;
-        ULONGLONG aiLastReceivedAt = 0, aiCommandAt = 0;
-        ULONGLONG aiObservedAt = 0;
-        std::uint64_t aiCommandNumber = 0, aiCommandCursor = 0;
-        std::string aiCommandText, recoveryAction;
-        std::shared_ptr<BootInterrupt> boot = std::make_shared<BootInterrupt>();
-        size_t aiBytes = 0;
-        bool aiTruncated = false;
-        std::string aiTransportNotice;
+    struct SessionState : AiDeviceBridge::State, TerminalViewport::State, SftpController::Session {
         std::wstring lastStatus;
         bool lastStatusIsError = false, unreadStatus = false;
         SYSTEMTIME statusTime{};
@@ -129,34 +101,16 @@ private:
         std::wstring name;
         std::shared_ptr<IConnection> connection;
         std::shared_ptr<SessionLogger> logger;
-        TerminalModel terminal;
-        int terminalScrollOffset = 0;
-        int terminalHorizontalOffset = 0;
-        bool terminalHasNewOutput = false;
-        std::wstring terminalTitle;
         int lineEndingIndex = 0;
         UINT codePage = CP_UTF8;
-        TerminalDecoder decoder;
-        CmdLineEditor cmdEditor;
-        bool cmdInteractionWarning = false;
         bool rawTrace = false;
-        // Opt-in test telemetry tags actual stdout, never the local input echo.
-        std::wstring paintProbeText;
-        INT_PTR paintProbe = 0;
-        LONGLONG pendingProbeArrival = 0;
         std::wstring host;
         std::wstring remoteCom;
         bool udpRaw = false, udpReceived = false;
         std::wstring username;
         std::wstring password;
         std::uint16_t port = 0;
-        bool sftpFollowTerminal = true;
-        std::wstring terminalDirectory;
-        bool terminalDirectoryFromOsc = false;
-        std::wstring sftpDirectory = L".";
-        std::wstring sftpHomeDirectory;
-        std::wstring pendingSftpDirectory;
-        std::vector<SftpEntry> sftpEntries;
+
     };
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK TerminalSubclassProc(
@@ -221,13 +175,13 @@ private:
     void ShowPowerPage();
     void ShowAiPage(bool connect = true);
     Json AiDeviceRequest(const std::string&, const Json&);
-    Json SendAiBytes(SessionState&, const Bytes&);
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
     void SendTerminalCharacter(wchar_t character);
     void SendTerminalKey(WPARAM key, bool shift, bool control, bool alt);
     void PasteToTerminal();
     void PaintTerminal(HDC dc);
+    TerminalViewport::Options TerminalViewportOptions() const;
     void UpdateTerminalDimensions();
     void ScrollTerminal(int lines);
     void ScrollTerminalHorizontal(int columns);
@@ -241,9 +195,9 @@ private:
     void CopyTerminalSelection(bool selectAll);
     void SendCommand(size_t index);
     void SendNextCommandStep();
-    enum class CommandSequenceEnd { Silent, Submitted, UserStopped, Interrupted };
+    using CommandSequenceEnd = CommandMacroController::End;
     void StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail = {});
-    void PostData(std::uint64_t sessionId, const Bytes& data);
+    void PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
     void AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage = 0, LONGLONG arrival = 0);
     void QueueReceived(ReceivedItem);
@@ -256,6 +210,12 @@ private:
     void PollLogExport();
     void CancelLogExport();
     void StopLogExport();
+    void JoinLogExport();
+    void RequestShutdown();
+    void WaitForShutdown();
+    void FinishShutdown();
+    void DrainShutdownMessages();
+    void FinishPendingConnection();
     void SaveNetworkDiagnostics(HWND owner = nullptr);
     void ShowSettings();
     void ExecuteTerminalAction(UINT command, HWND owner = nullptr);
@@ -266,7 +226,7 @@ private:
     void RefreshConnectionList();
 
     void LoadUiState();
-    void SaveUiState() const;
+    void SaveUiState();
     void SetRightPanelCollapsed(bool collapsed);
     bool SidebarCollapsed() const;
     int SidebarWidth() const;
@@ -278,6 +238,7 @@ private:
     void ShowSftpPanel(bool show);
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
     void RefreshSftp(const std::wstring& directory = {});
+    static SftpController::Endpoint SftpEndpoint(const SessionState&);
     void EditSftpPath();
     void QueryTerminalDirectory(bool installHook);
     void SftpColumnWidths(int width, int& name, int& size, int& modified) const;
@@ -368,10 +329,13 @@ private:
     std::vector<std::uint64_t> connectionListIds_;
     SessionService sessionService_;
     PowerService powerService_;
+    AiDeviceBridge aiDeviceBridge_{powerService_, sessionService_};
     PowerPane powerPane_;
     AiPane aiPane_;
     AiPetPane aiPet_;
     pet::Settings petSettings_;
+    std::wstring uiSettingsPath_;
+    UiSettingsWriter uiSettingsWriter_;
     bool aiVisible_ = false, aiPageOpened_ = false;
     bool aiMonitorCollapsed_ = false;
     int aiMonitorWidth_ = 360;
@@ -410,8 +374,6 @@ private:
     HWND rightPanelToggleButton_ = nullptr;
     HWND commandList_ = nullptr;
     HWND saveCommandsButton_ = nullptr;
-    bool commandsDirty_ = false;
-    bool commandsFileProtected_ = false;
     HWND importButton_ = nullptr;
     HWND exportButton_ = nullptr;
     HWND addCommandButton_ = nullptr;
@@ -442,7 +404,7 @@ private:
     std::wstring logExportMainStatus_;
     std::uint64_t nextSessionId_ = 1;
     std::wstring activeConnectionName_;
-    std::vector<CommandItem> commands_;
+    CommandMacroController macro_;
     int draggingCommandIndex_ = -1;
     int commandDropIndex_ = -1;
     int pendingCommandDragIndex_ = -1;
@@ -455,35 +417,10 @@ private:
     int hoveredCommandAction_ = 0;
     int pressedCommandIndex_ = -1, pressedCommandAction_ = 0;
     int armedCommandIndex_ = -1, armedCommandAction_ = 0;
-    int lastCommandIndex_ = -1;
-    std::uint64_t lastCommandSession_ = 0;
-    ULONGLONG lastCommandActivation_ = 0;
-    int runningCommandIndex_ = -1;
-    size_t submittedCommandSteps_ = 0;
-    std::uint64_t runningCommandSessionId_ = 0;
-    UINT runningCommandCodePage_ = CP_UTF8;
-    std::wstring runningCommandLineEnding_;
     HWND scrollingList_ = nullptr;
     bool connectionListKeyboardInput_ = false;
     int scrollingThumbOffset_ = 0;
-    bool terminalSelecting_ = false;
-    bool terminalSelectionActive_ = false;
-    size_t terminalSelectionAnchorLine_ = 0;
-    int terminalSelectionAnchorColumn_ = 0;
-    size_t terminalSelectionFocusLine_ = 0;
-    int terminalSelectionFocusColumn_ = 0;
-    bool terminalScrollbarDragging_ = false;
-    int terminalScrollbarThumbOffset_ = 0;
-    bool terminalHorizontalScrollbarDragging_ = false;
-    int terminalHorizontalScrollbarThumbOffset_ = 0;
-    int terminalWheelRemainder_ = 0;
-    int terminalHorizontalWheelRemainder_ = 0;
-    int terminalZoomWheelRemainder_ = 0;
     int terminalFontHeight_ = 16;
-    int terminalCellWidth_ = 9;
-    int terminalLineHeight_ = 19;
-    int terminalVisibleRows_ = 24;
-    int terminalVisibleColumns_ = 80;
     std::wstring commandDirectory_;
     int rightPanelWidth_ = 360;
     bool rightPanelCollapsed_ = false;
@@ -492,37 +429,31 @@ private:
     bool rightPanelAnimating_ = false;
     int rightPanelAnimatedWidth_ = -1, rightPanelAnimationFrom_ = 0, rightPanelAnimationTo_ = 0;
     ULONGLONG rightPanelAnimationAt_ = 0;
+    SftpController sftp_;
     bool sftpPanelVisible_ = false;
-    bool sftpBusy_ = false;
-    std::wstring sftpDirectory_ = L".";
-    std::vector<SftpEntry> sftpEntries_;
-    SftpSortColumn sftpSortColumn_ = SftpSortColumn::Name;
-    bool sftpSortAscending_ = true;
     std::vector<SftpBreadcrumbHit> sftpBreadcrumbHits_;
     int sftpNameWidth_ = 180;
     int sftpColumnDragging_ = 0;
     int sftpColumnDragX_ = 0;
     int sftpColumnDragWidth_ = 0;
     int hoveredSftpBreadcrumb_ = -1;
-    std::thread sftpThread_;
-    std::atomic_bool sftpOperationCancel_{false};
-    std::uint64_t sftpOperationSessionId_ = 0;
-    std::vector<SftpTransferItem> sftpTransfers_;
-    std::thread sftpTransferThread_;
-    std::atomic_bool sftpTransferCancel_{false};
-    std::uint64_t nextSftpTransferId_ = 1;
-    std::uint64_t activeSftpTransferId_ = 0;
     bool sftpTransferExpanded_ = false;
-    std::uint64_t sftpRefreshSessionId_ = 0;
-    std::wstring sftpRefreshDirectory_;
     bool statusIsError_ = false;
 
     std::thread connectionThread_;
+    BackgroundCleanup connectionCleanup_;
+    PaintBuffer windowPaintBuffer_;
+    TerminalViewport terminalViewport_;
     std::atomic_bool connectionCancel_{false};
+    bool cancelledConnectionPending_ = false;
+    bool connectionResultReady_ = false, connectionResultSuccess_ = false;
+    std::wstring connectionResultError_;
     std::unique_ptr<SessionState> pendingSession_;
     std::vector<ReceivedItem> pendingConnectionData_;
     size_t pendingConnectionBytes_ = 0;
     std::atomic<bool> closing_{false};
+    std::thread shutdownThread_;
+    bool shutdownComplete_ = false;
     std::thread updateThread_;
     std::atomic<bool> updateCancel_{false};
     bool startupUpdateDeferred_ = false;
@@ -530,9 +461,10 @@ private:
     std::deque<ReceivedItem> received_;
     std::map<std::uint64_t, size_t> receivedBytes_;
     bool measurePaint_ = false;
-    std::uint64_t paintSample_ = 0;
     std::set<std::uint64_t> receiveOverflow_;
     bool receivePosted_ = false;
+    bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.
+    unsigned receiveFairness_ = 0;
     std::set<std::uint64_t> loggerErrorsShown_;
 
     std::thread discoveryThread_;
@@ -556,6 +488,7 @@ private:
         std::wstring error;
     };
     std::shared_ptr<SerialPortScan> serialPortScan_;
+    std::thread serialPortScanThread_;
     std::string pendingRemoteInstance_;
     CommandItem pendingCommand_;
     std::wstring pendingSftpInputTitle_;

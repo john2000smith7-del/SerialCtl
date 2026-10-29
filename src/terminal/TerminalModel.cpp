@@ -113,6 +113,7 @@ void TerminalModel::HandleOsc(TerminalFeedResult& result) {
 }
 
 TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstring& timestamp) {
+    ++revision_;
     const auto oldDisplayCount = !lineWrapView_ && !alternateScreen_ ? DisplayLineCount() : 0;
     projectionDirty_ = true;
     if (!text.empty()) resizeHistoryLines_ = 0;
@@ -321,9 +322,9 @@ void TerminalModel::ScrollUp(int count, TerminalFeedResult* result) {
         if (!alternateScreen_ && screen.scrollTop == 0 && screen.scrollBottom == rows_ - 1) {
             const auto &line = screen.lines.front();
             historyCells_ += std::max<size_t>(1, line.used);
-            if (history_.empty() || history_.back().logicalId != line.logicalId)
+            if (history_.empty() || history_.back()->logicalId != line.logicalId)
                 ++historyLogicalLines_;
-            history_.push_back(screen.lines.front());
+            history_.push_back(std::make_shared<const TerminalLine>(std::move(screen.lines.front())));
             TrimHistory();
             if (result) ++result->scrollbackAdded;
         }
@@ -344,7 +345,8 @@ void TerminalModel::RecountHistory() {
     historyCells_ = 0;
     historyLogicalLines_ = 0;
     std::uint64_t previous = 0;
-    for (const auto &line : history_) {
+    for (const auto &entry : history_) {
+        const auto& line = *entry;
         historyCells_ += std::max<size_t>(1, line.used);
         if (line.logicalId != previous)
             ++historyLogicalLines_;
@@ -355,11 +357,11 @@ void TerminalModel::RecountHistory() {
 void TerminalModel::TrimHistory() {
     while (!history_.empty() &&
            (historyLogicalLines_ > maximumScrollback_ || historyCells_ > maximumScrollbackCells_)) {
-        historyCells_ -= std::max<size_t>(1, history_.front().used);
-        const auto id = history_.front().logicalId;
+        historyCells_ -= std::max<size_t>(1, history_.front()->used);
+        const auto id = history_.front()->logicalId;
         history_.pop_front();
         ++historyRevision_;
-        if (history_.empty() || history_.front().logicalId != id)
+        if (history_.empty() || history_.front()->logicalId != id)
             --historyLogicalLines_;
     }
 }
@@ -853,6 +855,7 @@ void TerminalModel::EnsureTimestamp(TerminalLine& line, const std::wstring& time
 }
 
 void TerminalModel::Resize(int columns, int rows) {
+    ++revision_;
     projectionDirty_ = true;
     columns = std::max(1, columns);
     rows = std::max(1, rows);
@@ -884,7 +887,9 @@ void TerminalModel::ResizeScreen(Screen& screen, bool preserveHistory, int oldCo
         screen.wrapPending = false;
         return;
     }
-    std::vector<TerminalLine> old(history_.begin(), history_.end());
+    std::vector<TerminalLine> old;
+    old.reserve(history_.size() + screen.lines.size());
+    for (const auto& line : history_) old.push_back(*line);
     const auto cursorRows = static_cast<size_t>(std::max(screen.cursorRow, screen.savedRow) + 1);
     size_t meaningful = cursorRows;
     for (size_t i = 0; i < screen.lines.size(); ++i)
@@ -970,7 +975,9 @@ void TerminalModel::ResizeScreen(Screen& screen, bool preserveHistory, int oldCo
     if (lines.empty())
         lines.push_back(BlankLine());
     const size_t start = lines.size() > static_cast<size_t>(rows_) ? lines.size() - static_cast<size_t>(rows_) : 0;
-    history_.assign(lines.begin(), lines.begin() + start);
+    history_.clear();
+    for (size_t i = 0; i < start; ++i)
+        history_.push_back(std::make_shared<const TerminalLine>(std::move(lines[i])));
     // Reflow changes visual row count, not the retained device output. Only
     // newly received output may evict old content under the stable budget.
     RecountHistory();
@@ -1051,6 +1058,7 @@ TerminalModel TerminalModel::PreviewInput(const std::wstring &text, size_t curso
 }
 
 void TerminalModel::Reset() {
+    ++revision_;
     projectionDirty_ = true;
     ClearHistory();
     resizeHistoryLines_ = 0;
@@ -1079,6 +1087,7 @@ void TerminalModel::Reset() {
 }
 
 void TerminalModel::Clear() {
+    ++revision_;
     projectionDirty_ = true;
     Screen& screen = ActiveScreen();
     for (TerminalLine& line : screen.lines) line = BlankLine();
@@ -1092,6 +1101,7 @@ void TerminalModel::Clear() {
 }
 
 void TerminalModel::ClearScrollback() {
+    ++revision_;
     projectionDirty_ = true;
     ClearHistory();
     resizeHistoryLines_ = 0;
@@ -1102,6 +1112,7 @@ size_t TerminalModel::HistorySize() const {
 }
 
 void TerminalModel::SetLineWrapView(bool enabled) {
+    ++revision_;
     if (lineWrapView_ != enabled) {
         lineWrapView_ = enabled;
         projectionDirty_ = true;
@@ -1109,7 +1120,7 @@ void TerminalModel::SetLineWrapView(bool enabled) {
 }
 const TerminalLine &TerminalModel::RawDisplayLine(size_t index) const {
     if (!alternateScreen_ && index < history_.size())
-        return history_[index];
+        return *history_[index];
     const size_t screenIndex = index - HistorySize();
     if (screenIndex < ActiveScreen().lines.size())
         return ActiveScreen().lines[screenIndex];
@@ -1167,10 +1178,9 @@ size_t TerminalModel::MaximumDisplayColumns() const {
     if (!lineWrapView_ && !alternateScreen_) {
         EnsureProjection();
         if (!projectionMaximum_.empty()) maximum = std::max(maximum, projectionMaximum_.back());
-    } else {
-        for (size_t i = 0; i < DisplayLineCount(); ++i)
-            maximum = std::max(maximum, DisplayLine(i).cells.size());
     }
+    // BlankLine, ResizeScreen and all VT edits keep every raw row at columns_.
+    // Long logical rows exist only in the projection handled above.
     return maximum;
 }
 const TerminalLine& TerminalModel::DisplayLine(size_t index) const {
@@ -1182,8 +1192,7 @@ const TerminalLine& TerminalModel::DisplayLine(size_t index) const {
         const auto start = projectionStarts_[index];
         const auto end =
             index + 1 < projectionStarts_.size() ? projectionStarts_[index + 1] : HistorySize() + primary_.lines.size();
-        auto &joined = projectedLines_[index];
-        joined = RawDisplayLine(start);
+        TerminalLine joined = RawDisplayLine(start);
         if (end > start + 1) {
             joined.cells.clear();
             joined.used = 0;
@@ -1198,9 +1207,10 @@ const TerminalLine& TerminalModel::DisplayLine(size_t index) const {
             }
         }
         joined.wrapped = false;
+        projectedLines_[index] = std::make_shared<const TerminalLine>(std::move(joined));
         projectionReady_[index] = true;
     }
-    return projectedLines_[index];
+    return *projectedLines_[index];
 }
 size_t TerminalModel::CursorDisplayLine() const {
     const auto raw = HistorySize() + static_cast<size_t>(ActiveScreen().cursorRow);

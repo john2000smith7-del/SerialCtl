@@ -88,14 +88,26 @@ bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsi
         return false;
     }
     handler_ = std::move(handler);
+    { std::lock_guard<std::mutex> lock(publicationMutex_); publicationStopping_ = false; }
     running_ = true;
     accept_ = std::thread(&ApiServer::Accept, this);
     return true;
 }
-void ApiServer::Stop() {
+void ApiServer::RequestStop() {
     running_ = false;
     if (stopEvent_ != WSA_INVALID_EVENT)
         WSASetEvent(stopEvent_);
+}
+void ApiServer::Stop() {
+    RequestStop();
+    {
+        std::lock_guard<std::mutex> lock(publicationMutex_);
+        publicationStopping_ = true;
+        publications_.clear(); publicationBytes_ = 0; publicationGap_ = false;
+        latestPublicationSessions_.reset();
+        publicationWake_.notify_all();
+    }
+    if (publisher_.joinable()) publisher_.join();
     if (accept_.joinable())
         accept_.join();
     auto s = listen_.exchange(INVALID_SOCKET);
@@ -145,7 +157,18 @@ Json ApiServer::Diagnostics() {
 void ApiServer::Accept() {
     WSAEVENT waits[] = {stopEvent_, acceptEvent_};
     while (running_) {
-        auto signaled = WSAWaitForMultipleEvents(2, waits, FALSE, WSA_INFINITE, FALSE);
+        // Reap finished readers even when no subsequent client connects. Joining
+        // happens outside mutex_: reader completion may still call Trace().
+        std::vector<std::shared_ptr<ClientState>> retired;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto it = clients_.begin(); it != clients_.end();)
+                if ((*it)->finished) { retired.push_back(*it); it = clients_.erase(it); }
+                else ++it;
+        }
+        for (auto& client : retired) client->reader.join();
+        auto signaled = WSAWaitForMultipleEvents(2, waits, FALSE, 100, FALSE);
+        if (signaled == WSA_WAIT_TIMEOUT) continue;
         if (!running_ || signaled != WSA_WAIT_EVENT_0 + 1)
             break;
         WSANETWORKEVENTS events{};
@@ -313,6 +336,8 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
                       {"historyBytes", MaxHistoryBytes}});
         Trace(c, "upgraded");
         ws::Stream stream(c->socket, false, std::move(tail), c->readCancel);
+        // Idle monitoring clients are legal; only started-but-unfinished frames time out.
+        stream.FrameTimeout(ws::FrameTimeoutMs);
         while (running_) {
             auto m = stream.Receive();
             if (!running_ || WaitForSingleObject(c->readCancel, 0) == WAIT_OBJECT_0)
@@ -368,7 +393,17 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
     }
     shutdown(c->socket, SD_BOTH);
     closesocket(c->socket);
-    c->finished = true;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        c->subscriptions.clear();
+    }
+    c->responses.clear();
+    c->responseOrder.clear();
+    {
+        std::lock_guard<std::mutex> lock(c->mutex);
+        c->queue.clear(); c->queued = 0;
+        c->finished = true;
+    }
 }
 void ApiServer::SetSessions(const std::vector<std::string> &list) {
     std::lock_guard<std::mutex> l(mutex_);
@@ -515,6 +550,94 @@ void ApiServer::CacheResponse(const std::shared_ptr<ClientState> &c, const std::
     }
 }
 
+bool ApiServer::EnqueuePublish(const std::string& target, const Bytes& data, const char* source,
+                               const char* kind, unsigned codePage) {
+    if (data.empty()) return true;
+    std::lock_guard<std::mutex> lock(publicationMutex_);
+    if (publicationStopping_) return false;
+    if (!publisher_.joinable()) publisher_ = std::thread(&ApiServer::PublishPending, this);
+    if (publicationGap_) return false;
+    if (publications_.size() >= 4096 || data.size() > 8 * 1024 * 1024 - publicationBytes_) {
+        // Local terminal/logging continue. Remote observers must reconnect and
+        // receive an explicit history gap rather than silently lose output.
+        publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+        publicationWake_.notify_one();
+        return false;
+    }
+    publications_.push_back({target, source, kind, data, codePage, {}, data.size()});
+    publicationBytes_ += data.size();
+    publicationWake_.notify_one();
+    return true;
+}
+bool ApiServer::EnqueueSessions(std::vector<std::string> sessions) {
+    // Allocate the immutable snapshot before locking the short handoff mutex.
+    auto snapshot = std::make_shared<const std::vector<std::string>>(std::move(sessions));
+    constexpr size_t maximum = 8 * 1024 * 1024;
+    size_t charge = sizeof(Publication);
+    for (const auto &id : *snapshot) {
+        if (charge > maximum || id.size() + sizeof(std::string) > maximum - charge) {
+            charge = maximum + 1;
+            break;
+        }
+        charge += id.size() + sizeof(std::string);
+    }
+    std::lock_guard<std::mutex> lock(publicationMutex_);
+    if (publicationStopping_) return false;
+    if (!publisher_.joinable()) publisher_ = std::thread(&ApiServer::PublishPending, this);
+    latestPublicationSessions_ = snapshot;
+    if (publicationGap_ || publications_.size() >= 4096 || charge > maximum - publicationBytes_) {
+        publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+    } else {
+        Publication update;
+        update.sessions = std::move(snapshot); update.charge = charge;
+        publications_.push_back(std::move(update)); publicationBytes_ += charge;
+    }
+    publicationWake_.notify_one();
+    return true;
+}
+void ApiServer::PublishPending() {
+    for (;;) {
+        Publication event;
+        bool gap = false;
+        std::shared_ptr<const std::vector<std::string>> gapSessions;
+        {
+            std::unique_lock<std::mutex> lock(publicationMutex_);
+            publicationWake_.wait(lock, [this] {
+                return publicationStopping_ || publicationGap_ || !publications_.empty();
+            });
+            if (publicationStopping_) return;
+            gap = publicationGap_;
+            publicationGap_ = false;
+            if (gap) gapSessions = latestPublicationSessions_;
+            else {
+                event = std::move(publications_.front()); publications_.pop_front();
+                publicationBytes_ -= event.charge;
+            }
+        }
+        try {
+            if (gap) {
+                if (gapSessions) SetSessions(*gapSessions);
+                PublicationGap();
+            } else if (event.sessions) SetSessions(*event.sessions);
+            else Publish(event.resource, event.data, event.source.c_str(), event.kind.c_str(), event.codePage);
+        } catch (...) {
+            // Retain ownership of the worker and invalidate remote continuity.
+            // Never propagate serialization failures into device reception.
+            try { PublicationGap(); } catch (...) {}
+        }
+    }
+}
+void ApiServer::PublicationGap() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& target : sessions_) {
+        auto& history = histories_[target];
+        historyBytes_ -= history.bytes;
+        history.bytes = 0; history.events.clear(); ++history.seq;
+    }
+    for (const auto& client : clients_)
+        if (!client->subscriptions.empty())
+            Close(client, 1013, "HISTORY_GAP: publication backlog exceeded; reconnect with cursor");
+}
 void ApiServer::Publish(const std::string &target, const Bytes &data, const char *source, const char *kind,
                         unsigned codePage) {
     if (data.empty())
@@ -546,18 +669,18 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
             h.events.pop_front();
         }
         while (historyBytes_ > 16 * 1024 * 1024) {
-            bool removed = false;
+            // Fairness: trim the session holding the most history first instead of
+            // always draining whichever session sorts first by key.
+            History *largest = nullptr;
             for (auto &old : histories_)
-                if (!old.second.events.empty()) {
-                    auto n = old.second.events.front().dump().size();
-                    old.second.bytes -= n;
-                    historyBytes_ -= n;
-                    old.second.events.pop_front();
-                    removed = true;
-                    break;
-                }
-            if (!removed)
+                if (!old.second.events.empty() && (!largest || old.second.bytes > largest->bytes))
+                    largest = &old.second;
+            if (!largest)
                 break;
+            auto n = largest->events.front().dump().size();
+            largest->bytes -= n;
+            historyBytes_ -= n;
+            largest->events.pop_front();
         }
     }
 }

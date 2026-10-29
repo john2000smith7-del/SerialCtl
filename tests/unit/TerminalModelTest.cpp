@@ -96,6 +96,16 @@ void TestLocalBootInterrupt() {
     Expect(boot.Status(4000).state=="timed_out" && !boot.Status(4000).entered,"Timeout is explicit failure to verify entry");
     boot.Arm("Hit", " ", "=>",1,5000); boot.Delivery(false,"Disconnected");
     Expect(boot.Status(5001).state=="failed" && boot.Poll(5002).empty(),"Transport failure cancels pending retries");
+    // After the bounded tail drops its front, offset 0 is not necessarily a line start.
+    boot.Arm("Hit", " ", "=>",90,6000);
+    boot.Feed(std::string(500,'x').c_str(),500,6001);
+    const std::string promptLookalike="=> "+std::string(509,'q');
+    boot.Feed(promptLookalike.c_str(),promptLookalike.size(),6002);
+    boot.Feed(std::string(512,'q').c_str(),512,6003);
+    boot.Feed("q",1,6004);
+    Expect(!boot.Status(6004).entered,"A prompt lookalike exposed only by tail trimming is not a line-start prompt");
+    boot.Feed("\r\n=> ",5,6005);
+    Expect(boot.Status(6005).entered,"A genuine line-start prompt is still recognized after trimming");
 }
 
 void TestCarriageReturnAndHistoryRecall() {

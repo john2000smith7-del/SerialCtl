@@ -2,6 +2,7 @@
 #include "PowerService.h"
 #include "UiStyle.h"
 #include "ToolbarIcons.h"
+#include "BackgroundCleanup.h"
 #include <array>
 #include <deque>
 #include <functional>
@@ -17,6 +18,8 @@ class PowerPane {
     }
     void Theme(bool dark);
     void ShowConnection();
+    void BeginShutdown();
+    void WaitForBackground();
     using LogExportHandler = std::function<void(bool, const std::wstring &, SessionLogger::ExportPoint)>;
     void SetLogExportHandler(LogExportHandler handler) { logExportHandler_ = std::move(handler); }
     void SetLogExportBusy(bool busy);
@@ -27,6 +30,8 @@ class PowerPane {
     Json RecoveryBinding();
 
   private:
+    bool closing_ = false; // UI thread only.
+    BackgroundCleanup resourceScanWorkers_[2]; // A slow VISA scan must not delay RS232 enumeration.
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK BodyProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static INT_PTR CALLBACK ConnectProc(HWND, UINT, WPARAM, LPARAM);

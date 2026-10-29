@@ -1,0 +1,115 @@
+name: Windows baseline performance comparison
+on:
+  push:
+    branches: [feat/v2.0.10-arch-final]
+    paths:
+      - .github/workflows/windows-performance-compare.yml
+      - tests/performance/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build both versions with the same benchmark drivers
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $baseline = '9d70d93abb068e808b9159c5fb8a7227aaf9c7bd'
+          $evidence = Join-Path $env:RUNNER_TEMP 'serialctl-performance-evidence'
+          New-Item -ItemType Directory $evidence -Force | Out-Null
+          git diff --exit-code $baseline $env:GITHUB_SHA -- tests/integration/SerialShareBackpressureTest.cpp tests/integration/GatewayFixture.h
+          if ($LASTEXITCODE -ne 0) { throw 'The baseline and candidate network drivers differ' }
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $drivers = (Resolve-Path tests/performance).Path.Replace('\', '/')
+          $noBom = New-Object System.Text.UTF8Encoding($false)
+          foreach ($item in @(
+            [pscustomobject]@{ label = 'baseline'; revision = $baseline }
+            [pscustomobject]@{ label = 'candidate'; revision = $env:GITHUB_SHA }
+          )) {
+            $label = $item.label
+            $revision = $item.revision
+            $source = Join-Path $env:RUNNER_TEMP "perf-$label"
+            $build = Join-Path $env:RUNNER_TEMP "perf-build-$label"
+            git worktree add --detach $source $revision
+            if ($LASTEXITCODE -ne 0) { throw "Cannot prepare $label worktree" }
+            $cmakeFile = Join-Path $source 'CMakeLists.txt'
+            [IO.File]::AppendAllText($cmakeFile, "`nset(SERIALCTL_PERF_DRIVER_DIR `"$drivers`")`ninclude(`"$drivers/inject.cmake`")`n", $noBom)
+            # Only the test's port ranges change, identically for both versions.
+            # This isolates successive samples from TCP TIME_WAIT on the runner.
+            $networkFile = Join-Path $source 'tests/integration/SerialShareBackpressureTest.cpp'
+            $network = [IO.File]::ReadAllText($networkFile)
+            if (!$network.Contains('Fixture f(18500, 18515);') -or !$network.Contains('Fixture load(18600, 18615);')) {
+              throw 'Expected original network benchmark ports not found'
+            }
+            $network = $network.Replace('#include <fstream>', "#include <fstream>`n#include <cwchar>")
+            $replacement = @'
+          wchar_t portOffsetText[32]{};
+          GetEnvironmentVariableW(L"SERIALCTL_BENCH_PORT_OFFSET", portOffsetText, 32);
+          const unsigned portOffset = static_cast<unsigned>(std::wcstoul(portOffsetText, nullptr, 10));
+          Fixture f(18500 + portOffset, 18515 + portOffset);
+          '@
+            $network = $network.Replace('Fixture f(18500, 18515);', $replacement.Trim())
+            $network = $network.Replace('Fixture load(18600, 18615);', 'Fixture load(18600 + portOffset, 18615 + portOffset);')
+            [IO.File]::WriteAllText($networkFile, $network, $noBom)
+            Invoke-SerialCtlExternalCommand -FilePath $cmake -Description "Configure $label" -Arguments @('-S',$source,'-B',$build,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+            Invoke-SerialCtlExternalCommand -FilePath $cmake -Description "Build $label benchmarks" -Arguments @('--build',$build,'--config','Release','--target','serial_share_backpressure_test','serialctl_perf_preview','serialctl_perf_paint','--parallel','2')
+          }
+          $processor = Get-CimInstance Win32_Processor | Select-Object -First 1 Name,NumberOfCores,NumberOfLogicalProcessors
+          $os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber
+          $memory = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+          $environment = [ordered]@{ baseline = $baseline; candidate = $env:GITHUB_SHA; processor = $processor;
+            operatingSystem = $os; physicalMemoryBytes = $memory; generator = $generator; configuration = 'Release x64';
+            networkDriver = 'identical test; port offsets only'; samplesPerVersion = 3 }
+          [IO.File]::WriteAllText((Join-Path $evidence 'environment.json'), ($environment | ConvertTo-Json -Depth 5), $noBom)
+      - name: Execute interleaved baseline and candidate runs
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'serialctl-performance-evidence'
+          $noBom = New-Object System.Text.UTF8Encoding($false)
+          $sequence = 0
+          for ($round = 1; $round -le 3; $round++) {
+            $order = if ($round -eq 2) { @('candidate','baseline') } else { @('baseline','candidate') }
+            foreach ($label in $order) {
+              $build = Join-Path $env:RUNNER_TEMP "perf-build-$label/Release"
+              $env:SERIALCTL_BENCH_PORT_OFFSET = [string]($sequence * 256)
+              $sequence++
+              foreach ($suite in @(
+                [pscustomobject]@{ kind = 'preview'; binary = 'serialctl_perf_preview.exe' }
+                [pscustomobject]@{ kind = 'paint'; binary = 'serialctl_perf_paint.exe' }
+                [pscustomobject]@{ kind = 'network'; binary = 'serial_share_backpressure_test.exe' }
+              )) {
+                $kind = $suite.kind
+                $binary = $suite.binary
+                $path = Join-Path $evidence "$kind-$label-$round.txt"
+                Write-Host "Running $kind $label round $round"
+                $previousPreference = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
+                try {
+                  $lines = & (Join-Path $build $binary) 2>&1
+                  $status = $LASTEXITCODE
+                } finally { $ErrorActionPreference = $previousPreference }
+                [IO.File]::WriteAllLines($path, [string[]]$lines, $noBom)
+                if ($status -ne 0) { Get-Content $path; throw "$kind $label round $round exited $status" }
+              }
+            }
+          }
+          python tests/performance/summarize.py $evidence
+          if ($LASTEXITCODE -ne 0) { throw 'Performance result validation failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-performance-comparison
+          path: ${{ runner.temp }}/serialctl-performance-evidence/
+          if-no-files-found: warn
+          retention-days: 30

@@ -29,10 +29,16 @@ inline std::string PreviewText(const std::string &input, size_t limit = 4096) {
         if (out.size() >= limit) break;
     }
     if (out.size() == limit && input.size() > limit) {
-        // Do not leave half a UTF-8 character at the end of a preview.
+        // Do not leave half a UTF-8 character at the end of a preview, but keep a
+        // final character that is complete.
         size_t end = out.size();
-        while (end && (static_cast<unsigned char>(out[end - 1]) & 0xc0) == 0x80) --end;
-        if (end && static_cast<unsigned char>(out[end - 1]) >= 0xc0) --end;
+        size_t start = end;
+        while (start > 0 && end - start < 3 && (static_cast<unsigned char>(out[start - 1]) & 0xc0) == 0x80) --start;
+        if (start > 0) {
+            const unsigned char lead = static_cast<unsigned char>(out[start - 1]);
+            const size_t expected = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc0 ? 2 : 1;
+            if (lead >= 0xc0 && end - (start - 1) < expected) end = start - 1;
+        }
         out.resize(end);
         out += u8"\n…内容较长，完整输出请查看实时终端或技术详情。";
     }

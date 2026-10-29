@@ -32,6 +32,16 @@ with Client('127.0.0.1') as c:
     c.subscribe(cmd)
     power = c.request('power.get', 'power-1')
     assert not power['connected'] and power['selectedChannels'] == [1]
+    for enabled in (True, False, True, False):
+        try:
+            c.output(enabled)
+        except ProtocolError as error:
+            failure = json.loads(str(error))
+            assert failure['code'] == 'BACKEND_REJECTED' and failure['message'] == '该功能暂未开放，请等待后续开放。', failure
+        else:
+            raise AssertionError('Disabled power output was accepted by the packaged application')
+    assert c.request('power.get', 'power-1') == power, 'Disabled power requests changed device/action state'
+    print('Packaged power feature disabled: valid ON/OFF requests rejected without queueing or state changes')
     for op, params in [('connect', {}), ('disconnect', {}), ('power.parameters', {}),
                        ('power.scpi', {}), ('power.task', {}), ('power.output', {'channels': [2], 'enabled': True})]:
         try:

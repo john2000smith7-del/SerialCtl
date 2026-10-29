@@ -2,8 +2,10 @@
 #include "ChildProcess.h"
 #include "PuttyHostKey.h"
 #include "Win32Helpers.h"
+#include "FilePaths.h"
 
 #include <array>
+#include <utility>
 
 namespace serialctl {
 
@@ -25,10 +27,13 @@ PlinkConnection::PlinkConnection(
 
 PlinkConnection::~PlinkConnection() {
     Stop();
+    if (stopEvent_) CloseHandle(stopEvent_);
 }
 
 bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::wstring& error) {
     stopping_ = false;
+    if (!stopEvent_) { error = L"创建 SSH 取消事件失败"; return false; }
+    ResetEvent(stopEvent_);
     const std::wstring plink = FindPlink();
     if (plink.empty()) {
         error = L"未找到 plink.exe。请将官方 PuTTY plink.exe 放在 serialctl.exe 同一目录。";
@@ -46,8 +51,8 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
     security.bInheritHandle = TRUE;
     HANDLE outputWrite = nullptr;
     HANDLE inputRead = nullptr;
-    if (!CreatePipe(&outputRead_, &outputWrite, &security, 0) ||
-        !CreatePipe(&inputRead, &inputWrite_, &security, 0)) {
+    if (!CreateChildIoPipe(outputRead_, outputWrite, false) ||
+        !CreateChildIoPipe(inputWrite_, inputRead, true)) {
         error = L"创建 SSH 管道失败：" + Win32ErrorMessage();
         if (outputRead_) CloseHandle(outputRead_);
         if (outputWrite) CloseHandle(outputWrite);
@@ -148,6 +153,7 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
     }
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
+    connected_ = true;
     readThread_ = std::thread(&PlinkConnection::ReadLoop, this);
     if (onStatus_) {
         onStatus_(L"SSH 已启动：" + host_ + L":" + std::to_wstring(port_), false);
@@ -156,31 +162,42 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
 }
 
 void PlinkConnection::Stop() {
+    // Signal before taking any I/O mutex. Both overlapped operations observe
+    // this persistent event even if cancellation races their submission.
     stopping_ = true;
-    if (inputWrite_) {
-        CloseHandle(inputWrite_);
-        inputWrite_ = nullptr;
+    connected_ = false;
+    if (stopEvent_) SetEvent(stopEvent_);
+    {
+        std::lock_guard<std::mutex> lock(writeMutex_);
+        if (HANDLE writeHandle = std::exchange(inputWrite_, nullptr)) {
+            CloseHandle(writeHandle);
+        }
     }
+
     if (process_) {
-        if (WaitForSingleObject(process_, 1000) == WAIT_TIMEOUT) {
+        if (WaitForSingleObject(process_, 100) == WAIT_TIMEOUT) {
             TerminateProcess(process_, 0);
             WaitForSingleObject(process_, 1000);
         }
     }
+
+    if (readThread_.joinable()) readThread_.join();
+
+    // 5) Only now release the handles the reader thread may have been using.
     if (outputRead_) {
         CloseHandle(outputRead_);
         outputRead_ = nullptr;
-    }
-    if (readThread_.joinable()) {
-        readThread_.join();
     }
     if (processThread_) {
         CloseHandle(processThread_);
         processThread_ = nullptr;
     }
-    if (process_) {
-        CloseHandle(process_);
-        process_ = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(writeMutex_);
+        if (process_) {
+            CloseHandle(process_);
+            process_ = nullptr;
+        }
     }
     CloseResizeChannel();
     DeletePuttySession();
@@ -191,21 +208,25 @@ void PlinkConnection::Stop() {
 
 bool PlinkConnection::Send(const Bytes& data, std::wstring& error) {
     std::lock_guard<std::mutex> lock(writeMutex_);
-    if (!IsConnected() || !inputWrite_) {
+    if (!connected_ || !inputWrite_) {
         error = L"SSH 尚未连接";
         return false;
     }
-    DWORD written = 0;
-    if (!WriteFile(inputWrite_, data.data(), static_cast<DWORD>(data.size()), &written, nullptr) ||
-        written != data.size()) {
-        error = L"SSH 写入失败：" + Win32ErrorMessage();
-        return false;
+    size_t offset = 0;
+    while (offset < data.size()) {
+        DWORD written = 0;
+        if (!writeIo_.Transfer(inputWrite_, const_cast<std::uint8_t*>(data.data() + offset),
+                static_cast<DWORD>(data.size() - offset), true, stopEvent_, written) || !written) {
+            error = L"SSH 写入失败，执行状态未知：" + Win32ErrorMessage();
+            return false;
+        }
+        offset += written;
     }
     return true;
 }
 
 bool PlinkConnection::IsConnected() const {
-    return process_ && WaitForSingleObject(process_, 0) == WAIT_TIMEOUT;
+    return connected_.load();
 }
 
 void PlinkConnection::ResizeTerminal(int columns, int rows) {
@@ -221,13 +242,14 @@ void PlinkConnection::ReadLoop() {
     std::array<std::uint8_t, 4096> buffer{};
     while (!stopping_) {
         DWORD read = 0;
-        if (!ReadFile(outputRead_, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr) || read == 0) {
+        if (!readIo_.Transfer(outputRead_, buffer.data(), static_cast<DWORD>(buffer.size()), false, stopEvent_, read) || read == 0) {
             break;
         }
         if (onData_) {
             onData_(Bytes(buffer.begin(), buffer.begin() + read));
         }
     }
+    connected_ = false;
     if (!stopping_ && onStatus_) {
         DWORD exitCode = 0;
         if (process_) {
@@ -238,20 +260,16 @@ void PlinkConnection::ReadLoop() {
 }
 
 std::wstring PlinkConnection::FindPlink() {
-    std::array<wchar_t, MAX_PATH> modulePath{};
-    const DWORD length = GetModuleFileNameW(nullptr, modulePath.data(), static_cast<DWORD>(modulePath.size()));
-    if (length == 0 || length >= modulePath.size()) {
-        return {};
-    }
-    std::wstring directory(modulePath.data(), length);
+    std::wstring directory = ModuleFilePath();
+    if (directory.empty()) return {};
     const size_t slash = directory.find_last_of(L"\\/");
     if (slash != std::wstring::npos) {
         directory.resize(slash + 1);
     } else {
         directory.clear();
     }
-    const std::wstring candidate = directory + L"plink.exe";
-    return GetFileAttributesW(candidate.c_str()) != INVALID_FILE_ATTRIBUTES ? candidate : std::wstring{};
+    const std::wstring candidate = ExtendedFilePath(directory + L"plink.exe");
+    return !candidate.empty() && GetFileAttributesW(candidate.c_str()) != INVALID_FILE_ATTRIBUTES ? candidate : std::wstring{};
 }
 
 bool PlinkConnection::CreateResizeChannel(std::wstring& error) {

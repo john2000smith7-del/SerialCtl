@@ -71,6 +71,13 @@ PowerPane::~PowerPane() {
         DeleteObject(surfaceBrush_);
     if (panelBrush_) DeleteObject(panelBrush_);
 }
+void PowerPane::BeginShutdown() {
+    closing_ = true;
+    if (window_) KillTimer(window_, 1);
+}
+void PowerPane::WaitForBackground() {
+    for (auto &worker : resourceScanWorkers_) worker.Drain();
+}
 bool PowerPane::Create(HWND parent, HFONT font, bool dark, PowerService *service) {
     font_ = font;
     service_ = service;
@@ -584,6 +591,7 @@ void PowerPane::Refresh() {
     EnableWindow(buttons_[3], connected && !Selection().empty());
     EnableWindow(Control(81), connected && !running && !Selection().empty());
     EnableWindow(Control(80), !running && action_.empty());
+    EnableWindow(Control(103), PowerService::ConnectionAvailable());
     for (int i = 0; i < 3; ++i) {
         EnableWindow(voltage_[i], connected && !running);
         EnableWindow(current_[i], connected && !running);
@@ -1178,6 +1186,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (!self)
         return DefWindowProcW(h, m, w, l);
+    if (self->closing_ && (m == WM_TIMER || m == WM_COMMAND)) return 0;
     if (m == WM_CREATE) {
         self->Theme(self->dark_);
         self->body_ = CreateWindowExW(WS_EX_CONTROLPARENT,L"STATIC",L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_CLIPSIBLINGS,
@@ -1492,7 +1501,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             EnableWindow(GetDlgItem(h, 103), FALSE);
             auto job = data->scan = std::make_shared<ResourceScan>();
             job->kind = kind;
-            std::thread([job] {
+            data->pane->resourceScanWorkers_[kind == 0 ? 0 : 1].Retire([job] {
                 try {
                     if (job->kind == 0) job->usb = PowerService::UsbResources();
                     else for (int index = 1; index <= 256; ++index) {
@@ -1502,7 +1511,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     }
                 } catch (...) { }
                 job->done = true;
-            }).detach();
+            });
             SetTimer(h, 209, 40, nullptr);
             return TRUE;
         }

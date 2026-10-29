@@ -1,5 +1,6 @@
 #pragma once
 #include "WebSocket.h"
+#include "NetworkConnect.h"
 #include "json.hpp"
 #include <atomic>
 #include <memory>
@@ -13,6 +14,8 @@ class GatewayClient {
         Close();
     }
     void Connect(const std::wstring &, unsigned, const std::atomic_bool *cancel = nullptr, DWORD timeout = 700);
+    void ConnectUntil(const std::wstring &, unsigned, const std::atomic_bool *, ULONGLONG deadline);
+    void ConnectUntil(const std::wstring &, unsigned, const TcpAddresses &, const std::atomic_bool *, ULONGLONG deadline);
     void Close();
     void Cancel() {
         std::lock_guard<std::mutex> lock(cancelMutex_);
@@ -32,7 +35,10 @@ class GatewayClient {
     }
     void Live() {
         ws::SocketOptions(socket_);
+        stream_->Deadline(0);
         stream_->Timeout(INFINITE);
+        stream_->FrameTimeout(ws::FrameTimeoutMs);
+        stream_->CancelToken(nullptr);
     }
 
   private:

@@ -10,8 +10,15 @@
 #include <shlobj.h>
 #include <filesystem>
 #include <fstream>
+#include <future>
+#include <chrono>
 
 namespace serialctl {
+struct ApiServerTestAccess {
+    static std::unique_lock<std::mutex> HoldPublication(ApiServer& server) {
+        return std::unique_lock<std::mutex>(server.mutex_);
+    }
+};
 namespace {
 void Require(bool ok, const char* reason) {
     if (!ok) { std::cerr << "FAILED: " << reason << std::endl; throw std::runtime_error(reason); }
@@ -28,6 +35,21 @@ struct Transport : IConnection {
     unsigned InputCodePage() const override { return input; }
     unsigned OutputCodePage() const override { return CP_UTF8; }
 };
+struct HeldTransport : IConnection {
+    HANDLE release = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    HANDLE entered = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    std::atomic_bool connected{true}, cancelled{false};
+    ~HeldTransport() override { if (release) CloseHandle(release); if (entered) CloseHandle(entered); }
+    bool Start(DataCallback, StatusCallback, std::wstring&) override { return true; }
+    void CancelStart() override { cancelled = true; }
+    void Stop() override {
+        SetEvent(entered);
+        WaitForSingleObject(release, INFINITE);
+        connected = false;
+    }
+    bool IsConnected() const override { return connected; }
+    bool Send(const Bytes&, std::wstring&) override { return connected; }
+};
 Json Wait(PowerService& power, Json action) {
     Require(!action.contains("error"), "Power operation not accepted");
     const auto end = GetTickCount64() + 5000;
@@ -42,7 +64,9 @@ Json Wait(PowerService& power, Json action) {
 }
 struct AiDeviceTestAccess {
     static LRESULT CALLBACK FixtureParent(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data) {
-        if(m==WM_DRAWITEM || m==WM_MEASUREITEM || m==WM_PAINT || (m>=WM_CTLCOLORMSGBOX && m<=WM_CTLCOLORSTATIC)) return reinterpret_cast<MainWindow*>(data)->HandleMessage(m,w,l);
+        if(m==WM_DRAWITEM || m==WM_MEASUREITEM || m==WM_PAINT || m==WM_TIMER ||
+           (m>=WM_APP && m<=WM_APP+100) || (m>=WM_CTLCOLORMSGBOX && m<=WM_CTLCOLORSTATIC))
+            return reinterpret_cast<MainWindow*>(data)->HandleMessage(m,w,l);
         return DefSubclassProc(h,m,w,l);
     }
     static HWND PowerControl(HWND pane, int id) {
@@ -255,8 +279,8 @@ struct AiDeviceTestAccess {
                         "Power selector mouse focus retained press color");
             }
         }
-        const auto commandDraft = main.commands_;
-        main.commands_ = {CommandItem(L"Controlled command", L"echo fixture")};
+        const auto commandDraft = main.macro_.Items();
+        main.macro_.Replace({CommandItem(L"Controlled command", L"echo fixture")}, false);
         MoveWindow(main.commandList_, 0, 0, 280, 200, TRUE);
         main.RefreshCommandList();
         for (const bool dark : {false, true}) {
@@ -289,7 +313,7 @@ struct AiDeviceTestAccess {
             DeleteDC(dc);
             ReleaseDC(parent, screen);
         }
-        main.commands_ = commandDraft;
+        main.macro_.Replace(commandDraft, false);
         main.RefreshCommandList();
         main.aiVisible_ = main.powerVisible_ = false;
         main.darkMode_ = false;
@@ -353,9 +377,38 @@ struct AiDeviceTestAccess {
         }
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
         {
+            // A real drag/animation changes child bounds many times. Keep the
+            // terminal grid stable until the operation finishes, then reflow.
+            for (bool MainWindow::*deferred : {&MainWindow::windowResizing_, &MainWindow::rightPanelDragging_,
+                                             &MainWindow::rightPanelAnimating_}) {
+                RECT bounds{};
+                GetWindowRect(main.terminal_, &bounds);
+                const int oldColumns = main.terminalViewport_.Metrics().columns;
+                const int oldRows = main.terminalViewport_.Metrics().rows;
+                const int modelColumns = main.sessions_[4]->terminal.Columns();
+                const int modelRows = main.sessions_[4]->terminal.Rows();
+                main.*deferred = true;
+                Require(SetWindowPos(main.terminal_, nullptr, 0, 0, bounds.right - bounds.left - 200,
+                                     bounds.bottom - bounds.top - 60, SWP_NOMOVE | SWP_NOZORDER) != FALSE,
+                        "Cannot resize terminal during deferred-reflow fixture");
+                main.UpdateTerminalDimensions();
+                Require(main.terminalViewport_.Metrics().columns == oldColumns &&
+                            main.terminalViewport_.Metrics().rows == oldRows &&
+                            main.sessions_[4]->terminal.Columns() == modelColumns &&
+                            main.sessions_[4]->terminal.Rows() == modelRows,
+                        "Terminal reflow must wait until drag, animation or resize completes");
+                main.*deferred = false;
+                main.UpdateTerminalDimensions();
+                Require(main.terminalViewport_.Metrics().columns != oldColumns &&
+                            main.sessions_[4]->terminal.Columns() == main.terminalViewport_.Metrics().columns,
+                        "Terminal dimensions must be committed after deferred reflow");
+                main.LayoutControls(viewport.right, viewport.bottom);
+            }
+        }
+        {
             const auto writes=transports[4]->writes;
-            main.commands_={CommandItem(L"A",L"echo A"),CommandItem(L"B",L"echo B"),CommandItem(L"C",L"echo C")};
-            main.commandsDirty_=false; main.RefreshCommandList();
+            main.macro_.Replace({CommandItem(L"A",L"echo A"),CommandItem(L"B",L"echo B"),CommandItem(L"C",L"echo C")}, false);
+            main.macro_.MarkSaved(); main.RefreshCommandList();
             RECT row{}; SendMessageW(main.commandList_,LB_GETITEMRECT,0,reinterpret_cast<LPARAM>(&row));
             const int h=row.bottom-row.top;
             // Start in the text area (not just the small left-hand icon), and
@@ -363,44 +416,44 @@ struct AiDeviceTestAccess {
             const int bodyX = std::min<int>(row.right - 90, row.left + 60);
             auto begin=MAKELPARAM(bodyX,h/2), moved=MAKELPARAM(bodyX+25,h*2+h/2);
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
-            Require(!main.commandDragGhost_ && !main.commandsDirty_,"Pressing a card without moving must not start a drag");
+            Require(!main.commandDragGhost_ && !main.macro_.Dirty(),"Pressing a card without moving must not start a drag");
             if (GetSystemMetrics(SM_CXDRAG) / 2 > 1 && GetSystemMetrics(SM_CYDRAG) / 2 > 1) {
                 SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(bodyX+1,h/2+1));
                 Require(!main.commandDragGhost_,"Sub-threshold pointer movement must remain a click");
             }
             SendMessageW(main.commandList_,WM_LBUTTONUP,0,begin);
-            Require(!main.commandDragGhost_ && !main.commandsDirty_,"Releasing a click must not reorder commands");
+            Require(!main.commandDragGhost_ && !main.macro_.Dirty(),"Releasing a click must not reorder commands");
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
             SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
-            Require(main.commandDragGhost_ && main.commands_[0].name==L"A","Dragging card text must create a preview without committing order");
+            Require(main.commandDragGhost_ && main.macro_.Items()[0].name==L"A","Dragging card text must create a preview without committing order");
             RECT ghost{}; GetWindowRect(main.commandDragGhost_,&ghost); MapWindowPoints(nullptr,main.commandList_,reinterpret_cast<POINT*>(&ghost),2);
             Require(ghost.top==h*2 && ghost.left==25,"Drag preview must track pointer in both dimensions");
             ui_test::SaveUiEvidence(main.commandList_,L"v207-command-drag-held.png");
             SendMessageW(main.commandList_,WM_KEYDOWN,VK_ESCAPE,0);
-            Require(!main.commandDragGhost_ && main.commands_[0].name==L"A" && !main.commandsDirty_,"Esc must restore original command order");
+            Require(!main.commandDragGhost_ && main.macro_.Items()[0].name==L"A" && !main.macro_.Dirty(),"Esc must restore original command order");
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
             SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
             SendMessageW(main.commandList_,WM_LBUTTONUP,0,moved);
-            Require(main.commands_[2].name==L"A" && transports[4]->writes==writes,"Only release commits reorder; drag never executes");
-            main.commandsDirty_=false;
+            Require(main.macro_.Items()[2].name==L"A" && transports[4]->writes==writes,"Only release commits reorder; drag never executes");
+            main.macro_.MarkSaved();
             SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
             SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(-24,h+h/2));
             SendMessageW(main.commandList_,WM_LBUTTONUP,0,MAKELPARAM(-24,h+h/2));
-            Require(!main.commandDragGhost_ && !main.commandsDirty_ && main.commands_[0].name==L"B" && main.commands_[2].name==L"A",
+            Require(!main.commandDragGhost_ && !main.macro_.Dirty() && main.macro_.Items()[0].name==L"B" && main.macro_.Items()[2].name==L"A",
                 "Releasing outside the list must cancel reorder");
             const auto file=std::filesystem::temp_directory_path()/(L"serialctl-drop-"+std::to_wstring(GetCurrentProcessId())+L".txt");
             {std::ofstream stream(file);stream<<"echo imported-only\n";}
-            main.commandsDirty_=false;
+            main.macro_.MarkSaved();
             const auto name=file.wstring();
             auto handle=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(name.size()+2)*sizeof(wchar_t));
             auto data=static_cast<DROPFILES*>(GlobalLock(handle)); data->pFiles=sizeof(DROPFILES);data->fWide=TRUE;
             memcpy(reinterpret_cast<char*>(data)+sizeof(DROPFILES),name.c_str(),(name.size()+1)*sizeof(wchar_t)); GlobalUnlock(handle);
             SendMessageW(main.commandList_,WM_DROPFILES,reinterpret_cast<WPARAM>(handle),0);
-            Require(main.commands_.size()==1 && main.commands_[0].commands[0]==L"echo imported-only" && transports[4]->writes==writes,
+            Require(main.macro_.Items().size()==1 && main.macro_.Items()[0].commands[0]==L"echo imported-only" && transports[4]->writes==writes,
                 "Dropped UTF-8 file must use import without executing device input");
-            std::filesystem::remove(file); main.commandsDirty_=false;
+            std::filesystem::remove(file); main.macro_.MarkSaved();
         }
-        main.commands_ = {CommandItem(L"click regression", L"echo once")};
+        main.macro_.Replace({CommandItem(L"click regression", L"echo once")}, false);
         main.RefreshCommandList();
         RECT actionRow{};
         SendMessageW(main.commandList_, LB_GETITEMRECT, 0, reinterpret_cast<LPARAM>(&actionRow));
@@ -428,13 +481,15 @@ struct AiDeviceTestAccess {
                   << GetTickCount64()-realClickStart << "ms, guard=" << std::max<DWORD>(350,GetDoubleClickTime())
                   << "ms, submitted=" << transports[4]->writes-writes << '\n';
         Require(transports[4]->writes == writes + 1, "Rapid Run clicks submitted duplicate commands");
-        main.lastCommandActivation_ = 0;
-        main.commands_[0].commands.push_back(L"echo should-not-run");
-        main.commands_[0].intervalMs = 10000;
+        main.macro_.ClearActivation();
+        auto plan = main.macro_.Items()[0];
+        plan.commands.push_back(L"echo should-not-run");
+        plan.intervalMs = 10000;
+        main.macro_.Update(0, std::move(plan));
         main.SendCommand(0);
-        Require(main.runningCommandIndex_ == 0, "Macro did not enter running state");
+        Require(main.macro_.RunningIndex() == 0, "Macro did not enter running state");
         SendMessageW(main.commandList_, WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
-        Require(main.runningCommandIndex_ == -1 && transports[4]->writes == writes + 2,
+        Require(main.macro_.RunningIndex() == -1 && transports[4]->writes == writes + 2,
                 "Immediate Stop was blocked by Run's repeat guard");
         SendMessageW(main.commandList_, WM_LBUTTONUP, 0, runPoint);
         main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
@@ -454,9 +509,9 @@ struct AiDeviceTestAccess {
                 "Selecting background session did not restore its failure reason");
         transports[0]->connected = false;
         main.SwitchSession(0, MainWindow::SessionFocus::Preserve);
-        Require(!main.sftpThread_.joinable(), "Selecting disconnected SSH started a redundant SFTP process");
+        Require(!main.sftp_.HasOperationThread(), "Selecting disconnected SSH started a redundant SFTP process");
         transports[0]->connected = true;
-        main.commands_ = commandDraft;
+        main.macro_.Replace(commandDraft, false);
         main.RefreshCommandList();
         // Reuse the real terminal HWND and session model, not a copied AI log.
         main.ShowAiPage(false);
@@ -600,6 +655,8 @@ struct AiDeviceTestAccess {
         main.ShowPowerPage();
         Require(main.powerVisible_ && !main.aiVisible_ && IsWindowVisible(main.powerPane_.Handle()) &&
             IsWindowVisible(main.terminal_) && !IsWindowVisible(main.commandList_),"Power page must share the actual selected terminal and hide original sidebar");
+        Require(!IsWindowEnabled(PowerControl(main.powerPane_.Handle(), 103)),
+                "Unavailable power sampling control must not accept changes that open rejection dialogs");
         RECT powerRect{},liveRect{};
         GetWindowRect(main.powerPane_.Handle(),&powerRect);GetWindowRect(main.terminal_,&liveRect);
         Require(std::abs((powerRect.right-powerRect.left)-(liveRect.right-liveRect.left))<=1,"Power monitor must start at independent 50:50 ratio");
@@ -637,10 +694,235 @@ struct AiDeviceTestAccess {
         Require(Wait(main.powerService_, main.AiDeviceRequest("power.output", args))["state"] == "completed", "Power OFF failed");
         Require(main.powerService_.State()["channels"][0]["output"] == false && main.powerService_.State()["channels"][2]["output"] == false, "Power OFF readback incorrect");
         Require(main.AiDeviceRequest("power.parameters", {{"voltage", 30}}).contains("error"), "AI gained unrequested parameter operation");
+        {
+            main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
+            main.LayoutControls(viewport.right, viewport.bottom);
+            // A paint-latency measurement needs an exposed native surface.
+            // Earlier cases create an independent topmost desktop companion;
+            // IsWindowVisible alone does not mean this fixture is unobscured.
+            SetWindowPos(parent, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetForegroundWindow(parent);
+            RedrawWindow(parent, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+            // Exercise the application's ordinary message-loop dispatch, which
+            // also delivers RDW_INTERNALPAINT without an invalid client region.
+            unsigned dispatched = 0, paints = 0;
+            const auto paintOpportunity = [&] {
+                MSG next{};
+                if (PeekMessageW(&next, nullptr, 0, 0, PM_REMOVE)) {
+                    ++dispatched; if (next.message == WM_PAINT) ++paints;
+                    TranslateMessage(&next); DispatchMessageW(&next);
+                }
+            };
+            Json samples = Json::array();
+            for (int sample = 0; sample < 16; ++sample) {
+                // Hold the REAL gateway publication lock: sustained device
+                // reception must return, and paint, before network fan-out.
+                auto gate = ApiServerTestAccess::HoldPublication(main.apiServer_);
+                const auto marker = "SERIALCTL_PAINT_" + std::string(3 - std::to_string(sample).size(), '0') + std::to_string(sample);
+                auto receive = std::async(std::launch::async, [&main, marker] {
+                    main.PostData(2, Bytes(marker.begin(), marker.end()), CP_UTF8);
+                });
+                struct ReleaseBeforeJoin { std::unique_lock<std::mutex>& gate; ~ReleaseBeforeJoin() { if (gate.owns_lock()) gate.unlock(); } } release{gate};
+                Require(receive.wait_for(std::chrono::seconds(1)) == std::future_status::ready,
+                        "Device receive callback still waits for network publication");
+                receive.get();
+                MSG notification{};
+                const auto deadline = GetTickCount64() + 1000;
+                bool posted = false;
+                while (!(posted = PeekMessageW(&notification, parent, WM_APP + 1, WM_APP + 1, PM_REMOVE) != FALSE) && GetTickCount64() < deadline)
+                    MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_POSTMESSAGE);
+                Require(posted, "Local serial display waited for the gateway lock");
+                main.HandleMessage(notification.message, notification.wParam, notification.lParam);
+                if (reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) != sample + 1) {
+                    RECT client{}; GetClientRect(main.terminal_, &client);
+                    RECT clip{}; HDC surface = GetDC(main.terminal_);
+                    const int region = GetClipBox(surface, &clip); ReleaseDC(main.terminal_, surface);
+                    std::lock_guard<std::mutex> lock(main.receivedMutex_);
+                    std::cerr << "FAILED serial paint state: sample=" << sample
+                              << " painted=" << reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe"))
+                              << " decoded=" << main.activeSession_->paintProbe
+                              << " pendingArrival=" << main.activeSession_->pendingProbeArrival
+                              << " active=" << main.activeSession_->id << " queued=" << main.received_.size()
+                              << " visible=" << IsWindowVisible(main.terminal_) << " iconic=" << IsIconic(parent)
+                              << " client=" << client.right << 'x' << client.bottom
+                              << " clip=" << region << ':' << clip.left << ',' << clip.top << ',' << clip.right << ',' << clip.bottom
+                              << " update=" << GetUpdateRect(main.terminal_, nullptr, FALSE) << std::endl;
+                }
+                Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == sample + 1,
+                        "Received serial marker did not reach actual terminal painting before return");
+                samples.push_back(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintUsec")));
+                gate.unlock();
+            }
+            for (int i = 0; i < 32; ++i) main.QueueReceived({3, Bytes(16384, 'b'), CP_UTF8, {}, 0});
+            main.receiveFairness_ = 0;
+            LARGE_INTEGER arrival{}; QueryPerformanceCounter(&arrival);
+            const std::string visibleMarker = "SERIALCTL_PAINT_200";
+            main.QueueReceived({2, Bytes(visibleMarker.begin(), visibleMarker.end()), CP_UTF8, {}, arrival.QuadPart});
+            main.HandleMessage(WM_APP + 1, 0, 0);
+            Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == 201,
+                    "Background terminal backlog buried the visible serial echo");
+            auto backlogDeadline = GetTickCount64() + 5000;
+            while (!main.received_.empty() && GetTickCount64() < backlogDeadline) paintOpportunity();
+            if (!main.received_.empty())
+                std::cerr << "FAILED receive continuation state: remaining=" << main.received_.size()
+                          << " continuation=" << main.receiveContinuation_ << " posted=" << main.receivePosted_
+                          << " dispatched=" << dispatched << " paints=" << paints
+                          << " update=" << GetUpdateRect(parent, nullptr, FALSE)
+                          << " queueStatus=" << GetQueueStatus(QS_PAINT | QS_POSTMESSAGE) << std::endl;
+            Require(main.received_.empty(), "Visible-session priority starved background terminal output");
+            main.activeSession_->terminal.Clear();
+            for (int i = 0; i < 64; ++i) main.QueueReceived({2, Bytes(16384, 'x'), CP_UTF8, {}, 0});
+            main.HandleMessage(WM_APP + 1, 0, 0);
+            Require(main.received_.empty() || main.receiveContinuation_, "Visible serial backlog reintroduced a receive timer");
+            const auto deadline = GetTickCount64() + 5000;
+            while (!main.received_.empty() && GetTickCount64() < deadline) paintOpportunity();
+            Require(main.received_.empty(), "Paint-driven serial receive continuation stopped making progress");
+            const Json evidence{{"callbackToPaintUsec", samples}, {"samples", 16}, {"gatewayLockHeldDuringPaint", true},
+                                {"visibleBacklogScheduling", "paint opportunities without a receive timer"},
+                                {"scope", "actual Win32 terminal painter and receive handoff with controlled serial bytes; no UART/driver latency claim"}};
+            std::cout << evidence.dump() << '\n';
+            wchar_t directory[32768]{};
+            if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768))
+                std::ofstream(std::filesystem::path(directory) / L"serial-realtime-display.json") << evidence.dump(2);
+            auto pending = std::make_unique<MainWindow::SessionState>();
+            pending->id = 99; pending->mode = 3; pending->name = L"startup replay fixture";
+            pending->connection = std::make_shared<Transport>();
+            pending->logger = std::make_shared<SessionLogger>();
+            main.pendingSession_ = std::move(pending);
+            main.connectionCancel_ = false;
+            for (int i = 0; i < 64; ++i) main.pendingConnectionData_.push_back({99, Bytes(16384, 'y'), CP_UTF8, {}, 0});
+            main.pendingConnectionBytes_ = 64 * 16384;
+            const std::string live = "LIVE_AFTER_HISTORY";
+            main.QueueReceived({99, Bytes(live.begin(), live.end()), CP_UTF8, {}, 0});
+            main.CompleteConnection(true, L"");
+            Require(!main.received_.empty() && main.activeSession_->terminal.HistorySize() == 0,
+                    "Connection completion synchronously parsed the entire startup history");
+            Require(main.received_.front().data.front() == 'y' && main.received_.back().data == Bytes(live.begin(), live.end()),
+                    "Startup history was reordered behind newer live output");
+            const auto replayDeadline = GetTickCount64() + 5000;
+            main.HandleMessage(WM_APP + 1, 0, 0);
+            while (!main.received_.empty() && GetTickCount64() < replayDeadline) paintOpportunity();
+            if (!main.received_.empty() || main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) {
+                const auto text = main.activeSession_->terminal.PlainText(false);
+                std::cerr << "FAILED startup replay state: remaining=" << main.received_.size()
+                          << " continuation=" << main.receiveContinuation_ << " posted=" << main.receivePosted_
+                          << " update=" << GetUpdateRect(parent, nullptr, FALSE)
+                          << " active=" << main.activeSession_->id << " textLength=" << text.size()
+                          << " elapsed=" << GetTickCount64() - (replayDeadline - 5000)
+                          << " tail=" << WideToMultiByte(text.substr(text.size() > 64 ? text.size() - 64 : 0), CP_UTF8)
+                          << std::endl;
+            }
+            Require(main.received_.empty() && main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") != std::wstring::npos,
+                    "Sliced startup replay lost newer live data");
+            SetWindowPos(parent, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        }
         main.powerService_.Shutdown();
         main.aiPane_.Shutdown();
         DestroyWindow(parent);
         for (auto font : {main.uiFont_, main.smallFont_, main.titleFont_, main.terminalFont_}) DeleteObject(font);
+    }
+    static void RunShutdown() {
+        test::Wsa sockets;
+        MainWindow main;
+        Require(main.Create(GetModuleHandleW(nullptr), SW_SHOWNOACTIVATE), "Create native shutdown window");
+        const HWND window = main.window_;
+        auto startup = std::make_shared<HeldTransport>();
+        auto announced = std::make_shared<HeldTransport>();
+        auto pending = std::make_shared<HeldTransport>();
+        auto active = std::make_shared<HeldTransport>();
+        Require(startup->release && startup->entered && announced->release && announced->entered &&
+                pending->release && pending->entered &&
+                active->release && active->entered, "Create shutdown gates");
+        struct ReleaseGates {
+            std::shared_ptr<HeldTransport> startup, announced, pending, active;
+            ~ReleaseGates() { SetEvent(startup->release); SetEvent(announced->release);
+                              SetEvent(pending->release); SetEvent(active->release); }
+        } release{startup, announced, pending, active};
+        auto session = std::make_unique<MainWindow::SessionState>();
+        session->id = 500; session->mode = 3; session->name = L"held startup";
+        session->connection = pending; session->logger = std::make_shared<SessionLogger>();
+        main.pendingSession_ = std::move(session);
+        main.connectionThread_ = std::thread([startup] {
+            SetEvent(startup->entered);
+            WaitForSingleObject(startup->release, INFINITE);
+            // Simulate success immediately before cancellation was observed.
+        });
+        Require(WaitForSingleObject(startup->entered, 3000) == WAIT_OBJECT_0, "Held startup did not begin");
+        const auto disconnectStarted = GetTickCount64();
+        main.DisconnectAll();
+        const auto disconnectMs = GetTickCount64() - disconnectStarted;
+        Require(disconnectMs < 250, "Disconnect all waited for the held connection thread");
+        Require(pending->cancelled && main.pendingSession_ && main.cancelledConnectionPending_,
+                "Pending connection was freed before its worker finished");
+        SetEvent(startup->release);
+        auto pump = [] {
+            MSG message{};
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                if (message.message == WM_QUIT) continue;
+                TranslateMessage(&message); DispatchMessageW(&message);
+            }
+        };
+        const auto cancelledDeadline = GetTickCount64() + 5000;
+        while (main.pendingSession_ && GetTickCount64() < cancelledDeadline) { pump(); Sleep(1); }
+        Require(!main.pendingSession_ && !main.connectionThread_.joinable(),
+                "Canceled connection was not reclaimed after its worker finished");
+        Require(WaitForSingleObject(pending->entered, 3000) == WAIT_OBJECT_0 && pending->connected,
+                "Racing successful startup was not stopped by owned background cleanup");
+        pump();
+        Require(IsWindow(window), "Pending connection cleanup blocked or destroyed the window");
+        SetEvent(pending->release);
+
+        session = std::make_unique<MainWindow::SessionState>();
+        session->id = 502; session->mode = 3; session->name = L"held completion";
+        session->connection = std::make_shared<Transport>();
+        session->logger = std::make_shared<SessionLogger>();
+        main.pendingSession_ = std::move(session);
+        main.connectionThread_ = std::thread([announced] {
+            SetEvent(announced->entered);
+            WaitForSingleObject(announced->release, INFINITE);
+        });
+        Require(WaitForSingleObject(announced->entered, 3000) == WAIT_OBJECT_0, "Held completion did not begin");
+        main.connectionResultReady_ = true;
+        main.connectionResultSuccess_ = false;
+        const auto completionStarted = GetTickCount64();
+        main.FinishPendingConnection();
+        const auto completionMs = GetTickCount64() - completionStarted;
+        Require(completionMs < 250 && main.pendingSession_, "Connection notification joined an unfinished worker");
+        SetEvent(announced->release);
+        const auto completionDeadline = GetTickCount64() + 5000;
+        while (main.pendingSession_ && GetTickCount64() < completionDeadline) { pump(); Sleep(1); }
+        Require(!main.pendingSession_ && !main.connectionThread_.joinable(),
+                "Connection completion did not resume after worker exit");
+
+        session = std::make_unique<MainWindow::SessionState>();
+        session->id = 501; session->mode = 1; session->name = L"held live transport";
+        session->connection = active; session->logger = std::make_shared<SessionLogger>();
+        main.sessions_.push_back(std::move(session));
+        const auto closeStarted = GetTickCount64();
+        SendMessageW(window, WM_CLOSE, 0, 0);
+        const auto closeMs = GetTickCount64() - closeStarted;
+        Require(closeMs < 250, "Window close waited for the held transport");
+        Require(main.Closing() && IsWindow(window) && !IsWindowVisible(window),
+                "Window was destroyed before the held transport was reclaimed");
+        Require(WaitForSingleObject(active->entered, 3000) == WAIT_OBJECT_0, "Shutdown worker did not stop transport");
+        PostMessageW(window, WM_NULL, 0, 0);
+        pump();
+        Require(IsWindow(window) && active->connected, "Shutdown destroyed the window while the worker was held");
+        SendMessageW(window, WM_CLOSE, 0, 0);
+        Require(IsWindow(window), "Repeated close destroyed the window during cleanup");
+        SetEvent(active->release);
+        const auto closeDeadline = GetTickCount64() + 5000;
+        while (IsWindow(window) && GetTickCount64() < closeDeadline) { pump(); Sleep(1); }
+        Require(!IsWindow(window) && !active->connected && main.shutdownComplete_,
+                "Window or transport survived completed shutdown");
+        const Json evidence{{"disconnectAllMs", disconnectMs}, {"connectionCompletionMs", completionMs},
+                            {"closeHandlerMs", closeMs},
+                            {"pendingStartupHeld", true}, {"transportStopHeld", true},
+                            {"scope", "native window and message loop with controlled blocking transports; no hardware latency claim"}};
+        std::cout << evidence.dump() << '\n';
+        wchar_t directory[32768]{};
+        if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768))
+            std::ofstream(std::filesystem::path(directory) / L"shutdown-responsiveness.json") << evidence.dump(2);
     }
 };
 }
@@ -649,7 +931,7 @@ int main() {
     Gdiplus::GdiplusStartupInput startup; ULONG_PTR token{}; Gdiplus::GdiplusStartup(&token, &startup, nullptr);
     HWND parent = CreateWindowExW(0,L"STATIC",L"AI device callback fixture",WS_OVERLAPPEDWINDOW,0,0,1000,700,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     int result = 0;
-    try { serialctl::AiDeviceTestAccess::Run(parent); std::cout << "[PASS] Actual desktop AI callback: five terminal types, received evidence, target/encoding/CRLF, adjustable live AI monitor and original sidebar, power ON/OFF readback and unchanged selection; controlled transports, no physical devices\n"; }
+    try { serialctl::AiDeviceTestAccess::Run(parent); serialctl::AiDeviceTestAccess::RunShutdown(); std::cout << "[PASS] Actual desktop AI callback and asynchronous connection/shutdown lifecycle; controlled transports, no physical devices\n"; }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; result = 1; }
     DestroyWindow(parent); Gdiplus::GdiplusShutdown(token); return result;
 }

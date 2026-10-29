@@ -1,4 +1,5 @@
 #include "UiStyle.h"
+#include "PaintBuffer.h"
 #include <iostream>
 #include <vector>
 
@@ -233,6 +234,35 @@ int main() {
     TestItem({13, 33, 131, 91}, true);
     TestFallback();
     TestCurveCoverage();
+    // UiBox itself retains shared rounded-surface resources. Warm those exact
+    // dimensions before measuring PaintBuffer ownership, so the assertion only
+    // counts persistent DC/bitmap cleanup rather than first-use renderer caches.
+    for (int width : {80, 160, 96}) { Surface warm; Paint(warm.dc, RECT{0, 0, width, 128}); }
+    {
+        const auto before = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
+        {
+            serialctl::PaintBuffer cache;
+            for (int dpi : {96, 120, 144}) for (int width : {80, 160, 96, 160}) {
+                Surface actual, expected;
+                RECT bounds{0, 0, width, 128};
+                Paint(expected.dc, bounds);
+                HDC memory = cache.Get(actual.dc, width, 128, dpi);
+                Expect(memory != nullptr, "persistent paint surface is available");
+                if (!memory) continue;
+                const int saved = SaveDC(memory);
+                SelectObject(memory, GetCurrentObject(expected.dc, OBJ_FONT));
+                SetTextColor(memory, GetTextColor(expected.dc));
+                SetBkMode(memory, GetBkMode(expected.dc));
+                Paint(memory, bounds);
+                BitBlt(actual.dc, 0, 0, width, 128, memory, 0, 0, SRCCOPY);
+                RestoreDC(memory, saved);
+                Expect(actual.Pixels() == expected.Pixels(), "persistent and direct drawing preserve identical RGB pixels");
+                Expect(cache.Get(actual.dc, width, 128, dpi) == memory, "unchanged geometry reuses persistent DC");
+            }
+        }
+        GdiFlush();
+        Expect(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) == before, "persistent paint surfaces release DC/bitmap after resizing/DPI changes");
+    }
     // Warm the APIs before checking the repeated buffer resource lifetime.
     {
         Surface warm;

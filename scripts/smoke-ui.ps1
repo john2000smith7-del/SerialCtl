@@ -621,17 +621,28 @@ foreach ($architecture in @('x64')) {
                 return $true
             },[IntPtr]::Zero) | Out-Null
             if ($powerPane -eq [IntPtr]::Zero -or -not [SerialCtlUiSmoke]::IsWindowVisible($powerPane)) { throw 'Power pane missing.' }
+            if ([SerialCtlUiSmoke]::IsWindowEnabled([SerialCtlUiSmoke]::GetDlgItem($powerPane,103))) { throw 'Disabled power feature exposed an active sampling selector.' }
             Capture-Window $application.MainWindowHandle "$architecture-$theme-power-disconnected"
             Click-Control $powerPane 10
             $dialog = Wait-Dialog $application.Id '连接电源'
             Start-Sleep -Milliseconds 200
             [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
             Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-power-connection"
-            foreach ($id in @(100,101,102,103)) {
-                if ([SerialCtlUiSmoke]::GetDlgItem($dialog,$id) -eq [IntPtr]::Zero) { throw "Power connection field missing: $id" }
+            foreach ($id in @(100,101,102,103,104,105,106,107,108,109)) {
+                if ([SerialCtlUiSmoke]::GetDlgItem($dialog,$id) -ne [IntPtr]::Zero) { throw "Disabled power feature exposed device field: $id" }
             }
+            $notice = New-Object Text.StringBuilder(128)
+            [SerialCtlUiSmoke]::GetWindowText([SerialCtlUiSmoke]::GetDlgItem($dialog,-1),$notice,$notice.Capacity) | Out-Null
+            if ($notice.ToString() -ne '该功能暂未开放，请等待后续开放。') { throw 'Disabled power notice missing.' }
+            if (-not [SerialCtlUiSmoke]::IsWindowEnabled([SerialCtlUiSmoke]::GetDlgItem($dialog,1))) { throw 'Disabled power notice cannot be dismissed.' }
+            $themeCaption = New-Object Text.StringBuilder(64)
+            [SerialCtlUiSmoke]::GetWindowText([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,104),$themeCaption,$themeCaption.Capacity) | Out-Null
+            $noticeDc = [SerialCtlUiSmoke]::GetDC($dialog)
+            try { $noticePixel = [SerialCtlUiSmoke]::GetPixel($noticeDc,8,8) }
+            finally { [SerialCtlUiSmoke]::ReleaseDC($dialog,$noticeDc) | Out-Null }
+            Write-Host "Power notice palette: fixture=$theme themeButton=$themeCaption clientSurface=$('{0:X6}' -f $noticePixel)"
             Capture-Window $dialog "$architecture-$theme-power-connection"
-            Click-Control $dialog 2
+            Click-Control $dialog 1
             Start-Sleep -Milliseconds 250
             if ([SerialCtlUiSmoke]::IsIconic($application.MainWindowHandle)) { throw 'Main window minimized after power modal.' }
             foreach ($control in @(112,118,119,115)) {

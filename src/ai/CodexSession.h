@@ -65,9 +65,12 @@ class CodexSession {
             std::move(confirm), reverifyHostKey);
     }
     bool Request(Operation operation, std::uint64_t token, Json data) {
+        // Build the message first: MakeRequest may throw, and a token must not stay
+        // registered for a request that was never sent.
+        Json message = MakeRequest(operation, token, data);
         std::lock_guard<std::mutex> lock(mutex_);
         operations_[token] = operation;
-        if (client_.Send(MakeRequest(operation, token, data)))
+        if (client_.Send(std::move(message)))
             return true;
         operations_.erase(token);
         return false;

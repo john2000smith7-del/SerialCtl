@@ -109,6 +109,43 @@ void TestStopDuringRecoveryReadback() {
         Expect(line!="CHAN:OUTP ON","Actual simulated SCPI trace contains no ON after readback-time stop");
 }
 
+void TestQueuedRecoveryCanceledBeforeStart() {
+    PowerService power;
+    Expect(Wait(power,power.Submit({{"type","connect"},{"backend","simulation"}})).value("state","")=="completed","Queued-cancel fixture connects controlled transport");
+    const auto ready=power.State();
+    const bool paused=PowerServiceTestAccess::Pause(power);
+    Expect(paused,"Worker pauses before the recovery is executed");
+    if(!paused) return;
+    auto recovery=power.Submit({{"type","recover"},{"channels",{1}},{"identity",ready["identity"]},{"mode",ready["mode"]}});
+    Expect(!recovery.contains("error") && recovery.value("state","")=="queued","Recovery waits in the queue while the worker is paused");
+    // A mode change invalidates the recovery epoch at acceptance but, unlike
+    // stop, leaves the recover command queued, so the worker really reaches
+    // "Recovery canceled before start" when it dequeues the stale recovery.
+    auto mode=power.Submit({{"type","mode"},{"mode","independent"}});
+    Expect(!mode.contains("error"),"Epoch-invalidating command is accepted behind the queued recovery");
+    PowerServiceTestAccess::Resume(power);
+    const auto action=Wait(power,recovery);
+    Expect(action.value("state","")=="canceled","Recovery canceled before start reports canceled, not failed");
+    Expect(action.value("error","")=="Recovery canceled before start","Cancellation reason is the pre-start epoch check");
+    Expect(!action.contains("onStartedAt"),"Recovery canceled before start never reaches ON");
+    Wait(power,mode);
+    const auto state=power.State();
+    Expect(!state.contains("error"),"Canceled recovery does not pollute the global error state");
+    Expect(state["channels"][0]["output"]==false,"Recovery canceled before start leaves the channel OFF");
+    for(const auto &line : state.value("testWrites",Json::array()))
+        Expect(line!="CHAN:OUTP ON","Canceled queued recovery issues no ON command");
+    // Stop cancels a queued recovery at acceptance; the final state is canceled too.
+    const bool pausedAgain=PowerServiceTestAccess::Pause(power);
+    Expect(pausedAgain,"Worker pauses again for the stop variant");
+    if(!pausedAgain) return;
+    auto second=power.Submit({{"type","recover"},{"channels",{1}},{"identity",ready["identity"]},{"mode",ready["mode"]}});
+    auto stop=power.Submit({{"type","stop"}});
+    Expect(!second.contains("error") && !stop.contains("error"),"Recovery and stop are both accepted while paused");
+    PowerServiceTestAccess::Resume(power);
+    Expect(Wait(power,stop).value("state","")=="completed","Stop completes after the worker resumes");
+    Expect(power.Action(second.at("id")).value("state","")=="canceled","Stop leaves the queued recovery canceled");
+}
+
 void TestSafetyAtCapacity(Json safety) {
     PowerService power;
     Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
@@ -229,6 +266,7 @@ void TestSafetyReadbackFailureAtCapacity() {
 int main() {
     TestNativeRecoveryTimingAndCancel();
     TestStopDuringRecoveryReadback();
+    TestQueuedRecoveryCanceledBeforeStart();
     TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "local"}});
     TestSafetyAtCapacity({{"type", "output"}, {"channels", {1}}, {"enabled", false}, {"source", "network"}});
     TestSafetyAtCapacity({{"type", "stop"}, {"source", "local"}});

@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
     runs-on: windows-2022
@@ -25,7 +26,27 @@ jobs:
         shell: powershell
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/serialctl-build.txt"
-          try { ./scripts/release.ps1 } finally { Stop-Transcript }
+          $transcriptOpen = $true
+          try { ./scripts/release.ps1 }
+          catch {
+            $failure = $_
+            Stop-Transcript
+            $transcriptOpen = $false
+            $reason = $failure.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Host "::error title=Release verification exception::$reason"
+            $nativeLog = "$env:RUNNER_TEMP/serialctl-ui/native-process.log"
+            if (Test-Path $nativeLog) {
+              Get-Content $nativeLog | Select-String 'error|fatal|FAILED' | Select-Object -Last 40 | ForEach-Object {
+                $line = $_.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+                Write-Host "::error title=Native verification failure::$line"
+              }
+            }
+            Get-Content "$env:RUNNER_TEMP/serialctl-build.txt" -Tail 80 | ForEach-Object {
+              $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+              Write-Host "::error title=Windows build failure::$line"
+            }
+            throw $failure
+          } finally { if ($transcriptOpen) { Stop-Transcript } }
       - name: Launch packaged applications and capture UI
         shell: powershell
         run: |
@@ -44,6 +65,20 @@ jobs:
         shell: powershell
         run: |
           ./scripts/smoke-update.ps1 -OutputDirectory "$env:RUNNER_TEMP/serialctl-ui"
+      - name: Compare unchanged UI with accepted baseline on the same desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $baseline = "$env:RUNNER_TEMP/serialctl-baseline"
+          gh run download 40631971674 --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir $baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $old = @(Get-ChildItem $baseline -Filter '*.zip')
+          $new = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($old.Count -ne 1 -or $new.Count -ne 1) { throw 'Expected one exact baseline and candidate package.' }
+          python tests/integration/ui_freeze_compare.py --baseline $old[0].FullName --candidate $new[0].FullName --output "$env:RUNNER_TEMP/serialctl-ui"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Python Linux AI client protocol tests
         shell: powershell
         run: |
@@ -64,6 +99,8 @@ jobs:
           if ($archive.Count -ne 1) { throw 'Expected exactly one verified release archive.' }
           python tools/new_update_feed.py --describe-archive $archive[0].FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sha = (Get-FileHash $archive[0].FullName -Algorithm SHA256).Hash
+          Write-Host "::notice title=Verified portable ZIP::$($archive[0].Name) SHA256=$sha"
       - name: Upload verified portable bundle
         uses: actions/upload-artifact@v4
         with:
@@ -71,6 +108,23 @@ jobs:
           path: bin/SerialCtl-*-Win7-x64.zip
           if-no-files-found: error
           retention-days: 30
+      - name: Export isolated UI review images through the build log
+        if: always()
+        shell: powershell
+        run: |
+          # These screenshots use only the isolated smoke fixture, with updates
+          # disabled and no user credentials or physical devices. Chunking keeps
+          # each log line short for visual review when artifact storage is unavailable.
+          foreach ($name in @('x64-packaged-light.png','x64-packaged-dark.png','x64-light-power-connection.png','x64-dark-power-connection.png')) {
+            $path = Join-Path "$env:RUNNER_TEMP/serialctl-ui" $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+            Write-Host "SERIALCTL_UI_REVIEW_BEGIN $name"
+            for ($offset = 0; $offset -lt $encoded.Length; $offset += 4096) {
+              Write-Host ("SERIALCTL_UI_REVIEW_DATA " + $encoded.Substring($offset, [Math]::Min(4096, $encoded.Length - $offset)))
+            }
+            Write-Host "SERIALCTL_UI_REVIEW_END $name"
+          }
       - name: Upload UI evidence
         if: always()
         uses: actions/upload-artifact@v4

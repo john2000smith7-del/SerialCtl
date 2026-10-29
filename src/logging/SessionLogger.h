@@ -33,8 +33,10 @@ class SessionLogger
                   const std::atomic<bool> *cancel, const ExportProgress &progress = {});
     void Stop();
     std::wstring Error();
-    const std::wstring &Path() const
+    // Returned by value under the lock: Start()/Stop() rewrite path_ on other threads.
+    std::wstring Path() const
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         return path_;
     }
 
@@ -61,7 +63,7 @@ class SessionLogger
     std::condition_variable wake_;
 
     HANDLE file_ = INVALID_HANDLE_VALUE;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::wstring path_;
     std::vector<Part> parts_;
     std::uint64_t written_ = 0;

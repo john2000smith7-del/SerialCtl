@@ -154,6 +154,12 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     }
 
     $testPrograms = @{
+        'cancellable_io_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll')
+        'websocket_deadline_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
+        'sftp_controller_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll')
+        'ai_device_bridge_test.exe' = @('KERNEL32.dll', 'OLE32.dll', 'SHELL32.dll')
+        'command_macro_test.exe' = @('KERNEL32.dll', 'OLE32.dll')
+        'terminal_preview_test.exe' = @('KERNEL32.dll')
         'tool_presentation_test.exe' = @('KERNEL32.dll')
         'gui_instance_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'USER32.dll')
         'ai_pet_model_test.exe' = @('KERNEL32.dll')
@@ -195,6 +201,9 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'ai_pane_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'MSIMG32.dll') })
     $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'plink.exe'; Dlls = @('KERNEL32.dll') })
     $sftpFixture = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "sftp-fixture\$Configuration"
+    $sshFixture = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "ssh-fixture\$Configuration"
+    $testBinaries.Add(@{ Path = Join-Path $sshFixture 'ssh_lifecycle_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll') })
+    $testBinaries.Add(@{ Path = Join-Path $sshFixture 'plink.exe'; Dlls = @('KERNEL32.dll') })
     $testBinaries.Add(@{ Path = Join-Path $sftpFixture 'sftp_client_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'OLE32.dll') })
     foreach ($program in @('plink.exe', 'psftp.exe')) {
         $testBinaries.Add(@{ Path = Join-Path $sftpFixture $program; Dlls = @('KERNEL32.dll') })

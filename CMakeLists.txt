@@ -163,11 +163,14 @@ endfunction()
 add_executable(serialctl WIN32
     src/app/App.cpp
     src/app/MainWindow.cpp
+    src/app/TerminalViewport.cpp
+    src/app/CommandMacroController.cpp
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
     src/app/AiPane.cpp
     src/app/AiPetPane.cpp
     src/ai/CodexClient.cpp
+    src/ai/AiDeviceBridge.cpp
     src/connections/PasswordPipe.cpp
     src/update/UpdateArchive.cpp
     src/update/UpdateInflate.cpp
@@ -180,6 +183,7 @@ add_executable(serialctl WIN32
     src/network/GatewayClient.cpp
     src/network/SessionService.cpp
     src/connections/ChildProcess.cpp
+    src/connections/NetworkConnect.cpp
     src/connections/CmdConnection.cpp
     src/connections/CmdConsoleBridge.cpp
     src/connections/QueuedConnection.cpp
@@ -193,6 +197,7 @@ add_executable(serialctl WIN32
     src/connections/TcpConnection.cpp
     src/logging/SessionLogger.cpp
     src/sftp/SftpClient.cpp
+    src/sftp/SftpController.cpp
     src/sftp/SftpModel.cpp
     src/terminal/TerminalModel.cpp
     "${SERIALCTL_GENERATED_DIR}/serialctl.rc"
@@ -231,6 +236,26 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(ui_settings_writer_test tests/unit/UiSettingsWriterTest.cpp)
+    serialctl_configure_native_target(ui_settings_writer_test CONSOLE)
+    add_test(NAME ui_settings_writer COMMAND ui_settings_writer_test)
+    set_tests_properties(ui_settings_writer PROPERTIES TIMEOUT 20)
+    add_executable(cancellable_io_test tests/integration/CancellableIoTest.cpp)
+    serialctl_configure_native_target(cancellable_io_test CONSOLE)
+    target_link_libraries(cancellable_io_test PRIVATE advapi32 ole32)
+    add_test(NAME cancellable_io COMMAND cancellable_io_test)
+    set_tests_properties(cancellable_io PROPERTIES TIMEOUT 20)
+    add_executable(ssh_lifecycle_fake tests/integration/SshLifecycleFake.cpp)
+    serialctl_configure_native_target(ssh_lifecycle_fake CONSOLE)
+    set_target_properties(ssh_lifecycle_fake PROPERTIES OUTPUT_NAME plink RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ssh-fixture")
+    add_executable(ssh_lifecycle_test tests/integration/SshLifecycleTest.cpp src/connections/PlinkConnection.cpp
+        src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
+    serialctl_configure_native_target(ssh_lifecycle_test CONSOLE)
+    target_link_libraries(ssh_lifecycle_test PRIVATE advapi32 ole32)
+    set_target_properties(ssh_lifecycle_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ssh-fixture")
+    add_dependencies(ssh_lifecycle_test ssh_lifecycle_fake)
+    add_test(NAME ssh_lifecycle COMMAND ssh_lifecycle_test)
+    set_tests_properties(ssh_lifecycle PROPERTIES TIMEOUT 45)
     add_executable(tool_presentation_test tests/unit/ToolPresentationTest.cpp)
     serialctl_configure_native_target(tool_presentation_test CONSOLE)
     add_test(NAME tool_presentation COMMAND tool_presentation_test)
@@ -343,7 +368,8 @@ if(BUILD_TESTING)
     add_test(NAME cmd_connection COMMAND cmd_connection_test)
     set(GATEWAY_TEST_SOURCES src/network/ApiServer.cpp src/network/WebSocket.cpp
         src/network/GatewayClient.cpp src/network/SessionService.cpp
-        src/connections/QueuedConnection.cpp src/connections/SharedSerialConnection.cpp)
+        src/connections/QueuedConnection.cpp src/connections/SharedSerialConnection.cpp
+        src/connections/NetworkConnect.cpp src/connections/ChildProcess.cpp)
     add_executable(api_server_test tests/integration/ApiServerTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(api_server_test CONSOLE)
     target_link_libraries(api_server_test PRIVATE ws2_32 advapi32)
@@ -365,10 +391,18 @@ if(BUILD_TESTING)
     add_executable(tcp_connection_test
         tests/integration/TcpConnectionTest.cpp
         src/connections/TcpConnection.cpp
+        src/connections/NetworkConnect.cpp
+        src/connections/ChildProcess.cpp
     )
     serialctl_configure_native_target(tcp_connection_test CONSOLE)
     target_link_libraries(tcp_connection_test PRIVATE ws2_32)
     add_test(NAME tcp_connection COMMAND tcp_connection_test)
+
+    add_executable(network_connect_test tests/integration/NetworkConnectTest.cpp ${GATEWAY_TEST_SOURCES})
+    serialctl_configure_native_target(network_connect_test CONSOLE)
+    target_link_libraries(network_connect_test PRIVATE ws2_32 advapi32)
+    add_test(NAME network_connect COMMAND network_connect_test)
+    set_tests_properties(network_connect PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 
     add_executable(terminal_model_test
         tests/unit/TerminalModelTest.cpp
@@ -391,6 +425,7 @@ if(BUILD_TESTING)
     add_executable(sftp_client_test tests/integration/SftpClientTest.cpp src/sftp/SftpClient.cpp src/sftp/SftpModel.cpp
         src/connections/PuttyHostKey.cpp src/connections/PasswordPipe.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(sftp_client_test CONSOLE)
+    target_compile_definitions(sftp_client_test PRIVATE SERIALCTL_SFTP_TESTING)
     target_link_libraries(sftp_client_test PRIVATE advapi32 ole32)
     set_target_properties(sftp_client_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sftp-fixture")
     add_dependencies(sftp_client_test sftp_fake_process)
@@ -437,6 +472,36 @@ if(BUILD_TESTING)
     add_test(NAME sftp_model COMMAND sftp_model_test)
     set_tests_properties(multi_serial shared_serial_protocol tcp_connection terminal_model terminal_decoder sftp_model putty_host_key PROPERTIES TIMEOUT 60)
     set_tests_properties(serial_share_backpressure PROPERTIES TIMEOUT 120)
+    add_executable(websocket_deadline_test tests/integration/WebSocketDeadlineTest.cpp ${GATEWAY_TEST_SOURCES})
+    serialctl_configure_native_target(websocket_deadline_test CONSOLE)
+    target_link_libraries(websocket_deadline_test PRIVATE ws2_32 advapi32)
+    add_test(NAME websocket_deadline COMMAND websocket_deadline_test)
+    set_tests_properties(websocket_deadline PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE)
+    add_executable(sftp_controller_test tests/integration/SftpControllerTest.cpp src/sftp/SftpController.cpp
+        src/sftp/SftpClient.cpp src/sftp/SftpModel.cpp src/connections/PuttyHostKey.cpp
+        src/connections/PasswordPipe.cpp src/connections/ChildProcess.cpp)
+    serialctl_configure_native_target(sftp_controller_test CONSOLE)
+    target_compile_definitions(sftp_controller_test PRIVATE SERIALCTL_SFTP_TESTING)
+    target_link_libraries(sftp_controller_test PRIVATE ole32 advapi32)
+    add_test(NAME sftp_controller COMMAND sftp_controller_test)
+    set_tests_properties(sftp_controller PROPERTIES TIMEOUT 20)
+    add_executable(ai_device_bridge_test tests/integration/AiDeviceBridgeTest.cpp
+        src/ai/AiDeviceBridge.cpp src/terminal/TerminalModel.cpp src/network/SessionService.cpp
+        src/connections/QueuedConnection.cpp src/power/PowerService.cpp src/logging/SessionLogger.cpp)
+    serialctl_configure_native_target(ai_device_bridge_test CONSOLE)
+    target_link_libraries(ai_device_bridge_test PRIVATE ole32 shell32 ws2_32)
+    add_test(NAME ai_device_bridge COMMAND ai_device_bridge_test)
+    set_tests_properties(ai_device_bridge PROPERTIES TIMEOUT 20)
+    add_executable(command_macro_test tests/unit/CommandMacroTest.cpp src/app/CommandMacroController.cpp)
+    serialctl_configure_native_target(command_macro_test CONSOLE)
+    target_link_libraries(command_macro_test PRIVATE ole32)
+    add_test(NAME command_macro COMMAND command_macro_test)
+    set_tests_properties(command_macro PROPERTIES TIMEOUT 20)
+    add_executable(terminal_preview_test tests/unit/TerminalPreviewTest.cpp src/terminal/TerminalModel.cpp)
+    serialctl_configure_native_target(terminal_preview_test CONSOLE)
+    target_link_libraries(terminal_preview_test PRIVATE psapi)
+    add_test(NAME terminal_preview COMMAND terminal_preview_test)
+    set_tests_properties(terminal_preview PROPERTIES TIMEOUT 30)
 endif()
 
 if(BUILD_TESTING)

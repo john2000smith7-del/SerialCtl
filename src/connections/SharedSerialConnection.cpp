@@ -10,11 +10,13 @@ struct Probe {
     std::string error;
     std::vector<std::wstring> names, descriptions;
 };
-Probe Query(const std::wstring &host, unsigned port, const std::atomic_bool *cancel = nullptr) {
+constexpr ULONGLONG DiscoveryBudgetMs = 1500;
+Probe Query(const std::wstring &host, unsigned port, const TcpAddresses &addresses,
+            ULONGLONG deadline, const std::atomic_bool *cancel = nullptr) {
     Probe p;
     try {
         GatewayClient c;
-        c.Connect(host, port, cancel);
+        c.ConnectUntil(host, port, addresses, cancel, deadline);
         p.port = port;
         p.instance = c.Hello()["instance"];
         auto resources = c.Request("resources");
@@ -50,7 +52,10 @@ void Result(const Probe &p, std::vector<std::wstring> &names, std::vector<std::w
 } // namespace
 bool SharedSerialConnection::Discover(const std::wstring &host, std::uint16_t port, std::vector<std::wstring> &names,
                                       std::wstring &error, std::vector<std::wstring> *descriptions) {
-    auto p = Query(host, port);
+    const auto deadline = GetTickCount64() + DiscoveryBudgetMs;
+    TcpAddresses addresses;
+    if (!ResolveTcpAddresses(host, deadline, addresses, error)) return false;
+    auto p = Query(host, port, addresses, deadline);
     Result(p, names, descriptions);
     if (!p.error.empty()) {
         error = MultiByteToWide(reinterpret_cast<const std::uint8_t *>(p.error.data()), p.error.size(), CP_UTF8);
@@ -75,9 +80,12 @@ bool SharedSerialConnection::DiscoverAuto(const std::wstring &host, std::uint16_
         instance->clear();
     if (descriptions)
         descriptions->clear();
+    const auto deadline = GetTickCount64() + DiscoveryBudgetMs;
+    TcpAddresses addresses;
+    if (!ResolveTcpAddresses(host, deadline, addresses, error, cancel)) return false;
     std::vector<std::future<Probe>> queries;
     for (unsigned p = explicitPort ? explicitPort : 7000; p <= (explicitPort ? explicitPort : 7015); ++p)
-        queries.push_back(std::async(std::launch::async, [=] { return Query(host, p, cancel); }));
+        queries.push_back(std::async(std::launch::async, [&, p] { return Query(host, p, addresses, deadline, cancel); }));
     std::vector<Probe> found;
     for (auto &q : queries) {
         auto p = q.get();
@@ -112,17 +120,20 @@ bool SharedSerialConnection::DiscoverAuto(const std::wstring &host, std::uint16_
 }
 bool SharedSerialConnection::Start(DataCallback data, StatusCallback status, std::wstring &error) {
     Stop();
-    cancel_ = false;
+    // A cancellation arriving just before Start must not be cleared and turn
+    // into a new connection after the user has already disconnected it.
+    if (cancel_.exchange(false)) { error = L"连接已取消。"; return false; }
     stopping_ = false;
     data_ = std::move(data);
     status_ = std::move(status);
     try {
+        const auto deadline = GetTickCount64() + 5000;
         if (!port_) {
             std::vector<std::wstring> names;
             if (!DiscoverAuto(host_, port_, names, error, &cancel_, 0, nullptr, &expectedInstance_))
                 return false;
         }
-        client_.Connect(host_, port_, &cancel_, 5000);
+        client_.ConnectUntil(host_, port_, &cancel_, deadline);
         if (!expectedInstance_.empty() && client_.Hello()["instance"] != expectedInstance_)
             throw std::runtime_error("INSTANCE_MISMATCH: discover again; server restarted or port reused");
         auto resources = client_.Request("resources");

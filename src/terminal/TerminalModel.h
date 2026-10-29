@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <memory>
 
 namespace serialctl {
 
@@ -84,6 +85,7 @@ public:
     void Clear();
     void ClearScrollback();
 
+    std::uint64_t Revision() const { return revision_; }
     int Columns() const { return columns_; }
     int Rows() const { return rows_; }
     size_t HistorySize() const;
@@ -183,9 +185,10 @@ private:
     bool lineWrapView_ = true;
     mutable bool projectionDirty_ = true;
     mutable std::vector<size_t> projectionStarts_;
-    mutable std::vector<TerminalLine> projectedLines_;
+    mutable std::vector<std::shared_ptr<const TerminalLine>> projectedLines_;
     mutable std::vector<bool> projectionReady_;
     mutable std::vector<size_t> projectionMaximum_;
+    std::uint64_t revision_ = 0;
     std::uint64_t historyRevision_ = 0;
     mutable std::uint64_t projectedHistoryRevision_ = ~std::uint64_t(0);
     mutable size_t projectedHistorySize_ = 0;
@@ -196,7 +199,8 @@ private:
     size_t maximumScrollbackCells_ = 1600000;
     size_t historyCells_ = 0;
     size_t historyLogicalLines_ = 0;
-    std::deque<TerminalLine> history_;
+    // Historical cells are immutable; snapshots share them without copying cell buffers.
+    std::deque<std::shared_ptr<const TerminalLine>> history_;
     size_t resizeHistoryLines_ = 0;
     Screen primary_;
     Screen alternate_;

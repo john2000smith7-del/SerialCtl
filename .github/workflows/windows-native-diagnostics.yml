@@ -1,0 +1,81 @@
+name: Native regression diagnostics
+on:
+  push:
+    branches: [feat/v2.0.10-arch-final]
+    paths: [.github/workflows/windows-native-diagnostics.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and execute the new native regression targets first
+        shell: powershell
+        run: |
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/native-evidence"
+          "SERIALCTL_EVIDENCE_DIR=$env:SERIALCTL_EVIDENCE_DIR" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64 -RepositoryRoot (Get-SerialCtlRepositoryRoot)
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure native diagnostics' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile extracted controllers and UI settings writer' -Arguments @('--build',$directory,'--config','Release','--target','sftp_controller_test','ai_device_bridge_test','command_macro_test','ui_settings_writer_test','--parallel','2')
+          $ctest = Get-RequiredCommandPath -Name ctest.exe
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Verify controllers and nonblocking settings persistence first' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(sftp_controller|ai_device_bridge|command_macro|ui_settings_writer)$')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile focused regression targets' -Arguments @('--build',$directory,'--config','Release','--target','ai_device_test','api_server_test','ssh_lifecycle_test','cancellable_io_test','websocket_deadline_test','terminal_preview_test','sftp_client_test','network_connect_test','--parallel','2')
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Repeat actual serial receive and paint regression' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^ai_device$','--repeat','until-fail:5')
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Run focused native regressions' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(api_server|cancellable_io|ssh_lifecycle|websocket_deadline|terminal_preview|sftp_client|network_connect)$')
+      - name: Clean MSVC x64 build
+        timeout-minutes: 15
+        shell: powershell
+        run: |
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/native-evidence"
+          "SERIALCTL_EVIDENCE_DIR=$env:SERIALCTL_EVIDENCE_DIR" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/native-evidence" -Force | Out-Null
+          Start-Transcript "$env:RUNNER_TEMP/native-evidence/build.txt"
+          try {
+            ./scripts/check.ps1 -SourceOnly
+            ./scripts/build.ps1 -Architecture x64 -Configuration Release -Clean
+          } finally { Stop-Transcript }
+      - name: All CTest including interactive serial regressions
+        timeout-minutes: 8
+        shell: powershell
+        run: |
+          Start-Transcript "$env:RUNNER_TEMP/native-evidence/tests.txt"
+          try { ./scripts/test.ps1 -Architecture x64 -Configuration Release } finally { Stop-Transcript }
+      - name: Exact PE dependencies and Win7 imports
+        shell: powershell
+        run: |
+          Start-Transcript "$env:RUNNER_TEMP/native-evidence/pe.txt"
+          try { ./scripts/check.ps1 -Architecture x64 -Configuration Release } finally { Stop-Transcript }
+      - name: Retain bounded diagnostic excerpts
+        if: always()
+        shell: powershell
+        run: |
+          $native = "$env:RUNNER_TEMP/native-evidence/native-process.log"
+          if (Test-Path $native) {
+            Select-String -Path $native -Pattern 'error|fatal|FAILED' -Context 0,3 | Select-Object -First 8 | ForEach-Object {
+              $line = $_.ToString().Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+              Write-Host "::notice title=Native verification failure::$line"
+            }
+          }
+          foreach ($name in @('build.txt','tests.txt','pe.txt','ctest-x64.txt','native-process.log')) {
+            $path = "$env:RUNNER_TEMP/native-evidence/$name"
+            if (Test-Path $path) {
+              Get-Content $path -Tail 8 | ForEach-Object {
+                $line = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+                Write-Host "::notice title=${name}::$line"
+              }
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-native-regression-diagnostics
+          path: ${{ runner.temp }}/native-evidence/
+          if-no-files-found: warn

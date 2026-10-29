@@ -14,7 +14,7 @@ class PowerService {
   public:
     PowerService();
     ~PowerService();
-    static constexpr bool ConnectionAvailable() { return true; }
+    static constexpr bool ConnectionAvailable() { return false; }
     static constexpr const char *ConnectionUnavailableMessage() {
         return u8"该功能暂未开放，请等待后续开放。";
     }
@@ -23,6 +23,7 @@ class PowerService {
     Json Action(const std::string &id);
     static Json UsbResources();
     static bool VisaAvailable();
+    void RequestShutdown();
     void Shutdown();
     bool ExportLog(bool csv, const std::wstring &path, std::wstring &error);
     SessionLogger::ExportPoint CaptureLogExportPoint(bool csv);

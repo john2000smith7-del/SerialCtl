@@ -2,6 +2,7 @@
 #include <chrono>
 #include "TerminalDecoder.h"
 #include "MainWindow.h"
+#include "TerminalViewportGeometry.h"
 #include "UiDialogViewport.h"
 #include "HostKeyDialog.h"
 
@@ -74,10 +75,12 @@ constexpr UINT_PTR CommandDragTimerId = 4005;
 constexpr UINT_PTR BootPulseTimerId = 4006;
 constexpr UINT_PTR ReceivePumpTimerId = 4007;
 constexpr UINT_PTR SerialScanTimerId = 4008;
+constexpr UINT_PTR ShutdownTimerId = 4009;
+constexpr UINT_PTR PendingConnectionTimerId = 4010;
 constexpr int IdCommandDragGhost = 9020;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
-constexpr std::uint32_t MaximumCommandIntervalMs = 60000;
-constexpr size_t MaximumCommandSteps = 10;
+constexpr auto MaximumCommandIntervalMs = CommandMacroController::MaximumIntervalMs;
+constexpr auto MaximumCommandSteps = CommandMacroController::MaximumSteps;
 
 enum ControlId {
     IdSsh = 100,
@@ -183,42 +186,7 @@ enum SftpTransferMenuId {
     IdMenuTransferClearFinished
 };
 
-namespace Ui {
-int Dpi=96;
-int Scale(int value) { return MulDiv(value,Dpi,96); }
-int Radius = 10;
-int CardRadius = 12;
-int Space = 8;
-int Gap = 12;
-int OverlayScrollLaneWidth = 16;
-int OverlayScrollThumbWidth = 5;
-int TerminalPadding = 8;
-int TerminalTimestampWidth = 112;
-int Section = 16;
-int ToolbarHeight = 72;
-constexpr int ToolbarButtonWidths[] = {89, 88, 98, 118, 92, 88, 80};
-constexpr int SettingsButtonWidth = 88;
-int StandardHeight = 36;
-int CompactHeight = 32;
-int SegmentHeight = 32;
-int SegmentWidth = 70;
-int PanelPadding = 16;
-int IconButtonSize = 28;
-int MinLeftWidth = 190;
-int MaxLeftWidth = 190;
-int MinRightWidth = 260;
-int MaxRightWidth = 650;
-int CollapsedRightWidth = 48;
-int MinCenterWidth = 400;
-int SftpTableRowHeight = 36;
-int SftpTransferRowHeight = 48;
-int SftpTransferDrawerHeight = 144;
-int TerminalFontMinimumHeight = 10;
-int TerminalFontMaximumHeight = 32;
-constexpr wchar_t HoverProperty[] = L"SerialCtl.ButtonHover";
-constexpr wchar_t FieldFrameProperty[] = L"SerialCtl.FieldFrame";
-constexpr wchar_t FieldEditProperty[] = L"SerialCtl.FieldEdit";
-}
+
 
 void ScaleUiMetrics(HWND window) {
     HDC dc=GetDC(window); int dpi=GetDeviceCaps(dc,LOGPIXELSX); ReleaseDC(window,dc);
@@ -327,6 +295,7 @@ struct ApiMessage { std::string method,path; Json body; std::promise<Json> resul
 using ApiRequestMessage = std::shared_ptr<ApiMessage>;
 
 struct ConnectionMessage {
+    std::uint64_t sessionId = 0;
     bool success = false;
     std::wstring error;
 };
@@ -347,22 +316,7 @@ struct DataMessage {
     Bytes data;
 };
 
-enum class SftpMessageKind { List, Upload, Download, Mutation };
-
-struct SftpMessage {
-    std::uint64_t sessionId = 0;
-    SftpMessageKind kind = SftpMessageKind::List;
-    bool success = false;
-    bool canceled = false;
-    std::uint64_t transferId = 0;
-    SftpListing listing;
-    std::wstring error;
-};
-
-struct SftpProgressMessage {
-    std::uint64_t transferId = 0;
-    SftpTransferProgress progress;
-};
+using SftpMessageKind = SftpController::Kind;
 
 struct Palette {
     COLORREF window;
@@ -392,118 +346,12 @@ std::wstring CurrentTerminalTimestamp() {
     return value;
 }
 
-COLORREF IndexedTerminalColor(int index, bool dark) {
-    static const std::array<COLORREF, 16> DarkColors = {
-        RGB(20, 20, 22), RGB(255, 95, 86), RGB(48, 209, 88), RGB(255, 214, 10),
-        RGB(64, 156, 255), RGB(191, 90, 242), RGB(100, 210, 255), RGB(229, 229, 234),
-        RGB(99, 99, 102), RGB(255, 105, 97), RGB(78, 230, 111), RGB(255, 224, 69),
-        RGB(94, 176, 255), RGB(218, 143, 255), RGB(112, 215, 255), RGB(255, 255, 255)};
-    static const std::array<COLORREF, 16> LightColors = {
-        RGB(29, 29, 31), RGB(198, 40, 40), RGB(24, 128, 56), RGB(151, 112, 0),
-        RGB(0, 102, 204), RGB(137, 49, 178), RGB(0, 125, 140), RGB(205, 205, 210),
-        RGB(99, 99, 102), RGB(215, 54, 54), RGB(35, 150, 70), RGB(176, 128, 0),
-        RGB(0, 122, 255), RGB(175, 82, 222), RGB(0, 145, 165), RGB(255, 255, 255)};
-    index = std::max(0, std::min(255, index));
-    if (index < 16) return dark ? DarkColors[static_cast<size_t>(index)] : LightColors[static_cast<size_t>(index)];
-    if (index < 232) {
-        const int value = index - 16;
-        const int blue = value % 6;
-        const int green = value / 6 % 6;
-        const int red = value / 36;
-        const auto component = [](int level) { return level == 0 ? 0 : 55 + level * 40; };
-        return RGB(component(red), component(green), component(blue));
-    }
-    const int gray = 8 + (index - 232) * 10;
-    return RGB(gray, gray, gray);
-}
-
-COLORREF ResolveTerminalColor(
-    const TerminalColor& color, COLORREF fallback, bool dark, bool bold) {
-    if (color.kind == TerminalColor::Kind::Rgb)
-        return RGB(color.red, color.green, color.blue);
-    if (color.kind == TerminalColor::Kind::Indexed) {
-        int index = color.index;
-        if (bold && index < 8) index += 8;
-        return IndexedTerminalColor(index, dark);
-    }
-    return fallback;
-}
-
-struct TerminalScrollMetrics {
-    bool visible = false;
-    RECT track{};
-    RECT thumb{};
-    int maximumOffset = 0;
-};
-
-TerminalScrollMetrics GetTerminalScrollMetrics(
-    HWND terminal, size_t totalLines, int visibleRows, int scrollOffset) {
-    TerminalScrollMetrics metrics;
-    RECT client{};
-    GetClientRect(terminal, &client);
-    visibleRows = std::max(1, visibleRows);
-    metrics.maximumOffset = std::max(0, static_cast<int>(totalLines) - visibleRows);
-    if (metrics.maximumOffset <= 0) return metrics;
-    metrics.visible = true;
-    metrics.track = {client.right - Ui::OverlayScrollLaneWidth, 8, client.right, client.bottom - 8};
-    const int trackHeight = std::max(1,
-        static_cast<int>(metrics.track.bottom - metrics.track.top));
-    const int thumbHeight = std::max(28,
-        trackHeight * std::min<int>(visibleRows, static_cast<int>(totalLines)) /
-            std::max<int>(1, static_cast<int>(totalLines)));
-    const int travel = std::max(1, trackHeight - thumbHeight);
-    // scrollOffset is measured upward from the newest line. The thumb is therefore
-    // at the bottom for offset zero and moves toward the top as the offset grows.
-    const int thumbTop = metrics.track.top + travel -
-        scrollOffset * travel / std::max(1, metrics.maximumOffset);
-    const int left = client.right - (Ui::OverlayScrollLaneWidth + Ui::OverlayScrollThumbWidth) / 2;
-    metrics.thumb = {left, thumbTop, left + Ui::OverlayScrollThumbWidth, thumbTop + thumbHeight};
-    return metrics;
-}
-
-struct TerminalHorizontalScrollMetrics {
-    bool visible = false;
-    RECT track{};
-    RECT thumb{};
-    int maximumOffset = 0;
-};
-
-TerminalHorizontalScrollMetrics GetTerminalHorizontalScrollMetrics(
-    HWND terminal, int textLeft, size_t totalColumns, int visibleColumns, int scrollOffset) {
-    TerminalHorizontalScrollMetrics metrics;
-    RECT client{};
-    GetClientRect(terminal, &client);
-    visibleColumns = std::max(1, visibleColumns);
-    metrics.maximumOffset = std::max(0,
-        static_cast<int>(totalColumns) - visibleColumns);
-    if (metrics.maximumOffset <= 0) return metrics;
-    metrics.visible = true;
-    metrics.track = {textLeft, client.bottom - Ui::OverlayScrollLaneWidth,
-        client.right - Ui::OverlayScrollLaneWidth, client.bottom};
-    const int trackWidth = std::max(1,
-        static_cast<int>(metrics.track.right - metrics.track.left));
-    const int thumbWidth = std::max(28,
-        trackWidth * std::min<int>(visibleColumns, static_cast<int>(totalColumns)) /
-            std::max<int>(1, static_cast<int>(totalColumns)));
-    const int travel = std::max(1, trackWidth - thumbWidth);
-    const int thumbLeft = metrics.track.left +
-        scrollOffset * travel / std::max(1, metrics.maximumOffset);
-    const int top = client.bottom -
-        (Ui::OverlayScrollLaneWidth + Ui::OverlayScrollThumbWidth) / 2;
-    metrics.thumb = {thumbLeft, top, thumbLeft + thumbWidth,
-        top + Ui::OverlayScrollThumbWidth};
-    return metrics;
-}
 
 void DrawRoundedBox(HDC dc, const RECT& rect, int radius, COLORREF fill, COLORREF border) {
     UiBox(dc, rect, fill, border, radius);
 }
 
-RECT TerminalNewOutputRect(const RECT& client, bool horizontalScroll) {
-    const LONG bottom = client.bottom - (horizontalScroll ? Ui::OverlayScrollLaneWidth + Ui::Scale(4) : Ui::Space);
-    return {client.right - Ui::Scale(126), bottom - Ui::Scale(30),
-        client.right - Ui::OverlayScrollLaneWidth - Ui::Space, bottom};
-}
+
 
 void ApplyDarkTitleBar(HWND window, bool dark) {
     HMODULE module = LoadLibraryW(L"dwmapi.dll");
@@ -629,53 +477,6 @@ DWORD ParsePositive(const std::wstring& text, DWORD fallback = 0) {
     wchar_t* end = nullptr;
     const unsigned long value = wcstoul(text.c_str(), &end, 10);
     return end && *end == L'\0' && value > 0 ? static_cast<DWORD>(value) : fallback;
-}
-
-bool ParseMacroHeader(const std::wstring& line, std::uint32_t& intervalMs) {
-    constexpr wchar_t Prefix[] = L"[[macro interval=";
-    constexpr wchar_t Suffix[] = L"]]";
-    const size_t prefixLength = std::size(Prefix) - 1;
-    const size_t suffixLength = std::size(Suffix) - 1;
-    if (line.size() <= prefixLength + suffixLength || line.rfind(Prefix, 0) != 0 ||
-        line.compare(line.size() - suffixLength, suffixLength, Suffix) != 0)
-        return false;
-    const std::wstring value = line.substr(prefixLength,
-        line.size() - prefixLength - suffixLength);
-    const DWORD parsed = ParsePositive(value);
-    if (parsed == 0 || parsed > MaximumCommandIntervalMs) return false;
-    intervalMs = parsed;
-    return true;
-}
-
-std::wstring EscapeSingleCommandLine(std::wstring line) {
-    const size_t firstContent = line.find_first_not_of(L'\\');
-    const std::wstring content = firstContent == std::wstring::npos ? std::wstring() : line.substr(firstContent);
-    if (content.rfind(L"#", 0) == 0 || content.rfind(L"[[", 0) == 0)
-        line.insert(line.begin(), L'\\');
-    return line;
-}
-
-std::wstring EscapeMacroCommandLine(std::wstring line) {
-    const size_t firstContent = line.find_first_not_of(L'\\');
-    if (firstContent != std::wstring::npos && line.substr(firstContent) == L"[[/macro]]")
-        line.insert(line.begin(), L'\\');
-    return line;
-}
-
-bool UnescapeSingleCommandLine(std::wstring& line) {
-    const size_t firstContent = line.find_first_not_of(L'\\');
-    if (firstContent == 0 || firstContent == std::wstring::npos) return false;
-    const std::wstring content = line.substr(firstContent);
-    if (content.rfind(L"#", 0) != 0 && content.rfind(L"[[", 0) != 0) return false;
-    line.erase(0, 1);
-    return true;
-}
-
-void UnescapeMacroCommandLine(std::wstring& line) {
-    const size_t firstContent = line.find_first_not_of(L'\\');
-    if (firstContent != 0 && firstContent != std::wstring::npos &&
-        line.substr(firstContent) == L"[[/macro]]")
-        line.erase(0, 1);
 }
 
 void AddComboItems(HWND combo, std::initializer_list<const wchar_t*> items, int selection) {
@@ -908,16 +709,7 @@ bool IsSafeAutomaticLocalFileName(const std::wstring& name) {
     return true;
 }
 
-std::uint64_t LocalFileSize(const std::wstring& path) {
-    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) return 0;
-    LARGE_INTEGER size{};
-    const bool success = GetFileSizeEx(file, &size) != FALSE && size.QuadPart >= 0;
-    CloseHandle(file);
-    return success ? static_cast<std::uint64_t>(size.QuadPart) : 0;
-}
+
 
 std::wstring FileSizeText(std::uint64_t size) {
     wchar_t value[32]{};
@@ -1012,11 +804,96 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
 }
 
 MainWindow::~MainWindow() {
-    aiPane_.Shutdown();
+    RequestShutdown();
+    if (shutdownThread_.joinable()) {
+        shutdownThread_.join();
+        shutdownComplete_ = true;
+    }
+    if (!shutdownComplete_) {
+        WaitForShutdown();
+        shutdownComplete_ = true;
+    }
+    if (window_ && IsWindow(window_)) FinishShutdown();
+    else { StopStartupUpdate(); StopLogExport(); }
+}
+
+void MainWindow::RequestShutdown() {
+    if (closing_.exchange(true)) return;
+    // Signal every independent worker before waiting for any one of them.
+    discoveryCancel_ = true;
+    discoveryDialog_ = nullptr;
+    ++discoveryGeneration_;
+    updateCancel_ = true;
+    connectionCancel_ = true;
+    if (pendingSession_ && pendingSession_->connection) pendingSession_->connection->CancelStart();
+    if (pendingSession_ && pendingSession_->boot) pendingSession_->boot->Cancel();
+    for (const auto &session : sessions_) if (session->boot) session->boot->Cancel();
+    StopCommandSequence(CommandSequenceEnd::Silent);
+    aiPane_.BeginShutdown(); // Release its device binding while still on the UI thread.
+    powerPane_.BeginShutdown();
+    powerService_.RequestShutdown();
+    apiServer_.RequestStop();
+    sftp_.ClearCallbacks();
+    sftp_.CancelIo();
     if (logExportJob_) logExportJob_->cancel.store(true);
-    StopStartupUpdate();
+    if (logExportThread_.joinable())
+        CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
+    if (window_) {
+        for (const auto timer : {ReceivePumpTimerId, BootPulseTimerId, LogExportTimerId,
+                                  CommandTimerId, PendingConnectionTimerId}) KillTimer(window_, timer);
+    }
+    aiPet_.Shutdown();
+}
+
+void MainWindow::WaitForShutdown() {
+    // MainWindow, its session models and HWND stay alive until this returns.
+    // No worker retains a reference to a UI state that can be destroyed early.
+    apiServer_.Stop();
+    for (const auto &session : sessions_) {
+        if (session->connection) session->connection->Stop();
+        if (session->logger) session->logger->Stop();
+    }
+    if (connectionThread_.joinable()) connectionThread_.join();
+    if (pendingSession_) {
+        if (pendingSession_->connection) pendingSession_->connection->Stop();
+        if (pendingSession_->logger) pendingSession_->logger->Stop();
+    }
+    sftp_.Join();
+    aiPane_.WaitForShutdown();
     powerService_.Shutdown();
+    powerPane_.WaitForBackground();
+    if (updateThread_.joinable()) updateThread_.join();
+    if (discoveryThread_.joinable()) discoveryThread_.join();
+    if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
+    JoinLogExport();
+    connectionCleanup_.Drain();
+    uiSettingsWriter_.Stop();
+}
+
+void MainWindow::FinishShutdown() {
+    if (shutdownThread_.joinable()) {
+        if (WaitForSingleObject(reinterpret_cast<HANDLE>(shutdownThread_.native_handle()), 0) == WAIT_TIMEOUT)
+            return;
+        shutdownThread_.join();
+    }
+    shutdownComplete_ = true;
+    KillTimer(window_, ShutdownTimerId);
+    DrainShutdownMessages();
+    DestroyWindow(window_);
+}
+
+void MainWindow::DrainShutdownMessages() {
+    StopStartupUpdate();
     StopLogExport();
+    MSG pending{};
+    while (PeekMessageW(&pending, window_, MessageApi, MessageApi, PM_REMOVE)) delete reinterpret_cast<ApiRequestMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageDiscovery, MessageDiscovery, PM_REMOVE)) delete reinterpret_cast<DiscoveryMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageConnection, MessageConnection, PM_REMOVE)) delete reinterpret_cast<ConnectionMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageHostKey, MessageHostKey, PM_REMOVE)) delete reinterpret_cast<HostKeyMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageData, MessageData, PM_REMOVE)) delete reinterpret_cast<DataMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageStatus, MessageStatus, PM_REMOVE)) delete reinterpret_cast<StatusMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE)) {}
+    while (PeekMessageW(&pending, window_, MessageSftpProgress, MessageSftpProgress, PM_REMOVE)) {}
 }
 
 void MainWindow::StartStartupUpdate() {
@@ -1185,10 +1062,10 @@ bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     // appeared in the service snapshot. A modal owner and mouse capture exclude
     // edits and ongoing gestures. Explicit consent may follow harmless UI use;
     // actual device work is still protected and defers installation.
-    return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && sessions_.empty() &&
+    return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && !connectionCleanup_.Busy() && sessions_.empty() &&
            !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
-           !disconnectAllPending_ && !disconnectAllInProgress_ && !commandsDirty_ && runningCommandIndex_ < 0 &&
-           !sftpBusy_ && !activeSftpTransferId_ && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
+           !disconnectAllPending_ && !disconnectAllInProgress_ && !macro_.Dirty() && macro_.RunningIndex() < 0 &&
+           !sftp_.Busy() && !sftp_.ActiveTransfer() && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
            draggingCommandIndex_ < 0 && !sftpColumnDragging_ && !GetCapture() &&
            (IsWindowEnabled(window_) || updateRequired_);
 }
@@ -1279,18 +1156,18 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         }
         const bool localHistory = !self->activeSession_ || !self->activeSession_->terminal.AlternateScreen();
         if (shift && localHistory && wParam == VK_PRIOR) {
-            self->ScrollTerminal(std::max(1, self->terminalVisibleRows_ - 1));
+            self->ScrollTerminal(std::max(1, self->terminalViewport_.Metrics().rows - 1));
             return 0;
         }
         if (shift && localHistory && wParam == VK_NEXT) {
-            self->ScrollTerminal(-std::max(1, self->terminalVisibleRows_ - 1));
+            self->ScrollTerminal(-std::max(1, self->terminalViewport_.Metrics().rows - 1));
             return 0;
         }
         if (shift && localHistory && wParam == VK_HOME) {
             if (self->activeSession_) {
                 const int maximum = std::max(0,
                     static_cast<int>(self->activeSession_->terminal.DisplayLineCount()) -
-                        self->terminalVisibleRows_);
+                        self->terminalViewport_.Metrics().rows);
                 self->activeSession_->terminalScrollOffset = maximum;
                 InvalidateRect(window, nullptr, FALSE);
             }
@@ -1316,8 +1193,8 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
             auto &model = self->activeSession_->terminal;
             POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             ScreenToClient(window, &point);
-            const int column = std::clamp<int>((point.x - Ui::TerminalPadding) / std::max(1, self->terminalCellWidth_), 0, model.Columns() - 1);
-            const int row = std::clamp<int>((point.y - Ui::TerminalPadding) / std::max(1, self->terminalLineHeight_), 0, model.Rows() - 1);
+            const int column = std::clamp<int>((point.x - Ui::TerminalPadding) / std::max(1, self->terminalViewport_.Metrics().cellWidth), 0, model.Columns() - 1);
+            const int row = std::clamp<int>((point.y - Ui::TerminalPadding) / std::max(1, self->terminalViewport_.Metrics().lineHeight), 0, model.Rows() - 1);
             const unsigned modifiers = ((keys & MK_SHIFT) ? 1u : 0u) | ((GetKeyState(VK_MENU) & 0x8000) ? 2u : 0u) |
                 ((keys & MK_CONTROL) ? 4u : 0u);
             const auto sequence = model.WheelSequence(delta > 0, column, row, modifiers);
@@ -1328,181 +1205,29 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
             }
         }
         if ((keys & MK_CONTROL) != 0) {
-            self->terminalZoomWheelRemainder_ += delta;
-            const int steps = self->terminalZoomWheelRemainder_ / WHEEL_DELTA;
-            self->terminalZoomWheelRemainder_ %= WHEEL_DELTA;
+            self->terminalViewport_.Input().zoomWheelRemainder += delta;
+            const int steps = self->terminalViewport_.Input().zoomWheelRemainder / WHEEL_DELTA;
+            self->terminalViewport_.Input().zoomWheelRemainder %= WHEEL_DELTA;
             if (steps != 0) self->ZoomTerminalFont(steps);
         } else {
-            self->terminalWheelRemainder_ += delta;
-            const int steps = self->terminalWheelRemainder_ / WHEEL_DELTA;
-            self->terminalWheelRemainder_ %= WHEEL_DELTA;
+            self->terminalViewport_.Input().wheelRemainder += delta;
+            const int steps = self->terminalViewport_.Input().wheelRemainder / WHEEL_DELTA;
+            self->terminalViewport_.Input().wheelRemainder %= WHEEL_DELTA;
             if (steps != 0) self->ScrollTerminal(steps * 3);
         }
         return 0;
     }
     if (message == WM_MOUSEHWHEEL) {
-        self->terminalHorizontalWheelRemainder_ += GET_WHEEL_DELTA_WPARAM(wParam);
-        const int steps = self->terminalHorizontalWheelRemainder_ / WHEEL_DELTA;
-        self->terminalHorizontalWheelRemainder_ %= WHEEL_DELTA;
+        self->terminalViewport_.Input().horizontalWheelRemainder += GET_WHEEL_DELTA_WPARAM(wParam);
+        const int steps = self->terminalViewport_.Input().horizontalWheelRemainder / WHEEL_DELTA;
+        self->terminalViewport_.Input().horizontalWheelRemainder %= WHEEL_DELTA;
         if (steps != 0) self->ScrollTerminalHorizontal(steps * 4);
         return 0;
     }
-    if (message == WM_LBUTTONDOWN) {
-        SetFocus(window);
-        if (!self->activeSession_) return 0;
-        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-        const TerminalModel& model = self->activeSession_->terminal;
-        const int timestampWidth =
-            self->timestampEnabled_ && !self->LiveMonitorPage() && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
-        const TerminalHorizontalScrollMetrics horizontalMetrics =
-            GetTerminalHorizontalScrollMetrics(window, Ui::TerminalPadding + timestampWidth,
-                model.MaximumDisplayColumns(), self->terminalVisibleColumns_,
-                self->activeSession_->terminalHorizontalOffset);
-        if (horizontalMetrics.visible && point.y >= horizontalMetrics.track.top &&
-            point.x >= horizontalMetrics.track.left && point.x < horizontalMetrics.track.right) {
-            if (PointInRect(horizontalMetrics.thumb, point)) {
-                self->terminalHorizontalScrollbarDragging_ = true;
-                self->terminalHorizontalScrollbarThumbOffset_ = point.x - horizontalMetrics.thumb.left;
-                SetCapture(window);
-            } else {
-                const int direction = point.x < horizontalMetrics.thumb.left ? -1 : 1;
-                self->ScrollTerminalHorizontal(
-                    direction * std::max(1, self->terminalVisibleColumns_ - 1));
-            }
-            return 0;
-        }
-        const TerminalScrollMetrics metrics = GetTerminalScrollMetrics(window,
-            self->activeSession_->terminal.DisplayLineCount(), self->terminalVisibleRows_,
-            self->activeSession_->terminalScrollOffset);
-        if (metrics.visible && point.x >= metrics.track.left) {
-            if (PointInRect(metrics.thumb, point)) {
-                self->terminalScrollbarDragging_ = true;
-                self->terminalScrollbarThumbOffset_ = point.y - metrics.thumb.top;
-                SetCapture(window);
-            } else {
-                const int direction = point.y < metrics.thumb.top ? 1 : -1;
-                self->ScrollTerminal(direction * std::max(1, self->terminalVisibleRows_ - 1));
-            }
-            return 0;
-        }
-        RECT client{};
-        GetClientRect(window, &client);
-        if (self->activeSession_->terminalHasNewOutput && self->activeSession_->terminalScrollOffset > 0 &&
-            PointInRect(TerminalNewOutputRect(client, horizontalMetrics.visible), point)) {
-            self->ScrollTerminalToBottom();
-            return 0;
-        }
-        size_t line = 0;
-        int column = 0;
-        if (self->TerminalPointToCell(point, line, column)) {
-            self->UpdateTerminalSelection(line, column, false);
-            self->terminalSelecting_ = true;
-            SetCapture(window);
-        }
+    const auto pointer = self->terminalViewport_.Pointer(window, message, lParam, self->activeSession_, self->TerminalViewportOptions());
+    if (pointer != TerminalViewport::PointerResult::Unhandled) {
+        if (pointer == TerminalViewport::PointerResult::CopySelection) self->CopyTerminalSelection(false);
         return 0;
-    }
-    if (message == WM_LBUTTONDBLCLK && self->activeSession_) {
-        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-        size_t lineIndex = 0;
-        int column = 0;
-        if (self->TerminalPointToCell(point, lineIndex, column)) {
-            const TerminalLine& line = self->activeSession_->terminal.DisplayLine(lineIndex);
-            const int columns = static_cast<int>(line.cells.size());
-            if (columns <= 0) return 0;
-            column = std::max(0, std::min(columns - 1, column));
-            const auto wordCharacter = [](wchar_t character) {
-                return character && (iswalnum(character) || wcschr(L"_./~:+-%@", character) != nullptr);
-            };
-            int first = column;
-            int last = column;
-            while (first > 0 && wordCharacter(line.cells[static_cast<size_t>(first - 1)].character)) --first;
-            while (last + 1 < columns && wordCharacter(line.cells[static_cast<size_t>(last + 1)].character)) ++last;
-            self->terminalSelectionAnchorLine_ = lineIndex;
-            self->terminalSelectionAnchorColumn_ = first;
-            self->terminalSelectionFocusLine_ = lineIndex;
-            self->terminalSelectionFocusColumn_ = last;
-            self->terminalSelectionActive_ = true;
-            self->terminalSelecting_ = false;
-            if (GetCapture() == window) ReleaseCapture();
-            InvalidateRect(window, nullptr, FALSE);
-            self->CopyTerminalSelection(false);
-        }
-        return 0;
-    }
-    if (message == WM_MOUSEMOVE && self->activeSession_) {
-        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-        if (self->terminalHorizontalScrollbarDragging_) {
-            const TerminalModel& model = self->activeSession_->terminal;
-            const int timestampWidth = self->timestampEnabled_ && !self->LiveMonitorPage() && !model.AlternateScreen()
-                                           ? Ui::TerminalTimestampWidth
-                                           : 0;
-            const TerminalHorizontalScrollMetrics metrics =
-                GetTerminalHorizontalScrollMetrics(window, Ui::TerminalPadding + timestampWidth,
-                    model.MaximumDisplayColumns(), self->terminalVisibleColumns_,
-                    self->activeSession_->terminalHorizontalOffset);
-            const int thumbWidth = static_cast<int>(metrics.thumb.right - metrics.thumb.left);
-            const int travel = std::max(1,
-                static_cast<int>(metrics.track.right - metrics.track.left) - thumbWidth);
-            const int desiredLeft = std::max(static_cast<int>(metrics.track.left),
-                std::min(static_cast<int>(metrics.track.right) - thumbWidth,
-                    static_cast<int>(point.x) - self->terminalHorizontalScrollbarThumbOffset_));
-            self->activeSession_->terminalHorizontalOffset = std::max(0,
-                std::min(metrics.maximumOffset,
-                    (desiredLeft - static_cast<int>(metrics.track.left)) *
-                        metrics.maximumOffset / travel));
-            InvalidateRect(window, nullptr, FALSE);
-            return 0;
-        }
-        if (self->terminalScrollbarDragging_) {
-            const TerminalScrollMetrics metrics = GetTerminalScrollMetrics(window,
-                self->activeSession_->terminal.DisplayLineCount(), self->terminalVisibleRows_,
-                self->activeSession_->terminalScrollOffset);
-            const int thumbHeight = static_cast<int>(metrics.thumb.bottom - metrics.thumb.top);
-            const int travel = std::max(1,
-                static_cast<int>(metrics.track.bottom - metrics.track.top) - thumbHeight);
-            const int desiredTop = std::max(static_cast<int>(metrics.track.top),
-                std::min(static_cast<int>(metrics.track.bottom) - thumbHeight,
-                    static_cast<int>(point.y) - self->terminalScrollbarThumbOffset_));
-            self->activeSession_->terminalScrollOffset = std::max(0,
-                std::min(metrics.maximumOffset,
-                    (static_cast<int>(metrics.track.top) + travel - desiredTop) *
-                        metrics.maximumOffset / travel));
-            self->activeSession_->terminalHasNewOutput =
-                self->activeSession_->terminalScrollOffset > 0;
-            InvalidateRect(window, nullptr, FALSE);
-            return 0;
-        }
-        if (self->terminalSelecting_) {
-            size_t line = 0;
-            int column = 0;
-            if (self->TerminalPointToCell(point, line, column))
-                self->UpdateTerminalSelection(line, column, true);
-            return 0;
-        }
-    }
-    if (message == WM_LBUTTONUP) {
-        if (self->terminalSelecting_) {
-            size_t line = 0;
-            int column = 0;
-            if (self->TerminalPointToCell({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}, line, column))
-                self->UpdateTerminalSelection(line, column, true);
-        }
-        const bool completedSelection = self->terminalSelecting_ && self->HasTerminalSelection();
-        self->terminalSelecting_ = false;
-        self->terminalScrollbarDragging_ = false;
-        self->terminalScrollbarThumbOffset_ = 0;
-        self->terminalHorizontalScrollbarDragging_ = false;
-        self->terminalHorizontalScrollbarThumbOffset_ = 0;
-        if (GetCapture() == window) ReleaseCapture();
-        if (completedSelection) self->CopyTerminalSelection(false);
-        return 0;
-    }
-    if (message == WM_CAPTURECHANGED) {
-        self->terminalSelecting_ = false;
-        self->terminalScrollbarDragging_ = false;
-        self->terminalScrollbarThumbOffset_ = 0;
-        self->terminalHorizontalScrollbarDragging_ = false;
-        self->terminalHorizontalScrollbarThumbOffset_ = 0;
     }
     if (message == WM_NCDESTROY) RemoveWindowSubclass(window, TerminalSubclassProc, subclassId);
     return DefSubclassProc(window, message, wParam, lParam);
@@ -1697,7 +1422,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
     }
     if (message == WM_KEYDOWN && (wParam == VK_RETURN || wParam == VK_SPACE || wParam == VK_F2)) {
         const auto index = SendMessageW(window, LB_GETCURSEL, 0, 0);
-        if (index != LB_ERR && self->runningCommandIndex_ < 0) {
+        if (index != LB_ERR && self->macro_.RunningIndex() < 0) {
             if (wParam == VK_F2) self->EditCommand(static_cast<size_t>(index));
             else if (!(lParam & (1LL << 30))) self->SendCommand(static_cast<size_t>(index));
         }
@@ -1713,7 +1438,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
         RECT item{}, client{};
         const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         GetClientRect(window, &client);
-        bool inside = PointInRect(client, point) && index < static_cast<int>(self->commands_.size()) &&
+        bool inside = PointInRect(client, point) && index < static_cast<int>(self->macro_.Items().size()) &&
                       SendMessageW(window, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&item)) != LB_ERR;
         if (inside) {
             OverlayScrollMetrics scroll;
@@ -1723,7 +1448,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             inside = PointInRect(action == 1 ? actions.run : actions.edit, point);
         }
         InvalidateRect(window, nullptr, FALSE);
-        if (inside && self->runningCommandIndex_ < 0) {
+        if (inside && self->macro_.RunningIndex() < 0) {
             if (action == 1) self->SendCommand(static_cast<size_t>(index));
             else self->EditCommand(static_cast<size_t>(index));
         }
@@ -1743,7 +1468,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             point.x >= client.right - Ui::OverlayScrollLaneWidth)
             return DefSubclassProc(window, message, wParam, lParam);
         const DWORD hit = static_cast<DWORD>(SendMessageW(window, LB_ITEMFROMPOINT, 0, MAKELPARAM(point.x, point.y)));
-        if (!HIWORD(hit) && LOWORD(hit) < self->commands_.size()) {
+        if (!HIWORD(hit) && LOWORD(hit) < self->macro_.Items().size()) {
             const int index = static_cast<int>(LOWORD(hit));
             RECT itemRect{};
             SendMessageW(window, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&itemRect));
@@ -1762,14 +1487,14 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             TrackMouseEvent(&tracking);
             RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             if (PointInRect(actions.run, point)) {
-                if (self->runningCommandIndex_ == index) {
+                if (self->macro_.RunningIndex() == index) {
                     // Stopping further submissions is a safety action and is
                     // never delayed by the Run repeat guard or mouse capture.
                     self->StopCommandSequence(CommandSequenceEnd::UserStopped);
                     return 0;
                 }
                 const bool writable = self->connection_ && self->connection_->IsConnected();
-                if (writable && self->runningCommandIndex_ < 0) {
+                if (writable && self->macro_.RunningIndex() < 0) {
                     self->armedCommandIndex_ = index;
                     self->armedCommandAction_ = 1;
                     SetCapture(window);
@@ -1782,14 +1507,14 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
             if (message == WM_LBUTTONDBLCLK)
                 return DefSubclassProc(window, message, wParam, lParam);
             if (PointInRect(actions.edit, point)) {
-                if (self->runningCommandIndex_ < 0) {
+                if (self->macro_.RunningIndex() < 0) {
                     self->armedCommandIndex_ = index;
                     self->armedCommandAction_ = 2;
                     SetCapture(window);
                 }
                 return 0;
             }
-            if (PointInRect(card, point) && self->runningCommandIndex_ < 0) {
+            if (PointInRect(card, point) && self->macro_.RunningIndex() < 0) {
                 self->pendingCommandDragIndex_ = index;
                 self->commandDragOrigin_ = point;
                 self->commandDragGrab_ = {point.x - itemRect.left, point.y - itemRect.top};
@@ -1840,7 +1565,7 @@ LRESULT CALLBACK MainWindow::CommandListSubclassProc(HWND window, UINT message, 
         const DWORD hit = static_cast<DWORD>(SendMessageW(window, LB_ITEMFROMPOINT, 0, MAKELPARAM(point.x, point.y)));
         int hoverIndex = -1;
         int hoverAction = 0;
-        if (!HIWORD(hit) && LOWORD(hit) < self->commands_.size()) {
+        if (!HIWORD(hit) && LOWORD(hit) < self->macro_.Items().size()) {
             RECT itemRect{};
             OverlayScrollMetrics metrics;
             SendMessageW(window, LB_GETITEMRECT, LOWORD(hit), reinterpret_cast<LPARAM>(&itemRect));
@@ -1979,7 +1704,7 @@ LRESULT CALLBACK MainWindow::SftpListSubclassProc(HWND window, UINT message, WPA
     if (message == WM_MOUSEMOVE && window == self->sftpList_ && self->sftpTooltip_) {
         const DWORD hit = static_cast<DWORD>(SendMessageW(window, LB_ITEMFROMPOINT, 0, lParam));
         std::wstring text;
-        if (!HIWORD(hit) && LOWORD(hit) < self->sftpEntries_.size()) text = self->sftpEntries_[LOWORD(hit)].name;
+        if (!HIWORD(hit) && LOWORD(hit) < self->sftp_.Entries().size()) text = self->sftp_.Entries()[LOWORD(hit)].name;
         if (text != self->sftpHoverText_) {
             self->sftpHoverText_ = std::move(text);
             TOOLINFOW tool{sizeof(tool)}; tool.hwnd = window; tool.uId = reinterpret_cast<UINT_PTR>(window);
@@ -2105,6 +1830,19 @@ bool MainWindow::PreTranslate(MSG& message) {
 }
 
 LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
+    if (closing_) {
+        // During shutdown only drain owned messages and poll the cleanup
+        // thread. Do not let queued input or timers mutate session models.
+        if (message == WM_CLOSE) return 0;
+        if (message == WM_TIMER) {
+            if (wParam == ShutdownTimerId) FinishShutdown();
+            return 0;
+        }
+        if (message != WM_DESTROY && message != MessageApi && message != MessageUpdatePrompt &&
+            message != MessageUpdate && message != MessageConnection && message != MessageDiscovery &&
+            message != MessageHostKey && message != MessageData && message != MessageStatus)
+            return DefWindowProcW(window_, message, wParam, lParam);
+    }
     // Includes direct control activation and window gestures, not just keyboard
     // messages. Once work has begun, never surprise the user with a later restart.
     if (message == WM_COMMAND || message == WM_ENTERSIZEMOVE) startupUpdateDeferred_ = true;
@@ -2146,6 +1884,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         std::unique_ptr<UpdatePrompt> prompt(reinterpret_cast<UpdatePrompt *>(lParam));
         if (!prompt)
             return 0;
+        if (closing_) { prompt->answer.set_value(false); return 0; }
         if (!CanInstallStartupUpdate(true)) {
             AppendStatus(L"已发现新版；当前任务不受影响，请空闲时重新启动以确认更新。", false);
             prompt->answer.set_value(false);
@@ -2178,8 +1917,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case MessageUpdate: {
         std::unique_ptr<update::UpdateResult> result(reinterpret_cast<update::UpdateResult*>(lParam));
         if (!result) return 0;
-        if (updateThread_.joinable()) updateThread_.join();
         if (closing_.load()) { DiscardUpdate(*result); return 0; }
+        if (updateThread_.joinable()) updateThread_.join();
         if (result->status == update::UpdateStatus::Ready) {
             if (!CanInstallStartupUpdate(true)) {
                 AppendStatus(L"已发现 " + std::wstring(result->version.begin(), result->version.end()) +
@@ -2254,10 +1993,12 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         RefreshCommandList();
         RefreshConnectionList();
         ApplyTheme();
-        sessionService_.ObserveInput([this](const std::string &id, const Bytes &bytes, const std::string &source) {
-            const auto state = sessionService_.State(id);
-            apiServer_.Publish(id, bytes, source.c_str(), "input", state.value("inputCodePage", UINT(0)));
-            QueueReceived({std::stoull(id.substr(8)), bytes, state.value("inputCodePage", UINT(0)), source, 0});
+        sessionService_.ObserveInputWithCodePage([this](const std::string &id, const Bytes &bytes,
+                                                       const std::string &source, unsigned codePage) {
+            // Accepted input is queued for publication before the writer wakes,
+            // preserving input/output event order without waiting for fan-out.
+            apiServer_.EnqueuePublish(id, bytes, source.c_str(), "input", codePage);
+            QueueReceived({std::stoull(id.substr(8)), bytes, codePage, source, 0});
         });
         { std::wstring error;
           if (!apiServer_.Start([this](const auto& method, const auto& path, const auto& body) {
@@ -2379,6 +2120,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         PollLogExport();
         return 0;
     case WM_TIMER:
+        if (wParam == PendingConnectionTimerId) {
+            FinishPendingConnection();
+            return 0;
+        }
         if (wParam == ReceivePumpTimerId) {
             KillTimer(window_, ReceivePumpTimerId);
             return HandleMessage(MessageData, 0, 0);
@@ -2386,15 +2131,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (wParam == BootPulseTimerId) {
             bool active = false;
             for (const auto &session : sessions_) {
-                const auto state = session->boot->Status(GetTickCount64());
-                active = active || state.state == "armed" || state.state == "interrupting";
-                const auto bytes = session->boot->Poll(GetTickCount64());
-                if (!bytes.empty()) {
-                    std::wstring error;
-                    const bool accepted = session->connection && session->connection->IsConnected() &&
-                        session->connection->Send(Bytes(bytes.begin(), bytes.end()), error);
-                    session->boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8));
-                }
+                active = AiDeviceBridge::Pulse(*session, session->connection, GetTickCount64()) || active;
             }
             if (!active) KillTimer(window_, BootPulseTimerId);
             return 0;
@@ -2430,13 +2167,23 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_ERASEBKGND:
         return 1;
     case WM_PAINT: {
+        const bool redraw = GetUpdateRect(window_, nullptr, FALSE) != FALSE;
         PAINTSTRUCT paint{};
         HDC dc = BeginPaint(window_, &paint);
-        RECT rect{};GetClientRect(window_,&rect);
-        HDC memory=CreateCompatibleDC(dc);HBITMAP bitmap=CreateCompatibleBitmap(dc,std::max(1L,rect.right),std::max(1L,rect.bottom));
-        if(memory&&bitmap){auto previous=SelectObject(memory,bitmap);PaintWindow(memory);BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY);SelectObject(memory,previous);}else PaintWindow(dc);
-        if(bitmap)DeleteObject(bitmap);if(memory)DeleteDC(memory);
+        if (redraw) {
+            RECT rect{};GetClientRect(window_,&rect);
+            HDC memory = windowPaintBuffer_.Get(dc, rect.right, rect.bottom, Ui::Dpi);
+            if (memory) { const int state = SaveDC(memory); PaintWindow(memory); BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY); RestoreDC(memory,state); }
+            else PaintWindow(dc);
+        }
         EndPaint(window_, &paint);
+        // WM_PAINT is dispatched after queued user input. Continue a sustained
+        // receive stream here instead of adding a 10 ms timer per data slice or
+        // posting an endless chain of higher-priority application messages.
+        if (receiveContinuation_ && !closing_) {
+            receiveContinuation_ = false;
+            HandleMessage(MessageData, 0, 0);
+        }
         return 0;
     }
     case WM_DRAWITEM:
@@ -2529,15 +2276,15 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 InvalidateRect(window_, nullptr, TRUE);
             }
             else if (id == IdSftpClearTransfers) ClearFinishedSftpTransfers();
-            else if (id == IdSftpUp) RefreshSftp(ParentSftpRemotePath(sftpDirectory_));
-            else if (id == IdSftpRefresh) RefreshSftp(sftpDirectory_);
+            else if (id == IdSftpUp) RefreshSftp(ParentSftpRemotePath(sftp_.Directory()));
+            else if (id == IdSftpRefresh) RefreshSftp(sftp_.Directory());
             else if (id == IdSftpUpload) UploadSftp();
             else if (id == IdSftpDownload) DownloadSftp();
             return 0;
         }
         if (id == IdCommandList && notification == LBN_DBLCLK) {
             const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
-            if (connection_ && selected != LB_ERR && runningCommandIndex_ < 0)
+            if (connection_ && selected != LB_ERR && macro_.RunningIndex() < 0)
                 SendCommand(static_cast<size_t>(selected));
             return 0;
         }
@@ -2563,25 +2310,37 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         if (id == IdSftpList && notification == LBN_SELCHANGE) {
-            SetSftpBusy(sftpBusy_);
+            SetSftpBusy(sftp_.Busy());
             return 0;
         }
         break;
     }
     case MessageData: {
+        if (closing_) return 0;
         std::set<std::uint64_t> overflow;
         {
             std::lock_guard<std::mutex> lock(receivedMutex_);
             overflow.swap(receiveOverflow_);
         }
-        const auto started = GetTickCount64();
-        for (unsigned count = 0; count < 32 && (count == 0 || GetTickCount64() - started < 6); ++count) {
+        const auto started = std::chrono::steady_clock::now();
+        for (unsigned count = 0; count < 32 && (count == 0 ||
+             std::chrono::steady_clock::now() - started < std::chrono::milliseconds(2)); ++count) {
             ReceivedItem item;
             {
                 std::lock_guard<std::mutex> lock(receivedMutex_);
                 if (received_.empty()) break;
-                item = std::move(received_.front());
-                received_.pop_front();
+                auto next = received_.begin();
+                // Preserve order within each session while giving the visible
+                // terminal three of every four opportunities during overload.
+                // Background sessions still progress; they cannot bury a key's
+                // echo behind megabytes of unrelated output.
+                if (activeSession_ && (++receiveFairness_ % 4) != 0) {
+                    const auto visible = std::find_if(received_.begin(), received_.end(),
+                        [this](const ReceivedItem& entry) { return entry.sessionId == activeSession_->id; });
+                    if (visible != received_.end()) next = visible;
+                }
+                item = std::move(*next);
+                received_.erase(next);
                 auto found = receivedBytes_.find(item.sessionId);
                 if (found != receivedBytes_.end()) {
                     found->second -= std::min(found->second, item.data.size());
@@ -2589,6 +2348,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 }
             }
             if (pendingSession_ && item.sessionId == pendingSession_->id) {
+                if (cancelledConnectionPending_) continue;
                 if (pendingConnectionBytes_ + item.data.size() <= 4 * 1024 * 1024) {
                     pendingConnectionBytes_ += item.data.size();
                     pendingConnectionData_.push_back(std::move(item));
@@ -2604,18 +2364,33 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         {
             std::lock_guard<std::mutex> lock(receivedMutex_);
             receivePosted_ = false;
-            if (!received_.empty() || !receiveOverflow_.empty())
-                receivePosted_ = SetTimer(window_, ReceivePumpTimerId, 10, nullptr) != 0;
+            if (!received_.empty() || !receiveOverflow_.empty()) {
+                if (IsWindowVisible(window_) && !IsIconic(window_)) {
+                    // Request a normal low-priority paint opportunity without
+                    // invalidating/repainting the whole main-window chrome for
+                    // every terminal receive slice. Terminal output paints below.
+                    receiveContinuation_ = RedrawWindow(window_, nullptr, nullptr, RDW_INTERNALPAINT) != FALSE;
+                    receivePosted_ = receiveContinuation_;
+                } else
+                    receivePosted_ = SetTimer(window_, ReceivePumpTimerId, 10, nullptr) != 0;
+            }
         }
+        // Present accepted output now; ordinary WM_PAINT delivery can otherwise
+        // remain behind a steady stream of data/AI/network notifications.
+        if (terminal_ && IsWindowVisible(terminal_) && !IsIconic(window_)) UpdateWindow(terminal_);
         for (auto id : overflow) {
             SessionState* session = FindSession(id);
-            if (session && session->connection) session->connection->Stop();
+            if (session && session->connection) {
+                auto transport = session->connection;
+                connectionCleanup_.Retire([transport] { transport->Stop(); });
+            }
             PostStatus(id, L"接收数据超过缓冲上限，已停止连接以避免丢失后继续显示。", true);
         }
         return 0;
     }
     case MessageStatus: {
         std::unique_ptr<StatusMessage> status(reinterpret_cast<StatusMessage*>(lParam));
+        if (closing_) return 0;
         if (status) {
             SessionState* session = FindSession(status->sessionId);
             auto* aiSession = session ? session : pendingSession_ && pendingSession_->id == status->sessionId ? pendingSession_.get() : nullptr;
@@ -2634,7 +2409,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             }
             if (session && session == activeSession_) {
                 SetConnectedUi(connection_ && connection_->IsConnected());
-                if (runningCommandIndex_ >= 0 && (!connection_ || !connection_->IsConnected()))
+                if (macro_.RunningIndex() >= 0 && (!connection_ || !connection_->IsConnected()))
                     StopCommandSequence(CommandSequenceEnd::Interrupted, status->text);
                 else
                     AppendStatus(status->text, status->isError);
@@ -2647,7 +2422,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageDiscovery: {
         std::unique_ptr<DiscoveryMessage> result(reinterpret_cast<DiscoveryMessage*>(lParam));
-        if (result->dialog != discoveryDialog_ || result->generation != discoveryGeneration_ || !IsWindow(result->dialog)) return 0;
+        if (closing_ || !result || result->dialog != discoveryDialog_ || result->generation != discoveryGeneration_ || !IsWindow(result->dialog)) return 0;
         HWND ports = GetDlgItem(result->dialog, IDC_SERIAL);
         SendMessageW(ports, CB_RESETCONTENT, 0, 0);
         for (const auto& name : result->names) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
@@ -2663,7 +2438,13 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageConnection: {
         std::unique_ptr<ConnectionMessage> result(reinterpret_cast<ConnectionMessage*>(lParam));
-        if (result) CompleteConnection(result->success, result->error);
+        if (closing_ || !result || !pendingSession_ || result->sessionId != pendingSession_->id) return 0;
+        if (!cancelledConnectionPending_) {
+            connectionResultReady_ = true;
+            connectionResultSuccess_ = result->success;
+            connectionResultError_ = std::move(result->error);
+        }
+        FinishPendingConnection();
         return 0;
     }
     case MessageHostKey: {
@@ -2710,59 +2491,33 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return reinterpret_cast<LRESULT>(panelBrush_);
     }
     case WM_CLOSE:
-        if (commandsDirty_) {
+        if (macro_.Dirty()) {
             const int choice = MessageBoxW(window_, L"命令或顺序尚未保存。是否保存后退出？", L"保存命令", MB_YESNOCANCEL | MB_ICONQUESTION);
             if (choice == IDCANCEL || (choice == IDYES && !SaveCommands())) return 0;
         }
-        discoveryCancel_ = true;
-        if (discoveryThread_.joinable()) discoveryThread_.join();
-        closing_ = true;
-        aiPane_.Shutdown();
-        if (logExportJob_) logExportJob_->cancel.store(true);
-        if (logExportThread_.joinable())
-            CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
-        StopStartupUpdate();
-        apiServer_.Stop();
-        powerService_.Shutdown();
-        connectionCancel_.store(true);
-        if (pendingSession_) pendingSession_->connection->CancelStart();
-        if (connectionThread_.joinable()) connectionThread_.join();
-        pendingSession_.reset();
-        StopCommandSequence(CommandSequenceEnd::Silent);
-        sftpOperationCancel_.store(true);
-        sftpTransferCancel_.store(true);
-        while (!sessions_.empty()) {
-            activeSession_ = sessions_.back().get();
-            connection_ = activeSession_->connection.get();
-            logger_ = activeSession_->logger.get();
-            Disconnect();
-        }
         SaveUiState();
-        if (sftpThread_.joinable()) sftpThread_.join();
-        if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
-        // Device shutdown and transport cleanup take precedence over waiting
-        // for a canceled export to finish destination filesystem I/O.
-        StopLogExport();
-        {
-            MSG pending{};
-            while (PeekMessageW(&pending, window_, MessageApi, MessageApi, PM_REMOVE)) delete reinterpret_cast<ApiRequestMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageDiscovery, MessageDiscovery, PM_REMOVE)) delete reinterpret_cast<DiscoveryMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageConnection, MessageConnection, PM_REMOVE))
-                delete reinterpret_cast<ConnectionMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageHostKey, MessageHostKey, PM_REMOVE))
-                delete reinterpret_cast<HostKeyMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageData, MessageData, PM_REMOVE))
-                delete reinterpret_cast<DataMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageStatus, MessageStatus, PM_REMOVE))
-                delete reinterpret_cast<StatusMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE))
-                delete reinterpret_cast<SftpMessage*>(pending.lParam);
-            while (PeekMessageW(&pending, window_, MessageSftpProgress, MessageSftpProgress, PM_REMOVE))
-                delete reinterpret_cast<SftpProgressMessage*>(pending.lParam);
+        RequestShutdown();
+        ShowWindow(window_, SW_HIDE);
+        try { shutdownThread_ = std::thread([this] { WaitForShutdown(); }); }
+        catch (...) { WaitForShutdown(); shutdownComplete_ = true; FinishShutdown(); return 0; }
+        // Poll a signaled thread handle; never join a still-running worker on
+        // the UI thread. A timer failure falls back to owned synchronous cleanup.
+        if (!SetTimer(window_, ShutdownTimerId, 10, nullptr)) {
+            shutdownThread_.join();
+            shutdownComplete_ = true;
+            FinishShutdown();
         }
-        DestroyWindow(window_);
         return 0;
     case WM_DESTROY:
+        // Covers external DestroyWindow and startup failure as well as WM_CLOSE.
+        // Child HWNDs cannot be destroyed while callbacks can still reach them.
+        if (!shutdownComplete_) {
+            RequestShutdown();
+            if (shutdownThread_.joinable()) shutdownThread_.join();
+            else WaitForShutdown();
+            shutdownComplete_ = true;
+            DrainShutdownMessages();
+        }
         aiPet_.Shutdown();
         if (uiFont_) DeleteObject(uiFont_);
         if (smallFont_) DeleteObject(smallFont_);
@@ -2927,6 +2682,9 @@ void MainWindow::CreateControls() {
     RECT client{};
     GetClientRect(window_, &client);
     LayoutControls(client.right, client.bottom);
+    sftp_.SetCallbacks([target = window_] { PostMessageW(target, MessageSftp, 0, 0); },
+                       [target = window_] { PostMessageW(target, MessageSftpProgress, 0, 0); });
+
 }
 
 void MainWindow::LayoutControls(int width, int height) {
@@ -3214,7 +2972,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         DrawRoundedBox(dc, rect, Ui::Radius, colors.terminal, colors.border);
         sftpBreadcrumbHits_.clear();
         const std::wstring visibleText = ControlText(item.hwndItem);
-        if (visibleText != sftpDirectory_ || sftpDirectory_.empty()) {
+        if (visibleText != sftp_.Directory() || sftp_.Directory().empty()) {
             RECT textRect = rect;
             textRect.left += 10;
             textRect.right -= 10;
@@ -3222,7 +2980,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_PATH_ELLIPSIS);
             return;
         }
-        const std::vector<SftpBreadcrumb> crumbs = BuildSftpBreadcrumbs(sftpDirectory_);
+        const std::vector<SftpBreadcrumb> crumbs = BuildSftpBreadcrumbs(sftp_.Directory());
         HFONT oldFont = reinterpret_cast<HFONT>(SelectObject(dc, smallFont_));
         std::vector<int> widths;
         int totalWidth = 0;
@@ -3361,7 +3119,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if (id == IdSftpNameHeader || id == IdSftpSizeHeader || id == IdSftpModifiedHeader) {
             const SftpSortColumn column = id == IdSftpNameHeader ? SftpSortColumn::Name :
                 (id == IdSftpSizeHeader ? SftpSortColumn::Size : SftpSortColumn::Modified);
-            const bool active = sftpSortColumn_ == column;
+            const bool active = sftp_.SortColumn() == column;
             HBRUSH background = CreateSolidBrush(hovered ? colors.accentSoft : colors.panel);
             FillRect(dc, &rect, background);
             DeleteObject(background);
@@ -3372,7 +3130,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 active ? UiAccentInk(darkMode_) : colors.muted, smallFont_,
                 id == IdSftpNameHeader ? DT_LEFT | DT_VCENTER | DT_SINGLELINE :
                     DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-            if (active) DrawSortChevron(dc, rect, UiAccentInk(darkMode_), sftpSortAscending_);
+            if (active) DrawSortChevron(dc, rect, UiAccentInk(darkMode_), sftp_.SortAscending());
             HPEN line = CreatePen(PS_SOLID, 1, colors.border);
             HPEN oldLine = reinterpret_cast<HPEN>(SelectObject(dc, line));
             MoveToEx(dc, rect.left, rect.bottom - 1, nullptr);
@@ -3530,13 +3288,13 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         subtitle.left += Ui::Scale(12);
         DrawTextSimple(dc, state, subtitle, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
-    } else if (item.CtlID == IdCommandList && item.itemID < commands_.size()) {
+    } else if (item.CtlID == IdCommandList && item.itemID < macro_.Items().size()) {
         const bool ghost = source.itemData == ~ULONG_PTR(0);
         const bool sourceDragging = !ghost && draggingCommandIndex_ == static_cast<int>(item.itemID);
         HBRUSH background = CreateSolidBrush(colors.panel);
         FillRect(dc, &rect, background);
         DeleteObject(background);
-        const CommandItem& command = commands_[item.itemID];
+        const CommandItem& command = macro_.Items()[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
@@ -3564,8 +3322,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         DrawTextSimple(dc, summary, value, secondaryInk, smallFont_, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         const bool connected = connection_ && connection_->IsConnected();
-        const bool sequenceRunning = runningCommandIndex_ >= 0;
-        const bool isRunning = runningCommandIndex_ == static_cast<int>(item.itemID);
+        const bool sequenceRunning = macro_.RunningIndex() >= 0;
+        const bool isRunning = macro_.RunningIndex() == static_cast<int>(item.itemID);
         const bool runnable = !sourceDragging && connected && (!sequenceRunning || isRunning);
         const bool editable = !sourceDragging && !sequenceRunning;
         const bool hoverRun = hoveredCommandIndex_ == static_cast<int>(item.itemID) && hoveredCommandAction_ == 1;
@@ -3595,13 +3353,13 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                                : colors.muted,
                     isRunning ? UiGlyph::Stop : UiGlyph::Run);
         if (isRunning)
-            DrawCommandProgress(dc, actions.run, submittedCommandSteps_, command.commands.size(),
+            DrawCommandProgress(dc, actions.run, macro_.Accepted(), command.commands.size(),
                 colors.border, colors.accent);
         DrawEditIcon(dc, actions.edit, ghost || editDown ? RGB(255, 255, 255) : editable ? colors.muted : colors.border);
         if (!ghost && draggingCommandIndex_ >= 0 && commandDragInside_ && commandInsertIndex_ >= 0) {
             const bool above = commandInsertIndex_ == static_cast<int>(item.itemID);
-            const bool belowLast = commandInsertIndex_ == static_cast<int>(commands_.size()) &&
-                item.itemID + 1 == commands_.size();
+            const bool belowLast = commandInsertIndex_ == static_cast<int>(macro_.Items().size()) &&
+                item.itemID + 1 == macro_.Items().size();
             if (above || belowLast) {
                 const int y = above ? rect.top + Ui::Gap / 4 : rect.bottom - Ui::Gap / 4;
                 HPEN pen = CreatePen(PS_SOLID, std::max(2, Ui::Scale(2)), colors.accent);
@@ -3612,8 +3370,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 DeleteObject(pen);
             }
         }
-    } else if (item.CtlID == IdSftpList && item.itemID < sftpEntries_.size()) {
-        const SftpEntry& entry = sftpEntries_[item.itemID];
+    } else if (item.CtlID == IdSftpList && item.itemID < sftp_.Entries().size()) {
+        const SftpEntry& entry = sftp_.Entries()[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = Ui::OverlayScrollLaneWidth;
         RECT row{rect.left, rect.top, rect.right - rightInset, rect.bottom};
@@ -3652,8 +3410,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         LineTo(dc, row.right, row.bottom - 1);
         SelectObject(dc, oldDivider);
         DeleteObject(divider);
-    } else if (item.CtlID == IdSftpTransferList && item.itemID < sftpTransfers_.size()) {
-        const SftpTransferItem& transfer = sftpTransfers_[item.itemID];
+    } else if (item.CtlID == IdSftpTransferList && item.itemID < sftp_.Transfers().size()) {
+        const SftpTransferItem& transfer = sftp_.Transfers()[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
             Ui::OverlayScrollLaneWidth : 0;
@@ -3760,8 +3518,8 @@ void MainWindow::OpenConnectionDialog(int mode) {
         ConnectFromDialog();
     }
     discoveryCancel_ = true;
-    if (discoveryThread_.joinable()) discoveryThread_.join();
     discoveryDialog_ = nullptr;
+    ++discoveryGeneration_;
     RedrawWindow(window_, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
@@ -4019,14 +3777,15 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {
     if (!serialPortScan_ || serialPortScan_->done) {
+        if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
         serialPortScan_ = std::make_shared<SerialPortScan>();
         // The job owns no HWND or MainWindow reference. Closing a dialog cannot
         // block on a slow SetupAPI driver or deliver to a recycled dialog handle.
-        std::thread([job = serialPortScan_] {
+        serialPortScanThread_ = std::thread([job = serialPortScan_] {
             try { job->ports = EnumerateSerialPorts(); }
             catch (...) { job->error = L"串口枚举失败，请检查设备后刷新。"; }
             job->done = true;
-        }).detach();
+        });
     }
     HWND ports = GetDlgItem(dialog, IDC_SERIAL);
     SendMessageW(ports, CB_RESETCONTENT, 0, 0);
@@ -4153,7 +3912,7 @@ void MainWindow::ConnectFromDialog() {
     std::wstring sessionName;
     if (pendingMode_ == 0) {
         connection = std::make_unique<PlinkConnection>(pendingHost_, pendingPort_, pendingUsername_,
-            pendingPassword_, terminalVisibleColumns_, terminalVisibleRows_,
+            pendingPassword_, terminalViewport_.Metrics().columns, terminalViewport_.Metrics().rows,
             [this](const HostKeyChallenge& challenge) {
                 if (connectionCancel_.load()) return false;
                 auto request = std::make_shared<HostKeyRequest>();
@@ -4185,7 +3944,7 @@ void MainWindow::ConnectFromDialog() {
     }
 
     auto session = std::make_unique<SessionState>();
-    session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
+    session->terminal.Resize(terminalViewport_.Metrics().columns, terminalViewport_.Metrics().rows);
     session->id = nextSessionId_++;
     session->mode = pendingMode_;
     // Only the desktop that owns the local COM answers terminal queries.
@@ -4220,17 +3979,20 @@ void MainWindow::ConnectFromDialog() {
             resource["friendlyName"] = WideToMultiByte(pendingSerial_.friendlyName, CP_UTF8);
         }
         sessionService_.Register(resource, session->connection);
-        apiServer_.SetSessions(sessionService_.Ids());
+        apiServer_.EnqueueSessions(sessionService_.Ids());
     }
     pendingSession_ = std::move(session);
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
+    connectionResultReady_ = false;
+    connectionResultError_.clear();
     connectionCancel_.store(false);
     AppendStatus(L"正在连接：" + pendingSession_->name, false);
     SessionState* pending = pendingSession_.get();
     try {
         connectionThread_ = std::thread([this, pending, sessionId] {
             auto result = std::make_unique<ConnectionMessage>();
+            result->sessionId = sessionId;
             try {
                 if (!connectionCancel_.load() && pending->logger->Start(pending->name, result->error)) {
                     result->success = pending->connection->Start(
@@ -4243,7 +4005,8 @@ void MainWindow::ConnectFromDialog() {
                                     connection->Send(Bytes(bytes.begin(), bytes.end()), error);
                                 boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8));
                             }
-                            PostData(sessionId, data);
+                            const auto connection = transport.lock();
+                            PostData(sessionId, data, connection ? connection->OutputCodePage() : 0);
                         },
                         [this, sessionId](const std::wstring& text, bool isError) {
                             PostStatus(sessionId, text, isError);
@@ -4265,14 +4028,13 @@ void MainWindow::ConnectFromDialog() {
         });
     } catch (...) {
         sessionService_.Unregister("session-" + std::to_string(sessionId));
-        apiServer_.SetSessions(sessionService_.Ids());
+        apiServer_.EnqueueSessions(sessionService_.Ids());
         pendingSession_.reset();
         AppendStatus(L"无法启动连接工作线程。", true);
     }
 }
 
 void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
-    if (connectionThread_.joinable()) connectionThread_.join();
     if (!pendingSession_) return;
     if (!success || closing_ || connectionCancel_.load()) {
         aiRemoteConnect_ = false;
@@ -4283,7 +4045,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
             pendingSession_->password.clear();
         }
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
-        apiServer_.SetSessions(sessionService_.Ids());
+        apiServer_.EnqueueSessions(sessionService_.Ids());
         pendingSession_.reset();
         pendingConnectionData_.clear();
         pendingConnectionBytes_ = 0;
@@ -4295,14 +4057,20 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     const std::uint64_t id = pendingSession_->id;
     sessions_.push_back(std::move(pendingSession_));
     RefreshConnectionList();
-    const bool interruptedMacro = runningCommandIndex_ >= 0;
+    const bool interruptedMacro = macro_.RunningIndex() >= 0;
     SwitchSession(sessions_.size() - 1);
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
-    for (const auto &item : pendingConnectionData_) {
-        if (item.source.empty())
-            AppendData(id, item.data, item.codePage, item.arrival);
-        else
-            AppendInput(item);
+    {
+        // A remote subscription may replay a full history during startup.
+        // Transfer those older batches in front of live output, instead of
+        // parsing the whole replay synchronously in connection completion.
+        std::lock_guard<std::mutex> lock(receivedMutex_);
+        for (auto item = pendingConnectionData_.rbegin(); item != pendingConnectionData_.rend(); ++item) {
+            receivedBytes_[item->sessionId] += item->data.size();
+            received_.push_front(std::move(*item));
+        }
+        if (!received_.empty() && !receivePosted_)
+            receivePosted_ = PostMessageW(window_, MessageData, 0, 0) != FALSE;
     }
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
@@ -4325,22 +4093,12 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
 
 void MainWindow::Disconnect() {
     if (!activeSession_) return;
-    const bool interruptedMacro = runningCommandIndex_ >= 0 && !closing_;
+    const bool interruptedMacro = macro_.RunningIndex() >= 0 && !closing_;
     StopCommandSequence(interruptedMacro ? CommandSequenceEnd::Interrupted : CommandSequenceEnd::Silent,
                         L"用户断开当前连接");
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     const std::uint64_t disconnectedSessionId = activeSession_->id;
-    if (sftpOperationSessionId_ == disconnectedSessionId)
-        sftpOperationCancel_.store(true);
-    for (SftpTransferItem& item : sftpTransfers_) {
-        if (item.sessionId != disconnectedSessionId) continue;
-        if (item.state == SftpTransferState::Queued) {
-            item.state = SftpTransferState::Canceled;
-            item.error = L"连接已断开";
-        } else if (item.state == SftpTransferState::Running) {
-            sftpTransferCancel_.store(true);
-        }
-    }
+    sftp_.CancelSession(disconnectedSessionId);
     RefreshSftpTransferList();
     const auto found = std::find_if(sessions_.begin(), sessions_.end(),
         [this](const std::unique_ptr<SessionState>& item) { return item.get() == activeSession_; });
@@ -4348,9 +4106,11 @@ void MainWindow::Disconnect() {
     const size_t index = static_cast<size_t>(found - sessions_.begin());
     AiDeviceRequest("release", {{"sessionId", "session-" + std::to_string((*found)->id)}});
     sessionService_.Unregister("session-" + std::to_string((*found)->id));
-    apiServer_.SetSessions(sessionService_.Ids());
-    (*found)->connection->Stop();
-    (*found)->logger->Stop();
+    apiServer_.EnqueueSessions(sessionService_.Ids());
+    auto transport = (*found)->connection;
+    auto log = (*found)->logger;
+    connectionCleanup_.Retire([transport, log] { transport->Stop(); log->Stop(); });
+    terminalViewport_.Clear();
     sessions_.erase(found);
     activeSession_ = nullptr;
     connection_ = nullptr;
@@ -4364,8 +4124,7 @@ void MainWindow::Disconnect() {
         ClearTerminalSelection();
         InvalidateRect(terminal_, nullptr, TRUE);
         ShowSftpPanel(false);
-        sftpEntries_.clear();
-        sftpDirectory_ = L".";
+        sftp_.ClearView();
         SetConnectedUi(false);
     }
     AppendStatus(interruptedMacro ? macroStatus : L"已断开", interruptedMacro);
@@ -4375,27 +4134,25 @@ void MainWindow::DisconnectAll() {
     aiPane_.Disconnect();
     aiVisible_ = false; aiPageOpened_ = false;
     disconnectAllInProgress_ = true;
-    const bool interruptedMacro = runningCommandIndex_ >= 0 && !closing_;
+    const bool interruptedMacro = macro_.RunningIndex() >= 0 && !closing_;
     StopCommandSequence(interruptedMacro ? CommandSequenceEnd::Interrupted : CommandSequenceEnd::Silent,
                         L"用户断开全部连接");
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     connectionCancel_ = true;
     if (pendingSession_) {
+        cancelledConnectionPending_ = true;
         pendingSession_->connection->CancelStart();
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
-        apiServer_.SetSessions(sessionService_.Ids());
+        apiServer_.EnqueueSessions(sessionService_.Ids());
     }
-    sftpOperationCancel_ = true;
-    sftpTransferCancel_ = true;
+    sftp_.CancelIo();
     while (!sessions_.empty()) {
         activeSession_ = sessions_.back().get();
         connection_ = activeSession_->connection.get();
         logger_ = activeSession_->logger.get();
         Disconnect();
     }
-    if (connectionThread_.joinable())
-        connectionThread_.join();
-    pendingSession_.reset();
+    if (cancelledConnectionPending_) FinishPendingConnection();
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
     {
@@ -4405,10 +4162,7 @@ void MainWindow::DisconnectAll() {
         receiveOverflow_.clear();
     }
     disconnectAllInProgress_ = false;
-    if (sftpThread_.joinable())
-        sftpThread_.join();
-    if (sftpTransferThread_.joinable())
-        sftpTransferThread_.join();
+
     if (powerService_.State().value("connected", false)) {
         auto action = powerService_.Submit({{"type", "disconnect"}, {"source", "local"}});
         if (action.contains("error")) {
@@ -4430,6 +4184,37 @@ void MainWindow::DisconnectAll() {
     AppendStatus(disconnected + (interruptedMacro ? L"；" + macroStatus : L""), interruptedMacro);
 }
 
+void MainWindow::FinishPendingConnection() {
+    if (!cancelledConnectionPending_ && !connectionResultReady_) return;
+    if (connectionThread_.joinable() &&
+        WaitForSingleObject(reinterpret_cast<HANDLE>(connectionThread_.native_handle()), 0) == WAIT_TIMEOUT) {
+        SetTimer(window_, PendingConnectionTimerId, 10, nullptr);
+        return;
+    }
+    KillTimer(window_, PendingConnectionTimerId);
+    if (connectionThread_.joinable()) connectionThread_.join();
+    if (!cancelledConnectionPending_) {
+        connectionResultReady_ = false;
+        auto error = std::move(connectionResultError_);
+        CompleteConnection(connectionResultSuccess_, error);
+        return;
+    }
+    connectionResultReady_ = false;
+    connectionResultError_.clear();
+    // Startup can succeed just before the cancel flag is observed. Retain and
+    // stop that transport off the UI thread even in that race.
+    if (pendingSession_) {
+        auto transport = pendingSession_->connection;
+        auto log = pendingSession_->logger;
+        connectionCleanup_.Retire([transport, log] {
+            if (transport) transport->Stop();
+            if (log) log->Stop();
+        });
+    }
+    pendingSession_.reset();
+    cancelledConnectionPending_ = false;
+}
+
 MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
     const auto found = std::find_if(sessions_.begin(), sessions_.end(),
         [id](const std::unique_ptr<SessionState>& item) { return item->id == id; });
@@ -4449,20 +4234,10 @@ void MainWindow::ShowAiPage(bool connect) {
     if (connect && !aiPane_.Connected()) aiPane_.ShowConnection();
 }
 
-Json MainWindow::SendAiBytes(SessionState &session, const Bytes &bytes) {
-    if (bytes.empty() || bytes.size() > 65536 || !session.connection || !session.connection->IsConnected())
-        return {{"error", "Terminal is disconnected or input exceeds its bound"}};
-    const auto id = "session-" + std::to_string(session.id);
-    if (session.mode == 1 || session.mode == 4)
-        return sessionService_.Input(id, bytes, "ai:desktop");
-    std::wstring error;
-    if (!session.connection->Send(bytes, error)) return {{"error", WideToMultiByte(error, CP_UTF8)}};
-    return {{"accepted", bytes.size()}, {"state", "queued"}, {"execution", "unknown"},
-        {"scope", "existing-selected-terminal-connection"}, {"automaticRetry", false}};
-}
 
 Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) {
     auto error = [](const std::string& text) -> Json { return {{"error", text}}; };
+    if (closing_ && method != "release") return error("Application closing");
     if (method == "connectRemote") {
         if (pendingSession_) return error("Another connection is being established");
         aiRemoteConnect_ = true;
@@ -4470,209 +4245,23 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
         if (!pendingSession_) aiRemoteConnect_ = false;
         return {{"pending", pendingSession_ != nullptr}};
     }
-    if (method == "sessions") {
-        Json result = Json::array();
-        for (const auto& session : sessions_)
-            if (*ai::TerminalKind(session->mode) && session->connection && session->connection->IsConnected())
-                result.push_back(
-                    {{"id", "session-" + std::to_string(session->id)},
-                     {"instance", apiServer_.Instance()},
-                     {"name", std::string("[") + ai::TerminalKind(session->mode) + "] " +
-                                  WideToMultiByte(session->name, CP_UTF8)},
-                     {"kind", ai::TerminalKind(session->mode)},
-                     {"username", session->mode == 0 ? WideToMultiByte(session->username,CP_UTF8) : ""},
-                     {"codePage", session->connection->OutputCodePage() ? session->connection->OutputCodePage()
-                                                                        : session->codePage},
-                     {"inputCodePage",
-                      session->connection->InputCodePage() ? session->connection->InputCodePage() : session->codePage},
-                     {"remoteIp", session->mode == 0 || session->mode == 2 || session->mode == 3
-                                      ? WideToMultiByte(session->host, CP_UTF8)
-                                      : ""},
-                     {"remotePort", session->mode == 0 || session->mode == 2 || session->mode == 3 ? session->port : 0},
-                     {"remoteCom", WideToMultiByte(session->remoteCom, CP_UTF8)},
-                     {"com", WideToMultiByte(session->remoteCom, CP_UTF8)},
-                     {"transport", session->udpRaw ? "udpRaw" : "session"},
-                     {"peerVerified", !session->udpRaw},
-                     {"dataReceived", session->udpReceived},
-                     {"commandSupported", true}});
-        return result;
+    std::vector<AiDeviceBridge::Target> targets;
+    targets.reserve(sessions_.size());
+    for (const auto& session : sessions_)
+        targets.push_back({*session, session->terminal, session->id, session->mode, session->name,
+                           session->connection, session->codePage, session->username, session->host,
+                           session->remoteCom, session->port, session->udpRaw, session->udpReceived,
+                           session->lineEndingIndex});
+    AiDeviceBridge::Context context;
+    context.instance = apiServer_.Instance(); context.macroRunning = macro_.Running();
+    if (method.rfind("power.", 0) == 0 || method == "recover") {
+        context.selectedChannels = powerPane_.SelectedChannels();
+        context.recoveryBinding = powerPane_.RecoveryBinding();
     }
-    if (method == "power.get") {
-        const auto state = powerService_.State();
-        Json result = {{"id", "power-1"}, {"selectedChannels", powerPane_.SelectedChannels()}};
-        result["recoveryBinding"] = powerPane_.RecoveryBinding();
-        for (const char* key : {"connected", "model", "identity", "simulation", "mode", "channels", "task", "error"})
-            if (state.contains(key)) result[key] = state[key];
-        return result;
-    }
-    if (method == "power.output") {
-        if (!params.contains("enabled") || !params["enabled"].is_boolean() || !params.contains("channels") ||
-            params["channels"] != powerPane_.SelectedChannels())
-            return error("Power channel selection changed; query power state again. Nothing submitted");
-        const auto state = powerService_.State();
-        if (!state.value("connected", false)) return error("Power supply is not connected");
-        if (params.value("identity", std::string()) != state.value("identity", std::string()) ||
-            params.value("mode", std::string()) != state.value("mode", std::string()))
-            return error("Power identity/mode changed; query state again. Nothing submitted");
-        return powerService_.Submit({{"type", "output"}, {"source", "ai:desktop"},
-            {"channels", params["channels"]}, {"enabled", params["enabled"]},
-            {"requestId", params.at("requestId")}});
-    }
-    if (method == "power.action") return powerService_.Action(params.at("id").get<std::string>());
-    const auto id = params.value("sessionId", std::string());
-    SessionState* session = nullptr;
-    for (const auto& candidate : sessions_) if (id == "session-" + std::to_string(candidate->id)) { session = candidate.get(); break; }
-    if (method == "release") {
-        if (session) {
-            session->boot->Cancel();
-            const auto task = powerService_.State().value("task", Json::object());
-            if (!session->recoveryAction.empty() && task.value("running", false) &&
-                task.value("actionId", std::string()) == session->recoveryAction)
-                powerService_.Submit({{"type", "stop"}, {"source", "ai-turn-ended"}});
-            session->recoveryAction.clear();
-        }
-        return {{"released", true}};
-    }
-    if (!session || !*ai::TerminalKind(session->mode) || !session->connection || !session->connection->IsConnected())
-        return error("Associated terminal session is not open; no connection was opened automatically");
-    if (method == "boot_arm" || method == "boot_status") {
-        if (session->mode != 1 && session->mode != 3) return error("U-Boot capture only supports the selected board serial terminal");
-        if (method == "boot_arm") {
-            if (!session->boot->Arm(params.value("pattern", std::string("Hit any key")),
-                params.value("interrupt", std::string(" ")), params.value("prompt", std::string("=>")),
-                params.value("timeoutSeconds", 90u), GetTickCount64()))
-                return error("Use bounded printable ASCII boot patterns and a 1..120 second capture window");
-            SetTimer(window_, BootPulseTimerId, 40, nullptr);
-        }
-        const auto state = session->boot->Status(GetTickCount64());
-        return {{"sessionId", id}, {"state", state.state}, {"matched", state.matched}, {"entered", state.entered},
-            {"submittedBursts", state.submitted}, {"remainingMs", state.remainingMs}, {"error", state.error},
-            {"pattern", state.pattern}, {"prompt", state.prompt}, {"execution", state.entered ? "prompt-observed" : "unconfirmed"},
-            {"source", "local-receive-path"}, {"maximumBursts", 3}};
-    }
-    if (method == "recover") {
-        const auto binding = powerPane_.RecoveryBinding();
-        if ((session->mode != 1 && session->mode != 3) || !binding.value("enabled", false) ||
-            binding.value("sessionId", std::string()) != id)
-            return error("Enable recovery for this exact board terminal and checked power channels in the power page first");
-        const auto purpose = params.value("purpose", std::string("unresponsive"));
-        const auto now = GetTickCount64();
-        if (purpose == "enterUboot") {
-            if (session->boot->Status(now).state != "armed") return error("Arm local U-Boot capture before a boot recovery cycle");
-        } else if (purpose == "unresponsive") {
-            if (!session->aiCommandAt || now - session->aiCommandAt < 5000 || session->aiObservedAt < session->aiCommandAt ||
-                (session->aiLastReceivedAt && now - session->aiLastReceivedAt < 5000))
-                return error("No current inactivity evidence: read/observe the command and distinguish long work or interaction first");
-            const auto line = Trim(session->terminal.CurrentLineText());
-            if (session->aiCursor > session->aiCommandCursor && !line.empty() &&
-                (line.back() == L'#' || line.back() == L'$' || line.back() == L'>'))
-                return error("A prompt is visible; inactivity alone is not a hang");
-            auto command = session->aiCommandText;
-            std::transform(command.begin(), command.end(), command.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            for (const char *operation : {"flash", "erase", "mkfs", "fsck", "dd ", "nand write", "mmc write"})
-                if (command.find(operation) != std::string::npos)
-                    return error("Potentially non-interruptible operation; automatic power recovery refused");
-        } else return error("Unknown recovery purpose");
-        if (!session->recoveryAction.empty()) return error("A recovery was already submitted in this task; query its original action");
-        GUID guid{}; wchar_t unique[40]{};
-        if (FAILED(CoCreateGuid(&guid)) || !StringFromGUID2(guid, unique, 40)) return error("Cannot allocate recovery identity");
-        const auto result = powerService_.Submit({{"type", "recover"}, {"source", "ai:desktop"},
-            {"sessionId", id}, {"channels", binding.at("channels")}, {"identity", binding.at("identity")},
-            {"mode", binding.at("mode")}, {"requestId", "ai:recover:" + WideToMultiByte(unique, CP_UTF8)}});
-        if (!result.contains("error")) session->recoveryAction = result.value("id", std::string());
-        return result;
-    }
-    if (method == "screen") {
-        session->aiObservedAt = GetTickCount64();
-        auto text = WideToMultiByte(session->terminal.ScreenText(), CP_UTF8);
-        bool truncated = text.size() > 65536 || session->terminal.Rows() > 200;
-        if (text.size() > 65536) {
-            size_t end = 65536;
-            while (end && (static_cast<unsigned char>(text[end]) & 0xc0) == 0x80) --end;
-            text.resize(end);
-        }
-        return {{"sessionId", id}, {"text", text}, {"source", "current-vt-screen"}, {"truncated", truncated},
-            {"columns", session->terminal.Columns()}, {"rows", session->terminal.Rows()},
-            {"cursorRow", session->terminal.CursorRow()}, {"cursorColumn", session->terminal.CursorColumn()},
-            {"alternateScreen", session->terminal.AlternateScreen()}, {"keyboardFlags", session->terminal.KeyboardFlags()},
-            {"mouseCaptured", session->terminal.MouseCaptured()}, {"cursor", session->aiCursor}};
-    }
-    if (method == "key") {
-        if (runningCommandIndex_ >= 0 || session->mode == 4)
-            return error("Named keys require an idle interactive serial, Telnet or SSH terminal; CMD uses complete lines");
-        const auto bytes = session->terminal.KeySequence(params.value("key", std::string()));
-        if (bytes.empty()) return error("Unsupported key; use Enter, Ctrl+C, Escape, Tab, arrows or function keys");
-        return SendAiBytes(*session, Bytes(bytes.begin(), bytes.end()));
-    }
-    if (method == "read") {
-        session->aiObservedAt = GetTickCount64();
-        const auto after = params.value("after", std::uint64_t(0));
-        const int lines = std::clamp(params.value("lines", 200), 1, 500);
-        std::string text, first, last;
-        for (const auto& chunk : session->aiOutput) if (!after || chunk.seq > after) {
-            if (first.empty()) first = WideToMultiByte(chunk.timestamp, CP_UTF8);
-            last = WideToMultiByte(chunk.timestamp, CP_UTF8); text += chunk.text;
-        }
-        bool limited = false;
-        int count = 0;
-        for (size_t i = text.size(); i > 0; --i) if (text[i - 1] == '\n' && i < text.size() && ++count >= lines) {
-            text.erase(0, i); limited = true; break;
-        }
-        const bool gap = after && (after > session->aiCursor ||
-            (!session->aiOutput.empty() && after + 1 < session->aiOutput.front().seq));
-        return {{"sessionId", id}, {"name", WideToMultiByte(session->name, CP_UTF8)},
-            {"text", text}, {"source", "device-output"}, {"kind", ai::TerminalKind(session->mode)},
-            {"encoding", "UTF-8"}, {"sourceCodePage", session->connection->OutputCodePage() ? session->connection->OutputCodePage() : session->codePage},
-            {"firstReceivedAt", first}, {"lastReceivedAt", last}, {"timestampBasis", "local-decoded-receive-time"},
-            {"cursor", session->aiCursor}, {"gap", gap}, {"truncated", limited || session->aiTruncated},
-            {"transportNotice", session->aiTransportNotice},
-            {"maximumBytes", 65536}, {"maximumLines", lines}, {"bytes", text.size()},
-            {"lastOutputAgeMs", session->aiLastReceivedAt ? Json(GetTickCount64() - session->aiLastReceivedAt) : Json(nullptr)},
-            {"commandId", session->aiCommandNumber},
-            {"commandAgeMs", session->aiCommandAt ? Json(GetTickCount64() - session->aiCommandAt) : Json(nullptr)},
-            {"outputSinceCommand", session->aiCursor > session->aiCommandCursor},
-            {"execution", "unknown"}, {"noOutputIsNotHangProof", true}};
-    }
-    if (method == "command" || method == "text") {
-        if (runningCommandIndex_ >= 0) return error("A command macro is in progress; stop it before sending an AI command");
-        const auto command = params.value(method == "command" ? "command" : "text", std::string());
-        if (method == "command" ? !ai::ValidCommand(command) :
-            command.empty() || command.size() > 4096 || std::any_of(command.begin(),command.end(),[](unsigned char c) {
-                return (c < 32 && c != '\r' && c != '\n' && c != '\t') || c == 127;
-            }))
-            return error("Invalid bounded terminal input");
-        if (method == "text" && session->mode == 4) return error("CMD accepts complete command lines only");
-        // Never use the current visible session: the explicit ID was pinned at
-        // turn start and displayed in the tool message before this callback.
-        const auto wide = MultiByteToWide(reinterpret_cast<const uint8_t*>(command.data()), command.size(), CP_UTF8);
-        const wchar_t* endings[] = {L"\r", L"\n", L"\r\n", L""};
-        auto outgoing = wide;
-        if (method == "text" && session->terminal.BracketedPaste()) outgoing = L"\x1b[200~" + outgoing + L"\x1b[201~";
-        if (method == "command" && session->mode != 0)
-            outgoing += endings[session->mode == 4 ? 2 : std::clamp(session->lineEndingIndex, 0, 3)];
-        const UINT selectedPage = session->connection->InputCodePage() ? session->connection->InputCodePage() : session->codePage;
-        const UINT page = selectedPage == 20936 && !IsValidCodePage(20936) ? 936 : selectedPage;
-        BOOL replacement = FALSE;
-        auto used = page == CP_UTF8 ? nullptr : &replacement;
-        const DWORD flags = page == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
-        const int bytes = WideCharToMultiByte(page, flags, outgoing.data(), static_cast<int>(outgoing.size()), nullptr, 0, nullptr, used);
-        if (bytes <= 0 || replacement) return error("The selected terminal encoding cannot represent this command exactly");
-        std::string encoded(bytes, '\0');
-        WideCharToMultiByte(page, flags, outgoing.data(), static_cast<int>(outgoing.size()), encoded.data(), bytes, nullptr, used);
-        if (replacement) return error("Terminal command encoding would replace characters; nothing was submitted");
-        if (method == "command" && session->mode == 0) encoded += session->terminal.KeySequence("Enter");
-        auto result = SendAiBytes(*session, Bytes(encoded.begin(), encoded.end()));
-        if (!result.contains("error") && method == "command") {
-            session->aiCommandAt = GetTickCount64();
-            session->aiCommandCursor = session->aiCursor;
-            session->aiCommandText = command;
-            result["commandId"] = ++session->aiCommandNumber;
-            result["cursorBeforeSend"] = session->aiCursor;
-        }
-        return result;
-    }
-
-    return error("Unknown bounded SerialCtl operation");
+    bool armBootPulse = false;
+    auto result = aiDeviceBridge_.Request(method, params, targets, context, GetTickCount64(), armBootPulse);
+    if (armBootPulse) SetTimer(window_, BootPulseTimerId, 40, nullptr);
+    return result;
 }
 
 void MainWindow::ShowPowerPage() {
@@ -4700,7 +4289,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     }
     if (focus != SessionFocus::PowerPreview) { powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE); }
     if (!aiVisible_) ShowWindow(terminal_, SW_SHOW);
-    const bool interruptedMacro = runningCommandIndex_ >= 0 &&
+    const bool interruptedMacro = macro_.RunningIndex() >= 0 &&
         activeSession_ && activeSession_ != sessions_[index].get();
     if (interruptedMacro)
         StopCommandSequence(CommandSequenceEnd::Interrupted, L"用户切换当前会话");
@@ -4718,8 +4307,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     pendingUsername_ = activeSession_->username;
     pendingPassword_ = activeSession_->password;
     pendingPort_ = activeSession_->port;
-    sftpDirectory_ = activeSession_->sftpDirectory;
-    sftpEntries_ = activeSession_->sftpEntries;
+    sftp_.Select(*activeSession_);
     ClearTerminalSelection();
     UpdateTerminalDimensions();
     InvalidateRect(terminal_, nullptr, TRUE);
@@ -4730,7 +4318,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     if (focus != SessionFocus::AiPreview && focus != SessionFocus::PowerPreview && selectedMode_ == 0 && SftpClient::IsAvailable()) {
         ShowSftpPanel(true);
         RefreshSftpList();
-        if (!sameVisibleSession && connection_ && connection_->IsConnected() && !sftpBusy_) RefreshSftp();
+        if (!sameVisibleSession && connection_ && connection_->IsConnected() && !sftp_.Busy()) RefreshSftp();
     } else {
         ShowSftpPanel(false);
     }
@@ -4749,6 +4337,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
 }
 
 bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText) {
+    if (closing_) return false;
     if (!activeSession_ || !connection_ || !connection_->IsConnected()) {
         AppendStatus(L"请先建立连接。", true);
         return false;
@@ -4785,7 +4374,7 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
 }
 
 void MainWindow::SendTerminalCharacter(wchar_t character) {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     if (!activeSession_ || !connection_ || !connection_->IsConnected()) return;
     ScrollTerminalToBottom();
     if (selectedMode_ == 4) {
@@ -4829,7 +4418,7 @@ void MainWindow::SendTerminalCharacter(wchar_t character) {
 }
 
 void MainWindow::SendTerminalKey(WPARAM key, bool shift, bool control, bool alt) {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     if (!activeSession_) return;
     ScrollTerminalToBottom();
     if (selectedMode_ == 4) {
@@ -4889,7 +4478,7 @@ void MainWindow::SendTerminalKey(WPARAM key, bool shift, bool control, bool alt)
 }
 
 void MainWindow::SendCommand(size_t index) {
-    if (index >= commands_.size() || commands_[index].commands.empty() || runningCommandIndex_ >= 0) return;
+    if (index >= macro_.Items().size() || macro_.Items()[index].commands.empty() || macro_.Running()) return;
     if (!connection_ || !connection_->IsConnected() || !activeSession_) {
         AppendStatus(L"请先建立连接，再执行常用命令。", true);
         return;
@@ -4898,112 +4487,74 @@ void MainWindow::SendCommand(size_t index) {
 #ifdef SERIALCTL_AI_TESTING
     if (commandClock_) now = commandClock_();
 #endif
-    if (lastCommandIndex_ == static_cast<int>(index) && lastCommandSession_ == activeSession_->id &&
-        now - lastCommandActivation_ < std::max<DWORD>(350, GetDoubleClickTime()))
-        return; // One activation across mouse double-clicks and held Enter.
-    const CommandItem& command = commands_[index];
+    if (macro_.Duplicate(index, activeSession_->id, now, std::max<DWORD>(350, GetDoubleClickTime()))) return;
+    const CommandItem& command = macro_.Items()[index];
     if (command.commands.size() == 1) {
         const std::wstring text = command.commands.front() + SelectedLineEnding();
         const std::string encoded = EncodeTerminalText(text);
         if (SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text)) {
-            lastCommandIndex_ = static_cast<int>(index);
-            lastCommandSession_ = activeSession_->id;
-            lastCommandActivation_ = now;
+            macro_.Activated(index, activeSession_->id, now);
             AppendStatus(L"已提交命令；执行结果见输出：" + command.commands.front(), false);
         }
         return;
     }
-
-    runningCommandIndex_ = static_cast<int>(index);
-    lastCommandIndex_ = static_cast<int>(index);
-    lastCommandSession_ = activeSession_->id;
-    lastCommandActivation_ = now;
-    submittedCommandSteps_ = 0;
-    runningCommandSessionId_ = activeSession_->id;
-    runningCommandCodePage_ = SelectedCodePage();
-    runningCommandLineEnding_ = SelectedLineEnding();
+    if (!macro_.Begin(index, activeSession_->id, SelectedCodePage(), SelectedLineEnding())) return;
+    macro_.Activated(index, activeSession_->id, now);
     UpdateCommandActions();
     InvalidateRect(commandList_, nullptr, FALSE);
     SendNextCommandStep();
 }
 
 void MainWindow::SendNextCommandStep() {
-    if (runningCommandIndex_ < 0 || runningCommandIndex_ >= static_cast<int>(commands_.size())) return;
-    const CommandItem& command = commands_[static_cast<size_t>(runningCommandIndex_)];
-    if (!activeSession_ || activeSession_->id != runningCommandSessionId_ || !connection_ ||
-        !connection_->IsConnected() || submittedCommandSteps_ >= command.commands.size()) {
+    if (!macro_.Running()) return;
+    std::wstring text;
+    if (!macro_.Next(activeSession_ ? activeSession_->id : 0, connection_ && connection_->IsConnected(), text)) {
         StopCommandSequence(CommandSequenceEnd::Interrupted, L"连接或当前会话已变化");
         return;
     }
-
-    const std::wstring& step = command.commands[submittedCommandSteps_];
-    const std::wstring text = step + runningCommandLineEnding_;
-    const std::string encoded =
-        selectedMode_ == 4 ? EncodeTerminalText(text) : WideToMultiByte(text, runningCommandCodePage_);
+    const std::string encoded = selectedMode_ == 4 ? EncodeTerminalText(text) : WideToMultiByte(text, macro_.CodePage());
     if (!SendBytesToActive(Bytes(encoded.begin(), encoded.end()), localEchoEnabled_ || selectedMode_ == 4, text)) {
         StopCommandSequence(CommandSequenceEnd::Interrupted, statusText_);
         return;
     }
-
-    ++submittedCommandSteps_;
+    macro_.Accept();
     InvalidateRect(commandList_, nullptr, FALSE);
-    if (submittedCommandSteps_ >= command.commands.size()) {
+    if (macro_.Complete()) {
         StopCommandSequence(CommandSequenceEnd::Submitted);
         return;
     }
-
-    AppendStatus(L"宏“" + command.name + L"”已提交 " +
-        std::to_wstring(submittedCommandSteps_) + L"/" + std::to_wstring(command.commands.size()) +
+    AppendStatus(L"宏“" + macro_.Name() + L"”已提交 " +
+        std::to_wstring(macro_.Accepted()) + L"/" + std::to_wstring(macro_.Total()) +
         L" 条，等待下一次提交；执行结果见输出。", false);
     KillTimer(window_, StatusTimerId);
-    if (!SetTimer(window_, CommandTimerId, command.intervalMs, nullptr)) {
+    if (!SetTimer(window_, CommandTimerId, macro_.Interval(), nullptr))
         StopCommandSequence(CommandSequenceEnd::Interrupted, L"计时器创建失败");
-    }
 }
 
 void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail) {
-    if (runningCommandIndex_ < 0) return;
-    std::wstring name;
-    size_t total = submittedCommandSteps_;
-    if (runningCommandIndex_ < static_cast<int>(commands_.size())) {
-        name = commands_[static_cast<size_t>(runningCommandIndex_)].name;
-        total = commands_[static_cast<size_t>(runningCommandIndex_)].commands.size();
-    }
-    const auto count = std::to_wstring(submittedCommandSteps_) + L"/" + std::to_wstring(total);
-    // detail can alias statusText_; snapshot it before AppendStatus replaces it.
-    const std::wstring reason = detail;
-    auto* owner = FindSession(runningCommandSessionId_);
+    const auto completion = macro_.Stop(end, detail);
+    if (!completion.active) return;
+    auto* owner = FindSession(completion.session);
     KillTimer(window_, CommandTimerId);
-    runningCommandIndex_ = -1;
-    submittedCommandSteps_ = 0;
-    runningCommandSessionId_ = 0;
-    runningCommandLineEnding_.clear();
     UpdateCommandActions();
     InvalidateRect(commandList_, nullptr, FALSE);
-    if (end == CommandSequenceEnd::Submitted)
-        AppendStatus(L"宏“" + name + L"”已提交 " + count + L" 条；执行结果见输出。", false);
-    else if (end == CommandSequenceEnd::UserStopped)
-        AppendStatus(L"宏“" + name + L"”已停止后续提交（" + count +
-                     L"）；已提交内容可能继续执行，结果见输出。", false);
-    else if (end == CommandSequenceEnd::Interrupted)
-        AppendStatus(L"宏“" + name + L"”后续提交已中断（" + count + L"）：" + reason +
-                     L"；已提交内容执行状态未知，请检查连接和输出，不自动重发。", true);
+    if (!completion.message.empty()) AppendStatus(completion.message, completion.error);
     if (owner && end != CommandSequenceEnd::Silent) {
         owner->lastStatus = statusText_;
-        owner->lastStatusIsError = end == CommandSequenceEnd::Interrupted;
+        owner->lastStatusIsError = completion.error;
         owner->unreadStatus = owner != activeSession_;
         GetLocalTime(&owner->statusTime);
     }
 }
 
-void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data) {
+void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage) {
+    if (closing_) return;
     LARGE_INTEGER arrival{};
     if (measurePaint_)
         QueryPerformanceCounter(&arrival);
-    const auto state = sessionService_.State("session-" + std::to_string(sessionId));
-    const UINT codePage = state.value("outputCodePage", UINT(0));
-    apiServer_.Publish("session-" + std::to_string(sessionId), data, "device", "output", codePage);
     QueueReceived({sessionId, data, codePage, {}, arrival.QuadPart});
+    // Neither this batch nor the next device read waits for network fan-out.
+    apiServer_.EnqueuePublish("session-" + std::to_string(sessionId), data, "device", "output", codePage);
 }
 void MainWindow::QueueReceived(ReceivedItem item) {
     if (closing_)
@@ -5074,7 +4625,7 @@ void MainWindow::AppendInput(const ReceivedItem &item) {
 void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError) {
     if (closing_) return;
     const auto utf8=WideToMultiByte(text,CP_UTF8);
-    apiServer_.Publish("session-"+std::to_string(sessionId),Bytes(utf8.begin(),utf8.end()),"connection",isError?"error":"status");
+    apiServer_.EnqueuePublish("session-"+std::to_string(sessionId),Bytes(utf8.begin(),utf8.end()),"connection",isError?"error":"status");
     auto* status = new StatusMessage{sessionId, text, isError};
     if (!PostMessageW(window_, MessageStatus, 0, reinterpret_cast<LPARAM>(status))) delete status;
 }
@@ -5115,25 +4666,8 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
     const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
     const bool wasAlternateScreen = session->terminal.AlternateScreen();
     const TerminalFeedResult result = session->terminal.Feed(decoded, timestamp);
-    if (*ai::TerminalKind(session->mode) && !decoded.empty()) {
-        session->aiLastReceivedAt = GetTickCount64();
-        // Bound the additional AI copy before conversion even if the terminal
-        // received a large coalesced batch. Serial receive never waits on AI.
-        size_t first = decoded.size() > 32768 ? decoded.size() - 32768 : 0;
-        if (first && decoded[first] >= 0xdc00 && decoded[first] <= 0xdfff) ++first;
-        if (first) session->aiTruncated = true;
-        auto output = WideToMultiByte(decoded.substr(first), CP_UTF8);
-        if (output.size() > 65536) {
-            size_t start = output.size() - 65536;
-            while (start < output.size() && (static_cast<unsigned char>(output[start]) & 0xc0) == 0x80) ++start;
-            output.erase(0, start); session->aiTruncated = true;
-        }
-        session->aiBytes += output.size();
-        session->aiOutput.push_back({++session->aiCursor, CurrentTerminalTimestamp(), std::move(output)});
-        while (session->aiBytes > 65536 || session->aiOutput.size() > 256) {
-            session->aiBytes -= session->aiOutput.front().text.size(); session->aiOutput.pop_front(); session->aiTruncated = true;
-        }
-    }
+    if (*ai::TerminalKind(session->mode))
+        AiDeviceBridge::Observe(*session, decoded, CurrentTerminalTimestamp(), GetTickCount64());
     if (session->logger && !result.logText.empty()) session->logger->WriteText(result.logText);
     if (!result.response.empty() && session->connection && session->connection->IsConnected()) {
         if (session->mode == 4) {
@@ -5171,7 +4705,7 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
             session->terminalHasNewOutput = true;
         }
         const int maximumOffset = std::max(0,
-            static_cast<int>(session->terminal.DisplayLineCount()) - terminalVisibleRows_);
+            static_cast<int>(session->terminal.DisplayLineCount()) - terminalViewport_.Metrics().rows);
         session->terminalScrollOffset = std::min(session->terminalScrollOffset, maximumOffset);
         InvalidateRect(terminal_, nullptr, FALSE);
     }
@@ -5186,7 +4720,7 @@ void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
     if (!session.terminalDirectory.empty()) {
         if (session.terminalDirectory != session.sftpDirectory && session.terminalDirectory != session.pendingSftpDirectory) {
             session.pendingSftpDirectory = session.terminalDirectory;
-            if (&session == activeSession_ && !sftpBusy_) RefreshSftp(session.terminalDirectory);
+            if (&session == activeSession_ && !sftp_.Busy()) RefreshSftp(session.terminalDirectory);
         }
         if (session.terminalDirectoryFromOsc) return;
     }
@@ -5220,7 +4754,7 @@ void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
 
     session.pendingSftpDirectory = directory;
     session.terminalDirectory = directory;
-    if (&session == activeSession_ && !sftpBusy_) RefreshSftp(directory);
+    if (&session == activeSession_ && !sftp_.Busy()) RefreshSftp(directory);
 }
 
 void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
@@ -5255,7 +4789,7 @@ void MainWindow::StartLogExport(const std::wstring &source, const std::wstring &
                                 std::uint64_t total, LogExportTask task) {
     PollLogExport();
     if (logExportJob_) {
-        if (!statusIsError_ && runningCommandIndex_ < 0)
+        if (!statusIsError_ && macro_.RunningIndex() < 0)
             AppendStatus(L"已有日志正在导出，可在设置中取消", false);
         return;
     }
@@ -5271,7 +4805,7 @@ void MainWindow::StartLogExport(const std::wstring &source, const std::wstring &
     logExportNotice_ = L"正在准备日志快照 · " + source;
     powerPane_.SetLogExportBusy(true);
     logExportMainStatus_.clear();
-    if (!statusIsError_ && runningCommandIndex_ < 0) {
+    if (!statusIsError_ && macro_.RunningIndex() < 0) {
         AppendStatus(logExportNotice_, false);
         logExportMainStatus_ = logExportNotice_;
     }
@@ -5298,7 +4832,7 @@ void MainWindow::StartLogExport(const std::wstring &source, const std::wstring &
         if (measurePaint_) RemovePropW(window_, L"SerialCtl.LogExportBusy");
         powerPane_.SetLogExportBusy(false);
         logExportNotice_ = L"无法启动后台日志导出，原目标文件未替换";
-        if (!statusIsError_ && runningCommandIndex_ < 0) AppendStatus(logExportNotice_, true);
+        if (!statusIsError_ && macro_.RunningIndex() < 0) AppendStatus(logExportNotice_, true);
     }
 }
 
@@ -5333,7 +4867,7 @@ void MainWindow::PollLogExport() {
         logExportNotice_ = std::move(notice);
         // Export feedback must not hide a device fault or an unknown macro
         // outcome. The instance note in Settings always retains this feedback.
-        if (!statusIsError_ && runningCommandIndex_ < 0 &&
+        if (!statusIsError_ && macro_.RunningIndex() < 0 &&
             (statusText_.empty() || statusText_ == logExportMainStatus_)) {
             AppendStatus(logExportNotice_, failed);
             logExportMainStatus_ = logExportNotice_;
@@ -5348,14 +4882,17 @@ void MainWindow::CancelLogExport() {
     PollLogExport();
 }
 
-void MainWindow::StopLogExport() {
-    if (logExportJob_) logExportJob_->cancel.store(true);
+void MainWindow::JoinLogExport() {
     if (logExportThread_.joinable()) {
         const HANDLE thread = reinterpret_cast<HANDLE>(logExportThread_.native_handle());
         while (WaitForSingleObject(thread, 50) == WAIT_TIMEOUT)
             CancelSynchronousIo(thread);
         logExportThread_.join();
     }
+}
+void MainWindow::StopLogExport() {
+    if (logExportJob_) logExportJob_->cancel.store(true);
+    JoinLogExport();
     if (window_) KillTimer(window_, LogExportTimerId);
     logExportJob_.reset();
 }
@@ -5479,7 +5016,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         enable(IdMenuSelectAll, hasSession && self->activeSession_->terminal.DisplayLineCount() > 0);
         enable(IdMenuCopy, hasSession && self->HasTerminalSelection());
         enable(IdSendSelectionToAi, hasSession && self->HasTerminalSelection());
-        enable(IdMenuPaste, connected && self->runningCommandIndex_ < 0 &&
+        enable(IdMenuPaste, connected && self->macro_.RunningIndex() < 0 &&
             IsClipboardFormatAvailable(CF_UNICODETEXT));
     };
     if (message == WM_INITDIALOG) {
@@ -5733,11 +5270,11 @@ void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
         break;
     case IdMenuSelectAll:
         if (activeSession_ && activeSession_->terminal.DisplayLineCount() > 0) {
-            terminalSelectionAnchorLine_ = 0;
-            terminalSelectionAnchorColumn_ = 0;
-            terminalSelectionFocusLine_ = activeSession_->terminal.DisplayLineCount() - 1;
-            terminalSelectionFocusColumn_ = activeSession_->terminal.Columns();
-            terminalSelectionActive_ = true;
+            terminalViewport_.Input().anchorLine = 0;
+            terminalViewport_.Input().anchorColumn = 0;
+            terminalViewport_.Input().focusLine = activeSession_->terminal.DisplayLineCount() - 1;
+            terminalViewport_.Input().focusColumn = activeSession_->terminal.Columns();
+            terminalViewport_.Input().selectionActive = true;
             InvalidateRect(terminal_, nullptr, FALSE);
         }
         break;
@@ -5747,7 +5284,7 @@ void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
 }
 
 void MainWindow::PasteToTerminal() {
-    if (runningCommandIndex_ >= 0 || !activeSession_ || !connection_ || !connection_->IsConnected()) return;
+    if (macro_.RunningIndex() >= 0 || !activeSession_ || !connection_ || !connection_->IsConnected()) return;
     if (!OpenClipboard(terminal_)) {
         AppendStatus(L"剪贴板正被其他程序使用，请重试粘贴", true);
         return;
@@ -5829,290 +5366,45 @@ void MainWindow::PasteToTerminal() {
 }
 
 void MainWindow::UpdateTerminalDimensions() {
-    if (!terminal_ || !terminalFont_ || rightPanelAnimating_ || rightPanelDragging_ || windowResizing_)
-        return;
-    RECT client{};
-    GetClientRect(terminal_, &client);
-    HDC dc = GetDC(terminal_);
-    HFONT previous = reinterpret_cast<HFONT>(SelectObject(dc, terminalFont_));
-    TEXTMETRICW metrics{};
-    GetTextMetricsW(dc, &metrics);
-    SIZE characterSize{};
-    GetTextExtentPoint32W(dc, L"M", 1, &characterSize);
-    SelectObject(dc, previous);
-    ReleaseDC(terminal_, dc);
-    terminalCellWidth_ = std::max(Ui::Scale(7), static_cast<int>(characterSize.cx));
-    terminalLineHeight_ = std::max(Ui::Scale(15), static_cast<int>(metrics.tmHeight) + Ui::Scale(2));
-    const bool showTimestamps =
-        timestampEnabled_ && !LiveMonitorPage() && activeSession_ && !activeSession_->terminal.AlternateScreen();
-    const int timestampWidth = showTimestamps ? Ui::TerminalTimestampWidth : 0;
-    const int contentWidth = std::max(1,
-        static_cast<int>(client.right) - Ui::TerminalPadding * 2 - timestampWidth - Ui::OverlayScrollLaneWidth);
-    const int contentHeight = std::max(1, static_cast<int>(client.bottom) - Ui::TerminalPadding * 2);
-    const int oldColumns = terminalVisibleColumns_, oldRows = terminalVisibleRows_;
-    terminalVisibleColumns_ = std::max(20, contentWidth / terminalCellWidth_);
-    terminalVisibleRows_ = std::max(2, contentHeight / terminalLineHeight_);
-
+    // Defer terminal reflow while native resize, sidebar dragging or animation
+    // is in progress; the corresponding completion handlers update it once.
+    if (!terminal_ || !terminalFont_ || rightPanelAnimating_ || rightPanelDragging_ || windowResizing_) return;
+    const int oldColumns = terminalViewport_.Metrics().columns, oldRows = terminalViewport_.Metrics().rows;
+    const bool timestamps = timestampEnabled_ && !LiveMonitorPage() && activeSession_ && !activeSession_->terminal.AlternateScreen();
+    terminalViewport_.Measure(terminal_, terminalFont_, timestamps);
     for (const auto& session : sessions_) {
-        auto &model = session->terminal;
-        const size_t oldTop =
-            model.DisplayLineCount() > static_cast<size_t>(oldRows + session->terminalScrollOffset)
-                ? model.DisplayLineCount() - static_cast<size_t>(oldRows + session->terminalScrollOffset)
-                : 0;
-        auto readAnchor = model.CaptureAnchor(oldTop);
-        auto selectionAnchor = model.CaptureAnchor(terminalSelectionAnchorLine_, terminalSelectionAnchorColumn_);
-        auto selectionFocus = model.CaptureAnchor(terminalSelectionFocusLine_, terminalSelectionFocusColumn_);
-        model.SetLineWrapView(!LiveMonitorPage() || (powerVisible_ ? powerMonitorWrap_ : aiMonitorWrap_));
-        session->terminal.Resize(terminalVisibleColumns_, terminalVisibleRows_);
-        if (session->terminalScrollOffset > 0) {
-            auto line = model.LocateAnchor(readAnchor).first;
-            session->terminalScrollOffset =
-                std::max(0, static_cast<int>(model.DisplayLineCount() - std::min(line, model.DisplayLineCount())) -
-                                terminalVisibleRows_);
-        }
-        if (session.get() == activeSession_ && terminalSelectionActive_) {
-            auto a = model.LocateAnchor(selectionAnchor), b = model.LocateAnchor(selectionFocus);
-            terminalSelectionAnchorLine_ = a.first;
-            terminalSelectionAnchorColumn_ = a.second;
-            terminalSelectionFocusLine_ = b.first;
-            terminalSelectionFocusColumn_ = b.second;
-        }
-        if (session->connection && (oldColumns != terminalVisibleColumns_ || oldRows != terminalVisibleRows_))
-            session->connection->ResizeTerminal(terminalVisibleColumns_, terminalVisibleRows_);
-        const int maximum = std::max(0,
-            static_cast<int>(session->terminal.DisplayLineCount()) - terminalVisibleRows_);
-        session->terminalScrollOffset = std::min(session->terminalScrollOffset, maximum);
-        const int maximumHorizontal = std::max(0,
-            static_cast<int>(session->terminal.MaximumDisplayColumns()) - terminalVisibleColumns_);
-        session->terminalHorizontalOffset = std::max(0,
-            std::min(session->terminalHorizontalOffset, maximumHorizontal));
+        terminalViewport_.Resize(*session, !LiveMonitorPage() || (powerVisible_ ? powerMonitorWrap_ : aiMonitorWrap_),
+                                 session.get() == activeSession_, oldRows);
+        if (session->connection && (oldColumns != terminalViewport_.Metrics().columns || oldRows != terminalViewport_.Metrics().rows))
+            session->connection->ResizeTerminal(terminalViewport_.Metrics().columns, terminalViewport_.Metrics().rows);
     }
     InvalidateRect(terminal_, nullptr, TRUE);
 }
 
+TerminalViewport::Options MainWindow::TerminalViewportOptions() const {
+    return {darkMode_, timestampEnabled_, LiveMonitorPage(), measurePaint_,
+            activeSession_ ? activeSession_->mode : -1, terminalFont_, smallFont_};
+}
+
 void MainWindow::PaintTerminal(HDC dc) {
-    RECT client{};
-    GetClientRect(terminal_, &client);
-    if (client.right <= 0 || client.bottom <= 0) return;
-    const Palette colors = Colors(darkMode_);
-    HDC buffer = CreateCompatibleDC(dc);
-    HBITMAP bitmap = CreateCompatibleBitmap(dc, client.right, client.bottom);
-    HBITMAP oldBitmap = reinterpret_cast<HBITMAP>(SelectObject(buffer, bitmap));
-    HBRUSH background = CreateSolidBrush(colors.terminal);
-    FillRect(buffer, &client, background);
-    DeleteObject(background);
-
-    if (activeSession_) {
-        const TerminalModel& model = activeSession_->terminal;
-        std::unique_ptr<TerminalModel> preview;
-        if (activeSession_->mode == 4 && !activeSession_->cmdEditor.Text().empty() &&
-            activeSession_->terminalScrollOffset == 0)
-            preview = std::make_unique<TerminalModel>(
-                model.PreviewInput(activeSession_->cmdEditor.Text(), activeSession_->cmdEditor.Cursor()));
-        auto displayLine = [&](size_t i) -> const TerminalLine & {
-            return preview && !model.LineWrapView()      ? preview->DisplayLine(i)
-                   : preview && i >= model.HistorySize() ? preview->DisplayLine(i - model.HistorySize())
-                                                         : model.DisplayLine(i);
-        };
-        const bool showTimestamps = timestampEnabled_ && !LiveMonitorPage() && !model.AlternateScreen();
-        const int padding = Ui::TerminalPadding;
-        const int timestampWidth = showTimestamps ? Ui::TerminalTimestampWidth : 0;
-        const int textLeft = padding + timestampWidth;
-        const size_t totalLines =
-            (preview ? (model.LineWrapView() ? model.HistorySize() : 0) + preview->DisplayLineCount()
-                     : model.DisplayLineCount());
-        const size_t totalColumns = preview ? preview->MaximumDisplayColumns() : model.MaximumDisplayColumns();
-        const int maximumHorizontalOffset = std::max(0,
-            static_cast<int>(totalColumns) - terminalVisibleColumns_);
-        activeSession_->terminalHorizontalOffset = std::max(0,
-            std::min(activeSession_->terminalHorizontalOffset, maximumHorizontalOffset));
-        const int horizontalOffset = activeSession_->terminalHorizontalOffset;
-        const int maximumOffset = std::max(0,
-            static_cast<int>(totalLines) - terminalVisibleRows_);
-        activeSession_->terminalScrollOffset = std::max(0,
-            std::min(activeSession_->terminalScrollOffset, maximumOffset));
-        const size_t topLine = totalLines > static_cast<size_t>(terminalVisibleRows_ +
-            activeSession_->terminalScrollOffset)
-            ? totalLines - static_cast<size_t>(terminalVisibleRows_ +
-                activeSession_->terminalScrollOffset)
-            : 0;
-        if (measurePaint_) {
-            SetPropW(terminal_, L"SerialCtl.CellWidth", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalCellWidth_)));
-            SetPropW(terminal_, L"SerialCtl.LineHeight", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalLineHeight_)));
-            SetPropW(terminal_, L"SerialCtl.TextLeft", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(textLeft)));
-            SetPropW(terminal_, L"SerialCtl.TextTop", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(padding)));
-            SetPropW(terminal_, L"SerialCtl.VisibleColumns", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalVisibleColumns_)));
-            SetPropW(terminal_, L"SerialCtl.VisibleRows", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(terminalVisibleRows_)));
-            SetPropW(terminal_, L"SerialCtl.CmdDraftLength", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->cmdEditor.Text().size()) + 1));
-            const auto anchor = model.CaptureAnchor(topLine);
-            SetPropW(terminal_, L"SerialCtl.ScrollOffset",
-                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->terminalScrollOffset) + 1));
-            SetPropW(terminal_, L"SerialCtl.ReadAnchor", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(anchor.id)));
-            SetPropW(terminal_, L"SerialCtl.ReadOffset",
-                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(anchor.offset) + 1));
-            SetPropW(terminal_, L"SerialCtl.NewOutput",
-                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->terminalHasNewOutput) + 1));
-            SetPropW(terminal_, L"SerialCtl.CmdInteractionBlocked",
-                     reinterpret_cast<HANDLE>(static_cast<INT_PTR>(activeSession_->cmdInteractionWarning) + 1));
-        }
-
-        size_t selectionStartLine = terminalSelectionAnchorLine_;
-        size_t selectionEndLine = terminalSelectionFocusLine_;
-        int selectionStartColumn = terminalSelectionAnchorColumn_;
-        int selectionEndColumn = terminalSelectionFocusColumn_;
-        if (selectionStartLine > selectionEndLine ||
-            (selectionStartLine == selectionEndLine && selectionStartColumn > selectionEndColumn)) {
-            std::swap(selectionStartLine, selectionEndLine);
-            std::swap(selectionStartColumn, selectionEndColumn);
-        }
-
-        HFONT previousFont = reinterpret_cast<HFONT>(SelectObject(buffer, terminalFont_));
-        SetBkMode(buffer, TRANSPARENT);
-        for (int viewRow = 0; viewRow < terminalVisibleRows_; ++viewRow) {
-            const size_t lineIndex = topLine + static_cast<size_t>(viewRow);
-            if (lineIndex >= totalLines) break;
-            const TerminalLine &line = displayLine(lineIndex);
-            const int y = padding + viewRow * terminalLineHeight_;
-            if (showTimestamps && !line.timestamp.empty()) {
-                RECT timestampRect{padding, y, textLeft - Ui::Gap, y + terminalLineHeight_};
-                DrawTextSimple(buffer, line.timestamp, timestampRect, colors.muted,
-                    smallFont_, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
-            }
-
-            const int availableColumns = std::max(0,
-                (static_cast<int>(client.right) - textLeft - Ui::OverlayScrollLaneWidth) /
-                    terminalCellWidth_);
-            for (int viewColumn = 0; viewColumn < availableColumns; ++viewColumn) {
-                const int column = viewColumn + horizontalOffset;
-                if (column < 0 || static_cast<size_t>(column) >= line.cells.size()) break;
-                const TerminalCell& cell = line.cells[static_cast<size_t>(column)];
-                if (cell.continuation) continue;
-                const int width = static_cast<size_t>(column + 1) < line.cells.size() &&
-                    line.cells[static_cast<size_t>(column + 1)].continuation ? 2 : 1;
-                RECT cellRect{textLeft + viewColumn * terminalCellWidth_, y,
-                    textLeft + (viewColumn + width) * terminalCellWidth_, y + terminalLineHeight_};
-                const bool selected = terminalSelectionActive_ &&
-                    (lineIndex > selectionStartLine ||
-                        (lineIndex == selectionStartLine && column >= selectionStartColumn)) &&
-                    (lineIndex < selectionEndLine ||
-                        (lineIndex == selectionEndLine && column <= selectionEndColumn));
-                COLORREF foreground = ResolveTerminalColor(cell.attributes.foreground,
-                    colors.text, darkMode_, cell.attributes.bold);
-                COLORREF cellBackground = ResolveTerminalColor(cell.attributes.background,
-                    colors.terminal, darkMode_, false);
-                if (cell.attributes.inverse) std::swap(foreground, cellBackground);
-                if (selected) {
-                    cellBackground = colors.accentSoft;
-                    foreground = colors.text;
-                }
-                if (cellBackground != colors.terminal) {
-                    HBRUSH cellBrush = CreateSolidBrush(cellBackground);
-                    FillRect(buffer, &cellRect, cellBrush);
-                    DeleteObject(cellBrush);
-                }
-                if (cell.character != L' ') {
-                    SetTextColor(buffer, foreground);
-                    TextOutW(buffer, cellRect.left, cellRect.top,
-                        &cell.character, 1);
-                    if (cell.attributes.bold)
-                        TextOutW(buffer, cellRect.left + 1, cellRect.top,
-                            &cell.character, 1);
-                }
-                if (cell.attributes.underline) {
-                    HPEN underline = CreatePen(PS_SOLID, 1, foreground);
-                    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, underline));
-                    MoveToEx(buffer, cellRect.left, cellRect.bottom - 2, nullptr);
-                    LineTo(buffer, cellRect.right, cellRect.bottom - 2);
-                    SelectObject(buffer, oldPen);
-                    DeleteObject(underline);
-                }
-            }
-        }
-
-        if (GetFocus() == terminal_ && model.CursorVisible() &&
-            activeSession_->terminalScrollOffset == 0) {
-            const size_t cursorLine =
-                preview ? (model.LineWrapView() ? model.HistorySize() : 0) + preview->CursorDisplayLine()
-                        : model.CursorDisplayLine();
-            const int cursorColumn = (preview ? preview->CursorColumn() : model.CursorColumn()) - horizontalOffset;
-            if (cursorLine >= topLine &&
-                cursorLine < topLine + static_cast<size_t>(terminalVisibleRows_) &&
-                cursorColumn >= 0 && cursorColumn < terminalVisibleColumns_) {
-                const int viewRow = static_cast<int>(cursorLine - topLine);
-                RECT cursor{textLeft + cursorColumn * terminalCellWidth_,
-                    padding + viewRow * terminalLineHeight_,
-                    textLeft + (cursorColumn + 1) * terminalCellWidth_,
-                    padding + (viewRow + 1) * terminalLineHeight_};
-                HPEN cursorPen = CreatePen(PS_SOLID, 2, colors.accent);
-                HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, cursorPen));
-                MoveToEx(buffer, cursor.left, cursor.bottom - 1, nullptr);
-                LineTo(buffer, cursor.right, cursor.bottom - 1);
-                SelectObject(buffer, oldPen);
-                DeleteObject(cursorPen);
-            }
-        }
-        SelectObject(buffer, previousFont);
-
-        const TerminalScrollMetrics scroll = GetTerminalScrollMetrics(terminal_,
-            totalLines, terminalVisibleRows_, activeSession_->terminalScrollOffset);
-        if (scroll.visible)
-            DrawRoundedBox(buffer, scroll.thumb, Ui::Scale(3), colors.border, colors.border);
-        const TerminalHorizontalScrollMetrics horizontalScroll =
-            GetTerminalHorizontalScrollMetrics(terminal_, textLeft, totalColumns,
-                terminalVisibleColumns_, activeSession_->terminalHorizontalOffset);
-        if (horizontalScroll.visible)
-            DrawRoundedBox(buffer, horizontalScroll.thumb, Ui::Scale(3), colors.border, colors.border);
-
-        if (activeSession_->terminalHasNewOutput && activeSession_->terminalScrollOffset > 0) {
-            const RECT notification = TerminalNewOutputRect(client, horizontalScroll.visible);
-            DrawRoundedBox(buffer, notification, Ui::Radius, colors.accentSoft, colors.accent);
-            DrawTextSimple(buffer, L"↓  新输出", notification, UiAccentInk(darkMode_),
-                smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        }
-    }
-
-    BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
-    if (measurePaint_ && activeSession_ && activeSession_->pendingProbeArrival) {
-        LARGE_INTEGER now{}, frequency{};
-        QueryPerformanceCounter(&now);
-        QueryPerformanceFrequency(&frequency);
-        auto microseconds =
-            static_cast<INT_PTR>((now.QuadPart - activeSession_->pendingProbeArrival) * 1000000 / frequency.QuadPart);
-        SetPropW(terminal_, L"SerialCtl.PaintUsec", reinterpret_cast<HANDLE>(std::max<INT_PTR>(1, microseconds)));
-        SetPropW(terminal_, L"SerialCtl.PaintSample", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(++paintSample_)));
-        SetPropW(terminal_, L"SerialCtl.PaintProbe", reinterpret_cast<HANDLE>(activeSession_->paintProbe));
-        activeSession_->pendingProbeArrival = 0;
-    }
-    SelectObject(buffer, oldBitmap);
-    DeleteObject(bitmap);
-    DeleteDC(buffer);
+    terminalViewport_.Paint(dc, terminal_, activeSession_, TerminalViewportOptions());
 }
 
 void MainWindow::ScrollTerminal(int lines) {
     if (!activeSession_) return;
-    const int maximum = std::max(0,
-        static_cast<int>(activeSession_->terminal.DisplayLineCount()) - terminalVisibleRows_);
-    activeSession_->terminalScrollOffset = std::max(0,
-        std::min(maximum, activeSession_->terminalScrollOffset + lines));
-    if (activeSession_->terminalScrollOffset == 0)
-        activeSession_->terminalHasNewOutput = false;
+    terminalViewport_.Scroll(*activeSession_, lines);
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 void MainWindow::ScrollTerminalHorizontal(int columns) {
     if (!activeSession_) return;
-    const int maximum = std::max(0,
-        static_cast<int>(activeSession_->terminal.MaximumDisplayColumns()) -
-            terminalVisibleColumns_);
-    activeSession_->terminalHorizontalOffset = std::max(0,
-        std::min(maximum, activeSession_->terminalHorizontalOffset + columns));
+    terminalViewport_.ScrollHorizontal(*activeSession_, columns);
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 void MainWindow::ScrollTerminalToBottom() {
     if (!activeSession_) return;
-    activeSession_->terminalScrollOffset = 0;
-    activeSession_->terminalHasNewOutput = false;
+    terminalViewport_.ToBottom(*activeSession_);
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
@@ -6135,68 +5427,25 @@ void MainWindow::ZoomTerminalFont(int steps) {
 }
 
 bool MainWindow::TerminalPointToCell(POINT point, size_t& line, int& column) const {
-    if (!activeSession_) return false;
-    RECT client{};
-    GetClientRect(terminal_, &client);
-    const TerminalModel& model = activeSession_->terminal;
-    const int timestampWidth =
-        timestampEnabled_ && !LiveMonitorPage() && !model.AlternateScreen() ? Ui::TerminalTimestampWidth : 0;
-    const int textLeft = Ui::TerminalPadding + timestampWidth;
-    const size_t totalLines = model.DisplayLineCount();
-    const size_t topLine = totalLines > static_cast<size_t>(terminalVisibleRows_ +
-        activeSession_->terminalScrollOffset)
-        ? totalLines - static_cast<size_t>(terminalVisibleRows_ +
-            activeSession_->terminalScrollOffset)
-        : 0;
-    const int row = std::max(0, std::min(terminalVisibleRows_ - 1,
-        (static_cast<int>(point.y) - Ui::TerminalPadding) / std::max(1, terminalLineHeight_)));
-    if (totalLines == 0 || point.x < textLeft ||
-        point.x >= client.right - Ui::OverlayScrollLaneWidth) return false;
-    line = std::min(totalLines - 1, topLine + static_cast<size_t>(row));
-    const TerminalLine& terminalLine = model.DisplayLine(line);
-    if (terminalLine.cells.empty()) return false;
-    const int viewColumn = (static_cast<int>(point.x) - textLeft) /
-        std::max(1, terminalCellWidth_);
-    column = std::max(0, std::min(static_cast<int>(terminalLine.cells.size()) - 1,
-        viewColumn + activeSession_->terminalHorizontalOffset));
-    if (column > 0 && terminalLine.cells[static_cast<size_t>(column)].continuation) --column;
-    return true;
+    return activeSession_ && terminalViewport_.PointToCell(terminal_, *activeSession_, point, TerminalViewportOptions(), line, column);
 }
 
 void MainWindow::UpdateTerminalSelection(size_t line, int column, bool extend) {
-    if (!extend) {
-        terminalSelectionAnchorLine_ = line;
-        terminalSelectionAnchorColumn_ = column;
-        terminalSelectionFocusLine_ = line;
-        terminalSelectionFocusColumn_ = column;
-        terminalSelectionActive_ = false;
-    } else {
-        terminalSelectionFocusLine_ = line;
-        terminalSelectionFocusColumn_ = column;
-        terminalSelectionActive_ = terminalSelectionAnchorLine_ != terminalSelectionFocusLine_ ||
-            terminalSelectionAnchorColumn_ != terminalSelectionFocusColumn_;
-    }
+    terminalViewport_.Select(line, column, extend);
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 void MainWindow::ClearTerminalSelection() {
-    terminalSelecting_ = false;
-    terminalSelectionActive_ = false;
+    terminalViewport_.ClearSelection();
     InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 bool MainWindow::HasTerminalSelection() const {
-    return activeSession_ && terminalSelectionActive_;
+    return activeSession_ && terminalViewport_.Input().selectionActive;
 }
 
 std::wstring MainWindow::TerminalSelectionText(bool selectAll) const {
-    if (!activeSession_) return {};
-    const TerminalModel& model = activeSession_->terminal;
-    if (selectAll) return model.PlainText(false);
-    if (!terminalSelectionActive_) return {};
-
-    return model.SelectedText(terminalSelectionAnchorLine_, terminalSelectionAnchorColumn_,
-        terminalSelectionFocusLine_, terminalSelectionFocusColumn_);
+    return activeSession_ ? terminalViewport_.SelectionText(*activeSession_, selectAll) : L"";
 }
 
 void MainWindow::CopyTerminalSelection(bool selectAll) {
@@ -6266,7 +5515,7 @@ void MainWindow::SetConnectedUi(bool connected) {
     EnableWindow(sftpTabButton_, connected && selectedMode_ == 0 && SftpClient::IsAvailable());
 
 
-    SetSftpBusy(sftpBusy_);
+    SetSftpBusy(sftp_.Busy());
     UpdateCommandActions();
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
 
@@ -6276,7 +5525,6 @@ void MainWindow::SetConnectedUi(bool connected) {
 }
 
 void MainWindow::RefreshConnectionList() {
-    apiServer_.SetSessions(sessionService_.Ids());
     size_t selectedIndex = 0;
     if (activeSession_) {
         const auto selected = std::find_if(sessions_.begin(), sessions_.end(),
@@ -6407,7 +5655,8 @@ void MainWindow::LoadUiState() {
         GetModuleFileNameW(nullptr, modulePath, static_cast<DWORD>(std::size(modulePath)));
         directory = DirectoryOf(modulePath);
     }
-    const std::wstring path = JoinLocalPath(directory, L"settings.ini");
+    uiSettingsPath_ = JoinLocalPath(directory, L"settings.ini");
+    const std::wstring &path = uiSettingsPath_;
     petSettings_.enabled = GetPrivateProfileIntW(L"Pet", L"Enabled", 1, path.c_str()) != 0;
     petSettings_.follow = GetPrivateProfileIntW(L"Pet", L"Follow", 1, path.c_str()) != 0;
     petSettings_.opening = GetPrivateProfileIntW(L"Pet", L"Opening", 1, path.c_str()) != 0;
@@ -6444,42 +5693,40 @@ void MainWindow::LoadUiState() {
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
 }
 
-void MainWindow::SaveUiState() const {
-    std::wstring directory = DirectoryOf(DefaultCommandsPath());
-    if (directory.empty()) {
-        wchar_t modulePath[MAX_PATH]{};
-        GetModuleFileNameW(nullptr, modulePath, static_cast<DWORD>(std::size(modulePath)));
-        directory = DirectoryOf(modulePath);
+void MainWindow::SaveUiState() {
+    // LoadUiState normally resolves this once at startup. The fallback supports
+    // native fixtures that construct controls without sending WM_CREATE.
+    if (uiSettingsPath_.empty()) {
+        std::wstring directory = DirectoryOf(DefaultCommandsPath());
+        if (directory.empty()) {
+            wchar_t modulePath[MAX_PATH]{};
+            GetModuleFileNameW(nullptr, modulePath, static_cast<DWORD>(std::size(modulePath)));
+            directory = DirectoryOf(modulePath);
+        }
+        uiSettingsPath_ = JoinLocalPath(directory, L"settings.ini");
     }
-    const std::wstring path = JoinLocalPath(directory, L"settings.ini");
-    auto petValue = [&](const wchar_t *key, int value) {
-        WritePrivateProfileStringW(L"Pet", key, std::to_wstring(value).c_str(), path.c_str());
+    UiSettingsWriter::Snapshot snapshot;
+    snapshot.path = uiSettingsPath_;
+    auto add = [&](const wchar_t *section, const wchar_t *key, int value) {
+        snapshot.entries.push_back({section, key, std::to_wstring(value)});
     };
-    petValue(L"Enabled", petSettings_.enabled); petValue(L"Follow", petSettings_.follow);
-    petValue(L"Opening", petSettings_.opening); petValue(L"Size", petSettings_.size);
-    petValue(L"Desktop", petSettings_.desktop); petValue(L"Topmost", petSettings_.topmost);
-    petValue(L"DesktopX", petSettings_.desktopX); petValue(L"DesktopY", petSettings_.desktopY);
-    petValue(L"X", petSettings_.x); petValue(L"Y", petSettings_.y);
-    auto logicalWidth = [&](const wchar_t *key, int pixels) {
-        WritePrivateProfileStringW(L"Layout", key, std::to_wstring(MulDiv(pixels, 96, Ui::Dpi)).c_str(), path.c_str());
-    };
-    logicalWidth(L"RightPanelWidth96", rightPanelWidth_);
-    logicalWidth(L"SftpNameWidth96", sftpNameWidth_);
-    logicalWidth(L"AiMonitorWidth96", aiMonitorWidth_);
-    WritePrivateProfileStringW(L"Layout", L"SavedDpi", std::to_wstring(Ui::Dpi).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"LayoutVersion", L"2", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"AiMonitorRatio", std::to_wstring(aiMonitorRatio_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"AiMonitorWrap", aiMonitorWrap_ ? L"1" : L"0", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"PowerMonitorRatio", std::to_wstring(powerMonitorRatio_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"PowerMonitorCollapsed", powerMonitorCollapsed_ ? L"1" : L"0", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"PowerMonitorWrap", powerMonitorWrap_ ? L"1" : L"0", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"AiMonitorWidth", std::to_wstring(aiMonitorWidth_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"AiMonitorCollapsed", aiMonitorCollapsed_ ? L"1" : L"0", path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"SftpNameWidth", std::to_wstring(sftpNameWidth_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"RightPanelWidth",
-        std::to_wstring(rightPanelWidth_).c_str(), path.c_str());
-    WritePrivateProfileStringW(L"Layout", L"RightPanelCollapsed",
-        rightPanelCollapsed_ ? L"1" : L"0", path.c_str());
+    add(L"Pet", L"Enabled", petSettings_.enabled); add(L"Pet", L"Follow", petSettings_.follow);
+    add(L"Pet", L"Opening", petSettings_.opening); add(L"Pet", L"Size", petSettings_.size);
+    add(L"Pet", L"Desktop", petSettings_.desktop); add(L"Pet", L"Topmost", petSettings_.topmost);
+    add(L"Pet", L"DesktopX", petSettings_.desktopX); add(L"Pet", L"DesktopY", petSettings_.desktopY);
+    add(L"Pet", L"X", petSettings_.x); add(L"Pet", L"Y", petSettings_.y);
+    add(L"Layout", L"RightPanelWidth96", MulDiv(rightPanelWidth_, 96, Ui::Dpi));
+    add(L"Layout", L"SftpNameWidth96", MulDiv(sftpNameWidth_, 96, Ui::Dpi));
+    add(L"Layout", L"AiMonitorWidth96", MulDiv(aiMonitorWidth_, 96, Ui::Dpi));
+    add(L"Layout", L"SavedDpi", Ui::Dpi); add(L"Layout", L"LayoutVersion", 2);
+    add(L"Layout", L"AiMonitorRatio", aiMonitorRatio_); add(L"Layout", L"AiMonitorWrap", aiMonitorWrap_);
+    add(L"Layout", L"PowerMonitorRatio", powerMonitorRatio_);
+    add(L"Layout", L"PowerMonitorCollapsed", powerMonitorCollapsed_);
+    add(L"Layout", L"PowerMonitorWrap", powerMonitorWrap_);
+    add(L"Layout", L"AiMonitorWidth", aiMonitorWidth_); add(L"Layout", L"AiMonitorCollapsed", aiMonitorCollapsed_);
+    add(L"Layout", L"SftpNameWidth", sftpNameWidth_); add(L"Layout", L"RightPanelWidth", rightPanelWidth_);
+    add(L"Layout", L"RightPanelCollapsed", rightPanelCollapsed_);
+    uiSettingsWriter_.Submit(std::move(snapshot));
 }
 
 void MainWindow::SetRightPanelCollapsed(bool collapsed) {
@@ -6548,21 +5795,20 @@ std::vector<size_t> MainWindow::SelectedSftpIndices() const {
     if (copied <= 0) return result;
     for (int index = 0; index < copied; ++index) {
         if (selected[static_cast<size_t>(index)] >= 0 &&
-            static_cast<size_t>(selected[static_cast<size_t>(index)]) < sftpEntries_.size())
+            static_cast<size_t>(selected[static_cast<size_t>(index)]) < sftp_.Entries().size())
             result.push_back(static_cast<size_t>(selected[static_cast<size_t>(index)]));
     }
     return result;
 }
 
 void MainWindow::SetSftpBusy(bool busy) {
-    sftpBusy_ = busy;
     const bool available = connection_ && selectedMode_ == 0 && !busy;
     const std::vector<size_t> selected = SelectedSftpIndices();
     const bool fileSelected = std::any_of(selected.begin(), selected.end(), [this](size_t index) {
-        return index < sftpEntries_.size() && !sftpEntries_[index].directory &&
-            sftpEntries_[index].pathSafe;
+        return index < sftp_.Entries().size() && !sftp_.Entries()[index].directory &&
+            sftp_.Entries()[index].pathSafe;
     });
-    EnableWindow(sftpUpButton_, available && sftpDirectory_ != L"/" && sftpDirectory_ != L".");
+    EnableWindow(sftpUpButton_, available && sftp_.Directory() != L"/" && sftp_.Directory() != L".");
     EnableWindow(sftpRefreshButton_, available);
     EnableWindow(sftpUploadButton_, available);
     EnableWindow(sftpDownloadButton_, available && fileSelected);
@@ -6571,83 +5817,51 @@ void MainWindow::SetSftpBusy(bool busy) {
         if (button) InvalidateRect(button, nullptr, TRUE);
 }
 
+SftpController::Endpoint MainWindow::SftpEndpoint(const SessionState& session) {
+    return {session.host, session.port, session.username, session.password};
+}
+
 void MainWindow::RefreshSftp(const std::wstring& directory) {
-    if (sftpBusy_ || !activeSession_ || !connection_ || selectedMode_ != 0) return;
-    if (sftpThread_.joinable()) sftpThread_.join();
-    const std::wstring requested = directory.empty() ? sftpDirectory_ : directory;
-    if (!directory.empty() && directory != activeSession_->pendingSftpDirectory && directory != activeSession_->sftpDirectory) {
+    if (closing_ || sftp_.Busy() || !activeSession_ || !connection_ || selectedMode_ != 0) return;
+    const std::wstring requested = directory.empty() ? sftp_.Directory() : directory;
+    if (!directory.empty() && directory != activeSession_->pendingSftpDirectory && directory != activeSession_->sftpDirectory)
         activeSession_->sftpFollowTerminal = false;
-    }
     activeSession_->pendingSftpDirectory.clear();
-    const std::uint64_t sessionId = activeSession_->id;
-    const std::wstring host = activeSession_->host;
-    const std::wstring username = activeSession_->username;
-    const std::wstring password = activeSession_->password;
-    const std::uint16_t port = activeSession_->port;
-    const HWND target = window_;
-    sftpOperationCancel_.store(false);
-    sftpOperationSessionId_ = sessionId;
     SetSftpBusy(true);
     SetWindowTextW(sftpPath_, L"正在读取…");
-    auto work = [target, sessionId, host, port, username, password, requested,
-        cancel = &sftpOperationCancel_] {
-        auto* result = new (std::nothrow) SftpMessage();
-        if (!result) return;
-        result->sessionId = sessionId;
-        result->kind = SftpMessageKind::List;
-        try {
-            SftpClient client(host, port, username, password);
-            result->success = client.List(requested, result->listing, result->error, cancel);
-        } catch (...) {
-            result->success = false;
-            result->error = L"SFTP 目录读取发生内部错误。";
-        }
-        if (!PostMessageW(target, MessageSftp, 0, reinterpret_cast<LPARAM>(result))) delete result;
-    };
-    try {
-        sftpThread_ = std::thread(std::move(work));
-    } catch (...) {
-        sftpOperationSessionId_ = 0;
-        SetSftpBusy(false);
-        SetWindowTextW(sftpPath_, sftpDirectory_.c_str());
+    if (!sftp_.List(activeSession_->id, SftpEndpoint(*activeSession_), requested)) {
+        SetSftpBusy(sftp_.Busy()); SetWindowTextW(sftpPath_, sftp_.Directory().c_str());
         AppendStatus(L"无法启动 SFTP 目录读取任务。", true);
     }
 }
 
 void MainWindow::RefreshSftpList() {
     std::vector<std::wstring> selectedNames;
-    for (size_t index : SelectedSftpIndices()) selectedNames.push_back(sftpEntries_[index].name);
-    SortSftpEntries(sftpEntries_, sftpSortColumn_, sftpSortAscending_);
-    if (activeSession_) activeSession_->sftpEntries = sftpEntries_;
+    for (size_t index : SelectedSftpIndices()) selectedNames.push_back(sftp_.Entries()[index].name);
+    sftp_.Sort(activeSession_);
     SendMessageW(sftpList_, LB_RESETCONTENT, 0, 0);
-    for (size_t index = 0; index < sftpEntries_.size(); ++index) {
-        const SftpEntry& entry = sftpEntries_[index];
+    for (size_t index = 0; index < sftp_.Entries().size(); ++index) {
+        const SftpEntry& entry = sftp_.Entries()[index];
         SendMessageW(sftpList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(entry.name.c_str()));
         if (std::find(selectedNames.begin(), selectedNames.end(), entry.name) != selectedNames.end())
             SendMessageW(sftpList_, LB_SETSEL, TRUE, static_cast<LPARAM>(index));
     }
-    SetWindowTextW(sftpPath_, sftpDirectory_.c_str());
+    SetWindowTextW(sftpPath_, sftp_.Directory().c_str());
     InvalidateRect(sftpPath_, nullptr, TRUE);
     InvalidateRect(sftpList_, nullptr, TRUE);
-    SetSftpBusy(sftpBusy_);
+    SetSftpBusy(sftp_.Busy());
 }
 
 void MainWindow::SetSftpSort(SftpSortColumn column) {
-    if (sftpSortColumn_ == column) sftpSortAscending_ = !sftpSortAscending_;
-    else {
-        sftpSortColumn_ = column;
-        sftpSortAscending_ = true;
-    }
-    RefreshSftpList();
-    for (HWND header : {sftpNameHeader_, sftpSizeHeader_, sftpModifiedHeader_})
-        InvalidateRect(header, nullptr, TRUE);
+    sftp_.ToggleSort(column); RefreshSftpList();
+    for (HWND header : {sftpNameHeader_, sftpSizeHeader_, sftpModifiedHeader_}) InvalidateRect(header, nullptr, TRUE);
 }
 
 void MainWindow::EditSftpPath() {
-    if (!activeSession_ || selectedMode_ != 0 || sftpBusy_) return;
+    if (!activeSession_ || selectedMode_ != 0 || sftp_.Busy()) return;
     const auto sessionId = activeSession_->id;
     std::wstring path;
-    if (PromptSftpValue(L"打开 SFTP 路径", L"远端目录（可粘贴 pwd 输出）", sftpDirectory_, SftpInputPurpose::Path, path)) {
+    if (PromptSftpValue(L"打开 SFTP 路径", L"远端目录（可粘贴 pwd 输出）", sftp_.Directory(), SftpInputPurpose::Path, path)) {
         if (!activeSession_ || activeSession_->id != sessionId) return;
         if (path == L"~") path = activeSession_->sftpHomeDirectory;
         else if (path.rfind(L"~/", 0) == 0) path = JoinSftpRemotePath(activeSession_->sftpHomeDirectory, path.substr(2));
@@ -6658,7 +5872,7 @@ void MainWindow::EditSftpPath() {
     }
 }
 void MainWindow::QueryTerminalDirectory(bool installHook) {
-    if (!activeSession_ || selectedMode_ != 0 || runningCommandIndex_ >= 0) return;
+    if (!activeSession_ || selectedMode_ != 0 || macro_.RunningIndex() >= 0) return;
     const auto sessionId = activeSession_->id;
     const wchar_t* prompt = installHook ? L"请确认终端已回到空闲 Bash/Zsh 提示符。将为当前 Shell 安装目录通知，不修改远端配置文件。继续？" : L"请确认终端已回到空闲 Shell 提示符。将在此终端执行 pwd 并更新 SFTP 路径。继续？";
     if (MessageBoxW(window_, prompt, L"获取终端目录", MB_OKCANCEL | MB_ICONQUESTION) != IDOK || !activeSession_ || activeSession_->id != sessionId) return;
@@ -6719,19 +5933,19 @@ LRESULT CALLBACK MainWindow::SftpHeaderSubclassProc(HWND window, UINT message, W
 }
 
 void MainWindow::NavigateSftp(size_t index) {
-    if (sftpBusy_ || index >= sftpEntries_.size()) return;
-    const SftpEntry& entry = sftpEntries_[index];
+    if (sftp_.Busy() || index >= sftp_.Entries().size()) return;
+    const SftpEntry& entry = sftp_.Entries()[index];
     if ((entry.directory || entry.symlink) && !entry.pathSafe) {
         AppendStatus(L"该远端名称包含无法安全写入 SFTP 命令的字符。", true);
     } else if (entry.directory || entry.symlink)
-        RefreshSftp(JoinSftpRemotePath(sftpDirectory_, entry.name));
+        RefreshSftp(JoinSftpRemotePath(sftp_.Directory(), entry.name));
     else DownloadSftp();
 }
 
 void MainWindow::NavigateSftpBreadcrumb(POINT point) {
-    if (sftpBusy_) return;
+    if (sftp_.Busy()) return;
     for (const SftpBreadcrumbHit& hit : sftpBreadcrumbHits_) {
-        if (PointInRect(hit.rect, point) && hit.path != sftpDirectory_) {
+        if (PointInRect(hit.rect, point) && hit.path != sftp_.Directory()) {
             RefreshSftp(hit.path);
             return;
         }
@@ -6744,32 +5958,32 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     ScreenToClient(sftpList_, &clientPoint);
     const DWORD hit = static_cast<DWORD>(SendMessageW(sftpList_, LB_ITEMFROMPOINT, 0,
         MAKELPARAM(clientPoint.x, clientPoint.y)));
-    if (!HIWORD(hit) && LOWORD(hit) < sftpEntries_.size()) {
+    if (!HIWORD(hit) && LOWORD(hit) < sftp_.Entries().size()) {
         const int index = LOWORD(hit);
         if (!SendMessageW(sftpList_, LB_GETSEL, index, 0)) {
             SendMessageW(sftpList_, LB_SETSEL, FALSE, -1);
             SendMessageW(sftpList_, LB_SETSEL, TRUE, index);
         }
         SendMessageW(sftpList_, LB_SETCARETINDEX, index, FALSE);
-        SetSftpBusy(sftpBusy_);
+        SetSftpBusy(sftp_.Busy());
     }
     const std::vector<size_t> selected = SelectedSftpIndices();
-    const bool available = connection_ && selectedMode_ == 0 && !sftpBusy_;
+    const bool available = connection_ && selectedMode_ == 0 && !sftp_.Busy();
     const bool one = selected.size() == 1;
     const bool allPathSafe = !selected.empty() &&
         std::all_of(selected.begin(), selected.end(), [this](size_t index) {
-            return sftpEntries_[index].pathSafe;
+            return sftp_.Entries()[index].pathSafe;
         });
     const bool allModeSafe = !selected.empty() &&
         std::all_of(selected.begin(), selected.end(), [this](size_t index) {
-            return sftpEntries_[index].pathSafe && !sftpEntries_[index].symlink;
+            return sftp_.Entries()[index].pathSafe && !sftp_.Entries()[index].symlink;
         });
     const bool anyFiles = std::any_of(selected.begin(), selected.end(), [this](size_t index) {
-        return !sftpEntries_[index].directory && sftpEntries_[index].pathSafe;
+        return !sftp_.Entries()[index].directory && sftp_.Entries()[index].pathSafe;
     });
     const bool oneDirectory = one &&
-        sftpEntries_[selected.front()].pathSafe &&
-        (sftpEntries_[selected.front()].directory || sftpEntries_[selected.front()].symlink);
+        sftp_.Entries()[selected.front()].pathSafe &&
+        (sftp_.Entries()[selected.front()].directory || sftp_.Entries()[selected.front()].symlink);
 
     HMENU menu = CreatePopupMenu();
     if (!menu) return;
@@ -6793,8 +6007,8 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     static const wchar_t hookLabel[] = L"启用当前 Shell 目录通知…";
     AppendMenuW(menu, MF_OWNERDRAW | (!available ? MF_GRAYED : 0), IdMenuSftpPath, pathLabel);
     AppendMenuW(menu, MF_OWNERDRAW | (!activeSession_ ? MF_GRAYED : 0) | (activeSession_ && activeSession_->sftpFollowTerminal ? MF_CHECKED : 0), IdMenuSftpFollow, followLabel);
-    AppendMenuW(menu, MF_OWNERDRAW | (!available || runningCommandIndex_ >= 0 ? MF_GRAYED : 0), IdMenuSftpPwd, pwdLabel);
-    AppendMenuW(menu, MF_OWNERDRAW | (!available || runningCommandIndex_ >= 0 ? MF_GRAYED : 0), IdMenuSftpHook, hookLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (!available || macro_.RunningIndex() >= 0 ? MF_GRAYED : 0), IdMenuSftpPwd, pwdLabel);
+    AppendMenuW(menu, MF_OWNERDRAW | (!available || macro_.RunningIndex() >= 0 ? MF_GRAYED : 0), IdMenuSftpHook, hookLabel);
     AppendMenuW(menu, MF_SEPARATOR | MF_OWNERDRAW, 0, nullptr);
     AppendMenuW(menu, MF_OWNERDRAW | (!available || !anyFiles ? MF_GRAYED : 0),
         IdMenuSftpDownload, downloadLabel);
@@ -6835,7 +6049,7 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     case IdMenuSftpChangeMode: ChangeSelectedSftpMode(); break;
     case IdMenuSftpCopyPath: CopySelectedSftpPaths(); break;
     case IdMenuSftpEnterDirectory: EnterSelectedSftpDirectoryInTerminal(); break;
-    case IdMenuSftpRefresh: RefreshSftp(sftpDirectory_); break;
+    case IdMenuSftpRefresh: RefreshSftp(sftp_.Directory()); break;
     default: break;
     }
 }
@@ -6845,13 +6059,13 @@ void MainWindow::ShowSftpTransferContextMenu(POINT screenPoint) {
     ScreenToClient(sftpTransferList_, &clientPoint);
     const DWORD hit = static_cast<DWORD>(SendMessageW(sftpTransferList_, LB_ITEMFROMPOINT, 0,
         MAKELPARAM(clientPoint.x, clientPoint.y)));
-    if (!HIWORD(hit) && LOWORD(hit) < sftpTransfers_.size())
+    if (!HIWORD(hit) && LOWORD(hit) < sftp_.Transfers().size())
         SendMessageW(sftpTransferList_, LB_SETCURSEL, LOWORD(hit), 0);
     const LRESULT selected = SendMessageW(sftpTransferList_, LB_GETCURSEL, 0, 0);
-    const bool valid = selected != LB_ERR && static_cast<size_t>(selected) < sftpTransfers_.size();
-    const SftpTransferState state = valid ? sftpTransfers_[static_cast<size_t>(selected)].state :
+    const bool valid = selected != LB_ERR && static_cast<size_t>(selected) < sftp_.Transfers().size();
+    const SftpTransferState state = valid ? sftp_.Transfers()[static_cast<size_t>(selected)].state :
         SftpTransferState::Completed;
-    const bool anyFinished = std::any_of(sftpTransfers_.begin(), sftpTransfers_.end(),
+    const bool anyFinished = std::any_of(sftp_.Transfers().begin(), sftp_.Transfers().end(),
         [](const SftpTransferItem& item) {
             return item.state == SftpTransferState::Completed ||
                 item.state == SftpTransferState::Failed ||
@@ -6881,28 +6095,28 @@ void MainWindow::ShowSftpTransferContextMenu(POINT screenPoint) {
     DeleteObject(menuBrush);
     PostMessageW(window_, WM_NULL, 0, 0);
     if (command == IdMenuTransferCancel && valid)
-        CancelSftpTransfer(sftpTransfers_[static_cast<size_t>(selected)].id);
+        CancelSftpTransfer(sftp_.Transfers()[static_cast<size_t>(selected)].id);
     else if (command == IdMenuTransferRetry && valid)
-        RetrySftpTransfer(sftpTransfers_[static_cast<size_t>(selected)].id);
+        RetrySftpTransfer(sftp_.Transfers()[static_cast<size_t>(selected)].id);
     else if (command == IdMenuTransferClearFinished)
         ClearFinishedSftpTransfers();
 }
 
 void MainWindow::HandleSftpDrop(HDROP drop) {
     if (!drop) return;
-    if (sftpBusy_ || !activeSession_ || !connection_ || selectedMode_ != 0) {
+    if (sftp_.Busy() || !activeSession_ || !connection_ || selectedMode_ != 0) {
         DragFinish(drop);
         return;
     }
     POINT point{};
     DragQueryPoint(drop, &point);
-    std::wstring remoteDirectory = sftpDirectory_;
+    std::wstring remoteDirectory = sftp_.Directory();
     const DWORD hit = static_cast<DWORD>(SendMessageW(sftpList_, LB_ITEMFROMPOINT, 0,
         MAKELPARAM(point.x, point.y)));
-    if (!HIWORD(hit) && LOWORD(hit) < sftpEntries_.size()) {
-        const SftpEntry& entry = sftpEntries_[LOWORD(hit)];
+    if (!HIWORD(hit) && LOWORD(hit) < sftp_.Entries().size()) {
+        const SftpEntry& entry = sftp_.Entries()[LOWORD(hit)];
         if (entry.directory && entry.pathSafe)
-            remoteDirectory = JoinSftpRemotePath(sftpDirectory_, entry.name);
+            remoteDirectory = JoinSftpRemotePath(sftp_.Directory(), entry.name);
     }
     const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
     unsigned int queued = 0;
@@ -6925,9 +6139,9 @@ void MainWindow::HandleSftpDrop(HDROP drop) {
 }
 
 void MainWindow::UploadSftp() {
-    if (sftpBusy_ || !activeSession_) return;
+    if (sftp_.Busy() || !activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto destination = sftpDirectory_;
+    const auto destination = sftp_.Directory();
     std::vector<wchar_t> paths(32768, L'\0');
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
@@ -6952,9 +6166,9 @@ void MainWindow::UploadSftp() {
 }
 
 void MainWindow::DownloadSftp() {
-    if (sftpBusy_ || !activeSession_) return;
+    if (sftp_.Busy() || !activeSession_) return;
     std::vector<size_t> selected = SelectedSftpIndices();
-    const auto entries = sftpEntries_;
+    const auto entries = sftp_.Entries();
     const size_t beforePathValidation = selected.size();
     selected.erase(std::remove_if(selected.begin(), selected.end(), [&entries](size_t index) {
         return entries[index].directory || !entries[index].pathSafe;
@@ -6963,7 +6177,7 @@ void MainWindow::DownloadSftp() {
         AppendStatus(L"已跳过不能安全下载的远端项目。", true);
     if (selected.empty() || !activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
+    const auto sourceDirectory = sftp_.Directory();
     if (selected.size() == 1) {
         const SftpEntry entry = entries[selected.front()];
         std::vector<wchar_t> path(std::max<size_t>(MAX_PATH, entry.name.size() + 1), L'\0');
@@ -7041,213 +6255,78 @@ void MainWindow::DownloadSftp() {
     }
 }
 
-bool MainWindow::StartSftpUpload(
-    const std::wstring& localPath, const std::wstring& remoteDirectory) {
+bool MainWindow::StartSftpUpload(const std::wstring& localPath, const std::wstring& remoteDirectory) {
     if (!activeSession_ || localPath.empty()) return false;
-    SftpTransferItem transfer;
-    transfer.id = nextSftpTransferId_++;
-    transfer.sessionId = activeSession_->id;
-    transfer.direction = SftpTransferDirection::Upload;
-    transfer.name = LocalFileNameOf(localPath);
-    transfer.localPath = localPath;
-    transfer.remotePath = remoteDirectory.empty() ? sftpDirectory_ : remoteDirectory;
-    if (transfer.remotePath == sftpDirectory_) {
-        const auto existing = std::find_if(sftpEntries_.begin(), sftpEntries_.end(),
-            [&transfer](const SftpEntry& entry) { return entry.name == transfer.name; });
-        if (existing != sftpEntries_.end()) {
-            if (existing->directory) {
-                AppendStatus(L"远端已有同名文件夹，无法上传该文件。", true);
-                return false;
-            }
-            transfer.replaceExisting = true;
-        }
-    }
-    transfer.total = LocalFileSize(localPath);
-    sftpTransfers_.push_back(std::move(transfer));
+    std::wstring error;
+    if (!sftp_.EnqueueUpload(activeSession_->id, localPath, remoteDirectory, error)) { AppendStatus(error, true); return false; }
     sftpTransferExpanded_ = true;
     RefreshSftpTransferList();
-    RECT client{};
-    GetClientRect(window_, &client);
-    LayoutControls(client.right, client.bottom);
-    StartNextSftpTransfer();
-    return true;
+    RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
+    StartNextSftpTransfer(); return true;
 }
 
-void MainWindow::StartSftpDownload(const std::wstring& remotePath,
-    const std::wstring& localPath, std::uint64_t expectedSize, bool replaceExisting) {
+void MainWindow::StartSftpDownload(const std::wstring& remotePath, const std::wstring& localPath,
+    std::uint64_t expectedSize, bool replaceExisting) {
     if (!activeSession_ || remotePath.empty() || localPath.empty()) return;
-    const bool alreadyQueued = std::any_of(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [&localPath](const SftpTransferItem& item) {
-            return item.direction == SftpTransferDirection::Download &&
-                (item.state == SftpTransferState::Queued ||
-                 item.state == SftpTransferState::Running) &&
-                ExistingLocalPathsReferToSameFile(item.localPath, localPath);
-        });
-    if (alreadyQueued) {
-        AppendStatus(L"已有任务正在写入同一本地路径，已跳过重复下载。", true);
-        return;
+    std::wstring error;
+    if (!sftp_.EnqueueDownload(activeSession_->id, remotePath, localPath, expectedSize, replaceExisting, error)) {
+        AppendStatus(error, true); return;
     }
-    SftpTransferItem transfer;
-    transfer.id = nextSftpTransferId_++;
-    transfer.sessionId = activeSession_->id;
-    transfer.direction = SftpTransferDirection::Download;
-    transfer.name = BaseNameSftpRemotePath(remotePath);
-    transfer.localPath = localPath;
-    transfer.remotePath = remotePath;
-    transfer.total = expectedSize;
-    transfer.replaceExisting = replaceExisting;
-    sftpTransfers_.push_back(std::move(transfer));
     sftpTransferExpanded_ = true;
     RefreshSftpTransferList();
-    RECT client{};
-    GetClientRect(window_, &client);
-    LayoutControls(client.right, client.bottom);
+    RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
     StartNextSftpTransfer();
 }
 
 void MainWindow::StartNextSftpTransfer() {
-    if (activeSftpTransferId_ != 0) return;
-    if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
+    if (closing_ || sftp_.ActiveTransfer()) return;
     for (;;) {
-        auto queued = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-            [](const SftpTransferItem& item) { return item.state == SftpTransferState::Queued; });
-        if (queued == sftpTransfers_.end()) {
+        const auto* queued = sftp_.Next();
+        if (!queued) {
             RefreshSftpTransferList();
-            if (sftpRefreshSessionId_ != 0) {
-                const std::uint64_t refreshSessionId = sftpRefreshSessionId_;
-                const std::wstring refreshDirectory = sftpRefreshDirectory_;
-                sftpRefreshSessionId_ = 0;
-                sftpRefreshDirectory_.clear();
-                if (!sftpBusy_ && activeSession_ && activeSession_->id == refreshSessionId &&
-                    sftpDirectory_ == refreshDirectory)
-                    RefreshSftp(refreshDirectory);
-            }
+            const auto refresh = sftp_.TakeRefresh();
+            if (refresh.first && !sftp_.Busy() && activeSession_ && activeSession_->id == refresh.first &&
+                sftp_.Directory() == refresh.second) RefreshSftp(refresh.second);
             return;
         }
-        SessionState* session = FindSession(queued->sessionId);
-        if (!session) {
-            queued->state = SftpTransferState::Canceled;
-            queued->error = L"连接已断开";
-            continue;
-        }
-
-        if (queued->replaceExisting) {
-            const bool upload = queued->direction == SftpTransferDirection::Upload;
-            const std::wstring target = upload ?
-                JoinSftpRemotePath(queued->remotePath, queued->name) : queued->localPath;
-            const std::wstring prompt = (upload ?
-                L"远端文件已存在，是否安全替换？\n\n" :
-                L"本地文件已存在，是否覆盖？\n\n") + target;
-            if (MessageBoxW(window_, prompt.c_str(),
-                    upload ? L"确认替换" : L"确认覆盖",
-                    MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) != IDOK) {
-                queued->state = SftpTransferState::Canceled;
-                queued->error = L"用户取消覆盖";
-                continue;
+        const auto task = *queued;
+        const auto* session = FindSession(task.sessionId);
+        if (!session) { sftp_.Cancel(task.id, L"连接已断开"); continue; }
+        const auto endpoint = SftpEndpoint(*session);
+        if (task.replaceExisting) {
+            const bool upload = task.direction == SftpTransferDirection::Upload;
+            const auto target = upload ? JoinSftpRemotePath(task.remotePath, task.name) : task.localPath;
+            const auto prompt = (upload ? L"远端文件已存在，是否安全替换？\n\n" : L"本地文件已存在，是否覆盖？\n\n") + target;
+            if (MessageBoxW(window_, prompt.c_str(), upload ? L"确认替换" : L"确认覆盖",
+                            MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) != IDOK) {
+                sftp_.Cancel(task.id, L"用户取消覆盖"); continue;
             }
         }
-
-        queued->state = SftpTransferState::Running;
-        queued->error.clear();
-        queued->percent = queued->total == 0 ? -1 : 0;
-        activeSftpTransferId_ = queued->id;
-        sftpTransferCancel_.store(false);
-        const SftpTransferItem task = *queued;
-        const std::wstring host = session->host;
-        const std::uint16_t port = session->port;
-        const std::wstring username = session->username;
-        const std::wstring password = session->password;
-        const HWND target = window_;
-        RefreshSftpTransferList();
-        auto work = [this, target, task, host, port, username, password] {
-            auto* result = new (std::nothrow) SftpMessage();
-            if (!result) return;
-            result->sessionId = task.sessionId;
-            result->transferId = task.id;
-            result->kind = task.direction == SftpTransferDirection::Upload ?
-                SftpMessageKind::Upload : SftpMessageKind::Download;
-            try {
-                SftpClient client(host, port, username, password);
-                const auto progress = [target, id = task.id](const SftpTransferProgress& value) {
-                    auto* update = new (std::nothrow) SftpProgressMessage();
-                    if (!update) return;
-                    update->transferId = id;
-                    update->progress = value;
-                    if (!PostMessageW(target, MessageSftpProgress, 0,
-                            reinterpret_cast<LPARAM>(update))) delete update;
-                };
-                if (task.direction == SftpTransferDirection::Upload)
-                    result->success = client.Upload(task.localPath, task.remotePath,
-                        task.replaceExisting, result->error, progress, &sftpTransferCancel_);
-                else
-                    result->success = client.Download(task.remotePath, task.localPath, task.total,
-                        task.replaceExisting, result->error, progress, &sftpTransferCancel_);
-                result->canceled = sftpTransferCancel_.load();
-            } catch (...) {
-                result->success = false;
-                result->error = L"SFTP 传输发生内部错误。";
-            }
-            if (!PostMessageW(target, MessageSftp, 0,
-                    reinterpret_cast<LPARAM>(result))) delete result;
-        };
-        try {
-            sftpTransferThread_ = std::thread(std::move(work));
-        } catch (...) {
-            queued->state = SftpTransferState::Failed;
-            queued->error = L"无法启动传输任务";
-            activeSftpTransferId_ = 0;
-            RefreshSftpTransferList();
-            continue;
-        }
-        return;
+        if (!FindSession(task.sessionId)) { sftp_.Cancel(task.id, L"连接已断开"); continue; }
+        if (!sftp_.Begin(task.id, endpoint)) { RefreshSftpTransferList(); continue; }
+        RefreshSftpTransferList(); return;
     }
 }
 
 void MainWindow::CancelSftpTransfer(std::uint64_t transferId) {
-    auto found = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [transferId](const SftpTransferItem& item) { return item.id == transferId; });
-    if (found == sftpTransfers_.end()) return;
-    if (found->state == SftpTransferState::Queued) {
-        found->state = SftpTransferState::Canceled;
-        found->error = L"传输已取消";
-        RefreshSftpTransferList();
-        StartNextSftpTransfer();
-    } else if (found->state == SftpTransferState::Running) {
-        sftpTransferCancel_.store(true);
-        found->error = L"正在取消…";
-        InvalidateRect(sftpTransferList_, nullptr, TRUE);
-    }
+    const auto& items = sftp_.Transfers();
+    const auto found = std::find_if(items.begin(), items.end(), [transferId](const auto& item) { return item.id == transferId; });
+    if (found == items.end()) return;
+    const auto state = found->state;
+    sftp_.Cancel(transferId);
+    if (state == SftpTransferState::Queued) { RefreshSftpTransferList(); StartNextSftpTransfer(); }
+    else if (state == SftpTransferState::Running) InvalidateRect(sftpTransferList_, nullptr, TRUE);
 }
 
 void MainWindow::RetrySftpTransfer(std::uint64_t transferId) {
-    auto found = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [transferId](const SftpTransferItem& item) { return item.id == transferId; });
-    if (found == sftpTransfers_.end() || (found->state != SftpTransferState::Failed &&
-        found->state != SftpTransferState::Canceled)) return;
-    if (!FindSession(found->sessionId)) {
-        found->error = L"原连接已断开，无法重试";
-        found->state = SftpTransferState::Failed;
-    } else {
-        found->state = SftpTransferState::Queued;
-        found->error.clear();
-        found->transferred = 0;
-        found->bytesPerSecond = 0;
-        found->remainingSeconds = 0;
-        found->percent = found->total == 0 ? -1 : 0;
-    }
-    RefreshSftpTransferList();
-    StartNextSftpTransfer();
+    const auto& items = sftp_.Transfers();
+    const auto found = std::find_if(items.begin(), items.end(), [transferId](const auto& item) { return item.id == transferId; });
+    if (found == items.end() || (found->state != SftpTransferState::Failed && found->state != SftpTransferState::Canceled)) return;
+    sftp_.Retry(transferId, FindSession(found->sessionId) != nullptr);
+    RefreshSftpTransferList(); StartNextSftpTransfer();
 }
 
-void MainWindow::ClearFinishedSftpTransfers() {
-    sftpTransfers_.erase(std::remove_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [](const SftpTransferItem& item) {
-            return item.state == SftpTransferState::Completed ||
-                item.state == SftpTransferState::Failed ||
-                item.state == SftpTransferState::Canceled;
-        }), sftpTransfers_.end());
-    RefreshSftpTransferList();
-}
+void MainWindow::ClearFinishedSftpTransfers() { sftp_.ClearFinished(); RefreshSftpTransferList(); }
 
 void MainWindow::RefreshSftpTransferList() {
     if (!sftpTransferList_) return;
@@ -7255,7 +6334,7 @@ void MainWindow::RefreshSftpTransferList() {
     int queued = 0;
     int running = 0;
     int finished = 0;
-    for (const SftpTransferItem& item : sftpTransfers_) {
+    for (const SftpTransferItem& item : sftp_.Transfers()) {
         SendMessageW(sftpTransferList_, LB_ADDSTRING, 0,
             reinterpret_cast<LPARAM>(item.name.c_str()));
         if (item.state == SftpTransferState::Queued) ++queued;
@@ -7265,8 +6344,8 @@ void MainWindow::RefreshSftpTransferList() {
     std::wstring title = L"传输";
     if (running > 0) title += L" · " + std::to_wstring(running) + L" 进行中";
     if (queued > 0) title += L" · " + std::to_wstring(queued) + L" 等待";
-    if (running == 0 && queued == 0 && !sftpTransfers_.empty())
-        title += L" · " + std::to_wstring(sftpTransfers_.size()) + L" 条记录";
+    if (running == 0 && queued == 0 && !sftp_.Transfers().empty())
+        title += L" · " + std::to_wstring(sftp_.Transfers().size()) + L" 条记录";
     SetWindowTextW(sftpTransferToggleButton_, title.c_str());
     EnableWindow(sftpClearTransfersButton_, finished > 0);
     InvalidateRect(sftpTransferToggleButton_, nullptr, TRUE);
@@ -7274,25 +6353,16 @@ void MainWindow::RefreshSftpTransferList() {
     InvalidateRect(sftpTransferList_, nullptr, TRUE);
 }
 
-void MainWindow::HandleSftpProgress(LPARAM value) {
-    std::unique_ptr<SftpProgressMessage> update(reinterpret_cast<SftpProgressMessage*>(value));
-    if (!update) return;
-    auto found = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-        [id = update->transferId](const SftpTransferItem& item) { return item.id == id; });
-    if (found == sftpTransfers_.end() || found->state != SftpTransferState::Running) return;
-    found->transferred = update->progress.transferred;
-    found->total = update->progress.total;
-    found->bytesPerSecond = update->progress.bytesPerSecond;
-    found->remainingSeconds = update->progress.remainingSeconds;
-    found->percent = update->progress.percent;
-    InvalidateRect(sftpTransferList_, nullptr, FALSE);
+void MainWindow::HandleSftpProgress(LPARAM) {
+    const auto update = sftp_.TakeProgress();
+    if (update && sftp_.ApplyProgress(*update)) InvalidateRect(sftpTransferList_, nullptr, FALSE);
 }
 
 void MainWindow::CreateSftpDirectory() {
     if (!activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
-    if (sftpBusy_) return;
+    const auto sourceDirectory = sftp_.Directory();
+    if (sftp_.Busy()) return;
     std::wstring name;
     if (PromptSftpValue(L"新建文件夹", L"文件夹名称", L"",
             SftpInputPurpose::Name, name))
@@ -7303,14 +6373,14 @@ void MainWindow::CreateSftpDirectory() {
 void MainWindow::RenameSelectedSftpEntry() {
     if (!activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
+    const auto sourceDirectory = sftp_.Directory();
     const std::vector<size_t> selected = SelectedSftpIndices();
-    if (sftpBusy_ || selected.size() != 1 || !sftpEntries_[selected.front()].pathSafe) return;
-    const SftpEntry entry = sftpEntries_[selected.front()];
+    if (sftp_.Busy() || selected.size() != 1 || !sftp_.Entries()[selected.front()].pathSafe) return;
+    const SftpEntry entry = sftp_.Entries()[selected.front()];
     std::wstring name;
     if (PromptSftpValue(L"重命名", L"新名称", entry.name,
             SftpInputPurpose::Name, name) && name != entry.name) {
-        if (std::any_of(sftpEntries_.begin(), sftpEntries_.end(),
+        if (std::any_of(sftp_.Entries().begin(), sftp_.Entries().end(),
                 [&name](const SftpEntry& other) { return other.name == name; })) {
             AppendStatus(L"远端已存在同名项目。", true);
             return;
@@ -7324,11 +6394,11 @@ void MainWindow::RenameSelectedSftpEntry() {
 void MainWindow::DeleteSelectedSftpEntries() {
     if (!activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
+    const auto sourceDirectory = sftp_.Directory();
     const std::vector<size_t> selected = SelectedSftpIndices();
-    if (sftpBusy_ || selected.empty()) return;
+    if (sftp_.Busy() || selected.empty()) return;
     if (std::any_of(selected.begin(), selected.end(), [this](size_t index) {
-            return !sftpEntries_[index].pathSafe || sftpEntries_[index].symlink;
+            return !sftp_.Entries()[index].pathSafe || sftp_.Entries()[index].symlink;
         })) {
         AppendStatus(L"所选项目含有无法安全修改权限的名称或符号链接。", true);
         return;
@@ -7337,7 +6407,7 @@ void MainWindow::DeleteSelectedSftpEntries() {
     std::vector<bool> directories;
     std::wstring prompt = L"确定删除以下远端项目？\n\n";
     for (size_t index : selected) {
-        const SftpEntry& entry = sftpEntries_[index];
+        const SftpEntry& entry = sftp_.Entries()[index];
         const std::wstring path = JoinSftpRemotePath(sourceDirectory, entry.name);
         paths.push_back(path);
         directories.push_back(entry.directory);
@@ -7353,20 +6423,20 @@ void MainWindow::DeleteSelectedSftpEntries() {
 void MainWindow::ChangeSelectedSftpMode() {
     if (!activeSession_) return;
     const auto sessionId = activeSession_->id;
-    const auto sourceDirectory = sftpDirectory_;
+    const auto sourceDirectory = sftp_.Directory();
     const std::vector<size_t> selected = SelectedSftpIndices();
-    if (sftpBusy_ || selected.empty()) return;
+    if (sftp_.Busy() || selected.empty()) return;
     if (std::any_of(selected.begin(), selected.end(), [this](size_t index) {
-            return !sftpEntries_[index].pathSafe;
+            return !sftp_.Entries()[index].pathSafe;
         })) {
         AppendStatus(L"所选项目含有无法安全操作的远端名称。", true);
         return;
     }
     std::wstring mode = L"644";
-    if (selected.size() == 1 && sftpEntries_[selected.front()].directory) mode = L"755";
+    if (selected.size() == 1 && sftp_.Entries()[selected.front()].directory) mode = L"755";
     std::vector<std::wstring> paths;
     for (size_t index : selected)
-        paths.push_back(JoinSftpRemotePath(sourceDirectory, sftpEntries_[index].name));
+        paths.push_back(JoinSftpRemotePath(sourceDirectory, sftp_.Entries()[index].name));
     if (!PromptSftpValue(L"修改权限", L"权限（八进制，如 644）", mode,
             SftpInputPurpose::Mode, mode)) return;
     if (activeSession_ && activeSession_->id == sessionId) StartSftpMutation(SftpMutationKind::ChangeMode, paths, mode);
@@ -7377,7 +6447,7 @@ void MainWindow::CopySelectedSftpPaths() {
     std::wstring text;
     for (size_t index : selected) {
         if (!text.empty()) text += L"\r\n";
-        text += JoinSftpRemotePath(sftpDirectory_, sftpEntries_[index].name);
+        text += JoinSftpRemotePath(sftp_.Directory(), sftp_.Entries()[index].name);
     }
     if (SetClipboardText(window_, text)) AppendStatus(L"远端路径已复制", false);
 }
@@ -7385,9 +6455,9 @@ void MainWindow::CopySelectedSftpPaths() {
 void MainWindow::EnterSelectedSftpDirectoryInTerminal() {
     const std::vector<size_t> selected = SelectedSftpIndices();
     if (selected.size() != 1 || !activeSession_) return;
-    const SftpEntry entry = sftpEntries_[selected.front()];
+    const SftpEntry entry = sftp_.Entries()[selected.front()];
     if ((!entry.directory && !entry.symlink) || !entry.pathSafe) return;
-    const std::wstring path = JoinSftpRemotePath(sftpDirectory_, entry.name);
+    const std::wstring path = JoinSftpRemotePath(sftp_.Directory(), entry.name);
     const std::wstring text = L"cd -- " + QuoteShellArgument(path) + SelectedLineEnding();
     const std::string encoded = EncodeTerminalText(text);
     const Bytes bytes(encoded.begin(), encoded.end());
@@ -7396,53 +6466,12 @@ void MainWindow::EnterSelectedSftpDirectoryInTerminal() {
 }
 
 void MainWindow::StartSftpMutation(SftpMutationKind kind,
-    const std::vector<std::wstring>& paths, const std::wstring& value,
-    const std::vector<bool>& directories) {
-    if (sftpBusy_ || !activeSession_ || paths.empty()) return;
-    if (sftpThread_.joinable()) sftpThread_.join();
-    const std::uint64_t sessionId = activeSession_->id;
-    const std::wstring host = activeSession_->host;
-    const std::uint16_t port = activeSession_->port;
-    const std::wstring username = activeSession_->username;
-    const std::wstring password = activeSession_->password;
-    const HWND target = window_;
-    sftpOperationCancel_.store(false);
-    sftpOperationSessionId_ = sessionId;
+    const std::vector<std::wstring>& paths, const std::wstring& value, const std::vector<bool>& directories) {
+    if (closing_ || sftp_.Busy() || !activeSession_ || paths.empty()) return;
     SetSftpBusy(true);
     AppendStatus(L"正在执行 SFTP 操作…", false);
-    auto work = [target, sessionId, host, port, username, password,
-        kind, paths, value, directories, cancel = &sftpOperationCancel_] {
-        auto* result = new (std::nothrow) SftpMessage();
-        if (!result) return;
-        result->sessionId = sessionId;
-        result->kind = SftpMessageKind::Mutation;
-        try {
-            SftpClient client(host, port, username, password);
-            if (kind == SftpMutationKind::CreateDirectory) {
-                result->success = client.CreateDirectory(paths.front(), result->error, cancel);
-            } else if (kind == SftpMutationKind::Rename) {
-                result->success = paths.size() >= 2 &&
-                    client.Rename(paths[0], paths[1], result->error, cancel);
-            } else if (kind == SftpMutationKind::Delete) {
-                std::vector<SftpDeleteTarget> targets;
-                for (size_t index = 0; index < paths.size(); ++index)
-                    targets.push_back({paths[index], index < directories.size() && directories[index]});
-                result->success = client.Delete(targets, result->error, cancel);
-            } else {
-                result->success = client.ChangeMode(paths, value, result->error, cancel);
-            }
-        } catch (...) {
-            result->success = false;
-            result->error = L"SFTP 文件操作发生内部错误。";
-        }
-        if (!PostMessageW(target, MessageSftp, 0, reinterpret_cast<LPARAM>(result))) delete result;
-    };
-    try {
-        sftpThread_ = std::thread(std::move(work));
-    } catch (...) {
-        sftpOperationSessionId_ = 0;
-        SetSftpBusy(false);
-        AppendStatus(L"无法启动 SFTP 文件操作。", true);
+    if (!sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_), kind, paths, value, directories)) {
+        SetSftpBusy(sftp_.Busy()); AppendStatus(L"无法启动 SFTP 文件操作。", true);
     }
 }
 
@@ -7460,29 +6489,13 @@ bool MainWindow::PromptSftpValue(const std::wstring& title, const std::wstring& 
     return true;
 }
 
-void MainWindow::HandleSftpMessage(LPARAM value) {
-    std::unique_ptr<SftpMessage> result(reinterpret_cast<SftpMessage*>(value));
+void MainWindow::HandleSftpMessage(LPARAM) {
+    auto result = sftp_.TakeResult();
     if (!result) return;
     const bool transfer = result->kind == SftpMessageKind::Upload ||
         result->kind == SftpMessageKind::Download;
     if (transfer) {
-        if (sftpTransferThread_.joinable()) sftpTransferThread_.join();
-        auto found = std::find_if(sftpTransfers_.begin(), sftpTransfers_.end(),
-            [id = result->transferId](const SftpTransferItem& item) { return item.id == id; });
-        if (found != sftpTransfers_.end()) {
-            found->state = result->success ? SftpTransferState::Completed :
-                (result->canceled ? SftpTransferState::Canceled : SftpTransferState::Failed);
-            found->error = result->error;
-            if (result->success) {
-                found->percent = 100;
-                found->transferred = found->total;
-                if (found->direction == SftpTransferDirection::Upload) {
-                    sftpRefreshSessionId_ = found->sessionId;
-                    sftpRefreshDirectory_ = found->remotePath;
-                }
-            }
-        }
-        activeSftpTransferId_ = 0;
+        sftp_.Finish(*result, nullptr, false);
         SessionState* session = FindSession(result->sessionId);
         if (session == activeSession_) {
             const std::wstring action = result->kind == SftpMessageKind::Upload ? L"上传" : L"下载";
@@ -7497,12 +6510,11 @@ void MainWindow::HandleSftpMessage(LPARAM value) {
         return;
     }
 
-    if (sftpThread_.joinable()) sftpThread_.join();
-    sftpOperationSessionId_ = 0;
     SessionState* session = FindSession(result->sessionId);
-    SetSftpBusy(false);
+    const bool learnedHomeDirectory = sftp_.Finish(*result, session, session && session == activeSession_);
+    SetSftpBusy(sftp_.Busy());
     if (!session) {
-        if (activeSession_ && selectedMode_ == 0 && !sftpBusy_)
+        if (activeSession_ && selectedMode_ == 0 && !sftp_.Busy())
             RefreshSftp(activeSession_->sftpDirectory);
         return;
     }
@@ -7510,21 +6522,15 @@ void MainWindow::HandleSftpMessage(LPARAM value) {
     if (!result->success) {
         const std::wstring message = result->error.empty() ? L"SFTP 操作失败" : result->error;
         if (active) {
-            if (sftpPanelVisible_) SetWindowTextW(sftpPath_, sftpDirectory_.c_str());
+            if (sftpPanelVisible_) SetWindowTextW(sftpPath_, sftp_.Directory().c_str());
             AppendStatus(message, true);
             if (result->kind == SftpMessageKind::Mutation)
-                RefreshSftp(sftpDirectory_);
+                RefreshSftp(sftp_.Directory());
         } else if (session->logger) session->logger->WriteStatus(message);
         return;
     }
     if (result->kind == SftpMessageKind::List) {
-        const bool learnedHomeDirectory = session->sftpHomeDirectory.empty();
-        if (learnedHomeDirectory) session->sftpHomeDirectory = result->listing.directory;
-        session->sftpDirectory = result->listing.directory;
-        session->sftpEntries = std::move(result->listing.entries);
         if (active) {
-            sftpDirectory_ = session->sftpDirectory;
-            sftpEntries_ = session->sftpEntries;
             RefreshSftpList();
             AppendStatus(L"SFTP 目录已刷新", false);
         }
@@ -7536,11 +6542,11 @@ void MainWindow::HandleSftpMessage(LPARAM value) {
         }
         else if (learnedHomeDirectory)
             SyncSftpDirectoryFromTerminal(*session);
-        if (!active && activeSession_ && selectedMode_ == 0 && !sftpBusy_)
+        if (!active && activeSession_ && selectedMode_ == 0 && !sftp_.Busy())
             RefreshSftp(activeSession_->sftpDirectory);
     } else if (result->kind == SftpMessageKind::Mutation && active) {
         AppendStatus(L"SFTP 操作完成", false);
-        RefreshSftp(sftpDirectory_);
+        RefreshSftp(sftp_.Directory());
     }
 }
 
@@ -7723,138 +6729,41 @@ void MainWindow::LoadCommands() {
     const std::wstring path = DefaultCommandsPath();
     if (!LoadCommandsFromFile(path, error)) {
         if (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            commandsFileProtected_ = true;
+            macro_.ProtectFile(true);
             AppendStatus(error + L" 原文件已保留，可导入有效文件后保存。", true);
             return;
         }
-        commands_ = {{L"帮助", L"help"}, {L"打印环境变量", L"printenv"}, {L"存储设备", L"mmc list"},
-            {L"复位", L"reset"}, {L"启动", L"boot"}};
+        macro_.Replace({{L"帮助", L"help"}, {L"打印环境变量", L"printenv"}, {L"存储设备", L"mmc list"},
+            {L"复位", L"reset"}, {L"启动", L"boot"}}, false);
         SaveCommands();
     }
 }
 
 bool MainWindow::SaveCommands() {
-    if (commandsFileProtected_) { AppendStatus(L"命令文件读取失败，原文件已保护。请导入有效文件。", true); return false; }
+    if (macro_.FileProtected()) { AppendStatus(L"命令文件读取失败，原文件已保护。请导入有效文件。", true); return false; }
     std::wstring error;
     if (!SaveCommandsToFile(DefaultCommandsPath(), error)) { if (window_) AppendStatus(error, true); return false; }
-    commandsDirty_ = false;
+    macro_.MarkSaved();
     UpdateCommandActions();
     if (window_) AppendStatus(L"命令及顺序已保存", false);
     return true;
 }
 void MainWindow::MarkCommandsDirty() {
-    commandsDirty_ = true;
+    macro_.MarkDirty();
     UpdateCommandActions();
 }
 
 bool MainWindow::LoadCommandsFromFile(const std::wstring& path, std::wstring& error) {
-    FILE* file = nullptr;
-    if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file) { error = L"无法打开命令文件。"; return false; }
-    fseek(file, 0, SEEK_END);
-    const long size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    if (size < 0 || size > 4 * 1024 * 1024) { fclose(file); error = L"命令文件大小无效或超过 4 MB。"; return false; }
-    std::string bytes(static_cast<size_t>(size), '\0');
-    if (!bytes.empty() && fread(bytes.data(), 1, bytes.size(), file) != bytes.size()) { fclose(file); error = L"命令文件读取失败。"; return false; }
-    fclose(file);
-    if (bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF &&
-        static_cast<unsigned char>(bytes[1]) == 0xBB && static_cast<unsigned char>(bytes[2]) == 0xBF) bytes.erase(0, 3);
-    if (!bytes.empty() && !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0)) { error = L"命令文件不是有效 UTF-8。"; return false; }
-    const std::wstring content = MultiByteToWide(reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size(), CP_UTF8);
-    std::vector<CommandItem> parsed;
-    std::wstring pendingName;
-    CommandItem pendingMacro;
-    bool readingMacro = false;
-    size_t start = 0;
-    while (start <= content.size()) {
-        const size_t end = content.find(L'\n', start);
-        std::wstring line = Trim(content.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start));
-        if (!line.empty()) {
-            if (readingMacro) {
-                if (line == L"[[/macro]]") {
-                    if (pendingMacro.commands.empty()) {
-                        error = L"宏中没有有效指令。";
-                        return false;
-                    }
-                    if (pendingMacro.name.empty()) pendingMacro.name = pendingMacro.commands.front();
-                    parsed.push_back(std::move(pendingMacro));
-                    pendingMacro = {};
-                    readingMacro = false;
-                } else {
-                    UnescapeMacroCommandLine(line);
-                    pendingMacro.commands.push_back(std::move(line));
-                    if (pendingMacro.commands.size() > MaximumCommandSteps) {
-                        error = L"每个宏最多包含 " + std::to_wstring(MaximumCommandSteps) + L" 条指令。";
-                        return false;
-                    }
-                }
-            } else if (UnescapeSingleCommandLine(line)) {
-                parsed.push_back({pendingName.empty() ? line : pendingName, line});
-                pendingName.clear();
-            } else if (line.front() == L'#') {
-                pendingName = Trim(line.substr(1));
-            } else {
-                std::uint32_t intervalMs = 0;
-                if (ParseMacroHeader(line, intervalMs)) {
-                    pendingMacro = {};
-                    pendingMacro.name = pendingName;
-                    pendingMacro.intervalMs = intervalMs;
-                    pendingName.clear();
-                    readingMacro = true;
-                } else if (line.rfind(L"[[macro", 0) == 0) {
-                    error = L"宏开始标记无效，指令间隔必须是 1 到 60000 毫秒。";
-                    return false;
-                } else if (line == L"[[/macro]]") {
-                    error = L"命令文件中存在没有开始标记的宏结束行。";
-                    return false;
-                } else {
-                    parsed.push_back({pendingName.empty() ? line : pendingName, line});
-                    pendingName.clear();
-                }
-            }
-        }
-        if (end == std::wstring::npos) break;
-        start = end + 1;
-    }
-    if (readingMacro) {
-        error = L"命令文件中的宏缺少 [[/macro]] 结束标记。";
-        return false;
-    }
-    commands_ = std::move(parsed);
-    return true;
+    return macro_.LoadFile(path, error);
 }
 
 bool MainWindow::SaveCommandsToFile(const std::wstring& path, std::wstring& error) const {
-    FILE* file = nullptr;
-    const std::wstring temporary = path + L".tmp";
-    if (_wfopen_s(&file, temporary.c_str(), L"wb") != 0 || !file) { error = L"无法保存命令文件。"; return false; }
-    bool wrote = true;
-    const unsigned char bom[] = {0xEF, 0xBB, 0xBF};
-    wrote = fwrite(bom, 1, sizeof(bom), file) == sizeof(bom);
-    for (const CommandItem& item : commands_) {
-        std::wstring block = L"#" + item.name + L"\r\n";
-        if (item.commands.size() > 1) {
-            block += L"[[macro interval=" + std::to_wstring(item.intervalMs) + L"]]\r\n";
-            for (const std::wstring& command : item.commands)
-                block += EscapeMacroCommandLine(command) + L"\r\n";
-            block += L"[[/macro]]\r\n";
-        } else if (!item.commands.empty()) {
-            block += EscapeSingleCommandLine(item.commands.front()) + L"\r\n";
-        }
-        const std::string utf8 = WideToMultiByte(block, CP_UTF8);
-        if (fwrite(utf8.data(), 1, utf8.size(), file) != utf8.size()) wrote = false;
-    }
-    if (fflush(file) != 0) wrote = false;
-    if (fclose(file) != 0) wrote = false;
-    if (!wrote || !MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        DeleteFileW(temporary.c_str()); error = L"保存失败，原命令文件已保留。"; return false;
-    }
-    return true;
+    return macro_.SaveFile(path, error);
 }
 
 void MainWindow::RefreshCommandList() {
     SendMessageW(commandList_, LB_RESETCONTENT, 0, 0);
-    for (const CommandItem& item : commands_)
+    for (const CommandItem& item : macro_.Items())
         SendMessageW(commandList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.name.c_str()));
     UpdateCommandActions();
     InvalidateRect(commandList_, nullptr, TRUE);
@@ -7863,12 +6772,12 @@ void MainWindow::RefreshCommandList() {
 void MainWindow::UpdateCommandActions() {
     if (!deleteCommandButton_ || !commandList_) return;
     const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
-    const bool idle = runningCommandIndex_ < 0;
-    EnableWindow(saveCommandsButton_, commandsDirty_ && idle && !commandsFileProtected_);
-    SetWindowTextW(saveCommandsButton_, commandsDirty_ ? L"保存*" : L"保存");
+    const bool idle = macro_.RunningIndex() < 0;
+    EnableWindow(saveCommandsButton_, macro_.Dirty() && idle && !macro_.FileProtected());
+    SetWindowTextW(saveCommandsButton_, macro_.Dirty() ? L"保存*" : L"保存");
     InvalidateRect(saveCommandsButton_, nullptr, TRUE);
     EnableWindow(deleteCommandButton_, idle && selected != LB_ERR &&
-        selected < static_cast<LRESULT>(commands_.size()));
+        selected < static_cast<LRESULT>(macro_.Items().size()));
     EnableWindow(importButton_, idle);
     EnableWindow(addCommandButton_, idle);
 
@@ -7891,7 +6800,7 @@ void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
         const int top = static_cast<int>(SendMessageW(commandList_, LB_GETTOPINDEX, 0, 0));
         const int rowHeight = std::max(1, static_cast<int>(SendMessageW(commandList_, LB_GETITEMHEIGHT, 0, 0)));
         const int visibleRows = std::max(1, static_cast<int>(client.bottom / rowHeight));
-        const int lastTop = std::max(0, static_cast<int>(commands_.size()) - visibleRows);
+        const int lastTop = std::max(0, static_cast<int>(macro_.Items().size()) - visibleRows);
         const int next = point.y < Ui::Scale(28) ? std::max(0, top - 1) :
             point.y > client.bottom - Ui::Scale(28) ? std::min(lastTop, top + 1) : top;
         if (next != top) {
@@ -7901,15 +6810,15 @@ void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
     }
     const int previousInsertion = commandInsertIndex_;
     const int previousDrop = commandDropIndex_;
-    if (commandDragInside_ && !commands_.empty()) {
+    if (commandDragInside_ && !macro_.Items().empty()) {
         const DWORD hit = static_cast<DWORD>(SendMessageW(commandList_, LB_ITEMFROMPOINT, 0,
             MAKELPARAM(point.x, point.y)));
-        const int row = std::min<int>(LOWORD(hit), static_cast<int>(commands_.size()) - 1);
+        const int row = std::min<int>(LOWORD(hit), static_cast<int>(macro_.Items().size()) - 1);
         RECT item{};
         if (SendMessageW(commandList_, LB_GETITEMRECT, row, reinterpret_cast<LPARAM>(&item)) != LB_ERR) {
             commandInsertIndex_ = row + (point.y >= (item.top + item.bottom) / 2 ? 1 : 0);
             commandDropIndex_ = commandInsertIndex_ - (commandInsertIndex_ > draggingCommandIndex_ ? 1 : 0);
-            commandDropIndex_ = std::clamp(commandDropIndex_, 0, static_cast<int>(commands_.size()) - 1);
+            commandDropIndex_ = std::clamp(commandDropIndex_, 0, static_cast<int>(macro_.Items().size()) - 1);
         }
     }
     POINT screen = point;
@@ -7926,9 +6835,9 @@ void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
         InvalidateRect(commandList_, nullptr, FALSE);
     } else if (previousInsertion != commandInsertIndex_ || wasInside != commandDragInside_) {
         for (int insertion : {previousInsertion, commandInsertIndex_}) {
-            if (insertion < 0 || commands_.empty()) continue;
+            if (insertion < 0 || macro_.Items().empty()) continue;
             RECT row{};
-            const int index = std::min(insertion, static_cast<int>(commands_.size()) - 1);
+            const int index = std::min(insertion, static_cast<int>(macro_.Items().size()) - 1);
             if (SendMessageW(commandList_, LB_GETITEMRECT, index, reinterpret_cast<LPARAM>(&row)) != LB_ERR)
                 InvalidateRect(commandList_, &row, FALSE);
         }
@@ -7947,12 +6856,7 @@ void MainWindow::EndCommandDrag(bool commit) {
 }
 
 void MainWindow::MoveCommand(size_t from, size_t to) {
-    if (runningCommandIndex_ >= 0 || from >= commands_.size() || to >= commands_.size() || from == to) return;
-    CommandItem item = commands_[from];
-    commands_.erase(commands_.begin() + static_cast<std::ptrdiff_t>(from));
-    to = std::min(to, commands_.size());
-    commands_.insert(commands_.begin() + static_cast<std::ptrdiff_t>(to), std::move(item));
-    MarkCommandsDirty();
+    if (!macro_.Move(from, to)) return;
     RefreshCommandList();
     SendMessageW(commandList_, LB_SETCURSEL, static_cast<WPARAM>(to), 0);
     UpdateCommandActions();
@@ -7960,7 +6864,7 @@ void MainWindow::MoveCommand(size_t from, size_t to) {
 }
 
 void MainWindow::ImportCommands() {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     wchar_t path[MAX_PATH]{};
     const std::wstring initialDirectory = InitialCommandDirectory();
     OPENFILENAMEW dialog{};
@@ -7976,24 +6880,14 @@ void MainWindow::ImportCommands() {
 }
 
 void MainWindow::ImportCommandFile(const std::wstring& path) {
-    if (runningCommandIndex_ >= 0 || path.empty()) return;
-    if (commandsDirty_) {
+    if (macro_.RunningIndex() >= 0 || path.empty()) return;
+    if (macro_.Dirty()) {
         const int choice = MessageBoxW(window_, L"当前命令尚未保存。导入前是否保存？", L"导入命令", MB_YESNOCANCEL | MB_ICONQUESTION);
         if (choice == IDCANCEL || (choice == IDYES && !SaveCommands())) return;
     }
     RememberCommandDirectory(path);
     std::wstring error;
-    auto previousCommands = commands_;
-    if (!LoadCommandsFromFile(path, error)) { AppendStatus(error, true); return; }
-    if (commandsFileProtected_) {
-        const std::wstring backup = DefaultCommandsPath() + L".unreadable-" + std::to_wstring(GetTickCount64()) + L".bak";
-        if (!CopyFileW(DefaultCommandsPath().c_str(), backup.c_str(), TRUE)) {
-            commands_ = std::move(previousCommands);
-            AppendStatus(L"无法备份原命令文件，尚未允许覆盖。", true); return;
-        }
-        commandsFileProtected_ = false;
-    }
-    MarkCommandsDirty();
+    if (!macro_.ImportFile(path, DefaultCommandsPath(), error)) { AppendStatus(error, true); return; }
     RefreshCommandList();
     AppendStatus(L"已导入常用命令。", false);
 }
@@ -8282,17 +7176,17 @@ INT_PTR CALLBACK MainWindow::CommandDialogProc(HWND dialog, UINT message, WPARAM
 }
 
 void MainWindow::AddCommand() {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     pendingCommand_ = {};
     pendingCommand_.commands.push_back(L"");
     pendingCommand_.intervalMs = DefaultCommandIntervalMs;
     editingCommandIndex_ = -1;
     if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
                          reinterpret_cast<LPARAM>(this)) == IDOK) {
-        commands_.push_back(pendingCommand_);
+        macro_.Append(pendingCommand_);
         MarkCommandsDirty();
         RefreshCommandList();
-        SendMessageW(commandList_, LB_SETCURSEL, commands_.size() - 1, 0);
+        SendMessageW(commandList_, LB_SETCURSEL, macro_.Items().size() - 1, 0);
         UpdateCommandActions();
     }
     RedrawWindow(window_, nullptr, nullptr,
@@ -8300,12 +7194,12 @@ void MainWindow::AddCommand() {
 }
 
 void MainWindow::EditCommand(size_t index) {
-    if (runningCommandIndex_ >= 0 || index >= commands_.size()) return;
-    pendingCommand_ = commands_[index];
+    if (macro_.RunningIndex() >= 0 || index >= macro_.Items().size()) return;
+    pendingCommand_ = macro_.Items()[index];
     editingCommandIndex_ = static_cast<int>(index);
     if (UiDialogBoxOwned(instance_, MAKEINTRESOURCEW(IDD_COMMAND), window_, CommandDialogProc,
                          reinterpret_cast<LPARAM>(this)) == IDOK) {
-        commands_[index] = pendingCommand_;
+        macro_.Update(index, pendingCommand_);
         MarkCommandsDirty();
         RefreshCommandList();
         SendMessageW(commandList_, LB_SETCURSEL, index, 0);
@@ -8317,10 +7211,10 @@ void MainWindow::EditCommand(size_t index) {
 }
 
 void MainWindow::DeleteSelectedCommand() {
-    if (runningCommandIndex_ >= 0) return;
+    if (macro_.RunningIndex() >= 0) return;
     const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
     if (selected == LB_ERR) return;
-    commands_.erase(commands_.begin() + selected);
+    macro_.Erase(static_cast<size_t>(selected));
     MarkCommandsDirty();
     RefreshCommandList();
 }

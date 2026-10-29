@@ -186,8 +186,32 @@ function Invoke-SerialCtlExternalCommand {
     )
 
     Write-Host "==> $Description"
-    & $FilePath @Arguments
-    $exitCode = $LASTEXITCODE
+    if ($env:SERIALCTL_EVIDENCE_DIR) {
+        New-Item -ItemType Directory -Path $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
+        $log = Join-Path $env:SERIALCTL_EVIDENCE_DIR 'native-process.log'
+        $writer = [System.IO.StreamWriter]::new($log, $true, [System.Text.UTF8Encoding]::new($false))
+        $writer.AutoFlush = $true
+        $previousPreference = $ErrorActionPreference
+        try {
+            $writer.WriteLine("==> $Description")
+            # Windows PowerShell can treat redirected native stderr as an error
+            # record. Retain both streams, then enforce the actual process exit
+            # code below; no native failure is accepted as a successful command.
+            $ErrorActionPreference = 'Continue'
+            & $FilePath @Arguments 2>&1 | ForEach-Object {
+                $line = $_.ToString()
+                $writer.WriteLine($line)
+                Write-Host $line
+            }
+            $exitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $previousPreference
+            $writer.Dispose()
+        }
+    } else {
+        & $FilePath @Arguments
+        $exitCode = $LASTEXITCODE
+    }
     if ($exitCode -ne 0) {
         throw "$Description failed with exit code $exitCode"
     }

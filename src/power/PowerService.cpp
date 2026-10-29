@@ -285,12 +285,14 @@ struct PowerService::Transport {
     }
 };
 bool PowerService::VisaAvailable() {
+    if (!ConnectionAvailable()) return false;
     Visa visa;
     return visa.dll != nullptr;
 }
 Json PowerService::UsbResources() {
-    Visa visa;
     Json resources = Json::array();
+    if (!ConnectionAvailable()) return resources;
+    Visa visa;
     if (!visa.dll)
         return resources;
     Vi rm = 0, list = 0, count = 0;
@@ -354,10 +356,11 @@ Json PowerService::Action(const std::string &id) {
 Json PowerService::Submit(const Json &command) {
     try {
         const std::string type = command.at("type").get<std::string>();
-        if (type == "connect" && !ConnectionAvailable()) {
+        if (!ConnectionAvailable()) {
 #ifdef SERIALCTL_POWER_TESTING
-            // Only controlled test targets may exercise the in-memory backend.
-            if (command.value("backend", std::string()) != "simulation")
+            // Only controlled test targets may exercise the in-memory backend
+            // and its actions. Production rejects before queueing any operation.
+            if (type == "connect" && command.value("backend", std::string()) != "simulation")
 #endif
                 return {{"error", ConnectionUnavailableMessage()}, {"code", "FEATURE_NOT_AVAILABLE"}};
         }
@@ -597,12 +600,23 @@ Json PowerService::Submit(const Json &command) {
         } else
             queue_.emplace_back(id, std::move(queued));
         while (actions_.size() > 256) {
-            auto it = std::find_if(actions_.begin(), actions_.end(), [](const auto &item) {
-                return item.second["state"] != "queued" && item.second["state"] != "running";
-            });
-            if (it == actions_.end())
+            // Evict the oldest finished action (lowest numeric id). Map key order is
+            // lexicographic ("power-action-10" < "power-action-9"), so it cannot be
+            // used as age; queued/running actions are never evicted.
+            const auto sequence = [](const std::string &key) {
+                const auto digits = key.find_last_not_of("0123456789");
+                return digits + 1 < key.size() ? std::stoull(key.substr(digits + 1)) : std::uint64_t(0);
+            };
+            auto oldest = actions_.end();
+            for (auto it = actions_.begin(); it != actions_.end(); ++it) {
+                if (it->second["state"] == "queued" || it->second["state"] == "running")
+                    continue;
+                if (oldest == actions_.end() || sequence(it->first) < sequence(oldest->first))
+                    oldest = it;
+            }
+            if (oldest == actions_.end())
                 break;
-            actions_.erase(it);
+            actions_.erase(oldest);
         }
         wake_.notify_one();
         return action;
@@ -995,9 +1009,6 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             command["_recoveryEpoch"].get<std::uint64_t>() != recoveryCancelEpoch_.load()) action["state"] = "canceled";
         action["error"] = e.what();
         action["timestamp"] = Timestamp();
-        auto failureRecord = action.dump();
-        log_.WriteStatus(MultiByteToWide(reinterpret_cast<const std::uint8_t *>(failureRecord.data()),
-                                         failureRecord.size(), CP_UTF8));
         if (command.value("type", std::string()) == "connect" || communication) {
             Disconnect();
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1005,10 +1016,13 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 actions_[job.first]["state"] = "canceled";
             queue_.clear();
         }
-        action["state"] = "failed";
-        action["error"] = e.what();
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_["error"] = e.what();
+        // A canceled recovery keeps its "canceled" state and must not pollute the
+        // global error; only real failures update state_["error"]. The status log
+        // is written once, after the common record below.
+        if (action["state"] == "failed") {
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["error"] = e.what();
+        }
     }
     action["timestamp"] = Timestamp();
     log_.WriteStatus(
@@ -1136,14 +1150,19 @@ void PowerService::Run() {
     }
     Disconnect();
 }
-void PowerService::Shutdown() {
+void PowerService::RequestShutdown() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        stopping_ = true;
-        ++recoveryCancelEpoch_;
+        if (!stopping_) {
+            stopping_ = true;
+            ++recoveryCancelEpoch_;
+        }
         queue_.clear();
         wake_.notify_all();
     }
+}
+void PowerService::Shutdown() {
+    RequestShutdown();
     if (thread_.joinable())
         thread_.join();
 }

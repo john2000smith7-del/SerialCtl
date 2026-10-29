@@ -359,18 +359,19 @@ void CodexClient::Run(ServerSettings settings, HostKeyConfirmation confirm, bool
             }
         }
         if (!sending.empty()) {
-            // <= 1 KiB per poll; CancelSynchronousIo in Shutdown interrupts a
+            // <= 4 KiB per poll (one default pipe buffer); CancelSynchronousIo in Shutdown interrupts a
             // broken/non-reading peer rather than leaving the Win32 UI blocked.
             DWORD n = 0;
             if (!WriteFile(inWrite, sending.data() + sent,
-                           static_cast<DWORD>(std::min<size_t>(1024, sending.size() - sent)), &n, nullptr) ||
+                           static_cast<DWORD>(std::min<size_t>(4096, sending.size() - sent)), &n, nullptr) ||
                 !n)
                 throw std::runtime_error("SSH stdin closed");
             sent += n;
             if (sent == sending.size())
                 sending.clear();
         }
-        WaitForSingleObject(process, 10);
+        // Only idle-wait when nothing is left to send; pending data is written on the next pass.
+        if (sending.empty()) WaitForSingleObject(process, 10);
     }
 }
 } // namespace serialctl::ai

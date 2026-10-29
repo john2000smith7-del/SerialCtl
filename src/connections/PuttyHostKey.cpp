@@ -80,7 +80,8 @@ std::wstring Decode(const std::string& bytes) {
 bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uint16_t port,
     const std::wstring& username, const std::wstring& password, const std::wstring& hostKey,
     DWORD& exitCode, std::wstring& output, std::wstring& error,
-    const std::atomic_bool* cancel) {
+    const std::atomic_bool* cancel, std::uint64_t deadline) {
+    if (deadline && GetTickCount64() >= deadline) { error = L"SSH 登录验证超时。"; return false; }
     PasswordPipe passwordPipe;
     if (!password.empty() && !passwordPipe.Open(password, error)) {
         if (error.empty()) error = L"无法创建安全密码通道";
@@ -125,6 +126,10 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
         CloseHandle(outputRead);
         return false;
     }
+    if (deadline && GetTickCount64() >= deadline) {
+        CloseHandle(nullInput); CloseHandle(outputWrite); CloseHandle(outputRead);
+        error = L"SSH 登录验证超时。"; return false;
+    }
     PROCESS_INFORMATION process{};
     const BOOL created = CreateProcessW(executable.c_str(), buffer.data(), nullptr, nullptr, TRUE,
         CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr,
@@ -139,7 +144,7 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
     }
 
     std::string bytes;
-    const DWORD started = GetTickCount();
+    const auto started = GetTickCount64();
     bool timedOut = false;
     bool cancelled = false;
     bool tooLarge = false;
@@ -153,14 +158,18 @@ bool RunProbe(const std::wstring& executable, const std::wstring& host, std::uin
             WaitForSingleObject(process.hProcess, 1000);
             break;
         }
-        if (WaitForSingleObject(process.hProcess, read == PipeRead::More ? 0 : 20) == WAIT_OBJECT_0) break;
+        if (WaitForSingleObject(process.hProcess, read == PipeRead::More ? 0 : 20) == WAIT_OBJECT_0) {
+            timedOut = deadline && GetTickCount64() >= deadline;
+            break;
+        }
         if (cancel && cancel->load()) {
             cancelled = true;
             TerminateProcess(process.hProcess, 1);
             WaitForSingleObject(process.hProcess, 1000);
             break;
         }
-        if (GetTickCount() - started > 15000) {
+        const auto now = GetTickCount64();
+        if (now - started >= 15000 || (deadline && now >= deadline)) {
             timedOut = true;
             TerminateProcess(process.hProcess, 1);
             WaitForSingleObject(process.hProcess, 1000);
@@ -266,7 +275,8 @@ bool IsPuttyAuthenticationFailure(const std::wstring& message) {
 bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& host,
     std::uint16_t port, const std::wstring& username, const std::wstring& password,
     std::wstring& hostKey, std::wstring& error, const std::atomic_bool* cancel,
-    const HostKeyConfirmation& confirm, bool reverify) {
+    const HostKeyConfirmation& confirm, bool reverify, std::uint64_t deadline) {
+    if (deadline && GetTickCount64() >= deadline) { error = L"SSH 登录验证超时。"; return false; }
     const std::wstring cacheKey = EndpointName(host, port);
     std::wstring previous;
     unsigned long long revision = 0;
@@ -292,7 +302,7 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
     DWORD exitCode = 1;
     std::wstring output;
     if (!RunProbe(executable, host, port, username, password, hostKey,
-            exitCode, output, error, cancel)) return false;
+            exitCode, output, error, cancel, deadline)) return false;
     auto remember = [&](const std::wstring& fingerprint, bool persist, bool cache) {
         std::lock_guard<std::mutex> lock(cacheMutex);
         if (hostKeyRevisions[cacheKey] != revision || ReadTrustedKey(cacheKey) != previous) {
@@ -338,7 +348,7 @@ bool ResolvePuttyHostKey(const std::wstring& executable, const std::wstring& hos
         // timeout or cancellation cannot erase/overwrite the previous pin.
         output.clear();
         if (!RunProbe(executable, host, port, username, password, discovered,
-                exitCode, output, error, cancel)) return false;
+                exitCode, output, error, cancel, deadline)) return false;
         if (exitCode != 0 && IsPuttyHostKeyFailure(output)) {
             error = L"服务器的主机身份在核验期间再次变化，未更新原记录。请重新核验。";
             return false;

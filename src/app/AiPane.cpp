@@ -527,10 +527,12 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_TIMER:
+        if (self->closing_) return 0;
         if (w == Timer)
             self->Poll();
         return 0;
     case WM_COMMAND:
+        if (self->closing_) return 0;
         if (HIWORD(w) == BN_CLICKED)
             self->Action(LOWORD(w));
         else if (LOWORD(w) == Target && HIWORD(w) == CBN_SELCHANGE) {
@@ -1642,10 +1644,11 @@ void AiPane::Disconnect() {
     SetStatus(L"AI 已断开；原有串口和电源不受影响");
     UpdateActions();
 }
-void AiPane::Shutdown() {
+void AiPane::BeginShutdown() {
     if (closing_.exchange(true))
         return;
     client_.Disconnect();
+    if (window_) KillTimer(window_, Timer);
     std::shared_ptr<HostPrompt> prompt;
     {
         std::lock_guard<std::mutex> l(eventsMutex_);
@@ -1658,13 +1661,18 @@ void AiPane::Shutdown() {
         } catch (...) {
         }
     }
-    client_.Shutdown();
     if (devices_)
         devices_("release", {{"sessionId", turnTarget_}});
 }
+void AiPane::WaitForShutdown() { client_.Shutdown(); }
+void AiPane::Shutdown() {
+    BeginShutdown();
+    WaitForShutdown();
+}
 void AiPane::QueueEvent(Json event) {
+    if (closing_) return;
     std::lock_guard<std::mutex> lock(eventsMutex_);
-    if (eventOverflowed_) return;
+    if (closing_ || eventOverflowed_) return;
     const auto size = event.dump().size();
     if (eventBytes_ + size > 8 * 1024 * 1024 || events_.size() > 2048) {
         // Do not lose the terminal lifecycle notification behind
