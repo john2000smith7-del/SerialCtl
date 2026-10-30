@@ -33,9 +33,7 @@ jobs:
           $app = Start-Process (Join-Path $native 'serialctl.exe') -PassThru
           try {
             if (-not $app.WaitForInputIdle(10000)) { throw 'GUI did not become idle' }
-            $app.Refresh()
-            if (-not $app.MainWindowHandle) { throw 'Main window is unavailable' }
-            python tests/integration/gui_user_lifecycle.py $native $app.MainWindowHandle.ToInt64() $app.Id "$env:RUNNER_TEMP/focus-result.json"
+            python tests/integration/launch_focus_verification.py $native $app.Id "$env:RUNNER_TEMP/focus-result.json"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally { if (-not $app.HasExited) { Stop-Process -Id $app.Id } }
       - name: Export exact result including initial and settled focus
