@@ -479,6 +479,20 @@ struct AiDeviceTestAccess {
             main.notebook_.action(1);
             Require(!main.macro_.Running()&&transports[4]->writes==writes+1,"Same single Run action becomes Stop without sending the remaining command");
             Require(main.statusText_.find(L"已停止后续提交")!=std::wstring::npos,"Stop reports accepted count without claiming execution finished");
+            main.notebook_.SetText(std::wstring(300,L'A')+L"\r\necho end");
+            Require(SendMessageW(main.notebook_.Editor(),EM_GETLINECOUNT,0,0)==2,"Long notebook commands must not soft-wrap");
+            main.notebook_.Selection(200,200);SendMessageW(main.notebook_.Editor(),EM_SCROLLCARET,0,0);
+            POINT scroll{};SendMessageW(main.notebook_.Editor(),EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&scroll));
+            Require(scroll.x>0,"Long notebook lines must scroll horizontally to reveal the caret");
+            main.notebook_.SetText(L"echo ctrl-enter");main.notebook_.Selection(3,3);
+            const auto beforeShortcut=main.notebook_.Text();const auto beforeWrites=transports[4]->writes;
+            BYTE originalKeys[256]{},keys[256]{};GetKeyboardState(originalKeys);memcpy(keys,originalKeys,sizeof(keys));keys[VK_CONTROL]=0x80;SetKeyboardState(keys);
+            SendMessageW(main.notebook_.Editor(),WM_KEYDOWN,VK_RETURN,0);
+            SendMessageW(main.notebook_.Editor(),WM_CHAR,L'\n',0);SetKeyboardState(originalKeys);
+            Require(transports[4]->writes==beforeWrites+1&&main.notebook_.Text()==beforeShortcut,"Ctrl+Enter sends the whole caret line without inserting a newline");
+            main.notebook_.SetText(L"# 调试\r\necho first\r\necho second\r\n");
+            const auto restoredRows=CommandLines(main.notebook_.Text());
+            main.notebook_.Selection(static_cast<LONG>(restoredRows[1].start+4),static_cast<LONG>(restoredRows[2].start+4));
             main.notebook_.SetInterval(500);
             for(bool dark:{false,true}){
                 main.darkMode_=dark;main.ApplyTheme();
@@ -491,9 +505,11 @@ struct AiDeviceTestAccess {
             const auto name=file.wstring();auto handle=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(name.size()+2)*sizeof(wchar_t));
             auto data=static_cast<DROPFILES*>(GlobalLock(handle));data->pFiles=sizeof(DROPFILES);data->fWide=TRUE;memcpy(reinterpret_cast<char*>(data)+sizeof(DROPFILES),name.c_str(),(name.size()+1)*sizeof(wchar_t));GlobalUnlock(handle);
             SendMessageW(main.notebook_.Editor(),WM_DROPFILES,reinterpret_cast<WPARAM>(handle),0);
-            Require(main.notebook_.Text().find(L"echo imported-only")!=std::wstring::npos&&main.notebook_.Dirty()&&transports[4]->writes==writes+1,"Dropped UTF8 file updates a draft and never executes");
+            Require(main.notebook_.Text().find(L"echo imported-only")!=std::wstring::npos&&main.notebook_.Dirty()&&transports[4]->writes==beforeWrites+1,"Dropped UTF8 file updates a draft and never executes");
             std::filesystem::remove(file);
             main.notebook_.SetText(originalText);
+            main.RunNotebook({L"echo retained-stop",L"echo must-not-be-sent"});
+            main.notebook_.action(1);
         }
         main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);

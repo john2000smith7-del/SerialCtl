@@ -398,7 +398,7 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
             self->action(1);
         return 0;
     }
-    if (m == WM_CHAR && w == L'\r' && (GetKeyState(VK_CONTROL) & 0x8000))
+    if (m == WM_CHAR && (w == L'\r' || w == L'\n') && (GetKeyState(VK_CONTROL) & 0x8000))
         return 0;
     if (m == WM_LBUTTONDBLCLK && self->doubleClick_ && !self->running_) {
         POINTL p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
