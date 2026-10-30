@@ -44,3 +44,5 @@ check → clean build → test → PE compatibility check → package → extrac
 圆角资源合成使用 MSIMG32!AlphaBlend；完整串口名称读取使用 SETUPAPI 的 SetupDiGetClassDevsW、SetupDiEnumDeviceInfo、SetupDiOpenDevRegKey、SetupDiGetDeviceRegistryPropertyW、SetupDiDestroyDeviceInfoList。这些接口在 Windows 7 之前已提供，不添加用户运行库。对应程序、UI 测试及解压后程序的精确 DLL 清单同步更新；新增 UDP 测试也纳入二进制检查。禁止较新 API、API-set、动态 MSVC／.NET 依赖和非6.01子系统的检查保留。
 
 接口最低系统说明可查 [AlphaBlend](https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-alphablend) 和 [SetupDiGetClassDevsW](https://learn.microsoft.com/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw)。静态接口核对不替代 Windows 7 实机验收。
+
+V2.0.12 的 `ui_dialog_viewport_test` 新增实际下拉列表测试，使用共享图标资源装载器的 OLE32!CreateStreamOnHGlobal（Windows 2000 起支持）。仅该测试目标补充显式 OLE32 链接及精确导入清单，和既有 `ui_combo_paint_test` 一致；生产程序原本已使用此系统库，生产依赖清单不变，Win7 禁止导入与子系统检查继续执行。

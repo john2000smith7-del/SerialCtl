@@ -321,7 +321,7 @@ if(BUILD_TESTING)
 
     add_executable(ui_dialog_viewport_test tests/integration/UiDialogViewportTest.cpp)
     serialctl_configure_native_target(ui_dialog_viewport_test CONSOLE)
-    target_link_libraries(ui_dialog_viewport_test PRIVATE msimg32 gdiplus gdi32 user32 comctl32)
+    target_link_libraries(ui_dialog_viewport_test PRIVATE ole32 msimg32 gdiplus gdi32 user32 comctl32)
     add_test(NAME ui_dialog_viewport COMMAND ui_dialog_viewport_test)
     set_tests_properties(ui_dialog_viewport PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
     set_tests_properties(ui_buffered_paint PROPERTIES TIMEOUT 30)
