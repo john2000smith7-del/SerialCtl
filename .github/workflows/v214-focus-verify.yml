@@ -1,0 +1,45 @@
+name: Verify V2.0.14 actual connection focus completion
+on:
+  push:
+    branches: [verification/v214-native]
+    paths: [.github/workflows/v214-focus-verify.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: candidate
+          run-id: 41064252907
+          github-token: ${{ github.token }}
+      - name: Run complete native connection lifecycle with bounded focus observation
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tools/new_update_feed.py --verify-archive candidate/SerialCtl-V2.0.14-Win7-x64.zip --metadata candidate-update.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $native = Join-Path $env:RUNNER_TEMP 'v214-focus'
+          Expand-Archive candidate/SerialCtl-V2.0.14-Win7-x64.zip $native
+          Set-Content (Join-Path $native 'update.ini') "[update]`nurl=" -Encoding ASCII
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'v214-focus-profile'
+          $env:LOCALAPPDATA = $env:APPDATA
+          New-Item -ItemType Directory $env:APPDATA -Force | Out-Null
+          $app = Start-Process (Join-Path $native 'serialctl.exe') -PassThru
+          try {
+            if (-not $app.WaitForInputIdle(10000)) { throw 'GUI did not become idle' }
+            $app.Refresh()
+            if (-not $app.MainWindowHandle) { throw 'Main window is unavailable' }
+            python tests/integration/gui_user_lifecycle.py $native $app.MainWindowHandle.ToInt64() $app.Id "$env:RUNNER_TEMP/focus-result.json"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally { if (-not $app.HasExited) { Stop-Process -Id $app.Id } }
+      - name: Export exact result including initial and settled focus
+        if: always()
+        shell: powershell
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP/focus-result.json") { Get-Content "$env:RUNNER_TEMP/focus-result.json" -Raw | Write-Host }

@@ -313,8 +313,19 @@ def run(c):
     focused_list,thread=click(106,((rect.left+rect.right)//2,first_row_y))
     assert focused_list==listing
     wait(lambda:u.SendMessageW(listing,0x188,0,0)==top)
+    # Selection changes inside the native listbox dispatch before the parent
+    # finishes session activation. Observe the completed focus transition, with
+    # no SetFocus, extra click or keyboard repair masking an actual failure.
+    focus_started=time.monotonic()
     row_focus=focus_state(thread)
+    first_row_focus=dict(row_focus)
+    focus_deadline=focus_started+2
+    while row_focus['hwnd']!=u.GetDlgItem(window,107) and time.monotonic()<focus_deadline:
+        time.sleep(.01)
+        row_focus=focus_state(thread)
     observations.append({'action':'connection-row-click','selection':u.SendMessageW(listing,0x188,0,0),
+                         'first_focus_after_selection':first_row_focus,
+                         'focus_settle_ms':round((time.monotonic()-focus_started)*1000,3),
                          'focus_after':row_focus,'expected_focus_control':107,
                          'classification':'Mouse row activation must preserve terminal focus behavior'})
     if row_focus['hwnd']!=u.GetDlgItem(window,107) or row_focus['foreground']!=window:
