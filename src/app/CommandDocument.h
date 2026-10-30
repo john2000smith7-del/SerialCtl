@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 namespace serialctl {
 // Positions are native UTF-16 offsets, including either CR, LF or CRLF endings.

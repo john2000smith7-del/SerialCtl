@@ -33,7 +33,13 @@ bool ReadCommandDocument(const std::wstring &path, std::wstring &text, std::wstr
         error = L"请使用 UTF-8 文本文件（不能包含 NUL）";
         return false;
     }
-    text = MultiByteToWide(reinterpret_cast<const std::uint8_t *>(raw.data()), raw.size(), CP_UTF8);
+    auto decoded = MultiByteToWide(reinterpret_cast<const std::uint8_t *>(raw.data()), raw.size(), CP_UTF8);
+    for (const wchar_t ch : decoded)
+        if (ch < 32 && ch != L'\r' && ch != L'\n' && ch != L'\t') {
+            error = L"命令文本包含不支持的控制字符";
+            return false;
+        }
+    text = std::move(decoded);
     return true;
 }
 bool WriteCommandDocument(const std::wstring &path, const std::wstring &text, std::wstring &error) {

@@ -35,8 +35,9 @@ bool CommandNotebook::Create(HWND parent, int id) {
     wc.lpszClassName = L"SerialCtlCommandNotebook";
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     RegisterClassW(&wc);
-    window_ = CreateWindowExW(0, wc.lpszClassName, L"", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0, 0, 0, 0,
-                              parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), wc.hInstance, this);
+    window_ =
+        CreateWindowExW(WS_EX_CONTROLPARENT, wc.lpszClassName, L"", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0, 0,
+                        0, 0, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), wc.hInstance, this);
     return window_ && editor_;
 }
 LRESULT CALLBACK CommandNotebook::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -108,6 +109,8 @@ void CommandNotebook::State(bool writable, bool running, size_t sent, size_t tot
         EnableWindow(buttons_[i], !running);
     if (wasRunning != running)
         SendMessageW(editor_, EM_SETREADONLY, running, 0);
+    if (wasRunning != running)
+        SetWindowTextW(buttons_[0], running ? L"停止" : L"运行");
     if (different) {
         InvalidateRect(window_, nullptr, FALSE);
         for (auto b : buttons_)
@@ -265,36 +268,59 @@ void CommandNotebook::Scroll(int x, int y) {
 }
 void CommandNotebook::Menu() {
     HMENU menu = CreatePopupMenu();
-    AppendMenuW(menu, MF_STRING | (doubleClick_ ? MF_CHECKED : 0), 1, L"正文双击运行");
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    for (int i = 0; i < 4; ++i) {
-        const unsigned values[] = {100, 500, 1500, 5000};
-        AppendMenuW(menu, MF_STRING | (interval_ == values[i] ? MF_CHECKED : 0), 10 + i,
-                    (L"发送间隔 " + std::to_wstring(values[i]) + L" ms").c_str());
-    }
+    const auto colors = UiTheme(dark_);
+    auto background = CreateSolidBrush(colors.surface);
+    MENUINFO info{sizeof(info)};
+    info.fMask = MIM_BACKGROUND;
+    info.hbrBack = background;
+    SetMenuInfo(menu, &info);
+    std::vector<std::wstring> labels{L"正文双击运行"};
+    const unsigned values[] = {100, 500, 1500, 5000};
+    for (const auto value : values)
+        labels.push_back(L"发送间隔 " + std::to_wstring(value) + L" ms");
+    AppendMenuW(menu, MF_OWNERDRAW | (doubleClick_ ? MF_CHECKED : 0), 1, labels[0].c_str());
+    AppendMenuW(menu, MF_OWNERDRAW | MF_SEPARATOR, 0, nullptr);
+    for (int i = 0; i < 4; ++i)
+        AppendMenuW(menu, MF_OWNERDRAW | (interval_ == values[i] ? MF_CHECKED : 0), 10 + i, labels[i + 1].c_str());
     RECT r{};
     GetWindowRect(more_, &r);
     auto choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTALIGN, r.right, r.bottom, 0, window_, nullptr);
     DestroyMenu(menu);
+    DeleteObject(background);
     if (choice == 1)
         doubleClick_ = !doubleClick_;
-    if (choice >= 10 && choice < 14) {
-        const unsigned values[] = {100, 500, 1500, 5000};
+    if (choice >= 10 && choice < 14)
         interval_ = values[choice - 10];
-    }
     if (choice && optionsChanged)
         optionsChanged();
     InvalidateRect(window_, nullptr, FALSE);
 }
 void CommandNotebook::SelectionInk(HDC dc) {
-    if (selection_.cpMin == selection_.cpMax)
-        return;
     const auto c = UiTheme(dark_);
     RECT client{};
     GetClientRect(editor_, &client);
     const int saved = SaveDC(dc);
     IntersectClipRect(dc, 0, 0, client.right, client.bottom);
     auto font = SelectObject(dc, mono_);
+    SetBkColor(dc, c.accent);
+    SetTextColor(dc, RGB(255, 255, 255));
+    const auto first = static_cast<size_t>(std::max<LRESULT>(0, SendMessageW(editor_, EM_GETFIRSTVISIBLELINE, 0, 0)));
+    for (size_t i = first; i < lines_.size(); ++i) {
+        POINTL p{}, end{};
+        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&p), lines_[i].start);
+        if (p.y >= client.bottom)
+            break;
+        const auto firstText = text_.find_first_not_of(L" \t", lines_[i].start);
+        if (firstText >= lines_[i].end || (text_[firstText] != L'#' && text_.compare(firstText, 2, L"[[") != 0) ||
+            lines_[i].end - lines_[i].start > 8192)
+            continue;
+        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end), lines_[i].end);
+        RECT box{p.x, p.y, end.x, p.y + rowHeight_};
+        SetBkColor(dc, c.field);
+        SetTextColor(dc, c.muted);
+        ExtTextOutW(dc, p.x, p.y, ETO_OPAQUE | ETO_CLIPPED, &box, text_.data() + lines_[i].start,
+                    static_cast<UINT>(lines_[i].end - lines_[i].start), nullptr);
+    }
     SetBkColor(dc, c.accent);
     SetTextColor(dc, RGB(255, 255, 255));
     const auto range = CommandSelectedLines(lines_, selection_.cpMin, selection_.cpMax);
@@ -344,7 +370,7 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
         HMENU menu = CreatePopupMenu();
         const wchar_t *labels[] = {L"撤销", L"剪切", L"复制", L"粘贴", L"全选"};
         for (int i = 0; i < 5; ++i)
-            AppendMenuW(menu, MF_STRING | ((self->running_ && (i == 0 || i == 1 || i == 3)) ? MF_GRAYED : 0), i + 1,
+            AppendMenuW(menu, MF_OWNERDRAW | ((self->running_ && (i == 0 || i == 1 || i == 3)) ? MF_GRAYED : 0), i + 1,
                         labels[i]);
         POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         if (point.x == -1 && point.y == -1) {
@@ -461,8 +487,10 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
         break;
     case WM_NOTIFY:
         if (reinterpret_cast<NMHDR *>(l)->hwndFrom == editor_) {
-            if (reinterpret_cast<NMHDR *>(l)->code == EN_SELCHANGE)
+            if (reinterpret_cast<NMHDR *>(l)->code == EN_SELCHANGE) {
                 Refresh();
+                InvalidateRect(editor_, nullptr, FALSE);
+            }
         }
         return 0;
     case WM_DROPFILES: {
@@ -479,8 +507,40 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
             drop(path);
         return 0;
     }
+    case WM_MEASUREITEM: {
+        auto &item = *reinterpret_cast<MEASUREITEMSTRUCT *>(l);
+        if (item.CtlType != ODT_MENU)
+            break;
+        item.itemWidth = D(240);
+        item.itemHeight = item.itemData ? D(32) : D(8);
+        return TRUE;
+    }
     case WM_DRAWITEM: {
         const auto &it = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
+        if (it.CtlType == ODT_MENU) {
+            UiBufferedPaint buffer(it.hDC, it.rcItem);
+            auto dc = buffer.Dc();
+            const auto c = UiTheme(dark_);
+            Fill(dc, it.rcItem, c.surface);
+            if (!it.itemData) {
+                Fill(dc,
+                     {it.rcItem.left + D(12), (it.rcItem.top + it.rcItem.bottom) / 2, it.rcItem.right - D(12),
+                      (it.rcItem.top + it.rcItem.bottom) / 2 + 1},
+                     c.border);
+                return TRUE;
+            }
+            const bool selected = (it.itemState & ODS_SELECTED) != 0;
+            if (selected)
+                UiRoundedSurface(dc, it.rcItem, c.accent, c.accent, D(10), dpi_);
+            const auto ink = (it.itemState & ODS_DISABLED) ? c.muted : selected ? RGB(255, 255, 255) : c.text;
+            if (it.itemState & ODS_CHECKED)
+                UiDrawGlyph(dc, {D(8), it.rcItem.top + D(8), D(24), it.rcItem.top + D(24)}, ink, UiGlyph::Check);
+            RECT label = it.rcItem;
+            label.left += D(36);
+            label.right -= D(12);
+            TextAt(dc, ui_, label, reinterpret_cast<const wchar_t *>(it.itemData), ink);
+            return TRUE;
+        }
         UiBufferedPaint buffered(it.hDC, it.rcItem);
         HDC dc = buffered.Dc();
         auto c = UiTheme(dark_);
@@ -518,6 +578,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
     case WM_LBUTTONDOWN: {
         POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         if (p.x < gutter_ && p.y >= top_ && p.y < bottom_ - D(16) && !running_) {
+            SetFocus(editor_);
             POINTL text{0, p.y - top_};
             const auto pos = SendMessageW(editor_, EM_CHARFROMPOS, 0, reinterpret_cast<LPARAM>(&text));
             const auto row = CommandSelectedLines(lines_, std::max<LRESULT>(0, pos), std::max<LRESULT>(0, pos)).first;
