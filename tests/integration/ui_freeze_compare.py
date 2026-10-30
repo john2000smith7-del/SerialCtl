@@ -52,6 +52,7 @@ def main():
     user.PostMessageW.argtypes = (w.HWND, w.UINT, c.c_size_t, c.c_ssize_t)
     user.SendMessageW.argtypes, user.SendMessageW.restype = user.PostMessageW.argtypes, c.c_ssize_t
     user.SetFocus.argtypes = (w.HWND,)
+    user.IsChild.argtypes = (w.HWND,w.HWND)
     shell.SHGetFolderPathW.argtypes = (w.HWND, c.c_int, w.HANDLE, w.DWORD, w.LPWSTR)
     profile = c.create_unicode_buffer(260)
     require(shell.SHGetFolderPathW(None, 0x1A, None, 0, profile) == 0, 'Cannot resolve test profile')
@@ -80,12 +81,13 @@ def main():
             time.sleep(.02)
         raise AssertionError('GUI state did not become ready')
 
-    def geometry(hwnd):
+    def geometry(hwnd, main=False):
         rows = []
         origin = POINT(); user.ClientToScreen(hwnd, c.byref(origin))
         @callback
         def each(child, _):
-            if user.IsWindowVisible(child):
+            approved = main and (user.GetDlgCtrlID(child) in (112,113,114,115,116,132,308) or user.IsChild(user.GetDlgItem(hwnd,112),child))
+            if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
                 name = c.create_unicode_buffer(128); user.GetClassNameW(child, name, 128)
                 rows.append([user.GetDlgCtrlID(child), name.value, rect.left-origin.x, rect.top-origin.y,
@@ -186,10 +188,23 @@ def main():
                     width, height, stride = rect.right, rect.bottom, frame['width']*4
                     pixels = b''.join(raw[(point.y+y)*stride+point.x*4:(point.y+y)*stride+(point.x+width)*4] for y in range(height))
                     rgb = bytearray(pixels); rgb[3::4] = bytes(len(rgb)//4)
-                    capture = {'size': [width, height], 'geometry': geometry(target),
+                    capture = {'size': [width, height], 'geometry': geometry(target, name=='main'),
                                'pixels': bytes(rgb), 'rawPixels': bytes(rgb), 'frame': frame['path']}
+                    if name == 'main':
+                        # V2.0.13 intentionally replaces only the command content,
+                        # its retired Add action and the free toolbar reminder.
+                        def bounds(identifier):
+                            box=RECT();user.GetWindowRect(user.GetDlgItem(target,identifier),c.byref(box))
+                            return [box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y]
+                        listing,tabs,toggle,settings,themebox = [bounds(i) for i in (112,118,125,303,104)]
+                        scale=report['dpi']/96
+                        capture['approvedRegions']=[
+                            [listing[0],listing[1],width-round(12*scale),height-round(12*scale)],
+                            [tabs[2],tabs[1]-round(4*scale),toggle[0],toggle[3]+round(4*scale)],
+                            [settings[2]+round(12*scale),themebox[1],themebox[0]-round(8*scale),themebox[3]]]
                     desktop.flush_frames()
                     if name == 'settings':
+
                         control, capture['version'] = version_footer(target, version)
                         # Keep the original real screenshot. For the second
                         # comparison frame normalize only the verified version
@@ -215,10 +230,20 @@ def main():
         for key, before in baseline.items():
             after = candidate[key]
             require(before['size'] == after['size'], 'Client dimensions changed: '+str(key))
+            approved = before.get('approvedRegions',[])+after.get('approvedRegions',[])
+            def exempt(p):
+                x,y=p%before['size'][0],p//before['size'][0]
+                return any(left<=x<right and top<=y<bottom for left,top,right,bottom in approved)
+            if approved:
+                for capture in (before,after):
+                    normalized=bytearray(capture['pixels'])
+                    for p in range(len(normalized)//4):
+                        if exempt(p):normalized[p*4:p*4+4]=b'\0'*4
+                    capture['pixels']=bytes(normalized)
             changed = sum(before['pixels'][i:i+3] != after['pixels'][i:i+3] for i in range(0, len(before['pixels']), 4))
             raw_changes = [i//4 for i in range(0, len(before['rawPixels']), 4)
                            if before['rawPixels'][i:i+3] != after['rawPixels'][i:i+3]]
-            unexempt = len(raw_changes)
+            unexempt = sum(not exempt(p) for p in raw_changes)
             if key[1] == 'settings' and before['version']['expected'] != after['version']['expected']:
                 require(before['version']['rect'] == after['version']['rect'], 'Version footer bounds changed')
                 left, top, right, bottom = before['version']['rect']
@@ -226,7 +251,7 @@ def main():
                                for p in raw_changes)
             report['cases'].append({'theme': key[0], 'view': key[1], 'changedPixels': changed,
                 'rawChangedPixels': len(raw_changes), 'unexemptRawChangedPixels': unexempt,
-                'geometryEqual': before['geometry'] == after['geometry'], 'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
+                'approvedChangeRegions':approved,'geometryEqual': before['geometry'] == after['geometry'], 'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
                 'baselineVersion': before.get('version'), 'candidateVersion': after.get('version'),
                 'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')})
         require(all(case['changedPixels'] == 0 and case['unexemptRawChangedPixels'] == 0 and

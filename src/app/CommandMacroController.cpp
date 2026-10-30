@@ -227,6 +227,10 @@ bool CommandMacroController::Begin(size_t index, std::uint64_t session, std::uin
     plan_ = items_[index]; runningIndex_ = static_cast<int>(index); session_ = session;
     codePage_ = codePage; lineEnding_ = std::move(lineEnding); accepted_ = 0; return true;
 }
+bool CommandMacroController::BeginPlan(CommandItem plan,std::uint64_t session,std::uint32_t codePage,std::wstring ending) {
+    if(Running() || !session || plan.commands.empty() || plan.commands.size()>1000 || plan.intervalMs<1 || plan.intervalMs>MaximumIntervalMs)return false;
+    plan_=std::move(plan);runningIndex_=0;session_=session;codePage_=codePage;lineEnding_=std::move(ending);accepted_=0;return true;
+}
 bool CommandMacroController::Next(std::uint64_t currentSession, bool connected, std::wstring& text) const {
     if (!Running() || currentSession != session_ || !connected || accepted_ >= Total()) return false;
     text = plan_.commands[accepted_] + lineEnding_; return true;

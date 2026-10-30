@@ -143,14 +143,14 @@ def main():
         user.SetForegroundWindow(main_window)
         time.sleep(.3)
         require(user.GetForegroundWindow() == main_window, 'Production window cannot be foregrounded')
-        script = Path(__file__).resolve().with_name('gui_command_drag.py')
+        script = Path(__file__).resolve().with_name('gui_command_notebook.py')
         command = [sys.executable, str(script), '--window', str(main_window), '--pid', str(process.pid),
-                   '--output', str(output), '--prefix', 'real-command', '--edge-scroll']
+                   '--output', str(output), '--prefix', 'real-command', '--native-dir', str(app), '--edge-scroll']
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding='utf-8', errors='replace', timeout=240)
         (output / 'drag-test-output.txt').write_text(result.stdout, encoding='utf-8')
         print(result.stdout, flush=True)
-        require(result.returncode == 0, 'Real desktop command drag regression failed')
+        require(result.returncode == 0, 'Real desktop command notebook regression failed')
         require((actual_config / 'commands.txt').read_bytes() == commands,
                 'Real mouse test unexpectedly modified persistent commands')
         report['mouse_test'] = 'PASS'

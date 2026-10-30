@@ -374,41 +374,7 @@ struct AiDeviceTestAccess {
             }
         }
         const auto commandDraft = main.macro_.Items();
-        main.macro_.Replace({CommandItem(L"Controlled command", L"echo fixture")}, false);
-        MoveWindow(main.commandList_, 0, 0, 280, 200, TRUE);
-        main.RefreshCommandList();
-        for (const bool dark : {false, true}) {
-            main.darkMode_ = dark;
-            const auto c = UiTheme(dark);
-            HDC screen = GetDC(parent), dc = CreateCompatibleDC(screen);
-            HBITMAP bitmap = CreateCompatibleBitmap(screen, 280, 66);
-            const auto old = SelectObject(dc, bitmap);
-            DRAWITEMSTRUCT item{};
-            item.CtlType = ODT_LISTBOX;
-            item.CtlID = GetDlgCtrlID(main.commandList_);
-            item.itemID = 0;
-            item.itemState = ODS_SELECTED;
-            item.hwndItem = main.commandList_;
-            item.hDC = dc;
-            item.rcItem = {0, 0, 280, 66};
-            main.DrawOwnerItem(item);
-            Require(GetPixel(dc, 5, 33) == c.raised, "Selected command retained a sticky blue card");
-            main.pressedCommandIndex_ = 0;
-            main.pressedCommandAction_ = 2;
-            main.DrawOwnerItem(item);
-            Require(GetPixel(dc, 244, 33) == c.accent, "Command action has no deep-blue held feedback");
-            SendMessageW(main.commandList_, WM_LBUTTONUP, 0, 0);
-            Require(main.pressedCommandIndex_ == -1 && main.pressedCommandAction_ == 0,
-                    "Command press did not reset after mouse release");
-            main.DrawOwnerItem(item);
-            Require(GetPixel(dc, 244, 33) == c.raised, "Command action retained blue after release");
-            SelectObject(dc, old);
-            DeleteObject(bitmap);
-            DeleteDC(dc);
-            ReleaseDC(parent, screen);
-        }
-        main.macro_.Replace(commandDraft, false);
-        main.RefreshCommandList();
+        Require(main.notebook_.Editor() && main.notebook_.DoubleClick(), "Native notebook must offer default body double-click execution");
         main.aiVisible_ = main.powerVisible_ = false;
         main.darkMode_ = false;
         main.ApplyTheme();
@@ -500,92 +466,35 @@ struct AiDeviceTestAccess {
             }
         }
         {
+            const auto originalText=main.notebook_.Text();
+            main.notebook_.SetText(L"# 调试\r\necho first\r\necho second\r\n");
+            const auto rows=CommandLines(main.notebook_.Text());
+            Require(rows.size()==4 && main.notebook_.Text().find(L"echo first")!=std::wstring::npos,"RichEdit text and UTF16 line offsets must be readable");
+            main.notebook_.Selection(static_cast<LONG>(rows[1].start+4),static_cast<LONG>(rows[2].start+4));
+            Require(main.notebook_.SelectedCommands()==std::vector<std::wstring>{L"echo first",L"echo second"},"Native partial selection must extract complete commands");
             const auto writes=transports[4]->writes;
-            main.macro_.Replace({CommandItem(L"A",L"echo A"),CommandItem(L"B",L"echo B"),CommandItem(L"C",L"echo C")}, false);
-            main.macro_.MarkSaved(); main.RefreshCommandList();
-            RECT row{}; SendMessageW(main.commandList_,LB_GETITEMRECT,0,reinterpret_cast<LPARAM>(&row));
-            const int h=row.bottom-row.top;
-            // Start in the text area (not just the small left-hand icon), and
-            // require actual pointer movement before a drag preview appears.
-            const int bodyX = std::min<int>(row.right - 90, row.left + 60);
-            auto begin=MAKELPARAM(bodyX,h/2), moved=MAKELPARAM(bodyX+25,h*2+h/2);
-            SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
-            Require(!main.commandDragGhost_ && !main.macro_.Dirty(),"Pressing a card without moving must not start a drag");
-            if (GetSystemMetrics(SM_CXDRAG) / 2 > 1 && GetSystemMetrics(SM_CYDRAG) / 2 > 1) {
-                SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(bodyX+1,h/2+1));
-                Require(!main.commandDragGhost_,"Sub-threshold pointer movement must remain a click");
+            main.notebook_.SetInterval(5000);
+            main.RunNotebook(main.notebook_.SelectedCommands());
+            Require(main.macro_.Running()&&transports[4]->writes==writes+1,"Notebook submits the first selected command immediately");
+            main.notebook_.action(1);
+            Require(!main.macro_.Running()&&transports[4]->writes==writes+1,"Same single Run action becomes Stop without sending the remaining command");
+            Require(main.statusText_.find(L"已停止后续提交")!=std::wstring::npos,"Stop reports accepted count without claiming execution finished");
+            main.notebook_.SetInterval(500);
+            for(bool dark:{false,true}){
+                main.darkMode_=dark;main.ApplyTheme();
+                ui_test::SaveUiEvidence(main.notebook_.Handle(),dark?L"notebook-dark.png":L"notebook-light.png");
+                Require(IsWindowVisible(main.notebook_.Editor()),"Theme changes keep the native editable document visible");
             }
-            SendMessageW(main.commandList_,WM_LBUTTONUP,0,begin);
-            Require(!main.commandDragGhost_ && !main.macro_.Dirty(),"Releasing a click must not reorder commands");
-            SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
-            SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
-            Require(main.commandDragGhost_ && main.macro_.Items()[0].name==L"A","Dragging card text must create a preview without committing order");
-            RECT ghost{}; GetWindowRect(main.commandDragGhost_,&ghost); MapWindowPoints(nullptr,main.commandList_,reinterpret_cast<POINT*>(&ghost),2);
-            Require(ghost.top==h*2 && ghost.left==25,"Drag preview must track pointer in both dimensions");
-            ui_test::SaveUiEvidence(main.commandList_,L"v207-command-drag-held.png");
-            SendMessageW(main.commandList_,WM_KEYDOWN,VK_ESCAPE,0);
-            Require(!main.commandDragGhost_ && main.macro_.Items()[0].name==L"A" && !main.macro_.Dirty(),"Esc must restore original command order");
-            SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
-            SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,moved);
-            SendMessageW(main.commandList_,WM_LBUTTONUP,0,moved);
-            Require(main.macro_.Items()[2].name==L"A" && transports[4]->writes==writes,"Only release commits reorder; drag never executes");
-            main.macro_.MarkSaved();
-            SendMessageW(main.commandList_,WM_LBUTTONDOWN,MK_LBUTTON,begin);
-            SendMessageW(main.commandList_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(-24,h+h/2));
-            SendMessageW(main.commandList_,WM_LBUTTONUP,0,MAKELPARAM(-24,h+h/2));
-            Require(!main.commandDragGhost_ && !main.macro_.Dirty() && main.macro_.Items()[0].name==L"B" && main.macro_.Items()[2].name==L"A",
-                "Releasing outside the list must cancel reorder");
-            const auto file=std::filesystem::temp_directory_path()/(L"serialctl-drop-"+std::to_wstring(GetCurrentProcessId())+L".txt");
-            {std::ofstream stream(file);stream<<"echo imported-only\n";}
-            main.macro_.MarkSaved();
-            const auto name=file.wstring();
-            auto handle=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(name.size()+2)*sizeof(wchar_t));
-            auto data=static_cast<DROPFILES*>(GlobalLock(handle)); data->pFiles=sizeof(DROPFILES);data->fWide=TRUE;
-            memcpy(reinterpret_cast<char*>(data)+sizeof(DROPFILES),name.c_str(),(name.size()+1)*sizeof(wchar_t)); GlobalUnlock(handle);
-            SendMessageW(main.commandList_,WM_DROPFILES,reinterpret_cast<WPARAM>(handle),0);
-            Require(main.macro_.Items().size()==1 && main.macro_.Items()[0].commands[0]==L"echo imported-only" && transports[4]->writes==writes,
-                "Dropped UTF-8 file must use import without executing device input");
-            std::filesystem::remove(file); main.macro_.MarkSaved();
+            main.notebook_.Saved();
+            const auto file=std::filesystem::temp_directory_path()/(L"serialctl-notebook-drop-"+std::to_wstring(GetCurrentProcessId())+L".txt");
+            {std::ofstream stream(file);stream<<"# imported\necho imported-only\n";}
+            const auto name=file.wstring();auto handle=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(name.size()+2)*sizeof(wchar_t));
+            auto data=static_cast<DROPFILES*>(GlobalLock(handle));data->pFiles=sizeof(DROPFILES);data->fWide=TRUE;memcpy(reinterpret_cast<char*>(data)+sizeof(DROPFILES),name.c_str(),(name.size()+1)*sizeof(wchar_t));GlobalUnlock(handle);
+            SendMessageW(main.notebook_.Editor(),WM_DROPFILES,reinterpret_cast<WPARAM>(handle),0);
+            Require(main.notebook_.Text().find(L"echo imported-only")!=std::wstring::npos&&main.notebook_.Dirty()&&transports[4]->writes==writes+1,"Dropped UTF8 file updates a draft and never executes");
+            std::filesystem::remove(file);
+            main.notebook_.SetText(originalText);
         }
-        main.macro_.Replace({CommandItem(L"click regression", L"echo once")}, false);
-        main.RefreshCommandList();
-        RECT actionRow{};
-        SendMessageW(main.commandList_, LB_GETITEMRECT, 0, reinterpret_cast<LPARAM>(&actionRow));
-        // Shared card metrics: the Run icon precedes Edit by one 12 px gap.
-        const auto runPoint = MAKELPARAM(actionRow.right - 12 * 2 - 28 * 3 / 2,
-                                        (actionRow.top + actionRow.bottom) / 2);
-        const auto writes = transports[4]->writes;
-        SendMessageW(main.commandList_, WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
-        Require(transports[4]->writes == writes, "Run submitted on mouse-down");
-        SendMessageW(main.commandList_, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(-10, -10));
-        SendMessageW(main.commandList_, WM_LBUTTONUP, 0, MAKELPARAM(-10, -10));
-        Require(transports[4]->writes == writes, "Dragging out of Run failed to cancel");
-        // Full-window GDI rendering can exceed the OS double-click interval on
-        // a hosted desktop. Control event time rather than weakening the guard.
-        ULONGLONG clickTime = GetTickCount64();
-        const auto realClickStart = clickTime;
-        main.commandClock_ = [&] { return clickTime; };
-        for (int i = 0; i < 5; ++i) {
-            ++clickTime;
-            SendMessageW(main.commandList_, i == 1 ? WM_LBUTTONDBLCLK : WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
-            SendMessageW(main.commandList_, WM_LBUTTONUP, 0, runPoint);
-        }
-        main.commandClock_ = {};
-        std::cout << "[CLICK TIMING] Five input activations over 5 controlled milliseconds; native render wall time="
-                  << GetTickCount64()-realClickStart << "ms, guard=" << std::max<DWORD>(350,GetDoubleClickTime())
-                  << "ms, submitted=" << transports[4]->writes-writes << '\n';
-        Require(transports[4]->writes == writes + 1, "Rapid Run clicks submitted duplicate commands");
-        main.macro_.ClearActivation();
-        auto plan = main.macro_.Items()[0];
-        plan.commands.push_back(L"echo should-not-run");
-        plan.intervalMs = 10000;
-        main.macro_.Update(0, std::move(plan));
-        main.SendCommand(0);
-        Require(main.macro_.RunningIndex() == 0, "Macro did not enter running state");
-        SendMessageW(main.commandList_, WM_LBUTTONDOWN, MK_LBUTTON, runPoint);
-        Require(main.macro_.RunningIndex() == -1 && transports[4]->writes == writes + 2,
-                "Immediate Stop was blocked by Run's repeat guard");
-        SendMessageW(main.commandList_, WM_LBUTTONUP, 0, runPoint);
         main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
         Require(main.statusText_.find(L"已停止后续提交") != std::wstring::npos,

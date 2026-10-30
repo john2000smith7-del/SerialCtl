@@ -1070,7 +1070,7 @@ bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     // actual device work is still protected and defers installation.
     return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && !connectionCleanup_.Busy() && sessions_.empty() &&
            !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
-           !disconnectAllPending_ && !disconnectAllInProgress_ && !macro_.Dirty() && macro_.RunningIndex() < 0 &&
+           !disconnectAllPending_ && !disconnectAllInProgress_ && !macro_.Dirty() && !notebook_.Dirty() && macro_.RunningIndex() < 0 &&
            !sftp_.Busy() && !sftp_.ActiveTransfer() && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
            draggingCommandIndex_ < 0 && !sftpColumnDragging_ && !GetCapture() &&
            (IsWindowEnabled(window_) || updateRequired_);
@@ -2482,6 +2482,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         HWND control = reinterpret_cast<HWND>(lParam);
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, colors.text);
+        if (control == commandHint_) {
+            SetTextColor(dc, colors.muted); SetBkColor(dc, colors.window); return reinterpret_cast<LRESULT>(windowBrush_);
+        }
         if (control == themeButton_) {
             SetBkColor(dc, colors.window);
             return reinterpret_cast<LRESULT>(windowBrush_);
@@ -2498,8 +2501,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return reinterpret_cast<LRESULT>(panelBrush_);
     }
     case WM_CLOSE:
-        if (macro_.Dirty()) {
-            const int choice = MessageBoxW(window_, L"命令或顺序尚未保存。是否保存后退出？", L"保存命令", MB_YESNOCANCEL | MB_ICONQUESTION);
+        if (macro_.Dirty() || notebook_.Dirty()) {
+            const int choice = MessageBoxW(window_, L"命令笔记尚未保存。是否保存后退出？", L"保存命令", MB_YESNOCANCEL | MB_ICONQUESTION);
             if (choice == IDCANCEL || (choice == IDYES && !SaveCommands())) return 0;
         }
         SaveUiState();
@@ -2638,17 +2641,30 @@ void MainWindow::CreateControls() {
     sftpTabButton_ = CreateChild(L"BUTTON", L"SFTP", BS_OWNERDRAW, IdSftpTab);
     rightPanelToggleButton_ = CreateChild(L"BUTTON",
         rightPanelCollapsed_ ? L"展开侧栏" : L"折叠侧栏", BS_OWNERDRAW, IdRightPanelToggle);
-    commandList_ = CreateChild(L"LISTBOX", L"", LBS_OWNERDRAWFIXED | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, IdCommandList);
-    SetWindowSubclass(commandList_, CommandListSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
-    SetWindowSubclass(commandList_, OverlayListSubclassProc, 2, reinterpret_cast<DWORD_PTR>(this));
-    saveCommandsButton_ = CreateChild(L"BUTTON", L"保存", BS_OWNERDRAW, IdSaveCommands);
-    importButton_ = CreateChild(L"BUTTON", L"导入", BS_OWNERDRAW, IdImport);
-    exportButton_ = CreateChild(L"BUTTON", L"导出", BS_OWNERDRAW, IdExport);
-    addCommandButton_ = CreateChild(L"BUTTON", L"添加命令", BS_OWNERDRAW, IdAddCommand);
-    addTip(addCommandButton_);
-    DragAcceptFiles(commandList_, TRUE);
-    SetWindowLongPtrW(commandList_, GWL_STYLE, GetWindowLongPtrW(commandList_, GWL_STYLE) | WS_CLIPCHILDREN);
-    deleteCommandButton_ = CreateChild(L"BUTTON", L"删除", BS_OWNERDRAW, IdDeleteCommand);
+    if (!notebook_.Create(window_, IdCommandList)) throw std::runtime_error("Cannot create command text editor");
+    commandList_ = notebook_.Handle();
+    notebook_.action = [this](int action) {
+        if (action == 1) {
+            if (macro_.Running()) StopCommandSequence(CommandSequenceEnd::UserStopped);
+            else RunNotebook(notebook_.SelectedCommands());
+        } else if (action == 2) SaveCommands();
+        else if (action == 3) ImportCommands();
+        else if (action == 4) ExportCommands();
+    };
+    notebook_.runLine = [this](size_t row) {
+        const auto lines = CommandLines(notebook_.Text());
+        if (row >= lines.size() || macro_.Running()) return;
+        notebook_.Selection(static_cast<LONG>(lines[row].start), static_cast<LONG>(lines[row].start));
+        auto command = CommandLineText(notebook_.Text(), lines[row]);
+        if (!command.empty()) RunNotebook({std::move(command)});
+    };
+    notebook_.drop = [this](const std::wstring& path) { ImportCommandFile(path); };
+    notebook_.optionsChanged = [this] { SaveUiState(); };
+    notebook_.Style(darkMode_, Ui::Dpi, smallFont_, terminalFont_);
+    commandHint_ = CreateChild(L"STATIC", L"选中多行后点击运行\n可发送多条指令", SS_CENTER, 308);
+    SendMessageW(commandHint_, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), FALSE);
+    notebook_.SetDoubleClick(GetPrivateProfileIntW(L"Commands", L"DoubleClickRun", 1, uiSettingsPath_.c_str()) != 0);
+    notebook_.SetInterval(GetPrivateProfileIntW(L"Commands", L"IntervalMs", 500, uiSettingsPath_.c_str()));
     sftpPath_ = CreateChild(L"STATIC", L".", SS_OWNERDRAW | SS_NOTIFY, IdSftpPath);
     SendMessageW(sftpPath_, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), TRUE);
     SetWindowSubclass(sftpPath_, SftpPathSubclassProc, 3, reinterpret_cast<DWORD_PTR>(this));
@@ -2711,6 +2727,11 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(settingsButton_, x, toolbarButtonTop, Ui::Scale(compactNavigation_ ? 48 : Ui::SettingsButtonWidth), Ui::StandardHeight, TRUE);
     batch.Move(themeButton_, width - Ui::Gap - Ui::StandardHeight, toolbarButtonTop,
                Ui::StandardHeight, Ui::StandardHeight, TRUE);
+
+    const int hintLeft = x + Ui::Scale(compactNavigation_ ? 48 : Ui::SettingsButtonWidth) + Ui::Gap * 2;
+    const int hintWidth = width - Ui::Gap * 2 - Ui::StandardHeight - hintLeft;
+    batch.Move(commandHint_, hintLeft, toolbarButtonTop, std::max(1, hintWidth), Ui::StandardHeight, TRUE);
+    batch.Show(commandHint_, hintWidth >= Ui::Scale(180) && !LiveMonitorPage() ? SW_SHOW : SW_HIDE);
 
     const MainLayoutMetrics layout =
         GetMainLayoutMetrics(width, height, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage());
@@ -2810,33 +2831,9 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(commandHeader_, rightInnerLeft, headerTop + Ui::Scale(2), Ui::SegmentWidth, Ui::SegmentHeight, TRUE);
     batch.Move(sftpTabButton_, rightInnerLeft + Ui::SegmentWidth + Ui::Scale(4), headerTop + Ui::Scale(2), Ui::SegmentWidth,
                Ui::SegmentHeight, TRUE);
-    const int addCommandRight = toggleLeft - Ui::Space;
-    const int addCommandLeftLimit = rightInnerLeft + Ui::Scale(4) + Ui::SegmentWidth * 2 + Ui::Space;
-    HDC measure = GetDC(addCommandButton_);
-    const auto previousFont = SelectObject(measure, uiFont_);
-    SIZE addLabel{};
-    GetTextExtentPoint32W(measure, L"添加命令", 4, &addLabel);
-    SelectObject(measure, previousFont);
-    ReleaseDC(addCommandButton_, measure);
-    const int completeWidth = addLabel.cx + Ui::Scale(32) + Ui::Space;
-    const int addCommandWidth = std::max(Ui::IconButtonSize,
-        std::min(completeWidth, addCommandRight - addCommandLeftLimit));
-    const wchar_t *addText = addCommandWidth >= completeWidth ? L"添加命令" : L"";
-    addCommandCompact_ = !*addText;
-    batch.Move(addCommandButton_, addCommandRight - addCommandWidth, headerTop + Ui::Scale(2), addCommandWidth, Ui::SegmentHeight,
-               TRUE);
     const int footerTop = sideCardBottom - Ui::PanelPadding - Ui::CompactHeight;
-    const int listBottom = footerTop - Ui::Gap;
     batch.Move(commandList_, rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
-               std::max(20, listBottom - rightListTop), TRUE);
-    const int commandAvailable = rightInnerRight - rightInnerLeft - Ui::Gap * 3;
-    int commandIndex = 0;
-    for (HWND button : {importButton_, exportButton_, deleteCommandButton_, saveCommandsButton_}) {
-        const int footerX = rightInnerLeft + commandAvailable * commandIndex / 4 + Ui::Gap * commandIndex;
-        const int end = rightInnerLeft + commandAvailable * (commandIndex + 1) / 4 + Ui::Gap * commandIndex;
-        batch.Move(button, footerX, footerTop, end - footerX, Ui::CompactHeight, TRUE);
-        ++commandIndex;
-    }
+               std::max(Ui::Scale(160), sideCardBottom - Ui::PanelPadding - rightListTop), TRUE);
     const int sftpContentWidth = std::max(1, rightInnerRight - rightInnerLeft);
     batch.Move(sftpPath_, rightInnerLeft, rightListTop, sftpContentWidth, Ui::CompactHeight, TRUE);
     const int sftpHeaderTop = rightListTop + Ui::CompactHeight + Ui::Space;
@@ -3487,6 +3484,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
 }
 
 void MainWindow::ApplyTheme() {
+    notebook_.Style(darkMode_, Ui::Dpi, smallFont_, terminalFont_);
     powerPane_.Theme(darkMode_);
     aiPane_.Theme(darkMode_);
     aiPet_.Theme(darkMode_);
@@ -4563,6 +4561,22 @@ void MainWindow::SendTerminalKey(WPARAM key, bool shift, bool control, bool alt)
     if (!sequence.empty()) SendBytesToActive(Bytes(sequence.begin(), sequence.end()), false);
 }
 
+void MainWindow::RunNotebook(std::vector<std::wstring> commands) {
+    if (commands.empty() || macro_.Running() || !connection_ || !connection_->IsConnected() || !activeSession_) return;
+    if (commands.size() > 1000) { AppendStatus(L"一次最多发送 1000 行命令，请缩小选区",true); return; }
+    std::wstring fingerprint;
+    for(const auto& command:commands) { fingerprint+=command;fingerprint+=L'\n'; }
+    auto now=GetTickCount64();
+#ifdef SERIALCTL_AI_TESTING
+    if(commandClock_) now=commandClock_();
+#endif
+    if(lastNotebookPlan_==fingerprint && lastNotebookSession_==activeSession_->id && now-lastNotebookAt_<std::max<DWORD>(350,GetDoubleClickTime())) return;
+    CommandItem plan;plan.name=L"命令笔记";plan.commands=std::move(commands);plan.intervalMs=notebook_.Interval();
+    if(!macro_.BeginPlan(std::move(plan),activeSession_->id,SelectedCodePage(),SelectedLineEnding()))return;
+    lastNotebookPlan_=std::move(fingerprint);lastNotebookSession_=activeSession_->id;lastNotebookAt_=now;
+    UpdateCommandActions();SendNextCommandStep();
+}
+
 void MainWindow::SendCommand(size_t index) {
     if (index >= macro_.Items().size() || macro_.Items()[index].commands.empty() || macro_.Running()) return;
     if (!connection_ || !connection_->IsConnected() || !activeSession_) {
@@ -4604,6 +4618,7 @@ void MainWindow::SendNextCommandStep() {
         return;
     }
     macro_.Accept();
+    UpdateCommandActions();
     InvalidateRect(commandList_, nullptr, FALSE);
     if (macro_.Complete()) {
         StopCommandSequence(CommandSequenceEnd::Submitted);
@@ -5513,6 +5528,7 @@ void MainWindow::ZoomTerminalFont(int steps) {
     terminalFontHeight_ = nextHeight;
     SendMessageW(terminal_, WM_SETFONT, reinterpret_cast<WPARAM>(terminalFont_), FALSE);
     UpdateTerminalDimensions();
+    notebook_.Style(darkMode_, Ui::Dpi, smallFont_, terminalFont_);
     if (oldFont) DeleteObject(oldFont);
     AppendStatus(L"终端字号：" + std::to_wstring(terminalFontHeight_), false);
 }
@@ -5817,6 +5833,8 @@ void MainWindow::SaveUiState() {
     add(L"Layout", L"AiMonitorWidth", aiMonitorWidth_); add(L"Layout", L"AiMonitorCollapsed", aiMonitorCollapsed_);
     add(L"Layout", L"SftpNameWidth", sftpNameWidth_); add(L"Layout", L"RightPanelWidth", rightPanelWidth_);
     add(L"Layout", L"RightPanelCollapsed", rightPanelCollapsed_);
+    add(L"Commands", L"DoubleClickRun", notebook_.DoubleClick());
+    add(L"Commands", L"IntervalMs", notebook_.Interval());
     uiSettingsWriter_.Submit(std::move(snapshot));
 }
 
@@ -5864,7 +5882,7 @@ void MainWindow::QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth) 
     batch.Show(rightPanelToggleButton_, SW_SHOW);
     batch.Show(commandHeader_, expanded ? SW_SHOW : SW_HIDE);
     batch.Show(sftpTabButton_, expanded ? SW_SHOW : SW_HIDE);
-    for (HWND control : {commandList_, importButton_, exportButton_, addCommandButton_, deleteCommandButton_, saveCommandsButton_})
+    for (HWND control : {commandList_})
         batch.Show(control, expanded && !show ? SW_SHOW : SW_HIDE);
     for (HWND control : {sftpPath_, sftpNameHeader_, sftpSizeHeader_, sftpList_,
              sftpTransferToggleButton_, sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_,
@@ -6815,70 +6833,34 @@ void MainWindow::RememberCommandDirectory(const std::wstring& selectedPath) {
     fclose(file);
 }
 
+std::wstring MainWindow::NotebookPath() const { return DirectoryOf(DefaultCommandsPath()) + L"\\command-notebook.txt"; }
 void MainWindow::LoadCommands() {
-    std::wstring error;
-    const std::wstring path = DefaultCommandsPath();
-    if (!LoadCommandsFromFile(path, error)) {
-        if (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            macro_.ProtectFile(true);
-            AppendStatus(error + L" 原文件已保留，可导入有效文件后保存。", true);
-            return;
-        }
-        macro_.Replace({{L"帮助", L"help"}, {L"打印环境变量", L"printenv"}, {L"存储设备", L"mmc list"},
-            {L"复位", L"reset"}, {L"启动", L"boot"}}, false);
-        SaveCommands();
+    std::wstring text, error;
+    if (GetFileAttributesW(NotebookPath().c_str()) != INVALID_FILE_ATTRIBUTES) {
+        if (!ReadCommandDocument(NotebookPath(), text, error)) { macro_.ProtectFile(true); AppendStatus(error, true); return; }
+    } else {
+        if (GetFileAttributesW(DefaultCommandsPath().c_str()) != INVALID_FILE_ATTRIBUTES) {
+            if (!ReadCommandDocument(DefaultCommandsPath(), text, error)) { macro_.ProtectFile(true); AppendStatus(error, true); return; }
+            // Legacy syntax remains readable and is never sent as a device command.
+        } else text = L"# 帮助\r\nhelp\r\n\r\n# 启动信息\r\nprintenv\r\nmmc list\r\n";
+        if (!WriteCommandDocument(NotebookPath(), text, error)) { macro_.ProtectFile(true); AppendStatus(error,true); }
     }
+    notebook_.SetText(text);
 }
-
 bool MainWindow::SaveCommands() {
-    if (macro_.FileProtected()) { AppendStatus(L"命令文件读取失败，原文件已保护。请导入有效文件。", true); return false; }
+    if (macro_.FileProtected()) { AppendStatus(L"命令文件读取失败，原文件已保护；请导入有效文件",true); return false; }
     std::wstring error;
-    if (!SaveCommandsToFile(DefaultCommandsPath(), error)) { if (window_) AppendStatus(error, true); return false; }
-    macro_.MarkSaved();
-    UpdateCommandActions();
-    if (window_) AppendStatus(L"命令及顺序已保存", false);
-    return true;
+    if (!WriteCommandDocument(NotebookPath(), notebook_.Text(), error)) { AppendStatus(error,true); return false; }
+    notebook_.Saved(); macro_.MarkSaved(); UpdateCommandActions(); AppendStatus(L"命令笔记已保存",false); return true;
 }
-void MainWindow::MarkCommandsDirty() {
-    macro_.MarkDirty();
-    UpdateCommandActions();
-}
-
-bool MainWindow::LoadCommandsFromFile(const std::wstring& path, std::wstring& error) {
-    return macro_.LoadFile(path, error);
-}
-
-bool MainWindow::SaveCommandsToFile(const std::wstring& path, std::wstring& error) const {
-    return macro_.SaveFile(path, error);
-}
-
-void MainWindow::RefreshCommandList() {
-    SendMessageW(commandList_, LB_RESETCONTENT, 0, 0);
-    for (const CommandItem& item : macro_.Items())
-        SendMessageW(commandList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.name.c_str()));
-    UpdateCommandActions();
-    InvalidateRect(commandList_, nullptr, TRUE);
-}
-
+void MainWindow::MarkCommandsDirty() { macro_.MarkDirty(); UpdateCommandActions(); }
+bool MainWindow::LoadCommandsFromFile(const std::wstring& path,std::wstring& error) {return macro_.LoadFile(path,error);}
+bool MainWindow::SaveCommandsToFile(const std::wstring& path,std::wstring& error) const {return WriteCommandDocument(path,notebook_.Text(),error);}
+void MainWindow::RefreshCommandList() { UpdateCommandActions(); }
 void MainWindow::UpdateCommandActions() {
-    if (!deleteCommandButton_ || !commandList_) return;
-    const LRESULT selected = SendMessageW(commandList_, LB_GETCURSEL, 0, 0);
-    const bool idle = macro_.RunningIndex() < 0;
-    EnableWindow(saveCommandsButton_, macro_.Dirty() && idle && !macro_.FileProtected());
-    SetWindowTextW(saveCommandsButton_, macro_.Dirty() ? L"保存*" : L"保存");
-    InvalidateRect(saveCommandsButton_, nullptr, TRUE);
-    EnableWindow(deleteCommandButton_, idle && selected != LB_ERR &&
-        selected < static_cast<LRESULT>(macro_.Items().size()));
-    EnableWindow(importButton_, idle);
-    EnableWindow(addCommandButton_, idle);
-
-
-    InvalidateRect(deleteCommandButton_, nullptr, TRUE);
-    InvalidateRect(importButton_, nullptr, TRUE);
-    InvalidateRect(addCommandButton_, nullptr, TRUE);
-
-
-    InvalidateRect(commandList_, nullptr, FALSE);
+    if (!commandList_) return;
+    notebook_.State(connection_ && connection_->IsConnected(),macro_.Running(),macro_.Accepted(),macro_.Total(),
+        activeSession_ ? L"发送至 " + activeSession_->name : L"");
 }
 
 void MainWindow::UpdateCommandDrag(POINT point, bool edgeScroll) {
@@ -6972,13 +6954,21 @@ void MainWindow::ImportCommands() {
 
 void MainWindow::ImportCommandFile(const std::wstring& path) {
     if (macro_.RunningIndex() >= 0 || path.empty()) return;
-    if (macro_.Dirty()) {
+    if (macro_.Dirty() || notebook_.Dirty()) {
         const int choice = MessageBoxW(window_, L"当前命令尚未保存。导入前是否保存？", L"导入命令", MB_YESNOCANCEL | MB_ICONQUESTION);
         if (choice == IDCANCEL || (choice == IDYES && !SaveCommands())) return;
     }
     RememberCommandDirectory(path);
     std::wstring error;
-    if (!macro_.ImportFile(path, DefaultCommandsPath(), error)) { AppendStatus(error, true); return; }
+    std::wstring text;
+    if (!ReadCommandDocument(path, text, error)) { AppendStatus(error, true); return; }
+    if (macro_.FileProtected()) {
+        const auto backup = NotebookPath() + L".unreadable-" + std::to_wstring(GetTickCount64()) + L".bak";
+        if (GetFileAttributesW(NotebookPath().c_str()) != INVALID_FILE_ATTRIBUTES && !CopyFileW(NotebookPath().c_str(),backup.c_str(),TRUE)) { AppendStatus(L"无法备份原笔记，尚未允许覆盖",true); return; }
+        macro_.ProtectFile(false);
+    }
+    notebook_.SetText(text,true);
+    notebook_.SetName(path.substr(path.find_last_of(L"\\/")+1));
     RefreshCommandList();
     AppendStatus(L"已导入常用命令。", false);
 }

@@ -51,6 +51,7 @@ public:
     void Activated(std::size_t index, std::uint64_t session, std::uint64_t now);
     void ClearActivation() { lastActivation_ = 0; lastIndex_ = -1; }
     bool Begin(std::size_t index, std::uint64_t session, std::uint32_t codePage, std::wstring lineEnding);
+    bool BeginPlan(CommandItem plan, std::uint64_t session, std::uint32_t codePage, std::wstring lineEnding);
     bool Next(std::uint64_t currentSession, bool connected, std::wstring& text) const;
     void Accept() { if (Running() && accepted_ < Total()) ++accepted_; }
     bool Complete() const { return Running() && accepted_ == Total(); }

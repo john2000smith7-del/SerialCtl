@@ -162,6 +162,8 @@ endfunction()
 
 add_executable(serialctl WIN32
     src/app/App.cpp
+    src/app/CommandDocument.cpp
+    src/app/CommandNotebook.cpp
     src/app/MainWindow.cpp
     src/app/TerminalViewport.cpp
     src/app/CommandMacroController.cpp
@@ -492,7 +494,7 @@ if(BUILD_TESTING)
     target_link_libraries(ai_device_bridge_test PRIVATE ole32 shell32 ws2_32)
     add_test(NAME ai_device_bridge COMMAND ai_device_bridge_test)
     set_tests_properties(ai_device_bridge PROPERTIES TIMEOUT 20)
-    add_executable(command_macro_test tests/unit/CommandMacroTest.cpp src/app/CommandMacroController.cpp)
+    add_executable(command_macro_test tests/unit/CommandMacroTest.cpp src/app/CommandMacroController.cpp src/app/CommandDocument.cpp)
     serialctl_configure_native_target(command_macro_test CONSOLE)
     target_link_libraries(command_macro_test PRIVATE ole32)
     add_test(NAME command_macro COMMAND command_macro_test)

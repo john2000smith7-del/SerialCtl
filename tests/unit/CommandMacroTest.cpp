@@ -1,4 +1,5 @@
 #include "CommandMacroController.h"
+#include "CommandDocument.h"
 #include "FilePaths.h"
 #include <filesystem>
 #include <fstream>
@@ -23,6 +24,20 @@ int main() {
     try {
         std::filesystem::create_directories(directory);
         const auto path = directory / L"中文 commands.txt";
+        // Real selection boundaries: partial text, reversed drags, CR/LF and Unicode offsets.
+        const std::wstring document=L"# 标题\r\nuname -a\r\ncat /proc/cmdline\r\ndmesg | tail -n 20\r\n\r\n# 注释";
+        const auto rows=CommandLines(document);
+        const auto selected=CommandSelection(document,rows[1].start+3,rows[3].start+5);
+        Check(selected==std::vector<std::wstring>{L"uname -a",L"cat /proc/cmdline",L"dmesg | tail -n 20"},"partial multiline selection expands to complete physical commands");
+        Check(CommandSelection(document,rows[3].start+5,rows[1].start+3)==selected,"reverse selection retains source order");
+        Check(CommandSelection(document,rows[1].start,rows[2].start)==std::vector<std::wstring>{L"uname -a"},"selection ending at next line column one excludes that untouched line");
+        Check(CommandSelection(document,rows[2].start+4,rows[2].start+4)==std::vector<std::wstring>{L"cat /proc/cmdline"},"empty selection uses caret line");
+        Check(CommandSelection(L"# note\n\n[[macro interval=500]]\rhelp\r[[/macro]]",0,1000)==std::vector<std::wstring>{L"help"},"comments, blanks and legacy macro delimiters never sent");
+        std::wstring documentError;
+        const auto plain=directory/L"笔记.txt";
+        Check(WriteCommandDocument(plain.wstring(),document,documentError),"atomic notebook UTF8 save");
+        std::wstring restored;
+        Check(ReadCommandDocument(plain.wstring(),restored,documentError)&&restored==document,"notebook round trip preserves whitespace and comments");
         CommandMacroController controller;
         CommandItem plan(L"顺序提交", L"first"); plan.commands.push_back(L"second"); plan.intervalMs = 1;
         Check(controller.Replace({plan, {L"字面量", L"[[/macro]]"}}), "replace command list");

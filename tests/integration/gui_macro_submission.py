@@ -128,58 +128,36 @@ class MacroActions(GlobalActions):
         require(actual == text, 'Macro field ' + str(identifier) + ' differs: ' + repr(actual) + ' != ' + repr(text))
 
     def add_macro(self, first, second, interval):
-        before = self.query(self.control(112), 0x18b)
-        self.click_window(self.control(115))
-        opened = []
-        def dialog():
-            foreground = self.user.GetForegroundWindow()
-            if not foreground or foreground == self.window or not self.user.IsWindowVisible(foreground):
-                return 0
-            owner_pid = c.c_ulong()
-            self.user.GetWindowThreadProcessId(foreground, c.byref(owner_pid))
-            field = self.user.GetDlgItem(foreground, 1101)
-            if (owner_pid.value == self.args.pid and field and self.user.IsWindowVisible(field)
-                    and self.user.IsWindowEnabled(field)):
-                opened[:] = [foreground]
-                return foreground
-            return 0
-        self.wait(dialog, 'command editor opens')
-        root = opened[-1]
-        self.args.root = root
-        try:
-            self.fill(root, 1101, '宏提交验收 ' + self.token)
-            self.fill(root, 1102, first)
-            self.click_window(self.user.GetDlgItem(root, 1104))
-            self.fill(root, 1301, second)
-            self.fill(root, 1106, str(interval))
-            self.click_window(self.user.GetDlgItem(root, 1))
-        finally:
-            self.args.root = self.window
-        self.wait(lambda: self.query(self.control(112), 0x18b) == before + 1, 'macro added to draft')
-        return before
+        notebook = self.control(112)
+        edit = self.user.GetDlgItem(notebook, 410)
+        require(edit, 'Native command notebook editor missing')
+        self.click_window(edit)
+        self.chord(0x11, ord('A'))
+        self.set_clipboard(first + '\r\n' + second)
+        self.chord(0x11, ord('V'))
+        self.wait(lambda: second in self.native_control_text(edit), 'pasted command document')
+        self.chord(0x11, ord('A'))
+        self.click_window(self.user.GetDlgItem(notebook,411))
+        # Native owned options popup: checkbox, separator, then four intervals.
+        choices = [100,500,1500,5000]
+        target = min(choices,key=lambda v:abs(v-interval))
+        self.key(0x24)
+        for _ in range(choices.index(target)+1): self.key(0x28)
+        self.key(0x0d)
+        self.wait(lambda: self.user.GetForegroundWindow() == self.window, 'notebook options closed')
+        return 0
 
     def run_or_stop(self, index):
-        listing = self.control(112)
-        row, client = RECT(), RECT()
-        require(self.query(listing, 0x198, index, c.addressof(row)) != -1, 'macro row rectangle unavailable')
-        require(self.user.GetClientRect(listing, c.byref(client)), 'command list client unavailable')
-        require(row.top >= 0 and row.bottom <= client.bottom, 'macro row is outside visible list')
-        count = self.query(listing, 0x18b)
-        height = self.query(listing, 0x1a1, index)
-        lane = round(16 * self.scale) if count * height > client.bottom else 0
-        point = POINT(row.right - lane - round(58 * self.scale), (row.top + row.bottom) // 2)
-        require(self.user.ClientToScreen(listing, c.byref(point)), 'macro action screen position unavailable')
-        self.report.setdefault('macro_clicks', []).append({**self.timestamp(), 'index': index,
-            'row': [row.left, row.top, row.right, row.bottom], 'client': [client.left, client.top, client.right, client.bottom],
-            'lane': lane, 'screen_point': [point.x, point.y], 'dpi': self.dpi, 'status_before': self.status()})
-        self.click_window(listing, (point.x, point.y))
-        return point.x, point.y
+        button=self.user.GetDlgItem(self.control(112),412)
+        bounds=self.rect(button)
+        point=((bounds[0]+bounds[2])//2,(bounds[1]+bounds[3])//2)
+        self.click_window(button)
+        return point
 
-    def remove_macro(self, index):
-        before = self.query(self.control(112), 0x18b)
-        require(self.query(self.control(112), 0x188) == index, 'macro remains selected for removal')
-        self.click_window(self.control(116))
-        self.wait(lambda: self.query(self.control(112), 0x18b) == before - 1, 'test draft removed')
+    def remove_macro(self,index):
+        edit=self.user.GetDlgItem(self.control(112),410)
+        self.click_window(edit)
+        self.chord(0x11,ord('A'));self.key(0x2e)
 
     def begin_case(self):
         self.token = uuid.uuid4().hex[:8]
@@ -221,7 +199,7 @@ class MacroActions(GlobalActions):
         # exercised a double-click. Both inputs dispatch serially in the real
         # UI; verify acceptance and the exact Stop outcome afterwards instead.
         first_at = time.monotonic()
-        require(self.user.WindowFromPoint(POINT(*point)) == self.control(112),
+        require(self.user.WindowFromPoint(POINT(*point)) == self.user.GetDlgItem(self.control(112),412),
                 'Rapid Stop must still hit the original command action')
         self.click(point)
         presses = [item for item in self.trace[first_input:] if item['event'] == 'left_down']

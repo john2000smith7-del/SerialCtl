@@ -19,6 +19,7 @@
 #include "PaintBuffer.h"
 #include "BackgroundCleanup.h"
 #include "CommandMacroController.h"
+#include "CommandNotebook.h"
 #include "AiDeviceBridge.h"
 #include "UiSettingsWriter.h"
 #include "ToolbarIcons.h"
@@ -373,7 +374,14 @@ private:
     HWND commandHeader_ = nullptr;
     HWND sftpTabButton_ = nullptr;
     HWND rightPanelToggleButton_ = nullptr;
+    CommandNotebook notebook_;
+    HWND commandHint_ = nullptr;
     HWND commandList_ = nullptr;
+    void RunNotebook(std::vector<std::wstring> commands);
+    std::wstring NotebookPath() const;
+    std::wstring lastNotebookPlan_;
+    ULONGLONG lastNotebookAt_ = 0;
+    std::uint64_t lastNotebookSession_ = 0;
     HWND saveCommandsButton_ = nullptr;
     HWND importButton_ = nullptr;
     HWND exportButton_ = nullptr;

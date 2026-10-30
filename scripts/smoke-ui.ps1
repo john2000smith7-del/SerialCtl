@@ -774,68 +774,30 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::MoveWindow($application.MainWindowHandle,0,0,1180,760,$true)|Out-Null
             Capture-Window $application.MainWindowHandle "$architecture-$theme-api-cmd-visible"
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle,$false)
-            Click-Control $application.MainWindowHandle 115
-            $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
-            Start-Sleep -Milliseconds 300
-            [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
-            Capture-Window $dialog "$architecture-$theme-command"
-            Click-Control $dialog 1104
-            Start-Sleep -Milliseconds 300
-            [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
-            Capture-Window $dialog "$architecture-$theme-macro"
-            for ($step=3; $step -le 10; $step++) {
-                Click-Control $dialog 1104
-                Start-Sleep -Milliseconds 70
-            }
-            [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
-            Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-command-ten"
-            Capture-Window $dialog "$architecture-$theme-macro-ten"
-            Click-Control $dialog 2
-            Start-Sleep -Milliseconds 200
+            Capture-Window $application.MainWindowHandle "$architecture-$theme-notebook"
         }
-        # Draft edits and reorder must not touch commands.txt until explicit Save.
-        $commandsFile = Join-Path $settingsDirectory 'commands.txt'
+        # Text edits remain a draft until explicit Save; old card-reorder UI is retired.
+        $commandsFile = Join-Path $settingsDirectory 'command-notebook.txt'
         $before = (Get-FileHash $commandsFile -Algorithm SHA256).Hash
-        Click-Control $application.MainWindowHandle 115
-        $dialog = Wait-Dialog $application.Id ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5re75Yqg5bi455So5ZG95Luk')))
-        [SerialCtlUiSmoke]::Fill($dialog, 1101, 'UI draft command')
-        [SerialCtlUiSmoke]::Fill($dialog, 1102, 'echo ui-draft')
-        $cover=Start-Process -FilePath (Join-Path $env:WINDIR 'System32/notepad.exe') -PassThru
-        try {
-            $cover.WaitForInputIdle(5000)|Out-Null
-            [SerialCtlUiSmoke]::SetForegroundWindow($dialog)|Out-Null
-            Start-Sleep -Milliseconds 100
-            if([SerialCtlUiSmoke]::GetForegroundWindow() -ne $dialog){throw 'Cannot establish foreground modal test condition.'}
-            Capture-Desktop "$architecture-modal-foreground-before"
-            Click-Control $dialog 1
-            Start-Sleep -Milliseconds 100
-            if([SerialCtlUiSmoke]::GetForegroundWindow() -ne $application.MainWindowHandle){throw 'Modal dismissal did not retain owner foreground.'}
-            Capture-Desktop "$architecture-modal-owner-after"
-        } finally {if(-not $cover.HasExited){$cover.Kill()}}
-        if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before) { throw 'Draft was saved automatically.' }
-        $list = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 112)
-        [SerialCtlUiSmoke]::PostMessage($list, 0x201, [IntPtr]1, [IntPtr]((20 -shl 16) -bor 16)) | Out-Null
-        [SerialCtlUiSmoke]::PostMessage($list, 0x202, [IntPtr]0, [IntPtr]((80 -shl 16) -bor 16)) | Out-Null
-        Start-Sleep -Milliseconds 300
-        if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before) { throw 'Reorder was saved automatically.' }
+        $notebook = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112)
+        [SerialCtlUiSmoke]::Fill($notebook,410,"# UI draft`r`necho ui-draft")
+        Start-Sleep -Milliseconds 200
+        if ((Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before) { throw 'Notebook draft was saved automatically.' }
         Capture-Window $application.MainWindowHandle "$architecture-command-draft"
-        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        [SerialCtlUiSmoke]::PostMessage($application.MainWindowHandle,0x10,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null
         $confirm = Wait-Dialog $application.Id $null
         Capture-Window $confirm "$architecture-unsaved-close"
         Click-Control $confirm 2
         Start-Sleep -Milliseconds 200
         $application.Refresh()
         if ($application.HasExited) { throw 'Cancel did not preserve draft window.' }
-        Click-Control $mainWindowHandle 132
-        # Click-Control posts an asynchronous WM_COMMAND. Under concurrent CMD
-        # output the GUI must get an opportunity to process it before checking
-        # disk; keep a bounded wait and require the actual file contents below.
+        Click-Control $notebook 413
         $saveDeadline = [DateTime]::UtcNow.AddSeconds(5)
         do {
             Start-Sleep -Milliseconds 50
             $saved = (Get-FileHash $commandsFile -Algorithm SHA256).Hash -ne $before
         } while (-not $saved -and [DateTime]::UtcNow -lt $saveDeadline)
-        if (-not $saved) { throw 'Explicit Save did not persist draft within five seconds.' }
+        if (-not $saved) { throw 'Explicit Save did not persist notebook within five seconds.' }
         if (-not (Get-Content $commandsFile -Raw).Contains('echo ui-draft')) { throw 'Saved command missing.' }
         $lifecycleScript = if ($ActualMouse) { 'tests/integration/gui_user_lifecycle.py' } else { 'tests/integration/gui_disconnect_smoke.py' }
         & python (Join-Path $root $lifecycleScript) $native $mainWindowHandle.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')
