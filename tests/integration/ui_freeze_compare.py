@@ -95,12 +95,15 @@ def main():
         return rows
 
     def remote_query_completed(dialog):
-        port, status = c.create_unicode_buffer(1024), c.create_unicode_buffer(2048)
-        user.GetDlgItemTextW(dialog, 1002, port, len(port))
+        status = c.create_unicode_buffer(2048)
         user.GetDlgItemTextW(dialog, 1025, status, len(status))
-        return (port.value == '未发现可连接的串口' and
+        # Owner-drawn CBS_DROPDOWNLIST has no edit text: WM_GETTEXT is empty.
+        # The isolated instance has no serial devices, so compare its exact
+        # completed service response, disabled Connect and selected result row.
+        ports = user.GetDlgItem(dialog, 1002)
+        return (status.value == '该实例没有已打开的本地串口' and
                 not user.IsWindowEnabled(user.GetDlgItem(dialog, 1)) and
-                '正在' not in status.value)
+                user.SendMessageW(ports, 0x147, 0, 0) == 0)
 
     def extract(archive, destination):
         destination.mkdir()
