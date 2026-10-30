@@ -21,7 +21,7 @@ jobs:
           & $cmake -S . -B popup-build -G $generator -A x64 -DBUILD_TESTING=ON
           if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
           Copy-Item src/app/UiStyle.h popup-original.h
-          foreach ($variant in @('lazy','early-row','attach-only','eager-control')) {
+          foreach ($variant in @('attach-row','eager-control')) {
             Write-Host "POPUP_VARIANT=$variant"
             python tests/performance/popup_variants.py $variant
             & $cmake --build popup-build --config Release --target ui_combo_paint_test --parallel 2
