@@ -1,0 +1,37 @@
+name: Verify settled command notebook theme
+on:
+  push:
+    branches: [verification/v213-native]
+    paths: [.github/workflows/notebook-theme-check.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  theme:
+    runs-on: windows-2022
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: candidate
+          run-id: 41030930118
+          github-token: ${{ github.token }}
+      - name: Verify exact signed archive and settled native pixels
+        shell: powershell
+        run: |
+          python tools/new_update_feed.py --verify-archive candidate/SerialCtl-V2.0.13-Win7-x64.zip --metadata candidate-update.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/integration/gui_command_drag_fixture.py --archive candidate/SerialCtl-V2.0.13-Win7-x64.zip --output evidence
+          exit $LASTEXITCODE
+      - name: Export real settled theme frames
+        if: always()
+        shell: powershell
+        run: |
+          Get-ChildItem evidence -Filter '*dark-settled*.png' | ForEach-Object {
+            $encoded=[Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
+            Write-Host "SERIALCTL_UI_REVIEW_BEGIN $($_.Name)"
+            for($offset=0;$offset -lt $encoded.Length;$offset+=4096){Write-Host ('SERIALCTL_UI_REVIEW_DATA '+$encoded.Substring($offset,[Math]::Min(4096,$encoded.Length-$offset)))}
+            Write-Host "SERIALCTL_UI_REVIEW_END $($_.Name)"
+          }

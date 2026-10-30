@@ -81,6 +81,18 @@ def main():
                 require(t.user.IsWindowVisible(button),'compact command action disappeared')
                 bounds=t.rect(button);require(bounds[2]>bounds[0] and bounds[3]>bounds[1],'compact action has empty bounds')
         t.click_window(t.control(104));t.screenshot('saved-dark')
+        t.gdi.GetPixel.argtypes=(c.c_void_p,c.c_int,c.c_int);t.gdi.GetPixel.restype=c.c_uint
+        settled=[]
+        for delay in (.1,.3,1.0):
+            time.sleep(delay);t.screenshot('dark-settled-'+str(delay))
+            sample={}
+            for identifier,control in [('hint',t.control(308)),('more',t.user.GetDlgItem(pane,411)),('export',t.user.GetDlgItem(pane,415))]:
+                dc=t.user.GetDC(control)
+                try:sample[identifier]=t.gdi.GetPixel(dc,1,1)
+                finally:t.user.ReleaseDC(control,dc)
+            settled.append(sample)
+        t.report['settled_dark_pixels']=settled
+        print('SETTLED_THEME '+json.dumps(settled),flush=True)
         t.check('themes and responsive command actions')
         t.report['status']='PASS'
     except BaseException:
