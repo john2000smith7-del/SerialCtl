@@ -25,6 +25,9 @@ struct Traffic {
         WSADATA data{}; if(WSAStartup(MAKEWORD(2,2),&data))return false; started=true;
         listener=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);if(listener==INVALID_SOCKET)return false;
         sockaddr_in address{};address.sin_family=AF_INET;address.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+        // A fresh hosted runner uses the documented Telnet default. This
+        // fixture measures popup responsiveness, not cross-process edit automation.
+        address.sin_port=htons(23);
         if(bind(listener,reinterpret_cast<sockaddr*>(&address),sizeof(address)) || listen(listener,1))return false;
         int length=sizeof(address);if(getsockname(listener,reinterpret_cast<sockaddr*>(&address),&length))return false;
         port=ntohs(address.sin_port);
