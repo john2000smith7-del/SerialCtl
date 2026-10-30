@@ -700,10 +700,19 @@ struct AiDeviceTestAccess {
         // The real terminal handler must finish at WM_LBUTTONUP's coordinates.
         main.activeSession_->terminal.Reset();
         main.activeSession_->terminal.Feed(L"COPY_HEAD  \r\nHARD_LINE", L"");
+        // A normal page refresh now queues paint. Expose this fixture before
+        // reading paint-produced geometry; UpdateWindow on an occluded child
+        // alone need not paint its visible client region on a hosted desktop.
+        SetWindowPos(parent, HWND_TOP, 0, 0, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+        SetForegroundWindow(parent);
+        RedrawWindow(parent, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
         InvalidateRect(main.terminal_, nullptr, FALSE);
         UpdateWindow(main.terminal_);
         const auto metric = [&](const wchar_t* name) {
             const int value = static_cast<int>(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, name)));
+            if (value <= 0) std::wcerr << L"Missing metric: " << name << L" visible=" << IsWindowVisible(main.terminal_)
+                << L" measure=" << main.measurePaint_ << L" cell=" << main.terminalViewport_.Metrics().cellWidth
+                << L" row=" << main.terminalViewport_.Metrics().lineHeight << L'\n';
             Require(value > 0, "Terminal selection test geometry missing");
             return value;
         };

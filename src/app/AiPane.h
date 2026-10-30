@@ -25,6 +25,7 @@ class AiPane {
     pet::Activity CompanionActivity() const { return companionActivity_; }
     void Theme(bool dark);
     void ShowConnection();
+    void FocusInput();
     // Begin on the UI thread; wait on the owning cleanup thread.
     void BeginShutdown();
     void WaitForShutdown();
