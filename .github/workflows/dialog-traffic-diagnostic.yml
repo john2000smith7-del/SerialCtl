@@ -1,4 +1,4 @@
-name: Verify queued dialog initialization before fixture input
+name: Verify default Telnet loopback traffic and dialog clicks
 on:
   push:
     branches: [verification/dialog-traffic]
