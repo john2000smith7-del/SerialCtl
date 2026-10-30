@@ -55,7 +55,7 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          python -c "import base64,pathlib; [(print('SERIALCTL_NATIVE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted((p for p in pathlib.Path('native-evidence').rglob('*.png') if (p.name in {'notebook-light.png','notebook-dark.png','dialog-ai-light.png','dialog-ai-dark.png','dialog-serial-light.png','dialog-serial-dark.png','v205-remote-light.png','v205-remote-dark.png','x64-packaged-light.png','x64-packaged-dark.png'} or p.name.endswith('-light-settings.png') or p.name.endswith('-dark-settings.png') or 'partial-three-lines' in p.name or 'width-1200' in p.name or 'saved-dark' in p.name))))]"
+          python -c "import base64,pathlib; [(print('SERIALCTL_NATIVE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in sorted((p for p in pathlib.Path('native-evidence').rglob('*.png') if (p.name in {'notebook-light.png','notebook-dark.png','dialog-ai-light.png','dialog-ai-dark.png','dialog-serial-light.png','dialog-serial-dark.png','v205-remote-light.png','v205-remote-dark.png','x64-packaged-light.png','x64-packaged-dark.png'} or p.name.endswith('-light-settings.png') or p.name.endswith('-dark-settings.png') or 'partial-three-lines' in p.name or 'width-1200' in p.name or 'saved-dark' in p.name)))]"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
