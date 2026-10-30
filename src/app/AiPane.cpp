@@ -2610,7 +2610,10 @@ void AiPane::ShowConnection() {
         UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &dialog.dialog, GetAncestor(window_, GA_ROOT), ConnectProc,
                                  reinterpret_cast<LPARAM>(this));
     if (result == IDOK)
-        SetFocus(Control(Input));
+        FocusInput();
+}
+void AiPane::FocusInput() {
+    if (!closing_ && IsWindowVisible(Control(Input))) SetFocus(Control(Input));
 }
 INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, DWLP_USER));

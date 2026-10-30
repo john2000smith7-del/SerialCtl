@@ -4304,7 +4304,8 @@ MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
 void MainWindow::ShowAiPage(bool connect) {
     // The modal is the user's immediate action. Do not make it wait for page
     // layout, transcript remeasurement, target refresh or terminal repaint.
-    if (connect && !aiPane_.Connected()) aiPane_.ShowConnection();
+    const bool requestedConnection = connect && !aiPane_.Connected();
+    if (requestedConnection) aiPane_.ShowConnection();
     KillTimer(window_, SideAnimationTimerId);
     rightPanelAnimating_ = false; rightPanelAnimatedWidth_ = -1;
     powerVisible_ = false; aiVisible_ = true; aiPageOpened_ = true;
@@ -4314,6 +4315,9 @@ void MainWindow::ShowAiPage(bool connect) {
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
     SyncAiTerminal();
     RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+    // On first connection the pane was hidden while its modal was open.
+    // Restore the normal composer focus only after the final page layout.
+    if (requestedConnection && aiPane_.Connected()) aiPane_.FocusInput();
 }
 
 

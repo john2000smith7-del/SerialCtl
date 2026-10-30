@@ -269,6 +269,13 @@ struct AiPaneTestAccess {
         pane.directoryChildren_ = savedChildren;
         pane.verifiedDirectory_ = savedVerified;
         pane.Theme(false);
+        const auto previousFocus = GetFocus();
+        const auto owner = GetAncestor(pane.window_, GA_ROOT);
+        ShowWindow(pane.window_, SW_HIDE); SetFocus(owner); pane.FocusInput();
+        if (GetFocus() != owner) throw std::runtime_error("Hidden AI input stole focus before page layout");
+        ShowWindow(pane.window_, SW_SHOW); pane.FocusInput();
+        if (GetFocus() != pane.Control(10)) throw std::runtime_error("Visible AI composer did not receive focus");
+        if (IsWindow(previousFocus) && IsWindowVisible(previousFocus)) SetFocus(previousFocus);
         CheckV209(pane);
         auto require = [](bool value, const char *error) {
             if (!value)
