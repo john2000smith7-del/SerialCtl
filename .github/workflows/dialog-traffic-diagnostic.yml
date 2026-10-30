@@ -1,4 +1,4 @@
-name: Verify controlled terminal traffic fixture
+name: Diagnose controlled terminal traffic fixture state
 on:
   push:
     branches: [verification/dialog-traffic]

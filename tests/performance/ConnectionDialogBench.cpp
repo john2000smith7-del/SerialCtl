@@ -18,6 +18,8 @@ struct Traffic {
     SOCKET listener=INVALID_SOCKET;
     std::atomic_bool stop{false};
     std::atomic_ullong bytes{0};
+    std::atomic_int lastError{0};
+    std::atomic_bool accepted{false};
     std::thread thread;
     unsigned port=0;
     bool started=false;
@@ -32,7 +34,9 @@ struct Traffic {
             SOCKET peer=INVALID_SOCKET;
             while(!stop) {
                 fd_set readable;FD_ZERO(&readable);FD_SET(listener,&readable);timeval timeout{0,100000};
-                if(select(0,&readable,nullptr,nullptr,&timeout)>0){peer=accept(listener,nullptr,nullptr);break;}
+                const int ready=select(0,&readable,nullptr,nullptr,&timeout);
+                if(ready>0){peer=accept(listener,nullptr,nullptr);accepted=peer!=INVALID_SOCKET;if(!accepted)lastError=WSAGetLastError();break;}
+                if(ready==SOCKET_ERROR){lastError=WSAGetLastError();return;}
             }
             if(peer==INVALID_SOCKET)return;
             DWORD timeout=100;setsockopt(peer,SOL_SOCKET,SO_SNDTIMEO,reinterpret_cast<const char*>(&timeout),sizeof(timeout));
@@ -40,7 +44,7 @@ struct Traffic {
             for(int row=0;row<32;++row)batch+="LOOPBACK fixture: continuous terminal output while opening a connection form.\r\n";
             while(!stop) {
                 const int sent=send(peer,batch.data(),static_cast<int>(batch.size()),0);
-                if(sent<=0)break;bytes+=static_cast<unsigned>(sent);Sleep(20);
+                if(sent<=0){lastError=WSAGetLastError();break;}bytes+=static_cast<unsigned>(sent);Sleep(20);
             }
             closesocket(peer);
         });
@@ -85,12 +89,17 @@ int wmain(int argc,wchar_t **argv) {
         // second desktop click; all measured toolbar activations remain mouse.
         Sleep(100);
         SetDlgItemTextW(setup,IDC_HOST,L"127.0.0.1");SetDlgItemTextW(setup,IDC_PORT,std::to_wstring(source.port).c_str());
+        wchar_t configured[128]{};GetDlgItemTextW(setup,IDC_PORT,configured,128);wprintf(L"traffic_configured_port=%ls expected=%u\n",configured,source.port);
         if(!SendMessageTimeoutW(setup,WM_COMMAND,IDOK,0,SMTO_ABORTIFHUNG,5000,&idle)){TerminateProcess(pi.hProcess,12);return 12;}
         const auto limit=GetTickCount64()+10000;
         while(GetTickCount64()<limit && (IsWindow(setup) || !source.bytes))Sleep(10);
         if(IsWindow(setup) || !source.bytes){
             wchar_t error[512]{};if(IsWindow(setup))GetDlgItemTextW(setup,IDC_DIALOG_ERROR,error,512);
             wprintf(L"traffic_setup_failed port=%u dialog_alive=%d bytes=%llu error=%ls\n",source.port,IsWindow(setup),source.bytes.load(),error);
+            DWORD processExit=0;GetExitCodeProcess(pi.hProcess,&processExit);
+            wchar_t status[2048]{};GetWindowTextW(GetDlgItem(main,111),status,2048);
+            printf("traffic_details accepted=%d socket_error=%d process_exit=%lu main_alive=%d main_status=",source.accepted.load()?1:0,source.lastError.load(),processExit,IsWindow(main));
+            for(auto ch:std::wstring(status))printf("\\u%04x",static_cast<unsigned>(ch));printf("\n");
             TerminateProcess(pi.hProcess,13);return 13;
         }
         Sleep(500);
