@@ -98,6 +98,7 @@ def main():
         port, status = c.create_unicode_buffer(1024), c.create_unicode_buffer(2048)
         user.GetDlgItemTextW(dialog, 1002, port, len(port))
         user.GetDlgItemTextW(dialog, 1025, status, len(status))
+        print('REMOTE_STATE '+json.dumps({'port':port.value,'status':status.value,'enabled':bool(user.IsWindowEnabled(user.GetDlgItem(dialog, 1)))}),flush=True)
         return (port.value == '未发现可连接的串口' and
                 not user.IsWindowEnabled(user.GetDlgItem(dialog, 1)) and
                 '正在' not in status.value)

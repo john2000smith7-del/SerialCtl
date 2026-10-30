@@ -1,0 +1,38 @@
+name: Diagnose remote discovery snapshot state
+on:
+  push:
+    branches: [verification/dialog-freeze]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  freeze:
+    runs-on: windows-2022
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: old
+          run-id: 40631971674
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: new
+          run-id: 41013548886
+          github-token: ${{ github.token }}
+      - name: Run exact pixel and geometry comparison
+        shell: powershell
+        run: |
+          $a = @(Get-ChildItem old -Filter '*.zip')
+          $b = @(Get-ChildItem new -Filter '*.zip')
+          python tests/integration/ui_freeze_compare.py --baseline $a[0].FullName --candidate $b[0].FullName --output evidence
+          exit $LASTEXITCODE
+      - name: Export diagnostic evidence
+        if: always()
+        shell: powershell
+        run: |
+          Get-Content evidence/ui-freeze-comparison.json
+          python -c "import base64,pathlib; [(print('FREEZE_PNG '+p.name+' '+base64.b64encode(p.read_bytes()).decode())) for p in pathlib.Path('evidence').glob('*.png') if ('remote' in p.name)]"
