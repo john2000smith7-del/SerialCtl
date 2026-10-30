@@ -3,13 +3,20 @@ on:
   push:
     branches: [main, "feat/**", "feature/**"]
   workflow_dispatch:
+    inputs:
+      evidence_run:
+        description: Optional existing build run to export screenshots without rebuilding
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
   actions: read
 jobs:
   build:
+    if: ${{ !inputs.evidence_run }}
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -162,17 +169,31 @@ jobs:
   ui-review:
     name: UI screenshots - ${{ matrix.page }}
     needs: build
-    if: ${{ always() && needs.build.result != 'cancelled' }}
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         page: [ai, power, sftp-settings]
+    env:
+      REVIEW_SOURCE_RUN: ${{ inputs.evidence_run || github.run_id }}
     steps:
+      - name: Verify screenshot provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REVIEW_SOURCE_RUN" =~ ^[0-9]+$ ]]
+          source_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$REVIEW_SOURCE_RUN" --jq .head_sha)
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "REVIEW_SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           name: SerialCtl-UI-evidence
           path: ui-evidence
+          run-id: ${{ env.REVIEW_SOURCE_RUN }}
+          github-token: ${{ github.token }}
       - name: Export authentic page screenshots in bounded logs
         env:
           REVIEW_PAGE: ${{ matrix.page }}
@@ -192,7 +213,7 @@ jobs:
               raise SystemExit('No authentic screenshots found for ' + page)
           out = pathlib.Path('review-' + page)
           out.mkdir()
-          manifest = {'sourceSha': os.environ['GITHUB_SHA'], 'buildRun': os.environ['GITHUB_RUN_ID'],
+          manifest = {'sourceSha': os.environ['REVIEW_SOURCE_SHA'], 'buildRun': os.environ['REVIEW_SOURCE_RUN'],
                       'capture': 'Existing native Windows execution screenshots; no image rewriting', 'files': []}
           for path in selected:
               data = path.read_bytes()

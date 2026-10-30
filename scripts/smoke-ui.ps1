@@ -89,6 +89,10 @@ public static class SerialCtlUiSmoke {
     [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern int GetTextFace(IntPtr dc, int count, StringBuilder face);
     [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr CreateFont(int height, int width, int escapement, int orientation, int weight, uint italic, uint underline, uint strikeout, uint charset, uint output, uint clip, uint quality, uint pitch, string face);
     [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr dc);
+    [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleBitmap(IntPtr dc,int width,int height);
+    [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr dc);
+    [DllImport("gdi32.dll")] public static extern bool BitBlt(IntPtr dst,int x,int y,int width,int height,IntPtr src,int sx,int sy,uint rop);
     [DllImport("gdi32.dll")] public static extern uint GetPixel(IntPtr dc, int x, int y);
     [DllImport("dwmapi.dll")] static extern int DwmFlush();
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
@@ -108,12 +112,21 @@ public static class SerialCtlUiSmoke {
             foreach(var point in new[]{new[]{r.Left,r.Top},new[]{r.Right-1,r.Top},new[]{r.Left,r.Bottom-1},new[]{r.Right-1,r.Bottom-1}})
                 if(GetPixel(dc,point[0],point[1])!=WindowColor(window))
                     throw new Exception("Theme button has rectangular/stale exterior pixels after native input");
-            for(int y=r.Top;y<r.Bottom;y++) for(int x=r.Left;x<r.Right;x++) {
-                uint pixel=GetPixel(dc,x,y);
-                int red=(int)(pixel&255), green=(int)((pixel>>8)&255), blue=(int)((pixel>>16)&255);
-                if(blue>red+20 && blue>green+20)
-                    throw new Exception("Theme button retains a blue inner/outer frame after native input");
-            }
+            // Snapshot the real desktop once. Per-pixel reads from a screen DC
+            // force repeated compositor synchronization and can take minutes.
+            IntPtr memory=CreateCompatibleDC(dc), bitmap=CreateCompatibleBitmap(dc,r.Right-r.Left,r.Bottom-r.Top);
+            if(memory==IntPtr.Zero || bitmap==IntPtr.Zero) throw new Exception("Cannot snapshot theme control");
+            IntPtr previous=SelectObject(memory,bitmap);
+            try {
+                if(!BitBlt(memory,0,0,r.Right-r.Left,r.Bottom-r.Top,dc,r.Left,r.Top,0x00CC0020))
+                    throw new Exception("Cannot read real theme pixels");
+                for(int y=0;y<r.Bottom-r.Top;y++) for(int x=0;x<r.Right-r.Left;x++) {
+                    uint pixel=GetPixel(memory,x,y);
+                    int red=(int)(pixel&255), green=(int)((pixel>>8)&255), blue=(int)((pixel>>16)&255);
+                    if(blue>red+20 && blue>green+20)
+                        throw new Exception("Theme button retains a blue inner/outer frame after native input");
+                }
+            } finally { SelectObject(memory,previous);DeleteObject(bitmap);DeleteDC(memory); }
         } finally { ReleaseDC(IntPtr.Zero,dc); }
         IntPtr footer=GetDlgItem(window,302); GetWindowRect(footer,out r);
         bool dark=WindowColor(window)==0x001e1c1cu;
