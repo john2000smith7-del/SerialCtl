@@ -23,13 +23,13 @@ jobs:
         run: |
           python tools/new_update_feed.py --verify-archive candidate/SerialCtl-V2.0.13-Win7-x64.zip --metadata candidate-update.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python tests/integration/gui_command_drag_fixture.py --archive candidate/SerialCtl-V2.0.13-Win7-x64.zip --output evidence
+          python tests/integration/gui_command_drag_fixture.py --archive candidate/SerialCtl-V2.0.13-Win7-x64.zip --output "$env:RUNNER_TEMP/notebook-theme"
           exit $LASTEXITCODE
       - name: Export real settled theme frames
         if: always()
         shell: powershell
         run: |
-          Get-ChildItem evidence -Filter '*dark-settled*.png' | ForEach-Object {
+          Get-ChildItem "$env:RUNNER_TEMP/notebook-theme" -Filter '*dark-settled*.png' | ForEach-Object {
             $encoded=[Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
             Write-Host "SERIALCTL_UI_REVIEW_BEGIN $($_.Name)"
             for($offset=0;$offset -lt $encoded.Length;$offset+=4096){Write-Host ('SERIALCTL_UI_REVIEW_DATA '+$encoded.Substring($offset,[Math]::Min(4096,$encoded.Length-$offset)))}
