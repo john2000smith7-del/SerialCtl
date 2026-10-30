@@ -1,0 +1,28 @@
+name: Review final native notebook frame
+on:
+  push:
+    branches: [verification/v213-native]
+    paths: [.github/workflows/notebook-final-frame.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  frame:
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-UI-evidence
+          path: native-evidence
+          run-id: 41030930118
+          github-token: ${{ github.token }}
+      - name: Export exact final wide main frames
+        shell: powershell
+        run: |
+          Get-ChildItem native-evidence -Filter '*.png' -Recurse | Where-Object { $_.Name -match 'freeze-candidate.*-(light|dark)-main.png' } | ForEach-Object {
+            $encoded=[Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
+            Write-Host "SERIALCTL_UI_REVIEW_BEGIN $($_.Name)"
+            for($offset=0;$offset -lt $encoded.Length;$offset+=4096){Write-Host ('SERIALCTL_UI_REVIEW_DATA '+$encoded.Substring($offset,[Math]::Min(4096,$encoded.Length-$offset)))}
+            Write-Host "SERIALCTL_UI_REVIEW_END $($_.Name)"
+          }
