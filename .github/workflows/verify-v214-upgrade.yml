@@ -1,0 +1,77 @@
+name: Verify V2.0.14 signed GUI upgrade
+on:
+  push:
+    branches: [verification/v214-native]
+    paths: [candidate-update.json]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - old: V2.0.6
+            tag: v2.0.6
+            sha: 76f55f3eba03cd32b298e24ff391b5020913afb4452c518e51d3c2c80e672b49
+          - old: V2.0.13
+            tag: v2.0.13
+            sha: 6035e2b534e0a52c36edd9394d8e44b8118e0ff50a55cf888b5aa9b8e5f226ff
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require the exact successful main Windows build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = gh api repos/$env:GITHUB_REPOSITORY/actions/runs/41064252907 | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne '937e2d052f5289e1465e44277d33cbabb54441c2' -or $run.head_branch -ne 'main') { throw 'Exact main source build was not successful' }
+          git diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Production source differs from the tested candidate' }
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: candidate
+          run-id: 41064252907
+          github-token: ${{ github.token }}
+      - name: Verify exact signed candidate and obtain the authentic released client
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD_TAG: ${{ matrix.tag }}
+          OLD_VERSION: ${{ matrix.old }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tools/new_update_feed.py --verify-archive candidate/SerialCtl-V2.0.14-Win7-x64.zip --metadata candidate-update.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release download $env:OLD_TAG --repo $env:GITHUB_REPOSITORY --pattern "SerialCtl-$env:OLD_VERSION-Win7-x64.zip" --dir old
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise confirmation, signed download, installation, restart and data protection
+        env:
+          OLD_VERSION: ${{ matrix.old }}
+          OLD_SHA: ${{ matrix.sha }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python tests/integration/verify_release_upgrade.py --old-zip "old/SerialCtl-$env:OLD_VERSION-Win7-x64.zip" --old-version $env:OLD_VERSION --old-sha256 $env:OLD_SHA --new-zip candidate/SerialCtl-V2.0.14-Win7-x64.zip --metadata candidate-update.json --output "$env:RUNNER_TEMP/v214-upgrade"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Export the actual GUI-upgrade result
+        if: always()
+        shell: powershell
+        run: |
+          $path = "$env:RUNNER_TEMP/v214-upgrade/upgrade-result.json"
+          if (Test-Path $path) { Get-Content $path -Raw | Write-Host }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-V2.0.14-upgrade-${{ matrix.old }}
+          path: |
+            ${{ runner.temp }}/v214-upgrade/upgrade-result.json
+            ${{ runner.temp }}/v214-upgrade/*.png
+          if-no-files-found: error
