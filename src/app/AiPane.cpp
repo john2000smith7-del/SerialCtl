@@ -2535,7 +2535,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         auto add = [&](const wchar_t *type, const wchar_t *text, int id, int x, int y, int width, int height, DWORD extra) {
             auto c = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | extra, self->D(x), self->D(y), self->D(width), self->D(height),
                 h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
-            SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), TRUE);
+            SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), FALSE);
             if (_wcsicmp(type,L"COMBOBOX") == 0) UiStyleField(c, &self->style_);
             if (_wcsicmp(type,L"BUTTON") == 0) UiStyleButton(c);
             return c;
@@ -2553,13 +2553,18 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         auto path = self->settings_.workingDirectory.empty() ? self->workspaceDirectory_ : self->settings_.workingDirectory;
         if (path.empty()) path = L"/home/linux/workspace";
         SetWindowTextW(combo,path.c_str());
-        self->BrowseDirectory(path);
+        EnableWindow(GetDlgItem(h, IDOK), FALSE);
         Center(h,GetWindow(h,GW_OWNER));
         UiDialogViewport::Fit(h,self->dpi_);
-        SetTimer(h,1,100,nullptr);
+        UiRunAfterFirstPaint(h);
         return TRUE;
     }
     if (!self) return FALSE;
+    if (m == UiFirstPaintReady) {
+        self->BrowseDirectory(Text(GetDlgItem(h, Directory)));
+        SetTimer(h,1,100,nullptr);
+        return TRUE;
+    }
     if (m == WM_TIMER) {
         EnableWindow(GetDlgItem(h,IDOK), self->client_.Ready() && !self->directoryPending_);
         for (int id : {DirectoryUp,DirectoryRefresh}) EnableWindow(GetDlgItem(h,id),self->client_.Ready() && !self->directoryPending_);
@@ -2621,7 +2626,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             auto c = CreateWindowExW(
                 0, type, label, WS_CHILD | WS_VISIBLE | style, self->D(x), self->D(y), self->D(width), self->D(height),
                 h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
-            SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), TRUE);
+            SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), FALSE);
             if (_wcsicmp(type, L"BUTTON") == 0) {
                 if ((style & BS_TYPEMASK) == BS_AUTOCHECKBOX)
                     UiStyleCheckBox(c, &self->style_, true);
@@ -2649,7 +2654,6 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SendMessageW(directories, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), self->D(24));
         SendMessageW(directories, CB_SETDROPPEDWIDTH, self->D(404), 0);
         SendMessageW(directories, CB_LIMITTEXT, 4096, 0);
-        self->PopulateDirectories();
         SetWindowTextW(directories,self->settings_.workingDirectory.c_str());
         add(L"BUTTON",L"上级",DirectoryUp,280,280,64,28,BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON",L"刷新",DirectoryRefresh,356,280,64,28,BS_OWNERDRAW | WS_TABSTOP);
@@ -2663,28 +2667,42 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             BS_OWNERDRAW | WS_TABSTOP);
         Center(h, GetWindow(h, GW_OWNER));
         UiDialogViewport::Fit(h, self->dpi_);
-        SetTimer(h, 1, 100, nullptr);
+        UiRunAfterFirstPaint(h);
         return TRUE;
     }
     if (!self)
         return FALSE;
+    if (m == UiFirstPaintReady) {
+        const auto draft = Text(GetDlgItem(h, Directory));
+        self->PopulateDirectories();
+        SetDlgItemTextW(h, Directory, draft.c_str());
+        // Refresh status only after the complete form has reached the screen.
+        SendMessageW(h, WM_TIMER, 1, 0);
+        if (!IsWindow(h)) return TRUE;
+        SetTimer(h, 1, 100, nullptr);
+        return TRUE;
+    }
     if (m == WM_TIMER) {
         const bool running = self->client_.Running();
         const bool ready = self->client_.Ready();
+        auto enable = [h](int id, bool enabled) {
+            const auto control = GetDlgItem(h, id);
+            if ((IsWindowEnabled(control) != FALSE) != enabled) EnableWindow(control, enabled);
+        };
         for (int id : {Host, Port, Username, Password, Remember})
-            EnableWindow(GetDlgItem(h, id), !running);
-        EnableWindow(GetDlgItem(h,Directory), !self->directoryPending_ && !self->busy_);
-        for (int id : {DirectoryUp,DirectoryRefresh}) EnableWindow(GetDlgItem(h,id),ready && !self->busy_ && !self->directoryPending_);
-        EnableWindow(GetDlgItem(h, Test), !running);
-        EnableWindow(GetDlgItem(h, HostReverify), !running);
+            enable(id, !running);
+        enable(Directory, !self->directoryPending_ && !self->busy_);
+        for (int id : {DirectoryUp,DirectoryRefresh}) enable(id,ready && !self->busy_ && !self->directoryPending_);
+        enable(Test, !running);
+        enable(HostReverify, !running);
         const auto host = Text(GetDlgItem(h, Host)), portText = Text(GetDlgItem(h, Port));
         unsigned port = 0;
         try { size_t read = 0; const auto value = std::stoul(portText, &read); if (read == portText.size() && value <= 65535) port = static_cast<unsigned>(value); } catch (...) {}
         const std::wstring identity = port && !TrustedPuttyHostKey(host, static_cast<uint16_t>(port)).empty()
             ? L"主机身份已保存" : L"连接时核验主机身份";
         if (Text(GetDlgItem(h, HostIdentity)) != identity) SetDlgItemTextW(h, HostIdentity, identity.c_str());
-        EnableWindow(GetDlgItem(h, IDOK), (ready && !self->busy_ && !self->directoryPending_) || !running);
-        if (ready)
+        enable(IDOK, (ready && !self->busy_ && !self->directoryPending_) || !running);
+        if (ready && Text(GetDlgItem(h, IDOK)) != L"进入对话")
             SetDlgItemTextW(h, IDOK, L"进入对话");
         if (ready && self->dialogEnter_ && !self->busy_ && !self->directoryPending_)
             UiEndOwnedDialog(h, IDOK);

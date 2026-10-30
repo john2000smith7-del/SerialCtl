@@ -1276,7 +1276,7 @@ LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARA
     if (GetWindowSubclass(window, ButtonSubclassProc, subclassId, &current) && current == referenceData &&
         UiButtonNeedsRestore(message) &&
         (GetWindowLongPtrW(window, GWL_STYLE) & BS_TYPEMASK) == BS_OWNERDRAW)
-        RedrawWindow(window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        UiRefreshControl(window);
     return result;
 }
 
@@ -3593,9 +3593,15 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         }
         self->ConfigureConnectionDialog(dialog);
         CenterOnOwner(dialog, self->window_);
+        UiRunAfterFirstPaint(dialog);
         return TRUE;
     }
     if (!self) return FALSE;
+    if (message == UiFirstPaintReady) {
+        if (self->pendingMode_ == 1) self->RefreshSerialPorts(dialog);
+        else if (self->pendingMode_ == 3) SetTimer(dialog, DiscoveryTimerId, 500, nullptr);
+        return TRUE;
+    }
     if (message == WM_ERASEBKGND) {
         RECT client{};
         GetClientRect(dialog, &client);
@@ -3664,6 +3670,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE); SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return TRUE;
         }
         if (self->pendingMode_ == 3 && LOWORD(wParam) == IDC_HOST && HIWORD(wParam) == EN_CHANGE) {
+            if (self->initializingConnectionDialog_) return TRUE;
             ++self->discoveryGeneration_; self->discoveryCancel_ = true;
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
             SetTimer(dialog, DiscoveryTimerId, 500, nullptr); return TRUE;
@@ -3814,7 +3821,11 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     }
 
     if (serial) {
-        RefreshSerialPorts(dialog);
+        HWND ports = GetDlgItem(dialog, IDC_SERIAL);
+        SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"正在查找串口…"));
+        SendMessageW(ports, CB_SETCURSEL, 0, 0);
+        EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
+        EnableWindow(GetDlgItem(dialog, IDC_SERIAL_REFRESH), FALSE);
     } else if (share) {
         HWND ports = GetDlgItem(dialog, IDC_SERIAL);
         SendMessageW(ports, CB_RESETCONTENT, 0, 0);
@@ -3822,7 +3833,6 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
         discoveryDialog_ = dialog;
-        SetTimer(dialog, DiscoveryTimerId, 500, nullptr);
     }
     if (serial) {
         AddComboItems(GetDlgItem(dialog, IDC_BAUD), {L"9600", L"38400", L"57600", L"115200", L"230400", L"460800", L"921600", L"1500000"}, 3);
@@ -4292,6 +4302,9 @@ MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
 }
 
 void MainWindow::ShowAiPage(bool connect) {
+    // The modal is the user's immediate action. Do not make it wait for page
+    // layout, transcript remeasurement, target refresh or terminal repaint.
+    if (connect && !aiPane_.Connected()) aiPane_.ShowConnection();
     KillTimer(window_, SideAnimationTimerId);
     rightPanelAnimating_ = false; rightPanelAnimatedWidth_ = -1;
     powerVisible_ = false; aiVisible_ = true; aiPageOpened_ = true;
@@ -4300,8 +4313,7 @@ void MainWindow::ShowAiPage(bool connect) {
     InvalidateRect(window_, nullptr, TRUE);
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
     SyncAiTerminal();
-    RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
-    if (connect && !aiPane_.Connected()) aiPane_.ShowConnection();
+    RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
 
@@ -5056,8 +5068,8 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
     auto* self = state->owner;
     const bool hasSession = state->sessionId && self->activeSession_ &&
         self->activeSession_->id == state->sessionId;
-    auto refresh = [&] {
-        self->PollLogExport();
+    auto refresh = [&](bool pollExport = true) {
+        if (pollExport) self->PollLogExport();
         const bool connected = hasSession && self->connection_ && self->connection_->IsConnected();
         auto enable = [&](int id, bool enabled) {
             HWND control = GetDlgItem(dialog, id);
@@ -5098,7 +5110,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
                 Ui::Scale(x), Ui::Scale(y), Ui::Scale(width), Ui::Scale(height), dialog,
                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), self->instance_, nullptr);
-            SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), TRUE);
+            SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), FALSE);
             if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
                 SetWindowSubclass(control, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
             if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_AUTOCHECKBOX)
@@ -5160,7 +5172,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         tool.uId = reinterpret_cast<UINT_PTR>(help);
         tool.lpszText = state->exportTip;
         SendMessageW(self->statusTip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
-        SendMessageW(help, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), TRUE);
+        SendMessageW(help, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
         add(L"BUTTON", L"取消", IDCANCEL, 216, 468, 96, 36, button);
         add(L"BUTTON", L"保存", IDOK, 324, 468, 96, 36, button);
         HWND version = add(L"STATIC", L"SerialCtl " SERIALCTL_VERSION, -1, 16, 520, 136, 20, SS_LEFT);
@@ -5173,9 +5185,14 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         layout.ComboVisibleHeight(encoding, Ui::Scale(28));
         layout.ComboVisibleHeight(ending, Ui::Scale(28));
         layout.Commit();
-        refresh();
+        refresh(false);
         CenterOnOwner(dialog, self->window_);
         UiDialogViewport::Fit(dialog, Ui::Dpi);
+        UiRunAfterFirstPaint(dialog);
+        return TRUE;
+    }
+    if (message == UiFirstPaintReady) {
+        refresh();
         SetTimer(dialog, 1, 250, nullptr);
         return TRUE;
     }

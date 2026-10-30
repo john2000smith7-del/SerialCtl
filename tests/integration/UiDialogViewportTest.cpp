@@ -5,6 +5,7 @@ using serialctl::UiDialogViewport;
 
 namespace {
 int failures = 0;
+unsigned firstPaintJobs = 0;
 void Expect(bool value, const char *message) {
     if (!value) { std::cerr << message << '\n'; ++failures; }
 }
@@ -14,6 +15,7 @@ RECT Bounds(HWND h, HWND parent = nullptr) {
     return r;
 }
 LRESULT CALLBACK Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (m == serialctl::UiFirstPaintReady) { ++firstPaintJobs; return 0; }
     if (m == WM_CTLCOLORDLG) return reinterpret_cast<LRESULT>(GetStockObject(WHITE_BRUSH));
     return DefWindowProcW(h, m, w, l);
 }
@@ -86,7 +88,53 @@ int main() {
                                   0, 0, 100, 100, nullptr, nullptr, wc.hInstance, nullptr);
     { serialctl::UiRedrawScope redraw(hidden); }
     Expect(!(GetWindowLongPtrW(hidden, GWL_STYLE) & WS_VISIBLE), "A redraw transaction exposed a hidden page");
+    serialctl::UiRunAfterFirstPaint(hidden);
+    auto drainJob = [hidden] {
+        MSG message{};
+        while (PeekMessageW(&message, hidden, serialctl::UiFirstPaintReady, serialctl::UiFirstPaintReady, PM_REMOVE))
+            DispatchMessageW(&message);
+    };
+    UpdateWindow(hidden);
+    drainJob();
+    Expect(firstPaintJobs == 0, "A hidden window started post-paint work");
+    HDC printDc = CreateCompatibleDC(nullptr);
+    SendMessageW(hidden, WM_PRINTCLIENT, reinterpret_cast<WPARAM>(printDc), PRF_CLIENT);
+    DeleteDC(printDc);
+    drainJob();
+    Expect(firstPaintJobs == 0, "Offscreen printing started background work");
+    ShowWindow(hidden, SW_SHOW);
+    UpdateWindow(hidden);
+    Expect(firstPaintJobs == 0, "Background work ran inside the first paint");
+    drainJob();
+    Expect(firstPaintJobs == 1, "The first visible paint did not schedule its job");
+    RedrawWindow(hidden, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    drainJob();
+    Expect(firstPaintJobs == 1, "Repainting scheduled duplicate background work");
+    bool dark = false;
+    serialctl::UiFieldStyle style{&dark, nullptr, 96};
+    HWND combo = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+        0, 0, 80, 100, hidden, nullptr, wc.hInstance, nullptr);
+    serialctl::UiStyleField(combo, &style);
+    COMBOBOXINFO info{sizeof(info)}; GetComboBoxInfo(combo, &info);
+    DWORD_PTR popup = 0;
+    Expect(!GetWindowSubclass(info.hwndList, serialctl::UiComboPopupProc, 72, &popup),
+           "An unopened combo eagerly initialized its popup");
+    SendMessageW(combo, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), FALSE);
+    Expect(!GetWindowSubclass(info.hwndList, serialctl::UiComboPopupProc, 72, &popup),
+           "A font update eagerly initialized an unopened popup");
+    SendMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0);
+    Expect(GetWindowSubclass(info.hwndList, serialctl::UiComboPopupProc, 72, &popup) != FALSE,
+           "First dropdown use did not install the shared popup theme");
+    SendMessageW(combo, CB_SHOWDROPDOWN, FALSE, 0);
     DestroyWindow(hidden);
+    HWND cancelled = CreateWindowExW(0, wc.lpszClassName, L"Cancelled", WS_OVERLAPPEDWINDOW,
+        0, 0, 100, 100, nullptr, nullptr, wc.hInstance, nullptr);
+    serialctl::UiRunAfterFirstPaint(cancelled);
+    DestroyWindow(cancelled);
+    MSG pending{};
+    while (PeekMessageW(&pending, nullptr, serialctl::UiFirstPaintReady, serialctl::UiFirstPaintReady, PM_REMOVE))
+        DispatchMessageW(&pending);
+    Expect(firstPaintJobs == 1, "Closing before first paint left a runnable job");
     Gdiplus::GdiplusShutdown(token);
     return failures ? 1 : 0;
 }

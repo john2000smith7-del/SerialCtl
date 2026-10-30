@@ -675,6 +675,14 @@ inline bool UiButtonNeedsRestore(UINT message) {
            message == WM_KEYDOWN || message == WM_KEYUP || message == WM_CAPTURECHANGED ||
            message == WM_CANCELMODE || message == WM_THEMECHANGED;
 }
+// Preserve the synchronous state repair for visible controls without painting
+// every intermediate state while their dialog is still being constructed.
+inline void UiRefreshControl(HWND control) {
+    if (IsWindowVisible(control))
+        RedrawWindow(control, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+    else
+        InvalidateRect(control, nullptr, FALSE);
+}
 inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
     if (message == WM_ERASEBKGND && (GetWindowLongPtrW(h, GWL_STYLE) & BS_TYPEMASK) == BS_OWNERDRAW)
         return 1;
@@ -696,7 +704,7 @@ inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, U
     DWORD_PTR reference = 0;
     if (GetWindowSubclass(h, UiButtonProc, id, &reference) && UiButtonNeedsRestore(message) &&
         (GetWindowLongPtrW(h, GWL_STYLE) & BS_TYPEMASK) == BS_OWNERDRAW)
-        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        UiRefreshControl(h);
     return result;
 }
 inline void UiStyleButton(HWND h) {
@@ -810,7 +818,7 @@ inline LRESULT CALLBACK UiCheckBoxProc(HWND h, UINT message, WPARAM w, LPARAM l,
         message == WM_LBUTTONUP || message == WM_KEYDOWN || message == WM_KEYUP ||
         message == WM_CAPTURECHANGED || message == WM_CANCELMODE || message == WM_UPDATEUISTATE ||
         message == WM_THEMECHANGED || message == WM_SYSCOLORCHANGE)
-        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        UiRefreshControl(h);
     return result;
 }
 inline void UiStyleCheckBox(HWND control, UiFieldStyle *style, bool surface) {
@@ -1007,8 +1015,8 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     if(!edit && (message==WM_SIZE || message==WM_SETFONT || message==WM_COMMAND || message==CB_SETITEMHEIGHT || message==WM_SETTEXT ||
         message==CB_RESETCONTENT || message==CB_SETCURSEL || message==CB_SELECTSTRING || message==CB_SHOWDROPDOWN))
         UiLayoutComboEdit(h,*style);
-    if (!edit && message == WM_SETFONT)
-        UiPrepareComboPopup(h, style);
+    // The list is prepared by the existing mouse/keyboard/CB_SHOWDROPDOWN
+    // entry points. A font change must not initialize an unopened popup.
     if (!edit && (hoverChanged || message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
                   message == WM_SETFONT || message == WM_SIZE || message == WM_KEYDOWN || message == WM_KEYUP ||
                   message == WM_CHAR || message == WM_COMMAND || message == WM_MOUSEWHEEL || message==WM_SETTEXT ||
@@ -1043,13 +1051,40 @@ inline void UiStyleField(HWND control, UiFieldStyle *style) {
     wchar_t cls[32]{};
     GetClassNameW(control, cls, 32);
     if (_wcsicmp(cls, L"COMBOBOX") == 0) {
-        UiPrepareComboPopup(control, style);
         UiLayoutComboEdit(control,*style);
     }
 }
 } // namespace serialctl
 
 namespace serialctl {
+constexpr UINT UiFirstPaintReady = WM_APP + 190;
+// Background scans and cached-list population start after the complete initial
+// form has painted, not from WM_INITDIALOG or an arbitrary startup delay.
+inline LRESULT CALLBACK UiFirstPaintProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
+    if (message == WM_NCDESTROY) {
+        RemoveWindowSubclass(h, UiFirstPaintProc, id);
+        return DefSubclassProc(h, message, w, l);
+    }
+    const auto result = DefSubclassProc(h, message, w, l);
+    if (message == WM_PAINT && IsWindow(h) && IsWindowVisible(h)) {
+        RemoveWindowSubclass(h, UiFirstPaintProc, id);
+        // Paint only already-invalid children. No full-window invalidation or
+        // nested message pumping; controls and Cancel are ready before work.
+        RedrawWindow(h, nullptr, nullptr, RDW_UPDATENOW | RDW_ALLCHILDREN);
+        if (IsWindow(h)) {
+            wchar_t metrics[2]{};
+            if (GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", metrics, 2))
+                SetPropW(h, L"SerialCtl.DialogFirstPaint", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(GetTickCount64())));
+            PostMessageW(h, UiFirstPaintReady, 0, 0);
+        }
+    }
+    return result;
+}
+inline void UiRunAfterFirstPaint(HWND dialog) {
+    // Keep the form functional even if native subclass registration fails.
+    if (!SetWindowSubclass(dialog, UiFirstPaintProc, 89, 0))
+        PostMessageW(dialog, UiFirstPaintReady, 0, 0);
+}
 // Restore only the owner of a modal dismissed while that modal was foreground.
 // One restoration per dialog; never topmost and never from repaint/timer paths.
 inline void UiEndOwnedDialog(HWND dialog, INT_PTR result) {

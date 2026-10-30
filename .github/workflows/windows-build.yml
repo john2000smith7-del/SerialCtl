@@ -52,7 +52,7 @@ jobs:
           arch: x64
       - name: Build connection dialog stopwatch
         shell: cmd
-        run: cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-bench.exe tests\performance\ConnectionDialogBench.cpp user32.lib
+        run: cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-bench.exe tests\performance\ConnectionDialogBench.cpp user32.lib ws2_32.lib
       - name: Measure connection dialog latency against the accepted release
         shell: powershell
         env:
@@ -130,7 +130,7 @@ jobs:
           # These screenshots use only the isolated smoke fixture, with updates
           # disabled and no user credentials or physical devices. Chunking keeps
           # each log line short for visual review when artifact storage is unavailable.
-          foreach ($name in @('x64-packaged-light.png','x64-packaged-dark.png','x64-light-power-connection.png','x64-dark-power-connection.png','dialog-ssh-light.png','dialog-ssh-dark.png','dialog-telnet-light.png','dialog-telnet-dark.png','dialog-serial-light.png','dialog-serial-dark.png','v205-remote-light.png','v205-remote-dark.png')) {
+          foreach ($name in @('x64-packaged-light.png','x64-packaged-dark.png','x64-light-power-connection.png','x64-dark-power-connection.png','dialog-ssh-light.png','dialog-ssh-dark.png','dialog-telnet-light.png','dialog-telnet-dark.png','dialog-serial-light.png','dialog-serial-dark.png','v205-remote-light.png','v205-remote-dark.png','dialog-ai-light.png','dialog-ai-dark.png')) {
             $path = Join-Path "$env:RUNNER_TEMP/serialctl-ui" $name
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
             $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))

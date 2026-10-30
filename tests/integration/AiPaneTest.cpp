@@ -178,7 +178,13 @@ struct AiPaneTestAccess {
         auto &pane=*p->pane;const HWND dialog=pane.workspaceDialog_;
         try {
             auto pending=std::find_if(pane.requests_.begin(),pane.requests_.end(),[](const auto &r) {return r.second.purpose=="directory";});
-            if(pending==pane.requests_.end()) throw std::runtime_error("Workspace browser did not query existing App Server connection");
+            if(pending==pane.requests_.end()) {
+                // A timer can run before the modal's first WM_PAINT. The
+                // production browser intentionally waits for that first form.
+                DWORD_PTR paintJob = 0;
+                if (GetWindowSubclass(dialog, UiFirstPaintProc, 89, &paintJob)) { UpdateWindow(dialog); return; }
+                throw std::runtime_error("Workspace browser did not query existing App Server connection");
+            }
             pane.Event({{"event","response"},{"token",pending->first},{"result",{{"entries",ai::Json::array({
                 {{"fileName","src"},{"isDirectory",true}},{{"fileName","docs"},{"isDirectory",true}},{{"fileName","file.c"},{"isDirectory",false}}})}}}});
             auto combo=GetDlgItem(dialog,208);
@@ -227,6 +233,42 @@ struct AiPaneTestAccess {
         pane.dpi_=dpi;pane.style_.dpi=dpi;pane.Theme(dark);
     }
     static void Run(AiPane &pane) {
+        // The connection form must paint before loading cached directory rows,
+        // preserve an early edit, and never connect merely because it opened.
+        const auto savedSettings = pane.settings_;
+        const auto savedChildren = pane.directoryChildren_;
+        const auto savedVerified = pane.verifiedDirectory_;
+        pane.settings_.host = L"192.0.2.20";
+        pane.settings_.username = L"linux";
+        pane.settings_.password.clear();
+        pane.settings_.workingDirectory = L"/home/linux/workspace";
+        pane.verifiedDirectory_ = L"/home/linux/workspace";
+        pane.directoryChildren_ = AiPane::Json::array();
+        for (int i = 0; i < 500; ++i) pane.directoryChildren_.push_back("/home/linux/workspace/project-" + std::to_string(i));
+        struct Form { DLGTEMPLATE d{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME,0,0,0,0,270,260}; WORD menu=0,cls=0,title=0; } form;
+        const auto dialog = CreateDialogIndirectParamW(GetModuleHandleW(nullptr), &form.d,
+            GetAncestor(pane.window_, GA_ROOT), AiPane::ConnectProc, reinterpret_cast<LPARAM>(&pane));
+        if (!dialog || SendDlgItemMessageW(dialog, 208, CB_GETCOUNT, 0, 0) != 0)
+            throw std::runtime_error("AI form populated cached directories before its first paint");
+        SetDlgItemTextW(dialog, 208, L"/home/linux/my-early-edit");
+        ShowWindow(dialog, SW_SHOW); UpdateWindow(dialog);
+        MSG firstPaint{};
+        if (!PeekMessageW(&firstPaint, dialog, UiFirstPaintReady, UiFirstPaintReady, PM_REMOVE))
+            throw std::runtime_error("AI form did not schedule its post-paint initialization");
+        DispatchMessageW(&firstPaint);
+        wchar_t path[256]{}; GetDlgItemTextW(dialog, 208, path, 256);
+        if (SendDlgItemMessageW(dialog, 208, CB_GETCOUNT, 0, 0) != 501 ||
+            std::wstring(path) != L"/home/linux/my-early-edit" || pane.client_.Running())
+            throw std::runtime_error("AI post-paint initialization lost input or started an unsolicited connection");
+        for (bool dark : {false, true}) {
+            pane.Theme(dark);
+            ui_test::SaveUiEvidence(dialog, dark ? L"dialog-ai-dark.png" : L"dialog-ai-light.png");
+        }
+        DestroyWindow(dialog);
+        pane.settings_ = savedSettings;
+        pane.directoryChildren_ = savedChildren;
+        pane.verifiedDirectory_ = savedVerified;
+        pane.Theme(false);
         CheckV209(pane);
         auto require = [](bool value, const char *error) {
             if (!value)

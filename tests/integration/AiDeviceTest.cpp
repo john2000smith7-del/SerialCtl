@@ -222,6 +222,10 @@ struct AiDeviceTestAccess {
         const auto local = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
                                               MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
         Require(local != nullptr, "Local serial dialog missing");
+        Require(!main.serialPortScan_, "Serial enumeration started before the form was shown");
+        Require(!IsWindowEnabled(GetDlgItem(local, IDOK)) &&
+                    IsWindowEnabled(GetDlgItem(local, IDCANCEL)),
+                "Pending serial lookup must allow Cancel and prevent an invalid connection");
         Require(MainWindow::ControlText(GetDlgItem(local, IDC_BAUD)) == L"115200" &&
                 SendDlgItemMessageW(local, IDC_DATABITS, CB_GETCURSEL, 0, 0) == 3 &&
                 SendDlgItemMessageW(local, IDC_PARITY, CB_GETCURSEL, 0, 0) == 0 &&
@@ -251,6 +255,12 @@ struct AiDeviceTestAccess {
             ShowWindow(local, SW_SHOW);
             ui_test::SaveUiEvidence(local, dark ? L"dialog-serial-dark.png" : L"dialog-serial-light.png");
         }
+        UpdateWindow(local);
+        MSG firstPaintJob{};
+        Require(PeekMessageW(&firstPaintJob, local, UiFirstPaintReady, UiFirstPaintReady, PM_REMOVE) != FALSE,
+                "Local form did not schedule its scan after the first paint");
+        DispatchMessageW(&firstPaintJob);
+        Require(main.serialPortScan_ != nullptr, "Visible serial form did not start background enumeration");
         DestroyWindow(local);
         // Each connection form must keep its own usable defaults even when
         // setup work for the other modes is omitted. Never open a connection.
