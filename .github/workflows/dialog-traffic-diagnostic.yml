@@ -33,4 +33,6 @@ jobs:
           New-Item -ItemType Directory -Force "$env:APPDATA/SerialCtl" | Out-Null
           Set-Content "$env:APPDATA/SerialCtl/settings.ini" "[Pet]`r`nEnabled=0" -Encoding ASCII
           & ./dialog-bench.exe (Resolve-Path old/app/serialctl.exe).Path light legacy traffic
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $result = $LASTEXITCODE
+          Get-ChildItem "$env:LOCALAPPDATA/SerialCtl/logs" -Filter '*.log' -ErrorAction SilentlyContinue | Select-Object -Last 2 | ForEach-Object { Get-Content $_.FullName -Encoding UTF8 -Tail 8 }
+          exit $result
