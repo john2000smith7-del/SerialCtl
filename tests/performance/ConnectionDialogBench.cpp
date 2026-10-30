@@ -83,14 +83,24 @@ int wmain(int argc,wchar_t **argv) {
         if(!source.Start() || !click(GetDlgItem(main,102))){TerminateProcess(pi.hProcess,10);return 10;}
         HWND setup=await(pi.dwProcessId,true,10000);if(!setup){TerminateProcess(pi.hProcess,11);return 11;}
         DWORD_PTR idle=0;
-        if(!SendMessageTimeoutW(setup,WM_NULL,0,0,SMTO_ABORTIFHUNG,5000,&idle)){TerminateProcess(pi.hProcess,12);return 12;}
+        const auto portField=GetDlgItem(setup,IDC_PORT);
+        const auto uiThread=GetWindowThreadProcessId(setup,nullptr);
+        if(!PostMessageW(setup,WM_NEXTDLGCTL,reinterpret_cast<WPARAM>(portField),TRUE)){TerminateProcess(pi.hProcess,12);return 12;}
+        const auto focusLimit=GetTickCount64()+5000;
+        bool initialized=false;
+        while(GetTickCount64()<focusLimit) {
+            GUITHREADINFO state{sizeof(state)};
+            if(GetGUIThreadInfo(uiThread,&state) && state.hwndFocus==portField){initialized=true;break;}
+            Sleep(5);
+        }
+        if(!initialized){printf("traffic_dialog_focus_not_ready\n");TerminateProcess(pi.hProcess,12);return 12;}
         // Configure the controlled fixture outside the measured interval. Do
         // not race the baseline modal's initial activation/composition with a
         // second desktop click; all measured toolbar activations remain mouse.
         Sleep(100);
         SetDlgItemTextW(setup,IDC_HOST,L"127.0.0.1");SetDlgItemTextW(setup,IDC_PORT,std::to_wstring(source.port).c_str());
         wchar_t configured[128]{};GetDlgItemTextW(setup,IDC_PORT,configured,128);wprintf(L"traffic_configured_port=%ls expected=%u\n",configured,source.port);
-        if(!SendMessageTimeoutW(setup,WM_COMMAND,IDOK,0,SMTO_ABORTIFHUNG,5000,&idle)){TerminateProcess(pi.hProcess,12);return 12;}
+        if(!PostMessageW(setup,WM_COMMAND,IDOK,0)){TerminateProcess(pi.hProcess,12);return 12;}
         const auto limit=GetTickCount64()+10000;
         while(GetTickCount64()<limit && (IsWindow(setup) || !source.bytes))Sleep(10);
         if(IsWindow(setup) || !source.bytes){

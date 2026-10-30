@@ -1,4 +1,4 @@
-name: Diagnose controlled terminal traffic fixture state
+name: Verify queued dialog initialization before fixture input
 on:
   push:
     branches: [verification/dialog-traffic]
