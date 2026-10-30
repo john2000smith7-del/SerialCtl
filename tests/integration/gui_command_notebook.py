@@ -65,8 +65,11 @@ def main():
         # File actions really open owned system file dialogs and cancel cleanly.
         for identifier,name in ((414,'import'),(415,'export')):
             t.click_window(t.user.GetDlgItem(pane,identifier))
-            t.wait(lambda:t.user.GetForegroundWindow()!=args.window,name+' opens native file dialog')
-            t.key(0x1b)
+            t.wait(lambda:t.user.GetForegroundWindow()!=args.window,name+' opens native file dialog',10)
+            dialog=t.user.GetForegroundWindow()
+            t.args.root=dialog
+            try:t.key(0x1b)
+            finally:t.args.root=args.window
             t.wait(lambda:t.user.GetForegroundWindow()==args.window,name+' dialog returns to owner')
             t.check(name+' dialog')
         # Resize and collapse/expand use the existing sidebar split and native editor.
