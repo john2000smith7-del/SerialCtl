@@ -1,7 +1,7 @@
 name: Verify V2.0.12 signed upgrade and native UI
 on:
   push:
-    branches: [verification/v212-final]
+    branches: [verification/v212-native]
     paths: [candidate-update.json]
 permissions:
   contents: read
