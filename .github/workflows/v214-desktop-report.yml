@@ -1,0 +1,27 @@
+name: Read V2.0.14 desktop audit evidence
+on:
+  push:
+    branches: [verification/v214-native]
+    paths: [.github/workflows/v214-desktop-report.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-desktop-review
+          path: evidence
+          run-id: 41066970723
+          github-token: ${{ github.token }}
+      - name: Read exact observed lifecycle failures and navigation
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          paths=list(pathlib.Path('evidence').rglob('gui-lifecycle.json'))
+          assert len(paths)==1
+          data=json.loads(paths[0].read_text(encoding='utf-8-sig'))
+          print(json.dumps(data,ensure_ascii=True))
+          PY
