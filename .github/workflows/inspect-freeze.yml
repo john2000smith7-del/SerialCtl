@@ -1,0 +1,30 @@
+name: Inspect original settings comparison evidence
+on:
+  push:
+    branches: [verification/v211-final]
+    paths: [.github/workflows/inspect-freeze.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: 12949171061
+          run-id: 40988689033
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: evidence
+      - name: Expose original settings frames without modifying pixels
+        run: |
+          python - <<'PY'
+          import base64,pathlib
+          for p in sorted(pathlib.Path('evidence').rglob('freeze-*-settings.png')):
+              data=base64.b64encode(p.read_bytes()).decode()
+              print('SETTINGS_FRAME_BEGIN '+p.name)
+              for offset in range(0,len(data),4096): print('SETTINGS_FRAME_DATA '+data[offset:offset+4096])
+              print('SETTINGS_FRAME_END '+p.name)
+          PY
