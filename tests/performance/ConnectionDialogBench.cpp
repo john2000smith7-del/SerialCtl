@@ -78,11 +78,21 @@ int wmain(int argc,wchar_t **argv) {
     if(traffic) {
         if(!source.Start() || !click(GetDlgItem(main,102))){TerminateProcess(pi.hProcess,10);return 10;}
         HWND setup=await(pi.dwProcessId,true,10000);if(!setup){TerminateProcess(pi.hProcess,11);return 11;}
+        DWORD_PTR idle=0;
+        if(!SendMessageTimeoutW(setup,WM_NULL,0,0,SMTO_ABORTIFHUNG,5000,&idle)){TerminateProcess(pi.hProcess,12);return 12;}
+        // Configure the controlled fixture outside the measured interval. Do
+        // not race the baseline modal's initial activation/composition with a
+        // second desktop click; all measured toolbar activations remain mouse.
+        Sleep(100);
         SetDlgItemTextW(setup,IDC_HOST,L"127.0.0.1");SetDlgItemTextW(setup,IDC_PORT,std::to_wstring(source.port).c_str());
-        if(!click(GetDlgItem(setup,IDOK))){TerminateProcess(pi.hProcess,12);return 12;}
+        if(!SendMessageTimeoutW(setup,WM_COMMAND,IDOK,0,SMTO_ABORTIFHUNG,5000,&idle)){TerminateProcess(pi.hProcess,12);return 12;}
         const auto limit=GetTickCount64()+10000;
         while(GetTickCount64()<limit && (IsWindow(setup) || !source.bytes))Sleep(10);
-        if(IsWindow(setup) || !source.bytes){TerminateProcess(pi.hProcess,13);return 13;}
+        if(IsWindow(setup) || !source.bytes){
+            wchar_t error[512]{};if(IsWindow(setup))GetDlgItemTextW(setup,IDC_DIALOG_ERROR,error,512);
+            wprintf(L"traffic_setup_failed port=%u dialog_alive=%d bytes=%llu error=%ls\n",source.port,IsWindow(setup),source.bytes.load(),error);
+            TerminateProcess(pi.hProcess,13);return 13;
+        }
         Sleep(500);
     }
     struct Spec {const char *name; int id;}; const Spec all[]={{"ssh",100},{"serial",101},{"telnet",102},{"remote",103},{"ai",304},{"settings",303}};
