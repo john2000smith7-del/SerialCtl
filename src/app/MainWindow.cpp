@@ -354,10 +354,13 @@ void DrawRoundedBox(HDC dc, const RECT& rect, int radius, COLORREF fill, COLORRE
 
 
 void ApplyDarkTitleBar(HWND window, bool dark) {
-    HMODULE module = LoadLibraryW(L"dwmapi.dll");
+    // Keep the optional module and its entry point for the process lifetime.
+    // Win7 may reject newer attributes; continue to tolerate those failures.
+    static const HMODULE module = LoadLibraryW(L"dwmapi.dll");
     if (!module) return;
     using DwmSetWindowAttributeFn = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
-    auto setAttribute = reinterpret_cast<DwmSetWindowAttributeFn>(GetProcAddress(module, "DwmSetWindowAttribute"));
+    static const auto setAttribute =
+        reinterpret_cast<DwmSetWindowAttributeFn>(GetProcAddress(module, "DwmSetWindowAttribute"));
     if (setAttribute) {
         const BOOL enabled = dark ? TRUE : FALSE;
         if (FAILED(setAttribute(window, 20, &enabled, sizeof(enabled))))
@@ -369,7 +372,6 @@ void ApplyDarkTitleBar(HWND window, bool dark) {
         setAttribute(window, 36, &captionText, sizeof(captionText));
         setAttribute(window, 34, &border, sizeof(border));
     }
-    FreeLibrary(module);
     SetWindowPos(window, nullptr, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
@@ -521,7 +523,7 @@ int DialogLabelHeight(HWND control) {
     return std::max(static_cast<int>(metrics.tmHeight), static_cast<int>(extent.cy));
 }
 
-void FitDialogLabels(HWND dialog, bool visibleOnly = false) {
+void FitDialogLabels(HWND dialog, bool visibleOnly = true) {
     for (HWND child = GetWindow(dialog, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
         // WM_INITDIALOG runs before its parent is visible. IsWindowVisible
         // would therefore exclude every child; inspect its own style instead.
@@ -543,6 +545,7 @@ void MoveDialogItemDlu(HWND dialog, int id, int x, int y, int width, int height)
     MapDialogRect(dialog, &rect);
     HWND control = GetDlgItem(dialog, id);
     if (!control) return;
+    const BOOL redraw = IsWindowVisible(dialog);
     HWND frame = reinterpret_cast<HWND>(GetPropW(control, Ui::FieldFrameProperty));
     const int pixelWidth = rect.right - rect.left;
     // Compact single-line fields have a logical height independent of the
@@ -551,16 +554,16 @@ void MoveDialogItemDlu(HWND dialog, int id, int x, int y, int width, int height)
                             : frame               ? std::max(Ui::Scale(28), static_cast<int>(rect.bottom - rect.top))
                                                   : static_cast<int>(rect.bottom - rect.top);
     if (frame) {
-        MoveWindow(frame, rect.left, rect.top, pixelWidth, pixelHeight, TRUE);
+        MoveWindow(frame, rect.left, rect.top, pixelWidth, pixelHeight, redraw);
         const int horizontalInset = Ui::Space;
         const int verticalInset = Ui::Scale(4);
         MoveWindow(control, rect.left + horizontalInset, rect.top + verticalInset,
             std::max(1, pixelWidth - horizontalInset * 2),
-            std::max(1, pixelHeight - verticalInset * 2), TRUE);
+            std::max(1, pixelHeight - verticalInset * 2), redraw);
         SetWindowPos(frame, control, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     } else {
-        MoveWindow(control, rect.left, rect.top, pixelWidth, pixelHeight, TRUE);
+        MoveWindow(control, rect.left, rect.top, pixelWidth, pixelHeight, redraw);
     }
 }
 
@@ -1278,12 +1281,13 @@ LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARA
 }
 
 void MainWindow::PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self) {
+    const BOOL redraw = IsWindowVisible(dialog);
     const LONG_PTR style = GetWindowLongPtrW(edit, GWL_STYLE) & ~static_cast<LONG_PTR>(WS_BORDER);
     const LONG_PTR exStyle = GetWindowLongPtrW(edit, GWL_EXSTYLE) &
         ~static_cast<LONG_PTR>(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
     SetWindowLongPtrW(edit, GWL_STYLE, style);
     SetWindowLongPtrW(edit, GWL_EXSTYLE, exStyle);
-    SetWindowRgn(edit, nullptr, TRUE);
+    SetWindowRgn(edit, nullptr, redraw);
 
     RECT rect{};
     GetWindowRect(edit, &rect);
@@ -1302,7 +1306,7 @@ void MainWindow::PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self
     const int textHeight = UiEditTextHeight(edit, std::max(1, height - Ui::Scale(8)));
     const bool multiline = (style & ES_MULTILINE) != 0;
     MoveWindow(edit, rect.left + Ui::Space, rect.top + (multiline ? Ui::Scale(4) : (height - textHeight) / 2),
-               std::max(1, width - Ui::Space * 2), multiline ? std::max(1, height - Ui::Scale(8)) : textHeight, TRUE);
+               std::max(1, width - Ui::Space * 2), multiline ? std::max(1, height - Ui::Scale(8)) : textHeight, redraw);
     SetWindowPos(frame, edit, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     SetWindowPos(edit, nullptr, 0, 0, 0, 0,
@@ -3558,10 +3562,15 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
     if (message == WM_INITDIALOG) {
         self = reinterpret_cast<MainWindow*>(lParam);
         SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(self));
+        self->initializingConnectionDialog_ = true;
+        struct InitializationScope {
+            bool& active;
+            ~InitializationScope() { active = false; }
+        } initialization{self->initializingConnectionDialog_};
         ApplyDarkTitleBar(dialog, self->darkMode_);
         for (HWND child = GetWindow(dialog, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
             if (!IsConnectionControlUsed(self->pendingMode_, GetDlgCtrlID(child))) continue;
-            SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), TRUE);
+            SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), FALSE);
             wchar_t className[32]{};
             GetClassNameW(child, className, static_cast<int>(std::size(className)));
             if (_wcsicmp(className, L"Edit") == 0 || _wcsicmp(className, WC_COMBOBOXW) == 0) {
@@ -3642,10 +3651,8 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
     if (message == WM_COMMAND) {
         if (self->pendingMode_ == 0 &&
             (LOWORD(wParam) == IDC_HOST || LOWORD(wParam) == IDC_PORT) && HIWORD(wParam) == EN_CHANGE) {
-            const auto host = Trim(ControlText(GetDlgItem(dialog, IDC_HOST)));
-            const auto port = ParsePositive(ControlText(GetDlgItem(dialog, IDC_PORT)));
-            const bool saved = port > 0 && port <= 65535 && !TrustedPuttyHostKey(host, static_cast<std::uint16_t>(port)).empty();
-            SetDlgItemTextW(dialog, IDC_HOST_IDENTITY, saved ? L"主机身份已保存" : L"连接时核验主机身份");
+            if (!self->initializingConnectionDialog_)
+                self->RefreshConnectionHostIdentity(dialog);
         }
         if (self->pendingMode_ == 3 && (LOWORD(wParam) == IdSharedAdvancedPort || LOWORD(wParam) == IdSharedAutoPort)) {
             if (LOWORD(wParam) == IdSharedAdvancedPort) {
@@ -3685,6 +3692,14 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         }
     }
     return FALSE;
+}
+
+void MainWindow::RefreshConnectionHostIdentity(HWND dialog) {
+    const auto host = Trim(ControlText(GetDlgItem(dialog, IDC_HOST)));
+    const auto port = ParsePositive(ControlText(GetDlgItem(dialog, IDC_PORT)));
+    const bool saved = port > 0 && port <= 65535 &&
+        !TrustedPuttyHostKey(host, static_cast<std::uint16_t>(port)).empty();
+    SetDlgItemTextW(dialog, IDC_HOST_IDENTITY, saved ? L"主机身份已保存" : L"连接时核验主机身份");
 }
 
 void MainWindow::ConfigureConnectionDialog(HWND dialog) {
@@ -3826,6 +3841,8 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         fields.Commit();
         MatchDialogControlHeight(dialog, share ? IDC_HOST : IDC_SERIAL, IDC_SERIAL_REFRESH);
     }
+    if (ssh)
+        RefreshConnectionHostIdentity(dialog);
 }
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {

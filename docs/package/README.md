@@ -1,4 +1,4 @@
-# SerialCtl V2.0.10
+# SerialCtl V2.0.11
 
 Win7 SP1 x64 原生便携程序。解压后 serialctl.exe、固定 plink.exe 与 psftp.exe 保持同目录；Windows 主程序不需要 Python、.NET 或另外安装 VC Runtime。NI-VISA 18 完整离线驱动保持 drivers 目录，仅电源 USB 访问需要相应驱动。
 

@@ -63,6 +63,16 @@ Json Wait(PowerService& power, Json action) {
 }
 }
 struct AiDeviceTestAccess {
+    static inline unsigned hostIdentityUpdates = 0;
+    static LRESULT CALLBACK ObserveHostIdentity(int code, WPARAM w, LPARAM l) {
+        if (code >= 0) {
+            const auto& message = *reinterpret_cast<const CWPSTRUCT*>(l);
+            if (message.message == WM_SETTEXT && GetDlgCtrlID(message.hwnd) == IDC_HOST_IDENTITY &&
+                message.lParam && *reinterpret_cast<const wchar_t*>(message.lParam))
+                ++hostIdentityUpdates;
+        }
+        return CallNextHookEx(nullptr, code, w, l);
+    }
     static LRESULT CALLBACK FixtureParent(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data) {
         if(m==WM_DRAWITEM || m==WM_MEASUREITEM || m==WM_PAINT || m==WM_TIMER ||
            (m>=WM_APP && m<=WM_APP+100) || (m>=WM_CTLCOLORMSGBOX && m<=WM_CTLCOLORSTATIC))
@@ -246,9 +256,18 @@ struct AiDeviceTestAccess {
         // setup work for the other modes is omitted. Never open a connection.
         for (const int mode : {0, 2}) {
             main.pendingMode_ = mode;
+            hostIdentityUpdates = 0;
+            struct Hook {
+                HHOOK handle = SetWindowsHookExW(WH_CALLWNDPROC, ObserveHostIdentity, nullptr, GetCurrentThreadId());
+                ~Hook() { if (handle) UnhookWindowsHookEx(handle); }
+            } hook;
+            Require(hook.handle != nullptr, "Cannot observe connection identity updates");
             const auto network = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
                 MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
             Require(network != nullptr, "Network connection dialog missing");
+            Require(!main.initializingConnectionDialog_, "Connection initialization flag was not released");
+            Require(hostIdentityUpdates == (mode == 0 ? 1u : 0u),
+                    "Host/port defaults must produce only one final SSH identity refresh");
             Require(MainWindow::ControlText(GetDlgItem(network, IDC_HOST)) == L"127.0.0.1" &&
                     MainWindow::ControlText(GetDlgItem(network, IDC_PORT)) == (mode == 0 ? L"22" : L"23"),
                     "Connection mode lost its default host or port");
@@ -257,6 +276,24 @@ struct AiDeviceTestAccess {
                     "Network form exposes unrelated serial fields");
             std::wstring error;
             if (mode == 0) {
+                // Initialization must suppress partial host/port queries;
+                // edits made after initialization must still refresh status.
+                main.initializingConnectionDialog_ = true;
+                SetDlgItemTextW(network, IDC_HOST, L"serialctl-fixture.invalid");
+                SetDlgItemTextW(network, IDC_PORT, L"2222");
+                main.initializingConnectionDialog_ = false;
+                Require(hostIdentityUpdates == 1, "Partial initialization refreshed host identity");
+                SendMessageW(network, WM_COMMAND, MAKEWPARAM(IDC_HOST, EN_CHANGE),
+                    reinterpret_cast<LPARAM>(GetDlgItem(network, IDC_HOST)));
+                Require(hostIdentityUpdates == 2 &&
+                        MainWindow::ControlText(GetDlgItem(network, IDC_HOST_IDENTITY)) == L"连接时核验主机身份",
+                        "Live SSH host edits no longer refresh identity status");
+                SetDlgItemTextW(network, IDC_PORT, L"0");
+                Require(hostIdentityUpdates > 2 &&
+                        MainWindow::ControlText(GetDlgItem(network, IDC_HOST_IDENTITY)) == L"连接时核验主机身份",
+                        "Invalid live port lost its unverified identity status");
+                SetDlgItemTextW(network, IDC_HOST, L"127.0.0.1");
+                SetDlgItemTextW(network, IDC_PORT, L"22");
                 Require(!main.ReadConnectionDialog(network, error), "SSH must still require a username");
                 SetDlgItemTextW(network, IDC_USER, L"fixture");
                 SetDlgItemTextW(network, IDC_PASSWORD, L"fixture-password");

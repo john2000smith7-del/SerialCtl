@@ -1022,8 +1022,10 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         // During WM_INITDIALOG the parent is still hidden. Keep its fields
         // invalidated for first display rather than synchronously painting
         // every intermediate selection/size while assembling the form.
-        RedrawWindow(h, nullptr, nullptr,
-            RDW_INVALIDATE | (IsWindowVisible(h) ? RDW_UPDATENOW : 0));
+        if (IsWindowVisible(h))
+            RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+        else
+            InvalidateRect(h, nullptr, FALSE);
     } else if (edit && (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
                         message == WM_SETFONT || message == WM_SIZE))
         RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME);

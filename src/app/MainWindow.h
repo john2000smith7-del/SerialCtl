@@ -163,6 +163,7 @@ private:
     void ApplyTheme();
     void OpenConnectionDialog(int mode);
     void ConfigureConnectionDialog(HWND dialog);
+    void RefreshConnectionHostIdentity(HWND dialog);
     void RefreshSerialPorts(HWND dialog);
     void CompleteSerialPortScan(HWND dialog);
     void DiscoverSharedSerialPorts(HWND dialog);
@@ -475,6 +476,7 @@ private:
     std::uint16_t discoveryExplicitPort_ = 0;
     int pendingMode_ = 0;
     bool pendingHostKeyReverify_ = false;
+    bool initializingConnectionDialog_ = false;
     SerialSettings pendingSerial_;
     std::wstring pendingHost_;
     std::wstring pendingUsername_;
