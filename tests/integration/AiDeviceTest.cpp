@@ -479,6 +479,9 @@ struct AiDeviceTestAccess {
             main.notebook_.action(1);
             Require(!main.macro_.Running()&&transports[4]->writes==writes+1,"Same single Run action becomes Stop without sending the remaining command");
             Require(main.statusText_.find(L"已停止后续提交")!=std::wstring::npos,"Stop reports accepted count without claiming execution finished");
+            std::wstring manyRows;for(int i=0;i<80;++i)manyRows+=L"echo row-"+std::to_wstring(i)+L"\r\n";
+            main.notebook_.SetText(manyRows);main.notebook_.SelectLine(63);
+            Require(main.notebook_.SelectedCommands()==std::vector<std::wstring>{L"echo row-63"},"Native paragraph offsets must map to the correct complete row after many CRLF lines");
             main.notebook_.SetText(std::wstring(300,L'A')+L"\r\necho end");
             Require(SendMessageW(main.notebook_.Editor(),EM_GETLINECOUNT,0,0)==2,"Long notebook commands must not soft-wrap");
             main.notebook_.Selection(200,200);SendMessageW(main.notebook_.Editor(),EM_SCROLLCARET,0,0);

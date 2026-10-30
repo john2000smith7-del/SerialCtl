@@ -142,6 +142,17 @@ jobs:
             }
             Write-Host "SERIALCTL_UI_REVIEW_END $name"
           }
+      - name: Export real notebook interaction screenshots
+        if: always()
+        shell: powershell
+        run: |
+          $directory = "$env:RUNNER_TEMP/serialctl-command-drag"
+          Get-ChildItem $directory -Filter '*.png' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'partial-three-lines|width-1200|saved-dark' } | ForEach-Object {
+            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
+            Write-Host "SERIALCTL_UI_REVIEW_BEGIN $($_.Name)"
+            for ($offset=0; $offset -lt $encoded.Length; $offset+=4096) { Write-Host ('SERIALCTL_UI_REVIEW_DATA '+$encoded.Substring($offset,[Math]::Min(4096,$encoded.Length-$offset))) }
+            Write-Host "SERIALCTL_UI_REVIEW_END $($_.Name)"
+          }
       - name: Upload UI evidence
         if: always()
         uses: actions/upload-artifact@v4

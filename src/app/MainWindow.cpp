@@ -2654,7 +2654,7 @@ void MainWindow::CreateControls() {
     notebook_.runLine = [this](size_t row) {
         const auto lines = CommandLines(notebook_.Text());
         if (row >= lines.size() || macro_.Running()) return;
-        notebook_.Selection(static_cast<LONG>(lines[row].start), static_cast<LONG>(lines[row].start));
+        notebook_.SelectLine(row);
         auto command = CommandLineText(notebook_.Text(), lines[row]);
         if (!command.empty()) RunNotebook({std::move(command)});
     };

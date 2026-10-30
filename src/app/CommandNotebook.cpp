@@ -91,9 +91,28 @@ void CommandNotebook::Selection(LONG a, LONG b) {
     SendMessageW(editor_, EM_EXSETSEL, 0, reinterpret_cast<LPARAM>(&range));
     Refresh();
 }
+size_t CommandNotebook::NativeRow(LONG position) const {
+    const auto row = SendMessageW(editor_, EM_EXLINEFROMCHAR, 0, std::max(0L, position));
+    return std::min(lines_.size() - 1, static_cast<size_t>(std::max<LRESULT>(0, row)));
+}
+std::pair<size_t, size_t> CommandNotebook::SelectedRows() const {
+    return {NativeRow(selection_.cpMin),
+            NativeRow(selection_.cpMin == selection_.cpMax ? selection_.cpMax : selection_.cpMax - 1)};
+}
+void CommandNotebook::SelectLine(size_t line) {
+    const auto start = SendMessageW(editor_, EM_LINEINDEX, line, 0);
+    if (start >= 0)
+        Selection(static_cast<LONG>(start), static_cast<LONG>(start));
+}
 std::vector<std::wstring> CommandNotebook::SelectedCommands() const {
-    return CommandSelection(text_, static_cast<size_t>(std::max(0L, selection_.cpMin)),
-                            static_cast<size_t>(std::max(0L, selection_.cpMax)));
+    const auto range = SelectedRows();
+    std::vector<std::wstring> commands;
+    for (size_t i = range.first; i <= range.second; ++i) {
+        auto text = CommandLineText(text_, lines_[i]);
+        if (!text.empty())
+            commands.push_back(std::move(text));
+    }
+    return commands;
 }
 void CommandNotebook::State(bool writable, bool running, size_t sent, size_t total, std::wstring target) {
     const bool different =
@@ -197,12 +216,21 @@ void CommandNotebook::Paint(HDC dc) {
     Fill(dc, editRect, c.field);
     POINT scroll{};
     SendMessageW(editor_, EM_GETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&scroll));
-    const auto range = CommandSelectedLines(lines_, std::max(0L, selection_.cpMin), std::max(0L, selection_.cpMax));
+    const auto range = SelectedRows();
     for (size_t line = static_cast<size_t>(std::max<LONG>(0, scroll.y / std::max(1, rowHeight_))); line < lines_.size();
          ++line) {
+        const auto nativeStart = SendMessageW(editor_, EM_LINEINDEX, line, 0);
+        if (nativeStart < 0)
+            break;
         POINTL point{};
-        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&point),
-                     static_cast<LPARAM>(lines_[line].start));
+        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&point), nativeStart);
+        if (line > 0 && lines_[line].start == lines_[line].end) {
+            POINTL previous{};
+            const auto prev = SendMessageW(editor_, EM_LINEINDEX, line - 1, 0);
+            SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&previous), prev);
+            if (point.y <= previous.y)
+                point.y = previous.y + rowHeight_;
+        }
         const int y = top_ + point.y;
         if (y >= bottom_ - D(16))
             break;
@@ -218,7 +246,8 @@ void CommandNotebook::Paint(HDC dc) {
     horizontal_ = {};
     RECT er{};
     GetClientRect(editor_, &er);
-    const int fullHeight = static_cast<int>(lines_.size()) * rowHeight_, viewHeight = er.bottom;
+    const int fullHeight = static_cast<int>(SendMessageW(editor_, EM_GETLINECOUNT, 0, 0)) * rowHeight_,
+              viewHeight = er.bottom;
     if (fullHeight > viewHeight && viewHeight > 0) {
         const int track = bottom_ - top_ - D(16), thumb = std::max(D(28), MulDiv(track, viewHeight, fullHeight));
         const int y = top_ + MulDiv(std::clamp<int>(scroll.y, 0, std::max(1, fullHeight - viewHeight)), track - thumb,
@@ -244,6 +273,7 @@ void CommandNotebook::Paint(HDC dc) {
     footer.right -= D(96);
     TextAt(dc, ui_, footer, target_.empty() ? L"未选择终端" : target_, c.muted);
     RECT count = footer;
+    count.right = r.right;
     count.left = r.right - D(88);
     TextAt(dc, ui_, count,
            range.first == range.second ? L"行 " + std::to_wstring(range.first + 1)
@@ -306,15 +336,20 @@ void CommandNotebook::SelectionInk(HDC dc) {
     SetTextColor(dc, RGB(255, 255, 255));
     const auto first = static_cast<size_t>(std::max<LRESULT>(0, SendMessageW(editor_, EM_GETFIRSTVISIBLELINE, 0, 0)));
     for (size_t i = first; i < lines_.size(); ++i) {
+        const auto nativeStart = SendMessageW(editor_, EM_LINEINDEX, i, 0);
+        if (nativeStart < 0)
+            break;
         POINTL p{}, end{};
-        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&p), lines_[i].start);
+        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&p), nativeStart);
         if (p.y >= client.bottom)
             break;
         const auto firstText = text_.find_first_not_of(L" \t", lines_[i].start);
-        if (firstText >= lines_[i].end || (text_[firstText] != L'#' && text_.compare(firstText, 2, L"[[") != 0) ||
+        if (text_.find(L'\t', lines_[i].start) < lines_[i].end || firstText >= lines_[i].end ||
+            (text_[firstText] != L'#' && text_.compare(firstText, 2, L"[[") != 0) ||
             lines_[i].end - lines_[i].start > 8192)
             continue;
-        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end), lines_[i].end);
+        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end),
+                     nativeStart + lines_[i].end - lines_[i].start);
         RECT box{p.x, p.y, end.x, p.y + rowHeight_};
         SetBkColor(dc, c.field);
         SetTextColor(dc, c.muted);
@@ -323,21 +358,52 @@ void CommandNotebook::SelectionInk(HDC dc) {
     }
     SetBkColor(dc, c.accent);
     SetTextColor(dc, RGB(255, 255, 255));
-    const auto range = CommandSelectedLines(lines_, selection_.cpMin, selection_.cpMax);
+    const auto range = SelectedRows();
     for (size_t i = range.first; i <= range.second; ++i) {
-        const auto a = std::max<size_t>(lines_[i].start, selection_.cpMin),
-                   b = std::min<size_t>(lines_[i].end, selection_.cpMax);
+        const auto nativeStart = SendMessageW(editor_, EM_LINEINDEX, i, 0);
+        if (nativeStart < 0)
+            break;
+        const size_t columnA =
+            static_cast<size_t>(std::max<LRESULT>(0, static_cast<LRESULT>(selection_.cpMin) - nativeStart));
+        const size_t columnB =
+            static_cast<size_t>(std::max<LRESULT>(0, static_cast<LRESULT>(selection_.cpMax) - nativeStart));
+        const auto a = lines_[i].start + std::min(columnA, lines_[i].end - lines_[i].start);
+        const auto b = lines_[i].start + std::min(columnB, lines_[i].end - lines_[i].start);
         if (b <= a)
             continue;
         POINTL p{}, end{};
-        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&p), a);
+        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&p), nativeStart + a - lines_[i].start);
         if (p.y >= client.bottom)
             break;
         if (p.y + rowHeight_ < 0)
             continue;
-        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end), b);
+        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end), nativeStart + b - lines_[i].start);
+        POINTL last{};
+        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&last), nativeStart + b - lines_[i].start - 1);
+        SIZE tail{}, space{};
+        GetTextExtentPoint32W(dc, text_.data() + b - 1, 1, &tail);
+        GetTextExtentPoint32W(dc, L" ", 1, &space);
+        end.x = std::max(end.x, last.x + tail.cx);
+        if (static_cast<size_t>(selection_.cpMax) > static_cast<size_t>(nativeStart) + lines_[i].end - lines_[i].start)
+            end.x += space.cx;
         RECT box{p.x, p.y, end.x, p.y + rowHeight_};
-        ExtTextOutW(dc, p.x, p.y, ETO_OPAQUE | ETO_CLIPPED, &box, text_.data() + a, static_cast<UINT>(b - a), nullptr);
+        Fill(dc, box, c.accent);
+        // Native tab stops are retained; never draw a TAB as a visible glyph.
+        for (size_t begin = a; begin < b;) {
+            if (text_[begin] == L'\t') {
+                ++begin;
+                continue;
+            }
+            size_t finish = begin;
+            while (finish < b && text_[finish] != L'\t' && finish - begin < 8192)
+                ++finish;
+            POINTL run{};
+            SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&run),
+                         nativeStart + begin - lines_[i].start);
+            ExtTextOutW(dc, run.x, run.y, ETO_CLIPPED, &box, text_.data() + begin, static_cast<UINT>(finish - begin),
+                        nullptr);
+            begin = finish;
+        }
     }
     SelectObject(dc, font);
     RestoreDC(dc, saved);
@@ -403,9 +469,7 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
     if (m == WM_LBUTTONDBLCLK && self->doubleClick_ && !self->running_) {
         POINTL p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         const auto pos = SendMessageW(h, EM_CHARFROMPOS, 0, reinterpret_cast<LPARAM>(&p));
-        const auto row = CommandSelectedLines(self->lines_, static_cast<size_t>(std::max<LRESULT>(0, pos)),
-                                              static_cast<size_t>(std::max<LRESULT>(0, pos)))
-                             .first;
+        const auto row = self->NativeRow(static_cast<LONG>(pos));
         if (self->runLine)
             self->runLine(row);
         return 0;
@@ -581,14 +645,14 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
             SetFocus(editor_);
             POINTL text{0, p.y - top_};
             const auto pos = SendMessageW(editor_, EM_CHARFROMPOS, 0, reinterpret_cast<LPARAM>(&text));
-            const auto row = CommandSelectedLines(lines_, std::max<LRESULT>(0, pos), std::max<LRESULT>(0, pos)).first;
-            const auto range = CommandSelectedLines(lines_, selection_.cpMin, selection_.cpMax);
+            const auto row = NativeRow(static_cast<LONG>(pos));
+            const auto range = SelectedRows();
             if (p.x < D(16) && row >= range.first && row <= range.second &&
                 !CommandLineText(text_, lines_[row]).empty()) {
                 armedLine_ = static_cast<int>(row);
                 SetCapture(window_);
             } else
-                Selection(static_cast<LONG>(lines_[row].start), static_cast<LONG>(lines_[row].start));
+                SelectLine(row);
             return 0;
         }
         if (PtInRect(&vertical_, p)) {
@@ -612,7 +676,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
             RECT r{};
             GetClientRect(editor_, &r);
             if (scrollAxis_ == 2) {
-                const int full = static_cast<int>(lines_.size()) * rowHeight_,
+                const int full = static_cast<int>(SendMessageW(editor_, EM_GETLINECOUNT, 0, 0)) * rowHeight_,
                           track = bottom_ - top_ - D(16) - (vertical_.bottom - vertical_.top);
                 Scroll(scroll.x, MulDiv(GET_Y_LPARAM(l) - top_ - scrollGrab_,
                                         std::max(0, full - static_cast<int>(r.bottom)), std::max(1, track)));
@@ -640,7 +704,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
                 ReleaseCapture();
             POINTL p{0, GET_Y_LPARAM(l) - top_};
             const auto pos = SendMessageW(editor_, EM_CHARFROMPOS, 0, reinterpret_cast<LPARAM>(&p));
-            const auto row = CommandSelectedLines(lines_, std::max<LRESULT>(0, pos), std::max<LRESULT>(0, pos)).first;
+            const auto row = NativeRow(static_cast<LONG>(pos));
             if (GET_X_LPARAM(l) >= 0 && GET_X_LPARAM(l) < D(16) && GET_Y_LPARAM(l) >= top_ &&
                 GET_Y_LPARAM(l) < bottom_ - D(16) && static_cast<int>(row) == line && runLine)
                 runLine(row);

@@ -32,6 +32,7 @@ class CommandNotebook {
     }
     void State(bool writable, bool running, size_t sent = 0, size_t total = 0, std::wstring target = {});
     void Selection(LONG a, LONG b);
+    void SelectLine(size_t line);
     std::vector<std::wstring> SelectedCommands() const;
     void SetDoubleClick(bool value) {
         doubleClick_ = value;
@@ -55,6 +56,8 @@ class CommandNotebook {
     static LRESULT CALLBACK ButtonProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static LRESULT CALLBACK EditProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     LRESULT Message(UINT, WPARAM, LPARAM);
+    std::pair<size_t, size_t> SelectedRows() const;
+    size_t NativeRow(LONG position) const;
     void Layout();
     void Paint(HDC);
     void Refresh(bool edit = false);
