@@ -6,6 +6,7 @@
 #include "ToolPresentation.h"
 #include "Win32Helpers.h"
 #include "UiDialogViewport.h"
+#include "UiMetrics.h"
 #include <chrono>
 #include <sstream>
 #include <windowsx.h>
@@ -427,6 +428,12 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     Child(L"BUTTON", L"持续观察", Observe, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"返回最新消息", Bottom, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"停止", StopTurn, BS_OWNERDRAW | WS_TABSTOP);
+    TOOLINFOW sendTip{sizeof(sendTip)};
+    sendTip.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    sendTip.hwnd = window_;
+    sendTip.uId = reinterpret_cast<UINT_PTR>(Control(Send));
+    sendTip.lpszText = const_cast<wchar_t *>(L"发送消息");
+    SendMessageW(tips_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&sendTip));
     Theme(dark);
     SetTimer(window_, Timer, 50, nullptr);
     RefreshTargets();
@@ -576,23 +583,32 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->dpi_, UiFocusInk(self->dark_, pressed));
             return TRUE;
         }
-        const bool iconOnly = item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
-        if (!iconOnly || pressed || hover)
-            UiBox(dc, item.rcItem, iconOnly && !pressed ? c.raised : visual.fill,
-                  iconOnly && !pressed ? c.raised : visual.border, self->D(10));
+        const bool headerIcon = item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
+        const bool quiet = headerIcon || item.CtlID == Analyze || item.CtlID == Observe || (item.CtlID == Send && !enabled);
+        auto button = visual;
+        if (quiet) {
+            const COLORREF base = item.CtlID == Send ? c.field : c.surface;
+            button = UiFlatIconVisual(c, base, enabled, pressed, hover);
+            if (hover && !pressed && button.fill == base) button.fill = c.field;
+            if (button.fill != base)
+                UiBox(dc, item.rcItem, button.fill, button.fill, self->D(Ui::CompactIconRadius));
+        } else
+            UiBox(dc, item.rcItem, button.fill, button.border,
+                  self->D(item.CtlID == Send ? Ui::CompactIconRadius : 10));
         UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->style_.dpi,
-            UiFocusInk(self->dark_, enabled && (primary || pressed)));
-        if (item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New) {
-            const int x = (item.rcItem.left + item.rcItem.right - self->D(18)) / 2,
-                      y = (item.rcItem.top + item.rcItem.bottom - self->D(18)) / 2;
-            RECT icon{x, y, x + self->D(18), y + self->D(18)};
+            UiFocusInk(self->dark_, enabled && !quiet && (primary || pressed)));
+        if (headerIcon || item.CtlID == Send) {
+            const int size = self->D(item.CtlID == Send ? Ui::CompactGlyphSize : Ui::UtilityGlyphSize);
+            const int x = (item.rcItem.left + item.rcItem.right - size) / 2,
+                      y = (item.rcItem.top + item.rcItem.bottom - size) / 2;
+            RECT icon{x, y, x + size, y + size};
             if (item.CtlID == Connect)
-                self->icons_.Draw(dc, ToolbarIcon::Settings, icon, self->dark_ || pressed);
+                self->icons_.Draw(dc, ToolbarIcon::Settings, icon, self->dark_);
             else
-                UiDrawGlyph(dc, icon, visual.ink, item.CtlID == PetButton ? UiGlyph::Pet : item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
+                UiDrawGlyph(dc, icon, button.ink, item.CtlID == Send ? UiGlyph::Send : item.CtlID == PetButton ? UiGlyph::Pet : item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
         } else
             Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
-                 item.CtlID == StopTurn && enabled && !pressed ? c.danger : visual.ink,
+                 item.CtlID == StopTurn && enabled && !pressed ? c.danger : button.ink,
                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         return TRUE;
     }
@@ -639,7 +655,8 @@ void AiPane::Layout() {
     b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(176), std::max(D(112), width - D(104))), D(220));
     b.ComboVisibleHeight(Control(Target), D(28));
     b.Show(Control(Model), SW_HIDE);
-    b.Move(Control(Send), width - D(72), composerTop + D(60), D(64), D(28));
+    b.Move(Control(Send), width - D(8 + Ui::CompactIconButtonSize), composerTop + D(60),
+           D(Ui::CompactIconButtonSize), D(Ui::CompactIconButtonSize));
     b.Commit();
     UpdateTranscriptActions();
     layoutWidth_ = width;
@@ -664,7 +681,7 @@ void AiPane::Paint(HDC target) {
          {D(compact ? 56 : 108), 0, r.right - D(160), D(28)}, smallFont_, c.muted);
     UiSeparator(dc, 0, r.right, D(36), c.border);
     UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
-    UiBox(dc, composerBounds_, c.field, GetFocus() == Control(Input) ? UiAccentInk(dark_) : c.border, D(12));
+    UiBox(dc, composerBounds_, c.field, UiPanelBorder(dark_), D(12));
 }
 void AiPane::CollapseCompletedProcess(const std::string &group) {
     if (group.empty())

@@ -84,7 +84,7 @@ inline void UiResourceTint(Gdiplus::ImageAttributes &attributes, COLORREF color)
 }
 inline bool UiResourceGlyph(HDC dc, const RECT &rect, COLORREF color, int index) {
     auto &resource = UiResource(2012);
-    if (!resource.bitmap || index < 0 || index >= 25)
+    if (!resource.bitmap || index < 0 || index >= 27)
         return false;
     Gdiplus::Graphics graphics(dc);
     graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);

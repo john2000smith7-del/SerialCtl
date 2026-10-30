@@ -1035,7 +1035,7 @@ void PowerPane::PaintBody(HDC dc) {
         for (int i=0;i<3;++i) {
             const RECT card=channelRects_[i];
             if (card.right<=card.left) continue;
-            UiBox(dc,card,c.surface,c.border,d(12));
+            UiBox(dc,card,c.surface,UiPanelBorder(dark_),d(12));
             if (!state_.contains("channels")) continue;
             auto channel=state_["channels"][i];
             const bool combined=(draftMode_==1||draftMode_==2)&&i==0;
@@ -1071,7 +1071,7 @@ void PowerPane::PaintBody(HDC dc) {
             text(combined&&draftMode_==1?L"总电流限值（A）":L"电流限值（A）",
                 {currentLeft,top+d(inlineFields?104:144),currentLeft+d(combined?120:100),top+d(inlineFields?132:172)},smallFont_,c.muted);
         }
-    } else UiBox(dc,{0,0,bodyWidth_,contentHeight_},c.surface,c.border,d(12));
+    } else UiBox(dc,{0,0,bodyWidth_,contentHeight_},c.surface,UiPanelBorder(dark_),d(12));
     PaintDetails(dc,bodyWidth_-detailsInset_*2,detailsTop_);
     RestoreDC(dc,saved);
     if (contentHeight_>bodyHeight_) {
@@ -1297,8 +1297,10 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             FillRect(item.hDC, &item.rcItem, background);
             DeleteObject(background);
             const auto visual = UiButtonVisual(c, enabled, pressed, hovered);
-            UiBox(item.hDC, item.rcItem, visual.fill, active && !pressed ? c.muted : visual.border,
-                  MulDiv(10, self->dpi_, 96));
+            const COLORREF base = UiControlBackdrop(item.hwndItem, UiAiTheme(self->dark_).surface);
+            const COLORREF fill = pressed ? c.accent : (active || hovered) ? (self->dark_ ? c.surface : c.raised) : base;
+            if (fill != base)
+                UiBox(item.hDC, item.rcItem, fill, fill, MulDiv(10, self->dpi_, 96));
             UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_,
                 UiFocusInk(self->dark_, !(item.itemState & ODS_DISABLED) && (primary || (item.itemState & ODS_SELECTED))));
             SetBkMode(item.hDC, TRANSPARENT);
@@ -1318,7 +1320,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         DeleteObject(outside);
         const auto visual = UiButtonVisual(c, !(item.itemState & ODS_DISABLED), item.itemState & ODS_SELECTED,
                                            GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
-        UiBox(item.hDC, item.rcItem, visual.fill, visual.border, MulDiv(10, self->dpi_, 96));
+        UiBox(item.hDC, item.rcItem, visual.fill, (item.itemState & ODS_DISABLED) ? UiPanelBorder(self->dark_) : visual.border, MulDiv(10, self->dpi_, 96));
         UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_,
                 UiFocusInk(self->dark_, !(item.itemState & ODS_DISABLED) && (primary || (item.itemState & ODS_SELECTED))));
         SetBkMode(item.hDC, TRANSPARENT);

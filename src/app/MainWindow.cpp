@@ -3050,7 +3050,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         FillRect(dc, &rect, panelBrush_);
         const int size = Ui::Scale(Ui::UtilityGlyphSize);
         const int top = (rect.top + rect.bottom - size) / 2;
-        UiDrawGlyph(dc, {rect.left, top, rect.left + size, top + size}, colors.muted, UiGlyph::Link);
+        UiDrawGlyph(dc, {rect.left, top, rect.left + size, top + size}, colors.muted, UiGlyph::SessionList);
         return;
     }
 
@@ -3103,8 +3103,9 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             return;
         }
         if (id == IdRightPanelToggle) {
-            const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
-            DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
+            const auto visual = UiFlatIconVisual(UiTheme(darkMode_), outside, enabled, pressed, hovered);
+            if (visual.fill != outside)
+                DrawRoundedBox(dc, rect, Ui::Scale(Ui::CompactIconRadius), visual.fill, visual.fill);
             UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
                 UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             DrawChevronHorizontal(dc, rect, visual.ink,
@@ -3212,8 +3213,11 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             return;
         }
 
-        const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered, id == IDOK);
-        DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
+        const auto visual = id == IdAiWrap
+            ? UiFlatIconVisual(UiTheme(darkMode_), outside, enabled, pressed, hovered)
+            : UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered, id == IDOK);
+        if (id != IdAiWrap || visual.fill != outside)
+            DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, id == IdAiWrap ? visual.fill : visual.border);
         UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
                 UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
         if (id == IdAiWrap && rect.right - rect.left <= Ui::CompactHeight) {

@@ -109,7 +109,8 @@ void CheckSettled(HWND combo, const char *action) {
         throw std::runtime_error("Selection/focus left native pixels over the themed field until a later repaint");
     }
 }
-void RunCase(HWND parent, bool ownerDrawn) {
+void RunCase(HWND parent, bool ownerDrawn, bool composer = false) {
+    const auto initialNotifications = selectionNotifications;
     // Connection forms assemble their controls before the parent is shown.
     // Deferred hidden paints must still produce a correct first visible field.
     ShowWindow(parent, SW_HIDE);
@@ -127,6 +128,7 @@ void RunCase(HWND parent, bool ownerDrawn) {
     } cleanup{combo};
     SendMessageW(combo, WM_SETFONT, reinterpret_cast<WPARAM>(style.font), FALSE);
     UiStyleField(combo, &style);
+    if (composer) SetPropW(combo, L"SerialCtl.Composer", reinterpret_cast<HANDLE>(1));
     AddChoices(combo);
     SendMessageW(combo, CB_SETCURSEL, 0, 0);
     UiLayoutBatch layout;
@@ -183,6 +185,18 @@ void RunCase(HWND parent, bool ownerDrawn) {
     EnableWindow(combo, TRUE);
     SetFocus(combo);
     CheckSettled(combo, "focus gained");
+    if (composer) {
+        RECT bounds{}; GetClientRect(combo, &bounds);
+        const auto pixels = Snapshot(combo);
+        const int edge = MulDiv(2, style.dpi, 96);
+        for (int y = 0; y < bounds.bottom; ++y) for (int x = 0; x < bounds.right; ++x) {
+            if (x >= edge && x < bounds.right-edge && y >= edge && y < bounds.bottom-edge) continue;
+            const DWORD pixel = pixels[static_cast<size_t>(y)*bounds.right+x];
+            const int red=(pixel>>16)&255, green=(pixel>>8)&255, blue=pixel&255;
+            Require(!(blue>red+20 && blue>green+20), "Composer target retained a nested blue focus frame");
+        }
+        Require(selectionNotifications > initialNotifications, "Frameless composer must retain native selection notifications");
+    }
     SetFocus(parent);
     CheckSettled(combo, "focus lost");
     SetFocus(combo);
@@ -222,6 +236,7 @@ int main() {
                                          0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
                 for (bool owner : {false, true})
                     RunCase(parent, owner);
+                RunCase(parent, true, true);
                 DeleteObject(style.font);
                 style.font = nullptr;
             }

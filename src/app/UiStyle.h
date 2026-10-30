@@ -117,7 +117,9 @@ enum class UiGlyph {
     Pet,
     Save,
     Import,
-    Export
+    Export,
+    SessionList,
+    Send
 };
 inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
     if (UiResourceGlyph(dc, bounds, color, static_cast<int>(icon)))
@@ -421,7 +423,11 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
     const COLORREF border = focused                                               ? UiAccentInk(*style.dark)
                             : enabled && GetPropW(combo, L"SerialCtl.FieldHover") ? colors.muted
                                                                                   : colors.border;
-    UiBox(dc, bounds, colors.field, border, d(10));
+    const bool composer = GetPropW(combo, L"SerialCtl.Composer") != nullptr;
+    if (!composer)
+        UiBox(dc, bounds, colors.field, border, d(10));
+    else if (focused)
+        UiButtonKeyboardFocus(dc, bounds, ODS_FOCUS, style.dpi, UiFocusInk(*style.dark));
     const int selected = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));
     std::wstring text;
     if (selected >= 0) {
