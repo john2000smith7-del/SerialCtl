@@ -62,9 +62,24 @@ inline void UiFocusOutline(HDC dc, RECT rect, int radius, int dpi, COLORREF colo
 }
 inline void UiButtonKeyboardFocus(HDC dc, RECT rect, UINT state, int dpi, COLORREF color = RGB(31, 79, 216)) {
     if ((state & ODS_FOCUS) && !(state & (ODS_NOFOCUSRECT | ODS_DISABLED))) {
-        InflateRect(&rect, -MulDiv(4, dpi, 96), -MulDiv(4, dpi, 96));
-        UiFocusOutline(dc, rect, MulDiv(6, dpi, 96), dpi, color);
+        // One quiet cue, not a second closed frame inside the button. Keep
+        // keyboard focus visible without leaving a blue box after mouse input.
+        const COLORREF neutral = color == RGB(255, 255, 255) ? color
+            : color == UiAccentInk(true) ? RGB(152, 152, 157) : RGB(110, 110, 115);
+        const int center = (rect.left + rect.right) / 2;
+        const int half = MulDiv(6, dpi, 96), height = std::max(1, MulDiv(2, dpi, 96));
+        const int bottom = rect.bottom - MulDiv(2, dpi, 96);
+        UiRoundedSurface(dc, {center - half, bottom - height, center + half, bottom},
+                         neutral, neutral, height / 2, dpi);
     }
+}
+inline COLORREF UiPanelBorder(bool dark) {
+    return dark ? RGB(52, 52, 56) : RGB(229, 229, 234);
+}
+inline UiButtonColors UiFlatIconVisual(const UiColors &c, COLORREF base, bool enabled,
+                                       bool pressed, bool hovered) {
+    return {enabled && pressed ? c.border : enabled && hovered ? c.raised : base,
+            base, enabled ? c.text : c.muted};
 }
 // AI uses the existing softer surfaces; regular terminal/dialog palettes stay independent.
 inline UiColors UiAiTheme(bool dark) {

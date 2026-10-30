@@ -123,7 +123,8 @@ enum ControlId {
     IdAi,
     IdSendSelectionToAi,
     IdAiWrap,
-    IdPowerMonitorTarget
+    IdPowerMonitorTarget,
+    IdConnectionHeader = 309
 };
 
 bool IsToolbarButton(int id) {
@@ -233,15 +234,13 @@ struct MainLayoutMetrics {
 bool CompactNavigation(int width) {
     int full = Ui::Gap + Ui::Space;
     for (int item : Ui::ToolbarButtonWidths) full += Ui::Scale(item) + Ui::Space;
-    full += Ui::Scale(Ui::SettingsButtonWidth) + Ui::Space;
-    return full + Ui::Gap + Ui::StandardHeight + Ui::Gap > width;
+    return full + Ui::IconButtonSize * 2 + Ui::Gap * 3 > width;
 }
 
 RECT NavigationFrame(int width) {
     int right = Ui::Gap + Ui::Space;
     const bool compact = CompactNavigation(width);
     for (int item : Ui::ToolbarButtonWidths) right += Ui::Scale(compact ? 48 : item) + Ui::Space;
-    right += Ui::Scale(compact ? 48 : Ui::SettingsButtonWidth) + Ui::Space;
     return {Ui::Gap, Ui::Section, right, Ui::ToolbarHeight - Ui::Section};
 }
 
@@ -1861,7 +1860,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 reinterpret_cast<NMTTDISPINFOW*>(header)->lpszText = const_cast<wchar_t*>(L"添加命令");
                 return 0;
             }
-            navigationTipText_ = ControlText(reinterpret_cast<HWND>(header->idFrom));
+            navigationTipText_ = reinterpret_cast<HWND>(header->idFrom) == connectionHeader_
+                ? L"连接列表" : ControlText(reinterpret_cast<HWND>(header->idFrom));
             reinterpret_cast<NMTTDISPINFOW*>(lParam)->lpszText = navigationTipText_.data();
             return 0;
         }
@@ -2485,7 +2485,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (control == commandHint_) {
             SetTextColor(dc, colors.muted); SetBkColor(dc, colors.window); return reinterpret_cast<LRESULT>(windowBrush_);
         }
-        if (control == themeButton_) {
+        if (control == themeButton_ || control == settingsButton_) {
             SetBkColor(dc, colors.window);
             return reinterpret_cast<LRESULT>(windowBrush_);
         }
@@ -2596,7 +2596,8 @@ void MainWindow::CreateControls() {
     addTip(themeButton_);
     disconnectButton_ = CreateChild(L"BUTTON", L"断开", BS_OWNERDRAW, IdDisconnect);
 
-    connectionHeader_ = CreateChild(L"STATIC", L"连接", SS_LEFT, -1);
+    connectionHeader_ = CreateChild(L"STATIC", L"连接列表", SS_OWNERDRAW | SS_NOTIFY, IdConnectionHeader);
+    addTip(connectionHeader_);
     SendMessageW(connectionHeader_, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont_), TRUE);
     disconnectAllButton_ = CreateChild(L"BUTTON", L"全部断开", BS_OWNERDRAW, IdDisconnectAll);
     connectionList_ = CreateChild(L"LISTBOX", L"", LBS_OWNERDRAWFIXED | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY, IdConnectionList);
@@ -2724,12 +2725,14 @@ void MainWindow::LayoutControls(int width, int height) {
                    TRUE);
         x += buttonWidth + Ui::Space;
     }
-    batch.Move(settingsButton_, x, toolbarButtonTop, Ui::Scale(compactNavigation_ ? 48 : Ui::SettingsButtonWidth), Ui::StandardHeight, TRUE);
-    batch.Move(themeButton_, width - Ui::Gap - Ui::StandardHeight, toolbarButtonTop,
-               Ui::StandardHeight, Ui::StandardHeight, TRUE);
+    const int utilityTop = (Ui::ToolbarHeight - Ui::IconButtonSize) / 2;
+    const int themeLeft = width - Ui::Gap - Ui::IconButtonSize;
+    const int settingsLeft = themeLeft - Ui::Gap - Ui::IconButtonSize;
+    batch.Move(settingsButton_, settingsLeft, utilityTop, Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
+    batch.Move(themeButton_, themeLeft, utilityTop, Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
 
-    const int hintLeft = x + Ui::Scale(compactNavigation_ ? 48 : Ui::SettingsButtonWidth) + Ui::Gap * 2;
-    const int hintWidth = width - Ui::Gap * 2 - Ui::StandardHeight - hintLeft;
+    const int hintLeft = x + Ui::Gap;
+    const int hintWidth = settingsLeft - Ui::Gap - hintLeft;
     batch.Move(commandHint_, hintLeft, toolbarButtonTop, std::max(1, hintWidth), Ui::StandardHeight, TRUE);
     batch.Show(commandHint_, hintWidth >= Ui::Scale(180) && !LiveMonitorPage() ? SW_SHOW : SW_HIDE);
 
@@ -2744,8 +2747,8 @@ void MainWindow::LayoutControls(int width, int height) {
     const int leftListTop = headerTop + Ui::StandardHeight + 4;
     const int rightListTop = headerTop + Ui::StandardHeight + 4;
 
-    batch.Move(connectionHeader_, leftInnerLeft, headerTop + 4, leftInnerRight - leftInnerLeft - Ui::Scale(64),
-               Ui::Scale(24), TRUE);
+    batch.Move(connectionHeader_, leftInnerLeft, headerTop + Ui::Scale(2),
+               Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
     batch.Move(disconnectButton_, leftInnerRight - Ui::Scale(56), headerTop, Ui::Scale(56), Ui::CompactHeight, TRUE);
     const int connectionHeight = std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding -
         Ui::CompactHeight - Ui::Space - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space : 0));
@@ -2883,7 +2886,7 @@ void MainWindow::PaintWindow(HDC dc) {
     const Palette colors = Colors(darkMode_);
     FillRect(dc, &client, windowBrush_);
     const RECT toolbar = NavigationFrame(client.right);
-    DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, colors.border);
+    DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
                                                           SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage());
@@ -2893,9 +2896,9 @@ void MainWindow::PaintWindow(HDC dc) {
         layout.centerRight, layout.contentBottom};
     RECT rightCard{layout.rightLeft, cardTop,
         client.right - Ui::Gap, client.bottom - Ui::Gap};
-    DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, colors.border);
-    DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, LiveMonitorPage() ? UiAiTheme(darkMode_).surface : colors.terminal, colors.border);
-    DrawRoundedBox(dc, rightCard, Ui::CardRadius, LiveMonitorPage() ? colors.terminal : colors.panel, colors.border);
+    DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
+    DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, LiveMonitorPage() ? UiAiTheme(darkMode_).surface : colors.terminal, UiPanelBorder(darkMode_));
+    DrawRoundedBox(dc, rightCard, Ui::CardRadius, LiveMonitorPage() ? colors.terminal : colors.panel, UiPanelBorder(darkMode_));
     if (LiveMonitorPage() && !SidebarCollapsed()) {
         UiSeparator(dc, rightCard.left + Ui::PanelPadding, rightCard.right - Ui::PanelPadding,
                     cardTop + Ui::PanelPadding + Ui::StandardHeight + Ui::Scale(2), colors.border);
@@ -2920,7 +2923,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
     }
     auto item = source;
     if (item.itemID == static_cast<UINT>(-1) && item.CtlType != ODT_BUTTON &&
-        item.CtlType != ODT_COMBOBOX && item.CtlType != ODT_MENU) return;
+        item.CtlType != ODT_COMBOBOX && item.CtlType != ODT_MENU && item.hwndItem != connectionHeader_) return;
     UiBufferedPaint paint(item.hDC, item.rcItem);
     item.hDC = paint.Dc();
     const Palette colors = Colors(darkMode_);
@@ -3043,11 +3046,19 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         return;
     }
 
+    if (item.CtlType == ODT_STATIC && item.hwndItem == connectionHeader_) {
+        FillRect(dc, &rect, panelBrush_);
+        const int size = Ui::Scale(Ui::UtilityGlyphSize);
+        const int top = (rect.top + rect.bottom - size) / 2;
+        UiDrawGlyph(dc, {rect.left, top, rect.left + size, top + size}, colors.muted, UiGlyph::Link);
+        return;
+    }
+
     if (item.CtlType == ODT_BUTTON) {
         const int id = static_cast<int>(item.CtlID);
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
         const bool hovered = GetPropW(item.hwndItem, Ui::HoverProperty) != nullptr;
-        COLORREF outside = id == IdTheme ? colors.window : colors.panel;
+        COLORREF outside = (id == IdTheme || id == IdSettings) ? colors.window : colors.panel;
         if (LiveMonitorPage() && (id == IdAiWrap || id == IdRightPanelToggle))
             outside = colors.terminal;
         if (id == IdCommandTab || id == IdSftpTab) outside = colors.panel;
@@ -3055,7 +3066,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         HBRUSH outsideBrush = CreateSolidBrush(outside);
         FillRect(dc, &rect, outsideBrush);
         DeleteObject(outsideBrush);
-        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi || id == IdSettings) {
+        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) {
             const bool down = pressed && enabled;
             const bool inverse = darkMode_ || down;
             const COLORREF ink = !enabled ? colors.muted : down ? RGB(255, 255, 255) : colors.text;
@@ -3078,14 +3089,17 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                 UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             return;
         }
-        if (id == IdTheme) {
-            const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
-            DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, visual.border);
-            RECT iconRect=rect; InflateRect(&iconRect,-Ui::Scale(6),-Ui::Scale(6));
-            toolbarIcons_.Draw(dc, darkMode_ ? ToolbarIcon::Sun : ToolbarIcon::Moon, iconRect,
-                               darkMode_ || (pressed && enabled));
-            UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
-                UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
+        if (id == IdTheme || id == IdSettings) {
+            const auto visual = UiFlatIconVisual(UiTheme(darkMode_), colors.window, enabled, pressed, hovered);
+            if (visual.fill != colors.window)
+                DrawRoundedBox(dc, rect, Ui::Scale(Ui::CompactIconRadius), visual.fill, visual.fill);
+            const int size = Ui::Scale(Ui::UtilityGlyphSize);
+            const int left = (rect.left + rect.right - size) / 2;
+            const int top = (rect.top + rect.bottom - size) / 2;
+            toolbarIcons_.Draw(dc, id == IdSettings ? ToolbarIcon::Settings
+                                      : darkMode_ ? ToolbarIcon::Sun : ToolbarIcon::Moon,
+                               {left, top, left + size, top + size}, darkMode_);
+            UiButtonKeyboardFocus(dc, rect, item.itemState, Ui::Dpi, UiFocusInk(darkMode_));
             return;
         }
         if (id == IdRightPanelToggle) {
@@ -3113,7 +3127,9 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if (id == IdCommandTab || id == IdSftpTab) {
             const bool active = (id == IdSftpTab) == sftpPanelVisible_;
             const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
-            DrawRoundedBox(dc, rect, Ui::Radius, visual.fill, active && !pressed ? colors.muted : visual.border);
+            const auto tabFill = pressed ? visual.fill : (active || hovered) ? colors.panelAlt : colors.panel;
+            if (tabFill != colors.panel)
+                DrawRoundedBox(dc, rect, Ui::Radius, tabFill, tabFill);
             UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
                 UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
             DrawTextSimple(dc, ControlText(item.hwndItem), rect, visual.ink, uiFont_,

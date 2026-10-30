@@ -86,7 +86,9 @@ def main():
         origin = POINT(); user.ClientToScreen(hwnd, c.byref(origin))
         @callback
         def each(child, _):
-            approved = main and (user.GetDlgCtrlID(child) in (112,113,114,115,116,132,308) or user.IsChild(user.GetDlgItem(hwnd,112),child))
+            text = c.create_unicode_buffer(128); user.GetWindowTextW(child,text,len(text))
+            approved = main and (user.GetDlgCtrlID(child) in (104,112,113,114,115,116,132,303,308,309) or
+                                 text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))
             if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
                 name = c.create_unicode_buffer(128); user.GetClassNameW(child, name, 128)
@@ -173,6 +175,10 @@ def main():
                         # Select Cancel through native focus navigation to remove
                         # any text caret from the deterministic pixel comparison.
                         user.PostMessageW(target, 0x28, user.GetDlgItem(target, 2), 1)
+                        # Compare resting fields/content, not the deliberately
+                        # revised keyboard focus cue. Native input tests cover
+                        # focus, Space, Enter and retained focus independently.
+                        user.SendMessageW(target, 0x127, 1 | (1 << 16), 0)
                     time.sleep(2 if name in ('serial', 'remote') else .4)
                     if name == 'remote':
                         # Compare the same completed asynchronous state, rather
@@ -191,8 +197,9 @@ def main():
                     capture = {'size': [width, height], 'geometry': geometry(target, name=='main'),
                                'pixels': bytes(rgb), 'rawPixels': bytes(rgb), 'frame': frame['path']}
                     if name == 'main':
-                        # V2.0.13 intentionally replaces only the command content,
-                        # its retired Add action and the free toolbar reminder.
+                        # Approved UI polish: compact detached utility controls,
+                        # command notebook, connection heading and panel contours.
+                        # All terminal pixels and remaining dialog geometry stay frozen.
                         def bounds(identifier):
                             box=RECT();user.GetWindowRect(user.GetDlgItem(target,identifier),c.byref(box))
                             return [box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y]
@@ -201,7 +208,18 @@ def main():
                         capture['approvedRegions']=[
                             [listing[0],listing[1],width-round(12*scale),height-round(12*scale)],
                             [tabs[2],tabs[1]-round(4*scale),toggle[0],toggle[3]+round(4*scale)],
-                            [settings[2]+round(12*scale),themebox[1],themebox[0]-round(8*scale),themebox[3]]]
+                            [0,0,width,round(72*scale)],
+                            [round(24*scale),round(80*scale),round(110*scale),round(120*scale)]]
+                        pad=round(16*scale); band=round(12*scale)
+                        terminal,leftlist = bounds(107),bounds(106)
+                        frames=[
+                            [leftlist[0]-pad,terminal[1]-pad,leftlist[2]+pad,height-round(12*scale)],
+                            [terminal[0]-pad,terminal[1]-pad,terminal[2]+pad,terminal[3]+pad],
+                            [listing[0]-pad,terminal[1]-pad,width-round(12*scale),height-round(12*scale)]]
+                        for left,top,right,bottom in frames:
+                            capture['approvedRegions'].extend([
+                                [left,top,right,top+band], [left,bottom-band,right,bottom],
+                                [left,top,left+band,bottom], [right-band,top,right,bottom]])
                     desktop.flush_frames()
                     if name == 'settings':
 

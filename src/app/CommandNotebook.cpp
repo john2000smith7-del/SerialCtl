@@ -1,4 +1,5 @@
 #include "CommandNotebook.h"
+#include "UiMetrics.h"
 #include "UiStyle.h"
 #include <commctrl.h>
 #include <shellapi.h>
@@ -59,7 +60,7 @@ void CommandNotebook::Style(bool dark, int dpi, HFONT ui, HFONT mono) {
         SendMessageW(b, WM_SETFONT, reinterpret_cast<WPARAM>(ui), FALSE);
     SendMessageW(editor_, WM_SETFONT, reinterpret_cast<WPARAM>(mono), FALSE);
     const auto c = UiTheme(dark);
-    SendMessageW(editor_, EM_SETBKGNDCOLOR, 0, c.field);
+    SendMessageW(editor_, EM_SETBKGNDCOLOR, 0, c.surface);
     CHARFORMAT2W cf{};
     cf.cbSize = sizeof(cf);
     cf.dwMask = CFM_COLOR;
@@ -186,11 +187,10 @@ void CommandNotebook::Layout() {
     RECT r{};
     GetClientRect(window_, &r);
     const int w = r.right;
-    const int height = D(32), gap = D(8), buttonWidth = std::max(1, (w - gap * 3) / 4);
+    const int height = D(Ui::CompactIconButtonSize), gap = D(8);
     MoveWindow(more_, std::max(0, w - D(28)), D(2), D(28), D(28), TRUE);
     for (int i = 0; i < 4; ++i)
-        MoveWindow(buttons_[i], i * (buttonWidth + gap), D(40),
-                   i == 3 ? std::max(1, w - i * (buttonWidth + gap)) : buttonWidth, height, TRUE);
+        MoveWindow(buttons_[i], i * (height + gap), D(40), height, height, TRUE);
     top_ = D(80);
     bottom_ = std::max(top_ + D(24), static_cast<int>(r.bottom) - D(48));
     MoveWindow(editor_, gutter_, top_, std::max(1, w - gutter_ - D(16)), std::max(1, bottom_ - top_ - D(16)), TRUE);
@@ -208,12 +208,11 @@ void CommandNotebook::Paint(HDC dc) {
     const auto c = UiTheme(dark_);
     Fill(dc, r, c.surface);
     RECT file{0, 0, r.right - D(36), D(32)};
-    UiRoundedSurface(dc, {0, 0, r.right, D(32)}, c.surface, c.border, D(10), dpi_);
     UiDrawGlyph(dc, {D(8), D(8), D(24), D(24)}, c.muted, UiGlyph::Document);
     file.left = D(32);
     TextAt(dc, ui_, file, name_ + (dirty_ ? L"  •" : L""), c.text);
     RECT editRect{0, top_, r.right, bottom_};
-    Fill(dc, editRect, c.field);
+    Fill(dc, editRect, c.surface);
     POINT scroll{};
     SendMessageW(editor_, EM_GETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&scroll));
     const auto range = SelectedRows();
@@ -351,7 +350,7 @@ void CommandNotebook::SelectionInk(HDC dc) {
         SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end),
                      nativeStart + lines_[i].end - lines_[i].start);
         RECT box{p.x, p.y, end.x, p.y + rowHeight_};
-        SetBkColor(dc, c.field);
+        SetBkColor(dc, c.surface);
         SetTextColor(dc, c.muted);
         ExtTextOutW(dc, p.x, p.y, ETO_OPAQUE | ETO_CLIPPED, &box, text_.data() + lines_[i].start,
                     static_cast<UINT>(lines_[i].end - lines_[i].start), nullptr);
@@ -611,29 +610,26 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
         Fill(dc, it.rcItem, c.surface);
         const int i = static_cast<int>(it.CtlID) - FirstButton;
         const bool more = it.CtlID == MoreId, enabled = IsWindowEnabled(it.hwndItem) != FALSE;
-        auto v = UiButtonVisual(c, enabled, (it.itemState & ODS_SELECTED) != 0,
-                                GetPropW(it.hwndItem, L"SerialCtl.PowerHover") != nullptr, i == 0 && !running_);
-        UiRoundedSurface(dc, it.rcItem, v.fill, v.border, D(10), dpi_);
+        const bool pressed = (it.itemState & ODS_SELECTED) != 0;
+        const bool hovered = GetPropW(it.hwndItem, L"SerialCtl.PowerHover") != nullptr;
+        const bool primary = i == 0 && enabled;
+        auto v = primary ? UiButtonVisual(c, true, pressed, hovered, true)
+                         : UiFlatIconVisual(c, c.surface, enabled, pressed, hovered);
+        if (primary || v.fill != c.surface)
+            UiRoundedSurface(dc, it.rcItem, v.fill, v.fill, D(Ui::CompactIconRadius), dpi_);
         if (more) {
             TextAt(dc, ui_, it.rcItem, L"···", v.ink, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         } else {
-            const int width = it.rcItem.right - it.rcItem.left;
-            const bool compact = width < D(76);
-            const int x = compact ? (width - D(16)) / 2 : D(8);
+            const int size = D(Ui::CompactGlyphSize);
+            const int x = (it.rcItem.left + it.rcItem.right - size) / 2;
+            const int y = (it.rcItem.top + it.rcItem.bottom - size) / 2;
             UiGlyph glyph = i == 0   ? (running_ ? UiGlyph::Stop : UiGlyph::Run)
                             : i == 1 ? UiGlyph::Save
                             : i == 2 ? UiGlyph::Import
                                      : UiGlyph::Export;
-            UiDrawGlyph(dc, {x, D(8), x + D(16), D(24)}, v.ink, glyph);
-            if (!compact) {
-                RECT label = it.rcItem;
-                label.left = D(30);
-                label.right -= D(4);
-                const wchar_t *labels[] = {running_ ? L"停止" : L"运行", L"保存", L"导入", L"导出"};
-                TextAt(dc, ui_, label, labels[std::clamp(i, 0, 3)], v.ink, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-            }
+            UiDrawGlyph(dc, {x, y, x + size, y + size}, v.ink, glyph);
         }
-        UiButtonKeyboardFocus(dc, it.rcItem, it.itemState, dpi_, UiFocusInk(dark_, i == 0 && !running_));
+        UiButtonKeyboardFocus(dc, it.rcItem, it.itemState, dpi_, UiFocusInk(dark_, primary));
         return TRUE;
     }
     case WM_MOUSEWHEEL:

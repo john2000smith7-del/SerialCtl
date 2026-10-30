@@ -142,17 +142,6 @@ jobs:
             }
             Write-Host "SERIALCTL_UI_REVIEW_END $name"
           }
-      - name: Export real notebook interaction screenshots
-        if: always()
-        shell: powershell
-        run: |
-          $directory = "$env:RUNNER_TEMP/serialctl-command-drag"
-          Get-ChildItem $directory -Filter '*.png' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'partial-three-lines|width-1200|saved-dark' } | ForEach-Object {
-            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
-            Write-Host "SERIALCTL_UI_REVIEW_BEGIN $($_.Name)"
-            for ($offset=0; $offset -lt $encoded.Length; $offset+=4096) { Write-Host ('SERIALCTL_UI_REVIEW_DATA '+$encoded.Substring($offset,[Math]::Min(4096,$encoded.Length-$offset))) }
-            Write-Host "SERIALCTL_UI_REVIEW_END $($_.Name)"
-          }
       - name: Upload UI evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -169,3 +158,56 @@ jobs:
             ${{ runner.temp }}/serialctl-build.txt
             ${{ runner.temp }}/serialctl-dialog-latency/*.log
           if-no-files-found: warn
+
+  ui-review:
+    name: UI screenshots - ${{ matrix.page }}
+    needs: build
+    if: ${{ always() && needs.build.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        page: [ai, power, sftp-settings]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-UI-evidence
+          path: ui-evidence
+      - name: Export authentic page screenshots in bounded logs
+        env:
+          REVIEW_PAGE: ${{ matrix.page }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, fnmatch, hashlib, json, os, pathlib, shutil
+          root = pathlib.Path('ui-evidence')
+          page = os.environ['REVIEW_PAGE']
+          patterns = {
+              'ai': ['x64-*-ai-expanded.png', 'x64-*-ai-collapsed.png', 'v208-ai-pet-main-*.png'],
+              'power': ['x64-*-power-layout.png', 'x64-*-power-disconnected.png', 'x64-*-power-tab-*.png'],
+              'sftp-settings': ['x64-*-sftp.png', 'x64-*-sftp-path.png', 'freeze-candidate-*-settings.png'],
+          }[page]
+          selected = sorted(p for p in root.rglob('*.png') if any(fnmatch.fnmatch(p.name, pattern) for pattern in patterns))
+          if not selected:
+              raise SystemExit('No authentic screenshots found for ' + page)
+          out = pathlib.Path('review-' + page)
+          out.mkdir()
+          manifest = {'sourceSha': os.environ['GITHUB_SHA'], 'buildRun': os.environ['GITHUB_RUN_ID'],
+                      'capture': 'Existing native Windows execution screenshots; no image rewriting', 'files': []}
+          for path in selected:
+              data = path.read_bytes()
+              shutil.copy2(path, out / path.name)
+              manifest['files'].append({'name': path.name, 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
+              encoded = base64.b64encode(data).decode('ascii')
+              print('SERIALCTL_UI_REVIEW_BEGIN ' + path.name)
+              for offset in range(0, len(encoded), 4096):
+                  print('SERIALCTL_UI_REVIEW_DATA ' + encoded[offset:offset+4096])
+              print('SERIALCTL_UI_REVIEW_END ' + path.name)
+          (out / 'source.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          print('Preserved', len(selected), 'authentic', page, 'screenshots.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-UI-review-${{ matrix.page }}
+          path: review-${{ matrix.page }}/
+          retention-days: 30

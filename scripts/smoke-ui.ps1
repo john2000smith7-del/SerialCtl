@@ -108,6 +108,12 @@ public static class SerialCtlUiSmoke {
             foreach(var point in new[]{new[]{r.Left,r.Top},new[]{r.Right-1,r.Top},new[]{r.Left,r.Bottom-1},new[]{r.Right-1,r.Bottom-1}})
                 if(GetPixel(dc,point[0],point[1])!=WindowColor(window))
                     throw new Exception("Theme button has rectangular/stale exterior pixels after native input");
+            for(int y=r.Top;y<r.Bottom;y++) for(int x=r.Left;x<r.Right;x++) {
+                uint pixel=GetPixel(dc,x,y);
+                int red=(int)(pixel&255), green=(int)((pixel>>8)&255), blue=(int)((pixel>>16)&255);
+                if(blue>red+20 && blue>green+20)
+                    throw new Exception("Theme button retains a blue inner/outer frame after native input");
+            }
         } finally { ReleaseDC(IntPtr.Zero,dc); }
         IntPtr footer=GetDlgItem(window,302); GetWindowRect(footer,out r);
         bool dark=WindowColor(window)==0x001e1c1cu;
@@ -130,7 +136,7 @@ public static class SerialCtlUiSmoke {
         GetWindowRect(GetDlgItem(window,104),out theme); GetWindowRect(GetDlgItem(window,107),out terminal);
         GetWindowRect(GetDlgItem(window,106),out left); GetWindowRect(GetDlgItem(window,112),out right);
         GetClientRect(window,out client); MapWindowPoints(window,IntPtr.Zero,ref client,2);
-        double scale=(theme.Bottom-theme.Top)/36.0;
+        double scale=(ssh.Bottom-ssh.Top)/36.0;
         int padding=(int)Math.Round(16*scale), gap=(int)Math.Round(12*scale);
         int horizontal=terminal.Left-padding-left.Right-padding;
         int vertical=terminal.Top-padding-ssh.Bottom-(int)Math.Round(2*scale);
@@ -146,7 +152,7 @@ public static class SerialCtlUiSmoke {
                 throw new Exception("Navigation container still stretches behind the theme action");
         } finally { ReleaseDC(IntPtr.Zero,dc); }
         AssertThemeCorners(window);
-        Console.WriteLine("[PASS] Toolbar ends after Settings; detached theme and equal card gaps: "+gap);
+        Console.WriteLine("[PASS] Navigation ends after AI; compact Settings/theme and equal card gaps: "+gap);
     }
     public static void ExerciseNativeTheme(IntPtr window) {
         IntPtr theme=GetDlgItem(window,104); uint pid, target=GetWindowThreadProcessId(theme,out pid);
