@@ -1,0 +1,36 @@
+name: Verify controlled terminal traffic fixture
+on:
+  push:
+    branches: [verification/dialog-traffic]
+    paths: [.github/workflows/dialog-traffic-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  traffic:
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile the exact stopwatch driver
+        shell: cmd
+        run: cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-bench.exe tests\performance\ConnectionDialogBench.cpp user32.lib ws2_32.lib
+      - name: Exercise loopback setup and actual mouse activations against the accepted release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Requires an isolated hosted desktop' }
+          gh release download v2.0.11 --repo $env:GITHUB_REPOSITORY --pattern SerialCtl-V2.0.11-Win7-x64.zip --dir old
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $zip = 'old/SerialCtl-V2.0.11-Win7-x64.zip'
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'b64497102c56e5ed5286f30ab098bebf2afeb2ce466e91f195386047abed3cc0') { throw 'Baseline mismatch' }
+          Expand-Archive $zip old/app
+          Set-Content old/app/update.ini "[update]`r`nurl=" -Encoding ASCII
+          New-Item -ItemType Directory -Force "$env:APPDATA/SerialCtl" | Out-Null
+          Set-Content "$env:APPDATA/SerialCtl/settings.ini" "[Pet]`r`nEnabled=0" -Encoding ASCII
+          & ./dialog-bench.exe (Resolve-Path old/app/serialctl.exe).Path light legacy traffic
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
