@@ -174,7 +174,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        page: [ai, power, sftp-settings]
+        page: [ai, power-light, power-dark, sftp-settings]
     env:
       REVIEW_SOURCE_RUN: ${{ inputs.evidence_run || github.run_id }}
     steps:
@@ -205,7 +205,8 @@ jobs:
           page = os.environ['REVIEW_PAGE']
           patterns = {
               'ai': ['x64-*-ai-expanded.png', 'x64-*-ai-collapsed.png', 'v208-ai-pet-main-*.png'],
-              'power': ['x64-*-power-layout.png', 'x64-*-power-disconnected.png', 'x64-*-power-tab-*.png'],
+              'power-light': ['x64-light-power-layout.png', 'x64-light-power-disconnected.png'],
+              'power-dark': ['x64-dark-power-layout.png', 'x64-dark-power-disconnected.png'],
               'sftp-settings': ['x64-*-sftp.png', 'x64-*-sftp-path.png', 'freeze-candidate-*-settings.png'],
           }[page]
           selected = sorted(p for p in root.rglob('*.png') if any(fnmatch.fnmatch(p.name, pattern) for pattern in patterns))
