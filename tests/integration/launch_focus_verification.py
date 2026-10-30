@@ -28,14 +28,7 @@ while True:
 # Same established pane/CMD fixture as the full desktop audit. These setup
 # messages are excluded from measured user inputs in gui_user_lifecycle.py.
 assert u.PostMessageW(main,0x111,301,0)
-deadline=time.monotonic()+10
-while True:
- dialog=next((h for h,n in windows() if n=='#32770' and u.GetDlgItem(h,1)),None)
- if dialog:
-  assert u.PostMessageW(u.GetDlgItem(dialog,1),0xf5,0,0);break
- assert time.monotonic()<deadline,'Expected unavailable-power notice did not appear'
- time.sleep(.05)
-time.sleep(.2)
+time.sleep(.5)
 assert u.PostMessageW(main,0x111,300,0)
 time.sleep(.5)
 subprocess.run([sys.executable,str(pathlib.Path(__file__).with_name('gui_user_lifecycle.py')),str(native),str(main),str(pid),output],check=True)

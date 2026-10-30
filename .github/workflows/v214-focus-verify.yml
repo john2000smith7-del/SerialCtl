@@ -2,7 +2,7 @@ name: Verify V2.0.14 actual connection focus completion
 on:
   push:
     branches: [verification/v214-native]
-    paths: [.github/workflows/v214-focus-verify.yml]
+    paths: [.github/workflows/v214-focus-verify.yml, tests/integration/launch_focus_verification.py]
 permissions:
   contents: read
   actions: read
