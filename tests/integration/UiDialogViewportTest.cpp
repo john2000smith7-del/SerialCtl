@@ -133,6 +133,16 @@ int main() {
     while (PeekMessageW(&pending, nullptr, serialctl::UiFirstPaintReady, serialctl::UiFirstPaintReady, PM_REMOVE))
         DispatchMessageW(&pending);
     Expect(firstPaintJobs == 1, "Closing before first paint left a runnable job");
+    HWND painted = CreateWindowExW(0, wc.lpszClassName, L"Already painted", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        0, 0, 120, 120, nullptr, nullptr, wc.hInstance, nullptr);
+    UpdateWindow(painted);
+    Expect(!GetUpdateRect(painted, nullptr, FALSE), "Fixture must begin with a validated client");
+    serialctl::UiRunAfterFirstPaint(painted);
+    UpdateWindow(painted);
+    while (PeekMessageW(&pending, painted, serialctl::UiFirstPaintReady, serialctl::UiFirstPaintReady, PM_REMOVE))
+        DispatchMessageW(&pending);
+    Expect(firstPaintJobs == 2, "An already painted dialog never started its deferred job");
+    DestroyWindow(painted);
     Gdiplus::GdiplusShutdown(token);
     return failures ? 1 : 0;
 }

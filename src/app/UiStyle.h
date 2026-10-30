@@ -1091,6 +1091,10 @@ inline void UiRunAfterFirstPaint(HWND dialog) {
     // Keep the form functional even if native subclass registration fails.
     if (!SetWindowSubclass(dialog, UiFirstPaintProc, 89, 0))
         PostMessageW(dialog, UiFirstPaintReady, 0, 0);
+    else
+        // A native creation/layout call can already have validated the parent.
+        // Guarantee a paint opportunity even for keyboard/programmatic opening.
+        InvalidateRect(dialog, nullptr, FALSE);
 }
 // Restore only the owner of a modal dismissed while that modal was foreground.
 // One restoration per dialog; never topmost and never from repaint/timer paths.

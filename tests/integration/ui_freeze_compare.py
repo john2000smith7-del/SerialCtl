@@ -43,6 +43,7 @@ def main():
     user.RedrawWindow.argtypes = (w.HWND, c.c_void_p, c.c_void_p, w.UINT)
     user.GetDlgItem.argtypes, user.GetDlgItem.restype = (w.HWND, c.c_int), w.HWND
     user.GetDlgCtrlID.argtypes = (w.HWND,)
+    user.GetDlgItemTextW.argtypes = (w.HWND, c.c_int, w.LPWSTR, c.c_int)
     user.IsWindowVisible.argtypes = user.IsWindowEnabled.argtypes = (w.HWND,)
     user.GetClientRect.argtypes = user.GetWindowRect.argtypes = (w.HWND, c.POINTER(RECT))
     user.ClientToScreen.argtypes = (w.HWND, c.POINTER(POINT))
@@ -92,6 +93,17 @@ def main():
             return True
         user.EnumChildWindows(hwnd, each, 0)
         return rows
+
+    def remote_query_completed(dialog):
+        status = c.create_unicode_buffer(2048)
+        user.GetDlgItemTextW(dialog, 1025, status, len(status))
+        # Owner-drawn CBS_DROPDOWNLIST has no edit text: WM_GETTEXT is empty.
+        # The isolated instance has no serial devices, so compare its exact
+        # completed service response, disabled Connect and selected result row.
+        ports = user.GetDlgItem(dialog, 1002)
+        return (status.value == '该实例没有已打开的本地串口' and
+                not user.IsWindowEnabled(user.GetDlgItem(dialog, 1)) and
+                user.SendMessageW(ports, 0x147, 0, 0) == 0)
 
     def extract(archive, destination):
         destination.mkdir()
@@ -160,6 +172,12 @@ def main():
                         # any text caret from the deterministic pixel comparison.
                         user.PostMessageW(target, 0x28, user.GetDlgItem(target, 2), 1)
                     time.sleep(2 if name in ('serial', 'remote') else .4)
+                    if name == 'remote':
+                        # Compare the same completed asynchronous state, rather
+                        # than racing a fixed two-second capture against discovery.
+                        wait(lambda: remote_query_completed(target), seconds=20)
+                        user.PostMessageW(target, 0x28, user.GetDlgItem(target, 2), 1)
+                        time.sleep(.2)
                     user.SetCursorPos(user.GetSystemMetrics(0)-2, user.GetSystemMetrics(1)-2)
                     desktop.capture(theme+'-'+name)
                     frame, raw = desktop.pending_pixels[-1]
