@@ -9,6 +9,7 @@ from ctypes import wintypes as w
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -38,6 +39,8 @@ def main():
     user.GetWindowThreadProcessId.argtypes = (w.HWND, c.POINTER(w.DWORD))
     user.GetClassNameW.argtypes = (w.HWND, w.LPWSTR, c.c_int)
     user.GetWindowTextW.argtypes = (w.HWND, w.LPWSTR, c.c_int)
+    user.SetWindowTextW.argtypes = (w.HWND, w.LPCWSTR)
+    user.RedrawWindow.argtypes = (w.HWND, c.c_void_p, c.c_void_p, w.UINT)
     user.GetDlgItem.argtypes, user.GetDlgItem.restype = (w.HWND, c.c_int), w.HWND
     user.GetDlgCtrlID.argtypes = (w.HWND,)
     user.IsWindowVisible.argtypes = user.IsWindowEnabled.argtypes = (w.HWND,)
@@ -93,9 +96,32 @@ def main():
     def extract(archive, destination):
         destination.mkdir()
         with zipfile.ZipFile(archive) as package:
+            versions = dict(line.split('=', 1) for line in package.read('VERSION').decode('utf-8').splitlines() if line)
+            version = versions.get('CPP_VERSION', '')
+            require(re.fullmatch(r'V\d+\.\d+\.\d+', version) and versions.get('PROJECT_VERSION') == version,
+                    'Archive version records disagree')
             for name in ('serialctl.exe', 'plink.exe', 'psftp.exe'):
                 (destination / name).write_bytes(package.read(name))
         (destination / 'update.ini').write_text('[update]\r\nurl=\r\n', encoding='ascii')
+        return version
+
+    def version_footer(dialog, expected):
+        matches = []
+        @callback
+        def each(child, _):
+            name, text = c.create_unicode_buffer(128), c.create_unicode_buffer(128)
+            user.GetClassNameW(child, name, len(name)); user.GetWindowTextW(child, text, len(text))
+            if user.IsWindowVisible(child) and name.value == 'Static' and text.value.startswith('SerialCtl V'):
+                matches.append((int(child), text.value))
+            return True
+        user.EnumChildWindows(dialog, each, 0)
+        require(len(matches) == 1 and matches[0][1] == 'SerialCtl ' + expected,
+                'Settings must display the version from its exact archive: ' + repr(matches))
+        control, text = matches[0]
+        bounds, origin = RECT(), POINT()
+        user.GetWindowRect(control, c.byref(bounds)); user.ClientToScreen(dialog, c.byref(origin))
+        return control, {'expected': expected, 'displayed': text,
+                         'rect': [bounds.left-origin.x, bounds.top-origin.y, bounds.right-origin.x, bounds.bottom-origin.y]}
 
     baseline, candidate = {}, {}
     report = {'status': 'RUNNING', 'baselineSha256': hashlib.sha256(args.baseline.read_bytes()).hexdigest(),
@@ -115,7 +141,7 @@ def main():
             fixture_owned = True
             (config / 'commands.txt').write_text('#Fixture\necho FIXTURE\n', encoding='utf-8')
             (config / 'settings.ini').write_text('[Pet]\nEnabled=0\n[Layout]\nRightPanelWidth=320\n', encoding='ascii')
-            app = args.output / (label + '-app'); extract(archive, app)
+            app = args.output / (label + '-app'); version = extract(archive, app)
             process = subprocess.Popen([str(app / 'serialctl.exe')], cwd=app)
             main_window = wait(lambda: (windows(process.pid, 'SerialCtlWin7NativeWindowV3') or [None])[0])
             user.MoveWindow(main_window, 0, 0, min(1200, user.GetSystemMetrics(0)), min(850, user.GetSystemMetrics(1)-30), True)
@@ -142,8 +168,27 @@ def main():
                     width, height, stride = rect.right, rect.bottom, frame['width']*4
                     pixels = b''.join(raw[(point.y+y)*stride+point.x*4:(point.y+y)*stride+(point.x+width)*4] for y in range(height))
                     rgb = bytearray(pixels); rgb[3::4] = bytes(len(rgb)//4)
-                    captures[(theme, name)] = {'size': [width, height], 'geometry': geometry(target), 'pixels': bytes(rgb), 'frame': frame['path']}
+                    capture = {'size': [width, height], 'geometry': geometry(target),
+                               'pixels': bytes(rgb), 'rawPixels': bytes(rgb), 'frame': frame['path']}
                     desktop.flush_frames()
+                    if name == 'settings':
+                        control, capture['version'] = version_footer(target, version)
+                        # Keep the original real screenshot. For the second
+                        # comparison frame normalize only the verified version
+                        # text, so its font, colors, bounds and background are
+                        # still compared pixel for pixel across releases.
+                        require(user.SetWindowTextW(control, 'SerialCtl V0.0.0'), 'Cannot normalize fixture version text')
+                        user.RedrawWindow(control, None, None, 0x105)
+                        time.sleep(.1)
+                        desktop.capture(theme+'-'+name+'-version-normalized')
+                        normalized, raw = desktop.pending_pixels[-1]
+                        stride = normalized['width']*4
+                        pixels = b''.join(raw[(point.y+y)*stride+point.x*4:(point.y+y)*stride+(point.x+width)*4] for y in range(height))
+                        rgb = bytearray(pixels); rgb[3::4] = bytes(len(rgb)//4)
+                        capture['pixels'] = bytes(rgb)
+                        capture['normalizedFrame'] = normalized['path']
+                        desktop.flush_frames()
+                    captures[(theme, name)] = capture
                     if command:
                         user.PostMessageW(target, 0x10, 0, 0)
                         wait(lambda: user.IsWindowEnabled(main_window))
@@ -153,9 +198,21 @@ def main():
             after = candidate[key]
             require(before['size'] == after['size'], 'Client dimensions changed: '+str(key))
             changed = sum(before['pixels'][i:i+3] != after['pixels'][i:i+3] for i in range(0, len(before['pixels']), 4))
+            raw_changes = [i//4 for i in range(0, len(before['rawPixels']), 4)
+                           if before['rawPixels'][i:i+3] != after['rawPixels'][i:i+3]]
+            unexempt = len(raw_changes)
+            if key[1] == 'settings' and before['version']['expected'] != after['version']['expected']:
+                require(before['version']['rect'] == after['version']['rect'], 'Version footer bounds changed')
+                left, top, right, bottom = before['version']['rect']
+                unexempt = sum(not (left <= p % before['size'][0] < right and top <= p // before['size'][0] < bottom)
+                               for p in raw_changes)
             report['cases'].append({'theme': key[0], 'view': key[1], 'changedPixels': changed,
-                'geometryEqual': before['geometry'] == after['geometry'], 'baselineFrame': before['frame'], 'candidateFrame': after['frame']})
-        require(all(case['changedPixels'] == 0 and case['geometryEqual'] for case in report['cases']), 'UI freeze pixel/geometry mismatch')
+                'rawChangedPixels': len(raw_changes), 'unexemptRawChangedPixels': unexempt,
+                'geometryEqual': before['geometry'] == after['geometry'], 'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
+                'baselineVersion': before.get('version'), 'candidateVersion': after.get('version'),
+                'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')})
+        require(all(case['changedPixels'] == 0 and case['unexemptRawChangedPixels'] == 0 and
+                    case['geometryEqual'] for case in report['cases']), 'UI freeze pixel/geometry mismatch')
         report['status'] = 'PASS'
     except Exception as error:
         report['status'] = 'FAIL'; report['error'] = str(error)
