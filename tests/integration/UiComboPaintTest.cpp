@@ -174,9 +174,14 @@ void RunCase(HWND parent, bool ownerDrawn) {
     CheckSettled(combo, "mouse selection before focus loss");
     Pump();
     CheckSettled(combo, "mouse after queued messages");
+    std::cout << "CASE theme=" << dark << " dpi=" << style.dpi << " owner=" << ownerDrawn
+              << " mouse_selected=" << SendMessageW(combo, CB_GETCURSEL, 0, 0)
+              << " list_top=" << SendMessageW(info.hwndList, LB_GETTOPINDEX, 0, 0) << std::endl;
     rebuildOnSelection = true;
     SendMessageW(combo, WM_KEYDOWN, VK_DOWN, 0);
     CheckSettled(combo, "list rebuilt inside selection callback");
+    std::cout << "REENTRANT pending=" << rebuildOnSelection << " selected=" << SendMessageW(combo, CB_GETCURSEL, 0, 0)
+              << " notifications=" << selectionNotifications << std::endl;
     Require(!rebuildOnSelection && SendMessageW(combo, CB_GETCURSEL, 0, 0) == 1, "Reentrant selection rebuild failed");
     EnableWindow(combo, FALSE);
     CheckSettled(combo, "disabled");

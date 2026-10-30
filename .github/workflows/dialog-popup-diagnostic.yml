@@ -1,0 +1,32 @@
+name: Diagnose lazy popup native selection
+on:
+  push:
+    branches: [verification/dialog-popup]
+    paths: [.github/workflows/dialog-popup-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  popup:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare native control initialization invariants
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          & $cmake -S . -B popup-build -G $generator -A x64 -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
+          Copy-Item src/app/UiStyle.h popup-original.h
+          foreach ($variant in @('lazy','early-row','attach-only','eager-control')) {
+            Write-Host "POPUP_VARIANT=$variant"
+            python tests/performance/popup_variants.py $variant
+            & $cmake --build popup-build --config Release --target ui_combo_paint_test --parallel 2
+            if ($LASTEXITCODE -ne 0) { throw 'Compile failed' }
+            & ./popup-build/Release/ui_combo_paint_test.exe
+            Write-Host "POPUP_VARIANT_RESULT=$variant EXIT=$LASTEXITCODE"
+          }
+          exit 0
