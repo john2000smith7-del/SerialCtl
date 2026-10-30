@@ -207,7 +207,7 @@ def main():
                         scale=report['dpi']/96
                         capture['approvedRegions']=[
                             [listing[0],listing[1],width-round(12*scale),height-round(12*scale)],
-                            [tabs[2],tabs[1]-round(4*scale),toggle[0],toggle[3]+round(4*scale)],
+                            [bounds(117)[0],tabs[1]-round(4*scale),toggle[0],toggle[3]+round(4*scale)],
                             [0,0,width,round(72*scale)],
                             [round(24*scale),round(80*scale),round(110*scale),round(120*scale)]]
                         pad=round(16*scale); band=round(12*scale)
