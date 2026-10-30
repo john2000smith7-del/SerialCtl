@@ -113,6 +113,7 @@ class DesktopActions:
             "GetForegroundWindow": ((), w.HWND),
             "WindowFromPoint": ((POINT,), w.HWND),
             "GetWindowTextW": ((w.HWND, w.LPWSTR, c.c_int), c.c_int),
+            "GetClassNameW": ((w.HWND, w.LPWSTR, c.c_int), c.c_int),
             "IsWindow": ((w.HWND,), w.BOOL),
             "IsWindowVisible": ((w.HWND,), w.BOOL),
             "IsWindowEnabled": ((w.HWND,), w.BOOL),
@@ -205,15 +206,30 @@ class DesktopActions:
         return result
 
     def visible(self, identifier):
+        window = self.user.GetDlgItem(self.window, identifier)
+        if not window and identifier in (113, 114, 115, 116, 132):
+            # Retired root-level command-card actions; the current notebook
+            # exposes its own real controls, checked independently below.
+            return False
         return bool(self.user.IsWindowVisible(self.control(identifier)))
 
     def snapshot(self):
         controls = {}
-        for identifier in (106, 107, 112, 115, 117, 118, 119, 120, 125, 126, 127, 128, 130):
+        for identifier in (106, 107, 112, 117, 118, 119, 120, 125, 126, 127, 128, 130):
             window = self.control(identifier)
             controls[str(identifier)] = {"bounds": self.rect(window),
                                          "visible": bool(self.user.IsWindowVisible(window))}
-        return {**self.timestamp(), "window_bounds": self.rect(self.window),
+        notebook_controls = {}
+        notebook = self.control(112)
+        classname = c.create_unicode_buffer(64)
+        self.user.GetClassNameW(notebook, classname, len(classname))
+        if classname.value == "SerialCtlCommandNotebook":
+            for identifier in range(410, 416):
+                child = self.user.GetDlgItem(notebook, identifier)
+                require(child, "Missing real notebook control " + str(identifier))
+                notebook_controls[str(identifier)] = {"bounds": self.rect(child),
+                    "visible": bool(self.user.IsWindowVisible(child))}
+        return {**self.timestamp(), "notebook_controls": notebook_controls, "window_bounds": self.rect(self.window),
                 "client_bounds": self.client_rect(),
                 "foreground": int(self.user.GetForegroundWindow() or 0),
                 "maximized": bool(self.user.IsZoomed(self.window)),
