@@ -117,11 +117,9 @@ int main() {
     serialctl::UiStyleField(combo, &style);
     COMBOBOXINFO info{sizeof(info)}; GetComboBoxInfo(combo, &info);
     DWORD_PTR popup = 0;
-    Expect(!GetWindowSubclass(info.hwndList, serialctl::UiComboPopupProc, 72, &popup),
-           "An unopened combo eagerly initialized its popup");
+    Expect(!IsWindowVisible(info.hwndList), "Control initialization exposed an unopened popup");
     SendMessageW(combo, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), FALSE);
-    Expect(!GetWindowSubclass(info.hwndList, serialctl::UiComboPopupProc, 72, &popup),
-           "A font update eagerly initialized an unopened popup");
+    Expect(!IsWindowVisible(info.hwndList), "A font update exposed an unopened popup");
     SendMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0);
     Expect(GetWindowSubclass(info.hwndList, serialctl::UiComboPopupProc, 72, &popup) != FALSE,
            "First dropdown use did not install the shared popup theme");

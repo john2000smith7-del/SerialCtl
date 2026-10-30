@@ -1051,6 +1051,11 @@ inline void UiStyleField(HWND control, UiFieldStyle *style) {
     wchar_t cls[32]{};
     GetClassNameW(control, cls, 32);
     if (_wcsicmp(cls, L"COMBOBOX") == 0) {
+        // Keep the native list geometry established before closed-field height
+        // calibration. Delaying this until a first key/open changes the native
+        // top index/hit testing at some DPI settings (including list rebuilds
+        // inside CBN_SELCHANGE). Hidden painting is deferred independently.
+        UiPrepareComboPopup(control, style);
         UiLayoutComboEdit(control,*style);
     }
 }
