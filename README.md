@@ -146,7 +146,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 构建流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中保留完整 ZIP；正式签名完成后，交付其配套 `update.json`：
 
 ```text
-SerialCtl-V2.0.12-Win7-x64.zip
+SerialCtl-V2.0.13-Win7-x64.zip
 update.json
 ```
 
