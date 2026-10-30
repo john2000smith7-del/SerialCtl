@@ -1,4 +1,4 @@
-"""Run the released OLD_RELEASE updater against the exact signed candidate on Windows."""
+"""Run an authenticated released updater against the exact signed candidate on Windows."""
 import argparse
 import ctypes as c
 from ctypes import wintypes as w
@@ -52,7 +52,11 @@ def main():
             if len(parts) == 1 and not member.is_dir():
                 (install / parts[0]).write_bytes(archive.read(member))
     report['old_exe_sha256'] = digest(install / 'serialctl.exe')
-    assert report['old_exe_sha256'] == 'bb09e8a27acd73de40ce45d8e02e58edf554041791ee55816b0c9dff3b78d546'
+    # The entire published ZIP and its version were authenticated above. Bind
+    # the extracted executable to that ZIP, rather than a different release's
+    # fixed executable hash inherited from the earlier verification helper.
+    with zipfile.ZipFile(args.old_zip) as authenticated_old:
+        assert report['old_exe_sha256'] == hashlib.sha256(authenticated_old.read('serialctl.exe')).hexdigest()
     report['new_archive_sha256'] = digest(args.new_zip)
     site = root / 'site'
     site.mkdir()
@@ -146,7 +150,7 @@ def main():
                 break
             time.sleep(.25)
         else:
-            raise AssertionError('Released OLD_RELEASE did not commit the signed V2.0.14 update within 150 seconds')
+            raise AssertionError('Released '+args.old_version+' did not commit the signed V2.0.14 update within 150 seconds')
         assert confirmed, 'Update bypassed mandatory confirmation'
         report['update_logs'] = evidence
         report['old_exit_code'] = process.wait(timeout=15)
@@ -215,11 +219,11 @@ def main():
             capture_env['SERIALCTL_CAPTURE_FILE'] = str(root / name)
             subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-File', str(script_path)],
                            env=capture_env, check=True, timeout=20)
-        capture('v213-packaged-ai-desktop.png')
+        capture('v214-packaged-ai-desktop.png')
         user.ShowWindow(replacement['window'], 6)
         time.sleep(.5)
         assert user.IsIconic(replacement['window']) and user.IsWindowVisible(pet['window']), 'Minimizing GUI hid the desktop companion'
-        capture('v213-packaged-minimized-desktop.png')
+        capture('v214-packaged-minimized-desktop.png')
         report['desktop_pet'] = {'window': pet['window'], 'unowned': True, 'minimized_main_stays_visible': True}
         user.ShowWindow(replacement['window'], 9)
         paths = [x['path'] for x in report['requests']]

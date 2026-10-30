@@ -2,7 +2,7 @@ name: Verify V2.0.14 signed GUI upgrade
 on:
   push:
     branches: [verification/v214-native]
-    paths: [candidate-update.json]
+    paths: [candidate-update.json, tests/integration/verify_release_upgrade.py, .github/workflows/verify-v214-upgrade.yml]
 permissions:
   contents: read
   actions: read
