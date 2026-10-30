@@ -20,21 +20,21 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $run = gh api repos/$env:GITHUB_REPOSITORY/actions/runs/40999166374 | ConvertFrom-Json
-          if ($run.conclusion -ne 'success' -or $run.head_sha -ne 'cfe03ff963a13adf07bedf667b17faaa4bc33390' -or $run.head_branch -ne 'main') { throw 'Exact source build was not successful' }
+          $run = gh api repos/$env:GITHUB_REPOSITORY/actions/runs/41000417656 | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_sha -ne 'baff3fdac9125bdf6bd3c759a096b9c0f1ffb091' -or $run.head_branch -ne 'main') { throw 'Exact source build was not successful' }
           git diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Production source differs from the tested candidate' }
       - uses: actions/download-artifact@v4
         with:
           name: SerialCtl-Win7-portable
           path: candidate
-          run-id: 40999166374
+          run-id: 41000417656
           github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         with:
           name: SerialCtl-UI-evidence
           path: native-evidence
-          run-id: 40999166374
+          run-id: 41000417656
           github-token: ${{ github.token }}
       - name: Verify exact signed candidate and download authentic V2.0.11
         env:
