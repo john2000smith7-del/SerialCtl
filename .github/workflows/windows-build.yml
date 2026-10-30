@@ -47,6 +47,15 @@ jobs:
             }
             throw $failure
           } finally { if ($transcriptOpen) { Stop-Transcript } }
+      # Preserve the exact native-verified ZIP for diagnostics if a later GUI
+      # fixture fails. Publication still requires the complete main run success.
+      - name: Upload verified portable bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: bin/SerialCtl-*-Win7-x64.zip
+          if-no-files-found: error
+          retention-days: 30
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -116,13 +125,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $sha = (Get-FileHash $archive[0].FullName -Algorithm SHA256).Hash
           Write-Host "::notice title=Verified portable ZIP::$($archive[0].Name) SHA256=$sha"
-      - name: Upload verified portable bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: SerialCtl-Win7-portable
-          path: bin/SerialCtl-*-Win7-x64.zip
-          if-no-files-found: error
-          retention-days: 30
       - name: Export isolated UI review images through the build log
         if: always()
         shell: powershell
