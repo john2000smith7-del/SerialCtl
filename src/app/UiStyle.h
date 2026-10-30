@@ -1015,8 +1015,10 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     if(!edit && (message==WM_SIZE || message==WM_SETFONT || message==WM_COMMAND || message==CB_SETITEMHEIGHT || message==WM_SETTEXT ||
         message==CB_RESETCONTENT || message==CB_SETCURSEL || message==CB_SELECTSTRING || message==CB_SHOWDROPDOWN))
         UiLayoutComboEdit(h,*style);
-    // The list is prepared by the existing mouse/keyboard/CB_SHOWDROPDOWN
-    // entry points. A font change must not initialize an unopened popup.
+    // A later font/DPI update must preserve the same native geometry ordering
+    // as initial construction; hidden state repairs still only invalidate.
+    if (!edit && message == WM_SETFONT)
+        UiPrepareComboPopup(h, style);
     if (!edit && (hoverChanged || message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_ENABLE ||
                   message == WM_SETFONT || message == WM_SIZE || message == WM_KEYDOWN || message == WM_KEYUP ||
                   message == WM_CHAR || message == WM_COMMAND || message == WM_MOUSEWHEEL || message==WM_SETTEXT ||
