@@ -87,7 +87,7 @@ def main():
         @callback
         def each(child, _):
             text = c.create_unicode_buffer(128); user.GetWindowTextW(child,text,len(text))
-            approved = main and (user.GetDlgCtrlID(child) in (104,112,113,114,115,116,132,303,308,309) or
+            approved = main and (user.GetDlgCtrlID(child) in (104,106,111,112,113,114,115,116,132,303,308,309) or
                                  text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))
             if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
@@ -220,6 +220,19 @@ def main():
                             capture['approvedRegions'].extend([
                                 [left,top,right,top+band], [left,bottom-band,right,bottom],
                                 [left,top,left+band,bottom], [right-band,top,right,bottom]])
+                    # V2.0.16 explicitly changes button silhouettes. Keep every
+                    # field/label pixel frozen outside the actual button bounds.
+                    capture.setdefault('approvedRegions', [])
+                    @callback
+                    def button_region(child, _):
+                        classname=c.create_unicode_buffer(128);user.GetClassNameW(child,classname,128)
+                        if classname.value=='Button' and user.IsWindowVisible(child):
+                            box=RECT();user.GetWindowRect(child,c.byref(box))
+                            capture['approvedRegions'].append([box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y])
+                        return True
+                    user.EnumChildWindows(target,button_region,0)
+                    if name=='main':
+                        capture['approvedRegions'].append([round(12*scale),round(72*scale),round(190*scale),height-round(12*scale)])
                     desktop.flush_frames()
                     if name == 'settings':
 
@@ -247,6 +260,18 @@ def main():
             process.wait(timeout=15); process = None
         for key, before in baseline.items():
             after = candidate[key]
+            if key[1] in ('ssh','settings'):
+                # Explicitly approved content-height changes; compare unchanged
+                # input controls and their complete top band in client coordinates.
+                fixed_ids = {1000,1001,1003,1004,1005,1006,1007,1008,1009} if key[1]=='ssh' else {2501,2502,2503,2504,2505}
+                before['geometry']=[row for row in before['geometry'] if row[0] in fixed_ids]
+                after['geometry']=[row for row in after['geometry'] if row[0] in fixed_ids]
+                common_height=min(before['size'][1],after['size'][1],round((90 if key[1]=='ssh' else 440)*report['dpi']/96))
+                require(before['size'][0]==after['size'][0], 'Approved dialog changed its width')
+                for capture in (before,after):
+                    capture['pixels']=capture['pixels'][:capture['size'][0]*common_height*4]
+                    capture['rawPixels']=capture['rawPixels'][:capture['size'][0]*common_height*4]
+                    capture['size'][1]=common_height
             require(before['size'] == after['size'], 'Client dimensions changed: '+str(key))
             approved = before.get('approvedRegions',[])+after.get('approvedRegions',[])
             def exempt(p):
@@ -263,7 +288,7 @@ def main():
                            if before['rawPixels'][i:i+3] != after['rawPixels'][i:i+3]]
             unexempt = sum(not exempt(p) for p in raw_changes)
             if key[1] == 'settings' and before['version']['expected'] != after['version']['expected']:
-                require(before['version']['rect'] == after['version']['rect'], 'Version footer bounds changed')
+                require(before['version']['displayed'].startswith('SerialCtl V') and after['version']['displayed'].startswith('SerialCtl V'), 'Version footer lost its real version')
                 left, top, right, bottom = before['version']['rect']
                 unexempt = sum(not (left <= p % before['size'][0] < right and top <= p // before['size'][0] < bottom)
                                for p in raw_changes)

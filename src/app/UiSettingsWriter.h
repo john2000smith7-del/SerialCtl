@@ -5,6 +5,7 @@
 #include <functional>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -47,11 +48,16 @@ public:
         if (worker_.joinable()) worker_.join();
     }
 
+    bool TakeFailure() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return std::exchange(writeFailed_,false);
+    }
 private:
     static void WriteProfile(const Snapshot &snapshot) {
         for (const auto &entry : snapshot.entries)
-            WritePrivateProfileStringW(entry.section.c_str(), entry.key.c_str(),
-                                       entry.value.c_str(), snapshot.path.c_str());
+            if (!WritePrivateProfileStringW(entry.section.c_str(), entry.key.c_str(),
+                                       entry.value.c_str(), snapshot.path.c_str()))
+                throw std::runtime_error("Settings write failed");
     }
     void Run() {
         for (;;) {
@@ -65,12 +71,15 @@ private:
             }
             // The previous synchronous code ignored individual profile-write
             // failures; keep that behavior while protecting the worker lifetime.
-            try { write_(snapshot); } catch (...) {}
+            try { write_(snapshot); } catch (...) {
+                std::lock_guard<std::mutex> lock(mutex_); writeFailed_=true;
+            }
         }
     }
 
     Write write_;
     std::mutex mutex_;
+    bool writeFailed_ = false;
     std::condition_variable ready_;
     std::optional<Snapshot> pending_;
     bool stopping_ = false;

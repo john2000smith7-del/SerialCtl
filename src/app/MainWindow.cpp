@@ -2156,6 +2156,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         PollLogExport();
         return 0;
     case WM_TIMER:
+        if (uiSettingsWriter_.TakeFailure()) AppendStatus(L"连接保持可用，但本地设置或历史保存失败，请检查配置目录权限。",true);
+        if(wParam==4013) return 0;
         if(wParam==ClipboardNoticeTimerId) {KillTimer(window_,ClipboardNoticeTimerId);clipboardNotice_.clear();SetWindowTextW(status_,statusText_.c_str());return 0;}
         if (wParam == PendingConnectionTimerId) {
             FinishPendingConnection();
@@ -2951,7 +2953,8 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
     if(!leftPanelCollapsed_ && !leftPanelAnimating_) {
         const int line=leftCard.bottom-Ui::PanelPadding-Ui::CompactHeight-Ui::Space-statusHeight_-Ui::Space;
-        UiSeparator(dc,leftCard.left+Ui::PanelPadding,leftCard.right-Ui::PanelPadding,line,colors.border);
+        DrawTextSimple(dc,L"状态",{leftCard.left+Ui::PanelPadding,line-Ui::Scale(10),leftCard.left+Ui::PanelPadding+Ui::Scale(32),line+Ui::Scale(10)},colors.muted,smallFont_);
+        UiSeparator(dc,leftCard.left+Ui::PanelPadding+Ui::Scale(40),leftCard.right-Ui::PanelPadding,line,colors.border);
     }
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, LiveMonitorPage() ? UiAiTheme(darkMode_).surface : colors.terminal, UiPanelBorder(darkMode_));
     DrawRoundedBox(dc, rightCard, Ui::CardRadius, LiveMonitorPage() ? colors.terminal : colors.panel, UiPanelBorder(darkMode_));
@@ -6073,6 +6076,7 @@ void MainWindow::SaveUiState() {
         snapshot.entries.push_back({L"BootPresets",preset.first,MultiByteToWide(reinterpret_cast<const uint8_t*>(value.data()),value.size(),CP_UTF8)});
     }
     uiSettingsWriter_.Submit(std::move(snapshot));
+    SetTimer(window_,4013,250,nullptr);
 }
 
 int MainWindow::LeftWidth() const {

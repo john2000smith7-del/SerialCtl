@@ -300,10 +300,12 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 - Workspace forms use a40px path disclosure plus a12px gap and a28px current-child dropdown/action row. The disclosure shares the native field contour,14px/16px typography and the existing5px neutral overlay thumb. Single click reveals the full value and horizontal viewport; double click or Enter/F2 opens the existing owned edit dialog, Ctrl+C copies the full value. Rendering/scroll offsets never change submitted paths.
 - The left rail reuses the48px collapsed-side width,28px fixed toggle and16px session glyph. Its200ms transition follows the existing side animation; header hit target stays stationary. Hide list, disconnect actions and status while collapsed/animating, preserve connections, receive processing and selected sessions. Remember state independently of right-side and live-monitor preferences.
 
-## V2.0.16 approved component refinement
+## V2.0.16 approved component refinement (current policy; supersedes conflicting historical entries)
 
 - Action buttons and compact terminal selectors use capsule ends: the radius is half the shorter physical dimension. Input fields and content cards retain their existing radii. Retain the quiet focus underline and deep-blue emphasis.
 - Notebook actions are equal-width compact capsules (up to 64 by 28 logical px), with 16 px centered icons and 8 px peer gaps. Instruction text belongs to the notebook footer, not global navigation.
 - Left connection width defaults to 190 logical px and can be dragged up to 280 within the available workspace. A fixed 72 px status viewport above Disconnect All has an inset separator; short clipboard notices do not replace retained errors.
 - AI workspace is a compact folder entry in its header. New conversations inherit the current workspace; changing directories starts a separate conversation. Composer targets have one visible boundary and a read-only model label. Log operations stay left, Stop and Latest have reserved right-hand positions.
 - Power is disabled by default. The local password-verified Test switch unlocks the existing service only for this process run; all entry points use that same gate. Locking does not submit power-output changes.
+
+- Desktop pet defaults once to144 logical px, retains later user choices, anchors above the fixed status area, and has no ellipsis hit target. Context/keyboard menus remain. Desktop roaming is independently switchable; pause displacement during hover, drag, menus, opening/manual actions and AI work. Use bounded short steps and preserve the manual anchor without writing settings each animation frame.
