@@ -17,27 +17,17 @@ std::unique_ptr<Atlas> Make(int mode,COLORREF color) {
     auto &resource=UiResource(2012);auto a=std::make_unique<Atlas>();
     const int width=static_cast<int>(resource.width),height=static_cast<int>(resource.alpha.size()/resource.width);
     const double rgb[]{static_cast<double>(GetBValue(color))+.5,static_cast<double>(GetGValue(color))+.5,static_cast<double>(GetRValue(color))+.5};
-    if(mode>=4) {
-        a->wide.resize(resource.alpha.size()*4);
-        for(size_t i=0;i<resource.alpha.size();++i) {
-            for(int ch=0;ch<3;++ch)a->wide[i*4+ch]=static_cast<WORD>(std::min(65535.,std::round(rgb[ch]*257*(mode==5?resource.alpha[i]/255.:1.))));
-            a->wide[i*4+3]=resource.alpha[i]*257;
+    a->bytes.resize(resource.alpha.size());
+    for(size_t i=0;i<a->bytes.size();++i) {
+        const auto alpha=resource.alpha[i];DWORD pixel=static_cast<DWORD>(alpha)<<24;
+        for(int ch=0;ch<3;++ch) {
+            double value=(rgb[ch]-(mode==15?.5:0))*alpha/255.;
+            unsigned part=static_cast<unsigned>(mode==12?std::floor(value):mode==14?std::ceil(value):std::round(value));
+            pixel|=std::min(255u,part)<<(ch*8);
         }
-        a->bitmap=std::make_unique<Gdiplus::Bitmap>(width,height,width*8,mode==5?PixelFormat64bppPARGB:PixelFormat64bppARGB,reinterpret_cast<BYTE*>(a->wide.data()));
-    } else {
-        a->bytes.resize(resource.alpha.size());
-        const int format=mode==3?PixelFormat32bppPARGB:PixelFormat32bppARGB;
-        a->bitmap=std::make_unique<Gdiplus::Bitmap>(width,height,width*4,format,reinterpret_cast<BYTE*>(a->bytes.data()));
-        if(mode>=2) {
-            Gdiplus::Graphics g(a->bitmap.get());g.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-            g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
-            Gdiplus::ImageAttributes attr;UiResourceTint(attr,color);
-            g.DrawImage(resource.bitmap.get(),Gdiplus::Rect(0,0,width,height),0,0,width,height,Gdiplus::UnitPixel,&attr);
-        } else {
-            const DWORD c0=(std::min(255,GetRValue(color)+mode)<<16)|(std::min(255,GetGValue(color)+mode)<<8)|std::min(255,GetBValue(color)+mode);
-            for(size_t i=0;i<a->bytes.size();++i)a->bytes[i]=(static_cast<DWORD>(resource.alpha[i])<<24)|c0;
-        }
+        a->bytes[i]=pixel;
     }
+    a->bitmap=std::make_unique<Gdiplus::Bitmap>(width,height,width*4,PixelFormat32bppPARGB,reinterpret_cast<BYTE*>(a->bytes.data()));
     return a;
 }
 int main(){
@@ -45,33 +35,21 @@ int main(){
     int status=0;
     {
         Canvas direct,candidate;
-        for(int mode=6;mode<11;++mode) {
+        for(int mode=12;mode<16;++mode) {
             unsigned maxError=0,bad=0,cases=0;int lowest=0,highest=0;
             std::map<COLORREF,std::unique_ptr<Atlas>> atlases;
             auto begin=std::chrono::steady_clock::now();
             bool supported=true;
             for(int size:{16,24,48})for(auto ink:{RGB(29,29,31),RGB(245,245,247),RGB(31,79,216),RGB(152,152,157)})for(auto bg:{RGB(255,255,255),RGB(36,36,38)})for(int glyph=0;glyph<27;++glyph) {
-                if(!atlases.count(ink)) {
-                    auto a=std::make_unique<Atlas>();
-                    auto &source=UiResource(2012);
-                    a->bitmap.reset(source.bitmap->Clone(0,0,2592,96,mode==6?PixelFormat32bppARGB:PixelFormat32bppPARGB));
-                    atlases[ink]=std::move(a);
-                }
+                if(!atlases.count(ink))atlases[ink]=Make(mode,ink);
                 auto &atlas=atlases[ink];
                 if(!atlas->bitmap || atlas->bitmap->GetLastStatus()!=Gdiplus::Ok){supported=false;continue;}
                 direct.Clear(bg);candidate.Clear(bg);const RECT r{7,5,7+size,5+size};
                 UiResourceGlyphDirect(direct.dc,r,ink,glyph);
                 {
                     Gdiplus::Graphics g(candidate.dc);g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
-                    Gdiplus::ImageAttributes attr;UiResourceTint(attr,ink);
-                    int x=glyph*96;
-                    std::unique_ptr<Gdiplus::Bitmap> crop;
-                    if(mode>=8) {
-                        const int pad=mode==8?1:mode==9?8:96;
-                        int left=std::max(0,x-pad),right=std::min(2592,x+96+pad);
-                        crop.reset(UiResource(2012).bitmap->Clone(left,0,right-left,96,PixelFormat32bppARGB));x-=left;
-                    }
-                    if(g.DrawImage(crop?crop.get():atlas->bitmap.get(),Gdiplus::Rect(r.left,r.top,size,size),x,0,96,96,Gdiplus::UnitPixel,&attr)!=Gdiplus::Ok){supported=false;continue;}
+                    Gdiplus::ImageAttributes attr;attr.SetWrapMode(Gdiplus::WrapModeTileFlipXY);
+                    if(g.DrawImage(atlas->bitmap.get(),Gdiplus::Rect(r.left,r.top,size,size),glyph*96,0,96,96,Gdiplus::UnitPixel,&attr)!=Gdiplus::Ok){supported=false;continue;}
                 }
                 GdiFlush();
                 for(int i=0;i<6400;++i)for(int shift:{0,8,16}) {
