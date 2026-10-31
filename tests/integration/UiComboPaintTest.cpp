@@ -250,7 +250,15 @@ void RunCase(HWND parent, bool ownerDrawn, bool composer = false) {
     RemoveWindowSubclass(combo,MouseReleaseProc,99);
     RemoveWindowSubclass(info.hwndList,MouseReleaseProc,99);
     Require(!SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0), "Native mouse selection did not close dropdown");
-    Require(SendMessageW(combo,CB_GETCURSEL,0,0)==0,"Actual click selected a different row from its cursor");
+    if(SendMessageW(combo,CB_GETCURSEL,0,0)!=0) {
+        RECT drop{};GetWindowRect(info.hwndList,&drop);
+        std::cerr<<"click theme="<<dark<<" dpi="<<style.dpi<<" owner="<<ownerDrawn<<" composer="<<composer
+                 <<" selected="<<SendMessageW(combo,CB_GETCURSEL,0,0)<<" top="<<SendMessageW(info.hwndList,LB_GETTOPINDEX,0,0)
+                 <<" row="<<row.top<<","<<row.bottom<<" point="<<actualPoint.x<<","<<actualPoint.y
+                 <<" drop="<<drop.left<<","<<drop.top<<","<<drop.right<<","<<drop.bottom
+                 <<" capture="<<GetCapture()<<"\n";
+        throw std::runtime_error("Actual click selected a different row from its cursor");
+    }
     Require(releaseProbe.checked && releaseProbe.failure.empty(),"Actual selection left noncanonical field pixels before queued paints");
     CheckSettled(combo, "mouse selection before focus loss");
     Pump();
