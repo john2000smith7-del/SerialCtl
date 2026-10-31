@@ -45,7 +45,8 @@ enum {
     DirectoryUp,
     DirectoryRefresh,
     PathDisplay,
-    PortMode
+    PortMode,
+    PortLabel
 };
 constexpr UINT_PTR Timer = 1;
 constexpr UINT CommitDirectory = WM_APP + 196;
@@ -2803,7 +2804,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         };
         add(L"STATIC", L"服务器地址 · 一体化平台网站 IP 地址", -1, 16, 16, 404, 24);
         add(L"EDIT", self->settings_.host.c_str(), Host, 16, 40, 404, 28, ES_AUTOHSCROLL | WS_TABSTOP);
-        add(L"STATIC", self->settings_.platformMode?L"SSH 端口 · 员工工号":L"SSH 端口 · 直接连接", -1, 16, 84, 196, 24);
+        add(L"STATIC", self->settings_.platformMode?L"SSH 端口 · 员工工号":L"SSH 端口 · 直接连接", PortLabel, 16, 84, 196, 24);
         add(L"STATIC", L"用户名 · 默认 linux", -1, 224, 84, 196, 24);
         add(L"EDIT", (self->settings_.platformMode?self->settings_.employeeNumber:std::to_wstring(self->settings_.port)).c_str(), Port, 16, 108, 196, 28, ES_NUMBER | WS_TABSTOP);
         add(L"EDIT", self->settings_.username.c_str(), Username, 224, 108, 196, 28, ES_AUTOHSCROLL | WS_TABSTOP);
@@ -2853,7 +2854,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const auto host = Text(GetDlgItem(h, Host)), portText = Text(GetDlgItem(h, Port));
         unsigned port = 0;
         try { size_t read = 0; const auto value = std::stoul(portText, &read); if (read == portText.size() && value <= 65535) port = static_cast<unsigned>(value); } catch (...) {}
-        if(IsDlgButtonChecked(h,PortMode)==BST_CHECKED)PlatformSshPort(portText,port);
+        if(IsDlgButtonChecked(h,PortMode)==BST_CHECKED && !PlatformSshPort(portText,port))port=0;
         const std::wstring identity = port && !TrustedPuttyHostKey(host, static_cast<uint16_t>(port)).empty()
             ? L"主机身份已保存" : L"连接时核验主机身份";
         if (Text(GetDlgItem(h, HostIdentity)) != identity) SetDlgItemTextW(h, HostIdentity, identity.c_str());
@@ -2874,6 +2875,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         if(id==PortMode) {
+            SetDlgItemTextW(h,PortLabel,IsDlgButtonChecked(h,PortMode)==BST_CHECKED?L"SSH 端口 · 员工工号":L"SSH 端口 · 直接连接");
             const auto value=Text(GetDlgItem(h,Port));unsigned mapped=0;
             if(IsDlgButtonChecked(h,PortMode)==BST_CHECKED) {
                 try {auto n=std::stoul(value);SetDlgItemTextW(h,Port,n>10000 && n<=65535?std::to_wstring(n-10000).c_str():L"");}catch(...){SetDlgItemTextW(h,Port,L"");}

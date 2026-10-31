@@ -370,18 +370,19 @@ void AiPetPane::Tick() {
         (Desktop() ? IsWindowEnabled(window_) : IsWindowEnabled(parent_) && !IsIconic(parent_));
     const auto now = GetTickCount64();
     sample_ = model_.At(now, present);
-    const double distance = roaming_.Step(now, present && model_.CanRoam() && !dragging_ && !hover_ && !interacting_);
+    double distance = roaming_.Step(now, present && model_.CanRoam() && !dragging_ && !hover_ && !interacting_ && now>=roamTurnUntil_);
     walking_ = distance > 0;
     if (walking_) {
         RECT bounds{}; GetWindowRect(window_, &bounds);
         MONITORINFO monitor{sizeof(monitor)};
         GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&monitor);
-        if (bounds.left <= monitor.rcWork.left+D(12)) roamDirection_=1;
-        if (bounds.right >= monitor.rcWork.right-D(12)) roamDirection_=-1;
+        if ((roamDirection_<0 && bounds.left<=monitor.rcWork.left+D(12)) ||
+            (roamDirection_>0 && bounds.right>=monitor.rcWork.right-D(12))) {
+            roamDirection_=-roamDirection_;roamTurnUntil_=now+600;distance=0;walking_=false;
+        }
         roamOffsetX_ += distance * roamDirection_ * dpi_/96.0;
         PlaceDesktop();
-        sample_.pose = roaming_.Pose();
-        sample_.label.clear();
+        if (walking_) { sample_.pose = roaming_.Pose(); sample_.label.clear(); }
     }
     if (present) {
         if (desktopMode_) PaintDesktop();
