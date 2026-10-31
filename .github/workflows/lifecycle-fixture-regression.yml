@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: cd27a1fab096a5f75d0b581a1b866eeee2a72992
+          ref: 5b950a3310d8f7b09b5771668af7cd5ef923b278
       - uses: actions/download-artifact@v4
         with:
           name: SerialCtl-Win7-portable
