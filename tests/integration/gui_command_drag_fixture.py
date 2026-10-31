@@ -13,6 +13,7 @@ import os
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
+import struct
 import sys
 import time
 import traceback
@@ -103,8 +104,27 @@ def main():
     require(not windows(), 'A SerialCtl main window already exists; refusing fixture')
     backup_taken = created = False
     process = None
+    original_display = None
     failure = None
     try:
+        if args.scenario=='endurance':
+            # Ephemeral hosted display only, same native mechanism as smoke-ui.
+            user.EnumDisplaySettingsW.argtypes=(w.LPCWSTR,w.DWORD,c.c_void_p)
+            user.EnumDisplaySettingsW.restype=w.BOOL
+            user.ChangeDisplaySettingsW.argtypes=(c.c_void_p,w.DWORD)
+            user.ChangeDisplaySettingsW.restype=w.LONG
+            mode=c.create_string_buffer(220)
+            struct.pack_into('<H',mode,68,220)
+            require(user.EnumDisplaySettingsW(None,0xffffffff,mode),'Cannot read hosted display mode')
+            original_display=mode.raw
+            report['display_before']=[user.GetSystemMetrics(0),user.GetSystemMetrics(1)]
+            for display_width,display_height in ((1920,1080),(1280,1024)):
+                struct.pack_into('<I',mode,72,0x00180000)
+                struct.pack_into('<II',mode,172,display_width,display_height)
+                if user.ChangeDisplaySettingsW(mode,0)==0:break
+            report['display_during']=[user.GetSystemMetrics(0),user.GetSystemMetrics(1)]
+            require(report['display_during'][0]>=1280 and report['display_during'][1]>=900,
+                    'Hosted desktop cannot fit declared actual drag and visible pet fixture')
         with zipfile.ZipFile(args.archive) as archive:
             for item in archive.infolist():
                 name = item.filename.replace('\\', '/')
@@ -176,6 +196,11 @@ def main():
                 process.kill()
                 process.wait(timeout=10)
         try:
+            if original_display:
+                mode=c.create_string_buffer(original_display)
+                require(user.ChangeDisplaySettingsW(mode,0)==0,'Cannot restore hosted display mode')
+                report['display_restored']=[user.GetSystemMetrics(0),user.GetSystemMetrics(1)]==report['display_before']
+                require(report['display_restored'],'Hosted display geometry was not restored')
             if created:
                 require(marker.is_file(), 'Fixture marker missing; refusing to delete unknown configuration')
                 shutil.rmtree(actual_config)
