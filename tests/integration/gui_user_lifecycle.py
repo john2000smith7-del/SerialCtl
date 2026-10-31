@@ -264,7 +264,63 @@ def verify_mouse_session_activation(listing,thread,theme,power_row,power_pane):
                                   'theme':theme,'expected_selection':target,'expected_focus_control':107,
                                   'actual':state})
     return passed
+def park_desktop_pet():
+    """Real fixture setup: keep the topmost pet enabled, outside list-test geometry."""
+    from types import SimpleNamespace
+    from desktop_user_actions import DesktopActions
+    pet=u.FindWindowExW(None,None,'SerialCtlAiPetPane',None)
+    if not pet or not u.IsWindowVisible(pet):
+        return
+    owner=w.DWORD()
+    u.GetWindowThreadProcessId(pet,ctypes.byref(owner))
+    assert owner.value==pid,'Desktop pet belongs to another application instance'
+    desktop=DesktopActions(SimpleNamespace(window=window,pid=pid,
+        output=str(pathlib.Path(sys.argv[4]).parent),prefix='gui-lifecycle-pet',mode='desktop'))
+    bounds=desktop.rect(pet)
+    main=desktop.rect(window)
+    screen=desktop.desktop_rect()
+    width=bounds[2]-bounds[0]
+    height=bounds[3]-bounds[1]
+    # The approved birth anchor is above the status area and can cover list rows.
+    # A user moves this independent topmost window before operating those rows.
+    # Do that once here, never synthesize a command or relax a control hit test.
+    if main[2]+width+24<=screen[2]:
+        left=main[2]+12
+    elif main[0]-width-24>=screen[0]:
+        left=main[0]-width-12
+    else:
+        raise AssertionError('Lifecycle fixture requires visible desktop space beside the main window')
+    start=None
+    for fy in (.75,.65,.85,.55):
+        for fx in (.5,.4,.6):
+            point=(bounds[0]+round(width*fx),bounds[1]+round(height*fy))
+            if u.WindowFromPoint(w.POINT(*point))==pet:
+                start=point
+                break
+        if start:break
+    assert start,'Cannot hit the visible desktop pet body for real fixture dragging'
+    desktop.capture('before-parking')
+    desktop.move_mouse(start)
+    time.sleep(.08)
+    assert u.WindowFromPoint(w.POINT(*start))==pet,'Pet drag start was covered'
+    try:
+        desktop.drag('park-pet-beside-main',start,(start[0]+left-bounds[0],start[1]))
+        after=desktop.rect(pet)
+        assert abs(after[0]-left)<=3,'Actual mouse did not move the desktop pet'
+        assert after[2]<=main[0] or after[0]>=main[2],'Parked desktop pet still covers the main window'
+        assert u.IsWindowVisible(pet),'Parking hid the desktop pet'
+        desktop.report['status']='PASS'
+        input_events.append({'action':'park-desktop-pet','hwnd':int(pet),'before':bounds,
+            'after':after,'method':'real system mouse drag; enabled/topmost preference unchanged',
+            'desktop_frames':[frame['path'] for frame in desktop.frames]})
+    finally:
+        desktop.flush_frames()
+    u.SetCursorPos((main[0]+main[2])//2,main[1]+60)
+    u.SetForegroundWindow(window)
+    wait(lambda:u.GetForegroundWindow()==window,2)
+
 def run(c):
+    park_desktop_pet()
     count=lambda:len([r for r in c.resources()['resources'] if r['kind']=='cmd' and r['connected']])
     baseline=count()
     listing=u.GetDlgItem(window,106)
