@@ -590,8 +590,17 @@ foreach ($architecture in @('x64')) {
             }
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-collapsed"
             Click-Control $application.MainWindowHandle 125
-            Start-Sleep -Milliseconds 300
-            if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))) { throw 'AI monitor header did not expand.' }
+            $expandUntil = [DateTime]::UtcNow.AddSeconds(2)
+            do {
+                Start-Sleep -Milliseconds 25
+                $expanded = [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))
+            } while (-not $expanded -and [DateTime]::UtcNow -lt $expandUntil)
+            if (-not $expanded) {
+                Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-expand-failed"
+                $toggleCaption = New-Object Text.StringBuilder(64)
+                [SerialCtlUiSmoke]::GetWindowText([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,125),$toggleCaption,64) | Out-Null
+                throw "AI monitor header did not expand; toggle=$toggleCaption"
+            }
             if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))) { throw 'AI exposed unselected terminal.' }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
             [SerialCtlUiSmoke]::AssertAiHeader($application.MainWindowHandle)
