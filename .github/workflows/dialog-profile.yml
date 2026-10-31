@@ -38,11 +38,11 @@ jobs:
           $env:SERIALCTL_DIALOG_SAMPLES = '6'
           $config = Join-Path $env:APPDATA 'SerialCtl'
           New-Item -ItemType Directory -Path $config -Force | Out-Null
-          foreach ($variant in @('baseline','skip-readback','memory-metrics','both')) {
-            Remove-Item Env:SERIALCTL_PROFILE_SKIP_READBACK -ErrorAction SilentlyContinue
-            Remove-Item Env:SERIALCTL_PROFILE_MEMORY_METRICS -ErrorAction SilentlyContinue
-            if ($variant -in @('skip-readback','both')) { $env:SERIALCTL_PROFILE_SKIP_READBACK = '1' }
-            if ($variant -in @('memory-metrics','both')) { $env:SERIALCTL_PROFILE_MEMORY_METRICS = '1' }
+          foreach ($variant in @('baseline','region-cache','glyph-cache','both')) {
+            Remove-Item Env:SERIALCTL_PROFILE_REGION_CACHE -ErrorAction SilentlyContinue
+            Remove-Item Env:SERIALCTL_PROFILE_GLYPH_CACHE -ErrorAction SilentlyContinue
+            if ($variant -in @('region-cache','both')) { $env:SERIALCTL_PROFILE_REGION_CACHE = '1' }
+            if ($variant -in @('glyph-cache','both')) { $env:SERIALCTL_PROFILE_GLYPH_CACHE = '1' }
             foreach ($theme in @('light','dark')) {
               Write-Host "PROFILE_VARIANT=$variant/$theme"
               Set-Content (Join-Path $config 'settings.ini') "[Layout]`r`nRightPanelCollapsed=0`r`n[Pet]`r`nEnabled=0" -Encoding ASCII
@@ -50,8 +50,8 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Segmented profile failed for $variant/$theme" }
             }
           }
-          Remove-Item Env:SERIALCTL_PROFILE_SKIP_READBACK -ErrorAction SilentlyContinue
-          Remove-Item Env:SERIALCTL_PROFILE_MEMORY_METRICS -ErrorAction SilentlyContinue
+          Remove-Item Env:SERIALCTL_PROFILE_REGION_CACHE -ErrorAction SilentlyContinue
+          Remove-Item Env:SERIALCTL_PROFILE_GLYPH_CACHE -ErrorAction SilentlyContinue
           . ./scripts/common.ps1
           $directory = Get-SerialCtlBuildDirectory -Architecture x64
           ctest --test-dir $directory -C Release --output-on-failure -R '^(ui_combo_paint|ui_dialog_viewport)$'

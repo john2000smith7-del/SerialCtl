@@ -6,10 +6,10 @@
 namespace serialctl { namespace dialog_timing {
 enum Stage { Init, Configure, FieldStyle, ComboPopup, ComboEdit, Layout,
              ComboPaint, CheckPaint, Rounded, ChildPaint, Viewport, PopupAttach, FontMetrics, PopupRegion,
-             BufferInit, BufferRead, BufferPresent, ComboHeight, Count };
+             BufferInit, BufferRead, BufferPresent, ComboHeight, RegionAll, Glyph, Count };
 inline constexpr const wchar_t *Names[] = {L"Init",L"Configure",L"FieldStyle",L"ComboPopup",L"ComboEdit",L"Layout",
     L"ComboPaint",L"CheckPaint",L"Rounded",L"ChildPaint",L"Viewport",L"PopupAttach",L"FontMetrics",L"PopupRegion",
-    L"BufferInit",L"BufferRead",L"BufferPresent",L"ComboHeight"};
+    L"BufferInit",L"BufferRead",L"BufferPresent",L"ComboHeight",L"RegionAll",L"Glyph"};
 struct Totals { LONGLONG ticks = 0, own = 0; unsigned calls = 0; };
 struct Trace { HWND window = nullptr; unsigned generation = 0; std::array<Totals,Count> totals{}; };
 inline thread_local Trace trace;
