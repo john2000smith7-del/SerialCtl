@@ -143,7 +143,7 @@ def main():
         width = user.GetSystemMetrics(0)
         height = user.GetSystemMetrics(1)
         require(width >= 980 and height >= 620, 'Interactive CI desktop is too small')
-        require(user.MoveWindow(main_window, 0, 0, min(width, 1200), min(height - 30, 850), True),
+        require(user.MoveWindow(main_window, 0, 0, min(width, 1200), min(height - 30, 760 if args.scenario=='endurance' else 850), True),
                 'Could not size production window within the visible desktop')
         user.SetForegroundWindow(main_window)
         time.sleep(.3)

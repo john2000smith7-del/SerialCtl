@@ -122,8 +122,10 @@ class Endurance(DesktopActions):
         require(pid.value==self.args.pid,'Pet belongs to a different instance')
         before=self.rect(pet);main=self.rect(self.window);screen=self.desktop_rect()
         width,height=before[2]-before[0],before[3]-before[1]
-        left=main[2]+12
-        require(left+width+12<=screen[2],'No clear desktop area for enabled pet fixture')
+        left,top=main[0]+40,main[3]+12
+        if top+height+48>screen[3]:
+            left,top=main[2]+12,main[1]+120
+            require(left+width+12<=screen[2],'No clear desktop area for enabled pet fixture')
         start=None
         for fy in (.75,.65,.85,.55):
             for fx in (.5,.4,.6):
@@ -139,11 +141,11 @@ class Endurance(DesktopActions):
         try:
             wait(lambda:capture()==pet,2)
             for i in range(1,9):
-                self.move_mouse((start[0]+round((left-before[0])*i/8),start[1]));time.sleep(.02)
-            wait(lambda:abs(self.rect(pet)[0]-left)<=3,2)
+                self.move_mouse((start[0]+round((left-before[0])*i/8),start[1]+round((top-before[1])*i/8)));time.sleep(.02)
+            wait(lambda:abs(self.rect(pet)[0]-left)<=3 and abs(self.rect(pet)[1]-top)<=3,2)
         finally:self.button(False)
         wait(lambda:capture()!=pet,2)
-        require(self.user.IsWindowVisible(pet) and self.rect(pet)[0]>=main[2],'Pet fixture hid the pet or still covers main')
+        require(self.user.IsWindowVisible(pet) and (self.rect(pet)[0]>=main[2] or self.rect(pet)[1]>=main[3]),'Pet fixture hid the pet or still covers main')
         self.capture('pet-after-real-drag');self.flush_frames()
         self.report['pet_fixture']={'before':before,'after':self.rect(pet),'input':'one real drag after observed native capture',
                                     'enabled_and_visible':True,'position_only':'Test-account fixture; topmost/roaming preferences unchanged'}
