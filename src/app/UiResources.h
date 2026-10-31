@@ -6,6 +6,8 @@
 #include <propidl.h>
 #include <gdiplus.h>
 // clang-format on
+#include <array>
+#include <new>
 #include <cstdlib>
 #include <cstring>
 #include <list>
@@ -21,6 +23,7 @@ struct UiResourceBitmap {
     std::vector<unsigned char> alpha;
     unsigned width = 0;
     std::unique_ptr<Gdiplus::Bitmap> bitmap;
+    std::array<std::unique_ptr<Gdiplus::Bitmap>,27> glyphs;
     explicit UiResourceBitmap(int id) {
         const auto module = GetModuleHandleW(nullptr);
         const auto resource = FindResourceW(module, MAKEINTRESOURCEW(id), RT_RCDATA);
@@ -82,7 +85,7 @@ inline void UiResourceTint(Gdiplus::ImageAttributes &attributes, COLORREF color)
     attributes.SetColorMatrix(&matrix);
     attributes.SetWrapMode(Gdiplus::WrapModeTileFlipXY);
 }
-inline bool UiResourceGlyph(HDC dc, const RECT &rect, COLORREF color, int index) {
+inline bool UiResourceGlyphDirect(HDC dc, const RECT &rect, COLORREF color, int index) {
     auto &resource = UiResource(2012);
     if (!resource.bitmap || index < 0 || index >= 27)
         return false;
@@ -95,6 +98,62 @@ inline bool UiResourceGlyph(HDC dc, const RECT &rect, COLORREF color, int index)
                        Gdiplus::Rect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top), index * 96,
                        0, 96, 96, Gdiplus::UnitPixel, &attributes);
     return true;
+}
+struct UiGlyphSurface {
+    HDC dc=nullptr; HBITMAP bitmap=nullptr; HGDIOBJ previous=nullptr;
+    int width=0,height=0,index=0; COLORREF color=0;
+    ~UiGlyphSurface() { if(previous)SelectObject(dc,previous);if(bitmap)DeleteObject(bitmap);if(dc)DeleteDC(dc); }
+    size_t Bytes()const{return static_cast<size_t>(width)*height*4;}
+};
+inline bool UiResourceGlyphCached(HDC dc,const RECT &rect,COLORREF color,int index) {
+    const auto wideWidth=static_cast<long long>(rect.right)-rect.left;
+    const auto wideHeight=static_cast<long long>(rect.bottom)-rect.top;
+    if(!dc || wideWidth<=0 || wideHeight<=0 || wideWidth>512 || wideHeight>512) return false;
+    auto &resource=UiResource(2012);
+    if(!resource.bitmap || index<0 || index>=27)return false;
+    if(GetMapMode(dc)!=MM_TEXT || GetGraphicsMode(dc)!=GM_COMPATIBLE || GetLayout(dc)!=0)return false;
+    const int width=static_cast<int>(wideWidth),height=static_cast<int>(wideHeight);
+    static thread_local std::list<std::unique_ptr<UiGlyphSurface>> cache;
+    auto found=std::find_if(cache.begin(),cache.end(),[&](const auto &a){return a->width==width && a->height==height && a->index==index && a->color==color;});
+    if(found!=cache.end())cache.splice(cache.begin(),cache,found);
+    else {
+        // GDI+ color transforms on the complete atlas are costly even for a
+        // small source rectangle. Lazily retain each original 96px glyph, then
+        // tint/scale only that glyph. This also keeps first-open cache misses fast.
+        auto &glyph=resource.glyphs[static_cast<size_t>(index)];
+        if(!glyph) {
+            glyph.reset(resource.bitmap->Clone(index*96,0,96,96,PixelFormat32bppPARGB));
+            if(!glyph || glyph->GetLastStatus()!=Gdiplus::Ok){glyph.reset();return false;}
+        }
+        auto asset=std::make_unique<UiGlyphSurface>();asset->width=width;asset->height=height;asset->index=index;asset->color=color;
+        BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=width;info.bmiHeader.biHeight=-height;
+        info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;
+        void *pixels=nullptr;asset->dc=CreateCompatibleDC(dc);asset->bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&pixels,nullptr,0);
+        if(!asset->dc || !asset->bitmap || !pixels)return false;
+        asset->previous=SelectObject(asset->dc,asset->bitmap);
+        if(!asset->previous || asset->previous==HGDI_ERROR){asset->previous=nullptr;return false;}
+        std::memset(pixels,0,asset->Bytes());
+        {
+            Gdiplus::Bitmap surface(width,height,width*4,PixelFormat32bppPARGB,static_cast<BYTE *>(pixels));
+            Gdiplus::Graphics graphics(&surface);graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+            graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+            Gdiplus::ImageAttributes attributes;UiResourceTint(attributes,color);
+            if(graphics.DrawImage(glyph.get(),Gdiplus::Rect(0,0,width,height),0,0,96,96,Gdiplus::UnitPixel,&attributes)!=Gdiplus::Ok)return false;
+        }
+        size_t total=asset->Bytes();for(const auto &a:cache)total+=a->Bytes();
+        while(!cache.empty() && (cache.size()>=192 || total>4*1024*1024)){total-=cache.back()->Bytes();cache.pop_back();}
+        cache.push_front(std::move(asset));
+    }
+    const BLENDFUNCTION blend{AC_SRC_OVER,0,255,AC_SRC_ALPHA};
+    return AlphaBlend(dc,rect.left,rect.top,width,height,cache.front()->dc,0,0,width,height,blend)!=FALSE;
+}
+inline bool UiResourceGlyph(HDC dc,const RECT &rect,COLORREF color,int index) {
+    try {
+        if(UiResourceGlyphCached(dc,rect,color,index))return true;
+    } catch(const std::bad_alloc &) {
+        // The cache is optional. Preserve direct rendering when memory is tight.
+    }
+    return UiResourceGlyphDirect(dc,rect,color,index);
 }
 // Resource glyphs keep their embedded artwork; control geometry is rasterized
 // at the destination DPI to retain subpixel coverage instead of point sampling.

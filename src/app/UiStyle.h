@@ -335,6 +335,8 @@ struct UiComboPopup {
     bool dragging = false;
     int dragOffset = 0;
     bool ownsCapture = false;
+    SIZE regionSize{};
+    int regionDpi = 0;
     int wheelRemainder = 0;
 };
 struct UiComboScroll {
@@ -363,16 +365,31 @@ inline bool UiComboMetrics(HWND list, const UiFieldStyle &style, UiComboScroll &
     scroll.thumb = {scroll.track.left, y, scroll.track.right, y + thumbHeight};
     return true;
 }
+inline LRESULT CALLBACK UiComboPopupProc(HWND,UINT,WPARAM,LPARAM,UINT_PTR,DWORD_PTR);
 inline void UiComboRegion(HWND list, int dpi) {
     RECT bounds{};
-    GetWindowRect(list, &bounds);
+    if (!GetWindowRect(list, &bounds)) return;
+    const SIZE size{bounds.right-bounds.left,bounds.bottom-bounds.top};
+    UiComboPopup *popup = nullptr;
+    DWORD_PTR reference = 0;
+    // SetWindowRgn sends native WINDOWPOS notifications synchronously. Record
+    // the applied dimensions before calling it, so identical reentrant updates
+    // return immediately while real resize/DPI changes still update the shape.
+    if (GetWindowSubclass(list,UiComboPopupProc,72,&reference)) {
+        popup=reinterpret_cast<UiComboPopup *>(reference);
+        if (popup->regionSize.cx==size.cx && popup->regionSize.cy==size.cy && popup->regionDpi==dpi) return;
+    }
     const int radius = MulDiv(10, dpi, 96);
-    // The integer window region sits OUTSIDE the painted border. Clipping the
-    // antialiased curve to an identical integer region would restore jaggies.
-    HRGN region = CreateRoundRectRgn(-2, -2, bounds.right - bounds.left + 2,
-                                     bounds.bottom - bounds.top + 2, (radius + 2) * 2, (radius + 2) * 2);
-    if (region && !SetWindowRgn(list, region, FALSE))
+    HRGN region = CreateRoundRectRgn(-2,-2,size.cx+2,size.cy+2,(radius+2)*2,(radius+2)*2);
+    if (!region) return;
+    if (popup) { popup->regionSize=size; popup->regionDpi=dpi; }
+    if (!SetWindowRgn(list,region,FALSE)) {
         DeleteObject(region);
+        DWORD_PTR current=0;
+        if(popup && GetWindowSubclass(list,UiComboPopupProc,72,&current) && current==reference) {
+            popup->regionSize={};popup->regionDpi=0;
+        }
+    }
 }
 inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool selected,
                            const UiFieldStyle &style, const UiComboScroll *scroll = nullptr) {

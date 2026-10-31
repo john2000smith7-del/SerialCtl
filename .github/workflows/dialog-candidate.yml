@@ -1,0 +1,66 @@
+name: Dialog performance candidate verification
+on:
+  push:
+    branches: [diag/v2017-candidate]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build normal native code and targeted renderer regressions
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure normal candidate without profiling flags' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile native application and targeted UI regressions' -Arguments @('--build',$directory,'--config','Release','--target','serialctl','ui_glyph_cache_test','ui_viewport_reentry_test','ui_combo_paint_test','ui_dialog_viewport_test','--parallel','2')
+          ctest --test-dir $directory -C Release --output-on-failure -R '^(ui_glyph_cache|ui_viewport_reentry_scroll|ui_viewport_reentry_reset|ui_combo_paint|ui_dialog_viewport)$'
+          if ($LASTEXITCODE -ne 0) { throw 'Native pixels, callback lifetime or first-selection behavior failed' }
+          $candidate = Join-Path $env:RUNNER_TEMP 'native-dialog-candidate'
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Stage diagnostic native runtime outside bin' -Arguments @('--install',$directory,'--config','Release','--prefix',$candidate,'--component','Runtime')
+          Set-Content (Join-Path $candidate 'update.ini') "[update]`r`nurl=" -Encoding ASCII
+          $candidate | Set-Content "$env:RUNNER_TEMP/dialog-candidate-path.txt"
+          cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-bench.exe tests/performance/ConnectionDialogBench.cpp user32.lib ws2_32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile the unchanged real-click stopwatch' }
+      - name: Compare with the exact published V2.0.16 on this desktop
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $reference = Join-Path $env:RUNNER_TEMP 'dialog-reference'
+          New-Item -ItemType Directory -Path $reference -Force | Out-Null
+          gh release download v2.0.16 --repo $env:GITHUB_REPOSITORY --pattern SerialCtl-V2.0.16-Win7-x64.zip --dir $reference
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read official baseline' }
+          $archive = Join-Path $reference 'SerialCtl-V2.0.16-Win7-x64.zip'
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c5609bcdc52753045a90a7839529fa9f9f475067f7d914dcf647030025a47a65') { throw 'Wrong baseline archive' }
+          Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $reference 'app')
+          Set-Content (Join-Path $reference 'app/update.ini') "[update]`r`nurl=" -Encoding ASCII
+          $candidate = (Get-Content "$env:RUNNER_TEMP/dialog-candidate-path.txt").Trim()
+          $config = Join-Path $env:APPDATA 'SerialCtl'
+          New-Item -ItemType Directory -Path $config -Force | Out-Null
+          foreach ($theme in @('light','dark')) {
+            foreach ($kind in @('reference','candidate')) {
+              $payload = if ($kind -eq 'reference') { Join-Path $reference 'app' } else { $candidate }
+              Set-Content (Join-Path $config 'settings.ini') "[Layout]`r`nRightPanelCollapsed=0`r`n[Pet]`r`nEnabled=0" -Encoding ASCII
+              Write-Host "NORMAL_DIALOG_CASE=$kind/$theme"
+              & ./dialog-bench.exe (Join-Path $payload 'serialctl.exe') $theme first-paint | Tee-Object "$env:RUNNER_TEMP/dialog-normal-$kind-$theme.log"
+              if ($LASTEXITCODE -ne 0) { throw "Real-click benchmark failed: $kind/$theme" }
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-dialog-normal-candidate
+          path: ${{ runner.temp }}/dialog-normal-*.log
+          if-no-files-found: warn
