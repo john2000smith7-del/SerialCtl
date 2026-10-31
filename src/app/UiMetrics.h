@@ -30,6 +30,7 @@ inline int MinLeftWidth = 190;
 inline int MaxLeftWidth = 190;
 inline constexpr int MaxResizableLeftWidth96 = 280;
 inline constexpr int StatusViewportHeight96 = 72;
+inline constexpr int StatusHeaderHeight96 = 24;
 inline int MinRightWidth = 260;
 inline int MaxRightWidth = 650;
 inline int CollapsedRightWidth = 48;

@@ -2803,7 +2803,7 @@ void MainWindow::LayoutControls(int width, int height) {
                Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
     batch.Move(disconnectButton_, leftInnerRight - Ui::Scale(56), headerTop, Ui::Scale(56), Ui::CompactHeight, TRUE);
     const int connectionHeight = std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding -
-        Ui::CompactHeight - Ui::Space - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space : 0));
+        Ui::CompactHeight - Ui::Space - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space + Ui::Scale(Ui::StatusHeaderHeight96) : 0));
     const int desiredPetHeight = aiPet_.DesiredHeight();
     const int petHeight = !leftPanelCollapsed_ && !leftPanelAnimating_ && !aiPet_.Desktop() && aiVisible_ && desiredPetHeight &&
         connectionHeight >= Ui::Scale(120) + desiredPetHeight + Ui::Space ? desiredPetHeight : 0;
@@ -2953,7 +2953,7 @@ void MainWindow::PaintWindow(HDC dc) {
         client.right - Ui::Gap, client.bottom - Ui::Gap};
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
     if(!leftPanelCollapsed_ && !leftPanelAnimating_) {
-        const int line=leftCard.bottom-Ui::PanelPadding-Ui::CompactHeight-Ui::Space-statusHeight_-Ui::Space;
+        const int line=leftCard.bottom-Ui::PanelPadding-Ui::CompactHeight-Ui::Space-statusHeight_-Ui::Scale(Ui::StatusHeaderHeight96/2);
         DrawTextSimple(dc,L"状态",{leftCard.left+Ui::PanelPadding,line-Ui::Scale(10),leftCard.left+Ui::PanelPadding+Ui::Scale(32),line+Ui::Scale(10)},colors.muted,smallFont_,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         UiSeparator(dc,leftCard.left+Ui::PanelPadding+Ui::Scale(40),leftCard.right-Ui::PanelPadding,line,colors.border);
     }
