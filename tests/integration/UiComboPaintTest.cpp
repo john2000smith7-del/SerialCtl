@@ -224,6 +224,10 @@ void RunCase(HWND parent, bool ownerDrawn, bool composer = false) {
     Pump();
     COMBOBOXINFO info{sizeof(info)};
     Require(GetComboBoxInfo(combo, &info) && IsWindowVisible(info.hwndList), "Dropdown did not open");
+    // At 200% scaling the native reserved drop may show only two rows. It
+    // correctly scrolls to selected row 2 when opening; reveal row 0 before
+    // asking this immediate-paint test to click that row.
+    SendMessageW(info.hwndList,LB_SETTOPINDEX,0,0);
     RECT row{};
     SendMessageW(info.hwndList, LB_GETITEMRECT, 0, reinterpret_cast<LPARAM>(&row));
     const auto point = MAKELPARAM(10, (row.top + row.bottom) / 2);
