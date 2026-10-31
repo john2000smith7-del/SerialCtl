@@ -6,6 +6,7 @@
 #include <propidl.h>
 #include <gdiplus.h>
 // clang-format on
+#include <array>
 #include <new>
 #include <cstdlib>
 #include <cstring>
@@ -49,7 +50,7 @@ struct UiResourceBitmap {
         bitmap.reset(Gdiplus::Bitmap::FromStream(stream));
         if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok)
             bitmap.reset();
-        if (bitmap && (id == 2010 || id == 2011 || id == 2012)) {
+        if (bitmap && (id == 2010 || id == 2011)) {
             width = bitmap->GetWidth();
             const unsigned height = bitmap->GetHeight();
             Gdiplus::BitmapData data{};
@@ -97,60 +98,43 @@ inline bool UiResourceGlyphDirect(HDC dc, const RECT &rect, COLORREF color, int 
                        0, 96, 96, Gdiplus::UnitPixel, &attributes);
     return true;
 }
-struct UiTintedGlyphAtlas {
-    COLORREF color = 0;
-    std::vector<DWORD> pixels;
+struct UiGlyphSource {
+    int origin = 0;
     std::unique_ptr<Gdiplus::Bitmap> bitmap;
 };
-inline Gdiplus::Bitmap *UiGlyphAtlas(UiResourceBitmap &source, COLORREF color) {
-    // Fixed geometry keeps GDI+'s original source coordinates and resampling.
-    // Only the color transform is cached; changing the source rectangle origin
-    // changes some antialiased edge pixels in GDI+ even with identical artwork.
-    static auto *cache = new std::list<std::unique_ptr<UiTintedGlyphAtlas>>;
-    auto found = std::find_if(cache->begin(), cache->end(),
-        [&](const auto &entry) { return entry->color == color; });
-    if (found != cache->end()) {
-        cache->splice(cache->begin(), *cache, found);
-        return cache->front()->bitmap.get();
+inline const UiGlyphSource *UiGlyphSourceFor(UiResourceBitmap &source, int index) {
+    // GDI+ applies a color matrix to the complete source bitmap even when a
+    // 96px source rectangle selects one icon. Retain guard pixels for bicubic
+    // filtering, but avoid transforming the other 26 icons on every paint.
+    // This fixed artwork cache needs about 1.2MiB, independent of DPI, ink,
+    // theme, window count and repaint count. It is used on the GUI thread.
+    static auto *cache = new std::array<UiGlyphSource, 27>;
+    auto &entry = (*cache)[static_cast<size_t>(index)];
+    if (!entry.bitmap) {
+        constexpr int guard = 8;
+        const int left = std::max(0, index * 96 - guard);
+        const int right = std::min(2592, (index + 1) * 96 + guard);
+        std::unique_ptr<Gdiplus::Bitmap> bitmap(source.bitmap->Clone(left, 0, right - left, 96,
+                                                                   PixelFormat32bppARGB));
+        if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok) return nullptr;
+        entry.origin = index * 96 - left;
+        entry.bitmap = std::move(bitmap);
     }
-    if (!source.width || source.alpha.empty()) return nullptr;
-    const auto height = source.alpha.size() / source.width;
-    auto entry = std::make_unique<UiTintedGlyphAtlas>();
-    entry->color = color;
-    entry->pixels.resize(source.alpha.size());
-    // UiResourceTint uses (channel + .5) / 255; reproduce its byte
-    // rounding before the unchanged GDI+ source-rectangle resampling.
-    const auto channel=[](unsigned value){return std::min(255u,value+1);};
-    const DWORD rgb = (static_cast<DWORD>(channel(GetRValue(color))) << 16) |
-                      (static_cast<DWORD>(channel(GetGValue(color))) << 8) | channel(GetBValue(color));
-    for (size_t i = 0; i < source.alpha.size(); ++i)
-        entry->pixels[i] = (static_cast<DWORD>(source.alpha[i]) << 24) | rgb;
-    entry->bitmap = std::make_unique<Gdiplus::Bitmap>(static_cast<INT>(source.width),
-        static_cast<INT>(height), static_cast<INT>(source.width * 4), PixelFormat32bppARGB,
-        reinterpret_cast<BYTE *>(entry->pixels.data()));
-    if (!entry->bitmap || entry->bitmap->GetLastStatus() != Gdiplus::Ok) return nullptr;
-    size_t total = entry->pixels.size() * sizeof(DWORD);
-    for (const auto &existing : *cache) total += existing->pixels.size() * sizeof(DWORD);
-    while (!cache->empty() && (cache->size() >= 16 || total > 8 * 1024 * 1024)) {
-        total -= cache->back()->pixels.size() * sizeof(DWORD);
-        cache->pop_back();
-    }
-    cache->push_front(std::move(entry));
-    return cache->front()->bitmap.get();
+    return &entry;
 }
 inline bool UiResourceGlyph(HDC dc, const RECT &rect, COLORREF color, int index) {
     auto &resource = UiResource(2012);
     if (!resource.bitmap || index < 0 || index >= 27) return false;
     try {
-        if (auto atlas = UiGlyphAtlas(resource, color)) {
+        if (const auto source = UiGlyphSourceFor(resource, index)) {
             Gdiplus::Graphics graphics(dc);
             graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
             graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
             Gdiplus::ImageAttributes attributes;
-            attributes.SetWrapMode(Gdiplus::WrapModeTileFlipXY);
-            return graphics.DrawImage(atlas,
+            UiResourceTint(attributes, color);
+            return graphics.DrawImage(source->bitmap.get(),
                 Gdiplus::Rect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top),
-                index * 96, 0, 96, 96, Gdiplus::UnitPixel, &attributes) == Gdiplus::Ok;
+                source->origin, 0, 96, 96, Gdiplus::UnitPixel, &attributes) == Gdiplus::Ok;
         }
     } catch (const std::bad_alloc &) {
         // Optional cache allocation must not turn a paint into a process crash.
