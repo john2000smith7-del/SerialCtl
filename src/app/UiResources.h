@@ -111,7 +111,9 @@ inline const UiGlyphSource *UiGlyphSourceFor(UiResourceBitmap &source, int index
     static auto *cache = new std::array<UiGlyphSource, 27>;
     auto &entry = (*cache)[static_cast<size_t>(index)];
     if (!entry.bitmap) {
-        constexpr int guard = 8;
+        // Keep the source origin aligned for the common 16/24/32/48px
+        // scales (96/size denominators divide 12), reducing GDI+ phase rounding.
+        constexpr int guard = 12;
         const int left = std::max(0, index * 96 - guard);
         const int right = std::min(2592, (index + 1) * 96 + guard);
         std::unique_ptr<Gdiplus::Bitmap> bitmap(source.bitmap->Clone(left, 0, right - left, 96,
