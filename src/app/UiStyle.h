@@ -426,7 +426,7 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
                                                                                   : colors.border;
     const bool composer = GetPropW(combo, L"SerialCtl.Composer") != nullptr;
     if (!composer)
-        UiBox(dc, bounds, colors.field, border, d(10));
+        UiBox(dc, bounds, colors.field, border, GetPropW(combo,L"SerialCtl.Capsule")?UiCapsuleRadius(bounds):d(10));
     else if (focused)
         UiButtonKeyboardFocus(dc, bounds, ODS_FOCUS, style.dpi, UiFocusInk(*style.dark));
     const int selected = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));

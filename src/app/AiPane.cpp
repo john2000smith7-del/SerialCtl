@@ -430,6 +430,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
         UiStyleField(c, &style_);
     }
 
+    SetPropW(Control(Target), L"SerialCtl.Capsule", reinterpret_cast<HANDLE>(1));
     SetPropW(Control(Target), L"SerialCtl.CompactLabel", reinterpret_cast<HANDLE>(&compactTargetLabel_));
     Child(L"STATIC", L"模型未获取", Model, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS);
     Child(L"BUTTON", L"发送", Send, BS_OWNERDRAW | WS_TABSTOP);
@@ -462,6 +463,7 @@ HWND AiPane::Child(const wchar_t *type, const wchar_t *text, int id, DWORD extra
 void AiPane::Theme(bool dark) {
     dark_ = dark;
     const auto c = UiAiTheme(dark);
+    SetPropW(Control(Target),L"SerialCtl.Backdrop",reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(c.field)+1));
     if (surfaceBrush_)
         DeleteObject(surfaceBrush_);
     if (fieldBrush_)
