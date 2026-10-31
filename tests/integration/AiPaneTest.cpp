@@ -5,6 +5,8 @@
 #include <cmath>
 #include <gdiplus.h>
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <stdexcept>
 
 
@@ -236,6 +238,35 @@ struct AiPaneTestAccess {
                 throw std::runtime_error("Canceling workspace dialog changed the current conversation");
         }
         pane.dpi_=dpi;pane.style_.dpi=dpi;pane.Theme(dark);
+    }
+    static void AuditLayoutLoad(AiPane &pane) {
+        // Controlled worst-case expanded history; no SSH/model/network claim.
+        ai::Json rows=ai::Json::array();
+        auto elapsed=[](auto begin) {
+            return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
+        };
+        for (int count : {128,1000,2000}) {
+            pane.NewConversation();
+            SetWindowPos(pane.Handle(),nullptr,0,0,1000,650,SWP_NOZORDER|SWP_SHOWWINDOW);
+            pane.deferReflow_=true;
+            for (int i=0;i<count;++i) pane.Add(L"AI",std::wstring(1000,L'x'),"layout-audit-"+std::to_string(i));
+            pane.deferReflow_=pane.reflowPending_=pane.appendPending_=false;
+            auto begin=std::chrono::steady_clock::now();pane.Reflow();const auto cold=elapsed(begin);
+            begin=std::chrono::steady_clock::now();pane.Reflow();const auto warm=elapsed(begin);
+            begin=std::chrono::steady_clock::now();
+            SetWindowPos(pane.Handle(),nullptr,0,0,700,650,SWP_NOZORDER);
+            const auto resize=elapsed(begin);
+            if (pane.messages_.size()!=static_cast<size_t>(count)) throw std::runtime_error("Layout audit input exceeded real display limit");
+            const ai::Json row{{"messages",count},{"utf16_bytes",pane.messageBytes_},{"initial_reflow_ms",cold},
+                {"same_width_reflow_ms",warm},{"native_resize_1000_to_700_ms",resize}};
+            rows.push_back(row);std::cout<<"AI_LAYOUT_AUDIT "<<row.dump()<<'\n';
+        }
+        wchar_t directory[32768]{};
+        if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR",directory,32768))
+            std::ofstream(std::filesystem::path(directory)/L"ai-expanded-history-layout.json")<<ai::Json{
+                {"scope","Controlled native AI pane, expanded history; synchronous layout time, not actual mouse latency"},
+                {"rows",rows}}.dump(2);
+        pane.NewConversation();
     }
     static void Run(AiPane &pane) {
         // The connection form must paint before loading cached directory rows,
@@ -767,7 +798,7 @@ struct AiPaneTestAccess {
     }
 };
 } // namespace serialctl
-int main() {
+int main(int argc, char **argv) {
     using namespace serialctl;
     SetProcessDPIAware();
     INITCOMMONCONTROLSEX common{sizeof(common), ICC_STANDARD_CLASSES};
@@ -783,7 +814,8 @@ int main() {
     {
         AiPane pane;
         try {
-            CheckHostKeyDialogs(parent, font);
+            const bool layoutAudit=argc>1 && std::string(argv[1])=="--layout-audit";
+            if(!layoutAudit) CheckHostKeyDialogs(parent, font);
             if (!pane.Create(parent, font, false, [](const std::string &method, const ai::Json &) {
                     if (method == "sessions")
                         return ai::Json::array({{{"id", "session-7"}, {"name", "192.0.2.20 / COM3"}}});
@@ -791,7 +823,8 @@ int main() {
                 }))
                 throw std::runtime_error("Cannot create native AI pane");
             SetWindowPos(pane.Handle(), nullptr, 0, 0, 1000, 650, SWP_NOZORDER | SWP_SHOWWINDOW);
-            AiPaneTestAccess::Run(pane);
+            if(layoutAudit) AiPaneTestAccess::AuditLayoutLoad(pane);
+            else AiPaneTestAccess::Run(pane);
             std::cout << "AiPane: explicit remote selection, wheel/key/scrollbar history navigation, streaming scroll "
                          "anchoring, fixed composer geometry and both themes passed (Win32 UI smoke test)\n";
         } catch (const std::exception &e) {

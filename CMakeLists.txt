@@ -304,6 +304,8 @@ if(BUILD_TESTING)
     add_dependencies(ai_pane_test ai_fake_plink)
     add_test(NAME ai_pane COMMAND ai_pane_test)
     set_tests_properties(ai_pane PROPERTIES TIMEOUT 45)
+    add_test(NAME ai_pane_layout_audit COMMAND ai_pane_test --layout-audit)
+    set_tests_properties(ai_pane_layout_audit PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
     # Exercise the actual desktop device callback, not a second tool implementation.
     get_target_property(SERIALCTL_DEVICE_TEST_SOURCES serialctl SOURCES)
     list(REMOVE_ITEM SERIALCTL_DEVICE_TEST_SOURCES src/app/App.cpp "${YY_THUNKS_OBJECT}")

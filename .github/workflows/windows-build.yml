@@ -276,3 +276,72 @@ jobs:
           name: SerialCtl-UI-review-${{ matrix.page }}
           path: review-${{ matrix.page }}/
           retention-days: 30
+
+  endurance:
+    name: Packaged frequent-click and layout endurance
+    needs: build
+    if: ${{ !inputs.evidence_run }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: bin
+      - name: Exercise the exact verified package with real mouse input
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install imageio-ffmpeg==0.6.0
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot provision lossless screen capture' }
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archive.Count -ne 1) { throw 'Expected one exact verified package' }
+          python tests/integration/gui_command_drag_fixture.py --scenario endurance --archive $archive[0].FullName --output "$env:RUNNER_TEMP/serialctl-endurance"
+          if ($LASTEXITCODE -ne 0) { throw 'Actual interaction endurance failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-packaged-endurance
+          path: |
+            ${{ runner.temp }}/serialctl-endurance/*.json
+            ${{ runner.temp }}/serialctl-endurance/*.jsonl
+            ${{ runner.temp }}/serialctl-endurance/*.png
+            ${{ runner.temp }}/serialctl-endurance/*.mkv
+            ${{ runner.temp }}/serialctl-endurance/*.txt
+            ${{ runner.temp }}/serialctl-endurance/*.log
+          if-no-files-found: warn
+
+  viewport-address-sanitizer:
+    name: Native callback destruction memory safety
+    if: ${{ !inputs.evidence_run }}
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile actual native callback probe with AddressSanitizer
+        shell: cmd
+        run: cl /nologo /std:c++17 /EHsc /O2 /Zi /fsanitize=address /MT /DUNICODE /D_UNICODE /DNOMINMAX /I src/app /Fe:viewport-lifetime.exe tests/integration/UiViewportReentryProbe.cpp user32.lib gdi32.lib gdiplus.lib comctl32.lib msimg32.lib ole32.lib /link /INCREMENTAL:NO
+      - name: Verify owner destruction during scroll and reset
+        shell: powershell
+        env:
+          ASAN_OPTIONS: abort_on_error=1
+        run: |
+          $ErrorActionPreference = 'Continue'
+          foreach ($mode in @('scroll','reset')) {
+            $lines = & ./viewport-lifetime.exe $mode 2>&1
+            $code = $LASTEXITCODE
+            $lines | Set-Content "viewport-lifetime-$mode.txt" -Encoding UTF8
+            $lines | Write-Host
+            if ($code -ne 0) { throw "Native lifetime probe failed: $mode / $code" }
+            if (($lines -join "`n") -match 'AddressSanitizer:') { throw 'Sanitizer found a callback lifetime error' }
+          }
+          $global:LASTEXITCODE = 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-viewport-address-sanitizer
+          path: viewport-lifetime*.txt

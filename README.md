@@ -2,7 +2,7 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-当前源码版本：`V2.0.16`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。正式便携包须通过 MSVC 与 Windows 兼容性检查后生成。
+当前源码版本：`V2.0.17`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。正式便携包须通过 MSVC 与 Windows 兼容性检查后生成。
 
 ## 主要功能
 
@@ -150,7 +150,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 构建流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中保留完整 ZIP；正式签名完成后，交付其配套 `update.json`：
 
 ```text
-SerialCtl-V2.0.16-Win7-x64.zip
+SerialCtl-V2.0.17-Win7-x64.zip
 update.json
 ```
 
@@ -191,3 +191,5 @@ V2.0.0 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接�
 统一协议和客户端说明见 [WEBSOCKET-PROTOCOL.md](docs/architecture/WEBSOCKET-PROTOCOL.md)，本轮状态见 [V1.0.6-ACCEPTANCE.md](docs/testing/V1.0.6-ACCEPTANCE.md)。
 
 V2.0.16 增加平台工号模式（实际 SSH 端口=10000+工号），保留通用直连端口语义。SSH 可选在实际会话建立后保存连接历史；密码不写入历史。宠物增加独立“桌面漫游”开关，右键或 Shift+F10 进入菜单。main 为唯一正式主线，发布资产绑定成功 main 构建的源码提交及原身份签名。
+
+V2.0.17 修复弹窗下拉列表区域的同步布局反馈，缓存带滤波边缘的原始图标切片以减少首帧绘制工作，并修复滚动视口在同步销毁窗口回调后的访问。完整验收与性能结果见 `docs/audit/V2.0.17-PERFORMANCE-STABILITY.md`。
