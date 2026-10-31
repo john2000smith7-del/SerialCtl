@@ -223,6 +223,8 @@ class Endurance(DesktopActions):
                 require(final['user']-baseline['user']<=32,'Native USER windows leaked through repeated interactions')
                 require(final['handles']-baseline['handles']<=64,'Process handles leaked through repeated interactions')
                 self.capture('theme-final');self.flush_frames()
+            require(self.drag_evidence and all(row['stdout_changed_while_held'] for row in self.drag_evidence),
+                    'Actual terminal stdout stopped advancing during a held drag')
             final_resources=self.sample_resources('whole-audit-end')
             for key,allowance in (('gdi',256),('user',32),('handles',64)):
                 require(final_resources[key]-initial_resources[key]<=allowance,'Whole-audit native resource growth exceeded the fixed-cache allowance: '+key)

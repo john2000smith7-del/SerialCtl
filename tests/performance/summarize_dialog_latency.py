@@ -12,7 +12,11 @@ def percentile(values, fraction):
 
 def summarize(path):
     dialogs={name:[] for name in ('ssh','serial','telnet','remote','ai','settings')}
-    for line in path.read_text(encoding='utf-8-sig').splitlines():
+    raw=path.read_bytes()
+    # Windows PowerShell 5.1 Tee-Object writes BOM-marked UTF-16; pwsh
+    # and extracted CI logs use UTF-8. Decode strictly, never drop samples.
+    encoding='utf-16' if raw.startswith((b'\xff\xfe',b'\xfe\xff')) else 'utf-8-sig'
+    for line in raw.decode(encoding).splitlines():
         parts=line.strip().split(',')
         if parts[0] not in dialogs:continue
         if len(parts)<4:raise RuntimeError('Invalid stopwatch row: '+line)
