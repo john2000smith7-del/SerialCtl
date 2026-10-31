@@ -90,11 +90,16 @@ class Endurance(DesktopActions):
         return found
 
     def open_cancel(self,identifier,background_burst=False):
+        started=time.perf_counter()
         self.hit_click(self.control(identifier))
         wait(lambda:len(self.modal_windows())==1)
         dialog=self.modal_windows()[0]
         wait(lambda:int(self.user.GetPropW(dialog,'SerialCtl.DialogFirstPaint') or 0)>0 and self.user.IsWindowEnabled(self.user.GetDlgItem(dialog,2)))
+        ready_ms=round((time.perf_counter()-started)*1000,3)
+        require(ready_ms<500,'A modal was unresponsive for more than 500ms under continuous CMD output')
         require(self.user.GetForegroundWindow()==dialog,'The opened modal did not receive foreground')
+        if not any(row['control']==identifier and row['theme']==self.args.theme for row in self.dialogs):
+            self.capture('modal-'+str(identifier));self.flush_frames()
         if background_burst:
             r=self.rect(self.control(identifier));point=((r[0]+r[2])//2,(r[1]+r[3])//2)
             dr=self.rect(dialog)
@@ -108,7 +113,7 @@ class Endurance(DesktopActions):
         wait(lambda:not self.user.IsWindow(dialog))
         wait(lambda:self.user.GetForegroundWindow()==self.window)
         ms=self.responsive();self.responses.append(ms)
-        self.dialogs.append({'control':identifier,'response_ms':ms,'background_burst':background_burst})
+        self.dialogs.append({'control':identifier,'theme':self.args.theme,'observed_ready_ms':ready_ms,'response_ms':ms,'background_burst':background_burst})
 
     def park_visible_pet(self):
         pet=self.user.FindWindowExW(None,None,'SerialCtlAiPetPane',None)
@@ -163,6 +168,7 @@ class Endurance(DesktopActions):
             producer=b'powershell -NoProfile -Command "1..60000 | ForEach-Object {Write-Output (\'SERIALCTL_PAINT_\'+($_ % 1000).ToString(\'D3\')+\' endurance stdout\'); Start-Sleep -Milliseconds 20}"\r\n'
             client.input(cmd,producer)
         wait(lambda:int(self.user.GetPropW(self.control(107),'SerialCtl.PaintProbe') or 0)>0,10)
+        initial_resources=self.sample_resources('whole-audit-start')
         self.prepare_full_window_drag()
         import imageio_ffmpeg
         ffmpeg=imageio_ffmpeg.get_ffmpeg_exe()
@@ -210,6 +216,9 @@ class Endurance(DesktopActions):
                 require(final['user']-baseline['user']<=32,'Native USER windows leaked through repeated interactions')
                 require(final['handles']-baseline['handles']<=64,'Process handles leaked through repeated interactions')
                 self.capture('theme-final');self.flush_frames()
+            final_resources=self.sample_resources('whole-audit-end')
+            for key,allowance in (('gdi',256),('user',32),('handles',64)):
+                require(final_resources[key]-initial_resources[key]<=allowance,'Whole-audit native resource growth exceeded the fixed-cache allowance: '+key)
             require(max(self.responses)<500,'UI response probe exceeded 500ms during bounded endurance')
             self.hit_click(self.control(302))
             time.sleep(.3)
