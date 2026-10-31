@@ -12,6 +12,8 @@ from types import SimpleNamespace
 import uuid
 import zipfile
 from desktop_user_actions import DesktopActions, RECT, POINT, require
+from gui_paint_user_actions import ScreenRecording
+import imageio_ffmpeg
 
 
 def main():
@@ -105,12 +107,33 @@ def main():
             desktop.capture(theme+'-test-locked');close(settings)
             desktop.click_control(301);time.sleep(.2)
             user.MoveWindow(hwnd,0,0,980,680,True);time.sleep(.15)
+            # An independent sampler records every screen frame while the input
+            # driver captures named checkpoints, including PNG encoding pauses.
+            powers=[]
+            @callback
+            def find_power(child,_):
+                name=c.create_unicode_buffer(128);user.GetClassNameW(child,name,128)
+                if name.value=='SerialCtlPowerPane':powers.append(child)
+                return True
+            desktop.user.EnumChildWindows(hwnd,find_power,0)
+            require(powers,'Power pane is missing for continuous capture')
+            desktop.args.theme=theme;desktop.args.prefix='v216-'+theme+'-power'
+            recording=ScreenRecording(desktop,desktop.rect(powers[0]),imageio_ffmpeg.get_ffmpeg_exe(),30)
+            recording.start()
             # Capture both directions during native wheel input, not only after release.
             center=POINT(430,350);user.ClientToScreen(hwnd,c.byref(center));desktop.move_mouse((center.x,center.y))
-            for i in range(24):
-                user.mouse_event(0x800,0,0,-120 if i<12 else 120,0)
-                time.sleep(.025);desktop.capture(theme+'-power-scroll-'+str(i).zfill(2))
-                if i%6==5:desktop.flush_frames()
+            try:
+                for i in range(24):
+                    recording.phase='scroll-down' if i<12 else 'scroll-up'
+                    user.mouse_event(0x800,0,0,-120 if i<12 else 120,0)
+                    time.sleep(.08);desktop.capture(theme+'-power-scroll-'+str(i).zfill(2))
+                    if i%6==5:desktop.flush_frames()
+                recording.phase='settled-final';time.sleep(.2)
+            finally:
+                video=recording.stop()
+            recording.ensure_alive()
+            require(video['encoded_frames']>=30 and video['encoder_queue_drops']==0,'Continuous power evidence is incomplete')
+            report.setdefault('powerRecordings',[]).append(video)
             desktop.click_control(105);time.sleep(.1)
             desktop.click_control(304);time.sleep(.15)
             # AI connection form may open on first entry; close it without any network request.

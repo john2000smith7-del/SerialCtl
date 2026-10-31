@@ -119,6 +119,8 @@ jobs:
         shell: powershell
         run: |
           $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          python -m pip install imageio-ffmpeg==0.6.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/integration/optimization_fixture.py --archive $archive[0].FullName --output "$env:RUNNER_TEMP/serialctl-optimization"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise packaged update startup in real windows
@@ -199,6 +201,9 @@ jobs:
             ${{ runner.temp }}/serialctl-command-drag/*.txt
             ${{ runner.temp }}/serialctl-optimization/*.png
             ${{ runner.temp }}/serialctl-optimization/*.json
+            ${{ runner.temp }}/serialctl-optimization/*.mkv
+            ${{ runner.temp }}/serialctl-optimization/*.jsonl
+            ${{ runner.temp }}/serialctl-optimization/*.log
             ${{ runner.temp }}/serialctl-build.txt
             ${{ runner.temp }}/serialctl-dialog-latency/*.log
           if-no-files-found: warn
