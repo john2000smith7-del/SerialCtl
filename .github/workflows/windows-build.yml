@@ -88,6 +88,10 @@ jobs:
           $result | Write-Host
           if ($code -eq 0 -or ($result -join "`n") -notmatch 'Shared painter moved a native downward drop|Opening click scrolled a long list') { throw 'The new actual-mouse regression did not isolate the original popup geometry defect' }
           Write-Host 'PASS: original renderer reproduces the dropdown defect; current renderer passed the same real-mouse cases in CTest.'
+          # The native baseline intentionally exits nonzero; the assertions above
+          # verified that expected failure. Do not propagate it through pwsh's
+          # Actions wrapper as the status of this successful comparison.
+          $global:LASTEXITCODE = 0
       - name: Measure connection dialog latency against the accepted release
         shell: powershell
         env:
