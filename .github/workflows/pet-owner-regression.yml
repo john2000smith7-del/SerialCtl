@@ -1,0 +1,27 @@
+name: Focused pet owner interaction regression
+on:
+  push:
+    branches: [release/v2.0.16-final]
+    paths: [.github/workflows/pet-owner-regression.yml]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v2016-roaming-owner
+      - name: Compile and repeat the actual layered-window regression
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64 -RepositoryRoot (Get-SerialCtlRepositoryRoot)
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure focused owner regression' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile the real pet window fixture' -Arguments @('--build',$directory,'--config','Release','--target','ai_pet_pane_test','--parallel','2')
+          $ctest = Get-RequiredCommandPath -Name ctest.exe
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Repeat real activation and displacement checks' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^ai_pet_pane$','--repeat','until-fail:3')
