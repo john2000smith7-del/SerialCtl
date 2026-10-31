@@ -1,0 +1,55 @@
+name: Dialog segmented timing diagnostic
+on:
+  push:
+    branches: [diag/v2017-latency]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build the native application with timing hooks only
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure segmented dialog timing' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON','-DCMAKE_CXX_FLAGS=/DSERIALCTL_DIALOG_PROFILE')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Build unchanged native dialog paths' -Arguments @('--build',$directory,'--config','Release','--target','serialctl','ui_combo_paint_test','ui_dialog_viewport_test','--parallel','2')
+          $payload = Join-Path $env:RUNNER_TEMP 'dialog-profile-app'
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Stage native runtime' -Arguments @('--install',$directory,'--config','Release','--prefix',$payload,'--component','Runtime')
+          Set-Content (Join-Path $payload 'update.ini') "[update]`r`nurl=" -Encoding ASCII
+          $payload | Set-Content "$env:RUNNER_TEMP/dialog-profile-path.txt"
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DSERIALCTL_DIALOG_PROFILE /Fe:dialog-bench.exe tests/performance/ConnectionDialogBench.cpp user32.lib ws2_32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot build the diagnostic stopwatch' }
+      - name: Measure actual clicks and validate native combo behavior
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $payload = (Get-Content "$env:RUNNER_TEMP/dialog-profile-path.txt").Trim()
+          $env:SERIALCTL_DIALOG_SAMPLES = '6'
+          $config = Join-Path $env:APPDATA 'SerialCtl'
+          New-Item -ItemType Directory -Path $config -Force | Out-Null
+          foreach ($theme in @('light','dark')) {
+            Set-Content (Join-Path $config 'settings.ini') "[Layout]`r`nRightPanelCollapsed=0`r`n[Pet]`r`nEnabled=0" -Encoding ASCII
+            & ./dialog-bench.exe (Join-Path $payload 'serialctl.exe') $theme first-paint | Tee-Object "$env:RUNNER_TEMP/dialog-profile-$theme.log"
+            if ($LASTEXITCODE -ne 0) { throw "Segmented profile failed for $theme" }
+          }
+          . ./scripts/common.ps1
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64
+          ctest --test-dir $directory -C Release --output-on-failure -R '^(ui_combo_paint|ui_dialog_viewport)$'
+          if ($LASTEXITCODE -ne 0) { throw 'Native selection, geometry or first-paint regression failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-dialog-segmented-profile
+          path: ${{ runner.temp }}/dialog-profile-*.log
+          if-no-files-found: warn

@@ -11,6 +11,9 @@
 #include <vector>
 #include <string>
 #include "../../src/app/resource.h"
+#ifdef SERIALCTL_DIALOG_PROFILE
+#include "DialogTimingHooks.h"
+#endif
 
 // Controlled loopback Telnet output exercises the normal receive/paint path;
 // no physical devices, real server credentials or test hooks in the product.
@@ -98,10 +101,14 @@ int wmain(int argc,wchar_t **argv) {
         }
         Sleep(500);
     }
+    wchar_t requestedSamples[16]{}; int ordinarySamples=31;
+    if(GetEnvironmentVariableW(L"SERIALCTL_DIALOG_SAMPLES",requestedSamples,16)) {
+        const int value=_wtoi(requestedSamples);if(value>=2 && value<=301)ordinarySamples=value;
+    }
     struct Spec {const char *name; int id;}; const Spec all[]={{"ssh",100},{"serial",101},{"telnet",102},{"remote",103},{"ai",304},{"settings",303}};
     for(const auto &spec:all) {
        // Keep first-open separate, followed by 30 ordinary candidate samples.
-       for(int rep=0;rep<(traffic?2:requirePaint?31:5);rep++) {
+       for(int rep=0;rep<(traffic?2:requirePaint?ordinarySamples:5);rep++) {
           HWND b=GetDlgItem(main,spec.id);SetForegroundWindow(main);Sleep(GetDoubleClickTime()+100);
           const auto paintBefore=reinterpret_cast<UINT_PTR>(GetPropW(GetDlgItem(main,107),L"SerialCtl.PaintSample"));
           const auto bytesBefore=source.bytes.load();
@@ -117,6 +124,9 @@ int wmain(int argc,wchar_t **argv) {
           DWORD_PTR result=0;BOOL ready=SendMessageTimeoutW(dialog,WM_NULL,0,0,SMTO_ABORTIFHUNG,5000,&result);ULONGLONG done=GetTickCount64();if(!ready){TerminateProcess(pi.hProcess,7);return 7;}
           const auto paintAfter=reinterpret_cast<UINT_PTR>(GetPropW(GetDlgItem(main,107),L"SerialCtl.PaintSample"));
           printf("%s,%d,event_ms=%llu,created_ms=%llu,visible_ms=%llu,caption_ms=%llu,responsive_ms=%llu,responsive=%d,paint_delta=%llu,first_paint_ms=%lld\n",spec.name,rep,eventSent-start,created-start,visible-start,caption-start,done-start,ready?1:0,paintAfter-paintBefore,painted?static_cast<long long>(painted-start):-1LL);fflush(stdout);
+          #ifdef SERIALCTL_DIALOG_PROFILE
+          serialctl::dialog_timing::Dump(dialog,spec.name,rep);
+          #endif
           if(traffic)printf("traffic,%s,%d,sent_before=%llu,sent_after=%llu\n",spec.name,rep,bytesBefore,source.bytes.load());
           PostMessageW(dialog,WM_CLOSE,0,0);ULONGLONG end=GetTickCount64()+5000;while(IsWindow(dialog)&&GetTickCount64()<end)Sleep(5);if(IsWindow(dialog)){TerminateProcess(pi.hProcess,8);return 8;}Sleep(200);
        }

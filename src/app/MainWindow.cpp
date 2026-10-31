@@ -3642,6 +3642,8 @@ static bool IsConnectionControlUsed(int mode, int id) {
 INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam) {
     MainWindow* self = reinterpret_cast<MainWindow*>(GetWindowLongPtrW(dialog, DWLP_USER));
     if (message == WM_INITDIALOG) {
+        SERIALCTL_DIALOG_TRACE_BEGIN(dialog);
+        SERIALCTL_DIALOG_TRACE_SCOPE(Init);
         self = reinterpret_cast<MainWindow*>(lParam);
         SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(self));
         self->initializingConnectionDialog_ = true;
@@ -3856,6 +3858,7 @@ void MainWindow::RefreshConnectionHostIdentity(HWND dialog) {
 }
 
 void MainWindow::ConfigureConnectionDialog(HWND dialog) {
+    SERIALCTL_DIALOG_TRACE_SCOPE(Configure);
     const bool serial = pendingMode_ == 1;
     const bool ssh = pendingMode_ == 0;
     const bool share = pendingMode_ == 3;
@@ -5259,6 +5262,7 @@ void MainWindow::ShowSettings() {
 INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam) {
     auto* state = reinterpret_cast<SettingsDialogState*>(GetWindowLongPtrW(dialog, DWLP_USER));
     if (message == WM_INITDIALOG) {
+        SERIALCTL_DIALOG_TRACE_BEGIN(dialog);
         state = reinterpret_cast<SettingsDialogState*>(lParam);
         SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(state));
     }
@@ -5300,6 +5304,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             IsClipboardFormatAvailable(CF_UNICODETEXT));
     };
     if (message == WM_INITDIALOG) {
+        SERIALCTL_DIALOG_TRACE_SCOPE(Init);
         SetWindowTextW(dialog, L"设置");
         ApplyDarkTitleBar(dialog, self->darkMode_);
         UiResizeDialog(dialog, Ui::Dpi, 436, 600);

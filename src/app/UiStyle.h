@@ -9,6 +9,13 @@
 #include <commctrl.h>
 #include <windowsx.h>
 #include "UiResources.h"
+#ifdef SERIALCTL_DIALOG_PROFILE
+#include "../../tests/performance/DialogTimingHooks.h"
+#else
+#define SERIALCTL_DIALOG_TRACE_SCOPE(stage) ((void)0)
+#define SERIALCTL_DIALOG_TRACE_BEGIN(window) ((void)0)
+#define SERIALCTL_DIALOG_TRACE_PUBLISH(window) ((void)0)
+#endif
 namespace serialctl {
 struct UiColors {
     COLORREF surface, raised, field, text, muted, border, accent, danger, window, accentSoft;
@@ -270,6 +277,7 @@ class UiBufferedPaint {
     bool ready_ = false;
 };
 inline void UiBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius) {
+    SERIALCTL_DIALOG_TRACE_SCOPE(Rounded);
     if (UiResourceBox(dc, rect, fill, border, radius))
         return;
     const float width = static_cast<float>(rect.right - rect.left - 1);
@@ -400,6 +408,7 @@ inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool select
     DrawTextW(dc, text.data(), length, &row, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
 inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style) {
+    SERIALCTL_DIALOG_TRACE_SCOPE(ComboPaint);
     RECT bounds{};
     GetClientRect(combo, &bounds);
     if (!target || bounds.right <= 0 || bounds.bottom <= 0)
@@ -651,6 +660,7 @@ inline LRESULT CALLBACK UiComboPopupProc(HWND list, UINT message, WPARAM w, LPAR
     return result;
 }
 inline void UiPrepareComboPopup(HWND combo, UiFieldStyle *style) {
+    SERIALCTL_DIALOG_TRACE_SCOPE(ComboPopup);
     COMBOBOXINFO info{sizeof(info)};
     if (!GetComboBoxInfo(combo, &info) || !info.hwndList)
         return;
@@ -738,6 +748,7 @@ inline void UiStyleButton(HWND h) {
     SetWindowSubclass(h, UiButtonProc, 81, 0);
 }
 inline void UiPaintCheckBox(HWND h, HDC target, const UiFieldStyle &style) {
+    SERIALCTL_DIALOG_TRACE_SCOPE(CheckPaint);
     RECT bounds{};
     GetClientRect(h, &bounds);
     if (!target || bounds.right <= 0 || bounds.bottom <= 0)
@@ -882,6 +893,7 @@ inline LRESULT CALLBACK UiComboEditProc(HWND h,UINT message,WPARAM w,LPARAM l,UI
     return result;
 }
 inline void UiLayoutComboEdit(HWND combo,const UiFieldStyle &style) {
+    SERIALCTL_DIALOG_TRACE_SCOPE(ComboEdit);
     if((GetWindowLongPtrW(combo,GWL_STYLE)&3)!=CBS_DROPDOWN) return;
     if(GetPropW(combo,L"SerialCtl.ComboLayout")) return;
     COMBOBOXINFO info{sizeof(info)}; if(!GetComboBoxInfo(combo,&info) || !info.hwndItem) return;
@@ -1075,6 +1087,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     return result;
 }
 inline void UiStyleField(HWND control, UiFieldStyle *style) {
+    SERIALCTL_DIALOG_TRACE_SCOPE(FieldStyle);
     SetWindowLongPtrW(control, GWL_STYLE, GetWindowLongPtrW(control, GWL_STYLE) & ~WS_BORDER);
     SetWindowLongPtrW(control, GWL_EXSTYLE, GetWindowLongPtrW(control, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
     SetWindowSubclass(control, UiFieldProc, 71, reinterpret_cast<DWORD_PTR>(style));
@@ -1110,11 +1123,13 @@ inline LRESULT CALLBACK UiFirstPaintProc(HWND h, UINT message, WPARAM w, LPARAM 
         RemoveWindowSubclass(h, UiFirstPaintProc, id);
         // Paint only already-invalid children. No full-window invalidation or
         // nested message pumping; controls and Cancel are ready before work.
-        RedrawWindow(h, nullptr, nullptr, RDW_UPDATENOW | RDW_ALLCHILDREN);
+        { SERIALCTL_DIALOG_TRACE_SCOPE(ChildPaint);
+          RedrawWindow(h, nullptr, nullptr, RDW_UPDATENOW | RDW_ALLCHILDREN); }
         if (IsWindow(h)) {
             wchar_t metrics[2]{};
             if (GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", metrics, 2))
                 SetPropW(h, L"SerialCtl.DialogFirstPaint", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(GetTickCount64())));
+            SERIALCTL_DIALOG_TRACE_PUBLISH(h);
             PostMessageW(h, UiFirstPaintReady, 0, 0);
         }
     }
@@ -1196,6 +1211,7 @@ class UiLayoutBatch {
         items_[h].comboHeight = height;
     }
     void Commit() {
+        SERIALCTL_DIALOG_TRACE_SCOPE(Layout);
         struct Move {
             HWND h;
             RECT rect;

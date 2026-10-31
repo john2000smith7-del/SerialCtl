@@ -134,6 +134,7 @@ class UiDialogViewport {
         delete self;
     }
     static void Fit(HWND dialog, int dpi, std::initializer_list<int> footerIds = {IDCANCEL, IDOK}) {
+        SERIALCTL_DIALOG_TRACE_SCOPE(Viewport);
         MONITORINFO monitor{sizeof(monitor)};
         if (!GetMonitorInfoW(MonitorFromWindow(dialog, MONITOR_DEFAULTTONEAREST), &monitor)) return;
         RECT bounds{}, client{}; GetWindowRect(dialog, &bounds); GetClientRect(dialog, &client);

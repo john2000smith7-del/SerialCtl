@@ -2699,6 +2699,8 @@ void AiPane::BeginWorkspaceConversation(const std::wstring& path) {
 INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, DWLP_USER));
     if (m == WM_INITDIALOG) {
+        SERIALCTL_DIALOG_TRACE_BEGIN(h);
+        SERIALCTL_DIALOG_TRACE_SCOPE(Init);
         self = reinterpret_cast<AiPane *>(l);
         SetWindowLongPtrW(h, DWLP_USER, l);
         self->workspaceDialog_ = h;
@@ -2785,6 +2787,8 @@ void AiPane::FocusInput() {
 INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, DWLP_USER));
     if (m == WM_INITDIALOG) {
+        SERIALCTL_DIALOG_TRACE_BEGIN(h);
+        SERIALCTL_DIALOG_TRACE_SCOPE(Init);
         self = reinterpret_cast<AiPane *>(l);
         SetWindowLongPtrW(h, DWLP_USER, l);
         self->dialog_ = h;
