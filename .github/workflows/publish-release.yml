@@ -75,6 +75,271 @@ jobs:
               for name in sorted(fields):
                   output.write(name + '=' + data[name] + '\n')
           PY
+      - name: Wait for the exact-main actual mouse and keyboard audit
+        id: audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ inputs.source_commit || steps.request.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            record="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow desktop-interaction.yml --commit "$RELEASE_COMMIT" --limit 10 --json databaseId,status,conclusion --jq 'if length > 0 then .[0] | [.databaseId,.status,.conclusion] | @tsv else "" end')"
+            IFS=        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version || steps.request.outputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag || steps.request.outputs.release_tag }}
+          RELEASE_SHA256: ${{ inputs.archive_sha256 || steps.request.outputs.archive_sha256 }}
+          RELEASE_COMMIT: ${{ inputs.source_commit || steps.request.outputs.source_commit }}
+          RELEASE_BUILD_RUN: ${{ inputs.build_run_id || steps.request.outputs.build_run_id }}
+          RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 || steps.request.outputs.metadata_base64 }}
+        run: |
+          [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          RELEASE_BASE_TAG="v${RELEASE_VERSION#V}"
+          RELEASE_TAG="${RELEASE_TAG:-$RELEASE_BASE_TAG}"
+          [[ "$RELEASE_TAG" == "$RELEASE_BASE_TAG" || ( "$RELEASE_TAG" == "$RELEASE_BASE_TAG"-r* && "${RELEASE_TAG#"$RELEASE_BASE_TAG"-r}" =~ ^[1-9][0-9]*$ ) ]]
+          [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_BUILD_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_BUILD_RUN" > /tmp/serialctl-build-run.json
+          jq -e --arg sha "$RELEASE_COMMIT" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .name == "Windows Win7 release build"' /tmp/serialctl-build-run.json
+          git fetch origin "$RELEASE_COMMIT"
+          git checkout --detach "$RELEASE_COMMIT"
+          grep -Fxq "PROJECT_VERSION=$RELEASE_VERSION" VERSION
+          grep -Fxq "CPP_VERSION=$RELEASE_VERSION" VERSION
+          mkdir -p bin
+          gh run download "$RELEASE_BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-Win7-portable --dir bin
+          RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
+          printf '%s  %s\n' "$RELEASE_SHA256" "bin/$RELEASE_ARCHIVE" | sha256sum --check
+          python - <<'PY'
+          import base64, os, pathlib
+          encoded = os.environ['RELEASE_METADATA_BASE64']
+          if len(encoded) > 90000:
+              raise ValueError('Signed metadata exceeds its envelope limit')
+          data = base64.b64decode(encoded, validate=True)
+          if not 0 < len(data) <= 65536:
+              raise ValueError('Invalid metadata size')
+          pathlib.Path('/tmp/update.json').write_bytes(data)
+          PY
+          python tools/new_update_feed.py --verify-archive "bin/$RELEASE_ARCHIVE" --metadata /tmp/update.json
+          gh release create "$RELEASE_TAG" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION ($RELEASE_TAG) — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+ -or $request.build_run_id -notmatch '^\d+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the public signed release request
+        id: request
+        if: github.event_name == 'push'
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          raw = pathlib.Path('release-request.json').read_bytes()
+          if len(raw) > 100000:
+              raise ValueError('Release request exceeds its limit')
+          data = json.loads(raw)
+          fields = {'version', 'release_tag', 'archive_sha256', 'source_commit', 'build_run_id', 'metadata_base64'}
+          if set(data) != fields or any(not isinstance(v, str) or '\n' in v or '\r' in v for v in data.values()):
+              raise ValueError('Invalid release request fields')
+          # Public signature/metadata only. The existing archive verifier below
+          # authenticates the exact ZIP; no signing key is sent to this runner.
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for name in sorted(fields):
+                  output.write(name + '=' + data[name] + '\n')
+          PY
+      - name: Verify the previously built archive and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version || steps.request.outputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag || steps.request.outputs.release_tag }}
+          RELEASE_SHA256: ${{ inputs.archive_sha256 || steps.request.outputs.archive_sha256 }}
+          RELEASE_COMMIT: ${{ inputs.source_commit || steps.request.outputs.source_commit }}
+          RELEASE_BUILD_RUN: ${{ inputs.build_run_id || steps.request.outputs.build_run_id }}
+          RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 || steps.request.outputs.metadata_base64 }}
+        run: |
+          [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          RELEASE_BASE_TAG="v${RELEASE_VERSION#V}"
+          RELEASE_TAG="${RELEASE_TAG:-$RELEASE_BASE_TAG}"
+          [[ "$RELEASE_TAG" == "$RELEASE_BASE_TAG" || ( "$RELEASE_TAG" == "$RELEASE_BASE_TAG"-r* && "${RELEASE_TAG#"$RELEASE_BASE_TAG"-r}" =~ ^[1-9][0-9]*$ ) ]]
+          [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_BUILD_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_BUILD_RUN" > /tmp/serialctl-build-run.json
+          jq -e --arg sha "$RELEASE_COMMIT" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .name == "Windows Win7 release build"' /tmp/serialctl-build-run.json
+          git fetch origin "$RELEASE_COMMIT"
+          git checkout --detach "$RELEASE_COMMIT"
+          grep -Fxq "PROJECT_VERSION=$RELEASE_VERSION" VERSION
+          grep -Fxq "CPP_VERSION=$RELEASE_VERSION" VERSION
+          mkdir -p bin
+          gh run download "$RELEASE_BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-Win7-portable --dir bin
+          RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
+          printf '%s  %s\n' "$RELEASE_SHA256" "bin/$RELEASE_ARCHIVE" | sha256sum --check
+          python - <<'PY'
+          import base64, os, pathlib
+          encoded = os.environ['RELEASE_METADATA_BASE64']
+          if len(encoded) > 90000:
+              raise ValueError('Signed metadata exceeds its envelope limit')
+          data = base64.b64decode(encoded, validate=True)
+          if not 0 < len(data) <= 65536:
+              raise ValueError('Invalid metadata size')
+          pathlib.Path('/tmp/update.json').write_bytes(data)
+          PY
+          python tools/new_update_feed.py --verify-archive "bin/$RELEASE_ARCHIVE" --metadata /tmp/update.json
+          gh release create "$RELEASE_TAG" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION ($RELEASE_TAG) — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+) { throw 'Invalid source identity' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($request.build_run_id)" | ConvertFrom-Json
+          $main = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/main" | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_branch -ne 'main' -or $run.name -ne 'Windows Win7 release build' -or $run.head_sha -ne $request.source_commit -or $main.object.sha -ne $request.source_commit) { throw 'Requires the latest successful exact-main build' }
+          "source_commit=$($request.source_commit)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          gh run download $request.build_run_id --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download exact main archive' }
+          [IO.File]::WriteAllBytes((Join-Path $pwd 'candidate/update.json'),[Convert]::FromBase64String($request.metadata_base64))
+          git checkout --detach $request.source_commit
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot load exact main source' }
+          $archive = @(Get-ChildItem candidate -Filter '*.zip')
+          if ($archive.Count -ne 1 -or (Get-FileHash $archive[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $request.archive_sha256) { throw 'Archive identity mismatch' }
+          python tools/new_update_feed.py --verify-archive $archive[0].FullName --metadata candidate/update.json
+          if ($LASTEXITCODE -ne 0) { throw 'Original-identity signature or exact archive verification failed' }
+          gh release download v2.0.15 --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir previous
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download V2.0.15' }
+          gh release download v2.0.6 --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir older
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download V2.0.6' }
+      - name: Validate real older clients against the final signed main ZIP
+        shell: powershell
+        run: |
+          $archive = @(Get-ChildItem candidate -Filter '*.zip')
+          $previous = @(Get-ChildItem previous -Filter '*.zip')
+          $older = @(Get-ChildItem older -Filter '*.zip')
+          python tests/integration/verify_release_upgrade.py --candidate $archive[0].FullName --metadata candidate/update.json --previous $previous[0].FullName --older $older[0].FullName --output "$env:RUNNER_TEMP/serialctl-signed-upgrade"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-final-signed-upgrade-evidence
+          path: ${{ runner.temp }}/serialctl-signed-upgrade/upgrade-result.json
+          if-no-files-found: error
+  publish:
+    needs: upgrade
+    outputs:
+      audit_run: ${{ steps.audit.outputs.audit_run }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the public signed release request
+        id: request
+        if: github.event_name == 'push'
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          raw = pathlib.Path('release-request.json').read_bytes()
+          if len(raw) > 100000:
+              raise ValueError('Release request exceeds its limit')
+          data = json.loads(raw)
+          fields = {'version', 'release_tag', 'archive_sha256', 'source_commit', 'build_run_id', 'metadata_base64'}
+          if set(data) != fields or any(not isinstance(v, str) or '\n' in v or '\r' in v for v in data.values()):
+              raise ValueError('Invalid release request fields')
+          # Public signature/metadata only. The existing archive verifier below
+          # authenticates the exact ZIP; no signing key is sent to this runner.
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for name in sorted(fields):
+                  output.write(name + '=' + data[name] + '\n')
+          PY
+      - name: Verify the previously built archive and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version || steps.request.outputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag || steps.request.outputs.release_tag }}
+          RELEASE_SHA256: ${{ inputs.archive_sha256 || steps.request.outputs.archive_sha256 }}
+          RELEASE_COMMIT: ${{ inputs.source_commit || steps.request.outputs.source_commit }}
+          RELEASE_BUILD_RUN: ${{ inputs.build_run_id || steps.request.outputs.build_run_id }}
+          RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 || steps.request.outputs.metadata_base64 }}
+        run: |
+          [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          RELEASE_BASE_TAG="v${RELEASE_VERSION#V}"
+          RELEASE_TAG="${RELEASE_TAG:-$RELEASE_BASE_TAG}"
+          [[ "$RELEASE_TAG" == "$RELEASE_BASE_TAG" || ( "$RELEASE_TAG" == "$RELEASE_BASE_TAG"-r* && "${RELEASE_TAG#"$RELEASE_BASE_TAG"-r}" =~ ^[1-9][0-9]*$ ) ]]
+          [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_BUILD_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_BUILD_RUN" > /tmp/serialctl-build-run.json
+          jq -e --arg sha "$RELEASE_COMMIT" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .name == "Windows Win7 release build"' /tmp/serialctl-build-run.json
+          git fetch origin "$RELEASE_COMMIT"
+          git checkout --detach "$RELEASE_COMMIT"
+          grep -Fxq "PROJECT_VERSION=$RELEASE_VERSION" VERSION
+          grep -Fxq "CPP_VERSION=$RELEASE_VERSION" VERSION
+          mkdir -p bin
+          gh run download "$RELEASE_BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-Win7-portable --dir bin
+          RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
+          printf '%s  %s\n' "$RELEASE_SHA256" "bin/$RELEASE_ARCHIVE" | sha256sum --check
+          python - <<'PY'
+          import base64, os, pathlib
+          encoded = os.environ['RELEASE_METADATA_BASE64']
+          if len(encoded) > 90000:
+              raise ValueError('Signed metadata exceeds its envelope limit')
+          data = base64.b64decode(encoded, validate=True)
+          if not 0 < len(data) <= 65536:
+              raise ValueError('Invalid metadata size')
+          pathlib.Path('/tmp/update.json').write_bytes(data)
+          PY
+          python tools/new_update_feed.py --verify-archive "bin/$RELEASE_ARCHIVE" --metadata /tmp/update.json
+          gh release create "$RELEASE_TAG" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION ($RELEASE_TAG) — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+  verify-publication:
+    needs: [upgrade, publish]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read back the two published files and verify the original signature
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKTOP_AUDIT_RUN: ${{ needs.publish.outputs.audit_run }}
+        run: |
+          set -euo pipefail
+          cp release-request.json /tmp/serialctl-final-request.json
+          source_commit=$(jq -er .source_commit /tmp/serialctl-final-request.json)
+          release_tag=$(jq -er .release_tag /tmp/serialctl-final-request.json)
+          git checkout --detach "$source_commit"
+          mkdir readback
+          gh release download "$release_tag" --repo "$GITHUB_REPOSITORY" --dir readback
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" > /tmp/serialctl-final-release.json
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$release_tag" > /tmp/serialctl-final-tag.json
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" > /tmp/serialctl-final-main.json
+          python tools/new_update_feed.py --verify-archive readback/SerialCtl-V2.0.16-Win7-x64.zip --metadata readback/update.json
+          python - <<'PY'
+          import hashlib, json, pathlib, os
+          request = json.loads(pathlib.Path('/tmp/serialctl-final-request.json').read_text())
+          release = json.loads(pathlib.Path('/tmp/serialctl-final-release.json').read_text())
+          tag = json.loads(pathlib.Path('/tmp/serialctl-final-tag.json').read_text())
+          main = json.loads(pathlib.Path('/tmp/serialctl-final-main.json').read_text())
+          names = {'SerialCtl-V2.0.16-Win7-x64.zip','update.json'}
+          assert {a['name'] for a in release['assets']} == names
+          assert {p.name for p in pathlib.Path('readback').iterdir()} == names
+          assert tag['object']['sha'] == main['object']['sha'] == request['source_commit']
+          archive = pathlib.Path('readback/SerialCtl-V2.0.16-Win7-x64.zip')
+          digest = hashlib.file_digest(archive.open('rb'),'sha256').hexdigest()
+          assert digest == request['archive_sha256']
+          receipt = {'status':'PASS','mainCommit':request['source_commit'],'buildRun':request['build_run_id'],'archiveSha256':digest,'signatureVerified':True,'desktopAuditRun':os.environ['DESKTOP_AUDIT_RUN'],'assets':[a['browser_download_url'] for a in release['assets']]}
+          print('SERIALCTL_FINAL_DELIVERY='+json.dumps(receipt,separators=(',',':')))
+          pathlib.Path('final-delivery.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-final-delivery-verification
+          path: final-delivery.json
+\t' read -r audit_run audit_status audit_conclusion <<< "$record"
+            if [[ "${audit_status:-}" == "completed" ]]; then
+              if [[ "${audit_conclusion:-}" != "success" ]]; then
+                echo "Exact-main desktop audit $audit_run ended with $audit_conclusion" >&2
+                exit 1
+              fi
+              echo "audit_run=$audit_run" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo 'Exact-main desktop audit did not complete successfully within 20 minutes' >&2
+          exit 1
       - name: Verify the previously built archive and publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -209,6 +474,8 @@ jobs:
           if-no-files-found: error
   publish:
     needs: upgrade
+    outputs:
+      audit_run: ${{ steps.audit.outputs.audit_run }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
