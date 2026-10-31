@@ -61,6 +61,19 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Real-click benchmark failed: $kind/$theme" }
             }
           }
+      - name: Exercise actual frequent clicks and layout drags on the normal candidate
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install imageio-ffmpeg==0.6.0
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot provision lossless desktop capture' }
+          $candidate = (Get-Content "$env:RUNNER_TEMP/dialog-candidate-path.txt").Trim()
+          Copy-Item tools/serialctl_ws.py $candidate
+          $archive = Join-Path $env:RUNNER_TEMP 'diagnostic-runtime-only.zip'
+          Compress-Archive -Path "$candidate/*" -DestinationPath $archive
+          # This is an explicitly temporary runtime fixture, not a release ZIP.
+          python tests/integration/gui_command_drag_fixture.py --scenario endurance --archive $archive --output "$env:RUNNER_TEMP/dialog-endurance"
+          if ($LASTEXITCODE -ne 0) { throw 'Actual click, drag, responsiveness or resource stress failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -69,4 +82,16 @@ jobs:
             ${{ runner.temp }}/dialog-normal-*.log
             build/windows/x64/cmake/ui-glyph-*.ppm
             build/windows/x64/cmake/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-dialog-endurance-candidate
+          path: |
+            ${{ runner.temp }}/dialog-endurance/*.json
+            ${{ runner.temp }}/dialog-endurance/*.jsonl
+            ${{ runner.temp }}/dialog-endurance/*.png
+            ${{ runner.temp }}/dialog-endurance/*.mkv
+            ${{ runner.temp }}/dialog-endurance/*.txt
+            ${{ runner.temp }}/dialog-endurance/*.log
           if-no-files-found: warn

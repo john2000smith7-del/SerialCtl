@@ -29,6 +29,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--scenario', choices=('notebook','endurance'), default='notebook')
     args = parser.parse_args()
     require(os.name == 'nt', 'This fixture needs interactive Windows')
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and
@@ -122,8 +123,12 @@ def main():
         marker.write_text('Temporary isolated GitHub-hosted CI fixture\n', encoding='ascii')
         commands = ''.join(f'#Item {i:02d}\r\necho ITEM_{i:02d}\r\n' for i in range(1, 21)).encode('ascii')
         (actual_config / 'commands.txt').write_bytes(commands)
-        (actual_config / 'settings.ini').write_text('[Layout]\r\nRightPanelWidth=320\r\nRightPanelCollapsed=0\r\n[Pet]\r\nEnabled=0\r\n', encoding='ascii')
-        process = subprocess.Popen([str(app / 'serialctl.exe')], cwd=app,
+        profile='[Layout]\r\nRightPanelWidth=320\r\nRightPanelCollapsed=0\r\n'
+        if args.scenario=='notebook':profile+='[Pet]\r\nEnabled=0\r\n'
+        (actual_config / 'settings.ini').write_text(profile,encoding='ascii')
+        environment=dict(os.environ)
+        if args.scenario=='endurance':environment['SERIALCTL_UI_METRICS']='1'
+        process = subprocess.Popen([str(app / 'serialctl.exe')], cwd=app,env=environment,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.monotonic() + 25
         main_window = None
@@ -146,8 +151,11 @@ def main():
         script = Path(__file__).resolve().with_name('gui_command_notebook.py')
         command = [sys.executable, str(script), '--window', str(main_window), '--pid', str(process.pid),
                    '--output', str(output), '--prefix', 'real-command', '--native-dir', str(app), '--edge-scroll']
+        if args.scenario=='endurance':
+            command=[sys.executable,str(Path(__file__).resolve().with_name('gui_endurance.py')),
+                     '--window',str(main_window),'--pid',str(process.pid),'--output',str(output),'--native-dir',str(app)]
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, encoding='utf-8', errors='replace', timeout=240)
+                                text=True, encoding='utf-8', errors='replace', timeout=1200 if args.scenario=='endurance' else 240)
         (output / 'drag-test-output.txt').write_text(result.stdout, encoding='utf-8')
         print(result.stdout, flush=True)
         require(result.returncode == 0, 'Real desktop command notebook regression failed')
