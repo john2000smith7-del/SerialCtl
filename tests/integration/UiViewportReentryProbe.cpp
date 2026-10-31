@@ -14,7 +14,7 @@ LRESULT CALLBACK CloseOnMove(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR 
     return DefSubclassProc(h, message, w, l);
 }
 }
-int main() {
+int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     SetProcessDPIAware();
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES};
@@ -32,17 +32,13 @@ int main() {
     CreateWindowExW(0,L"BUTTON",L"Cancel",WS_CHILD|WS_VISIBLE|WS_TABSTOP,
         250,1800,96,36,root,reinterpret_cast<HMENU>(IDCANCEL),GetModuleHandleW(nullptr),nullptr);
     serialctl::UiDialogViewport::Fit(root,96);
-    DWORD_PTR viewport{};
-    if(!GetWindowSubclass(root,serialctl::UiFirstPaintProc,89,&viewport)) {
-        // Fit installs its own private subclass. A reduced native height is the
-        // observable setup condition; no access to the private viewport object.
-        RECT bounds{};GetWindowRect(root,&bounds);
-        if(bounds.bottom-bounds.top>=1800) { std::cerr<<"No overflow viewport\n";return 2; }
-    }
+    RECT bounds{};GetWindowRect(root,&bounds);
+    if(bounds.bottom-bounds.top>=1800) { std::cerr<<"No overflow viewport\n";return 2; }
     SetWindowSubclass(first,CloseOnMove,99,0);
     armed=true;
     std::cout<<"Entering native scroll; a child callback closes the owning dialog\n"<<std::flush;
-    SendMessageW(root,WM_MOUSEWHEEL,MAKEWPARAM(0,static_cast<WORD>(-WHEEL_DELTA)),0);
+    if(argc>1 && std::string(argv[1])=="reset") serialctl::UiDialogViewport::Reset(root);
+    else SendMessageW(root,WM_MOUSEWHEEL,MAKEWPARAM(0,static_cast<WORD>(-WHEEL_DELTA)),0);
     if(IsWindow(root))DestroyWindow(root);
     Gdiplus::GdiplusShutdown(token);
     if(!destroyed) { std::cerr<<"Destruction callback was not exercised\n";return 3; }
