@@ -34,9 +34,12 @@ class UiPathField {
         if (!d)
             return DefWindowProcW(h, m, w, l);
         if (m == WM_SETTEXT) {
-            d->value = l ? reinterpret_cast<const wchar_t *>(l) : L"";
-            d->offset = 0;
-            d->expanded = false;
+            const std::wstring value = l ? reinterpret_cast<const wchar_t *>(l) : L"";
+            if (value != d->value) {
+                d->value = value;
+                d->offset = 0;
+                d->expanded = false;
+            }
             InvalidateRect(h, nullptr, FALSE);
             return DefWindowProcW(h, m, w, l);
         }
@@ -68,44 +71,46 @@ class UiPathField {
         if (m == WM_PAINT || m == WM_PRINTCLIENT) {
             PAINTSTRUCT p{};
             auto target = m == WM_PAINT ? BeginPaint(h, &p) : reinterpret_cast<HDC>(w);
-            RECT r{};
-            GetClientRect(h, &r);
-            UiBufferedPaint buffer(target, r);
-            auto dc = buffer.Dc();
-            const auto c = UiFieldColors(*d->style);
-            auto brush = CreateSolidBrush(c.surface);
-            FillRect(dc, &r, brush);
-            DeleteObject(brush);
-            UiBox(dc, r, c.field, GetFocus() == h ? UiAccentInk(*d->style->dark) : c.border, D(*d, 10));
-            const auto old = SelectObject(dc, d->style->font);
-            SetBkMode(dc, TRANSPARENT);
-            SetTextColor(dc, IsWindowEnabled(h) ? c.text : c.muted);
-            SIZE size{};
-            GetTextExtentPoint32W(dc, d->value.c_str(), static_cast<int>(d->value.size()), &size);
-            const int available = std::max(1L, r.right - D(*d, 16));
-            d->maximum = std::max(0, static_cast<int>(size.cx) - available);
-            d->offset = std::clamp(d->offset, 0, d->maximum);
-            RECT text{D(*d, 8), D(*d, 4), r.right - D(*d, 8), r.bottom - D(*d, 10)};
-            auto display = d->value;
-            if (!d->expanded) {
-                while (display.size() > 1 && display.back() == L'/')
-                    display.pop_back();
-                const auto slash = display.rfind(L'/');
-                if (slash != std::wstring::npos && slash + 1 < display.size())
-                    display = display.substr(slash + 1);
-            }
-            const int saved = SaveDC(dc);
-            IntersectClipRect(dc, text.left, text.top, text.right, text.bottom);
-            if (d->expanded)
-                text.left -= d->offset;
-            DrawTextW(dc, display.c_str(), -1, &text,
-                      DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | (d->expanded ? 0 : DT_END_ELLIPSIS));
-            RestoreDC(dc, saved);
-            if (d->expanded && d->maximum) {
-                const auto t = Thumb(h, *d);
-                UiBox(dc, t, c.border, c.border, D(*d, 3));
-            }
-            SelectObject(dc, old);
+            {
+                RECT r{};
+                GetClientRect(h, &r);
+                UiBufferedPaint buffer(target, r);
+                auto dc = buffer.Dc();
+                const auto c = UiFieldColors(*d->style);
+                auto brush = CreateSolidBrush(c.surface);
+                FillRect(dc, &r, brush);
+                DeleteObject(brush);
+                UiBox(dc, r, c.field, GetFocus() == h ? UiAccentInk(*d->style->dark) : c.border, D(*d, 10));
+                const auto old = SelectObject(dc, d->style->font);
+                SetBkMode(dc, TRANSPARENT);
+                SetTextColor(dc, IsWindowEnabled(h) ? c.text : c.muted);
+                SIZE size{};
+                GetTextExtentPoint32W(dc, d->value.c_str(), static_cast<int>(d->value.size()), &size);
+                const int available = std::max(1L, r.right - D(*d, 16));
+                d->maximum = std::max(0, static_cast<int>(size.cx) - available);
+                d->offset = std::clamp(d->offset, 0, d->maximum);
+                RECT text{D(*d, 8), D(*d, 4), r.right - D(*d, 8), r.bottom - D(*d, 10)};
+                auto display = d->value;
+                if (!d->expanded) {
+                    while (display.size() > 1 && display.back() == L'/')
+                        display.pop_back();
+                    const auto slash = display.rfind(L'/');
+                    if (slash != std::wstring::npos && slash + 1 < display.size())
+                        display = display.substr(slash + 1);
+                }
+                const int saved = SaveDC(dc);
+                IntersectClipRect(dc, text.left, text.top, text.right, text.bottom);
+                if (d->expanded)
+                    text.left -= d->offset;
+                DrawTextW(dc, display.c_str(), -1, &text,
+                          DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | (d->expanded ? 0 : DT_END_ELLIPSIS));
+                RestoreDC(dc, saved);
+                if (d->expanded && d->maximum) {
+                    const auto t = Thumb(h, *d);
+                    UiBox(dc, t, c.border, c.border, D(*d, 3));
+                }
+                SelectObject(dc, old);
+            } // Commit the buffer while the BeginPaint DC is still valid.
             if (m == WM_PAINT)
                 EndPaint(h, &p);
             return 0;

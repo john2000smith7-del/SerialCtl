@@ -69,7 +69,7 @@ int wmain(int argc, wchar_t **argv) {
         } else if (method == "fs/readDirectory") {
             Send({{"id",id},{"result",{{"entries",Json::array({{{"fileName","fixture-project"},{"isDirectory",true},{"isFile",false}}})}}}});
         } else if (method == "thread/start") {
-            if (message["params"].value("dynamicTools", Json::array()).size() != 13)
+            if (message["params"].value("dynamicTools", Json::array()).size() != 15)
                 return 44;
             if (message["params"].contains("config") &&
                 message["params"]["config"].value("web_search", Json()) != "disabled") {

@@ -113,7 +113,12 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
         outgoing += endings[std::clamp(session->lineEndingIndex, 0, 2)];
         auto result = Send(*session, Bytes(outgoing.begin(), outgoing.end()));
         if (result.contains("error")) {
-            session->state.boot->Delivery(false, result.value("error", std::string("Restart submission failed")));
+            const auto& failure=result["error"];
+            std::string reason="Restart submission failed";
+            if(failure.is_string()) reason=failure.get<std::string>();
+            else if(failure.is_object() && failure.contains("message") && failure["message"].is_string())
+                reason=failure["message"].get<std::string>();
+            session->state.boot->Delivery(false,reason);
             return result;
         }
         session->state.aiCommandAt = now;

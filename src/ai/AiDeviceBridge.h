@@ -25,6 +25,7 @@ public:
         size_t aiBytes = 0;
         bool aiTruncated = false;
         bool bootRestartUsed = false;
+        bool bootPresetLoaded = false;
         std::string aiTransportNotice;
     };
     struct Target {

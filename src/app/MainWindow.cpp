@@ -4375,9 +4375,10 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
         if (!pendingSession_) aiRemoteConnect_ = false;
         return {{"pending", pendingSession_ != nullptr}};
     }
-    for(const auto& session:sessions_) if(session->bootPreset.empty()) {
+    for(const auto& session:sessions_) if(!session->bootPresetLoaded) {
         const auto saved=bootPresets_.find(BootProfileKey(*session));
         if(saved!=bootPresets_.end()) session->bootPreset=saved->second;
+        session->bootPresetLoaded=true;
     }
     std::vector<AiDeviceBridge::Target> targets;
     targets.reserve(sessions_.size());
