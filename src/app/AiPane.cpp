@@ -2890,6 +2890,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             s.employeeNumber=s.platformMode?port:L"";
             if(s.platformMode && !PlatformSshPort(port,s.port))s.port=0;
             std::wstring error;
+            if(Profile(s)!=Profile(self->settings_))s.workingDirectory=ai::WorkspaceForServer(s);
             if (!ai::ValidateServer(s, error) || !ai::SaveServerSettings(s, error)) {
                 SetDlgItemTextW(h, Note, error.c_str());
                 return TRUE;

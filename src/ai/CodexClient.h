@@ -18,6 +18,7 @@ struct ServerSettings {
 };
 bool ValidateServer(const ServerSettings &, std::wstring &error);
 ServerSettings LoadServerSettings();
+std::wstring WorkspaceForServer(const ServerSettings&);
 bool ForgetSavedServerPassword(const ServerSettings &, std::wstring &error);
 bool IsAuthenticationFailure(const std::wstring &message);
 bool SaveServerSettings(const ServerSettings &, std::wstring &error);

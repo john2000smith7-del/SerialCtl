@@ -90,6 +90,14 @@ ServerSettings LoadServerSettings() {
     }
     return s;
 }
+std::wstring WorkspaceForServer(const ServerSettings& s) {
+    HKEY key=nullptr;
+    std::wstring path;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,L"Software\\SerialCtl\\AI\\Workspaces",0,KEY_QUERY_VALUE,&key)==ERROR_SUCCESS) {
+        path=ReadString(key,CredentialName(s).c_str());RegCloseKey(key);
+    }
+    return path.empty()?L"/home/linux/workspace":path;
+}
 bool SaveServerSettings(const ServerSettings &s, std::wstring &error) {
     const auto previous = LoadServerSettings();
     HKEY key = nullptr;
@@ -108,6 +116,14 @@ bool SaveServerSettings(const ServerSettings &s, std::wstring &error) {
         if (result == ERROR_SUCCESS)
             result = RegSetValueExW(key, L"Port", 0, REG_DWORD, reinterpret_cast<const BYTE *>(&port), sizeof(port));
         RegCloseKey(key);
+    }
+    if (result == ERROR_SUCCESS && !s.workingDirectory.empty()) {
+        HKEY spaces=nullptr;
+        result=RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\SerialCtl\\AI\\Workspaces",0,nullptr,0,KEY_SET_VALUE,nullptr,&spaces,nullptr);
+        if(result==ERROR_SUCCESS) {
+            result=RegSetValueExW(spaces,CredentialName(s).c_str(),0,REG_SZ,reinterpret_cast<const BYTE*>(s.workingDirectory.c_str()),static_cast<DWORD>((s.workingDirectory.size()+1)*sizeof(wchar_t)));
+            RegCloseKey(spaces);
+        }
     }
     if (result != ERROR_SUCCESS) {
         error = L"保存 AI 设置失败：" + Win32ErrorMessage(result);
