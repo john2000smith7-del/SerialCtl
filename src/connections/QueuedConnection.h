@@ -39,9 +39,7 @@ class QueuedConnection final : public IConnection {
         inner_->OverrideTextCodePage(page);
     }
     bool SendObserved(const Bytes &, std::wstring &, std::function<void()> accepted);
-    void ResizeTerminal(int c, int r) override {
-        inner_->ResizeTerminal(c, r);
-    }
+    void ResizeTerminal(int columns, int rows) override;
 
   private:
     void Run();
@@ -50,7 +48,8 @@ class QueuedConnection final : public IConnection {
     std::condition_variable wake_;
     std::deque<Bytes> queue_;
     size_t queued_ = 0;
-    bool stopping_ = true;
+    bool stopping_ = true, resizePending_ = false;
+    int resizeColumns_ = 80, resizeRows_ = 24;
     std::atomic_bool connected_{false};
     std::thread worker_;
     StatusCallback status_;

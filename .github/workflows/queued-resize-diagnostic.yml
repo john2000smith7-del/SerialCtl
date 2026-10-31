@@ -1,0 +1,85 @@
+name: Blocked transport resize regression
+on:
+  push:
+    branches: [diag/v2017-queuedresize]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  resize:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Reproduce the original caller blocking on a held wire
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory old-queue | Out-Null
+          foreach ($name in @('QueuedConnection.h','QueuedConnection.cpp')) {
+            $text = git show "5b950a3310d8f7b09b5771668af7cd5ef923b278:src/connections/$name"
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot read exact published queue implementation' }
+            [IO.File]::WriteAllText((Join-Path "$pwd/old-queue" $name),($text -join "`n"),(New-Object Text.UTF8Encoding($false)))
+          }
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_WIN32_WINNT=0x0601 /I old-queue /I src/connections /I src/platform /Fe:old-queue-test.exe tests/integration/QueuedResizeTest.cpp old-queue/QueuedConnection.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile baseline probe' }
+          $ErrorActionPreference = 'Continue'
+          $result = & ./old-queue-test.exe 2>&1
+          $code = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          $result | Tee-Object old-queue-result.txt | Write-Host
+          if ($code -eq 0 -or ($result -join "`n") -notmatch 'Resize caller waited for the blocked transport writer') { throw 'Expected original blocking defect was not reproduced' }
+          $global:LASTEXITCODE = 0
+      - name: Verify current native queue against the same blocking probe
+        shell: powershell
+        run: |
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_WIN32_WINNT=0x0601 /I src/connections /I src/platform /Fe:new-queue-test.exe tests/integration/QueuedResizeTest.cpp src/connections/QueuedConnection.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile current queue probe' }
+          & ./new-queue-test.exe | Tee-Object new-queue-result.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Current queue still blocks the resize caller' }
+      - name: Check real loopback Telnet NAWS through the production queue wrapper
+        shell: powershell
+        run: |
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 /I src/connections /I src/platform /Fe:queued-telnet-test.exe tests/integration/TcpConnectionTest.cpp src/connections/QueuedConnection.cpp src/connections/TcpConnection.cpp src/connections/NetworkConnect.cpp src/connections/ChildProcess.cpp ws2_32.lib advapi32.lib ole32.lib shell32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile loopback Telnet regression' }
+          & ./queued-telnet-test.exe | Tee-Object telnet-queue-result.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Asynchronous resize changed actual Telnet NAWS negotiation' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-blocked-resize-proof
+          path: '*queue-result.txt'
+
+  renderer:
+    name: Native glyph pixels and idempotent region updates
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile original artwork pixel comparison
+        shell: powershell
+        run: |
+          $assets = (Resolve-Path src/app/assets).Path.Replace('\','/')
+          $resources = @(('2010 RCDATA "'+$assets+'/surface-fill.png"'),('2011 RCDATA "'+$assets+'/surface-stroke.png"'),('2012 RCDATA "'+$assets+'/utility-icons.png"'))
+          [IO.File]::WriteAllLines((Join-Path $pwd 'glyph-assets.rc'),$resources)
+          rc /nologo /fo glyph-assets.res glyph-assets.rc
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile artwork resources' }
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 /I src/app /Fe:glyph-regression.exe tests/integration/UiGlyphCacheTest.cpp glyph-assets.res user32.lib gdi32.lib gdiplus.lib comctl32.lib msimg32.lib ole32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile native renderer regression' }
+          & ./glyph-regression.exe | Tee-Object glyph-regression-result.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Native glyph pixels or actual region geometry changed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-focused-renderer-evidence
+          path: |
+            glyph-regression-result.txt
+            ui-glyph-*.ppm

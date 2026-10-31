@@ -69,8 +69,15 @@ void TestNativeRecoveryTimingAndCancel() {
     for(int i=0;i<300;++i) {
         result=power.Action(recovery.at("id"));
         if(result.value("state","")=="completed" || result.value("state","")=="failed") break;
-        if(result.value("phase","")=="off_wait")
-            Expect(power.State()["channels"][0]["output"]==false,"Confirmed-OFF channel stays off throughout native wait");
+        if(result.value("phase","")=="off_wait") {
+            const auto observed=power.State();
+            // Action and State are separate snapshots. The worker may legally
+            // submit ON after the deadline between these reads. Only assert
+            // OFF for a state observed before that deadline; final submission
+            // timestamps below still verify the complete >=10000ms interval.
+            if(GetTickCount64()<result.at("notBeforeOn").get<std::uint64_t>())
+                Expect(observed["channels"][0]["output"]==false,"Confirmed-OFF channel stays off throughout native wait");
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     Expect(result.value("state","")=="completed" && result.contains("onSubmittedAt") && result.contains("offConfirmedAt") &&

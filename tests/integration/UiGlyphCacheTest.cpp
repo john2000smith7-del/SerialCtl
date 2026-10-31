@@ -69,7 +69,7 @@ int main() {
         unsigned cases=0,different=0,maximumError=0,badPixels=0;
         bool saved=false;
         for(const auto origin : {POINT{0,0}, POINT{7,5}, POINT{29,27}})
-        for(int size:{16,24,48})for(auto ink:{RGB(29,29,31),RGB(245,245,247),RGB(31,79,216),RGB(152,152,157)})
+        for(int size:{16,24,32,48})for(auto ink:{RGB(29,29,31),RGB(245,245,247),RGB(31,79,216),RGB(152,152,157),RGB(255,255,255)})
             for(auto background:{RGB(255,255,255),RGB(36,36,38)})for(int glyph=0;glyph<27;++glyph) {
                 reference.Clear(background);candidate.Clear(background);const RECT bounds{origin.x,origin.y,origin.x+size,origin.y+size};
                 Require(serialctl::UiResourceGlyphDirect(reference.dc,bounds,ink,glyph),"Original artwork failed to render");

@@ -37,7 +37,7 @@ jobs:
           $archive = @(Get-ChildItem candidate -Filter '*.zip')
           python tools/new_update_feed.py --verify-archive $archive[0].FullName --metadata candidate/update.json
           if ($LASTEXITCODE -ne 0) { throw 'Exact signature/archive mismatch' }
-          gh release download v2.0.15 --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir previous
+          gh release download v2.0.16 --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir previous
           if ($LASTEXITCODE -ne 0) { throw 'Cannot get previous original client' }
           gh release download v2.0.6 --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir older
           if ($LASTEXITCODE -ne 0) { throw 'Cannot get older original client' }

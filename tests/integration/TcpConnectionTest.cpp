@@ -1,4 +1,5 @@
 #include "TcpConnection.h"
+#include "QueuedConnection.h"
 
 #include <algorithm>
 #include <atomic>
@@ -86,7 +87,7 @@ int main() {
     HANDLE payloadReady = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     Bytes payload;
     std::mutex payloadMutex;
-    serialctl::TcpConnection connection(L"127.0.0.1", port, true);
+    serialctl::QueuedConnection connection(std::make_unique<serialctl::TcpConnection>(L"127.0.0.1", port, true));
     std::wstring error;
     const bool started = connection.Start(
         [&](const Bytes& data) {

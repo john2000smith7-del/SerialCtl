@@ -411,6 +411,7 @@ if(BUILD_TESTING)
 
     add_executable(tcp_connection_test
         tests/integration/TcpConnectionTest.cpp
+        src/connections/QueuedConnection.cpp
         src/connections/TcpConnection.cpp
         src/connections/NetworkConnect.cpp
         src/connections/ChildProcess.cpp
@@ -424,6 +425,11 @@ if(BUILD_TESTING)
     target_link_libraries(network_connect_test PRIVATE ws2_32 advapi32)
     add_test(NAME network_connect COMMAND network_connect_test)
     set_tests_properties(network_connect PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+
+    add_executable(queued_resize_test tests/integration/QueuedResizeTest.cpp src/connections/QueuedConnection.cpp)
+    serialctl_configure_native_target(queued_resize_test CONSOLE)
+    add_test(NAME queued_resize COMMAND queued_resize_test)
+    set_tests_properties(queued_resize PROPERTIES TIMEOUT 10)
 
     add_executable(terminal_model_test
         tests/unit/TerminalModelTest.cpp

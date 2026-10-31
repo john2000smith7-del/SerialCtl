@@ -125,6 +125,11 @@ inline const UiGlyphSource *UiGlyphSourceFor(UiResourceBitmap &source, int index
 inline bool UiResourceGlyph(HDC dc, const RECT &rect, COLORREF color, int index) {
     auto &resource = UiResource(2012);
     if (!resource.bitmap || index < 0 || index >= 27) return false;
+    // The fine lines in Save's artwork amplify GDI+'s source-coordinate
+    // rounding at 32px. Keep its original full-atlas path at every size/color,
+    // rather than relax pixel fidelity for this single infrequently drawn icon.
+    constexpr int saveGlyph = 22;
+    if (index == saveGlyph) return UiResourceGlyphDirect(dc, rect, color, index);
     try {
         if (const auto source = UiGlyphSourceFor(resource, index)) {
             Gdiplus::Graphics graphics(dc);
