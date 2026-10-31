@@ -112,12 +112,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ inputs.source_commit || steps.request.outputs.source_commit }}
+          RELEASE_BUILD_RUN: ${{ inputs.build_run_id || steps.request.outputs.build_run_id }}
         run: |
           set -euo pipefail
           for attempt in $(seq 1 60); do
             record="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow desktop-interaction.yml --commit "$RELEASE_COMMIT" --limit 10 --json databaseId,status,conclusion --jq 'if length > 0 then .[0] | [.databaseId,.status,.conclusion] | @tsv else "" end')"
             IFS=$'\t' read -r audit_run audit_status audit_conclusion <<< "$record"
             if [[ "${audit_status:-}" == "completed" ]]; then
+              audit_log="/tmp/serialctl-desktop-$audit_run.log"
+              if [[ ! -f "$audit_log" ]]; then
+                desktop_job=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$audit_run/jobs" --jq '.jobs[] | select(.name == "desktop") | .id')
+                gh run view "$audit_run" --repo "$GITHUB_REPOSITORY" --job "$desktop_job" --log > "$audit_log"
+              fi
+              if ! python -c 'import pathlib,re,sys; log=pathlib.Path(sys.argv[1]).read_text(errors="replace"); sys.exit(0 if re.search(r"\bBUILD_RUN:\s+"+re.escape(sys.argv[2])+r"\s*$",log,re.M) else 1)' "$audit_log" "$RELEASE_BUILD_RUN"; then
+                echo "Desktop audit $audit_run belongs to a different build; waiting for $RELEASE_BUILD_RUN"
+                sleep 20
+                continue
+              fi
               if [[ "${audit_conclusion:-}" != "success" ]]; then
                 echo "Exact-main desktop audit $audit_run ended with $audit_conclusion" >&2
                 exit 1
