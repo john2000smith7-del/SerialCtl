@@ -1,0 +1,34 @@
+name: Inspect V2.0.16 actual desktop failure
+on:
+  push:
+    branches: [release/v2.0.16-final]
+    paths: [.github/workflows/v216-desktop-inspection.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-actual-desktop-interaction
+          run-id: 41194140706
+          github-token: ${{ github.token }}
+          path: evidence
+      - name: Export unchanged original failure frames
+        run: |
+          python - <<'PY'
+          import base64, pathlib
+          root = pathlib.Path('evidence')
+          images = sorted(p for p in root.rglob('*.png') if ('power-automation-113' in p.name and ('controls-final' in p.name or p.name == 'x64-light-power-automation-113.png')))
+          if not images:
+              print('\n'.join(str(p) for p in root.rglob('*automation-113*')))
+              raise SystemExit('No matching actual failure evidence')
+          for path in images:
+              print('SERIALCTL_DIAGNOSTIC_IMAGE_BEGIN '+path.name)
+              encoded = base64.b64encode(path.read_bytes()).decode('ascii')
+              for i in range(0,len(encoded),4096):
+                  print('SERIALCTL_DIAGNOSTIC_IMAGE_DATA '+encoded[i:i+4096])
+              print('SERIALCTL_DIAGNOSTIC_IMAGE_END '+path.name)
+          PY
