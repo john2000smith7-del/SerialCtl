@@ -2954,7 +2954,7 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
     if(!leftPanelCollapsed_ && !leftPanelAnimating_) {
         const int line=leftCard.bottom-Ui::PanelPadding-Ui::CompactHeight-Ui::Space-statusHeight_-Ui::Space;
-        DrawTextSimple(dc,L"状态",{leftCard.left+Ui::PanelPadding,line-Ui::Scale(10),leftCard.left+Ui::PanelPadding+Ui::Scale(32),line+Ui::Scale(10)},colors.muted,smallFont_);
+        DrawTextSimple(dc,L"状态",{leftCard.left+Ui::PanelPadding,line-Ui::Scale(10),leftCard.left+Ui::PanelPadding+Ui::Scale(32),line+Ui::Scale(10)},colors.muted,smallFont_,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         UiSeparator(dc,leftCard.left+Ui::PanelPadding+Ui::Scale(40),leftCard.right-Ui::PanelPadding,line,colors.border);
     }
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, LiveMonitorPage() ? UiAiTheme(darkMode_).surface : colors.terminal, UiPanelBorder(darkMode_));
@@ -3797,7 +3797,8 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             const auto value=ControlText(GetDlgItem(dialog,IDC_PORT));unsigned port=0;
             if(platform) {const auto direct=ParsePositive(value);SetDlgItemTextW(dialog,IDC_PORT,direct>10000 && direct<=65535?std::to_wstring(direct-10000).c_str():L"");}
             else if(PlatformSshPort(value,port))SetDlgItemTextW(dialog,IDC_PORT,std::to_wstring(port).c_str());
-            SetDlgItemTextW(dialog,IDC_PORT_LABEL,platform?L"SSH 端口 · 员工工号":L"SSH 端口");self->RefreshConnectionHostIdentity(dialog);return TRUE;
+            if(platform && Trim(ControlText(GetDlgItem(dialog,IDC_USER))).empty())SetDlgItemTextW(dialog,IDC_USER,L"linux");
+            SetDlgItemTextW(dialog,IDC_PORT_LABEL,platform?L"员工工号":L"SSH 端口");self->RefreshConnectionHostIdentity(dialog);return TRUE;
         }
         if (self->pendingMode_ == 0 &&
             (LOWORD(wParam) == IDC_HOST || LOWORD(wParam) == IDC_PORT) && HIWORD(wParam) == EN_CHANGE) {

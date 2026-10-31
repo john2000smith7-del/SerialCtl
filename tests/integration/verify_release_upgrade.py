@@ -106,7 +106,7 @@ def main():
         for label,archive in (('V2.0.15',args.previous),('V2.0.6',args.older)):
             for mode in ('invalid-signature','corrupt-archive','valid'):
                 invalid=mode=='invalid-signature'
-                corrupt_archive[0]=mode=='corrupt-archive' 
+                corrupt_archive[0]=mode=='corrupt-archive'
                 install=args.output/(label+'-'+mode);install.mkdir()
                 with zipfile.ZipFile(archive) as z:
                     for name in ('serialctl.exe','plink.exe','psftp.exe','VERSION'):(install/name).write_bytes(z.read(name))
