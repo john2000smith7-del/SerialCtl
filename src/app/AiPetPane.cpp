@@ -370,7 +370,14 @@ void AiPetPane::Tick() {
         (Desktop() ? IsWindowEnabled(window_) : IsWindowEnabled(parent_) && !IsIconic(parent_));
     const auto now = GetTickCount64();
     sample_ = model_.At(now, present);
-    double distance = roaming_.Step(now, present && model_.CanRoam() && !dragging_ && !hover_ && !interacting_ && now>=roamTurnUntil_);
+    POINT pointer{};
+    RECT ownerBounds{};
+    const HWND owner = GetAncestor(parent_, GA_ROOTOWNER);
+    const HWND foregroundOwner = GetAncestor(GetForegroundWindow(), GA_ROOTOWNER);
+    const bool ownerInUse = owner && owner == foregroundOwner && GetCursorPos(&pointer) &&
+        GetWindowRect(owner, &ownerBounds) && PtInRect(&ownerBounds, pointer);
+    double distance = roaming_.Step(now, present && model_.CanRoam() && !dragging_ && !hover_ &&
+        !interacting_ && !ownerInUse && now>=roamTurnUntil_);
     walking_ = distance > 0;
     if (walking_) {
         RECT bounds{}; GetWindowRect(window_, &bounds);
