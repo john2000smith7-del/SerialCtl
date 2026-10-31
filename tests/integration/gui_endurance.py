@@ -96,10 +96,12 @@ class Endurance(DesktopActions):
         dialog=self.modal_windows()[0]
         wait(lambda:int(self.user.GetPropW(dialog,'SerialCtl.DialogFirstPaint') or 0)>0 and self.user.IsWindowEnabled(self.user.GetDlgItem(dialog,2)))
         ready_ms=round((time.perf_counter()-started)*1000,3)
+        dialog_bounds=self.rect(dialog)
+        screen_sample=None
         require(ready_ms<500,'A modal was unresponsive for more than 500ms under continuous CMD output')
         require(self.user.GetForegroundWindow()==dialog,'The opened modal did not receive foreground')
         if not any(row['control']==identifier and row['theme']==self.args.theme for row in self.dialogs):
-            self.capture('modal-'+str(identifier));self.flush_frames()
+            self.capture('modal-'+str(identifier));screen_sample=self.frames[-1]['path'];self.flush_frames()
         if background_burst:
             r=self.rect(self.control(identifier));point=((r[0]+r[2])//2,(r[1]+r[3])//2)
             dr=self.rect(dialog)
@@ -113,7 +115,7 @@ class Endurance(DesktopActions):
         wait(lambda:not self.user.IsWindow(dialog))
         wait(lambda:self.user.GetForegroundWindow()==self.window)
         ms=self.responsive();self.responses.append(ms)
-        self.dialogs.append({'control':identifier,'theme':self.args.theme,'observed_ready_ms':ready_ms,'response_ms':ms,'background_burst':background_burst})
+        self.dialogs.append({'control':identifier,'theme':self.args.theme,'first_paint_bounds':dialog_bounds,'screen_sample':screen_sample,'observed_ready_ms':ready_ms,'response_ms':ms,'background_burst':background_burst})
 
     def park_visible_pet(self):
         pet=self.user.FindWindowExW(None,None,'SerialCtlAiPetPane',None)
