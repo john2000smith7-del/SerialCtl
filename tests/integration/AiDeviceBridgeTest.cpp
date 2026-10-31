@@ -80,6 +80,7 @@ int main() {
         Check(!enter.contains("error") && enter.value("intervalMs",0)==300 && enter.value("untilStopped",false) && pulse && transport->last==Bytes{' '},"Restart is followed immediately by a local space");
         Check(transport->history[transport->history.size()-2]==Bytes({'r','e','b','o','o','t','\r'}),"Reboot and interrupt ordering changed");
         const auto rebootWrites=transport->writes;
+        Check(request("command",{{"command","echo unrelated"}}).contains("error") && request("boot_arm").contains("error") && transport->writes==rebootWrites,"Other AI commands or legacy capture interleaved a continuous boot task");
         Check(request("boot_enter",{{"preset","uboot_space"}}).contains("error") && transport->writes==rebootWrites,"Repeated tool call rebooted the board twice");
         now+=300;AiDeviceBridge::Pulse(state,transport,now);
         Check(transport->writes==rebootWrites+1,"Native timer does not continue interrupting without model calls");

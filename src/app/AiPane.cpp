@@ -2631,7 +2631,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SendMessageW(combo,CB_LIMITTEXT,4096,0);
         add(L"BUTTON",L"上一级",DirectoryUp,280,92,64,28,BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON",L"刷新",DirectoryRefresh,356,92,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"STATIC",L"单击路径查看完整内容；双击编辑。下拉选择子目录。",Note,16,132,404,56,0);
+        add(L"STATIC",L"单击路径查看完整内容；双击编辑。下拉选择子目录。",Note,16,136,404,56,0);
         add(L"BUTTON",L"取消",IDCANCEL,216,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON",L"新建",IDOK,324,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
         auto path = self->settings_.workingDirectory.empty() ? self->workspaceDirectory_ : self->settings_.workingDirectory;

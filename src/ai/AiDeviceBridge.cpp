@@ -146,6 +146,9 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
     if (method == "boot_arm" || method == "boot_status") {
         if (session->mode != 1 && session->mode != 3) return error("U-Boot capture only supports the selected board serial terminal");
         if (method == "boot_arm") {
+            const auto current=session->state.boot->Status(now);
+            if(!current.preset.empty() && (current.state=="prepared" || current.state=="interrupting"))
+                return error("A continuous boot preset is active; query boot_status or stop it before changing strategy");
             if (!session->state.boot->Arm(params.value("pattern", std::string("Hit any key")),
                 params.value("interrupt", std::string(" ")), params.value("prompt", std::string("=>")),
                 params.value("timeoutSeconds", 90u), now))
@@ -242,6 +245,9 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
             {"execution", "unknown"}, {"noOutputIsNotHangProof", true}};
     }
     if (method == "command" || method == "text") {
+        const auto boot=session->state.boot->Status(now);
+        if(!boot.preset.empty() && (boot.state=="prepared" || boot.state=="interrupting"))
+            return error("Boot-entry keys are repeating; wait for verified entry or stop before sending other commands");
         if (context.macroRunning) return error("A command macro is in progress; stop it before sending an AI command");
         const auto command = params.value(method == "command" ? "command" : "text", std::string());
         if (method == "command" ? !ai::ValidCommand(command) :
