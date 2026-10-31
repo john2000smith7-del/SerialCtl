@@ -38,7 +38,7 @@ class RoamingClock {
         phase_ = (phase_ + delta) % 12000;
         return phase_ < 7000 ? delta * .012 : 0;
     }
-    unsigned Pose() const { constexpr unsigned gait[] = {2,3,4,5,6,7,8,9}; return gait[(phase_/160)%8]; }
+    unsigned Pose() const { constexpr unsigned gait[] = {4,5,7,6}; return gait[(phase_/160)%4]; }
   private:
     std::uint64_t last_ = 0, phase_ = 0;
 };
