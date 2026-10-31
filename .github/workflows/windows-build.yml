@@ -16,7 +16,7 @@ jobs:
   build:
     if: ${{ !inputs.evidence_run }}
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -206,6 +206,7 @@ jobs:
             ${{ runner.temp }}/serialctl-optimization/*.log
             ${{ runner.temp }}/serialctl-build.txt
             ${{ runner.temp }}/serialctl-dialog-latency/*.log
+            ${{ runner.temp }}/serialctl-dialog-latency/*.json
           if-no-files-found: warn
 
   ui-review:
