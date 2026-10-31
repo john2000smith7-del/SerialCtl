@@ -66,6 +66,18 @@ void Pump() {
     }
 }
 std::vector<DWORD> Snapshot(HWND combo);
+void CheckSettled(HWND combo,const char* action);
+struct ReleaseProbe { HWND combo=nullptr; bool checked=false; std::string failure; } releaseProbe;
+LRESULT CALLBACK MouseReleaseProc(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR id,DWORD_PTR) {
+    const auto result=DefSubclassProc(h,m,w,l);
+    if(m==WM_LBUTTONUP && IsWindow(releaseProbe.combo) && !SendMessageW(releaseProbe.combo,CB_GETDROPPEDSTATE,0,0)) {
+        releaseProbe.checked=true;
+        try { CheckSettled(releaseProbe.combo,"actual mouse release before queued paints"); }
+        catch(const std::exception& error) { releaseProbe.failure=error.what(); }
+    }
+    if(m==WM_NCDESTROY) RemoveWindowSubclass(h,MouseReleaseProc,id);
+    return result;
+}
 void PumpFor(unsigned ms) {
     const auto until=GetTickCount64()+ms;
     do { Pump(); Sleep(1); } while(GetTickCount64()<until);
@@ -230,16 +242,16 @@ void RunCase(HWND parent, bool ownerDrawn, bool composer = false) {
     SendMessageW(info.hwndList,LB_SETTOPINDEX,0,0);
     RECT row{};
     SendMessageW(info.hwndList, LB_GETITEMRECT, 0, reinterpret_cast<LPARAM>(&row));
-    const auto point = MAKELPARAM(10, (row.top + row.bottom) / 2);
-    // The native captured ComboLBox also consults the real cursor on release.
-    // Keep it at the forwarded coordinates after the actual-mouse cases; do
-    // not pump a later paint before checking the immediate selection pixels.
     POINT actualPoint{10,(row.top+row.bottom)/2};ClientToScreen(info.hwndList,&actualPoint);
-    Require(SetCursorPos(actualPoint.x,actualPoint.y)!=FALSE,"Cannot position the selection cursor");
-    SendMessageW(info.hwndList, WM_LBUTTONDOWN, MK_LBUTTON, point);
-    SendMessageW(info.hwndList, WM_LBUTTONUP, 0, point);
+    releaseProbe={combo,false,{}};
+    SetWindowSubclass(combo,MouseReleaseProc,99,0);
+    SetWindowSubclass(info.hwndList,MouseReleaseProc,99,0);
+    RealClick(actualPoint.x,actualPoint.y);
+    RemoveWindowSubclass(combo,MouseReleaseProc,99);
+    RemoveWindowSubclass(info.hwndList,MouseReleaseProc,99);
     Require(!SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0), "Native mouse selection did not close dropdown");
-    Require(SendMessageW(combo,CB_GETCURSEL,0,0)==0,"Forwarded click selected a different row from its actual cursor");
+    Require(SendMessageW(combo,CB_GETCURSEL,0,0)==0,"Actual click selected a different row from its cursor");
+    Require(releaseProbe.checked && releaseProbe.failure.empty(),"Actual selection left noncanonical field pixels before queued paints");
     CheckSettled(combo, "mouse selection before focus loss");
     Pump();
     CheckSettled(combo, "mouse after queued messages");
