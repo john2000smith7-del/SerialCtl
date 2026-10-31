@@ -12,6 +12,11 @@ class UiDialogViewport {
     bool dragging_ = false;
     SIZE naturalSize_{};
     std::vector<Item> items_;
+    static bool Attached(HWND window, const UiDialogViewport *expected) {
+        DWORD_PTR data = 0;
+        return IsWindow(window) && GetWindowSubclass(window, Proc, 86, &data) &&
+               data == reinterpret_cast<DWORD_PTR>(expected);
+    }
     int D(int value) const { return MulDiv(value, dpi_, 96); }
     RECT Thumb() const {
         RECT r{}; GetClientRect(window_, &r);
@@ -20,19 +25,27 @@ class UiDialogViewport {
         return {r.right - D(8), y, r.right - D(3), y + height};
     }
     void PaintThumb(HDC dc) const {
+        const HWND window = window_;
         const auto thumb = Thumb();
+        const int radius = D(3);
         // Use the dialog's own theme rather than a system scrollbar track.
         auto brush = reinterpret_cast<HBRUSH>(SendMessageW(window_, WM_CTLCOLORDLG,
                                                           reinterpret_cast<WPARAM>(dc), reinterpret_cast<LPARAM>(window_)));
+        if (!Attached(window, this)) return;
         LOGBRUSH color{};
         const bool dark = brush && GetObjectW(brush, sizeof(color), &color) && GetRValue(color.lbColor) < 128;
-        UiBox(dc, thumb, UiTheme(dark).border, UiTheme(dark).border, D(3));
+        UiBox(dc, thumb, UiTheme(dark).border, UiTheme(dark).border, radius);
     }
     void Scroll(int position) {
+        const HWND window = window_;
         offset_ = std::clamp(position, 0, maximum_);
-        UiRedrawScope redraw(window_);
-        RECT client{}; GetClientRect(window_, &client);
-        for (const auto &item : items_) {
+        UiRedrawScope redraw(window);
+        if (!Attached(window, this)) return;
+        RECT client{}; GetClientRect(window, &client);
+        // Position/region changes send native callbacks synchronously. A callback
+        // may close this dialog and delete the viewport: copy the current item,
+        // then verify ownership before touching state or advancing its iterator.
+        for (const auto item : items_) {
             if (item.footer || !IsWindow(item.window)) continue;
             const int naturalY = item.bounds.top - offset_;
             const int height = item.bounds.bottom - item.bounds.top;
@@ -44,10 +57,12 @@ class UiDialogViewport {
                           naturalY + height <= 0 ? -height - 1 : naturalY;
             SetWindowPos(item.window, nullptr, item.bounds.left, y, 0, 0,
                          SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+            if (!Attached(window, this)) return;
             const int top = std::clamp(-naturalY, 0, height), bottom = std::clamp(viewport_ - naturalY, top, height);
             HRGN clip = outside || (top == 0 && bottom == height) ? nullptr :
                 CreateRectRgn(0, top, item.bounds.right - item.bounds.left, bottom);
             SetWindowRgn(item.window, clip, FALSE);
+            if (!Attached(window, this)) return;
         }
     }
     void Reveal(HWND control) {
@@ -100,6 +115,7 @@ class UiDialogViewport {
         if (m == WM_CAPTURECHANGED) self->dragging_ = false;
         if (m == WM_PAINT || m == WM_PRINTCLIENT) {
             const auto result = DefSubclassProc(h, m, w, l);
+            if (!Attached(h, self)) return result;
             HDC dc = m == WM_PAINT ? GetDC(h) : reinterpret_cast<HDC>(w);
             if (dc) self->PaintThumb(dc);
             if (m == WM_PAINT && dc) ReleaseDC(h, dc);
@@ -120,18 +136,21 @@ class UiDialogViewport {
         DWORD_PTR data = 0;
         if (!GetWindowSubclass(dialog, Proc, 86, &data)) return;
         auto self = reinterpret_cast<UiDialogViewport *>(data);
+        // Detach the native owner before restoring children. This scope keeps
+        // state alive if a child's geometry callback destroys the dialog.
+        std::unique_ptr<UiDialogViewport> owned(self);
+        RemoveWindowSubclass(dialog, Proc, 86);
+        for (const auto &item : self->items_)
+            if (IsWindow(item.window)) RemoveWindowSubclass(item.window, ChildProc, 86);
         if (GetCapture() == dialog) ReleaseCapture();
         for (const auto &item : self->items_) {
             if (!IsWindow(item.window)) continue;
-            RemoveWindowSubclass(item.window, ChildProc, 86);
             SetWindowRgn(item.window, nullptr, FALSE);
             SetWindowPos(item.window, nullptr, item.bounds.left, item.bounds.top, 0, 0,
                          SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
         }
-        RemoveWindowSubclass(dialog, Proc, 86);
         SetWindowPos(dialog, nullptr, 0, 0, self->naturalSize_.cx, self->naturalSize_.cy,
                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
-        delete self;
     }
     static void Fit(HWND dialog, int dpi, std::initializer_list<int> footerIds = {IDCANCEL, IDOK}) {
         MONITORINFO monitor{sizeof(monitor)};
@@ -174,11 +193,12 @@ class UiDialogViewport {
         SetWindowPos(dialog, nullptr, left, monitor.rcWork.top + margin, bounds.right - bounds.left, height,
                      SWP_NOZORDER | SWP_NOACTIVATE);
         if (!SetWindowSubclass(dialog, Proc, 86, reinterpret_cast<DWORD_PTR>(self))) { delete self; return; }
-        for (const auto &item : self->items_) {
+        for (const auto item : self->items_) {
             if (item.footer)
                 SetWindowPos(item.window, nullptr, item.bounds.left, item.bounds.top + footerShift, 0, 0,
                              SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
             else SetWindowSubclass(item.window, ChildProc, 86, reinterpret_cast<DWORD_PTR>(self));
+            if (!Attached(dialog, self)) return;
         }
         self->Scroll(0);
     }

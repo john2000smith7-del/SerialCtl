@@ -17,26 +17,24 @@ jobs:
       - name: Compile real Win32 callback lifetime probe
         shell: cmd
         run: cl /nologo /std:c++17 /EHsc /O2 /Zi /fsanitize=address /MT /DUNICODE /D_UNICODE /DNOMINMAX /I src/app /Fe:viewport-lifetime.exe tests/integration/UiViewportReentryProbe.cpp user32.lib gdi32.lib gdiplus.lib comctl32.lib msimg32.lib ole32.lib /link /INCREMENTAL:NO
-      - name: Observe the baseline without treating a crash as a passing product
+      - name: Check native owner destruction during scroll and reset
         shell: powershell
         env:
           ASAN_OPTIONS: abort_on_error=1
         run: |
           $ErrorActionPreference = 'Continue'
-          $lines = & ./viewport-lifetime.exe 2>&1
-          $exitCode = $LASTEXITCODE
-          $lines | ForEach-Object { Write-Host $_ }
-          $lines | Set-Content viewport-lifetime.txt -Encoding UTF8
-          Write-Host "VIEWPORT_PROBE_EXIT=$exitCode"
-          if ($exitCode -ne 0 -and ($lines -join "`n") -match 'AddressSanitizer: heap-use-after-free') {
-            Write-Host 'BASELINE_REPRODUCED=heap-use-after-free; product failure, diagnostic succeeded'
-            $global:LASTEXITCODE = 0
-            exit 0
+          foreach ($mode in @('scroll','reset')) {
+            $lines = & ./viewport-lifetime.exe $mode 2>&1
+            $exitCode = $LASTEXITCODE
+            $lines | ForEach-Object { Write-Host $_ }
+            $lines | Set-Content "viewport-lifetime-$mode.txt" -Encoding UTF8
+            Write-Host "VIEWPORT_PROBE_$mode=$exitCode"
+            if ($exitCode -ne 0) { exit $exitCode }
+            if (($lines -join "`n") -match 'AddressSanitizer:') { throw 'Memory error in fixed native viewport' }
           }
-          if ($exitCode -eq 0) { Write-Host 'BASELINE_NO_CRASH_REPRODUCED'; exit 0 }
-          exit $exitCode
+          $global:LASTEXITCODE = 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: SerialCtl-viewport-address-sanitizer
-          path: viewport-lifetime.txt
+          path: viewport-lifetime*.txt
