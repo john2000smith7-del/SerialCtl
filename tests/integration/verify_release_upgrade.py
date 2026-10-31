@@ -77,9 +77,22 @@ def main():
     tampered=dict(metadata);tampered['signature']=('0' if metadata['signature'][0]!='0' else '1')+metadata['signature'][1:]
     (feed/'invalid.json').write_text(json.dumps(tampered),encoding='utf-8')
     requests=[]
+    corrupt_archive=[False]
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self,*a,**k):super().__init__(*a,directory=str(feed),**k)
-        def do_GET(self):requests.append(self.path);super().do_GET()
+        def do_GET(self):
+            requests.append(self.path)
+            if corrupt_archive[0] and self.path=='/'+args.candidate.name:
+                self.send_response(200);self.send_header('Content-Length',str(args.candidate.stat().st_size));self.end_headers()
+                with args.candidate.open('rb') as source:
+                    first=True
+                    while True:
+                        block=source.read(65536)
+                        if not block:break
+                        if first:block=bytes([block[0]^1])+block[1:];first=False
+                        self.wfile.write(block)
+                return
+            super().do_GET()
         def log_message(self,*a):pass
     try:
         if config.exists():
@@ -91,8 +104,10 @@ def main():
         note=(config/'command-notebook.txt').read_bytes()
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);worker=threading.Thread(target=server.serve_forever);worker.start()
         for label,archive in (('V2.0.15',args.previous),('V2.0.6',args.older)):
-            for invalid in (True,False):
-                install=args.output/(label+('-invalid' if invalid else '-upgrade'));install.mkdir()
+            for mode in ('invalid-signature','corrupt-archive','valid'):
+                invalid=mode=='invalid-signature'
+                corrupt_archive[0]=mode=='corrupt-archive' 
+                install=args.output/(label+'-'+mode);install.mkdir()
                 with zipfile.ZipFile(archive) as z:
                     for name in ('serialctl.exe','plink.exe','psftp.exe','VERSION'):(install/name).write_bytes(z.read(name))
                 (install/'drivers').mkdir();(install/'drivers'/'keep.txt').write_text('DRIVER_PRESERVED',encoding='ascii')
@@ -119,6 +134,18 @@ def main():
                 button=wait(confirmation,30)
                 require('/'+args.candidate.name not in requests[start:],'Archive downloaded before user confirmation')
                 click(button)
+                if corrupt_archive[0]:
+                    def failed_dialog():
+                        for h in windows('#32770'):
+                            title=c.create_unicode_buffer(256);user.GetWindowTextW(h,title,256)
+                            if title.value=='更新失败':return h
+                        return None
+                    failed=wait(failed_dialog,60)
+                    require(hashlib.sha256((install/'serialctl.exe').read_bytes()).hexdigest()==original,'Damaged ZIP replaced the old client')
+                    require(not (install/'.serialctl-update'/'transaction.txt').exists(),'Damaged ZIP began installation')
+                    click(user.GetDlgItem(failed,2));process.wait(timeout=20);process=None
+                    report['cases'].append({'from':label,'corruptArchive':'PASS','oldExecutablePreserved':'PASS'})
+                    continue
                 def installed():
                     try:return hashlib.sha256((install/'serialctl.exe').read_bytes()).hexdigest()==expected_exe and (install/'VERSION').read_bytes()==expected_version
                     except OSError:return False
