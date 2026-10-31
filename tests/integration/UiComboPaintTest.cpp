@@ -227,16 +227,26 @@ void RunCase(HWND parent, bool ownerDrawn, bool composer = false) {
     RECT row{};
     SendMessageW(info.hwndList, LB_GETITEMRECT, 0, reinterpret_cast<LPARAM>(&row));
     const auto point = MAKELPARAM(10, (row.top + row.bottom) / 2);
+    // The native captured ComboLBox also consults the real cursor on release.
+    // Keep it at the forwarded coordinates after the actual-mouse cases; do
+    // not pump a later paint before checking the immediate selection pixels.
+    POINT actualPoint{10,(row.top+row.bottom)/2};ClientToScreen(info.hwndList,&actualPoint);
+    Require(SetCursorPos(actualPoint.x,actualPoint.y)!=FALSE,"Cannot position the selection cursor");
     SendMessageW(info.hwndList, WM_LBUTTONDOWN, MK_LBUTTON, point);
     SendMessageW(info.hwndList, WM_LBUTTONUP, 0, point);
     Require(!SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0), "Native mouse selection did not close dropdown");
+    Require(SendMessageW(combo,CB_GETCURSEL,0,0)==0,"Forwarded click selected a different row from its actual cursor");
     CheckSettled(combo, "mouse selection before focus loss");
     Pump();
     CheckSettled(combo, "mouse after queued messages");
     rebuildOnSelection = true;
     SendMessageW(combo, WM_KEYDOWN, VK_DOWN, 0);
     CheckSettled(combo, "list rebuilt inside selection callback");
-    Require(!rebuildOnSelection && SendMessageW(combo, CB_GETCURSEL, 0, 0) == 1, "Reentrant selection rebuild failed");
+    if(rebuildOnSelection || SendMessageW(combo,CB_GETCURSEL,0,0)!=1) {
+        std::cerr<<"reentrant theme="<<dark<<" dpi="<<style.dpi<<" owner="<<ownerDrawn<<" composer="<<composer
+                 <<" selected="<<SendMessageW(combo,CB_GETCURSEL,0,0)<<" notification="<<!rebuildOnSelection<<'\n';
+        throw std::runtime_error("Reentrant selection rebuild failed");
+    }
     EnableWindow(combo, FALSE);
     CheckSettled(combo, "disabled");
     EnableWindow(combo, TRUE);

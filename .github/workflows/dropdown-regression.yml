@@ -1,0 +1,32 @@
+name: Focused native dropdown regression
+on:
+  push:
+    branches: [feat/v215-dropdowns-workspace-boot]
+    paths: [src/app/UiStyle.h, src/app/UiPathField.h, tests/integration/UiComboPaintTest.cpp, .github/workflows/dropdown-regression.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the same native dropdown test target
+        shell: powershell
+        run: |
+          cmake -S . -B build/dropdown -A x64 -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/dropdown --config Release --target ui_combo_paint_test --parallel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise real mouse, native selection, long lists and path scrolling
+        shell: powershell
+        run: |
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/dropdown-evidence"
+          ctest --test-dir build/dropdown -C Release -R '^ui_combo_paint$' --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: focused-dropdown-evidence
+          path: ${{ runner.temp }}/dropdown-evidence/*.png
+          if-no-files-found: warn
