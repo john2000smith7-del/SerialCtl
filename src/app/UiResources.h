@@ -6,7 +6,6 @@
 #include <propidl.h>
 #include <gdiplus.h>
 // clang-format on
-#include <array>
 #include <new>
 #include <cstdlib>
 #include <cstring>
@@ -23,7 +22,6 @@ struct UiResourceBitmap {
     std::vector<unsigned char> alpha;
     unsigned width = 0;
     std::unique_ptr<Gdiplus::Bitmap> bitmap;
-    std::array<std::unique_ptr<Gdiplus::Bitmap>,27> glyphs;
     explicit UiResourceBitmap(int id) {
         const auto module = GetModuleHandleW(nullptr);
         const auto resource = FindResourceW(module, MAKEINTRESOURCEW(id), RT_RCDATA);
@@ -51,7 +49,7 @@ struct UiResourceBitmap {
         bitmap.reset(Gdiplus::Bitmap::FromStream(stream));
         if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok)
             bitmap.reset();
-        if (bitmap && (id == 2010 || id == 2011)) {
+        if (bitmap && (id == 2010 || id == 2011 || id == 2012)) {
             width = bitmap->GetWidth();
             const unsigned height = bitmap->GetHeight();
             Gdiplus::BitmapData data{};
@@ -99,28 +97,62 @@ inline bool UiResourceGlyphDirect(HDC dc, const RECT &rect, COLORREF color, int 
                        0, 96, 96, Gdiplus::UnitPixel, &attributes);
     return true;
 }
+struct UiTintedGlyphAtlas {
+    COLORREF color = 0;
+    std::vector<DWORD> pixels;
+    std::unique_ptr<Gdiplus::Bitmap> bitmap;
+};
+inline Gdiplus::Bitmap *UiGlyphAtlas(UiResourceBitmap &source, COLORREF color) {
+    // Fixed geometry keeps GDI+'s original source coordinates and resampling.
+    // Only the color transform is cached; changing the source rectangle origin
+    // changes some antialiased edge pixels in GDI+ even with identical artwork.
+    static auto *cache = new std::list<std::unique_ptr<UiTintedGlyphAtlas>>;
+    auto found = std::find_if(cache->begin(), cache->end(),
+        [&](const auto &entry) { return entry->color == color; });
+    if (found != cache->end()) {
+        cache->splice(cache->begin(), *cache, found);
+        return cache->front()->bitmap.get();
+    }
+    if (!source.width || source.alpha.empty()) return nullptr;
+    const auto height = source.alpha.size() / source.width;
+    auto entry = std::make_unique<UiTintedGlyphAtlas>();
+    entry->color = color;
+    entry->pixels.resize(source.alpha.size());
+    const DWORD rgb = (static_cast<DWORD>(GetRValue(color)) << 16) |
+                      (static_cast<DWORD>(GetGValue(color)) << 8) | GetBValue(color);
+    for (size_t i = 0; i < source.alpha.size(); ++i)
+        entry->pixels[i] = (static_cast<DWORD>(source.alpha[i]) << 24) | rgb;
+    entry->bitmap = std::make_unique<Gdiplus::Bitmap>(static_cast<INT>(source.width),
+        static_cast<INT>(height), static_cast<INT>(source.width * 4), PixelFormat32bppARGB,
+        reinterpret_cast<BYTE *>(entry->pixels.data()));
+    if (!entry->bitmap || entry->bitmap->GetLastStatus() != Gdiplus::Ok) return nullptr;
+    size_t total = entry->pixels.size() * sizeof(DWORD);
+    for (const auto &existing : *cache) total += existing->pixels.size() * sizeof(DWORD);
+    while (!cache->empty() && (cache->size() >= 16 || total > 8 * 1024 * 1024)) {
+        total -= cache->back()->pixels.size() * sizeof(DWORD);
+        cache->pop_back();
+    }
+    cache->push_front(std::move(entry));
+    return cache->front()->bitmap.get();
+}
 inline bool UiResourceGlyph(HDC dc, const RECT &rect, COLORREF color, int index) {
     auto &resource = UiResource(2012);
     if (!resource.bitmap || index < 0 || index >= 27) return false;
-    // Apply the original color transform to one original icon, rather than the
-    // complete 2592px atlas on every draw. Keep the original ARGB format and
-    // direct destination compositing so antialiasing remains unchanged.
-    auto &glyph = resource.glyphs[static_cast<size_t>(index)];
-    if (!glyph) {
-        glyph.reset(resource.bitmap->Clone(index * 96, 0, 96, 96, PixelFormat32bppARGB));
-        if (!glyph || glyph->GetLastStatus() != Gdiplus::Ok) {
-            glyph.reset();
-            return UiResourceGlyphDirect(dc, rect, color, index);
+    try {
+        if (auto atlas = UiGlyphAtlas(resource, color)) {
+            Gdiplus::Graphics graphics(dc);
+            graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+            graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+            Gdiplus::ImageAttributes attributes;
+            attributes.SetWrapMode(Gdiplus::WrapModeTileFlipXY);
+            return graphics.DrawImage(atlas,
+                Gdiplus::Rect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top),
+                index * 96, 0, 96, 96, Gdiplus::UnitPixel, &attributes) == Gdiplus::Ok;
         }
+    } catch (const std::bad_alloc &) {
+        // Optional cache allocation must not turn a paint into a process crash.
     }
-    Gdiplus::Graphics graphics(dc);
-    graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-    graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
-    Gdiplus::ImageAttributes attributes;
-    UiResourceTint(attributes, color);
-    return graphics.DrawImage(glyph.get(),
-        Gdiplus::Rect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top),
-        0, 0, 96, 96, Gdiplus::UnitPixel, &attributes) == Gdiplus::Ok;
+    return UiResourceGlyphDirect(dc, rect, color, index);
 }
 // Resource glyphs keep their embedded artwork; control geometry is rasterized
 // at the destination DPI to retain subpixel coverage instead of point sampling.
