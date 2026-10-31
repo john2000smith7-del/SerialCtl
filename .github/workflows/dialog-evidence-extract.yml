@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
-      SOURCE_RUN: '41219801247'
+      SOURCE_RUN: '41220227203'
       SOURCE_ARTIFACT: SerialCtl-endurance-baseline
     steps:
       - name: Retrieve original screenshots and result files unchanged
@@ -29,7 +29,7 @@ jobs:
               result=json.loads(results[0].read_text(encoding='utf-8-sig'))
               names={row['path'] for row in result.get('frames',[])[-5:]}
               for row in result.get('frames',[]):
-                  if any(part in row['path'] for part in ('theme-initial','pet-before','pet-after','failure')):names.add(row['path'])
+                  if any(part in row['path'] for part in ('theme-initial','theme-final','pet-before','pet-after','failure','modal-101','modal-103','modal-303','modal-304')):names.add(row['path'])
               for path in root.rglob('*.png'):
                   if path.name in names:shutil.copy2(path,out/path.name)
               print(json.dumps({k:result.get(k) for k in ('status','error','actual_click_count','behavior_failures','operations','resource_samples')},ensure_ascii=False))
