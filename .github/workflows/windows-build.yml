@@ -115,6 +115,12 @@ jobs:
           if ($archive.Count -ne 1) { throw 'Expected exactly one verified release archive.' }
           python tests/integration/gui_command_drag_fixture.py --archive $archive[0].FullName --output "$env:RUNNER_TEMP/serialctl-command-drag"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise approved optimization controls and capture continuous power scroll
+        shell: powershell
+        run: |
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          python tests/integration/optimization_fixture.py --archive $archive[0].FullName --output "$env:RUNNER_TEMP/serialctl-optimization"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise packaged update startup in real windows
         shell: powershell
         run: |
@@ -191,6 +197,8 @@ jobs:
             ${{ runner.temp }}/serialctl-command-drag/*.png
             ${{ runner.temp }}/serialctl-command-drag/*.json
             ${{ runner.temp }}/serialctl-command-drag/*.txt
+            ${{ runner.temp }}/serialctl-optimization/*.png
+            ${{ runner.temp }}/serialctl-optimization/*.json
             ${{ runner.temp }}/serialctl-build.txt
             ${{ runner.temp }}/serialctl-dialog-latency/*.log
           if-no-files-found: warn
