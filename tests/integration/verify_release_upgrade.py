@@ -103,7 +103,7 @@ def main():
         (config/'command-notebook.txt').write_text('echo KEEP_UPGRADE_NOTEBOOK\r\n',encoding='utf-8')
         note=(config/'command-notebook.txt').read_bytes()
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);worker=threading.Thread(target=server.serve_forever);worker.start()
-        for label,archive in (('V2.0.15',args.previous),('V2.0.6',args.older)):
+        for label,archive in (('V2.0.16',args.previous),('V2.0.6',args.older)):
             for mode in ('invalid-signature','corrupt-archive','valid'):
                 invalid=mode=='invalid-signature'
                 corrupt_archive[0]=mode=='corrupt-archive'

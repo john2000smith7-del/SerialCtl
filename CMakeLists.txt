@@ -411,6 +411,7 @@ if(BUILD_TESTING)
 
     add_executable(tcp_connection_test
         tests/integration/TcpConnectionTest.cpp
+        src/connections/QueuedConnection.cpp
         src/connections/TcpConnection.cpp
         src/connections/NetworkConnect.cpp
         src/connections/ChildProcess.cpp

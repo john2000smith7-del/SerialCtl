@@ -42,6 +42,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot compile current queue probe' }
           & ./new-queue-test.exe | Tee-Object new-queue-result.txt
           if ($LASTEXITCODE -ne 0) { throw 'Current queue still blocks the resize caller' }
+      - name: Check real loopback Telnet NAWS through the production queue wrapper
+        shell: powershell
+        run: |
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 /I src/connections /I src/platform /Fe:queued-telnet-test.exe tests/integration/TcpConnectionTest.cpp src/connections/QueuedConnection.cpp src/connections/TcpConnection.cpp src/connections/NetworkConnect.cpp src/connections/ChildProcess.cpp ws2_32.lib advapi32.lib ole32.lib shell32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile loopback Telnet regression' }
+          & ./queued-telnet-test.exe | Tee-Object telnet-queue-result.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Asynchronous resize changed actual Telnet NAWS negotiation' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
