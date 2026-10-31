@@ -68,7 +68,7 @@ jobs:
         shell: powershell
         run: |
           $assets = (Resolve-Path src/app/assets).Path.Replace('\','/')
-          $resources = @('2010 RCDATA "'+$assets+'/surface-fill.png"','2011 RCDATA "'+$assets+'/surface-stroke.png"','2012 RCDATA "'+$assets+'/utility-icons.png"')
+          $resources = @(('2010 RCDATA "'+$assets+'/surface-fill.png"'),('2011 RCDATA "'+$assets+'/surface-stroke.png"'),('2012 RCDATA "'+$assets+'/utility-icons.png"'))
           [IO.File]::WriteAllLines((Join-Path $pwd 'glyph-assets.rc'),$resources)
           rc /nologo /fo glyph-assets.res glyph-assets.rc
           if ($LASTEXITCODE -ne 0) { throw 'Cannot compile artwork resources' }
