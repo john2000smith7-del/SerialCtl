@@ -230,6 +230,9 @@ private:
     void LoadUiState();
     void SaveUiState();
     void SetRightPanelCollapsed(bool collapsed);
+    void SetLeftPanelCollapsed(bool collapsed);
+    int LeftWidth() const;
+    std::wstring BootProfileKey(const SessionState&) const;
     bool SidebarCollapsed() const;
     int SidebarWidth() const;
     void SyncAiTerminal();
@@ -433,6 +436,11 @@ private:
     std::wstring commandDirectory_;
     int rightPanelWidth_ = 360;
     bool rightPanelCollapsed_ = false;
+    std::string pendingPowerMonitorSession_;
+    std::map<std::wstring,std::string> bootPresets_;
+    bool leftPanelCollapsed_ = false, leftPanelAnimating_ = false;
+    int leftPanelAnimatedWidth_ = -1, leftPanelAnimationFrom_ = 0, leftPanelAnimationTo_ = 0;
+    ULONGLONG leftPanelAnimationAt_ = 0;
     bool rightPanelAutoCollapsed_ = false;
     bool rightPanelDragging_ = false;
     bool rightPanelAnimating_ = false;

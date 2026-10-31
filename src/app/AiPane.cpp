@@ -7,6 +7,7 @@
 #include "Win32Helpers.h"
 #include "UiDialogViewport.h"
 #include "UiMetrics.h"
+#include "UiPathField.h"
 #include <chrono>
 #include <sstream>
 #include <windowsx.h>
@@ -39,9 +40,13 @@ enum {
     HostIdentity,
     HostReverify,
     DirectoryUp,
-    DirectoryRefresh
+    DirectoryRefresh,
+    PathDisplay
 };
 constexpr UINT_PTR Timer = 1;
+constexpr UINT CommitDirectory = WM_APP + 196;
+constexpr UINT RefreshDirectoryRows = WM_APP + 197;
+constexpr UINT CommitTarget = WM_APP + 198;
 constexpr size_t MaxConversation = 4 * 1024 * 1024;
 std::wstring Wide(const std::string &s) {
     return MultiByteToWide(reinterpret_cast<const uint8_t *>(s.data()), s.size(), CP_UTF8);
@@ -538,25 +543,32 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (w == Timer)
             self->Poll();
         return 0;
+    case CommitTarget:
+        if(w==1) { if(self->targetRefreshDeferred_) self->RefreshTargets(); return 0; }
+        self->targetCommitQueued_=false;
+        if(self->busy_) return 0;
+        if(self->pendingTargetConnect_) {
+            self->pendingTargetConnect_=false;
+            self->devices_("connectRemote",Json::object());
+            self->RefreshTargets();
+        } else self->target_=self->pendingTargetSelection_;
+        if(self->targetRefreshDeferred_) self->RefreshTargets();
+        self->UpdateTargetLabel(); self->UpdateActions();
+        PostMessageW(GetParent(h),AiTargetChanged,0,0);
+        return 0;
     case WM_COMMAND:
         if (self->closing_) return 0;
         if (HIWORD(w) == BN_CLICKED)
             self->Action(LOWORD(w));
-        else if (LOWORD(w) == Target && HIWORD(w) == CBN_SELCHANGE) {
-            auto i = SendMessageW(self->Control(Target), CB_GETCURSEL, 0, 0);
-            if (i > 0 && static_cast<size_t>(i) <= self->targets_.size())
-                self->target_ = self->targets_[i - 1];
-            else if (i == static_cast<LRESULT>(self->targets_.size() + 1)) {
-                self->devices_("connectRemote", Json::object());
-                self->RefreshTargets();
-                const auto chosen = std::find(self->targets_.begin(), self->targets_.end(), self->target_);
-                SendMessageW(self->Control(Target), CB_SETCURSEL,
-                             chosen == self->targets_.end() ? 0 : chosen - self->targets_.begin() + 1, 0);
-            } else
-                self->target_.clear();
-            self->UpdateTargetLabel();
-            self->UpdateActions();
-            PostMessageW(GetParent(h), AiTargetChanged, 0, 0);
+        else if (LOWORD(w)==Target) {
+            const int note=HIWORD(w);
+            if(note==CBN_CLOSEUP) { PostMessageW(h,CommitTarget,1,0); return 0; }
+            if(note==CBN_SELENDOK || (note==CBN_SELCHANGE && !SendMessageW(self->Control(Target),CB_GETDROPPEDSTATE,0,0))) {
+                const auto i=SendMessageW(self->Control(Target),CB_GETCURSEL,0,0);
+                self->pendingTargetSelection_ = i>0 && static_cast<size_t>(i)<=self->targets_.size() ? self->targets_[i-1] : std::string();
+                self->pendingTargetConnect_ = i==static_cast<LRESULT>(self->targets_.size()+1);
+                if(!self->targetCommitQueued_) { self->targetCommitQueued_=true; PostMessageW(h,CommitTarget,0,0); }
+            }
         }
         return 0;
     case WM_DRAWITEM: {
@@ -1339,6 +1351,8 @@ void AiPane::UpdateActions() {
 void AiPane::RefreshTargets() {
     if (!devices_ || !window_ || busy_)
         return;
+    if(SendMessageW(Control(Target),CB_GETDROPPEDSTATE,0,0)) { targetRefreshDeferred_=true; return; }
+    targetRefreshDeferred_=false;
     auto result = devices_("sessions", Json::object());
     std::vector<std::string> ids;
     if (result.is_array())
@@ -2314,7 +2328,7 @@ void AiPane::ServerRequest(const Json &e) {
         return;
     }
     if (tool == "serialctl_screen" || tool == "serialctl_text" || tool == "serialctl_key" ||
-        tool == "serialctl_boot_arm" || tool == "serialctl_boot_status" || tool == "serialctl_recover") {
+        tool == "serialctl_boot_arm" || tool == "serialctl_boot_enter" || tool == "serialctl_boot_stop" || tool == "serialctl_boot_status" || tool == "serialctl_recover") {
         if (tool == "serialctl_recover" && recoveryUsed_) {
             Reply(e["requestId"], {{"error", "One recovery was already submitted; query its action instead"}}, false);
             return;
@@ -2455,19 +2469,71 @@ void AiPane::SaveWorkspaceDefault(const std::wstring &path) {
     std::wstring error;
     if (!ai::SaveServerSettings(settings_, error)) SetStatus(error);
 }
-void AiPane::PopulateDirectories() {
+void AiPane::PopulateDirectories(bool updatePath) {
+    directoryPathDirty_ = directoryPathDirty_ || updatePath;
+    bool deferred = false;
     for (HWND h : {dialog_, workspaceDialog_}) {
         if (!h) continue;
         auto combo = GetDlgItem(h, Directory);
-        const auto draft = Text(combo);
+        if (SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0)) { deferred = true; continue; }
         SendMessageW(combo, CB_RESETCONTENT, 0, 0);
-        if (!verifiedDirectory_.empty()) SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(verifiedDirectory_.c_str()));
+        SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"选择子目录…"));
         for (const auto &path : directoryChildren_) {
-            auto wide = Wide(path.get<std::string>());
-            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(wide.c_str()));
+            auto name = Wide(path.get<std::string>());
+            while (name.size()>1 && name.back()==L'/') name.pop_back();
+            const auto slash=name.rfind(L'/');
+            if(slash!=std::wstring::npos) name.erase(0,slash+1);
+            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         }
-        SetWindowTextW(combo, (directoryPending_ ? draft : verifiedDirectory_).c_str());
+        SendMessageW(combo, CB_SETCURSEL, 0, 0);
+        if (directoryPathDirty_) SetDlgItemTextW(h, PathDisplay, verifiedDirectory_.c_str());
     }
+    directoryRowsDirty_ = deferred;
+    if (!deferred) directoryPathDirty_ = false;
+}
+void AiPane::QueueDirectorySelection(HWND h) {
+    const auto combo=GetDlgItem(h,Directory);
+    const auto index=SendMessageW(combo,CB_GETCURSEL,0,0);
+    if(index<=0) return;
+    const auto size=SendMessageW(combo,CB_GETLBTEXTLEN,index,0);
+    if(size<=0 || size>4096) return;
+    std::wstring name(static_cast<size_t>(size)+1,L'\0');
+    SendMessageW(combo,CB_GETLBTEXT,index,reinterpret_cast<LPARAM>(name.data())); name.resize(size);
+    auto parent=Text(GetDlgItem(h,PathDisplay));
+    if(!ai::ValidWorkspacePath(Utf8(parent)) || name.find(L'/')!=std::wstring::npos) return;
+    if(parent.back()!=L'/') parent+=L'/';
+    pendingDirectorySelection_=parent+name;
+    PostMessageW(h,CommitDirectory,0,0);
+}
+bool AiPane::DirectoryMessage(HWND h, UINT m, WPARAM w) {
+    if(m==CommitDirectory) {
+        auto path=std::move(pendingDirectorySelection_); pendingDirectorySelection_.clear();
+        if(!path.empty() && !directoryPending_ && client_.Ready() && !busy_) BrowseDirectory(path);
+        return true;
+    }
+    if(m==RefreshDirectoryRows) { if(directoryRowsDirty_) PopulateDirectories(); return true; }
+    if(m!=WM_COMMAND) return false;
+    const int id=LOWORD(w),note=HIWORD(w);
+    if(id==Directory && note==CBN_CLOSEUP) {
+        if(directoryRowsDirty_) PostMessageW(h,RefreshDirectoryRows,0,0);
+        return true;
+    }
+    if(id==Directory && (note==CBN_SELENDOK || (note==CBN_SELCHANGE &&
+        !SendDlgItemMessageW(h,Directory,CB_GETDROPPEDSTATE,0,0)))) {
+        if(!directoryPending_ && client_.Ready() && !busy_) QueueDirectorySelection(h);
+        return true;
+    }
+    if(id==PathDisplay && note==BN_CLICKED) {
+        auto path=Text(GetDlgItem(h,PathDisplay));
+        if(!directoryPending_ && PromptValue(L"服务器项目路径",path)) {
+            if(path.empty() || ai::ValidWorkspacePath(Utf8(path))) {
+                SetDlgItemTextW(h,PathDisplay,path.c_str());
+                if(client_.Ready() && !path.empty()) BrowseDirectory(path);
+            } else SetDlgItemTextW(h,Note,L"请填写 Linux 绝对路径");
+        }
+        return true;
+    }
+    return false;
 }
 void AiPane::BrowseDirectory(const std::wstring &path, bool initial) {
     if (!ai::ValidWorkspacePath(Utf8(path))) {
@@ -2511,7 +2577,7 @@ void AiPane::DirectoryResult(const Json &result, bool fallback) {
     directoryPending_ = false;
     verifiedDirectory_ = directoryPath_;
     directoryChildren_ = std::move(children);
-    PopulateDirectories();
+    PopulateDirectories(true);
     if (directoryInitial_ && settings_.workingDirectory.empty()) {
         SaveWorkspaceDefault(verifiedDirectory_);
         if (thread_.empty()) workspaceDirectory_ = verifiedDirectory_;
@@ -2548,7 +2614,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         self->workspaceDialog_ = h;
         self->workspaceAccept_ = false;
         SetWindowTextW(h, L"新建 AI 会话 · 工作空间");
-        UiResizeDialog(h, self->dpi_, 436, 224);
+        UiResizeDialog(h, self->dpi_, 436, 268);
         auto add = [&](const wchar_t *type, const wchar_t *text, int id, int x, int y, int width, int height, DWORD extra) {
             auto c = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | extra, self->D(x), self->D(y), self->D(width), self->D(height),
                 h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
@@ -2557,19 +2623,20 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (_wcsicmp(type,L"BUTTON") == 0) UiStyleButton(c);
             return c;
         };
-        add(L"STATIC",L"服务器项目目录",-1,16,16,404,24,0);
-        auto combo = add(L"COMBOBOX",L"",Directory,16,40,252,240,CBS_DROPDOWN | CBS_AUTOHSCROLL | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
+        add(L"STATIC",L"服务器项目目录 · 单击查看，双击编辑",-1,16,16,404,24,0);
+        UiPathField::Create(h,PathDisplay,self->D(16),self->D(40),self->D(404),self->D(40),&self->style_);
+        auto combo = add(L"COMBOBOX",L"",Directory,16,92,252,240,CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
         SendMessageW(combo,CB_SETITEMHEIGHT,static_cast<WPARAM>(-1),self->D(24));
         SendMessageW(combo,CB_SETDROPPEDWIDTH,self->D(404),0);
         SendMessageW(combo,CB_LIMITTEXT,4096,0);
-        add(L"BUTTON",L"上级",DirectoryUp,280,40,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON",L"刷新",DirectoryRefresh,356,40,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"STATIC",L"选择源码或资料目录。已有会话保留各自的目录。",Note,16,84,404,56,0);
-        add(L"BUTTON",L"取消",IDCANCEL,216,172,96,36,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON",L"新建",IDOK,324,172,96,36,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"上一级",DirectoryUp,280,92,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"刷新",DirectoryRefresh,356,92,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"STATIC",L"单击路径查看完整内容；双击编辑。下拉选择子目录。",Note,16,132,404,56,0);
+        add(L"BUTTON",L"取消",IDCANCEL,216,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"新建",IDOK,324,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
         auto path = self->settings_.workingDirectory.empty() ? self->workspaceDirectory_ : self->settings_.workingDirectory;
         if (path.empty()) path = L"/home/linux/workspace";
-        SetWindowTextW(combo,path.c_str());
+        SetDlgItemTextW(h,PathDisplay,path.c_str());
         EnableWindow(GetDlgItem(h, IDOK), FALSE);
         Center(h,GetWindow(h,GW_OWNER));
         UiDialogViewport::Fit(h,self->dpi_);
@@ -2578,35 +2645,28 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (!self) return FALSE;
     if (m == UiFirstPaintReady) {
-        self->BrowseDirectory(Text(GetDlgItem(h, Directory)));
+        self->BrowseDirectory(Text(GetDlgItem(h, PathDisplay)));
         SetTimer(h,1,100,nullptr);
         return TRUE;
     }
     if (m == WM_TIMER) {
         EnableWindow(GetDlgItem(h,IDOK), self->client_.Ready() && !self->directoryPending_);
-        for (int id : {DirectoryUp,DirectoryRefresh}) EnableWindow(GetDlgItem(h,id),self->client_.Ready() && !self->directoryPending_);
+        for (int id : {Directory,DirectoryUp,DirectoryRefresh}) EnableWindow(GetDlgItem(h,id),self->client_.Ready() && !self->directoryPending_);
         return TRUE;
     }
+    if (self->DirectoryMessage(h,m,w)) return TRUE;
     if (m == WM_COMMAND) {
         const int id = LOWORD(w);
         if (id == IDCANCEL) { self->workspaceAccept_ = false; UiEndOwnedDialog(h,IDCANCEL); return TRUE; }
         if (self->directoryPending_) return TRUE;
-        const auto path = Text(GetDlgItem(h,Directory));
+        const auto path = Text(GetDlgItem(h,PathDisplay));
         if (id == IDOK) {
             if (path.empty()) { self->directoryPath_.clear(); UiEndOwnedDialog(h,IDOK); }
             else if (path == self->verifiedDirectory_) { self->directoryPath_ = path; UiEndOwnedDialog(h,IDOK); }
             else { self->workspaceAccept_ = true; self->BrowseDirectory(path); }
         } else if (id == DirectoryUp) self->BrowseDirectory(Wide(ai::WorkspaceParent(Utf8(path))));
         else if (id == DirectoryRefresh) self->BrowseDirectory(path);
-        else if (id == Directory && HIWORD(w) == CBN_SELCHANGE) {
-            const auto index = SendDlgItemMessageW(h,Directory,CB_GETCURSEL,0,0);
-            if (index >= 0) {
-                const auto length = SendDlgItemMessageW(h,Directory,CB_GETLBTEXTLEN,index,0);
-                std::wstring selected(static_cast<size_t>(length)+1,L'\0');
-                SendDlgItemMessageW(h,Directory,CB_GETLBTEXT,index,reinterpret_cast<LPARAM>(selected.data())); selected.resize(length);
-                self->BrowseDirectory(selected);
-            }
-        }
+
         return TRUE;
     }
     if (m == WM_CLOSE) { SendMessageW(h,WM_COMMAND,IDCANCEL,0); return TRUE; }
@@ -2640,7 +2700,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         self->dialog_ = h;
         self->dialogEnter_ = false;
         SetWindowTextW(h, L"连接 AI 服务器");
-        UiResizeDialog(h, self->dpi_, 436, 512);
+        UiResizeDialog(h, self->dpi_, 436, 564);
         auto add = [&](const wchar_t *type, const wchar_t *label, int id, int x, int y, int width, int height,
                        DWORD style = 0) {
             auto c = CreateWindowExW(
@@ -2668,22 +2728,23 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ES_PASSWORD | ES_AUTOHSCROLL | WS_TABSTOP);
         add(L"BUTTON", L"记住密码（Windows 安全存储）", Remember, 16, 216, 404, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
         CheckDlgButton(h, Remember, self->settings_.rememberPassword ? BST_CHECKED : BST_UNCHECKED);
-        add(L"STATIC", L"服务器项目目录（可选，Linux 绝对路径）", -1, 16, 256, 404, 24);
-        auto directories = add(L"COMBOBOX", L"", Directory, 16, 280, 252, 240,
-            CBS_DROPDOWN | CBS_AUTOHSCROLL | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
+        add(L"STATIC", L"服务器项目目录 · 单击查看，双击编辑", -1, 16, 256, 404, 24);
+        UiPathField::Create(h,PathDisplay,self->D(16),self->D(280),self->D(404),self->D(40),&self->style_);
+        auto directories = add(L"COMBOBOX", L"", Directory, 16, 332, 252, 240,
+            CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
         SendMessageW(directories, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), self->D(24));
         SendMessageW(directories, CB_SETDROPPEDWIDTH, self->D(404), 0);
         SendMessageW(directories, CB_LIMITTEXT, 4096, 0);
-        SetWindowTextW(directories,self->settings_.workingDirectory.c_str());
-        add(L"BUTTON",L"上级",DirectoryUp,280,280,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON",L"刷新",DirectoryRefresh,356,280,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"STATIC", L"连接检测", -1, 16, 332, 196, 28);
-        add(L"BUTTON", L"测试连接", Test, 316, 324, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"STATIC", self->status_.c_str(), Note, 16, 372, 404, 32);
-        add(L"STATIC", L"", HostIdentity, 16, 416, 244, 32, SS_CENTERIMAGE);
-        add(L"BUTTON", L"重新核验主机", HostReverify, 280, 416, 140, 32, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON", L"取消", IDCANCEL, 216, 460, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 460, 96, 36,
+        SetDlgItemTextW(h,PathDisplay,self->settings_.workingDirectory.c_str());
+        add(L"BUTTON",L"上一级",DirectoryUp,280,332,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"刷新",DirectoryRefresh,356,332,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"STATIC", L"连接检测", -1, 16, 384, 196, 28);
+        add(L"BUTTON", L"测试连接", Test, 316, 376, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"STATIC", self->status_.c_str(), Note, 16, 424, 404, 32);
+        add(L"STATIC", L"", HostIdentity, 16, 468, 244, 32, SS_CENTERIMAGE);
+        add(L"BUTTON", L"重新核验主机", HostReverify, 280, 468, 140, 32, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", L"取消", IDCANCEL, 216, 512, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 512, 96, 36,
             BS_OWNERDRAW | WS_TABSTOP);
         Center(h, GetWindow(h, GW_OWNER));
         UiDialogViewport::Fit(h, self->dpi_);
@@ -2693,9 +2754,9 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (!self)
         return FALSE;
     if (m == UiFirstPaintReady) {
-        const auto draft = Text(GetDlgItem(h, Directory));
+        const auto draft = Text(GetDlgItem(h, PathDisplay));
         self->PopulateDirectories();
-        SetDlgItemTextW(h, Directory, draft.c_str());
+        SetDlgItemTextW(h, PathDisplay, draft.c_str());
         // Refresh status only after the complete form has reached the screen.
         SendMessageW(h, WM_TIMER, 1, 0);
         if (!IsWindow(h)) return TRUE;
@@ -2711,7 +2772,8 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         };
         for (int id : {Host, Port, Username, Password, Remember})
             enable(id, !running);
-        enable(Directory, !self->directoryPending_ && !self->busy_);
+        enable(Directory, ready && !self->directoryPending_ && !self->busy_);
+        enable(PathDisplay, !self->directoryPending_ && !self->busy_);
         for (int id : {DirectoryUp,DirectoryRefresh}) enable(id,ready && !self->busy_ && !self->directoryPending_);
         enable(Test, !running);
         enable(HostReverify, !running);
@@ -2728,6 +2790,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             UiEndOwnedDialog(h, IDOK);
         return TRUE;
     }
+    if (self->DirectoryMessage(h,m,w)) return TRUE;
     if (m == WM_COMMAND) {
         int id = LOWORD(w);
         if (id == IDCANCEL) {
@@ -2737,7 +2800,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         if (id == IDOK && self->client_.Ready()) {
-            const auto path = Text(GetDlgItem(h,Directory));
+            const auto path = Text(GetDlgItem(h,PathDisplay));
             if (!path.empty() && !ai::ValidWorkspacePath(Utf8(path))) {
                 SetDlgItemTextW(h,Note,L"请填写 Linux 绝对路径，或留空使用服务器默认目录"); return TRUE;
             }
@@ -2746,16 +2809,9 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             UiEndOwnedDialog(h, IDOK);
             return TRUE;
         }
-        if (id == DirectoryUp || id == DirectoryRefresh || (id == Directory && HIWORD(w) == CBN_SELCHANGE)) {
+        if (id == DirectoryUp || id == DirectoryRefresh) {
             if (!self->client_.Ready() || self->directoryPending_ || self->busy_) return TRUE;
-            auto path = Text(GetDlgItem(h,Directory));
-            if (id == Directory && HIWORD(w) == CBN_SELCHANGE) {
-                const auto index = SendDlgItemMessageW(h,Directory,CB_GETCURSEL,0,0);
-                if (index < 0) return TRUE;
-                const auto length = SendDlgItemMessageW(h,Directory,CB_GETLBTEXTLEN,index,0);
-                path.resize(static_cast<size_t>(length)+1);
-                SendDlgItemMessageW(h,Directory,CB_GETLBTEXT,index,reinterpret_cast<LPARAM>(path.data())); path.resize(length);
-            }
+            auto path = Text(GetDlgItem(h,PathDisplay));
             self->BrowseDirectory(id == DirectoryUp ? Wide(ai::WorkspaceParent(Utf8(path))) : path);
             return TRUE;
         }
@@ -2765,7 +2821,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ai::ServerSettings s = self->settings_;
             s.host = Text(GetDlgItem(h, Host));
             s.username = Text(GetDlgItem(h, Username));
-            s.workingDirectory = Text(GetDlgItem(h, Directory));
+            s.workingDirectory = Text(GetDlgItem(h, PathDisplay));
             s.password = Text(GetDlgItem(h, Password));
             s.rememberPassword = IsDlgButtonChecked(h, Remember) == BST_CHECKED;
             const auto port = Text(GetDlgItem(h, Port));
@@ -2843,7 +2899,7 @@ bool AiPane::PromptValue(const std::wstring &title, std::wstring &text) {
     valueTitle_ = title;
     valueDraft_ = text;
     EmptyDialog d;
-    if (UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &d.dialog, GetAncestor(window_, GA_ROOT), ValueProc,
+    if (UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &d.dialog, workspaceDialog_ ? workspaceDialog_ : dialog_ ? dialog_ : GetAncestor(window_, GA_ROOT), ValueProc,
                                  reinterpret_cast<LPARAM>(this)) != IDOK)
         return false;
     text = valueDraft_;
@@ -2861,7 +2917,7 @@ INT_PTR CALLBACK AiPane::ValueProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                             self->D(16), self->D(16), self->D(404), self->D(28), h, reinterpret_cast<HMENU>(Value),
                             GetModuleHandleW(nullptr), nullptr);
         SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), TRUE);
-        SendMessageW(edit, EM_SETLIMITTEXT, 200, 0);
+        SendMessageW(edit, EM_SETLIMITTEXT, self->valueTitle_ == L"服务器项目路径" ? 4096 : 200, 0);
         UiStyleField(edit, &self->style_);
         for (int id : {IDCANCEL, IDOK}) {
             auto b = CreateWindowExW(

@@ -53,7 +53,7 @@ int main() {
         Require(!ValidCommand(std::string("echo x\0reboot", 13)), "embedded NUL serial write accepted");
         Require(!ValidCommand(std::string(4097, 'x')), "oversized serial write accepted");
         const auto tools = SerialTools();
-        Require(tools.size() == 13, "terminal, local boot and bounded power recovery tools missing");
+        Require(tools.size() == 15, "terminal, local boot and bounded power recovery tools missing");
         const auto outputTool = std::find_if(tools.begin(), tools.end(), [](const Json &t) { return t.at("name") == "serialctl_power_output"; });
         Require(outputTool != tools.end() && (*outputTool)["inputSchema"]["properties"].contains("enabled") &&
                     !(*outputTool)["inputSchema"]["properties"].contains("channels"), "Model must not override GUI channel selection");
@@ -62,7 +62,7 @@ int main() {
         const auto reply = ToolResult({{"accepted", 5}, {"execution", "unknown"}});
         Require(reply["contentItems"][0]["type"] == "inputText", "app-server dynamic tool result format invalid");
         const auto create = MakeRequest(Operation::NewConversation, 77, {{"defaultModel", "fixture"}, {"cwd", "/srv/project with spaces"}, {"modelId", "obsolete-model"}});
-        Require(create["method"] == "thread/start" && create["params"]["dynamicTools"].size() == 13 &&
+        Require(create["method"] == "thread/start" && create["params"]["dynamicTools"].size() == 15 &&
                     create["params"]["model"] == "fixture",
                 "Presentation adapter lost fixed role/model/tool configuration");
         Require(create["params"]["config"]["web_search"] == "disabled" && create["params"]["approvalPolicy"] == "never",

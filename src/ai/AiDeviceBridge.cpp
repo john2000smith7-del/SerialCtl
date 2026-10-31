@@ -53,7 +53,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
                      {"transport", session->udpRaw ? "udpRaw" : "session"},
                      {"peerVerified", !session->udpRaw},
                      {"dataReceived", session->udpReceived},
-                     {"commandSupported", true}});
+                     {"commandSupported", true}, {"bootPreset", session->state.bootPreset}});
         }
         return result;
     }
@@ -85,6 +85,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
     if (method == "release") {
         if (session) {
             session->state.boot->Cancel();
+            session->state.bootRestartUsed = false;
             const auto task = power_.State().value("task", Json::object());
             if (!session->state.recoveryAction.empty() && task.value("running", false) &&
                 task.value("actionId", std::string()) == session->state.recoveryAction)
@@ -95,6 +96,46 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
     }
     if (!session || !*ai::TerminalKind(session->mode) || !session->connection || !session->connection->IsConnected())
         return error("Associated terminal session is not open; no connection was opened automatically");
+    if (method == "boot_enter") {
+        if (session->state.bootRestartUsed) return error("A reboot was already submitted in this task; query boot_status instead of resubmitting");
+        if ((session->mode != 1 && session->mode != 3) || context.macroRunning)
+            return error("Boot entry requires the explicitly selected idle board serial connection");
+        const auto preset = params.value("preset", std::string());
+        const auto command = params.value("command", std::string("reboot"));
+        if (command != "reboot" && command != "reset") return error("Boot entry accepts only reboot or a verified board reset command");
+        if (!session->state.boot->PreparePreset(preset, params.value("timeoutSeconds", 90u), now))
+            return error("Unknown boot preset, invalid timeout, or another capture is already active; do not resubmit reboot");
+        // Pin command and interrupts to the same existing connection, in order.
+        // Reboot is submitted exactly once, without a model round trip before
+        // the first interrupt. This does not open a connection or switch power.
+        std::string outgoing = command;
+        const char* endings[] = {"\r", "\n", "\r\n"};
+        outgoing += endings[std::clamp(session->lineEndingIndex, 0, 2)];
+        auto result = Send(*session, Bytes(outgoing.begin(), outgoing.end()));
+        if (result.contains("error")) {
+            session->state.boot->Delivery(false, result.value("error", std::string("Restart submission failed")));
+            return result;
+        }
+        session->state.aiCommandAt = now;
+        session->state.bootRestartUsed = true;
+        session->state.bootPreset = preset;
+        session->state.aiCommandCursor = session->state.aiCursor;
+        session->state.aiCommandText = command;
+        result["commandId"] = ++session->state.aiCommandNumber;
+        session->state.boot->RestartSubmitted(now);
+        // Submit the first key now; the local timer/receive path continues it.
+        Pulse(session->state, session->connection, now);
+        armBootPulse = true;
+        result["preset"] = preset;
+        result["state"] = session->state.boot->Status(now).state;
+        result["intervalMs"] = 80;
+        result["entered"] = false;
+        return result;
+    }
+    if (method == "boot_stop") {
+        session->state.boot->Cancel();
+        return {{"sessionId", id}, {"state", session->state.boot->Status(now).state}, {"stopped", true}};
+    }
     if (method == "boot_arm" || method == "boot_status") {
         if (session->mode != 1 && session->mode != 3) return error("U-Boot capture only supports the selected board serial terminal");
         if (method == "boot_arm") {
@@ -108,7 +149,8 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
         return {{"sessionId", id}, {"state", state.state}, {"matched", state.matched}, {"entered", state.entered},
             {"submittedBursts", state.submitted}, {"remainingMs", state.remainingMs}, {"error", state.error},
             {"pattern", state.pattern}, {"prompt", state.prompt}, {"execution", state.entered ? "prompt-observed" : "unconfirmed"},
-            {"source", "local-receive-path"}, {"maximumBursts", 3}};
+            {"source", "local-receive-path"}, {"preset", state.preset},
+            {"maximumBursts", state.preset.empty() ? Json(3) : Json(nullptr)}};
     }
     if (method == "recover") {
         const auto binding = context.recoveryBinding;
@@ -257,7 +299,7 @@ void AiDeviceBridge::Observe(State& state, const std::wstring& decoded,
 
 bool AiDeviceBridge::Pulse(State& state, const std::shared_ptr<IConnection>& connection, ULONGLONG now) {
     const auto status = state.boot->Status(now);
-    const bool active = status.state == "armed" || status.state == "interrupting";
+    const bool active = status.state == "armed" || status.state == "interrupting" || status.state == "prepared";
     const auto bytes = state.boot->Poll(now);
     if (!bytes.empty()) {
         std::wstring error;

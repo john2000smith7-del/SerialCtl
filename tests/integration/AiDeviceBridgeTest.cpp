@@ -6,11 +6,11 @@ namespace {
 void Check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
 class Transport final : public IConnection {
 public:
-    unsigned writes = 0; Bytes last;
+    unsigned writes = 0; Bytes last; std::vector<Bytes> history; bool accept = true;
     bool Start(DataCallback, StatusCallback, std::wstring&) override { return true; }
     void Stop() override {}
     bool IsConnected() const override { return true; }
-    bool Send(const Bytes& data, std::wstring&) override { ++writes; last = data; return true; }
+    bool Send(const Bytes& data, std::wstring&) override { ++writes; last = data; history.push_back(data); return accept; }
 };
 }
 int main() {
@@ -76,6 +76,22 @@ int main() {
               "evicted evidence explicitly reports gap and truncation");
         auto unknown = bridge.Request("command", {{"sessionId", "session-999"}, {"command", "no"}}, targets, context, now, pulse);
         Check(unknown.contains("error") && transport->writes == writes, "unassociated session never auto-opens or receives bytes");
+        auto enter=request("boot_enter",{{"preset","uboot_space"}});
+        Check(!enter.contains("error") && pulse && transport->last==Bytes{' '},"Restart is followed immediately by a local space");
+        Check(transport->history[transport->history.size()-2]==Bytes({'r','e','b','o','o','t','\r'}),"Reboot and interrupt ordering changed");
+        const auto rebootWrites=transport->writes;
+        Check(request("boot_enter",{{"preset","uboot_space"}}).contains("error") && transport->writes==rebootWrites,"Repeated tool call rebooted the board twice");
+        now+=80;AiDeviceBridge::Pulse(state,transport,now);
+        Check(transport->writes==rebootWrites+1,"Native timer does not continue interrupting without model calls");
+        request("release");
+        targets[0].mode=0;
+        Check(request("boot_enter",{{"preset","phytium_uefi_f2"}}).contains("error"),"Boot preset rebooted an SSH server");
+        targets[0].mode=1;
+        Check(!request("boot_enter",{{"preset","phytium_uefi_f2"}}).contains("error") && transport->last==Bytes({27,'O','Q'}),"Phytium preset did not send a real F2 key");
+        request("boot_stop");const auto stoppedWrites=transport->writes;now+=80;AiDeviceBridge::Pulse(state,transport,now);
+        Check(transport->writes==stoppedWrites,"Stopped task continues sending keys");request("release");
+        transport->accept=false;const auto rejectedWrites=transport->writes;
+        Check(request("boot_enter",{{"preset","uboot_space"}}).contains("error") && transport->writes==rejectedWrites+1 && !pulse,"Rejected restart emitted interrupt keys");
         power.Shutdown();
         std::cout << "AI bridge binding, observation bounds, boot release and recovery evidence passed; no physical devices\n";
     } catch (const std::exception& error) { std::cerr << "FAILED: " << error.what() << '\n'; return 1; }

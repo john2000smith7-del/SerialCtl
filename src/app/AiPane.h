@@ -105,7 +105,9 @@ class AiPane {
     bool ChooseWorkspace();
     void BrowseDirectory(const std::wstring &, bool initial = false);
     void DirectoryResult(const Json &, bool fallback);
-    void PopulateDirectories();
+    void PopulateDirectories(bool updatePath = false);
+    void QueueDirectorySelection(HWND);
+    bool DirectoryMessage(HWND, UINT, WPARAM);
     void DirectoryFailure(const std::wstring &);
     void SaveWorkspaceDefault(const std::wstring &);
     void ShowDisplayLimit();
@@ -154,11 +156,14 @@ class AiPane {
     UiFieldStyle style_{&dark_, nullptr, 96};
     ai::CodexSession client_;
     ai::ServerSettings settings_;
-    std::wstring workspaceDirectory_, directoryPath_, verifiedDirectory_, serverHome_;
+    std::wstring workspaceDirectory_, directoryPath_, verifiedDirectory_, serverHome_, pendingDirectorySelection_;
+    bool directoryRowsDirty_ = false, directoryPathDirty_ = false;
     Json directoryChildren_ = Json::array();
     HWND workspaceDialog_ = nullptr;
     bool directoryPending_ = false, directoryInitial_ = false, workspaceAccept_ = false;
     ULONGLONG directoryDeadline_ = 0;
+    std::string pendingTargetSelection_;
+    bool pendingTargetConnect_ = false, targetRefreshDeferred_ = false, targetCommitQueued_ = false;
     DeviceRequest devices_;
     std::atomic<bool> closing_{false};
     std::mutex eventsMutex_;

@@ -548,26 +548,27 @@ inline LRESULT CALLBACK UiComboPopupProc(HWND list, UINT message, WPARAM w, LPAR
     if (message == WM_WINDOWPOSCHANGING) {
         auto &position = *reinterpret_cast<WINDOWPOS *>(l);
         if (!(position.flags & SWP_NOSIZE)) {
-            const int count = static_cast<int>(SendMessageW(data->combo, CB_GETCOUNT, 0, 0));
-            const int row = static_cast<int>(SendMessageW(list, LB_GETITEMHEIGHT, 0, 0));
             MONITORINFO monitor{sizeof(monitor)};
-            RECT combo{};
-            GetWindowRect(data->combo, &combo);
-            if (count > 0 && row > 0 && GetMonitorInfoW(MonitorFromWindow(data->combo, MONITOR_DEFAULTTONEAREST), &monitor)) {
-                const int below = std::max(0L, monitor.rcWork.bottom - combo.bottom);
-                const int above = std::max(0L, combo.top - monitor.rcWork.top);
-                const int available = std::max(below, above);
-                // Fixed built-in choices all fit; large dynamic lists use the
-                // shared overlay scrollbar and never leave the work area.
-                const int rows = std::max(1, std::min(count, std::max(1, (available - 2) / row)));
-                position.cy = std::min(available, rows * row + 2);
-                if (position.flags & SWP_NOMOVE) {
-                    RECT current{};
-                    GetWindowRect(list, &current);
-                    position.x = current.left;
+            RECT combo{}; GetWindowRect(data->combo,&combo);
+            if(GetMonitorInfoW(MonitorFromWindow(data->combo,MONITOR_DEFAULTTONEAREST),&monitor)) {
+                // Keep the native drop height and opening side. Expanding all
+                // 500 rows and moving a native downward drop above its field
+                // leaves the opening click below the list: native capture then
+                // autoscrolls to the final rows before the user selects anything.
+                const int below=std::max(0L,monitor.rcWork.bottom-combo.bottom);
+                const int above=std::max(0L,combo.top-monitor.rcWork.top);
+                RECT current{}; GetWindowRect(list,&current);
+                if(position.flags&SWP_NOMOVE) { position.x=current.left; position.y=current.top; }
+                const bool upward=position.y<combo.top;
+                const int available=upward?above:below;
+                if(available>0) {
+                    position.cy=std::min(position.cy,available);
+                    position.y=upward?combo.top-position.cy:combo.bottom;
                 }
-                position.y = position.cy <= below ? combo.bottom : combo.top - position.cy;
-                position.flags &= ~SWP_NOMOVE;
+                position.cx=std::min(position.cx,static_cast<int>(monitor.rcWork.right-monitor.rcWork.left));
+                position.x=std::clamp(position.x,static_cast<int>(monitor.rcWork.left),
+                    static_cast<int>(monitor.rcWork.right)-position.cx);
+                position.flags&=~SWP_NOMOVE;
             }
         }
     }
@@ -678,7 +679,8 @@ inline void UiPrepareComboPopup(HWND combo, UiFieldStyle *style) {
     if (dc)
         ReleaseDC(combo, dc);
     const int row = std::max(MulDiv(28, style->dpi, 96), static_cast<int>(metrics.tmHeight) + MulDiv(8, style->dpi, 96));
-    SendMessageW(combo, CB_SETITEMHEIGHT, 0, row);
+    if (SendMessageW(combo, CB_GETITEMHEIGHT, 0, 0) != row)
+        SendMessageW(combo, CB_SETITEMHEIGHT, 0, row);
     UiComboRegion(info.hwndList, style->dpi);
 }
 inline void UiResizeDialog(HWND dialog, int dpi, int width, int height) {
@@ -958,10 +960,16 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         UiPrepareComboPopup(h, style);
     if(!edit && message==WM_LBUTTONDOWN && (GetWindowLongPtrW(h,GWL_STYLE)&3)==CBS_DROPDOWN) {
         RECT r{};GetClientRect(h,&r);
-        if(GET_X_LPARAM(l)>=r.right-d(32)) {
-            COMBOBOXINFO info{sizeof(info)};if(GetComboBoxInfo(h,&info)) SetFocus(info.hwndItem);
-            SendMessageW(h,CB_SHOWDROPDOWN,!SendMessageW(h,CB_GETDROPPEDSTATE,0,0),0);
-            return 0;
+        COMBOBOXINFO info{sizeof(info)};
+        if(GET_X_LPARAM(l)>=r.right-d(32) && GetComboBoxInfo(h,&info)) {
+            // Painted arrow hit area may be wider than the native one. Route
+            // the press through the real button so native capture, mouse-up,
+            // cancellation and selection remain one native interaction.
+            const auto point=MAKELPARAM((info.rcButton.left+info.rcButton.right)/2,
+                                       (info.rcButton.top+info.rcButton.bottom)/2);
+            const auto result=DefSubclassProc(h,message,w,point);
+            if(IsWindow(h)) RedrawWindow(h,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
+            return result;
         }
     }
     if (edit && message == WM_NCCALCSIZE) {

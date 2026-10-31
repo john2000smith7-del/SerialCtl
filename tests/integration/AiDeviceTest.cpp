@@ -381,6 +381,24 @@ struct AiDeviceTestAccess {
         main.pendingMode_ = 0;
         main.rightPanelWidth_ = 320;
         main.rightPanelCollapsed_ = false;
+        main.LayoutControls(1180,760);
+        RECT leftBefore{},toggleBefore{},leftAfter{},toggleAfter{};
+        GetWindowRect(main.terminal_,&leftBefore);GetWindowRect(main.connectionHeader_,&toggleBefore);
+        main.SetLeftPanelCollapsed(true);
+        const auto leftDeadline=GetTickCount64()+1000;
+        while(main.leftPanelAnimating_ && GetTickCount64()<leftDeadline) {
+            MSG message{};while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);} Sleep(1);
+        }
+        GetWindowRect(main.terminal_,&leftAfter);GetWindowRect(main.connectionHeader_,&toggleAfter);
+        Require(!main.leftPanelAnimating_ && !IsWindowVisible(main.connectionList_) && leftAfter.left<leftBefore.left && EqualRect(&toggleBefore,&toggleAfter),
+                "Left rail did not free terminal space or moved its toggle during collapse");
+        main.SetLeftPanelCollapsed(false);
+        const auto restoreDeadline=GetTickCount64()+1000;
+        while(main.leftPanelAnimating_ && GetTickCount64()<restoreDeadline) {
+            MSG message{};while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);} Sleep(1);
+        }
+        Require(IsWindowVisible(main.connectionList_),"Left rail did not restore the connection list");
+
         std::vector<std::shared_ptr<Transport>> transports;
         for (int mode = 0; mode <= 4; ++mode) {
             auto session = std::make_unique<MainWindow::SessionState>();
@@ -440,7 +458,7 @@ struct AiDeviceTestAccess {
             // A real drag/animation changes child bounds many times. Keep the
             // terminal grid stable until the operation finishes, then reflow.
             for (bool MainWindow::*deferred : {&MainWindow::windowResizing_, &MainWindow::rightPanelDragging_,
-                                             &MainWindow::rightPanelAnimating_}) {
+                                             &MainWindow::rightPanelAnimating_, &MainWindow::leftPanelAnimating_}) {
                 RECT bounds{};
                 GetWindowRect(main.terminal_, &bounds);
                 const int oldColumns = main.terminalViewport_.Metrics().columns;

@@ -106,6 +106,27 @@ void TestLocalBootInterrupt() {
     Expect(!boot.Status(6004).entered,"A prompt lookalike exposed only by tail trimming is not a line-start prompt");
     boot.Feed("\r\n=> ",5,6005);
     Expect(boot.Status(6005).entered,"A genuine line-start prompt is still recognized after trimming");
+    Expect(boot.PreparePreset("uboot_space",90,7000),"U-Boot preset prepares without a keyword");
+    Expect(boot.Poll(7000).empty(),"No key can precede an accepted reboot");
+    boot.RestartSubmitted(7001);
+    Expect(boot.Poll(7001)==" ","First space is immediate after reboot submission");
+    for(unsigned i=1;i<=20;++i) Expect(boot.Poll(7001+i*80)==" ","Continuous preset is not limited to three bursts");
+    Expect(!boot.PreparePreset("phytium_uefi_f2",90,8700),"Another active preset cannot interleave a second reboot");
+    boot.Feed("\r\n=> ",5,8701);
+    Expect(boot.Status(8701).entered && boot.Poll(8800).empty(),"Actual U-Boot prompt stops continuous spaces");
+    Expect(boot.PreparePreset("phytium_uefi_f2",90,9000),"Phytium UEFI preset prepares");
+    boot.RestartSubmitted(9000);
+    Expect(boot.Poll(9000)=="\x1bOQ","F2 uses the VT100 key sequence rather than literal F2");
+    const std::string banner="Phytium UEFI firmware: Press F2 to enter setup\r\n";
+    boot.Feed(banner.data(),banner.size(),9001);
+    Expect(!boot.Status(9001).entered && boot.Poll(9080)=="\x1bOQ","UEFI startup banner is not menu entry and never gates key start");
+    const std::string menu="\r\nBoot Manager\r\nBoot Maintenance Manager\r\n";
+    boot.Feed(menu.data(),menu.size(),9081);
+    Expect(boot.Status(9081).entered && boot.Poll(9160).empty(),"Actual UEFI menu stops repeated F2");
+    boot.PreparePreset("uboot_space",1,10000); boot.RestartSubmitted(10000);
+    Expect(boot.Poll(11000).empty() && boot.Status(11000).state=="timed_out","Continuous capture has a hard timeout");
+    boot.PreparePreset("phytium_uefi_f2",90,12000); boot.RestartSubmitted(12000); boot.Cancel();
+    Expect(boot.Poll(12001).empty(),"Cancel stops both presets immediately");
 }
 
 void TestCarriageReturnAndHistoryRecall() {

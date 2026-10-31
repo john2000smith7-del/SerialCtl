@@ -313,7 +313,13 @@ def run(c):
     focused_list,thread=click(106,((rect.left+rect.right)//2,first_row_y))
     assert focused_list==listing
     wait(lambda:u.SendMessageW(listing,0x188,0,0)==top)
+    focus_started=time.monotonic()
     row_focus=focus_state(thread)
+    # Selection is observable before the parent finishes native activation.
+    # Wait for completion without an extra click, key or forced focus repair.
+    while row_focus['hwnd']!=u.GetDlgItem(window,107) and time.monotonic()-focus_started<2:
+        time.sleep(.01)
+        row_focus=focus_state(thread)
     observations.append({'action':'connection-row-click','selection':u.SendMessageW(listing,0x188,0,0),
                          'focus_after':row_focus,'expected_focus_control':107,
                          'classification':'Mouse row activation must preserve terminal focus behavior'})

@@ -194,13 +194,10 @@ struct AiPaneTestAccess {
             SendMessageW(combo,WM_LBUTTONDOWN,MK_LBUTTON,arrowPoint);SendMessageW(combo,WM_LBUTTONUP,0,arrowPoint);
             if(!SendMessageW(combo,CB_GETDROPPEDSTATE,0,0)) throw std::runtime_error("Painted directory arrow does not open native dropdown at scaled DPI");
             SendMessageW(combo,CB_SHOWDROPDOWN,FALSE,0);
-            COMBOBOXINFO comboInfo{sizeof(comboInfo)};
-            if(!GetComboBoxInfo(combo,&comboInfo)) throw std::runtime_error("Workspace editable dropdown lacks native edit");
-            RECT comboBox{},editBox{};GetWindowRect(combo,&comboBox);GetWindowRect(comboInfo.hwndItem,&editBox);
-            const int inset=MulDiv(8,p->dpi,96),arrow=MulDiv(28,p->dpi,96);
-            if(editBox.left-comboBox.left!=inset || editBox.right>comboBox.right-arrow ||
-                std::abs((editBox.top-comboBox.top)-(comboBox.bottom-editBox.bottom))>1)
-                throw std::runtime_error("Editable directory reset lost its padding, centering or dropdown arrow space");
+            wchar_t leaf[256]{};SendMessageW(combo,CB_GETLBTEXT,1,reinterpret_cast<LPARAM>(leaf));
+            if(std::wstring(leaf).find(L'/')!=std::wstring::npos)
+                throw std::runtime_error("Directory choices repeat full parent paths instead of child names");
+            if(!GetDlgItem(dialog,213)) throw std::runtime_error("Workspace lacks full-path disclosure and horizontal viewing");
             RECT field{},up{},refresh{},client{};
             GetWindowRect(combo,&field);GetWindowRect(GetDlgItem(dialog,211),&up);GetWindowRect(GetDlgItem(dialog,212),&refresh);
             if(field.right>=up.left || up.right>=refresh.left || field.bottom-field.top < MulDiv(24,p->dpi,96))
@@ -250,13 +247,13 @@ struct AiPaneTestAccess {
             GetAncestor(pane.window_, GA_ROOT), AiPane::ConnectProc, reinterpret_cast<LPARAM>(&pane));
         if (!dialog || SendDlgItemMessageW(dialog, 208, CB_GETCOUNT, 0, 0) != 0)
             throw std::runtime_error("AI form populated cached directories before its first paint");
-        SetDlgItemTextW(dialog, 208, L"/home/linux/my-early-edit");
+        SetDlgItemTextW(dialog, 213, L"/home/linux/my-early-edit");
         ShowWindow(dialog, SW_SHOW); UpdateWindow(dialog);
         MSG firstPaint{};
         if (!PeekMessageW(&firstPaint, dialog, UiFirstPaintReady, UiFirstPaintReady, PM_REMOVE))
             throw std::runtime_error("AI form did not schedule its post-paint initialization");
         DispatchMessageW(&firstPaint);
-        wchar_t path[256]{}; GetDlgItemTextW(dialog, 208, path, 256);
+        wchar_t path[256]{}; GetDlgItemTextW(dialog, 213, path, 256);
         if (SendDlgItemMessageW(dialog, 208, CB_GETCOUNT, 0, 0) != 501 ||
             std::wstring(path) != L"/home/linux/my-early-edit" || pane.client_.Running())
             throw std::runtime_error("AI post-paint initialization lost input or started an unsolicited connection");
@@ -313,6 +310,7 @@ struct AiPaneTestAccess {
         SendMessageW(pane.Control(14), CB_SETCURSEL, 1, 0);
         SendMessageW(pane.Handle(), WM_COMMAND, MAKEWPARAM(14, CBN_SELCHANGE),
                      reinterpret_cast<LPARAM>(pane.Control(14)));
+        MSG committed{};while(PeekMessageW(&committed,nullptr,0,0,PM_REMOVE)){TranslateMessage(&committed);DispatchMessageW(&committed);}
         require(pane.target_ == "session-7", "Explicit remote serial selection was not associated with the task");
         pane.Add(L"AI", L"ABC中文DEF\n```\nx = 1;\n```\nend");
         const auto &first = pane.messages_.front();

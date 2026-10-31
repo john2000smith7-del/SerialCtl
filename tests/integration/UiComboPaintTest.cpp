@@ -1,4 +1,5 @@
 #include "UiStyle.h"
+#include "UiPathField.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -62,6 +63,59 @@ void Pump() {
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
+}
+std::vector<DWORD> Snapshot(HWND combo);
+void PumpFor(unsigned ms) {
+    const auto until=GetTickCount64()+ms;
+    do { Pump(); Sleep(1); } while(GetTickCount64()<until);
+}
+void RealClick(int x,int y) {
+    const int left=GetSystemMetrics(SM_XVIRTUALSCREEN),top=GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int width=GetSystemMetrics(SM_CXVIRTUALSCREEN),height=GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    INPUT in[3]{};
+    in[0].type=INPUT_MOUSE;in[0].mi.dx=MulDiv(x-left,65535,std::max(1,width-1));in[0].mi.dy=MulDiv(y-top,65535,std::max(1,height-1));
+    in[0].mi.dwFlags=MOUSEEVENTF_MOVE|MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_VIRTUALDESK;
+    in[1].type=in[2].type=INPUT_MOUSE;in[1].mi.dwFlags=MOUSEEVENTF_LEFTDOWN;in[2].mi.dwFlags=MOUSEEVENTF_LEFTUP;
+    Require(SendInput(3,in,sizeof(INPUT))==3,"Actual mouse input was rejected");
+    PumpFor(60);
+}
+void RunLongList(HWND parent,bool editable) {
+    MONITORINFO monitor{sizeof(monitor)};
+    GetMonitorInfoW(MonitorFromWindow(parent,MONITOR_DEFAULTTONEAREST),&monitor);
+    SetWindowPos(parent,HWND_TOPMOST,monitor.rcWork.left+20,monitor.rcWork.bottom-420,700,400,SWP_SHOWWINDOW);
+    auto combo=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|
+        (editable?CBS_DROPDOWN|CBS_AUTOHSCROLL:CBS_DROPDOWNLIST)|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS|WS_VSCROLL,
+        20,40,320,240,parent,reinterpret_cast<HMENU>(11),GetModuleHandleW(nullptr),nullptr);
+    Require(combo!=nullptr,"Cannot create long native list");
+    SendMessageW(combo,WM_SETFONT,reinterpret_cast<WPARAM>(style.font),FALSE);UiStyleField(combo,&style);
+    for(unsigned i=0;i<500;++i) {auto name=L"project-"+std::to_wstring(i);SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name.c_str()));}
+    SendMessageW(combo,CB_SETCURSEL,0,0);
+    UiLayoutBatch b;b.Move(combo,20,40,320,240);b.ComboVisibleHeight(combo,28);b.Commit();
+    SetForegroundWindow(parent);PumpFor(50);
+    for(unsigned i=0;i<6;++i) {
+        RECT field{};GetWindowRect(combo,&field);
+        RealClick(field.right-14,(field.top+field.bottom)/2);
+        COMBOBOXINFO info{sizeof(info)};GetComboBoxInfo(combo,&info);
+        Require(SendMessageW(combo,CB_GETDROPPEDSTATE,0,0)!=0,"Actual arrow click did not open dropdown");
+        RECT drop{};GetWindowRect(info.hwndList,&drop);
+        Require(drop.top>=field.bottom,"Shared painter moved a native downward drop above its opening click");
+        Require(SendMessageW(info.hwndList,LB_GETTOPINDEX,0,0)==0,"Opening click scrolled a long list to its final rows");
+        Require(SendMessageW(combo,CB_GETCURSEL,0,0)==0,"Opening click changed the selection");
+        RECT row{};SendMessageW(info.hwndList,LB_GETITEMRECT,1,reinterpret_cast<LPARAM>(&row));
+        POINT p{30,(row.top+row.bottom)/2};ClientToScreen(info.hwndList,&p);RealClick(p.x,p.y);
+        Require(SendMessageW(combo,CB_GETCURSEL,0,0)==1 && !SendMessageW(combo,CB_GETDROPPEDSTATE,0,0),"Actual list click did not commit precisely the clicked row");
+        SendMessageW(combo,CB_SETCURSEL,0,0);
+    }
+    DestroyWindow(combo);
+    auto path=UiPathField::Create(parent,12,20,40,320,40,&style);
+    const auto value=L"/home/linux/"+std::wstring(200,L'x')+L"/firmware-source";
+    SetWindowTextW(path,value.c_str());RedrawWindow(path,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
+    SendMessageW(path,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(20,15));
+    RedrawWindow(path,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);const auto before=Snapshot(path);
+    SendMessageW(path,WM_KEYDOWN,VK_END,0);RedrawWindow(path,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
+    Require(before!=Snapshot(path),"Long path has no horizontal viewport movement");
+    std::vector<wchar_t> actual(value.size()+1);GetWindowTextW(path,actual.data(),static_cast<int>(actual.size()));
+    Require(value==actual.data(),"Horizontal viewing changed the stored full path");DestroyWindow(path);
 }
 std::vector<DWORD> Snapshot(HWND combo) {
     RECT bounds{};
@@ -237,6 +291,7 @@ int main() {
                 for (bool owner : {false, true})
                     RunCase(parent, owner);
                 RunCase(parent, true, true);
+                if(dpi==96) { RunLongList(parent,false); RunLongList(parent,true); }
                 DeleteObject(style.font);
                 style.font = nullptr;
             }

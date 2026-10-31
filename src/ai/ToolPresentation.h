@@ -58,6 +58,8 @@ inline std::string ToolText(const std::string &tool, const Json &args, const Jso
     else if (tool == "serialctl_power_get") text = u8"读取电源状态";
     else if (tool == "serialctl_power_action") text = u8"查询电源操作结果";
     else if (tool == "serialctl_power_output") text = args.value("enabled", false) ? u8"提交电源上电" : u8"提交电源断电";
+    else if (tool == "serialctl_boot_enter") text = args.value("preset", std::string()) == "phytium_uefi_f2" ? u8"重启板卡并连续发送 F2" + where : u8"重启板卡并连续发送空格" + where;
+    else if (tool == "serialctl_boot_stop") text = u8"停止启动打断" + where;
     else if (tool == "serialctl_boot_arm") text = u8"准备捕捉 U-Boot 启动提示" + where;
     else if (tool == "serialctl_boot_status") text = u8"检查 U-Boot 进入状态" + where;
     else if (tool == "serialctl_recover") text = u8"提交板卡恢复任务" + where;
@@ -87,7 +89,7 @@ inline std::string ToolText(const std::string &tool, const Json &args, const Jso
         text += result.value("connected", false) ? u8"\n电源已连接。" : u8"\n电源未连接。";
     } else if (tool == "serialctl_power_output" || tool == "serialctl_recover") {
         text += u8"\n任务已提交，等待设备回读确认。";
-    } else if (tool == "serialctl_boot_arm" || tool == "serialctl_boot_status") {
+    } else if (tool == "serialctl_boot_arm" || tool == "serialctl_boot_enter" || tool == "serialctl_boot_stop" || tool == "serialctl_boot_status") {
         text += result.value("entered", false) ? u8"\n已观察到目标提示符。" : u8"\n尚未确认进入目标提示符。";
     } else if (tool == "serialctl_power_action") {
         text += u8"\n已取得任务状态；以设备回读结果为准。";

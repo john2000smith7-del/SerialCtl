@@ -292,3 +292,10 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 - The composer keeps one neutral rounded contour while its target dropdown is frameless, with a neutral keyboard cue. Preserve native dropdown selection, popup list, full-name tooltip and source identity; other fields keep their normal boundaries.
 - Power main/subcategory tabs use a neutral active fill and no repeated resting outlines; pressed feedback stays deep blue. Channel cards retain their size, scroll extent, contents and low-contrast contours. Disabled fields/actions remain disabled; readouts stay unknown until real responses. Never enable hardware controls as a visual change.
 - Live terminal wrap/collapse actions use quiet flat surfaces without changing geometry, input, viewport, scrolling or PTY behavior. Continue using pure flat theme tokens and existing separators; do not reproduce incidental generated-image texture or typography changes.
+
+
+## V2.0.15 dropdown, path and left rail corrections
+
+- Preserve the native combo popup height and opening side; clamp only to the monitor work area. Do not expand long lists to the whole work area or reset row height on every pointer message. Keep native editable-arrow capture and wait until a selection is committed before rebuilding lists, opening dialogs or changing a terminal.
+- Workspace forms use a40px path disclosure plus a12px gap and a28px current-child dropdown/action row. The disclosure shares the native field contour,14px/16px typography and the existing5px neutral overlay thumb. Single click reveals the full value and horizontal viewport; double click or Enter/F2 opens the existing owned edit dialog, Ctrl+C copies the full value. Rendering/scroll offsets never change submitted paths.
+- The left rail reuses the48px collapsed-side width,28px fixed toggle and16px session glyph. Its200ms transition follows the existing side animation; header hit target stays stationary. Hide list, disconnect actions and status while collapsed/animating, preserve connections, receive processing and selected sessions. Remember state independently of right-side and live-monitor preferences.

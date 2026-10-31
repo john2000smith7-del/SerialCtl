@@ -84,7 +84,7 @@ inline const char *EngineerInstructions() {
 优先一条命令配合一次有界读取/观察，不为简单查询生成 Python/Shell 脚本或重复 ssh。服务器原生执行工具必须有有限超时、流式输出，复用返回的执行会话查询/取消。必要的项目既有脚本仍可运行，失败后先查看错误，不无限等待或重试。板端与服务器的命令、路径和执行会话绝不能混淆。
 串口命令提交后立刻读取，3–5 秒没有结果时进入检查而非断言卡死：区分正常长任务、等待输入、启动阶段、端口断开及疑似无响应。使用 read 的命令/收数时间与游标、screen 的当前屏幕和有界 observe 取得证据，只有可靠提示符/完成证据才能说完成；串口没有退出码时不编造。没有 Shell 提示符时不盲目发送 Linux 指令。TUI 用 serialctl_text 输入正文，再单独 serialctl_key Enter 提交；读取 serialctl_screen 确认，换行字符或粘贴结束不等于按键。必要时用 Ctrl+C/Escape 退出等待，禁止自动重发原命令。
 电源只能操作 serialctl_power_get 返回的真实连接及 GUI 勾选通道，不擅自换通道、电压、电流或模式。用户明确要求上下电时可直接提交，无需逐次确认；自动恢复只用于用户已在电源页启用并绑定的板卡终端与通道，普通 SSH 服务器或未绑定对象绝不自动断电。先排除正常长耗时、烧录/擦除/文件系统修复和等待交互，再调用受控恢复任务；不得因3秒静默直接断电。恢复由本地任务保证断电读回后至少等待10秒才上电，不使用模型 sleep，不连续无限重启。必须查询任务/动作结果和逐通道读回，queued/running不代表成功；failed/unknown/断线时说明并停止，不重发。
-进入 U-Boot 前先用本地 boot_arm 布置有限时接收匹配（可在上电前准备），根据实际板卡配置发送空格、任意键或指定停止字符串，不能假定所有板卡都接受“空格+stop”。打断发生在本地收数路径，不等模型往返。见到匹配的 U-Boot 提示符才报告进入成功；超时说明未进入，不乱发启动命令。
+进入启动固件使用两套内置预设（sessions.bootPreset 为该连接已保存的选择，可按当前真实板卡证据复用或更正）：海思/用户指定 U-Boot 用 uboot_space；实际日志、设备树或用户确认是飞腾并要求 UEFI 时用 phytium_uefi_f2。先在明确关联的板卡串口读取当前阶段，使用用户已提供的账号完成 Linux 登录并确认 Shell；无凭据不猜密码。随后只调用一次 serialctl_boot_enter，Linux 默认 command=reboot；reset 仅用于已确认具有板卡复位语义的环境，Linux reset 通常只重置终端。该工具把重启与持续按键绑定为一个本地任务：重启提交后立即每80ms发送空格或真实F2，不等待 Hit any key、不等待模型往返、不造脚本。任务运行时有界 observe/read/screen 并查询 boot_status，进入实际 U-Boot提示符或UEFI设置/启动菜单后停止；遇到未自动识别的菜单但已有真实画面证据时调用 boot_stop，不继续重复按键。submitted/queued 不代表进入成功，timeout/断线/停止均不算成功；不得自动重发重启命令。legacy boot_arm 仅供显式指定其他板卡停止字符串的兼容场景，不作为这两套默认策略。
 持续观察受时间和字节上限限制；数据已截断或设备断线时明确说明。停止后不得自行继续操作。用中文简洁解释，保留日志和代码块。)";
 }
 
@@ -130,6 +130,12 @@ inline Json SerialTools() {
         {"enabled", "reason"});
     add("serialctl_power_action", "Query a previously submitted power action ID without resubmitting it. queued/running is pending; check per-channel confirmed/unknown results.",
         {{"id", {{"type", "string"}, {"minLength", 1}, {"maxLength", 128}}}}, {"id"});
+    add("serialctl_boot_enter", "After the selected board serial is logged in at a shell, submit reboot exactly once and immediately repeat native interrupt keys every 80ms locally. uboot_space sends spaces; phytium_uefi_f2 sends VT100 F2. Does not wait for startup text, open SSH, or switch power. Read/observe and query boot_status until the actual menu/prompt is verified. Never resubmit reboot; stop on cancellation or timeout.",
+        {{"sessionId", session}, {"preset", {{"type", "string"}, {"enum", Json::array({"uboot_space", "phytium_uefi_f2"})}}},
+         {"command", {{"type", "string"}, {"enum", Json::array({"reboot", "reset"})}}},
+         {"timeoutSeconds", {{"type", "integer"}, {"minimum", 1}, {"maximum", 120}}}}, {"sessionId", "preset"});
+    add("serialctl_boot_stop", "Stop a local boot interrupt task after observing its real menu or on user request. Does not send another command or power operation.",
+        {{"sessionId", session}}, {"sessionId"});
     add("serialctl_boot_arm", "Arm local receive-path U-Boot interruption before power ON. Match actual board text, send at most 3 bounded ASCII bursts, then verify a fresh boot prompt. Timeout is not success. Use boot_status to inspect; arm alone does not power cycle.",
         {{"sessionId", session}, {"pattern", {{"type", "string"}, {"minLength", 1}, {"maxLength", 128}}},
          {"interrupt", {{"type", "string"}, {"minLength", 1}, {"maxLength", 32}, {"description", "Exact printable ASCII stop bytes, e.g. one space or a board-specific stop string"}}},

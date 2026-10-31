@@ -20,10 +20,11 @@ public:
         ULONGLONG aiLastReceivedAt = 0, aiCommandAt = 0;
         ULONGLONG aiObservedAt = 0;
         std::uint64_t aiCommandNumber = 0, aiCommandCursor = 0;
-        std::string aiCommandText, recoveryAction;
+        std::string aiCommandText, recoveryAction, bootPreset;
         std::shared_ptr<BootInterrupt> boot = std::make_shared<BootInterrupt>();
         size_t aiBytes = 0;
         bool aiTruncated = false;
+        bool bootRestartUsed = false;
         std::string aiTransportNotice;
     };
     struct Target {

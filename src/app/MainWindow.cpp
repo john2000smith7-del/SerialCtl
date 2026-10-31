@@ -47,6 +47,7 @@ constexpr UINT MessageSftpProgress = WM_APP + 4;
 constexpr UINT MessageConnection = WM_APP + 5;
 constexpr UINT MessageHostKey = WM_APP + 6;
 constexpr UINT MessageDiscovery = WM_APP + 7;
+constexpr UINT MessagePowerTarget = WM_APP + 199;
 constexpr UINT MessageApi = WM_APP + 8;
 constexpr UINT MessageUpdate = WM_APP + 20;
 constexpr UINT MessageUpdatePrompt = WM_APP + 24;
@@ -73,6 +74,7 @@ constexpr UINT_PTR SideAnimationTimerId = 4003;
 constexpr UINT_PTR LogExportTimerId = 4004;
 constexpr UINT_PTR CommandDragTimerId = 4005;
 constexpr UINT_PTR BootPulseTimerId = 4006;
+constexpr UINT_PTR LeftAnimationTimerId = 4011;
 constexpr UINT_PTR ReceivePumpTimerId = 4007;
 constexpr UINT_PTR SerialScanTimerId = 4008;
 constexpr UINT_PTR ShutdownTimerId = 4009;
@@ -250,8 +252,8 @@ int MainCardTop() {
 }
 
 MainLayoutMetrics GetMainLayoutMetrics(int width, int height, int preferredRightWidth, bool rightPanelCollapsed,
-                                       int animationWidth = -1, bool ai = false) {
-    const int leftWidth = std::max(Ui::MinLeftWidth, std::min(Ui::MaxLeftWidth, width * 18 / 100));
+                                       int animationWidth = -1, bool ai = false, int preferredLeft = -1) {
+    const int leftWidth = preferredLeft >= 0 ? preferredLeft : std::max(Ui::MinLeftWidth, std::min(Ui::MaxLeftWidth, width * 18 / 100));
     const int availableRight =
         std::max(Ui::MinRightWidth, width - leftWidth - Ui::Gap * 2 - (ai ? Ui::MinRightWidth : Ui::MinCenterWidth));
     const int rightWidth =
@@ -844,7 +846,7 @@ void MainWindow::RequestShutdown() {
     if (logExportThread_.joinable())
         CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
     if (window_) {
-        for (const auto timer : {ReceivePumpTimerId, BootPulseTimerId, LogExportTimerId,
+        for (const auto timer : {ReceivePumpTimerId, BootPulseTimerId, LeftAnimationTimerId, LogExportTimerId,
                                   CommandTimerId, PendingConnectionTimerId}) KillTimer(window_, timer);
     }
     aiPet_.Shutdown();
@@ -1070,7 +1072,7 @@ bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && !connectionCleanup_.Busy() && sessions_.empty() &&
            !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
            !disconnectAllPending_ && !disconnectAllInProgress_ && !macro_.Dirty() && !notebook_.Dirty() && macro_.RunningIndex() < 0 &&
-           !sftp_.Busy() && !sftp_.ActiveTransfer() && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ &&
+           !sftp_.Busy() && !sftp_.ActiveTransfer() && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ && !leftPanelAnimating_ &&
            draggingCommandIndex_ < 0 && !sftpColumnDragging_ && !GetCapture() &&
            (IsWindowEnabled(window_) || updateRequired_);
 }
@@ -1247,7 +1249,7 @@ LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARA
         return 1;
     // Owner-drawn buttons otherwise turn the second press into BN_DOUBLECLICKED.
     // Keep this toggle's normal release/cancel semantics for rapid reversal.
-    if (GetDlgCtrlID(window) == IdRightPanelToggle && message == WM_LBUTTONDBLCLK)
+    if ((GetDlgCtrlID(window) == IdRightPanelToggle || GetDlgCtrlID(window) == IdConnectionHeader) && message == WM_LBUTTONDBLCLK)
         message = WM_LBUTTONDOWN;
     if (message == WM_MOUSEMOVE && !GetPropW(window, Ui::HoverProperty)) {
         SetPropW(window, Ui::HoverProperty, reinterpret_cast<HANDLE>(1));
@@ -2013,6 +2015,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
               }, error)) AppendStatus(error, true);
         }
         return 0;
+    case MessagePowerTarget:
+        if(!wParam) { powerMonitorSession_=pendingPowerMonitorSession_;SyncPowerTerminal(); }
+        RefreshPowerTargets();
+        return 0;
     case AiTargetChanged:
         SyncAiTerminal();
         return 0;
@@ -2033,6 +2039,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_SIZE: {
         if (wParam == SIZE_MINIMIZED) return 0;
         KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
+        KillTimer(window_,LeftAnimationTimerId);leftPanelAnimating_=false;leftPanelAnimatedWidth_=-1;
         RECT client{};
         GetClientRect(window_, &client);
         LayoutControls(client.right, client.bottom);
@@ -2048,7 +2055,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage());
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
                 return TRUE;
@@ -2061,7 +2068,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage());
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 rightPanelDragging_ = true;
                 SetCapture(window_);
@@ -2075,7 +2082,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             RECT client{};
             GetClientRect(window_, &client);
             const MainLayoutMetrics layout = GetMainLayoutMetrics(
-                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage());
+                client.right, client.bottom, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
             if (point.x >= layout.centerRight && point.x < layout.rightLeft) {
                 if (LiveMonitorPage())
                     (powerVisible_ ? powerMonitorRatio_ : aiMonitorRatio_) = 500;
@@ -2097,7 +2104,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             if (newWidth != SidebarWidth()) {
                 if (LiveMonitorPage()) {
                     const int left =
-                        std::clamp(static_cast<int>(client.right) * 18 / 100, Ui::MinLeftWidth, Ui::MaxLeftWidth);
+                        LeftWidth();
                     (powerVisible_ ? powerMonitorRatio_ : aiMonitorRatio_) =
                         std::clamp(MulDiv(newWidth - Ui::Gap, 1000,
                                           std::max(1, static_cast<int>(client.right) - left - Ui::Gap * 3)),
@@ -2144,6 +2151,16 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         if (wParam == LogExportTimerId) { PollLogExport(); return 0; }
+        if(wParam==LeftAnimationTimerId) {
+            if(!leftPanelAnimating_) return 0;
+            const double t=std::min(1.0,static_cast<double>(GetTickCount64()-leftPanelAnimationAt_)/200.0);
+            const double ease=1-(1-t)*(1-t)*(1-t);
+            leftPanelAnimatedWidth_=leftPanelAnimationFrom_+static_cast<int>((leftPanelAnimationTo_-leftPanelAnimationFrom_)*ease);
+            if(t>=1) { KillTimer(window_,LeftAnimationTimerId); leftPanelAnimating_=false; leftPanelAnimatedWidth_=-1; }
+            RECT rect{};GetClientRect(window_,&rect);LayoutControls(rect.right,rect.bottom);
+            InvalidateRect(window_,nullptr,FALSE);
+            return 0;
+        }
         if(wParam==SideAnimationTimerId) {
             if (!rightPanelAnimating_) return 0; // A canceled timer may already have a queued message.
             const double t=std::min(1.0,static_cast<double>(GetTickCount64()-rightPanelAnimationAt_)/200.0);
@@ -2225,12 +2242,15 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         break;
     case WM_COMMAND:
-        if (LOWORD(wParam) == IdPowerMonitorTarget && HIWORD(wParam) == CBN_SELCHANGE) {
-            const int selected = static_cast<int>(SendMessageW(powerMonitorTarget_, CB_GETCURSEL, 0, 0));
-            powerMonitorSession_ = selected > 0 && static_cast<size_t>(selected) <= powerMonitorIds_.size() ?
-                powerMonitorIds_[static_cast<size_t>(selected - 1)] : std::string();
-            SyncPowerTerminal();
-            RefreshPowerTargets();
+        if(LOWORD(wParam)==IdConnectionHeader && HIWORD(wParam)==BN_CLICKED) { SetLeftPanelCollapsed(!leftPanelCollapsed_); return 0; }
+        if (LOWORD(wParam)==IdPowerMonitorTarget) {
+            const int note=HIWORD(wParam);
+            if(note==CBN_CLOSEUP) { PostMessageW(window_,MessagePowerTarget,1,0); return 0; }
+            if(note==CBN_SELENDOK || (note==CBN_SELCHANGE && !SendMessageW(powerMonitorTarget_,CB_GETDROPPEDSTATE,0,0))) {
+                const int selected=static_cast<int>(SendMessageW(powerMonitorTarget_,CB_GETCURSEL,0,0));
+                pendingPowerMonitorSession_=selected>0 && static_cast<size_t>(selected)<=powerMonitorIds_.size() ? powerMonitorIds_[selected-1] : std::string();
+                PostMessageW(window_,MessagePowerTarget,0,0);
+            }
             return 0;
         }
         if (reinterpret_cast<HWND>(lParam) == aiTerminalHeader_) return 0;
@@ -2596,7 +2616,7 @@ void MainWindow::CreateControls() {
     addTip(themeButton_);
     disconnectButton_ = CreateChild(L"BUTTON", L"断开", BS_OWNERDRAW, IdDisconnect);
 
-    connectionHeader_ = CreateChild(L"STATIC", L"连接列表", SS_OWNERDRAW | SS_NOTIFY, IdConnectionHeader);
+    connectionHeader_ = CreateChild(L"BUTTON", leftPanelCollapsed_ ? L"展开连接栏" : L"收起连接栏", BS_OWNERDRAW, IdConnectionHeader);
     addTip(connectionHeader_);
     SendMessageW(connectionHeader_, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont_), TRUE);
     disconnectAllButton_ = CreateChild(L"BUTTON", L"全部断开", BS_OWNERDRAW, IdDisconnectAll);
@@ -2714,7 +2734,7 @@ void MainWindow::CreateControls() {
 void MainWindow::LayoutControls(int width, int height) {
     UiLayoutBatch batch;
     if (width <= 0 || height <= 0) return;
-    rightPanelAutoCollapsed_ = width < Ui::MinLeftWidth + Ui::MinRightWidth +
+    rightPanelAutoCollapsed_ = width < LeftWidth() + Ui::MinRightWidth +
                                            (LiveMonitorPage() ? Ui::MinRightWidth : Ui::MinCenterWidth) + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
     compactNavigation_ = CompactNavigation(width);
@@ -2737,7 +2757,7 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Show(commandHint_, hintWidth >= Ui::Scale(180) && !LiveMonitorPage() ? SW_SHOW : SW_HIDE);
 
     const MainLayoutMetrics layout =
-        GetMainLayoutMetrics(width, height, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage());
+        GetMainLayoutMetrics(width, height, SidebarWidth(), SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
     const int cardTop = MainCardTop();
     const int centerCardBottom = layout.contentBottom;
     const int sideCardBottom = height - Ui::Gap;
@@ -2747,13 +2767,13 @@ void MainWindow::LayoutControls(int width, int height) {
     const int leftListTop = headerTop + Ui::StandardHeight + 4;
     const int rightListTop = headerTop + Ui::StandardHeight + 4;
 
-    batch.Move(connectionHeader_, leftInnerLeft, headerTop + Ui::Scale(2),
+    batch.Move(connectionHeader_, Ui::Gap + (Ui::CollapsedRightWidth - Ui::IconButtonSize) / 2, headerTop + Ui::Scale(2),
                Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
     batch.Move(disconnectButton_, leftInnerRight - Ui::Scale(56), headerTop, Ui::Scale(56), Ui::CompactHeight, TRUE);
     const int connectionHeight = std::max(Ui::Scale(20), sideCardBottom - Ui::PanelPadding -
         Ui::CompactHeight - Ui::Space - leftListTop - (statusHeight_ ? statusHeight_ + Ui::Space : 0));
     const int desiredPetHeight = aiPet_.DesiredHeight();
-    const int petHeight = !aiPet_.Desktop() && aiVisible_ && desiredPetHeight &&
+    const int petHeight = !leftPanelCollapsed_ && !leftPanelAnimating_ && !aiPet_.Desktop() && aiVisible_ && desiredPetHeight &&
         connectionHeight >= Ui::Scale(120) + desiredPetHeight + Ui::Space ? desiredPetHeight : 0;
     batch.Move(connectionList_, leftInnerLeft, leftListTop, leftInnerRight - leftInnerLeft,
                connectionHeight - (petHeight ? petHeight + Ui::Space : 0), TRUE);
@@ -2817,7 +2837,9 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Show(terminal_, LiveMonitorPage() ? (monitor && activeSession_ && monitorTarget == "session-" +
         std::to_string(activeSession_->id) ? SW_SHOW : SW_HIDE) : SW_SHOW);
     batch.Show(powerPane_.Handle(), powerVisible_ ? SW_SHOW : SW_HIDE);
-    batch.Show(disconnectButton_, (aiVisible_ || (activeSession_ && !powerVisible_)) ? SW_SHOW : SW_HIDE);
+    batch.Show(disconnectButton_, !leftPanelCollapsed_ && !leftPanelAnimating_ && (aiVisible_ || (activeSession_ && !powerVisible_)) ? SW_SHOW : SW_HIDE);
+    for(HWND control : {connectionList_,disconnectAllButton_}) batch.Show(control,!leftPanelCollapsed_ && !leftPanelAnimating_ ? SW_SHOW : SW_HIDE);
+    batch.Show(status_,!leftPanelCollapsed_ && !leftPanelAnimating_ && !statusText_.empty() ? SW_SHOW : SW_HIDE);
     if (aiVisible_) EnableWindow(disconnectButton_, aiPane_.Busy());
     EnableWindow(rightPanelToggleButton_, TRUE);
     const int rightLeft = layout.rightLeft;
@@ -2889,7 +2911,7 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
-                                                          SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage());
+                                                          SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
     const int cardTop = MainCardTop();
     RECT leftCard{Ui::Gap, cardTop, layout.leftWidth, client.bottom - Ui::Gap};
     RECT terminalFrame{layout.centerLeft, cardTop,
@@ -3046,14 +3068,6 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         return;
     }
 
-    if (item.CtlType == ODT_STATIC && item.hwndItem == connectionHeader_) {
-        FillRect(dc, &rect, panelBrush_);
-        const int size = Ui::Scale(Ui::UtilityGlyphSize);
-        const int top = (rect.top + rect.bottom - size) / 2;
-        UiDrawGlyph(dc, {rect.left, top, rect.left + size, top + size}, colors.muted, UiGlyph::SessionList);
-        return;
-    }
-
     if (item.CtlType == ODT_BUTTON) {
         const int id = static_cast<int>(item.CtlID);
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
@@ -3100,6 +3114,18 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                                       : darkMode_ ? ToolbarIcon::Sun : ToolbarIcon::Moon,
                                {left, top, left + size, top + size}, darkMode_);
             UiButtonKeyboardFocus(dc, rect, item.itemState, Ui::Dpi, UiFocusInk(darkMode_));
+            return;
+        }
+        if (id == IdConnectionHeader) {
+            const auto visual=UiFlatIconVisual(UiTheme(darkMode_),outside,enabled,pressed,hovered);
+            if(visual.fill!=outside) DrawRoundedBox(dc,rect,Ui::Scale(Ui::CompactIconRadius),visual.fill,visual.fill);
+            if(leftPanelCollapsed_) DrawChevronHorizontal(dc,rect,visual.ink,true);
+            else {
+                const int size=Ui::Scale(Ui::UtilityGlyphSize);
+                const int x=rect.left+(rect.right-rect.left-size)/2, y=rect.top+(rect.bottom-rect.top-size)/2;
+                UiDrawGlyph(dc,{x,y,x+size,y+size},visual.ink,UiGlyph::SessionList);
+            }
+            UiButtonKeyboardFocus(dc,rect,item.itemState,Ui::Dpi,UiFocusInk(darkMode_));
             return;
         }
         if (id == IdRightPanelToggle) {
@@ -4349,6 +4375,10 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
         if (!pendingSession_) aiRemoteConnect_ = false;
         return {{"pending", pendingSession_ != nullptr}};
     }
+    for(const auto& session:sessions_) if(session->bootPreset.empty()) {
+        const auto saved=bootPresets_.find(BootProfileKey(*session));
+        if(saved!=bootPresets_.end()) session->bootPreset=saved->second;
+    }
     std::vector<AiDeviceBridge::Target> targets;
     targets.reserve(sessions_.size());
     for (const auto& session : sessions_)
@@ -4365,6 +4395,12 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
     bool armBootPulse = false;
     auto result = aiDeviceBridge_.Request(method, params, targets, context, GetTickCount64(), armBootPulse);
     if (armBootPulse) SetTimer(window_, BootPulseTimerId, 40, nullptr);
+    if(method=="boot_enter" && !result.contains("error")) {
+        for(const auto& session:sessions_) if(params.value("sessionId",std::string())=="session-"+std::to_string(session->id)) {
+            bootPresets_[BootProfileKey(*session)]=session->bootPreset;
+            SaveUiState(); break;
+        }
+    }
     return result;
 }
 
@@ -4888,9 +4924,9 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     if (status_) {
         RECT client{}; GetClientRect(window_, &client);
         const auto layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(), SidebarCollapsed(),
-                                                 rightPanelAnimatedWidth_, LiveMonitorPage());
+                                                 rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
         HDC dc=GetDC(status_); auto old=SelectObject(dc,smallFont_);
-        RECT measured{0,0,layout.leftWidth-Ui::Gap-Ui::PanelPadding*2,0};
+        RECT measured{0,0,Ui::MaxLeftWidth-Ui::Gap-Ui::PanelPadding*2,0};
         DrawTextW(dc,text.c_str(),-1,&measured,DT_WORDBREAK|DT_CALCRECT);
         SelectObject(dc,old);ReleaseDC(status_,dc);
         int height = text.empty() ? 0 : std::clamp(static_cast<int>(measured.bottom),Ui::Scale(20),Ui::Scale(120));
@@ -4899,7 +4935,7 @@ void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
             LayoutControls(client.right, client.bottom);
         }
     }
-    ShowWindow(status_, text.empty() ? SW_HIDE : SW_SHOW);
+    ShowWindow(status_, text.empty() || leftPanelCollapsed_ || leftPanelAnimating_ ? SW_HIDE : SW_SHOW);
     InvalidateRect(status_, nullptr, TRUE);
     KillTimer(window_, StatusTimerId);
     if (!text.empty() && !isError) SetTimer(window_, StatusTimerId, 3500, nullptr);
@@ -5494,7 +5530,7 @@ void MainWindow::PasteToTerminal() {
 void MainWindow::UpdateTerminalDimensions() {
     // Defer terminal reflow while native resize, sidebar dragging or animation
     // is in progress; the corresponding completion handlers update it once.
-    if (!terminal_ || !terminalFont_ || rightPanelAnimating_ || rightPanelDragging_ || windowResizing_) return;
+    if (!terminal_ || !terminalFont_ || rightPanelAnimating_ || leftPanelAnimating_ || rightPanelDragging_ || windowResizing_) return;
     const int oldColumns = terminalViewport_.Metrics().columns, oldRows = terminalViewport_.Metrics().rows;
     const bool timestamps = timestampEnabled_ && !LiveMonitorPage() && activeSession_ && !activeSession_->terminal.AlternateScreen();
     terminalViewport_.Measure(terminal_, terminalFont_, timestamps);
@@ -5707,7 +5743,7 @@ void MainWindow::RefreshConnectionList() {
 }
 
 void MainWindow::RefreshPowerTargets() {
-    if (!powerMonitorTarget_) return;
+    if (!powerMonitorTarget_ || SendMessageW(powerMonitorTarget_,CB_GETDROPPEDSTATE,0,0)) return;
     std::vector<std::string> ids;
     std::vector<std::wstring> labels;
     bool eligible = false;
@@ -5756,7 +5792,7 @@ int MainWindow::SidebarWidth() const {
         return rightPanelWidth_;
     RECT client{};
     GetClientRect(window_, &client);
-    const int left = std::clamp(static_cast<int>(client.right) * 18 / 100, Ui::MinLeftWidth, Ui::MaxLeftWidth);
+    const int left = LeftWidth();
     return std::max(Ui::MinRightWidth,
                     MulDiv(std::max(1, static_cast<int>(client.right) - left - Ui::Gap * 3), powerVisible_ ? powerMonitorRatio_ : aiMonitorRatio_, 1000) +
                         Ui::Gap);
@@ -5773,6 +5809,16 @@ void MainWindow::SyncAiTerminal() {
         }
     SetWindowTextW(aiTerminalHeader_, L"选择关联终端后显示实时输出");
     ShowWindow(terminal_, SW_HIDE);
+}
+
+std::wstring MainWindow::BootProfileKey(const SessionState& session) const {
+    // Exact identity, hex-encoded for INI keys (not a lossy/small hash).
+    const auto identity=Json{{"mode",session.mode},{"name",WideToMultiByte(session.name,CP_UTF8)},
+        {"host",WideToMultiByte(session.host,CP_UTF8)},{"port",session.port},
+        {"com",WideToMultiByte(session.remoteCom,CP_UTF8)}}.dump();
+    const wchar_t digits[]=L"0123456789abcdef";std::wstring key;
+    for(unsigned char c:identity) {key+=digits[c>>4];key+=digits[c&15];}
+    return key;
 }
 
 void MainWindow::LoadUiState() {
@@ -5816,6 +5862,16 @@ void MainWindow::LoadUiState() {
     powerMonitorRatio_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout", L"PowerMonitorRatio", 500, path.c_str())), 200, 800);
     powerMonitorCollapsed_ = GetPrivateProfileIntW(L"Layout", L"PowerMonitorCollapsed", 0, path.c_str()) != 0;
     powerMonitorWrap_ = GetPrivateProfileIntW(L"Layout", L"PowerMonitorWrap", 0, path.c_str()) != 0;
+    wchar_t profiles[65536]{};
+    GetPrivateProfileSectionW(L"BootPresets",profiles,static_cast<DWORD>(std::size(profiles)),path.c_str());
+    for(const wchar_t* row=profiles;*row;row+=wcslen(row)+1) {
+        const std::wstring entry(row);const auto split=entry.find(L'=');
+        if(split==std::wstring::npos || split==0) continue;
+        const auto key=entry.substr(0,split), value=entry.substr(split+1);
+        if(std::all_of(key.begin(),key.end(),[](wchar_t c){return (c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');}) &&
+           (value==L"uboot_space" || value==L"phytium_uefi_f2")) bootPresets_[key]=WideToMultiByte(value,CP_UTF8);
+    }
+    leftPanelCollapsed_ = GetPrivateProfileIntW(L"Layout", L"LeftPanelCollapsed", 0, path.c_str()) != 0;
     rightPanelCollapsed_ = GetPrivateProfileIntW(
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
 }
@@ -5853,9 +5909,31 @@ void MainWindow::SaveUiState() {
     add(L"Layout", L"AiMonitorWidth", aiMonitorWidth_); add(L"Layout", L"AiMonitorCollapsed", aiMonitorCollapsed_);
     add(L"Layout", L"SftpNameWidth", sftpNameWidth_); add(L"Layout", L"RightPanelWidth", rightPanelWidth_);
     add(L"Layout", L"RightPanelCollapsed", rightPanelCollapsed_);
+    add(L"Layout", L"LeftPanelCollapsed", leftPanelCollapsed_);
     add(L"Commands", L"DoubleClickRun", notebook_.DoubleClick());
     add(L"Commands", L"IntervalMs", notebook_.Interval());
+    for(const auto& preset:bootPresets_)
+        snapshot.entries.push_back({L"BootPresets",preset.first,MultiByteToWide(reinterpret_cast<const uint8_t*>(preset.second.data()),preset.second.size(),CP_UTF8)});
     uiSettingsWriter_.Submit(std::move(snapshot));
+}
+
+int MainWindow::LeftWidth() const {
+    return leftPanelAnimatedWidth_>=0 ? leftPanelAnimatedWidth_ : leftPanelCollapsed_ ? Ui::CollapsedRightWidth+Ui::Gap : Ui::MaxLeftWidth;
+}
+void MainWindow::SetLeftPanelCollapsed(bool collapsed) {
+    if(collapsed==leftPanelCollapsed_ && !leftPanelAnimating_) return;
+    leftPanelAnimationFrom_=LeftWidth();
+    leftPanelCollapsed_=collapsed;
+    leftPanelAnimationTo_=collapsed?Ui::CollapsedRightWidth+Ui::Gap:Ui::MaxLeftWidth;
+    leftPanelAnimatedWidth_=leftPanelAnimationFrom_;
+    leftPanelAnimationAt_=GetTickCount64();
+    leftPanelAnimating_=leftPanelAnimationFrom_!=leftPanelAnimationTo_;
+    SetWindowTextW(connectionHeader_,collapsed?L"展开连接栏":L"收起连接栏");
+    SaveUiState();
+    if(!leftPanelAnimating_ || !SetTimer(window_,LeftAnimationTimerId,16,nullptr)) {
+        leftPanelAnimating_=false;leftPanelAnimatedWidth_=-1;
+    }
+    RECT r{};GetClientRect(window_,&r);LayoutControls(r.right,r.bottom);InvalidateRect(window_,nullptr,FALSE);
 }
 
 void MainWindow::SetRightPanelCollapsed(bool collapsed) {
@@ -5864,11 +5942,11 @@ void MainWindow::SetRightPanelCollapsed(bool collapsed) {
     const auto before =
         GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
                              (powerVisible_ ? powerMonitorCollapsed_ : aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_,
-                             rightPanelAnimatedWidth_, LiveMonitorPage());
+                             rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
     (powerVisible_ ? powerMonitorCollapsed_ : aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) = collapsed;
     const auto after = GetMainLayoutMetrics(
         client.right, client.bottom, SidebarWidth(),
-        (powerVisible_ ? powerMonitorCollapsed_ : aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_, -1, LiveMonitorPage());
+        (powerVisible_ ? powerMonitorCollapsed_ : aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_) || rightPanelAutoCollapsed_, -1, LiveMonitorPage(), LeftWidth());
     SetWindowTextW(rightPanelToggleButton_, collapsed ? L"展开侧栏" : L"折叠侧栏");
     rightPanelAnimationFrom_=before.rightWidth; rightPanelAnimationTo_=after.rightWidth;
     rightPanelAnimatedWidth_=before.rightWidth; rightPanelAnimationAt_=GetTickCount64();
