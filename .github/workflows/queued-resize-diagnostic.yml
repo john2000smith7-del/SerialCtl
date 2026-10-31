@@ -28,8 +28,10 @@ jobs:
           }
           cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_WIN32_WINNT=0x0601 /I old-queue /I src/connections /I src/platform /Fe:old-queue-test.exe tests/integration/QueuedResizeTest.cpp old-queue/QueuedConnection.cpp
           if ($LASTEXITCODE -ne 0) { throw 'Cannot compile baseline probe' }
+          $ErrorActionPreference = 'Continue'
           $result = & ./old-queue-test.exe 2>&1
           $code = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
           $result | Tee-Object old-queue-result.txt | Write-Host
           if ($code -eq 0 -or ($result -join "`n") -notmatch 'Resize caller waited for the blocked transport writer') { throw 'Expected original blocking defect was not reproduced' }
           $global:LASTEXITCODE = 0
