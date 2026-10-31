@@ -120,7 +120,7 @@ def main():
                 if invalid:
                     time.sleep(2)
                     require(hashlib.sha256((install/'serialctl.exe').read_bytes()).hexdigest()==original,'Invalid signature changed the installed executable')
-                    require(args.candidate.name not in requests[start:],'Invalid signature downloaded a ZIP')
+                    require('/'+args.candidate.name not in requests[start:],'Invalid signature downloaded a ZIP')
                     require(not (install/'.serialctl-update'/'transaction.txt').exists(),'Invalid signature started installation')
                     shutdown_apps();process.wait(timeout=20);process=None
                     report['cases'].append({'from':label,'invalidSignature':'PASS'});continue
@@ -154,7 +154,7 @@ def main():
                 wait(lambda:windows('SerialCtlWin7NativeWindowV3'),30)
                 def committed():
                     logs=list((install/'.serialctl-update').glob('*/update.log'))
-                    return any('committed' in f.read_text(errors='replace').lower() or 'success' in f.read_text(errors='replace').lower() for f in logs)
+                    return any('COMMITTED '+payload['version'] in f.read_text(errors='replace') for f in logs)
                 wait(committed,30)
                 require((install/'update.ini').read_bytes()==ini,'Update URL changed')
                 require((config/'command-notebook.txt').read_bytes()==note,'Notebook changed')
