@@ -1,0 +1,41 @@
+name: Extract bounded actual endurance evidence
+on:
+  push:
+    branches: [diag/v2017-evidence]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: '41219801247'
+      SOURCE_ARTIFACT: SerialCtl-endurance-baseline
+    steps:
+      - name: Retrieve original screenshots and result files unchanged
+        shell: bash
+        run: |
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name "$SOURCE_ARTIFACT" --dir original
+          python - <<'PY'
+          import pathlib, shutil, json
+          root=pathlib.Path('original');out=pathlib.Path('review');out.mkdir()
+          for path in root.rglob('*'):
+              if path.is_file() and path.suffix in ('.json','.txt','.log') and path.stat().st_size<2000000:
+                  shutil.copy2(path,out/path.name)
+          results=list(root.rglob('endurance-result.json'))
+          if results:
+              result=json.loads(results[0].read_text(encoding='utf-8-sig'))
+              names={row['path'] for row in result.get('frames',[])[-5:]}
+              for row in result.get('frames',[]):
+                  if any(part in row['path'] for part in ('theme-initial','pet-before','pet-after','failure')):names.add(row['path'])
+              for path in root.rglob('*.png'):
+                  if path.name in names:shutil.copy2(path,out/path.name)
+              print(json.dumps({k:result.get(k) for k in ('status','error','actual_click_count','behavior_failures','operations','resource_samples')},ensure_ascii=False))
+          print(json.dumps({'source_run':int(__import__('os').environ['SOURCE_RUN']),'files':[p.name for p in out.iterdir()]}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-bounded-endurance-review
+          path: review/*
