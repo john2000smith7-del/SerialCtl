@@ -163,7 +163,8 @@ struct AiPetPaneTestAccess {
         Check(pane.model_.At(20000).pose == 33, "Latest AI state was not restored");
         pane.model_.Configure(original, GetTickCount64());
         pane.model_.Stop(GetTickCount64());
-        SetWindowPos(pane.Handle(), nullptr, 0, 0, 148, pane.DesiredHeight(), SWP_NOZORDER | SWP_SHOWWINDOW);
+        // The new 144px default needs room for the unchanged 8px drag assertion.
+        SetWindowPos(pane.Handle(), nullptr, 0, 0, 200, pane.DesiredHeight(), SWP_NOZORDER | SWP_SHOWWINDOW);
         pane.sample_ = pane.model_.At(GetTickCount64());
         {
             HDC dc = GetDC(pane.Handle());

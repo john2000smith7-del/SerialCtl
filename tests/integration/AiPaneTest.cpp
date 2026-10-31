@@ -130,9 +130,10 @@ struct AiPaneTestAccess {
         pane.busy_ = false;
         pane.scroll_.unread = true; pane.Layout();
         RECT latest{}, observe{}, overlap{};
-        GetWindowRect(pane.Control(20), &latest); GetWindowRect(pane.Control(16), &observe);
-        check(IsWindowVisible(pane.Control(16)) && !IntersectRect(&overlap, &latest, &observe),
-              "Jump-to-latest still replaces/overlaps Observe");
+        GetWindowRect(pane.Control(20), &latest); GetWindowRect(pane.Control(32), &observe);
+        check(IsWindowVisible(pane.Control(32)) && !IsWindowVisible(pane.Control(16)) &&
+              !IntersectRect(&overlap,&latest,&observe) && latest.top==observe.top && latest.left>=observe.right,
+              "Latest and log-menu actions must have separate cells in the fixed utility row");
         pane.NewConversation(); pane.busy_ = true; pane.displayGroup_ = "v209-burst";
         pane.Add(L"AI", L"", "burst");
         for (int i = 0; i < 800; ++i)
