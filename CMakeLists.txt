@@ -425,6 +425,11 @@ if(BUILD_TESTING)
     add_test(NAME network_connect COMMAND network_connect_test)
     set_tests_properties(network_connect PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 
+    add_executable(queued_resize_test tests/integration/QueuedResizeTest.cpp src/connections/QueuedConnection.cpp)
+    serialctl_configure_native_target(queued_resize_test CONSOLE)
+    add_test(NAME queued_resize COMMAND queued_resize_test)
+    set_tests_properties(queued_resize PROPERTIES TIMEOUT 10)
+
     add_executable(terminal_model_test
         tests/unit/TerminalModelTest.cpp
         src/terminal/TerminalModel.cpp

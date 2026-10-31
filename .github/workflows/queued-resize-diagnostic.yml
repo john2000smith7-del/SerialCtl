@@ -1,0 +1,47 @@
+name: Blocked transport resize regression
+on:
+  push:
+    branches: [diag/v2017-queuedresize]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  resize:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Reproduce the original caller blocking on a held wire
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory old-queue | Out-Null
+          foreach ($name in @('QueuedConnection.h','QueuedConnection.cpp')) {
+            $text = git show "5b950a3310d8f7b09b5771668af7cd5ef923b278:src/connections/$name"
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot read exact published queue implementation' }
+            [IO.File]::WriteAllText((Join-Path "$pwd/old-queue" $name),($text -join "`n"),(New-Object Text.UTF8Encoding($false)))
+          }
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_WIN32_WINNT=0x0601 /I old-queue /I src/connections /I src/platform /Fe:old-queue-test.exe tests/integration/QueuedResizeTest.cpp old-queue/QueuedConnection.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile baseline probe' }
+          $result = & ./old-queue-test.exe 2>&1
+          $code = $LASTEXITCODE
+          $result | Tee-Object old-queue-result.txt | Write-Host
+          if ($code -eq 0 -or ($result -join "`n") -notmatch 'Resize caller waited for the blocked transport writer') { throw 'Expected original blocking defect was not reproduced' }
+          $global:LASTEXITCODE = 0
+      - name: Verify current native queue against the same blocking probe
+        shell: powershell
+        run: |
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_WIN32_WINNT=0x0601 /I src/connections /I src/platform /Fe:new-queue-test.exe tests/integration/QueuedResizeTest.cpp src/connections/QueuedConnection.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile current queue probe' }
+          & ./new-queue-test.exe | Tee-Object new-queue-result.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Current queue still blocks the resize caller' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-blocked-resize-proof
+          path: '*queue-result.txt'

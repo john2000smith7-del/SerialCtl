@@ -8,6 +8,7 @@ bool QueuedConnection::Start(DataCallback data, StatusCallback status, std::wstr
     if (!inner_->Start(std::move(data), status, error))
         return false;
     stopping_ = false;
+    resizePending_ = false;
     connected_ = true;
     worker_ = std::thread(&QueuedConnection::Run, this);
     return true;
@@ -19,6 +20,7 @@ void QueuedConnection::Stop() {
         stopping_ = true;
         queue_.clear();
         queued_ = 0;
+        resizePending_ = false;
         wake_.notify_all();
     }
     if (worker_.joinable())
@@ -65,18 +67,41 @@ bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std:
     }
     return true;
 }
+void QueuedConnection::ResizeTerminal(int columns, int rows) {
+    // Telnet NAWS can wait on the wire mutex/socket just like terminal input.
+    // Native layout must only publish the latest dimensions, never send them.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (stopping_) return;
+    resizeColumns_ = columns;
+    resizeRows_ = rows;
+    resizePending_ = true;
+    wake_.notify_one();
+}
 void QueuedConnection::Run() {
     for (;;) {
         Bytes bytes;
+        bool resize = false, hasData = false;
+        int columns = 0, rows = 0;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            wake_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+            wake_.wait(lock, [this] { return stopping_ || resizePending_ || !queue_.empty(); });
             if (stopping_)
                 break;
-            bytes = std::move(queue_.front());
-            queue_.pop_front();
-            queued_ -= bytes.size();
+            resize = resizePending_;
+            columns = resizeColumns_;
+            rows = resizeRows_;
+            resizePending_ = false;
+            // Handle at most one latest size plus one FIFO input each turn;
+            // repeated layout cannot create an unbounded queue or starve input.
+            hasData = !queue_.empty();
+            if (hasData) {
+                bytes = std::move(queue_.front());
+                queue_.pop_front();
+                queued_ -= bytes.size();
+            }
         }
+        if (resize) inner_->ResizeTerminal(columns, rows);
+        if (!hasData) continue;
         std::wstring error;
         if (!inner_->SendPrepared(bytes, error)) {
             {
