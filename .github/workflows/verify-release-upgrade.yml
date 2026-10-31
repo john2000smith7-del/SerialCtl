@@ -1,0 +1,59 @@
+name: Verify signed release upgrade
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful exact main Windows build
+        required: true
+        type: string
+      metadata_base64:
+        description: Public signed JSON only
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  upgrade:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the exact main archive and public metadata
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run_id }}
+          PUBLIC_METADATA: ${{ inputs.metadata_base64 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
+          if ($run.conclusion -ne 'success' -or $run.head_branch -ne 'main' -or $run.name -ne 'Windows Win7 release build') { throw 'Requires a successful main release build' }
+          git checkout --detach $run.head_sha
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot load exact build source' }
+          gh run download $env:BUILD_RUN --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download candidate' }
+          [IO.File]::WriteAllBytes((Join-Path $pwd 'candidate/update.json'),[Convert]::FromBase64String($env:PUBLIC_METADATA))
+          $archive = @(Get-ChildItem candidate -Filter '*.zip')
+          python tools/new_update_feed.py --verify-archive $archive[0].FullName --metadata candidate/update.json
+          if ($LASTEXITCODE -ne 0) { throw 'Exact signature/archive mismatch' }
+          gh release download v2.0.15 --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir previous
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot get previous original client' }
+          gh release download v2.0.6 --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir older
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot get older original client' }
+      - name: Install and restart real older clients
+        shell: powershell
+        run: |
+          $archive = @(Get-ChildItem candidate -Filter '*.zip')
+          $previous = @(Get-ChildItem previous -Filter '*.zip')
+          $older = @(Get-ChildItem older -Filter '*.zip')
+          python tests/integration/verify_release_upgrade.py --candidate $archive[0].FullName --metadata candidate/update.json --previous $previous[0].FullName --older $older[0].FullName --output "$env:RUNNER_TEMP/serialctl-signed-upgrade"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-signed-upgrade-evidence
+          path: |
+            ${{ runner.temp }}/serialctl-signed-upgrade/upgrade-result.json
+            ${{ runner.temp }}/serialctl-signed-upgrade/**/update.log
+          if-no-files-found: error
