@@ -87,6 +87,8 @@ def main():
             return wait(lambda: [h for h in windows(process.pid,'#32770') if user.IsWindowEnabled(h)])[-1]
         def close(h):
             user.PostMessageW(h,0x10,0,0);wait(lambda:user.IsWindowEnabled(hwnd))
+        def text(h):
+            value=c.create_unicode_buffer(256);user.GetWindowTextW(h,value,256);return value.value
         for theme in ('light','dark'):
             if theme=='dark':desktop.click_control(104);time.sleep(.15)
             # Left lane remains bounded and changes width through actual capture/drag.
@@ -102,9 +104,13 @@ def main():
             desktop.click_control(303);settings=dialog();gate=control(settings,2507)
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Test must default to off')
             click(gate);password=dialog();user.SetWindowTextW(control(password,10),'JJ123123');click(control(password,1))
+            wait(lambda:'密码错误' in text(control(settings,2508)))
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Uppercase password unlocked Test')
             click(gate);password=dialog();user.SetWindowTextW(control(password,10),'jj123123');desktop.capture(theme+'-test-password');click(control(password,1))
-            require(user.SendMessageW(gate,0xF0,0,0)==1,'Correct password did not unlock Test')
+            wait(lambda:user.IsWindowEnabled(settings))
+            desktop.capture(theme+'-test-result');desktop.flush_frames()
+            note=text(control(settings,2508))
+            require('Test 已开启' in note and user.SendMessageW(gate,0xF0,0,0)==1,'Correct password did not unlock Test: '+note)
             desktop.capture(theme+'-test-unlocked');click(gate)
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Test did not lock immediately')
             desktop.capture(theme+'-test-locked');close(settings)

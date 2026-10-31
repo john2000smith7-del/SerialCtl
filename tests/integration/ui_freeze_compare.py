@@ -290,7 +290,7 @@ def main():
             if key[1] == 'settings' and before['version']['expected'] != after['version']['expected']:
                 require(before['version']['displayed'].startswith('SerialCtl V') and after['version']['displayed'].startswith('SerialCtl V'), 'Version footer lost its real version')
                 left, top, right, bottom = before['version']['rect']
-                unexempt = sum(not (left <= p % before['size'][0] < right and top <= p // before['size'][0] < bottom)
+                unexempt = sum(not exempt(p) and not (left <= p % before['size'][0] < right and top <= p // before['size'][0] < bottom)
                                for p in raw_changes)
             report['cases'].append({'theme': key[0], 'view': key[1], 'changedPixels': changed,
                 'rawChangedPixels': len(raw_changes), 'unexemptRawChangedPixels': unexempt,
