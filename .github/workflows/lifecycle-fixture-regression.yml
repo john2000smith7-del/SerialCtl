@@ -50,7 +50,8 @@ jobs:
             }
             [SerialCtlUiSmoke]::MoveWindow($main,0,0,1180,760,$true) | Out-Null
             Click-Control $main 304
-            $aiDialog = Wait-Dialog $application.Id '连接 AI 服务器'
+            $aiDialog = Wait-Dialog $application.Id $null
+            if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,214) -eq [IntPtr]::Zero) { throw 'Expected native AI connection dialog' }
             Click-Control $aiDialog 2
             Start-Sleep -Seconds 5
             Click-Control $main 300
