@@ -1,39 +1,70 @@
-name: Baseline actual interaction endurance diagnostic
+name: Verified native package actual interaction diagnostic
 on:
   push:
     branches: [diag/v2017-endurance]
 permissions:
   contents: read
 jobs:
-  baseline:
+  candidate:
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Read the exact published baseline
+      - name: Exercise the exact native-verified candidate before final publication
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory "$env:RUNNER_TEMP/serialctl-baseline" | Out-Null
-          gh release download v2.0.16 --repo $env:GITHUB_REPOSITORY --pattern SerialCtl-V2.0.16-Win7-x64.zip --dir "$env:RUNNER_TEMP/serialctl-baseline"
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot download official baseline' }
-          $zip = "$env:RUNNER_TEMP/serialctl-baseline/SerialCtl-V2.0.16-Win7-x64.zip"
-          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c5609bcdc52753045a90a7839529fa9f9f475067f7d914dcf647030025a47a65') { throw 'Baseline identity mismatch' }
+          $run = gh api repos/$env:GITHUB_REPOSITORY/actions/runs/41221500270 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.head_sha -ne '1bb122aae8378906a54e6ebfe3bbc75eca00320d') { throw 'Wrong native source run' }
+          $jobs = gh api repos/$env:GITHUB_REPOSITORY/actions/runs/41221500270/jobs | ConvertFrom-Json
+          $build = @($jobs.jobs | Where-Object name -eq 'build')
+          $verified = @($build[0].steps | Where-Object name -eq 'Build, test and verify x64 Win7 portable bundle')
+          if ($verified.Count -ne 1 -or $verified[0].conclusion -ne 'success') { throw 'Native verification and packaging must have passed' }
+          git diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/common.ps1 scripts/package.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate production source no longer matches tested package' }
+          gh run download 41221500270 --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir "$env:RUNNER_TEMP/native-package"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read the exact verified portable artifact' }
+          $zip = @(Get-ChildItem "$env:RUNNER_TEMP/native-package" -Filter '*.zip')
+          if ($zip.Count -ne 1) { throw 'Expected one native-verified ZIP' }
           python -m pip install imageio-ffmpeg==0.6.0
           if ($LASTEXITCODE -ne 0) { throw 'No lossless encoder' }
-          python tests/integration/gui_command_drag_fixture.py --scenario endurance --archive $zip --output "$env:RUNNER_TEMP/dialog-endurance-baseline"
-          if ($LASTEXITCODE -ne 0) { throw 'Baseline endurance diagnostic failed; inspect actual evidence' }
+          python tests/integration/gui_command_drag_fixture.py --scenario endurance --archive $zip[0].FullName --output "$env:RUNNER_TEMP/serialctl-endurance"
+          $code = $LASTEXITCODE
+          [ordered]@{ programSourceSha=$run.head_sha; testSourceSha=$env:GITHUB_SHA; buildRun=41221500270; qualification='Native build, all CTest, PE/import checks, ZIP reopen and native extraction passed; full source workflow still in progress, not an official release'; archiveSha256=(Get-FileHash $zip[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-endurance/native-program-receipt.json" -Encoding UTF8
+          if ($code -ne 0) { throw 'Actual native candidate endurance failed' }
+      - name: Select unchanged actual screenshots and compact result evidence
+        if: always()
+        shell: python
+        run: |
+          import os, pathlib, shutil, json, hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'serialctl-endurance'
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'serialctl-endurance-review'
+          out.mkdir(exist_ok=True)
+          for path in root.glob('*'):
+              if path.suffix in ('.json','.txt','.log') and path.stat().st_size<2000000:
+                  shutil.copy2(path,out/path.name)
+          for path in root.glob('*.png'):
+              if any(path.name.endswith('-'+part+'.png') for part in ('modal-101','modal-103','modal-303','modal-304','theme-final','pet-after-real-drag','failure-desktop')):
+                  shutil.copy2(path,out/path.name)
+          manifest={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
+          (out/'review-provenance.json').write_text(json.dumps({'source_commit':os.environ['GITHUB_SHA'],'run':os.environ['GITHUB_RUN_ID'],'files_sha256':manifest,'capture':'Unchanged selected original screenshot and result files; full recording retained in packaged-endurance artifact'},indent=2),encoding='utf-8')
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SerialCtl-endurance-baseline
+          name: SerialCtl-packaged-endurance-review
+          path: ${{ runner.temp }}/serialctl-endurance-review/*
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-endurance-native-candidate
           path: |
-            ${{ runner.temp }}/dialog-endurance-baseline/*.json
-            ${{ runner.temp }}/dialog-endurance-baseline/*.jsonl
-            ${{ runner.temp }}/dialog-endurance-baseline/*.png
-            ${{ runner.temp }}/dialog-endurance-baseline/*.mkv
-            ${{ runner.temp }}/dialog-endurance-baseline/*.txt
-            ${{ runner.temp }}/dialog-endurance-baseline/*.log
+            ${{ runner.temp }}/serialctl-endurance/*.json
+            ${{ runner.temp }}/serialctl-endurance/*.jsonl
+            ${{ runner.temp }}/serialctl-endurance/*.png
+            ${{ runner.temp }}/serialctl-endurance/*.mkv
+            ${{ runner.temp }}/serialctl-endurance/*.txt
+            ${{ runner.temp }}/serialctl-endurance/*.log
           if-no-files-found: warn
