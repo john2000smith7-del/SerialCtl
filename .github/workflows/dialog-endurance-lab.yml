@@ -1,0 +1,39 @@
+name: Baseline actual interaction endurance diagnostic
+on:
+  push:
+    branches: [diag/v2017-endurance]
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the exact published baseline
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/serialctl-baseline" | Out-Null
+          gh release download v2.0.16 --repo $env:GITHUB_REPOSITORY --pattern SerialCtl-V2.0.16-Win7-x64.zip --dir "$env:RUNNER_TEMP/serialctl-baseline"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download official baseline' }
+          $zip = "$env:RUNNER_TEMP/serialctl-baseline/SerialCtl-V2.0.16-Win7-x64.zip"
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c5609bcdc52753045a90a7839529fa9f9f475067f7d914dcf647030025a47a65') { throw 'Baseline identity mismatch' }
+          python -m pip install imageio-ffmpeg==0.6.0
+          if ($LASTEXITCODE -ne 0) { throw 'No lossless encoder' }
+          python tests/integration/gui_command_drag_fixture.py --scenario endurance --archive $zip --output "$env:RUNNER_TEMP/dialog-endurance-baseline"
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline endurance diagnostic failed; inspect actual evidence' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-endurance-baseline
+          path: |
+            ${{ runner.temp }}/dialog-endurance-baseline/*.json
+            ${{ runner.temp }}/dialog-endurance-baseline/*.jsonl
+            ${{ runner.temp }}/dialog-endurance-baseline/*.png
+            ${{ runner.temp }}/dialog-endurance-baseline/*.mkv
+            ${{ runner.temp }}/dialog-endurance-baseline/*.txt
+            ${{ runner.temp }}/dialog-endurance-baseline/*.log
+          if-no-files-found: warn
