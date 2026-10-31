@@ -1979,10 +1979,11 @@ void AiPane::Event(const Json &e) {
         }
         if (purpose == "workspace-start") {
             busy_ = false;
-            if (e.contains("error") || !e.contains("result") ||
+            if (stopRequested_ || e.contains("error") || !e.contains("result") ||
                 !e["result"].contains("conversationId") || !e["result"]["conversationId"].is_string() || e["result"]["conversationId"].get<std::string>().empty()) {
                 pendingWorkspace_.clear();
-                SetStatus(L"切换工作空间失败，原会话已保留：" + Wide(e.value("error", std::string("服务器未返回有效会话"))));
+                SetStatus(stopRequested_?L"工作空间切换已停止，原会话已保留":L"切换工作空间失败，原会话已保留：" + Wide(e.value("error", std::string("服务器未返回有效会话"))));
+                Add(L"状态",status_);
                 UpdateActions(); return;
             }
             const auto id = e["result"]["conversationId"].get<std::string>();
@@ -2676,6 +2677,7 @@ bool AiPane::ChooseWorkspace() {
 void AiPane::BeginWorkspaceConversation(const std::wstring& path) {
     if (busy_ || !client_.Ready() || !ai::ValidWorkspacePath(Utf8(path))) return;
     pendingWorkspace_ = path;
+    stopRequested_ = false;
     if (Request(ai::Operation::NewConversation, {{"cwd", Utf8(path)}, {"defaultModel", serverDefaultModel_}}, "workspace-start")) {
         busy_ = true;
         SetStatus(L"正在验证并创建工作空间会话；失败时保留原对话");

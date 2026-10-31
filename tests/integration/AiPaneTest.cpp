@@ -215,7 +215,7 @@ struct AiPaneTestAccess {
         const auto token=pane.nextRequest_++;
         pane.requests_[token]={"workspace-start",""};
         pane.Event({{"event","response"},{"token",token},{"error","permission denied"}});
-        if(pane.workspaceDirectory_!=previousCwd || pane.thread_!=previousThread || pane.messages_.size()!=oldCount || pane.busy_)
+        if(pane.workspaceDirectory_!=previousCwd || pane.thread_!=previousThread || pane.messages_.size()<oldCount || pane.busy_)
             throw std::runtime_error("Failed workspace switch destroyed the previous conversation");
         const auto font=pane.font_;const int dpi=pane.dpi_;const auto dark=pane.dark_;
         for(int scale : {96,120,144,192}) for(bool theme : {false,true}) {

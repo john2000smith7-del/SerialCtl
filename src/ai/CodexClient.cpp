@@ -14,6 +14,16 @@ const wchar_t *SettingsKey = L"Software\\SerialCtl\\AI";
 std::wstring CredentialName(const ServerSettings &s) {
     return L"SerialCtl/AI/" + s.host + L":" + std::to_wstring(s.port) + L"/" + s.username;
 }
+std::wstring WorkspaceName(const ServerSettings& s) {
+    auto host=s.host;for(auto& ch:host)ch=static_cast<wchar_t>(towlower(ch));
+    const auto endpoint=host+L":"+std::to_wstring(s.port)+L"/"+s.username;
+    // Registry value names are case-insensitive; encode account bytes so Linux
+    // and linux cannot share a workspace entry accidentally.
+    constexpr wchar_t digits[]=L"0123456789abcdef";
+    std::wstring name;
+    for(const auto ch:endpoint)for(int shift:{12,8,4,0})name+=digits[(static_cast<unsigned>(ch)>>shift)&15];
+    return name;
+}
 std::wstring ReadString(HKEY key, const wchar_t *name) {
     DWORD type = 0, size = 0;
     if (RegQueryValueExW(key, name, nullptr, &type, nullptr, &size) != ERROR_SUCCESS || type != REG_SZ || size > 32768)
@@ -94,7 +104,7 @@ std::wstring WorkspaceForServer(const ServerSettings& s) {
     HKEY key=nullptr;
     std::wstring path;
     if (RegOpenKeyExW(HKEY_CURRENT_USER,L"Software\\SerialCtl\\AI\\Workspaces",0,KEY_QUERY_VALUE,&key)==ERROR_SUCCESS) {
-        path=ReadString(key,CredentialName(s).c_str());RegCloseKey(key);
+        path=ReadString(key,WorkspaceName(s).c_str());RegCloseKey(key);
     }
     return path.empty()?L"/home/linux/workspace":path;
 }
@@ -121,7 +131,7 @@ bool SaveServerSettings(const ServerSettings &s, std::wstring &error) {
         HKEY spaces=nullptr;
         result=RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\SerialCtl\\AI\\Workspaces",0,nullptr,0,KEY_SET_VALUE,nullptr,&spaces,nullptr);
         if(result==ERROR_SUCCESS) {
-            result=RegSetValueExW(spaces,CredentialName(s).c_str(),0,REG_SZ,reinterpret_cast<const BYTE*>(s.workingDirectory.c_str()),static_cast<DWORD>((s.workingDirectory.size()+1)*sizeof(wchar_t)));
+            result=RegSetValueExW(spaces,WorkspaceName(s).c_str(),0,REG_SZ,reinterpret_cast<const BYTE*>(s.workingDirectory.c_str()),static_cast<DWORD>((s.workingDirectory.size()+1)*sizeof(wchar_t)));
             RegCloseKey(spaces);
         }
     }
