@@ -54,6 +54,8 @@ jobs:
             if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,214) -eq [IntPtr]::Zero) { throw 'Expected native AI connection dialog' }
             Click-Control $aiDialog 2
             Start-Sleep -Seconds 5
+            Click-Control $main 302
+            Start-Sleep -Milliseconds 200
             Click-Control $main 300
             Start-Sleep -Milliseconds 500
             python tests/integration/gui_user_lifecycle.py $extract $main.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')
