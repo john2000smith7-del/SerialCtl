@@ -45,21 +45,33 @@ int main(){
     int status=0;
     {
         Canvas direct,candidate;
-        for(int mode=0;mode<6;++mode) {
+        for(int mode=6;mode<11;++mode) {
             unsigned maxError=0,bad=0,cases=0;int lowest=0,highest=0;
             std::map<COLORREF,std::unique_ptr<Atlas>> atlases;
             auto begin=std::chrono::steady_clock::now();
             bool supported=true;
             for(int size:{16,24,48})for(auto ink:{RGB(29,29,31),RGB(245,245,247),RGB(31,79,216),RGB(152,152,157)})for(auto bg:{RGB(255,255,255),RGB(36,36,38)})for(int glyph=0;glyph<27;++glyph) {
-                if(!atlases.count(ink))atlases[ink]=Make(mode,ink);
+                if(!atlases.count(ink)) {
+                    auto a=std::make_unique<Atlas>();
+                    auto &source=UiResource(2012);
+                    a->bitmap.reset(source.bitmap->Clone(0,0,2592,96,mode==6?PixelFormat32bppARGB:PixelFormat32bppPARGB));
+                    atlases[ink]=std::move(a);
+                }
                 auto &atlas=atlases[ink];
                 if(!atlas->bitmap || atlas->bitmap->GetLastStatus()!=Gdiplus::Ok){supported=false;continue;}
                 direct.Clear(bg);candidate.Clear(bg);const RECT r{7,5,7+size,5+size};
                 UiResourceGlyphDirect(direct.dc,r,ink,glyph);
                 {
                     Gdiplus::Graphics g(candidate.dc);g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
-                    Gdiplus::ImageAttributes attr;attr.SetWrapMode(Gdiplus::WrapModeTileFlipXY);
-                    if(g.DrawImage(atlas->bitmap.get(),Gdiplus::Rect(r.left,r.top,size,size),glyph*96,0,96,96,Gdiplus::UnitPixel,&attr)!=Gdiplus::Ok){supported=false;continue;}
+                    Gdiplus::ImageAttributes attr;UiResourceTint(attr,ink);
+                    int x=glyph*96;
+                    std::unique_ptr<Gdiplus::Bitmap> crop;
+                    if(mode>=8) {
+                        const int pad=mode==8?1:mode==9?8:96;
+                        int left=std::max(0,x-pad),right=std::min(2592,x+96+pad);
+                        crop.reset(UiResource(2012).bitmap->Clone(left,0,right-left,96,PixelFormat32bppARGB));x-=left;
+                    }
+                    if(g.DrawImage(crop?crop.get():atlas->bitmap.get(),Gdiplus::Rect(r.left,r.top,size,size),x,0,96,96,Gdiplus::UnitPixel,&attr)!=Gdiplus::Ok){supported=false;continue;}
                 }
                 GdiFlush();
                 for(int i=0;i<6400;++i)for(int shift:{0,8,16}) {
