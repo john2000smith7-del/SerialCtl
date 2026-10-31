@@ -330,7 +330,7 @@ void AiPetPane::Present(bool aiPage, bool available) {
     available_ = Desktop() ? seenAi_ && model_.Active() : aiPage && available && model_.Active();
     if (window_) {
         if (Desktop()) {
-            PlaceDesktop();
+            if (available_) PlaceDesktop();
             ShowWindow(window_, available_ ? SW_SHOWNOACTIVATE : SW_HIDE);
         }
         if (available_)

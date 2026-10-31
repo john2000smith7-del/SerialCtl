@@ -100,7 +100,7 @@ def main():
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Test must default to off')
             click(gate);password=dialog();user.SetWindowTextW(control(password,10),'JJ123123');click(control(password,1))
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Uppercase password unlocked Test')
-            click(gate);password=dialog();user.SetWindowTextW(control(password,10),'jj123123');click(control(password,1))
+            click(gate);password=dialog();user.SetWindowTextW(control(password,10),'jj123123');desktop.capture(theme+'-test-password');click(control(password,1))
             require(user.SendMessageW(gate,0xF0,0,0)==1,'Correct password did not unlock Test')
             desktop.capture(theme+'-test-unlocked');click(gate)
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Test did not lock immediately')
