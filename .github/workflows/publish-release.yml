@@ -168,14 +168,18 @@ jobs:
           PY
           python tools/new_update_feed.py --verify-archive "bin/$RELEASE_ARCHIVE" --metadata /tmp/update.json
           gh release create "$RELEASE_TAG" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --draft --title "SerialCtl $RELEASE_VERSION ($RELEASE_TAG) — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > /tmp/serialctl-draft-release.json
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > /tmp/serialctl-release-list.json
+          jq -e --arg tag "$RELEASE_TAG" '[.[] | select(.tag_name == $tag)] | select(length == 1) | .[0]' /tmp/serialctl-release-list.json > /tmp/serialctl-draft-release.json
           jq -e --arg archive "$RELEASE_ARCHIVE" '.draft == true and ([.assets[].name] | sort) == ([$archive,"update.json"] | sort) and ([.assets[].state] | all(. == "uploaded"))' /tmp/serialctl-draft-release.json
           mkdir /tmp/serialctl-draft-readback
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir /tmp/serialctl-draft-readback
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "/tmp/serialctl-draft-readback/$asset_name"
+          done < <(jq -r '.assets[] | [.id,.name] | @tsv' /tmp/serialctl-draft-release.json)
           printf '%s  %s\n' "$RELEASE_SHA256" "/tmp/serialctl-draft-readback/$RELEASE_ARCHIVE" | sha256sum --check
           cmp /tmp/update.json /tmp/serialctl-draft-readback/update.json
           python tools/new_update_feed.py --verify-archive "/tmp/serialctl-draft-readback/$RELEASE_ARCHIVE" --metadata /tmp/serialctl-draft-readback/update.json
-          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          draft_id=$(jq -er .id /tmp/serialctl-draft-release.json)
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$draft_id" -F draft=false -f make_latest=true --jq '{tag_name,draft,html_url}'
   verify-publication:
     needs: [upgrade, publish]
     runs-on: ubuntu-24.04
