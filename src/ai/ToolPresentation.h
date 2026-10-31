@@ -91,6 +91,8 @@ inline std::string ToolText(const std::string &tool, const Json &args, const Jso
         text += u8"\n任务已提交，等待设备回读确认。";
     } else if (tool == "serialctl_boot_arm" || tool == "serialctl_boot_enter" || tool == "serialctl_boot_stop" || tool == "serialctl_boot_status") {
         text += result.value("entered", false) ? u8"\n已观察到目标提示符或菜单。" : u8"\n尚未确认进入目标界面。";
+        if(tool=="serialctl_boot_enter") text += u8"\n重启已提交；客户端按 " + std::to_string(result.value("intervalMs",300)) +
+            u8" 毫秒间隔持续发送打断按键，不限次数；可点击停止。";
     } else if (tool == "serialctl_power_action") {
         text += u8"\n已取得任务状态；以设备回读结果为准。";
     }
