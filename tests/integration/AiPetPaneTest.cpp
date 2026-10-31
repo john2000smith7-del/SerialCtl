@@ -245,6 +245,12 @@ struct AiPetPaneTestAccess {
         Check(GetForegroundWindow() != pane.Handle(), "Background pet animation stole activation");
         ShowWindow(parent, SW_RESTORE);
         if (foreground && IsWindow(foreground)) SetForegroundWindow(foreground);
+        POINT roamingCursor{};
+        GetCursorPos(&roamingCursor);
+        MONITORINFO roamingMonitor{sizeof(roamingMonitor)};
+        GetMonitorInfoW(MonitorFromWindow(parent, MONITOR_DEFAULTTONEAREST), &roamingMonitor);
+        const POINT outsideOwner{roamingMonitor.rcWork.right - 2, roamingMonitor.rcWork.top + 2};
+        SetCursorPos(outsideOwner.x, outsideOwner.y);
         auto roaming = pane.Preferences();
         roaming.desktopX=240;roaming.desktopY=240;roaming.roaming=true;
         pane.model_.Configure(roaming,GetTickCount64());pane.model_.Stop(GetTickCount64());
@@ -254,6 +260,21 @@ struct AiPetPaneTestAccess {
         for(int step=0;step<5;++step){Sleep(80);pane.Tick();}
         GetWindowRect(pane.Handle(),&roamAfter);
         Check(roamAfter.left>roamBefore.left,"Desktop idle roaming did not move the real layered window");
+        const HWND previousForeground = GetForegroundWindow();
+        SetForegroundWindow(parent);
+        SetActiveWindow(parent);
+        Check(GetForegroundWindow() == parent, "Cannot activate the native owner interaction fixture");
+        POINT ownerPoint{24, 24};
+        ClientToScreen(parent, &ownerPoint);
+        SetCursorPos(ownerPoint.x, ownerPoint.y);
+        pane.Tick();
+        Sleep(80); pane.Tick();
+        RECT ownerInteractionPosition{};
+        GetWindowRect(pane.Handle(), &ownerInteractionPosition);
+        Check(EqualRect(&ownerInteractionPosition, &roamAfter),
+              "Active owner interaction did not pause the real desktop pet");
+        SetCursorPos(outsideOwner.x, outsideOwner.y);
+        if (previousForeground && IsWindow(previousForeground)) SetForegroundWindow(previousForeground);
         pane.model_.SetActivity(pet::Activity::Working,GetTickCount64());Sleep(80);pane.Tick();
         RECT workingPosition{};GetWindowRect(pane.Handle(),&workingPosition);
         Check(EqualRect(&workingPosition,&roamAfter),"AI work did not pause desktop roaming");
@@ -262,6 +283,7 @@ struct AiPetPaneTestAccess {
         pane.model_.SetActivity(pet::Activity::Idle,GetTickCount64());Sleep(80);pane.Tick();
         GetWindowRect(pane.Handle(),&workingPosition);
         Check(EqualRect(&workingPosition,&roamAfter),"Disabling roaming moved the pet");
+        SetCursorPos(roamingCursor.x, roamingCursor.y);
         POINT oldCursor{}; GetCursorPos(&oldCursor);
         const POINT grabDesktop{(pane.sprite_.left + pane.sprite_.right) / 2, (pane.sprite_.top + pane.sprite_.bottom) / 2};
         POINT screenPoint = grabDesktop; ClientToScreen(pane.Handle(), &screenPoint); SetCursorPos(screenPoint.x, screenPoint.y);
