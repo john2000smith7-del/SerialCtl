@@ -121,7 +121,15 @@ jobs:
           pathlib.Path('/tmp/update.json').write_bytes(data)
           PY
           python tools/new_update_feed.py --verify-archive "bin/$RELEASE_ARCHIVE" --metadata /tmp/update.json
-          gh release create "$RELEASE_TAG" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION ($RELEASE_TAG) — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+          gh release create "$RELEASE_TAG" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --draft --title "SerialCtl $RELEASE_VERSION ($RELEASE_TAG) — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > /tmp/serialctl-draft-release.json
+          jq -e --arg archive "$RELEASE_ARCHIVE" '.draft == true and ([.assets[].name] | sort) == ([$archive,"update.json"] | sort) and ([.assets[].state] | all(. == "uploaded"))' /tmp/serialctl-draft-release.json
+          mkdir /tmp/serialctl-draft-readback
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir /tmp/serialctl-draft-readback
+          printf '%s  %s\n' "$RELEASE_SHA256" "/tmp/serialctl-draft-readback/$RELEASE_ARCHIVE" | sha256sum --check
+          cmp /tmp/update.json /tmp/serialctl-draft-readback/update.json
+          python tools/new_update_feed.py --verify-archive "/tmp/serialctl-draft-readback/$RELEASE_ARCHIVE" --metadata /tmp/serialctl-draft-readback/update.json
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
  -or $request.build_run_id -notmatch '^\d+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
