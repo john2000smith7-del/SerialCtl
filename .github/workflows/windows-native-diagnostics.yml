@@ -9,6 +9,11 @@ on:
         description: Optional native-verified Windows build to inspect with current GUI tests
         required: false
         default: ''
+      ui_focus:
+        description: Only repeat optimization and freeze diagnostics (main-window smoke already inspected)
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -117,7 +122,7 @@ jobs:
           New-Item -ItemType Directory "$env:RUNNER_TEMP/gui-evidence" -Force | Out-Null
           [ordered]@{buildRun=$env:BUILD_RUN;programSource=$run.head_sha;testSource=(git rev-parse HEAD);scope='Diagnostics only; formal release still requires the complete exact-main workflow'} | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/gui-evidence/source.json"
       - name: Inspect packaged main window and dialogs
-        if: ${{ always() && steps.source.outcome == 'success' }}
+        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_focus }}
         shell: powershell
         run: ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/smoke"
       - name: Inspect approved controls and continuous power scroll

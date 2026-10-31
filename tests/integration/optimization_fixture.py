@@ -107,8 +107,11 @@ def main():
             wait(lambda:'密码错误' in text(control(settings,2508)))
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Uppercase password unlocked Test')
             click(gate);password=dialog();user.SetWindowTextW(control(password,10),'jj123123');desktop.capture(theme+'-test-password');click(control(password,1))
-            wait(lambda:user.IsWindowEnabled(settings))
-            desktop.capture(theme+'-test-result');desktop.flush_frames()
+            try:
+                wait(lambda:'Test 已开启' in text(control(settings,2508)))
+            finally:
+                desktop.capture(theme+'-test-result');desktop.flush_frames()
+                report['testValidationNote']=text(control(settings,2508))
             note=text(control(settings,2508))
             require('Test 已开启' in note and user.SendMessageW(gate,0xF0,0,0)==1,'Correct password did not unlock Test: '+note)
             desktop.capture(theme+'-test-unlocked');click(gate)
