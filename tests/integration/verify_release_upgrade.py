@@ -199,9 +199,9 @@ def main():
         get_profile = kernel.GetPrivateProfileStringW
         get_profile.argtypes = (w.LPCWSTR,w.LPCWSTR,w.LPCWSTR,w.LPWSTR,w.DWORD,w.LPCWSTR)
         for section,key,value in [('Layout','LeftPanelCollapsed','1'),('BootPresets','66697874757265','phytium_uefi_f2|500'),('FuturePreferences','keep','user-owned-setting')]:
-            actual=c.create_unicode_buffer(512)
-            get_profile(section,key,'',actual,len(actual),str(preferences))
-            assert actual.value==value, 'User preference was not preserved: '+section+'/'+key
+            preference_buffer=c.create_unicode_buffer(512)
+            get_profile(section,key,'',preference_buffer,len(preference_buffer),str(preferences))
+            assert preference_buffer.value==value, 'User preference was not preserved: '+section+'/'+key
         report['left_rail_boot_cadence_and_unknown_preferences_preserved']=True
         connection_list=user.GetDlgItem(replacement['window'],106)
         assert connection_list and not user.IsWindowVisible(connection_list), 'Replacement GUI did not restore the collapsed left rail'
