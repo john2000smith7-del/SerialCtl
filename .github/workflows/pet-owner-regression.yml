@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 8e2c5353e74b5cfa5a5cfda4488b924567f0e1ef
+          ref: f922b3d8a55a9baceb77c552edc83c501d60a7e6
       - name: Compile and repeat the actual layered-window regression
         shell: powershell
         run: |
