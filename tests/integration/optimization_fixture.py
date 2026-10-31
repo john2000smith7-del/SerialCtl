@@ -81,7 +81,10 @@ def main():
             desktop.click(((box[0]+box[2])//2,(box[1]+box[3])//2));time.sleep(.08)
         def control(parent,i):
             h=user.GetDlgItem(parent,i);require(h,'Missing control '+str(i));return h
-        def dialog():return wait(lambda: windows(process.pid,'#32770'))[-1]
+        def dialog():
+            # Owned password prompts disable their still-visible settings owner.
+            # Select the interactive modal, independent of EnumWindows Z order.
+            return wait(lambda: [h for h in windows(process.pid,'#32770') if user.IsWindowEnabled(h)])[-1]
         def close(h):
             user.PostMessageW(h,0x10,0,0);wait(lambda:user.IsWindowEnabled(hwnd))
         for theme in ('light','dark'):
