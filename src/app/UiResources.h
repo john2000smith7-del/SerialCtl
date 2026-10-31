@@ -118,8 +118,11 @@ inline Gdiplus::Bitmap *UiGlyphAtlas(UiResourceBitmap &source, COLORREF color) {
     auto entry = std::make_unique<UiTintedGlyphAtlas>();
     entry->color = color;
     entry->pixels.resize(source.alpha.size());
-    const DWORD rgb = (static_cast<DWORD>(GetRValue(color)) << 16) |
-                      (static_cast<DWORD>(GetGValue(color)) << 8) | GetBValue(color);
+    // UiResourceTint uses (channel + .5) / 255; reproduce its byte
+    // rounding before the unchanged GDI+ source-rectangle resampling.
+    const auto channel=[](unsigned value){return std::min(255u,value+1);};
+    const DWORD rgb = (static_cast<DWORD>(channel(GetRValue(color))) << 16) |
+                      (static_cast<DWORD>(channel(GetGValue(color))) << 8) | channel(GetBValue(color));
     for (size_t i = 0; i < source.alpha.size(); ++i)
         entry->pixels[i] = (static_cast<DWORD>(source.alpha[i]) << 24) | rgb;
     entry->bitmap = std::make_unique<Gdiplus::Bitmap>(static_cast<INT>(source.width),
