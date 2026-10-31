@@ -60,6 +60,10 @@ int main() {
                     GetPrivateProfileIntW(L"Pet", L"Size", 0, path) == 96 &&
                     GetPrivateProfileIntW(L"Unrelated", L"Keep", 0, path) == 7,
                 "profile writes changed values or unrelated settings");
+        UiSettingsWriter failing([](const UiSettingsWriter::Snapshot&) { throw std::runtime_error("Controlled storage failure"); });
+        Require(failing.Submit(State(1)),"storage failure snapshot rejected");
+        failing.Stop();
+        Require(failing.TakeFailure() && !failing.TakeFailure(),"background storage failure was hidden or not consumed");
         std::cout << "UI settings writes remain responsive and flush the latest snapshot\n";
         return 0;
     } catch (const std::exception &error) { std::cerr << error.what() << '\n'; return 1; }

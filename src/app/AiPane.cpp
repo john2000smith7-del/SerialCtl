@@ -1980,7 +1980,7 @@ void AiPane::Event(const Json &e) {
         if (purpose == "workspace-start") {
             busy_ = false;
             if (e.contains("error") || !e.contains("result") ||
-                !e["result"].contains("conversationId") || !e["result"]["conversationId"].is_string()) {
+                !e["result"].contains("conversationId") || !e["result"]["conversationId"].is_string() || e["result"]["conversationId"].get<std::string>().empty()) {
                 pendingWorkspace_.clear();
                 SetStatus(L"切换工作空间失败，原会话已保留：" + Wide(e.value("error", std::string("服务器未返回有效会话"))));
                 UpdateActions(); return;
