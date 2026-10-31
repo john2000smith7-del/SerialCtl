@@ -835,7 +835,7 @@ void PowerService::Disconnect(bool preserveOutputs) {
     task_ = Json();
     owned_ = Json::array();
     state_["ownedChannels"] = owned_;
-    state_["readbackStale"] = preserveOutputs;
+    state_["readbackStale"] = preserveOutputs && std::any_of(state_["channels"].begin(),state_["channels"].end(),[](const Json& channel){return channel["output"].is_boolean();});
     if (preserveOutputs) return;
     for (auto &channel : state_["channels"]) {
         channel["output"] = nullptr;
@@ -1124,6 +1124,7 @@ void PowerService::Poll() {
     }
     std::lock_guard<std::mutex> lock(mutex_);
     state_["channels"] = channels;
+    state_["readbackStale"] = false;
     if (!measurements_.Error().empty())
         state_["logError"] = WideToMultiByte(measurements_.Error(), CP_UTF8);
     if (!log_.Error().empty())

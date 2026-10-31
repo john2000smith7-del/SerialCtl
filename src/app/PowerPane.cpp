@@ -1007,7 +1007,8 @@ void PowerPane::Paint(HDC dc) {
     const bool narrow = r.right < d(400);
     icons_.Draw(dc, ToolbarIcon::Power, {0, d(8), d(18), d(26)}, dark_);
     text(L"IT6332A", {d(28),0,r.right-d(108),d(36)}, titleFont_,c.text);
-    text(state_.value("connected",false) ? L"已连接" : L"未连接",
+    const auto connectionLabel=std::wstring(state_.value("connected",false)?L"已连接":L"未连接")+(state_.value("readbackStale",false)?L" · 上次读回":L"");
+    text(connectionLabel,
         {narrow ? 0 : d(144), narrow ? d(28) : 0, r.right-d(108), narrow ? d(52) : d(36)}, smallFont_,c.muted);
     UiSeparator(dc, 0, r.right, bodyTop_ - d(8), c.border);
     UiSeparator(dc, 0, r.right, footerTop_ - d(8), c.border);
@@ -1050,8 +1051,9 @@ void PowerPane::PaintBody(HDC dc) {
                 if (channel["output"]!=other["output"]) channel["output"]=nullptr;
             }
             const int left=card.left, top=card.top, width=card.right-card.left;
-            const std::wstring status=channel["output"].is_boolean() ? (channel["output"].get<bool>()?L"输出中":L"已关闭") :
-                state_.value("connected",false)?L"状态未知":L"未连接";
+            const std::wstring status=(state_.value("readbackStale",false)?std::wstring(L"上次 · "):std::wstring())+
+                (channel["output"].is_boolean() ? (channel["output"].get<bool>()?L"输出中":L"已关闭") :
+                state_.value("connected",false)?L"状态未知":L"未连接");
             RECT statusBox{left+d(combined?164:100),top+d(8),card.right-d(16),top+d(36)};
             const auto old=SelectObject(dc,smallFont_); SetTextColor(dc,c.muted); SetBkMode(dc,TRANSPARENT);
             DrawTextW(dc,status.c_str(),-1,&statusBox,DT_RIGHT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS); SelectObject(dc,old);
