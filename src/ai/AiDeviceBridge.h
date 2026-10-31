@@ -26,6 +26,7 @@ public:
         bool aiTruncated = false;
         bool bootRestartUsed = false;
         bool bootPresetLoaded = false;
+        unsigned bootIntervalMs = 300;
         std::string aiTransportNotice;
     };
     struct Target {

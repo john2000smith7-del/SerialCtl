@@ -53,7 +53,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
                      {"transport", session->udpRaw ? "udpRaw" : "session"},
                      {"peerVerified", !session->udpRaw},
                      {"dataReceived", session->udpReceived},
-                     {"commandSupported", true}, {"bootPreset", session->state.bootPreset}});
+                     {"commandSupported", true}, {"bootPreset", session->state.bootPreset}, {"bootIntervalMs", session->state.bootIntervalMs}});
         }
         return result;
     }
@@ -103,7 +103,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
         const auto preset = params.value("preset", std::string());
         const auto command = params.value("command", std::string("reboot"));
         if (command != "reboot" && command != "reset") return error("Boot entry accepts only reboot or a verified board reset command");
-        if (!session->state.boot->PreparePreset(preset, params.value("timeoutSeconds", 90u), now))
+        if (!session->state.boot->PreparePreset(preset, params.value("timeoutSeconds", 0u), now, params.value("intervalMs", session->state.bootIntervalMs)))
             return error("Unknown boot preset, invalid timeout, or another capture is already active; do not resubmit reboot");
         // Pin command and interrupts to the same existing connection, in order.
         // Reboot is submitted exactly once, without a model round trip before
@@ -124,6 +124,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
         session->state.aiCommandAt = now;
         session->state.bootRestartUsed = true;
         session->state.bootPreset = preset;
+        session->state.bootIntervalMs = session->state.boot->Status(now).intervalMs;
         session->state.aiCommandCursor = session->state.aiCursor;
         session->state.aiCommandText = command;
         result["commandId"] = ++session->state.aiCommandNumber;
@@ -133,7 +134,8 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
         armBootPulse = true;
         result["preset"] = preset;
         result["state"] = session->state.boot->Status(now).state;
-        result["intervalMs"] = 80;
+        result["intervalMs"] = session->state.boot->Status(now).intervalMs;
+        result["untilStopped"] = session->state.boot->Status(now).untilStopped;
         result["entered"] = false;
         return result;
     }
@@ -154,7 +156,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
         return {{"sessionId", id}, {"state", state.state}, {"matched", state.matched}, {"entered", state.entered},
             {"submittedBursts", state.submitted}, {"remainingMs", state.remainingMs}, {"error", state.error},
             {"pattern", state.pattern}, {"prompt", state.prompt}, {"execution", state.entered ? "prompt-observed" : "unconfirmed"},
-            {"source", "local-receive-path"}, {"preset", state.preset},
+            {"source", "local-receive-path"}, {"preset", state.preset}, {"intervalMs", state.intervalMs}, {"untilStopped", state.untilStopped},
             {"maximumBursts", state.preset.empty() ? Json(3) : Json(nullptr)}};
     }
     if (method == "recover") {

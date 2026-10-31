@@ -4377,7 +4377,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
     }
     for(const auto& session:sessions_) if(!session->bootPresetLoaded) {
         const auto saved=bootPresets_.find(BootProfileKey(*session));
-        if(saved!=bootPresets_.end()) session->bootPreset=saved->second;
+        if(saved!=bootPresets_.end()) { session->bootPreset=saved->second.first;session->bootIntervalMs=saved->second.second; }
         session->bootPresetLoaded=true;
     }
     std::vector<AiDeviceBridge::Target> targets;
@@ -4395,10 +4395,10 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
     }
     bool armBootPulse = false;
     auto result = aiDeviceBridge_.Request(method, params, targets, context, GetTickCount64(), armBootPulse);
-    if (armBootPulse) SetTimer(window_, BootPulseTimerId, 40, nullptr);
+    if (armBootPulse) SetTimer(window_, BootPulseTimerId, 20, nullptr);
     if(method=="boot_enter" && !result.contains("error")) {
         for(const auto& session:sessions_) if(params.value("sessionId",std::string())=="session-"+std::to_string(session->id)) {
-            bootPresets_[BootProfileKey(*session)]=session->bootPreset;
+            bootPresets_[BootProfileKey(*session)]={session->bootPreset,session->bootIntervalMs};
             SaveUiState(); break;
         }
     }
@@ -5869,8 +5869,11 @@ void MainWindow::LoadUiState() {
         const std::wstring entry(row);const auto split=entry.find(L'=');
         if(split==std::wstring::npos || split==0) continue;
         const auto key=entry.substr(0,split), value=entry.substr(split+1);
+        const auto separator=value.find(L'|');const auto preset=value.substr(0,separator);
+        const auto interval=separator==std::wstring::npos?L"300":value.substr(separator+1);
         if(std::all_of(key.begin(),key.end(),[](wchar_t c){return (c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');}) &&
-           (value==L"uboot_space" || value==L"phytium_uefi_f2")) bootPresets_[key]=WideToMultiByte(value,CP_UTF8);
+           (preset==L"uboot_space" || preset==L"phytium_uefi_f2") && (interval==L"300" || interval==L"500"))
+            bootPresets_[key]={WideToMultiByte(preset,CP_UTF8),interval==L"500"?500u:300u};
     }
     leftPanelCollapsed_ = GetPrivateProfileIntW(L"Layout", L"LeftPanelCollapsed", 0, path.c_str()) != 0;
     rightPanelCollapsed_ = GetPrivateProfileIntW(
@@ -5913,8 +5916,10 @@ void MainWindow::SaveUiState() {
     add(L"Layout", L"LeftPanelCollapsed", leftPanelCollapsed_);
     add(L"Commands", L"DoubleClickRun", notebook_.DoubleClick());
     add(L"Commands", L"IntervalMs", notebook_.Interval());
-    for(const auto& preset:bootPresets_)
-        snapshot.entries.push_back({L"BootPresets",preset.first,MultiByteToWide(reinterpret_cast<const uint8_t*>(preset.second.data()),preset.second.size(),CP_UTF8)});
+    for(const auto& preset:bootPresets_) {
+        const auto value=preset.second.first+"|"+std::to_string(preset.second.second);
+        snapshot.entries.push_back({L"BootPresets",preset.first,MultiByteToWide(reinterpret_cast<const uint8_t*>(value.data()),value.size(),CP_UTF8)});
+    }
     uiSettingsWriter_.Submit(std::move(snapshot));
 }
 

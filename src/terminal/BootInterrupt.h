@@ -11,8 +11,8 @@ class BootInterrupt {
 public:
     struct Snapshot {
         std::string state = "idle", pattern, prompt, error, preset;
-        unsigned submitted = 0;
-        bool matched = false, entered = false;
+        unsigned submitted = 0, intervalMs = 80;
+        bool matched = false, entered = false, untilStopped = false;
         std::uint64_t remainingMs = 0;
     };
     bool Arm(std::string pattern, std::string bytes, std::string prompt, unsigned seconds, std::uint64_t now) {
@@ -36,18 +36,20 @@ public:
     }
     // Two built-in strategies. Prepare before queuing reboot; no interrupt
     // bytes may precede an accepted restart command on that same transport.
-    bool PreparePreset(const std::string& preset, unsigned seconds, std::uint64_t now) {
-        if ((preset != "uboot_space" && preset != "phytium_uefi_f2") || seconds < 1 || seconds > 120) return false;
+    bool PreparePreset(const std::string& preset, unsigned seconds, std::uint64_t now, unsigned intervalMs = 300) {
+        if ((preset != "uboot_space" && preset != "phytium_uefi_f2") || seconds > 120 ||
+            (intervalMs != 300 && intervalMs != 500)) return false;
         std::lock_guard<std::mutex> lock(mutex_);
         if (Active()) return false;
         status_ = {};
         status_.state = "prepared";
         status_.preset = preset;
+        status_.intervalMs = intervalMs;
         status_.prompt = preset == "uboot_space" ? "=>" : "UEFI setup/boot menu";
         bytes_ = preset == "uboot_space" ? " " : "\x1bOQ"; // VT100/VT100+ F2, never the literal text F2.
         continuous_ = true;
         tail_.clear(); tailStartsLine_ = true;
-        deadline_ = now + seconds * 1000ull;
+        deadline_ = seconds ? now + seconds * 1000ull : 0;
         nextSend_ = now;
         return true;
     }
@@ -60,7 +62,7 @@ public:
     }
     std::string Feed(const char *data, size_t size, std::uint64_t now) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!Active() || now >= deadline_) return Step(now);
+        if (!Active() || (deadline_ && now >= deadline_)) return Step(now);
         // Match across receive chunks while keeping a fixed bounded tail.
         for (size_t offset = 0; offset < size; offset += 512) {
             tail_.append(data + offset, std::min<size_t>(512, size - offset));
@@ -97,7 +99,8 @@ public:
     Snapshot Status(std::uint64_t now) const {
         std::lock_guard<std::mutex> lock(mutex_);
         Snapshot result = status_;
-        result.remainingMs = Active() && now < deadline_ ? deadline_ - now : 0;
+        result.remainingMs = Active() && deadline_ && now < deadline_ ? deadline_ - now : 0;
+        result.untilStopped = continuous_ && !deadline_;
         return result;
     }
 private:
@@ -122,10 +125,10 @@ private:
     }
     std::string Step(std::uint64_t now) {
         if (!Active()) return {};
-        if (now >= deadline_) { status_.state = "timed_out"; return {}; }
+        if (deadline_ && now >= deadline_) { status_.state = "timed_out"; return {}; }
         if (status_.state == "prepared" || (!continuous_ && (!status_.matched || status_.submitted >= 3)) || now < nextSend_) return {};
         ++status_.submitted;
-        nextSend_ = now + 80;
+        nextSend_ = now + status_.intervalMs;
         return bytes_;
     }
     mutable std::mutex mutex_;

@@ -437,7 +437,7 @@ private:
     int rightPanelWidth_ = 360;
     bool rightPanelCollapsed_ = false;
     std::string pendingPowerMonitorSession_;
-    std::map<std::wstring,std::string> bootPresets_;
+    std::map<std::wstring,std::pair<std::string,unsigned>> bootPresets_;
     bool leftPanelCollapsed_ = false, leftPanelAnimating_ = false;
     int leftPanelAnimatedWidth_ = -1, leftPanelAnimationFrom_ = 0, leftPanelAnimationTo_ = 0;
     ULONGLONG leftPanelAnimationAt_ = 0;
