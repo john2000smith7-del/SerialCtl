@@ -1359,7 +1359,7 @@ void AiPane::SetStatus(const std::wstring &text) {
 }
 void AiPane::UpdateActions() {
     SetWindowTextW(window_,client_.Ready()?L"AI 已连接":client_.Running()?L"AI 连接中":L"AI 未连接");
-    workspaceTooltip_ = workspaceDirectory_ + (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器");
+    workspaceTooltip_ = workspaceDirectory_ + (workspaceVerified_ ? std::wstring() : std::wstring(L" · 目录待验证")) + (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器");
     modelTooltip_ = serverDefaultModel_.empty() ? L"模型未获取" : Wide(serverDefaultModel_);
     for (int id : {WorkspaceButton, Model}) {
         TOOLINFOW tip{sizeof(tip)}; tip.uFlags=TTF_IDISHWND|TTF_SUBCLASS;tip.hwnd=window_;
@@ -1885,6 +1885,7 @@ void AiPane::Poll() {
 void AiPane::Event(const Json &e) {
     const auto event = e.value("event", std::string());
     if (event == "ready") {
+        workspaceVerified_ = false;
         SetCompanionActivity(pet::Activity::Connecting);
         taskAuthorized_ = false;
         restoreOnConfig_ = !thread_.empty();
@@ -1998,6 +1999,7 @@ void AiPane::Event(const Json &e) {
             pendingWorkspace_.clear();
             NewConversation();
             workspaceDirectory_ = path;
+            workspaceVerified_ = true;
             thread_ = id;
             SaveWorkspaceDefault(path);
             RememberThread(id,L"新会话");
@@ -2065,6 +2067,7 @@ void AiPane::Event(const Json &e) {
             directoryDeadline_ = GetTickCount64() + 8000;
             if (!Request(ai::Operation::ServerHome, Json::object(), "home")) DirectoryFailure(L"暂时无法获取服务器目录");
         } else if (purpose == "resume") {
+            workspaceVerified_ = true;
             if (pendingHistoryRestore_) {
                 workspaceDirectory_ = pendingHistoryWorkspace_;
                 SelectTarget(pendingHistoryTarget_);
@@ -2659,11 +2662,13 @@ void AiPane::DirectoryResult(const Json &result, bool fallback) {
         SaveWorkspaceDefault(verifiedDirectory_);
         if (thread_.empty()) workspaceDirectory_ = verifiedDirectory_;
     }
+    if (verifiedDirectory_ == workspaceDirectory_) workspaceVerified_ = true;
     const auto note = L"已读取 " + std::to_wstring(directoryChildren_.size()) + L" 个子目录；可下拉选择或填写完整路径";
     for (HWND h : {dialog_, workspaceDialog_}) if (h) SetDlgItemTextW(h, Note, note.c_str());
     if (workspaceDialog_ && workspaceAccept_) UiEndOwnedDialog(workspaceDialog_, IDOK);
 }
 void AiPane::DirectoryFailure(const std::wstring &message) {
+    if (directoryPath_ == workspaceDirectory_) workspaceVerified_ = false;
     if (directoryInitial_ && settings_.workingDirectory.empty() && !serverHome_.empty() && directoryPath_ != serverHome_) {
         BrowseDirectory(serverHome_, true);
         return;
@@ -2915,6 +2920,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (Profile(s) != Profile(self->settings_))
                 self->NewConversation();
             self->settings_ = s;
+            self->workspaceVerified_ = false;
             if (self->thread_.empty()) self->workspaceDirectory_ = s.workingDirectory;
             self->needsPassword_ = false;
             self->dialogEnter_ = id == IDOK;

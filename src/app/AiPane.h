@@ -161,7 +161,7 @@ class AiPane {
     ai::CodexSession client_;
     ai::ServerSettings settings_;
     std::wstring workspaceDirectory_, directoryPath_, verifiedDirectory_, serverHome_, pendingDirectorySelection_;
-    bool directoryRowsDirty_ = false, directoryPathDirty_ = false;
+    bool directoryRowsDirty_ = false, directoryPathDirty_ = false, workspaceVerified_ = false;
     Json directoryChildren_ = Json::array();
     HWND workspaceDialog_ = nullptr;
     bool directoryPending_ = false, directoryInitial_ = false, workspaceAccept_ = false;
