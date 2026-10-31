@@ -85,11 +85,12 @@ def percentile(values, fraction):
 class ScreenRecording:
     """Independent screen sampler and bounded, lossless encoding consumer."""
 
-    def __init__(self, actions, bounds, ffmpeg, fps):
+    def __init__(self, actions, bounds, ffmpeg, fps, light_patch_oracle=True):
         self.actions = actions
         self.bounds = bounds
         self.width, self.height = bounds[2] - bounds[0], bounds[3] - bounds[1]
         self.ffmpeg, self.fps = ffmpeg, fps
+        self.light_patch_oracle = light_patch_oracle
         self.stem = f"{actions.args.prefix}-{actions.args.mode}-paint"
         self.video = actions.output / (self.stem + ".mkv")
         self.log = actions.output / (self.stem + "-ffmpeg.log")
@@ -214,7 +215,7 @@ class ScreenRecording:
                         frame["encoded_index"] = encoded
                         encoded += 1
                         candidates = (bright_rectangles(raw, self.width, self.height, self.actions.scale)
-                                      if self.actions.args.theme == "dark" else [])
+                                      if self.light_patch_oracle and self.actions.args.theme == "dark" else [])
                         frame["neutral_light_patch_candidates"] = candidates
                         if candidates:
                             self.counterexamples += 1
@@ -280,6 +281,7 @@ class ScreenRecording:
             "video_timing_limitation": "Playback spacing is nominal, not proof of uniform real sampling. Use JSONL seconds/capture_end_seconds and encoded_index for actual timing; missed slots are not duplicated.",
             "ffmpeg_command": getattr(self, "command", None), "ffmpeg_log": self.log.name,
             "sampling_error": self.sampling_error, "encoder_error": self.encoder_error,
+            "neutral_light_patch_oracle_enabled": self.light_patch_oracle,
             "neutral_light_patch_candidate_frames": self.counterexamples,
             "neutral_light_patch_candidates": self.failures, "saved_screen_samples": self.samples,
         }

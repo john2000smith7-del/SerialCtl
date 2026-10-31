@@ -183,7 +183,7 @@ class Endurance(DesktopActions):
                     self.open_cancel(304)
                     self.hit_click(self.control(105))
                 baseline=self.sample_resources(theme+'-warm')
-                recorder=ScreenRecording(self,self.desktop_rect(),ffmpeg,8)
+                recorder=ScreenRecording(self,self.desktop_rect(),ffmpeg,8,light_patch_oracle=False)
                 recorder.start()
                 try:
                     for cycle in range(8):
