@@ -209,6 +209,7 @@ inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon
 class UiBufferedPaint {
   public:
     UiBufferedPaint(HDC target, const RECT &bounds) : target_(target), bounds_(bounds) {
+        SERIALCTL_DIALOG_TRACE_SCOPE(BufferInit);
         if (!target_)
             return;
         savedTarget_ = SaveDC(target_);
@@ -234,9 +235,15 @@ class UiBufferedPaint {
         if (!SetWindowOrgEx(buffer_, bounds.left, bounds.top, nullptr))
             return;
         // Preserve untouched pixels for callbacks which only draw a focus state.
-        if (!BitBlt(buffer_, bounds.left, bounds.top, width_, height_,
-                    target_, bounds.left, bounds.top, SRCCOPY))
-            return;
+        { SERIALCTL_DIALOG_TRACE_SCOPE(BufferRead);
+#ifdef SERIALCTL_DIALOG_PROFILE
+          const bool preserve = GetEnvironmentVariableW(L"SERIALCTL_PROFILE_SKIP_READBACK",nullptr,0)==0;
+#else
+          const bool preserve = true;
+#endif
+          if (preserve && !BitBlt(buffer_, bounds.left, bounds.top, width_, height_,
+                    target_, bounds.left, bounds.top, SRCCOPY)) return;
+        }
         SelectObject(buffer_, GetCurrentObject(target_, OBJ_FONT));
         SelectObject(buffer_, GetCurrentObject(target_, OBJ_PEN));
         SelectObject(buffer_, GetCurrentObject(target_, OBJ_BRUSH));
@@ -255,6 +262,7 @@ class UiBufferedPaint {
         return ready_ ? buffer_ : target_;
     }
     ~UiBufferedPaint() {
+        SERIALCTL_DIALOG_TRACE_SCOPE(BufferPresent);
         if (ready_)
             BitBlt(target_, bounds_.left, bounds_.top, width_, height_,
                    buffer_, bounds_.left, bounds_.top, SRCCOPY);
@@ -664,6 +672,7 @@ inline void UiPrepareComboPopup(HWND combo, UiFieldStyle *style) {
     COMBOBOXINFO info{sizeof(info)};
     if (!GetComboBoxInfo(combo, &info) || !info.hwndList)
         return;
+    { SERIALCTL_DIALOG_TRACE_SCOPE(PopupAttach);
     DWORD_PTR reference = 0;
     if (GetWindowSubclass(info.hwndList, UiComboPopupProc, 72, &reference)) {
         reinterpret_cast<UiComboPopup *>(reference)->style = style;
@@ -679,7 +688,14 @@ inline void UiPrepareComboPopup(HWND combo, UiFieldStyle *style) {
         SetWindowLongPtrW(info.hwndList, GWL_EXSTYLE, GetWindowLongPtrW(info.hwndList, GWL_EXSTYLE) & ~(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
         SetWindowPos(info.hwndList, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
-    HDC dc = GetDC(combo);
+    }
+    { SERIALCTL_DIALOG_TRACE_SCOPE(FontMetrics);
+#ifdef SERIALCTL_DIALOG_PROFILE
+    const bool memory = GetEnvironmentVariableW(L"SERIALCTL_PROFILE_MEMORY_METRICS",nullptr,0)!=0;
+#else
+    const bool memory = false;
+#endif
+    HDC dc = memory ? CreateCompatibleDC(nullptr) : GetDC(combo);
     HFONT font = reinterpret_cast<HFONT>(SendMessageW(combo, WM_GETFONT, 0, 0));
     HGDIOBJ previousFont = dc && font ? SelectObject(dc, font) : nullptr;
     TEXTMETRICW metrics{};
@@ -688,11 +704,13 @@ inline void UiPrepareComboPopup(HWND combo, UiFieldStyle *style) {
     if (previousFont)
         SelectObject(dc, previousFont);
     if (dc)
-        ReleaseDC(combo, dc);
+        if(memory) DeleteDC(dc); else ReleaseDC(combo, dc);
     const int row = std::max(MulDiv(28, style->dpi, 96), static_cast<int>(metrics.tmHeight) + MulDiv(8, style->dpi, 96));
     if (SendMessageW(combo, CB_GETITEMHEIGHT, 0, 0) != row)
         SendMessageW(combo, CB_SETITEMHEIGHT, 0, row);
-    UiComboRegion(info.hwndList, style->dpi);
+    }
+    { SERIALCTL_DIALOG_TRACE_SCOPE(PopupRegion);
+      UiComboRegion(info.hwndList, style->dpi); }
 }
 inline void UiResizeDialog(HWND dialog, int dpi, int width, int height) {
     RECT bounds{0, 0, MulDiv(width, dpi, 96), MulDiv(height, dpi, 96)};
@@ -1276,6 +1294,7 @@ class UiLayoutBatch {
         for (auto &c : changes)
             InvalidateRect(c.h, nullptr, FALSE);
         for (auto &combo : combos) {
+            SERIALCTL_DIALOG_TRACE_SCOPE(ComboHeight);
             // Selection-height getters/setters can account for native insets
             // differently. Calibrate against the actual window after a write;
             // never assume a fixed system border thickness across DPI/themes.
