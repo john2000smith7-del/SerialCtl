@@ -1,0 +1,61 @@
+name: Focused visible-pet list lifecycle regression
+on:
+  push:
+    branches: [release/v2.0.16-final]
+    paths: [.github/workflows/lifecycle-fixture-regression.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  desktop:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cd27a1fab096a5f75d0b581a1b866eeee2a72992
+      - uses: actions/download-artifact@v4
+        with:
+          name: SerialCtl-Win7-portable
+          path: bin
+          run-id: 41196703580
+          github-token: ${{ github.token }}
+      - name: Observe actual enabled pet drag and unchanged list input assertions
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m py_compile tests/integration/gui_user_lifecycle.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $smoke = Get-Content scripts/smoke-ui.ps1 -Raw
+          $end = $smoke.IndexOf('# This mock is confined')
+          if ($end -lt 0) { throw 'Cannot isolate shared desktop initialization' }
+          [IO.File]::WriteAllText((Join-Path $PWD 'scripts/lifecycle-init.ps1'), $smoke.Substring(0,$end), [Text.UTF8Encoding]::new($true))
+          . ./scripts/lifecycle-init.ps1 -OutputDirectory "$env:RUNNER_TEMP/lifecycle" -ActualMouse
+          $settingsDirectory = Join-Path $env:APPDATA 'SerialCtl'
+          New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
+          Set-Content (Join-Path $settingsDirectory 'settings.ini') "[Layout]`nRightPanelWidth=260`nRightPanelCollapsed=0" -Encoding ASCII
+          $application = Start-Process (Join-Path $extract 'serialctl.exe') -PassThru
+          try {
+            if (-not $application.WaitForInputIdle(10000)) { throw 'No native input readiness' }
+            Start-Sleep -Milliseconds 500
+            $application.Refresh()
+            $main = $application.MainWindowHandle
+            if ($main -eq 0) { throw 'No main window' }
+            [SerialCtlUiSmoke]::MoveWindow($main,0,0,1180,760,$true) | Out-Null
+            Click-Control $main 304
+            Start-Sleep -Seconds 5
+            Click-Control $main 300
+            Start-Sleep -Milliseconds 500
+            python tests/integration/gui_user_lifecycle.py $extract $main.ToInt64() $application.Id (Join-Path $OutputDirectory 'gui-lifecycle.json')
+            if ($LASTEXITCODE -ne 0) { throw 'Real lifecycle assertions failed' }
+          } finally {
+            Capture-Desktop 'focused-lifecycle-final'
+            if (-not $application.HasExited) { Stop-Process -Id $application.Id -Force }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-focused-lifecycle-evidence
+          path: |
+            ${{ runner.temp }}/lifecycle/*.json
+            ${{ runner.temp }}/lifecycle/*.png
