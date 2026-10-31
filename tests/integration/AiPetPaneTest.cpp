@@ -272,7 +272,7 @@ struct AiPetPaneTestAccess {
             GetClassNameW(ownerHit, hitClass, 128);
             std::wcerr << L"Owner click: enabled=" << IsWindowEnabled(parent)
                        << L" visible=" << IsWindowVisible(parent)
-                       << L" hitClass=" << hitClass << L" point=" << ownerPoint.x << L"," << ownerPoint.y << L"\\n";
+                       << L" hitClass=" << hitClass << L" point=" << ownerPoint.x << L"," << ownerPoint.y << std::endl;
         }
         Check(ownerHit == parent, "Native owner click is covered by another window");
         SetCursorPos(ownerPoint.x, ownerPoint.y);
