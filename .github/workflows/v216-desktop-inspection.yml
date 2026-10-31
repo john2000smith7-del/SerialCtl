@@ -12,8 +12,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: SerialCtl-actual-desktop-interaction
-          run-id: 41198035222
+          name: SerialCtl-focused-lifecycle-evidence
+          run-id: 41199756261
           github-token: ${{ github.token }}
           path: evidence
       - name: Export unchanged original failure frames
@@ -28,7 +28,7 @@ jobs:
                       value = __import__('json').loads(path.read_text(encoding='utf-8-sig'))
                       print('LIFECYCLE_REPORT '+__import__('json').dumps({k:v for k,v in value.items() if k not in ['input_events','desktop_frames','known_child_creation_times']}))
                       print('LAST_INPUTS '+__import__('json').dumps(value.get('input_events',[])[-8:]))
-          images = sorted(p for p in root.rglob('*.png') if 'failure-desktop' in p.name.lower() or 'failure-window' in p.name.lower())[-4:]
+          images = sorted(p for p in root.rglob('*.png') if 'before-parking' in p.name.lower() or 'released' in p.name.lower() or 'focused-lifecycle-final' in p.name.lower())[-4:]
           for path in images:
               print('SERIALCTL_DIAGNOSTIC_IMAGE_BEGIN '+path.name)
               encoded = base64.b64encode(path.read_bytes()).decode('ascii')
