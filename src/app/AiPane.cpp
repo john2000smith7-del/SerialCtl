@@ -1999,6 +1999,7 @@ void AiPane::Event(const Json &e) {
         if (e.contains("error")) {
             SetCompanionActivity(pet::Activity::Failed);
             if (purpose == "config") { restoreOnConfig_ = false; busy_ = false; }
+            if (purpose == "resume") pendingHistoryRestore_ = false;
             SetStatus(Wide(ai::ExplainServiceError(e.at("error").get<std::string>())));
             Add(L"状态", status_);
             if (purpose == "start" || purpose == "turn" || purpose == "resume") {
@@ -2056,6 +2057,11 @@ void AiPane::Event(const Json &e) {
             directoryDeadline_ = GetTickCount64() + 8000;
             if (!Request(ai::Operation::ServerHome, Json::object(), "home")) DirectoryFailure(L"暂时无法获取服务器目录");
         } else if (purpose == "resume") {
+            if (pendingHistoryRestore_) {
+                workspaceDirectory_ = pendingHistoryWorkspace_;
+                SelectTarget(pendingHistoryTarget_);
+                pendingHistoryRestore_ = false;
+            }
             ClearTextSelection();
             messages_.clear();
             selectedMessage_ = SIZE_MAX;
@@ -2510,13 +2516,14 @@ void AiPane::ShowHistory() {
         choice == IDOK && !popup.filtered.empty() ? static_cast<int>(popup.filtered[popup.selected]) + 1 : 0;
     if (chosen > 0 && static_cast<size_t>(chosen) <= visible.size()) {
         auto id = visible[chosen - 1].at("id").get<std::string>();
-        workspaceDirectory_ = Wide(ai::StoredWorkspace(visible[chosen - 1]));
+        pendingHistoryWorkspace_ = Wide(ai::StoredWorkspace(visible[chosen - 1]));
         const auto key = visible[chosen - 1].value("targetKey", std::string());
         std::string restoredTarget;
         unsigned matches = 0;
         for (const auto &session : targetSnapshot_)
             if (!key.empty() && ai::WorkspaceTargetIdentity(session) == key) { restoredTarget = session.at("id"); ++matches; }
-        SelectTarget(matches == 1 ? restoredTarget : std::string());
+        pendingHistoryTarget_ = matches == 1 ? restoredTarget : std::string();
+        pendingHistoryRestore_ = true;
         taskAuthorized_ = false;
         busy_ = true;
         turnStarted_ = GetTickCount64();

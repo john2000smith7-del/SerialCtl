@@ -104,7 +104,9 @@ class AiPane {
     void NewConversation();
     bool ChooseWorkspace();
     void BeginWorkspaceConversation(const std::wstring&);
-    std::wstring pendingWorkspace_;
+    std::wstring pendingWorkspace_, pendingHistoryWorkspace_;
+    std::string pendingHistoryTarget_;
+    bool pendingHistoryRestore_ = false;
     void BrowseDirectory(const std::wstring &, bool initial = false);
     void DirectoryResult(const Json &, bool fallback);
     void PopulateDirectories(bool updatePath = false);
