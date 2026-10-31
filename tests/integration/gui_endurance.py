@@ -202,7 +202,10 @@ class Endurance(DesktopActions):
                         self.sample_resources(theme+'-drag-'+str(cycle))
                     recorder.phase=theme+'-sidebar'
                     self.sidebar_drag()
-                    self.sidebar_toggle()
+                    self.sidebar_toggle(observation_budget=1.)
+                    flips=[row['caption_latency_ms'] for op in self.operations[-2:] for row in op.get('single_click_observations',[])]
+                    require(len(flips)==20 and sum(value<=200 for value in flips)>=18,
+                            'Less than 90% of real sidebar reversal clicks changed target within 200ms')
                     self.maximize_restore()
                     recording=recorder.stop()
                     markers={row.get('terminal_stdout_marker') for row in recorder.frames}

@@ -532,7 +532,7 @@ class DesktopActions:
                         "Sidebar drag did not resize terminal")
                 entry["assertions"] = self.check_layout()
 
-    def sidebar_toggle(self):
+    def sidebar_toggle(self, observation_budget=.06):
         initial_toggle_bounds = self.rect(self.control(125))
 
         def check_anchor(bounds, phase):
@@ -565,6 +565,7 @@ class DesktopActions:
                 click_observations = []
                 entry["initial_toggle_bounds"] = initial_toggle_bounds
                 entry["stationary_pointer"] = stationary
+                entry["caption_observation_budget_ms"] = observation_budget*1000
                 entry["single_click_observations"] = click_observations
                 entry["double_click_ambiguity"] = (
                     "This sequence uses one fixed point and verifies the target caption after every "
@@ -610,12 +611,14 @@ class DesktopActions:
                     observation["bounds_before_up"] = self.rect(toggle)
                     observation["hit_before_up"] = int(self.user.WindowFromPoint(POINT(*point)) or 0)
                     self.button(False)
+                    released_at = time.perf_counter()
                     observation["bounds_after_up"] = self.rect(toggle)
                     after_caption = self.caption(toggle)
-                    deadline = time.perf_counter() + .06
+                    deadline = released_at + observation_budget
                     while after_caption == before_caption and time.perf_counter() < deadline:
                         time.sleep(.003)
                         after_caption = self.caption(toggle)
+                    observation["caption_latency_ms"] = round((time.perf_counter()-released_at)*1000,3)
                     observation["caption_after_mouse_up"] = after_caption
                     observation["caption_observed_seconds"] = self.timestamp()["seconds"]
                     observation["caption_flipped"] = bool(after_caption and after_caption != before_caption)
