@@ -111,9 +111,7 @@ inline const UiGlyphSource *UiGlyphSourceFor(UiResourceBitmap &source, int index
     static auto *cache = new std::array<UiGlyphSource, 27>;
     auto &entry = (*cache)[static_cast<size_t>(index)];
     if (!entry.bitmap) {
-        // Keep the source origin aligned for the common 16/24/32/48px
-        // scales (96/size denominators divide 12), reducing GDI+ phase rounding.
-        constexpr int guard = 12;
+        constexpr int guard = 8;
         const int left = std::max(0, index * 96 - guard);
         const int right = std::min(2592, (index + 1) * 96 + guard);
         std::unique_ptr<Gdiplus::Bitmap> bitmap(source.bitmap->Clone(left, 0, right - left, 96,
@@ -127,6 +125,11 @@ inline const UiGlyphSource *UiGlyphSourceFor(UiResourceBitmap &source, int index
 inline bool UiResourceGlyph(HDC dc, const RECT &rect, COLORREF color, int index) {
     auto &resource = UiResource(2012);
     if (!resource.bitmap || index < 0 || index >= 27) return false;
+    // The fine lines in Save's artwork amplify GDI+'s source-coordinate
+    // rounding at 32px. Keep its original full-atlas path at every size/color,
+    // rather than relax pixel fidelity for this single infrequently drawn icon.
+    constexpr int saveGlyph = 22;
+    if (index == saveGlyph) return UiResourceGlyphDirect(dc, rect, color, index);
     try {
         if (const auto source = UiGlyphSourceFor(resource, index)) {
             Gdiplus::Graphics graphics(dc);
