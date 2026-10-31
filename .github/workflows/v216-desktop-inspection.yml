@@ -13,7 +13,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: SerialCtl-actual-desktop-interaction
-          run-id: 41194140706
+          run-id: 41198035222
           github-token: ${{ github.token }}
           path: evidence
       - name: Export unchanged original failure frames
@@ -21,10 +21,14 @@ jobs:
           python - <<'PY'
           import base64, pathlib
           root = pathlib.Path('evidence')
-          images = sorted(p for p in root.rglob('*.png') if ('power-automation-113' in p.name and ('controls-final' in p.name or p.name == 'x64-light-power-automation-113.png')))
-          if not images:
-              print('\n'.join(str(p) for p in root.rglob('*automation-113*')))
-              raise SystemExit('No matching actual failure evidence')
+          for path in sorted(root.rglob('*')):
+              if path.is_file() and ('lifecycle' in path.name.lower()):
+                  print('LIFECYCLE_EVIDENCE '+str(path))
+                  if path.suffix == '.json':
+                      value = __import__('json').loads(path.read_text(encoding='utf-8-sig'))
+                      print('LIFECYCLE_REPORT '+__import__('json').dumps({k:v for k,v in value.items() if k not in ['input_events','desktop_frames','known_child_creation_times']}))
+                      print('LAST_INPUTS '+__import__('json').dumps(value.get('input_events',[])[-8:]))
+          images = sorted(p for p in root.rglob('*.png') if 'lifecycle' in p.name.lower())[-4:]
           for path in images:
               print('SERIALCTL_DIAGNOSTIC_IMAGE_BEGIN '+path.name)
               encoded = base64.b64encode(path.read_bytes()).decode('ascii')
