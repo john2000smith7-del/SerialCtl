@@ -201,7 +201,7 @@ void RunCase(HWND parent, bool ownerDrawn, bool composer = false) {
     AddChoices(combo);
     SendMessageW(combo, CB_SETCURSEL, 0, 0);
     UiLayoutBatch layout;
-    layout.Move(combo, 20, 40, MulDiv(220, style.dpi, 96), MulDiv(28, style.dpi, 96));
+    layout.Move(combo, 20, 40, MulDiv(220, style.dpi, 96), MulDiv(220, style.dpi, 96));
     layout.ComboVisibleHeight(combo, MulDiv(28, style.dpi, 96));
     layout.Commit();
     ShowWindow(parent, SW_SHOW);
@@ -236,9 +236,8 @@ void RunCase(HWND parent, bool ownerDrawn, bool composer = false) {
     Pump();
     COMBOBOXINFO info{sizeof(info)};
     Require(GetComboBoxInfo(combo, &info) && IsWindowVisible(info.hwndList), "Dropdown did not open");
-    // At 200% scaling the native reserved drop may show only two rows. It
-    // correctly scrolls to selected row 2 when opening; reveal row 0 before
-    // asking this immediate-paint test to click that row.
+    // Reveal the first row independently of the selected item. The native
+    // window must reserve popup height separately from its 28 px field.
     SendMessageW(info.hwndList,LB_SETTOPINDEX,0,0);
     RECT row{};
     SendMessageW(info.hwndList, LB_GETITEMRECT, 0, reinterpret_cast<LPARAM>(&row));

@@ -2820,7 +2820,7 @@ void MainWindow::LayoutControls(int width, int height) {
         const int start = layout.rightLeft + Ui::PanelPadding;
         if (powerHeading) batch.Move(aiTerminalHeader_, start, headerTop + 2, Ui::Scale(84), Ui::CompactHeight, TRUE);
         const int left = start + (powerHeading ? Ui::Scale(96) : 0);
-        batch.Move(powerMonitorTarget_, left, headerTop + 2, std::max(Ui::Scale(48), wrapLeft - Ui::Gap - left), Ui::CompactHeight, TRUE);
+        batch.Move(powerMonitorTarget_, left, headerTop + 2, std::max(Ui::Scale(48), wrapLeft - Ui::Gap - left), Ui::Scale(220), TRUE);
         batch.ComboVisibleHeight(powerMonitorTarget_, Ui::CompactHeight);
     }
     batch.Show(powerMonitorTarget_, monitor && powerVisible_ ? SW_SHOW : SW_HIDE);
