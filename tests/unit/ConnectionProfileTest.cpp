@@ -18,5 +18,6 @@ int main() {
  row["username"]="Linux";history=RememberSshConnection(history,row);Check(history.size()==2);
  row["employee"]="28266";Check(NormalizeSshHistory(nlohmann::json::array({row})).empty());
  row["employee"]=true;Check(NormalizeSshHistory(nlohmann::json::array({row})).empty());
+ row["port"]=4294967318ull;row["employee"]="";Check(NormalizeSshHistory(nlohmann::json::array({row})).empty());
  std::cout<<"Platform ranges, conversion, history identity and secret exclusion passed\n";
 }

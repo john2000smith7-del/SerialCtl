@@ -6083,6 +6083,9 @@ void MainWindow::SaveUiState() {
 int MainWindow::LeftWidth() const {
     if(leftPanelAnimatedWidth_>=0)return leftPanelAnimatedWidth_;
     if(leftPanelCollapsed_)return Ui::CollapsedRightWidth+Ui::Gap;
+    return ExpandedLeftWidth();
+}
+int MainWindow::ExpandedLeftWidth() const {
     RECT r{};if(window_)GetClientRect(window_,&r);
     const int available=r.right-(LiveMonitorPage()?Ui::MinRightWidth:Ui::MinCenterWidth)-Ui::MinRightWidth-Ui::Gap*3;
     return std::clamp(leftPanelWidth_,Ui::MinLeftWidth,std::max(Ui::MinLeftWidth,std::min(Ui::Scale(Ui::MaxResizableLeftWidth96),available)));
@@ -6091,7 +6094,7 @@ void MainWindow::SetLeftPanelCollapsed(bool collapsed) {
     if(collapsed==leftPanelCollapsed_ && !leftPanelAnimating_) return;
     leftPanelAnimationFrom_=LeftWidth();
     leftPanelCollapsed_=collapsed;
-    leftPanelAnimationTo_=collapsed?Ui::CollapsedRightWidth+Ui::Gap:std::clamp(leftPanelWidth_,Ui::MinLeftWidth,Ui::Scale(Ui::MaxResizableLeftWidth96));
+    leftPanelAnimationTo_=collapsed?Ui::CollapsedRightWidth+Ui::Gap:ExpandedLeftWidth();
     leftPanelAnimatedWidth_=leftPanelAnimationFrom_;
     leftPanelAnimationAt_=GetTickCount64();
     leftPanelAnimating_=leftPanelAnimationFrom_!=leftPanelAnimationTo_;

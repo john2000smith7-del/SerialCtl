@@ -706,7 +706,6 @@ void AiPane::Paint(HDC target) {
     const int stateLeft=D(compact?28:52);
     const RECT state{stateLeft,D(10),stateLeft+D(8),D(18)};
     UiBox(dc,state,client_.Ready()?UiAccentInk(dark_):c.surface,client_.Ready()?UiAccentInk(dark_):c.muted,client_.Running() && !client_.Ready()?D(1):D(4));
-    SetWindowTextW(window_,client_.Ready()?L"AI 已连接":client_.Running()?L"AI 连接中":L"AI 未连接");
     UiSeparator(dc, 0, r.right, D(36), c.border);
     UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
     UiBox(dc, composerBounds_, c.field, UiPanelBorder(dark_), D(12));
@@ -1352,6 +1351,7 @@ void AiPane::SetStatus(const std::wstring &text) {
         SetDlgItemTextW(dialog_, Note, text.c_str());
 }
 void AiPane::UpdateActions() {
+    SetWindowTextW(window_,client_.Ready()?L"AI 已连接":client_.Running()?L"AI 连接中":L"AI 未连接");
     workspaceTooltip_ = workspaceDirectory_ + (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器");
     modelTooltip_ = serverDefaultModel_.empty() ? L"模型未获取" : Wide(serverDefaultModel_);
     for (int id : {WorkspaceButton, Model}) {

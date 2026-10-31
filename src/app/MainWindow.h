@@ -235,6 +235,7 @@ private:
     void SetRightPanelCollapsed(bool collapsed);
     void SetLeftPanelCollapsed(bool collapsed);
     int LeftWidth() const;
+    int ExpandedLeftWidth() const;
     std::wstring BootProfileKey(const SessionState&) const;
     bool SidebarCollapsed() const;
     int SidebarWidth() const;

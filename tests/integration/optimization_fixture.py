@@ -116,6 +116,7 @@ def main():
             # AI connection form may open on first entry; close it without any network request.
             modals=windows(process.pid,'#32770')
             if modals:desktop.capture(theme+'-ai-connection');close(modals[-1])
+            wait(lambda:user.IsWindowVisible(control(hwnd,105)))
             desktop.capture(theme+'-ai-header')
             desktop.click_control(105);time.sleep(.1)
             user.MoveWindow(hwnd,0,0,1044,760,True)

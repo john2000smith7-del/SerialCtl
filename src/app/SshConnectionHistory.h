@@ -16,7 +16,9 @@ inline nlohmann::json NormalizeSshHistory(const nlohmann::json& input) {
            !row.contains("username") || !row["username"].is_string() || !row.contains("port") ||
            !row["port"].is_number_unsigned())continue;
         const auto host=row["host"].get<std::string>(), user=row["username"].get<std::string>();
-        const auto port=row["port"].get<unsigned>();
+        const auto rawPort=row["port"].get<std::uint64_t>();
+        if (!rawPort || rawPort>65535) continue;
+        const auto port=static_cast<unsigned>(rawPort);
         if(host.empty() || host.size()>253 || user.empty() || user.size()>128 || !port || port>65535)continue;
         if (row.contains("employee") && !row["employee"].is_string()) continue;
         const auto employee=row.value("employee",std::string());
