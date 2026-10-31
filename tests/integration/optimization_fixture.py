@@ -37,7 +37,6 @@ def main():
     user.GetWindowTextW.argtypes=(w.HWND,w.LPWSTR,c.c_int)
     user.GetDlgItem.argtypes,user.GetDlgItem.restype=(w.HWND,c.c_int),w.HWND
     user.SendMessageW.argtypes,user.SendMessageW.restype=(w.HWND,w.UINT,c.c_size_t,c.c_ssize_t),c.c_ssize_t
-    user.SetWindowTextW.argtypes=(w.HWND,w.LPCWSTR)
     user.PostMessageW.argtypes=(w.HWND,w.UINT,c.c_size_t,c.c_ssize_t)
     user.IsWindowVisible.argtypes=user.IsWindowEnabled.argtypes=(w.HWND,)
     user.MoveWindow.argtypes=(w.HWND,c.c_int,c.c_int,c.c_int,c.c_int,w.BOOL)
@@ -89,6 +88,12 @@ def main():
             user.PostMessageW(h,0x10,0,0);wait(lambda:user.IsWindowEnabled(hwnd))
         def text(h):
             value=c.create_unicode_buffer(256);user.GetWindowTextW(h,value,256);return value.value
+        def fill(h,value):
+            # SetWindowText does not fill another process's Edit buffer.
+            # Windows marshals the system WM_SETTEXT message across processes.
+            buffer=c.create_unicode_buffer(value)
+            require(user.SendMessageW(h,0xC,0,c.addressof(buffer)),'Cannot fill test control')
+            require(user.SendMessageW(h,0xE,0,0)==len(value),'Test control did not receive all characters')
         for theme in ('light','dark'):
             if theme=='dark':desktop.click_control(104);time.sleep(.15)
             # Left lane remains bounded and changes width through actual capture/drag.
@@ -103,10 +108,10 @@ def main():
             desktop.capture(theme+'-ssh-history');close(ssh)
             desktop.click_control(303);settings=dialog();gate=control(settings,2507)
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Test must default to off')
-            click(gate);password=dialog();user.SetWindowTextW(control(password,10),'JJ123123');click(control(password,1))
+            click(gate);password=dialog();fill(control(password,10),'JJ123123');click(control(password,1))
             wait(lambda:'密码错误' in text(control(settings,2508)))
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Uppercase password unlocked Test')
-            click(gate);password=dialog();user.SetWindowTextW(control(password,10),'jj123123');desktop.capture(theme+'-test-password');click(control(password,1))
+            click(gate);password=dialog();fill(control(password,10),'jj123123');desktop.capture(theme+'-test-password');click(control(password,1))
             try:
                 wait(lambda:'Test 已开启' in text(control(settings,2508)))
             finally:
