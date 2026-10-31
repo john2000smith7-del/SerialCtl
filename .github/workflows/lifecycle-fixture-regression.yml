@@ -39,8 +39,15 @@ jobs:
             if (-not $application.WaitForInputIdle(10000)) { throw 'No native input readiness' }
             Start-Sleep -Milliseconds 500
             $application.Refresh()
+            for ($attempt=0; $attempt -lt 100 -and -not $application.HasExited -and $application.MainWindowHandle -eq 0; $attempt++) {
+              Start-Sleep -Milliseconds 100
+              $application.Refresh()
+            }
             $main = $application.MainWindowHandle
-            if ($main -eq 0) { throw 'No main window' }
+            if ($main -eq 0) {
+              Get-Process -Id $application.Id | Select-Object Id,MainWindowTitle,Responding | ConvertTo-Json | Write-Host
+              throw 'No main window after native startup readiness budget'
+            }
             [SerialCtlUiSmoke]::MoveWindow($main,0,0,1180,760,$true) | Out-Null
             Click-Control $main 304
             Start-Sleep -Seconds 5
