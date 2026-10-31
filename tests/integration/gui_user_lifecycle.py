@@ -272,7 +272,7 @@ def park_desktop_pet():
     if not pet or not u.IsWindowVisible(pet):
         return
     owner=w.DWORD()
-    u.GetWindowThreadProcessId(pet,ctypes.byref(owner))
+    pet_thread=u.GetWindowThreadProcessId(pet,ctypes.byref(owner))
     assert owner.value==pid,'Desktop pet belongs to another application instance'
     desktop=DesktopActions(SimpleNamespace(window=window,pid=pid,
         output=str(pathlib.Path(sys.argv[4]).parent),prefix='gui-lifecycle-pet',mode='desktop'))
@@ -304,9 +304,27 @@ def park_desktop_pet():
     time.sleep(.08)
     assert u.WindowFromPoint(w.POINT(*start))==pet,'Pet drag start was covered'
     try:
-        desktop.drag('park-pet-beside-main',start,(start[0]+left-bounds[0],start[1]))
+        def capture_window():
+            info=GuiThreadInfo();info.size=ctypes.sizeof(info)
+            assert u.GetGUIThreadInfo(pet_thread,ctypes.byref(info))
+            return info.capture
+        desktop.button(True)
+        try:
+            # The native down handler reads GetCursorPos for its drag anchor.
+            # Observe real capture before moving, so injected movement cannot
+            # overtake that handler and shift the starting anchor by one step.
+            wait(lambda:capture_window()==pet,2)
+            for step in range(1,9):
+                desktop.move_mouse((start[0]+round((left-bounds[0])*step/8),start[1]))
+                time.sleep(.03)
+                desktop.capture('park-pet-held-%02d'%step)
+            wait(lambda:abs(desktop.rect(pet)[0]-left)<=3,2)
+        finally:
+            desktop.button(False)
+        wait(lambda:capture_window()!=pet,2)
+        desktop.capture('park-pet-released')
         after=desktop.rect(pet)
-        assert abs(after[0]-left)<=3,'Actual mouse did not move the desktop pet'
+        assert abs(after[0]-left)<=3,'Actual mouse did not move the desktop pet: '+repr((bounds,after,left))
         assert after[2]<=main[0] or after[0]>=main[2],'Parked desktop pet still covers the main window'
         assert u.IsWindowVisible(pet),'Parking hid the desktop pet'
         desktop.report['status']='PASS'
