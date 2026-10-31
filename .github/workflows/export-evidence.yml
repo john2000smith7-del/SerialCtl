@@ -5,6 +5,10 @@ on:
       artifact_id:
         description: Existing artifact ID in this repository; original bytes are preserved
         required: true
+      part_mib:
+        description: Binary part size in MiB, 25 for bounded connector downloads
+        required: false
+        default: '300'
 permissions:
   actions: read
   contents: read
@@ -17,6 +21,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_ID: ${{ inputs.artifact_id }}
+          PART_MIB: ${{ inputs.part_mib }}
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +29,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" > artifact.json
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > original.zip
           python - <<'PY'
-          import hashlib, json, pathlib, zipfile
+          import hashlib, json, pathlib, zipfile, os, fnmatch
           metadata = json.loads(pathlib.Path('artifact.json').read_text())
           original = pathlib.Path('original.zip')
           digest = hashlib.file_digest(original.open('rb'), 'sha256').hexdigest()
@@ -32,10 +37,17 @@ jobs:
           assert metadata['size_in_bytes'] == original.stat().st_size, 'Original artifact length mismatch'
           with zipfile.ZipFile(original) as archive:
               assert archive.testzip() is None, 'Original artifact ZIP CRC mismatch'
+              index = pathlib.Path('index'); index.mkdir()
+              patterns = ['*optimization-result.json', '*ui-freeze-comparison.json', '*test-password*.png', '*test-locked*.png', '*test-unlocked*.png', '*freeze-candidate-*-settings*.png', '*freeze-candidate-*-main*.png', '*ai-expand-failed*.png']
+              for item in archive.infolist():
+                  if any(fnmatch.fnmatch(item.filename, p) for p in patterns):
+                      (index / pathlib.Path(item.filename).name).write_bytes(archive.read(item))
+              (index / 'original-files.json').write_text(json.dumps([{'path':i.filename,'bytes':i.file_size} for i in archive.infolist()],indent=2))
+          part_mib=int(os.environ['PART_MIB']); assert 1<=part_mib<=300
           parts = []
           with original.open('rb') as source:
-              for index in range(4):
-                  content = source.read(300 * 1024 * 1024)
+              for index in range(12):
+                  content = source.read(part_mib * 1024 * 1024)
                   if not content:
                       break
                   folder = pathlib.Path('part-' + str(index))
@@ -43,7 +55,7 @@ jobs:
                   name = 'original.zip.part-' + str(index)
                   (folder / name).write_bytes(content)
                   parts.append({'name': name, 'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest()})
-              assert not source.read(1), 'Artifact exceeds supported 1200 MiB export size'
+              assert not source.read(1), 'Artifact exceeds twelve parts; choose a larger part size'
           assert parts, 'Artifact is empty'
           receipt = {'originalArtifact': metadata, 'originalZipSha256': digest,
                      'parts': parts, 'method': 'Binary split only; concatenate parts in numeric order to recover the exact original ZIP'}
@@ -52,6 +64,10 @@ jobs:
           print('Verified original SHA-256:', digest)
           print('Original files, screenshots and test records were not modified.')
           PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SerialCtl-evidence-index
+          path: index/
       - uses: actions/upload-artifact@v4
         with:
           name: SerialCtl-evidence-part-0
@@ -80,6 +96,70 @@ jobs:
         with:
           name: SerialCtl-evidence-part-3
           path: part-3/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-4/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-4
+          path: part-4/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-5/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-5
+          path: part-5/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-6/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-6
+          path: part-6/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-7/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-7
+          path: part-7/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-8/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-8
+          path: part-8/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-9/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-9
+          path: part-9/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-10/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-10
+          path: part-10/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('part-11/*') != '' }}
+        with:
+          name: SerialCtl-evidence-part-11
+          path: part-11/
           compression-level: 0
           if-no-files-found: error
           retention-days: 30
