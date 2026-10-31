@@ -623,6 +623,10 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             UiDrawGlyph(dc,{item.rcItem.left+self->D(4),item.rcItem.top+self->D(6),item.rcItem.left+self->D(20),item.rcItem.top+self->D(22)},button.ink,UiGlyph::Folder);
             auto text=item.rcItem;text.left+=self->D(26);text.right-=self->D(4);
             Draw(dc,leaf,text,self->smallFont_,button.ink,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
+        } else if(item.CtlID==Bottom) {
+            UiDrawGlyph(dc,{item.rcItem.left+self->D(4),item.rcItem.top+self->D(7),item.rcItem.left+self->D(18),item.rcItem.top+self->D(21)},button.ink,UiGlyph::ChevronDown);
+            auto text=item.rcItem;text.left+=self->D(22);
+            Draw(dc,Text(item.hwndItem),text,self->smallFont_,button.ink,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
         } else if(item.CtlID==QuickMenu || item.CtlID==StopTurn) {
             const int x=(item.rcItem.left+item.rcItem.right-self->D(14))/2,y=(item.rcItem.top+item.rcItem.bottom-self->D(14))/2;
             UiDrawGlyph(dc,{x,y,x+self->D(14),y+self->D(14)},item.CtlID==StopTurn?c.danger:button.ink,item.CtlID==StopTurn?UiGlyph::Stop:UiGlyph::ChevronDown);
@@ -867,7 +871,7 @@ void AiPane::Reflow(bool appended) {
 }
 void AiPane::UpdateTranscriptActions() {
     ShowWindow(Control(Bottom), scroll_.offset<scroll_.Maximum() ? SW_SHOWNA : SW_HIDE);
-    SetWindowTextW(Control(Bottom),scroll_.unread?L"↓ 最新 •":L"↓ 最新");
+    SetWindowTextW(Control(Bottom),scroll_.unread?L"最新 ·":L"最新");
     ShowWindow(Control(Analyze),SW_SHOWNA);
     ShowWindow(Control(QuickMenu),SW_SHOWNA);
     ShowWindow(Control(Observe),SW_HIDE);
@@ -1887,7 +1891,7 @@ void AiPane::Event(const Json &e) {
         turn_.clear();
         turnStarted_ = GetTickCount64();
         serverDefaultModel_.clear();
-        SetWindowTextW(Control(Model), L"服务器默认模型");
+        SetWindowTextW(Control(Model), L"模型未获取");
         PostMessageW(GetParent(window_), AiStateChanged, 0, 0);
         seenToolCalls_.clear();
         connectionError_ = false;
@@ -1897,7 +1901,7 @@ void AiPane::Event(const Json &e) {
         return;
     }
     if (event == "status" || event == "error") {
-        SetStatus(settings_.platformMode?PlatformConnectionFailure(Wide(e.value("message",std::string()))):Wide(e.value("message",std::string())));
+        SetStatus(settings_.platformMode && e.value("category",std::string())=="connection"?PlatformConnectionFailure(Wide(e.value("message",std::string()))):Wide(e.value("message",std::string())));
         if (event == "error") {
             SetCompanionActivity(pet::Activity::Failed);
             if (e.value("category", std::string()) == "authentication") {
@@ -2693,7 +2697,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SetWindowLongPtrW(h, DWLP_USER, l);
         self->workspaceDialog_ = h;
         self->workspaceAccept_ = false;
-        SetWindowTextW(h, L"新建 AI 会话 · 工作空间");
+        SetWindowTextW(h, L"选择 AI 工作空间");
         UiResizeDialog(h, self->dpi_, 436, 268);
         auto add = [&](const wchar_t *type, const wchar_t *text, int id, int x, int y, int width, int height, DWORD extra) {
             auto c = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | extra, self->D(x), self->D(y), self->D(width), self->D(height),
@@ -2713,7 +2717,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         add(L"BUTTON",L"刷新",DirectoryRefresh,356,92,64,28,BS_OWNERDRAW | WS_TABSTOP);
         add(L"STATIC",L"单击路径查看完整内容；双击编辑。下拉选择子目录。",Note,16,136,404,56,0);
         add(L"BUTTON",L"取消",IDCANCEL,216,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON",L"新建",IDOK,324,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"切换",IDOK,324,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
         auto path = self->workspaceDirectory_.empty() ? self->settings_.workingDirectory : self->workspaceDirectory_;
         if (path.empty()) path = L"/home/linux/workspace";
         SetDlgItemTextW(h,PathDisplay,path.c_str());
