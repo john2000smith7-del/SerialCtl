@@ -21,7 +21,9 @@ int wmain(int argc, wchar_t** argv) {
     wchar_t name[256]{}; GetEnvironmentVariableW(L"SERIALCTL_SSH_READY", name, 256);
     HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, name);
     if (ready) { SetEvent(ready); CloseHandle(ready); }
-    if (host.find(L"crash") != std::wstring::npos) return 7;
+    if (host.find(L"authfail") != std::wstring::npos) { std::cerr << "FATAL ERROR: Access denied\n" << std::flush; return 1; }
+    std::cerr << "Started a shell/command\n" << std::flush;
+    if (host.find(L"crash") != std::wstring::npos) { Sleep(200); return 7; }
     if (host.find(L"noread") != std::wstring::npos) {
         HANDLE never = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         WaitForSingleObject(never, INFINITE); CloseHandle(never);

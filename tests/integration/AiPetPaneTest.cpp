@@ -95,7 +95,7 @@ struct AiPetPaneTestAccess {
                                                 L"v208-pet-hover-" + std::to_wstring(dpi) +
                                                     (dark ? L"-dark.png" : L"-light.png"),
                                                 [&](HDC dc) { pane.Paint(dc); });
-                        Check(pane.menu_.bottom <= pane.sprite_.top, "Pet menu overlaps the character and status lane");
+                        Check(IsRectEmpty(&pane.menu_), "Removed ellipsis menu still has a hit target");
                         pane.hover_ = false;
                     }
                 }

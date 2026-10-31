@@ -20,6 +20,7 @@ inline UiColors UiTheme(bool dark) {
                            RGB(110, 110, 115), RGB(210, 210, 215), RGB(31, 79, 216),   RGB(255, 59, 48),
                            RGB(245, 245, 247), RGB(229, 241, 255)};
 }
+inline int UiCapsuleRadius(const RECT& r) {return std::max(1L,std::min(r.right-r.left,r.bottom-r.top)/2);}
 inline COLORREF UiAccentInset() {
     return RGB(25, 63, 175);
 }

@@ -8,6 +8,7 @@
 #include "UiDialogViewport.h"
 #include "UiMetrics.h"
 #include "UiPathField.h"
+#include "PlatformConnection.h"
 #include <chrono>
 #include <sstream>
 #include <windowsx.h>
@@ -28,6 +29,8 @@ enum {
     Bottom,
     StopTurn,
     PetButton = 30,
+    WorkspaceButton,
+    QuickMenu,
     Host = 200,
     Port,
     Username,
@@ -41,7 +44,8 @@ enum {
     HostReverify,
     DirectoryUp,
     DirectoryRefresh,
-    PathDisplay
+    PathDisplay,
+    PortMode
 };
 constexpr UINT_PTR Timer = 1;
 constexpr UINT CommitDirectory = WM_APP + 196;
@@ -425,11 +429,13 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
         SetPropW(c, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
         UiStyleField(c, &style_);
     }
-    SetPropW(Control(Target), L"SerialCtl.Composer", reinterpret_cast<HANDLE>(1));
+
     SetPropW(Control(Target), L"SerialCtl.CompactLabel", reinterpret_cast<HANDLE>(&compactTargetLabel_));
-    Child(L"STATIC", L"服务器默认模型", Model, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS);
+    Child(L"STATIC", L"模型未获取", Model, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS);
     Child(L"BUTTON", L"发送", Send, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"分析日志", Analyze, BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON",L"更多日志操作",QuickMenu,BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON",L"工作空间",WorkspaceButton,BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"持续观察", Observe, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"返回最新消息", Bottom, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"停止", StopTurn, BS_OWNERDRAW | WS_TABSTOP);
@@ -596,7 +602,7 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         const bool headerIcon = item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
-        const bool quiet = headerIcon || item.CtlID == Analyze || item.CtlID == Observe || (item.CtlID == Send && !enabled);
+        const bool quiet = headerIcon || item.CtlID == WorkspaceButton || item.CtlID == QuickMenu || item.CtlID == Analyze || item.CtlID == Observe || (item.CtlID == Send && !enabled);
         auto button = visual;
         if (quiet) {
             const COLORREF base = item.CtlID == Send ? c.field : c.surface;
@@ -606,10 +612,19 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 UiBox(dc, item.rcItem, button.fill, button.fill, self->D(Ui::CompactIconRadius));
         } else
             UiBox(dc, item.rcItem, button.fill, button.border,
-                  self->D(item.CtlID == Send ? Ui::CompactIconRadius : 10));
+                  UiCapsuleRadius(item.rcItem));
         UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->style_.dpi,
             UiFocusInk(self->dark_, enabled && !quiet && (primary || pressed)));
-        if (headerIcon || item.CtlID == Send) {
+        if(item.CtlID==WorkspaceButton) {
+            auto path=self->workspaceDirectory_;while(path.size()>1 && path.back()==L'/')path.pop_back();
+            const auto slash=path.rfind(L'/');auto leaf=slash==std::wstring::npos?path:path.substr(slash+1);if(leaf.empty())leaf=L"/";
+            UiDrawGlyph(dc,{item.rcItem.left+self->D(4),item.rcItem.top+self->D(6),item.rcItem.left+self->D(20),item.rcItem.top+self->D(22)},button.ink,UiGlyph::Folder);
+            auto text=item.rcItem;text.left+=self->D(26);text.right-=self->D(4);
+            Draw(dc,leaf,text,self->smallFont_,button.ink,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
+        } else if(item.CtlID==QuickMenu || item.CtlID==StopTurn) {
+            const int x=(item.rcItem.left+item.rcItem.right-self->D(14))/2,y=(item.rcItem.top+item.rcItem.bottom-self->D(14))/2;
+            UiDrawGlyph(dc,{x,y,x+self->D(14),y+self->D(14)},item.CtlID==StopTurn?c.danger:button.ink,item.CtlID==StopTurn?UiGlyph::Stop:UiGlyph::ChevronDown);
+        } else if (headerIcon || item.CtlID == Send) {
             const int size = self->D(item.CtlID == Send ? Ui::CompactGlyphSize : Ui::UtilityGlyphSize);
             const int x = (item.rcItem.left + item.rcItem.right - size) / 2,
                       y = (item.rcItem.top + item.rcItem.bottom - size) / 2;
@@ -657,16 +672,19 @@ void AiPane::Layout() {
     b.Move(Control(HistoryButton), historyLeft + D(40), 0, D(28), D(28));
     b.Move(Control(New), historyLeft + D(80), 0, D(28), D(28));
     b.Move(transcript_, 0, top, width, std::max(D(24), contextTop - top - gap));
-    b.Move(Control(Analyze), 0, contextTop, D(96), D(28));
-    b.Move(Control(Observe), D(108), contextTop, D(96), D(28));
-    const int bottomWidth = std::min(D(128), std::max(D(96), width - D(108)));
-    // A floating action inside the transcript, never in the utility row.
-    b.Move(Control(Bottom), std::max(0, (width - bottomWidth) / 2), std::max(top, contextTop - D(44)), bottomWidth, D(28));
-    b.Move(Control(StopTurn), width - D(64), contextTop, D(64), D(28));
+    b.Move(Control(WorkspaceButton),D(width<D(320)?48:76),0,std::max(D(24),historyLeft-D(52)-D(width<D(320)?48:76)),D(28));
+    b.Move(Control(Analyze), 0, contextTop, D(80), D(28));
+    b.Move(Control(QuickMenu), D(80), contextTop, D(28), D(28));
+    b.Show(Control(Observe),SW_HIDE);
+    const int bottomWidth=D(width<D(320)?64:88);
+    b.Move(Control(Bottom),width-bottomWidth,contextTop,bottomWidth,D(28));
+    b.Move(Control(StopTurn),width-bottomWidth-D(36),contextTop,D(28),D(28));
     b.Move(Control(Input), D(12), composerTop + D(8), std::max(D(80), width - D(24)), D(40));
-    b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(176), std::max(D(112), width - D(104))), D(220));
+    b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(136), std::max(D(88), width/3)), D(220));
     b.ComboVisibleHeight(Control(Target), D(28));
-    b.Show(Control(Model), SW_HIDE);
+    const int modelLeft=D(16)+std::min(D(136),std::max(D(88),width/3));
+    b.Move(Control(Model),modelLeft,composerTop+D(60),std::max(D(12),width-D(52)-modelLeft),D(28));
+    b.Show(Control(Model),SW_SHOW);
     b.Move(Control(Send), width - D(8 + Ui::CompactIconButtonSize), composerTop + D(60),
            D(Ui::CompactIconButtonSize), D(Ui::CompactIconButtonSize));
     b.Commit();
@@ -684,13 +702,11 @@ void AiPane::Paint(HDC target) {
     FillRect(dc, &r, surfaceBrush_);
     icons_.Draw(dc, ToolbarIcon::Ai, {0, D(4), D(20), D(24)}, dark_);
     const bool compact = r.right < D(340);
-    Draw(dc, compact ? L"AI" : L"AI 助手", {D(28), 0, D(compact ? 52 : 128), D(28)}, font_, c.text);
-    Draw(dc,
-         client_.Ready()     ? (compact ? L"已连接" : L"● 已连接")
-         : client_.Running() ? L"连接中…"
-         : busy_             ? L"连接中断"
-                             : L"未连接",
-         {D(compact ? 56 : 108), 0, r.right - D(160), D(28)}, smallFont_, c.muted);
+    if(!compact) Draw(dc,L"AI",{D(28),0,D(48),D(28)},font_,c.text);
+    const int stateLeft=D(compact?28:52);
+    const RECT state{stateLeft,D(10),stateLeft+D(8),D(18)};
+    UiBox(dc,state,client_.Ready()?UiAccentInk(dark_):c.surface,client_.Ready()?UiAccentInk(dark_):c.muted,client_.Running() && !client_.Ready()?D(1):D(4));
+    SetWindowTextW(window_,client_.Ready()?L"AI 已连接":client_.Running()?L"AI 连接中":L"AI 未连接");
     UiSeparator(dc, 0, r.right, D(36), c.border);
     UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
     UiBox(dc, composerBounds_, c.field, UiPanelBorder(dark_), D(12));
@@ -849,9 +865,11 @@ void AiPane::Reflow(bool appended) {
     UpdateTranscriptActions();
 }
 void AiPane::UpdateTranscriptActions() {
-    ShowWindow(Control(Bottom), scroll_.unread ? SW_SHOWNA : SW_HIDE);
-    ShowWindow(Control(Analyze), busy_ ? SW_HIDE : SW_SHOWNA);
-    ShowWindow(Control(Observe), busy_ ? SW_HIDE : SW_SHOWNA);
+    ShowWindow(Control(Bottom), scroll_.offset<scroll_.Maximum() ? SW_SHOWNA : SW_HIDE);
+    SetWindowTextW(Control(Bottom),scroll_.unread?L"↓ 最新 •":L"↓ 最新");
+    ShowWindow(Control(Analyze),SW_SHOWNA);
+    ShowWindow(Control(QuickMenu),SW_SHOWNA);
+    ShowWindow(Control(Observe),SW_HIDE);
     ShowWindow(Control(StopTurn), busy_ ? SW_SHOWNA : SW_HIDE);
     if (scroll_.unread) SetWindowPos(Control(Bottom), HWND_TOP, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -1334,16 +1352,27 @@ void AiPane::SetStatus(const std::wstring &text) {
         SetDlgItemTextW(dialog_, Note, text.c_str());
 }
 void AiPane::UpdateActions() {
+    workspaceTooltip_ = workspaceDirectory_ + (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器");
+    modelTooltip_ = serverDefaultModel_.empty() ? L"模型未获取" : Wide(serverDefaultModel_);
+    for (int id : {WorkspaceButton, Model}) {
+        TOOLINFOW tip{sizeof(tip)}; tip.uFlags=TTF_IDISHWND|TTF_SUBCLASS;tip.hwnd=window_;
+        tip.uId=reinterpret_cast<UINT_PTR>(Control(id));
+        tip.lpszText=const_cast<wchar_t*>((id==Model?modelTooltip_:workspaceTooltip_).c_str());
+        SendMessageW(tips_,TTM_DELTOOLW,0,reinterpret_cast<LPARAM>(&tip));
+        SendMessageW(tips_,TTM_ADDTOOLW,0,reinterpret_cast<LPARAM>(&tip));
+    }
     const bool ready = client_.Ready();
     if (!busy_ && companionActivity_ != pet::Activity::Done && companionActivity_ != pet::Activity::Failed && companionActivity_ != pet::Activity::Stopped)
         SetCompanionActivity(ready ? pet::Activity::Idle : client_.Running() ? pet::Activity::Connecting : pet::Activity::Offline);
     SetWindowTextW(Control(Send), L"发送");
     EnableWindow(Control(Send), ready && !busy_ && !directoryPending_);
     EnableWindow(Control(StopTurn), busy_ && !stopRequested_);
-    for (int id : {Analyze, Observe, HistoryButton, New})
+    for (int id : {Analyze, Observe, QuickMenu, HistoryButton, New, WorkspaceButton})
         EnableWindow(Control(id), ready && !busy_ && !directoryPending_);
     EnableWindow(Control(Target), !busy_);
     EnableWindow(Control(Analyze), ready && !busy_ && !target_.empty());
+    EnableWindow(Control(QuickMenu),ready && !busy_ && !target_.empty());
+    EnableWindow(Control(WorkspaceButton),ready && !busy_ && !directoryPending_);
     EnableWindow(Control(Observe), ready && !busy_ && !target_.empty());
     EnableWindow(Control(Input), !closing_);
     Layout();
@@ -1625,8 +1654,20 @@ void AiPane::Action(int id) {
         if (busy_ && !stopRequested_) Stop();
     } else if (id == Connect)
         ShowConnection();
-    else if (id == New) {
-        if (ChooseWorkspace()) NewConversation();
+    else if(id==New) NewConversation();
+    else if(id==WorkspaceButton) {
+        if (ChooseWorkspace() && directoryPath_ != workspaceDirectory_)
+            BeginWorkspaceConversation(directoryPath_);
+    } else if(id==QuickMenu) {
+        HMENU menu=CreatePopupMenu();
+        AppendMenuW(menu,MF_STRING,1,L"分析当前日志");AppendMenuW(menu,MF_STRING,2,L"持续观察");AppendMenuW(menu,MF_STRING,3,L"附加终端选中内容");
+        RECT r{};GetWindowRect(Control(QuickMenu),&r);
+        const auto choice=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,r.left,r.bottom,0,window_,nullptr);DestroyMenu(menu);
+        if(choice==3) {
+            const auto selection=devices_("selection",{{"sessionId",target_}});
+            if(selection.contains("error"))SetStatus(Wide(selection["error"].get<std::string>()));
+            else AttachSelection(Wide(selection.value("text",std::string())),target_);
+        } else if(choice) {quickObserve_=choice==2;SetWindowTextW(Control(Analyze),quickObserve_?L"持续观察":L"分析日志");}
     }
     else if (id == HistoryButton)
         ShowHistory();
@@ -1634,6 +1675,7 @@ void AiPane::Action(int id) {
         scroll_.Bottom();
         Scroll(0);
     } else if (id == Analyze || id == Observe) {
+        if(id==Analyze && quickObserve_)id=Observe;
         RefreshTargets();
         if (target_.empty()) {
             SetStatus(L"请先打开并选择终端会话");
@@ -1853,7 +1895,7 @@ void AiPane::Event(const Json &e) {
         return;
     }
     if (event == "status" || event == "error") {
-        SetStatus(Wide(e.value("message", std::string())));
+        SetStatus(settings_.platformMode?PlatformConnectionFailure(Wide(e.value("message",std::string()))):Wide(e.value("message",std::string())));
         if (event == "error") {
             SetCompanionActivity(pet::Activity::Failed);
             if (e.value("category", std::string()) == "authentication") {
@@ -1935,6 +1977,25 @@ void AiPane::Event(const Json &e) {
             UpdateActions();
             return;
         }
+        if (purpose == "workspace-start") {
+            busy_ = false;
+            if (e.contains("error") || !e.contains("result") ||
+                !e["result"].contains("conversationId") || !e["result"]["conversationId"].is_string()) {
+                pendingWorkspace_.clear();
+                SetStatus(L"切换工作空间失败，原会话已保留：" + Wide(e.value("error", std::string("服务器未返回有效会话"))));
+                UpdateActions(); return;
+            }
+            const auto id = e["result"]["conversationId"].get<std::string>();
+            const auto path = pendingWorkspace_;
+            pendingWorkspace_.clear();
+            NewConversation();
+            workspaceDirectory_ = path;
+            thread_ = id;
+            SaveWorkspaceDefault(path);
+            RememberThread(id,L"新会话");
+            SetStatus(L"已切换工作空间 · " + path);
+            UpdateActions(); return;
+        }
         if (e.contains("error")) {
             SetCompanionActivity(pet::Activity::Failed);
             if (purpose == "config") { restoreOnConfig_ = false; busy_ = false; }
@@ -1975,7 +2036,7 @@ void AiPane::Event(const Json &e) {
             Add(L"状态", L"服务器已接受会话整理请求；完成状态以服务器通知为准，完整历史仍保留。");
         } else if (purpose == "config") {
             serverDefaultModel_ = result.value("defaultModel", std::string());
-            SetWindowTextW(Control(Model), serverDefaultModel_.empty() ? L"服务器默认模型" :
+            SetWindowTextW(Control(Model), serverDefaultModel_.empty() ? L"模型未获取" :
                 (L"默认 · " + Wide(serverDefaultModel_)).c_str());
             if (restoreOnConfig_ && !thread_.empty()) {
                 restoreOnConfig_ = false;
@@ -2475,6 +2536,7 @@ void AiPane::PopulateDirectories(bool updatePath) {
     for (HWND h : {dialog_, workspaceDialog_}) {
         if (!h) continue;
         auto combo = GetDlgItem(h, Directory);
+        if(!combo)continue;
         if (SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0)) { deferred = true; continue; }
         SendMessageW(combo, CB_RESETCONTENT, 0, 0);
         SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"选择子目录…"));
@@ -2602,9 +2664,16 @@ bool AiPane::ChooseWorkspace() {
     const auto result = UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &dialog.dialog, GetAncestor(window_, GA_ROOT),
         WorkspaceProc, reinterpret_cast<LPARAM>(this));
     if (result != IDOK) return false;
-    workspaceDirectory_ = directoryPath_;
-    SaveWorkspaceDefault(workspaceDirectory_);
     return true;
+}
+void AiPane::BeginWorkspaceConversation(const std::wstring& path) {
+    if (busy_ || !client_.Ready() || !ai::ValidWorkspacePath(Utf8(path))) return;
+    pendingWorkspace_ = path;
+    if (Request(ai::Operation::NewConversation, {{"cwd", Utf8(path)}, {"defaultModel", serverDefaultModel_}}, "workspace-start")) {
+        busy_ = true;
+        SetStatus(L"正在验证并创建工作空间会话；失败时保留原对话");
+    } else pendingWorkspace_.clear();
+    UpdateActions();
 }
 INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, DWLP_USER));
@@ -2634,7 +2703,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         add(L"STATIC",L"单击路径查看完整内容；双击编辑。下拉选择子目录。",Note,16,136,404,56,0);
         add(L"BUTTON",L"取消",IDCANCEL,216,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON",L"新建",IDOK,324,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
-        auto path = self->settings_.workingDirectory.empty() ? self->workspaceDirectory_ : self->settings_.workingDirectory;
+        auto path = self->workspaceDirectory_.empty() ? self->settings_.workingDirectory : self->workspaceDirectory_;
         if (path.empty()) path = L"/home/linux/workspace";
         SetDlgItemTextW(h,PathDisplay,path.c_str());
         EnableWindow(GetDlgItem(h, IDOK), FALSE);
@@ -2700,7 +2769,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         self->dialog_ = h;
         self->dialogEnter_ = false;
         SetWindowTextW(h, L"连接 AI 服务器");
-        UiResizeDialog(h, self->dpi_, 436, 564);
+        UiResizeDialog(h, self->dpi_, 436, 456);
         auto add = [&](const wchar_t *type, const wchar_t *label, int id, int x, int y, int width, int height,
                        DWORD style = 0) {
             auto c = CreateWindowExW(
@@ -2717,34 +2786,26 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 UiStyleField(c, &self->style_);
             return c;
         };
-        add(L"STATIC", L"服务器地址", -1, 16, 16, 404, 24);
+        add(L"STATIC", L"服务器地址 · 一体化平台网站 IP 地址", -1, 16, 16, 404, 24);
         add(L"EDIT", self->settings_.host.c_str(), Host, 16, 40, 404, 28, ES_AUTOHSCROLL | WS_TABSTOP);
-        add(L"STATIC", L"SSH 端口", -1, 16, 84, 196, 24);
-        add(L"STATIC", L"用户名", -1, 224, 84, 196, 24);
-        add(L"EDIT", std::to_wstring(self->settings_.port).c_str(), Port, 16, 108, 196, 28, ES_NUMBER | WS_TABSTOP);
+        add(L"STATIC", self->settings_.platformMode?L"SSH 端口 · 员工工号":L"SSH 端口 · 直接连接", -1, 16, 84, 196, 24);
+        add(L"STATIC", L"用户名 · 默认 linux", -1, 224, 84, 196, 24);
+        add(L"EDIT", (self->settings_.platformMode?self->settings_.employeeNumber:std::to_wstring(self->settings_.port)).c_str(), Port, 16, 108, 196, 28, ES_NUMBER | WS_TABSTOP);
         add(L"EDIT", self->settings_.username.c_str(), Username, 224, 108, 196, 28, ES_AUTOHSCROLL | WS_TABSTOP);
-        add(L"STATIC", L"密码", -1, 16, 152, 404, 24);
+        add(L"STATIC", L"密码 · 云机密码", -1, 16, 152, 404, 24);
         add(L"EDIT", self->settings_.password.c_str(), Password, 16, 176, 404, 28,
             ES_PASSWORD | ES_AUTOHSCROLL | WS_TABSTOP);
-        add(L"BUTTON", L"记住密码（Windows 安全存储）", Remember, 16, 216, 404, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
+        add(L"BUTTON", L"记住密码（Windows 安全存储）", Remember, 16, 216, 196, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
         CheckDlgButton(h, Remember, self->settings_.rememberPassword ? BST_CHECKED : BST_UNCHECKED);
-        add(L"STATIC", L"服务器项目目录 · 单击查看，双击编辑", -1, 16, 256, 404, 24);
-        UiPathField::Create(h,PathDisplay,self->D(16),self->D(280),self->D(404),self->D(40),&self->style_);
-        auto directories = add(L"COMBOBOX", L"", Directory, 16, 332, 252, 240,
-            CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
-        SendMessageW(directories, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), self->D(24));
-        SendMessageW(directories, CB_SETDROPPEDWIDTH, self->D(404), 0);
-        SendMessageW(directories, CB_LIMITTEXT, 4096, 0);
-        SetDlgItemTextW(h,PathDisplay,self->settings_.workingDirectory.c_str());
-        add(L"BUTTON",L"上一级",DirectoryUp,280,332,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON",L"刷新",DirectoryRefresh,356,332,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"STATIC", L"连接检测", -1, 16, 384, 196, 28);
-        add(L"BUTTON", L"测试连接", Test, 316, 376, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"STATIC", self->status_.c_str(), Note, 16, 424, 404, 32);
-        add(L"STATIC", L"", HostIdentity, 16, 468, 244, 32, SS_CENTERIMAGE);
-        add(L"BUTTON", L"重新核验主机", HostReverify, 280, 468, 140, 32, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON", L"取消", IDCANCEL, 216, 512, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 512, 96, 36,
+        add(L"BUTTON",L"员工工号模式",PortMode,224,216,196,28,BS_AUTOCHECKBOX|WS_TABSTOP);
+        CheckDlgButton(h,PortMode,self->settings_.platformMode?BST_CHECKED:BST_UNCHECKED);
+        add(L"STATIC", L"连接检测", -1, 16, 264, 196, 28);
+        add(L"BUTTON", L"测试连接", Test, 316, 256, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"STATIC", self->status_.c_str(), Note, 16, 304, 404, 40);
+        add(L"STATIC", L"", HostIdentity, 16, 356, 244, 32, SS_CENTERIMAGE);
+        add(L"BUTTON", L"重新核验主机", HostReverify, 280, 356, 140, 32, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", L"取消", IDCANCEL, 216, 404, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 404, 96, 36,
             BS_OWNERDRAW | WS_TABSTOP);
         Center(h, GetWindow(h, GW_OWNER));
         UiDialogViewport::Fit(h, self->dpi_);
@@ -2754,9 +2815,6 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (!self)
         return FALSE;
     if (m == UiFirstPaintReady) {
-        const auto draft = Text(GetDlgItem(h, PathDisplay));
-        self->PopulateDirectories();
-        SetDlgItemTextW(h, PathDisplay, draft.c_str());
         // Refresh status only after the complete form has reached the screen.
         SendMessageW(h, WM_TIMER, 1, 0);
         if (!IsWindow(h)) return TRUE;
@@ -2770,7 +2828,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             const auto control = GetDlgItem(h, id);
             if ((IsWindowEnabled(control) != FALSE) != enabled) EnableWindow(control, enabled);
         };
-        for (int id : {Host, Port, Username, Password, Remember})
+        for (int id : {Host, Port, Username, Password, Remember, PortMode})
             enable(id, !running);
         enable(Directory, ready && !self->directoryPending_ && !self->busy_);
         enable(PathDisplay, !self->directoryPending_ && !self->busy_);
@@ -2780,6 +2838,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const auto host = Text(GetDlgItem(h, Host)), portText = Text(GetDlgItem(h, Port));
         unsigned port = 0;
         try { size_t read = 0; const auto value = std::stoul(portText, &read); if (read == portText.size() && value <= 65535) port = static_cast<unsigned>(value); } catch (...) {}
+        if(IsDlgButtonChecked(h,PortMode)==BST_CHECKED)PlatformSshPort(portText,port);
         const std::wstring identity = port && !TrustedPuttyHostKey(host, static_cast<uint16_t>(port)).empty()
             ? L"主机身份已保存" : L"连接时核验主机身份";
         if (Text(GetDlgItem(h, HostIdentity)) != identity) SetDlgItemTextW(h, HostIdentity, identity.c_str());
@@ -2799,29 +2858,21 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             UiEndOwnedDialog(h, IDCANCEL);
             return TRUE;
         }
-        if (id == IDOK && self->client_.Ready()) {
-            const auto path = Text(GetDlgItem(h,PathDisplay));
-            if (!path.empty() && !ai::ValidWorkspacePath(Utf8(path))) {
-                SetDlgItemTextW(h,Note,L"请填写 Linux 绝对路径，或留空使用服务器默认目录"); return TRUE;
-            }
-            self->SaveWorkspaceDefault(path);
-            if (self->thread_.empty()) self->workspaceDirectory_ = path;
-            UiEndOwnedDialog(h, IDOK);
+        if(id==PortMode) {
+            const auto value=Text(GetDlgItem(h,Port));unsigned mapped=0;
+            if(IsDlgButtonChecked(h,PortMode)==BST_CHECKED) {
+                try {auto n=std::stoul(value);SetDlgItemTextW(h,Port,n>10000 && n<=65535?std::to_wstring(n-10000).c_str():L"");}catch(...){SetDlgItemTextW(h,Port,L"");}
+            } else if(PlatformSshPort(value,mapped))SetDlgItemTextW(h,Port,std::to_wstring(mapped).c_str());
             return TRUE;
         }
-        if (id == DirectoryUp || id == DirectoryRefresh) {
-            if (!self->client_.Ready() || self->directoryPending_ || self->busy_) return TRUE;
-            auto path = Text(GetDlgItem(h,PathDisplay));
-            self->BrowseDirectory(id == DirectoryUp ? Wide(ai::WorkspaceParent(Utf8(path))) : path);
-            return TRUE;
-        }
+        if(id==IDOK && self->client_.Ready()) {UiEndOwnedDialog(h,IDOK);return TRUE;}
         if (id == Test || id == IDOK || id == HostReverify) {
             if (self->client_.Running())
                 return TRUE;
             ai::ServerSettings s = self->settings_;
             s.host = Text(GetDlgItem(h, Host));
             s.username = Text(GetDlgItem(h, Username));
-            s.workingDirectory = Text(GetDlgItem(h, PathDisplay));
+            s.workingDirectory = self->workspaceDirectory_.empty()?L"/home/linux/workspace":self->workspaceDirectory_;
             s.password = Text(GetDlgItem(h, Password));
             s.rememberPassword = IsDlgButtonChecked(h, Remember) == BST_CHECKED;
             const auto port = Text(GetDlgItem(h, Port));
@@ -2835,6 +2886,9 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             } catch (...) {
                 s.port = 0;
             }
+            s.platformMode=IsDlgButtonChecked(h,PortMode)==BST_CHECKED;
+            s.employeeNumber=s.platformMode?port:L"";
+            if(s.platformMode && !PlatformSshPort(port,s.port))s.port=0;
             std::wstring error;
             if (!ai::ValidateServer(s, error) || !ai::SaveServerSettings(s, error)) {
                 SetDlgItemTextW(h, Note, error.c_str());

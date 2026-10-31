@@ -27,6 +27,7 @@ public:
 
 private:
     void ReadLoop();
+    void DiagnosticLoop();
     static std::wstring FindPlink();
     bool CreatePuttySession();
     void DeletePuttySession();
@@ -48,6 +49,8 @@ private:
     HANDLE processThread_ = nullptr;
     HANDLE inputWrite_ = nullptr;
     HANDLE outputRead_ = nullptr;
+    HANDLE diagnosticRead_ = nullptr;
+    std::thread diagnosticThread_;
     HANDLE resizeEvent_ = nullptr;
     HANDLE resizeMapping_ = nullptr;
     volatile LONG* resizeState_ = nullptr;

@@ -14,7 +14,9 @@ class PowerService {
   public:
     PowerService();
     ~PowerService();
-    static constexpr bool ConnectionAvailable() { return false; }
+    static bool ConnectionAvailable() { return testEnabled_.load(); }
+    bool AuthorizeTest(const std::wstring& password);
+    void DisableTest();
     static constexpr const char *ConnectionUnavailableMessage() {
         return u8"该功能暂未开放，请等待后续开放。";
     }
@@ -52,7 +54,7 @@ class PowerService {
     void Select(int channel);
     void Outputs(const Json &channels, bool enabled, Json &result);
     void StopTask();
-    void Disconnect();
+    void Disconnect(bool preserveOutputs = false);
     void Command(const std::string &command);
     std::string Query(const std::string &command);
     double Number(const std::string &command);
@@ -65,7 +67,8 @@ class PowerService {
     std::unique_ptr<Transport> transport_;
     SessionLogger log_, measurements_;
     std::thread thread_;
-    bool stopping_ = false;
+    bool stopping_ = false, lockRequested_ = false;
+    static std::atomic<bool> testEnabled_;
     std::uint64_t next_ = 1;
     std::uint64_t pollAt_ = 0, taskAt_ = 0;
     unsigned pollInterval_ = 1000;

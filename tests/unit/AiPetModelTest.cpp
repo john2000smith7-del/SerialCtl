@@ -105,6 +105,17 @@ int main() {
     assert(model.Preferences().x == 0 && model.Preferences().y == 1000);
     model.SetActivity(Activity::Working, 43000);
     assert(model.At(44000).pose == 28);
+    RoamingClock roam;
+    assert(roam.Step(1000,true)==0);
+    assert(roam.Step(1040,true)>0);
+    assert(roam.Step(100000,false)==0);
+    assert(roam.Step(100040,true)<1); // Pause never accumulates a position jump.
+    Settings walking; walking.opening=false;
+    Model roamModel;roamModel.Configure(walking,1);roamModel.Page(true,1);
+    assert(roamModel.CanRoam());
+    roamModel.SetActivity(Activity::Working,2);assert(!roamModel.CanRoam());
+    roamModel.SetActivity(Activity::Idle,3);roamModel.Play(Action::Wave,3);assert(!roamModel.CanRoam());
+    roamModel.Stop(4);walking.roaming=false;roamModel.Configure(walking,4);assert(!roamModel.CanRoam());
     std::cout << "AI pet: delayed entry, three hops before single-hand punches, cancellation, pause and state "
                  "restoration passed\n";
 }

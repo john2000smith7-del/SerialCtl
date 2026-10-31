@@ -85,7 +85,7 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
     const bool hasPuttySession = CreatePuttySession();
     std::wstring command = QuoteCommandLineArgument(plink);
     if (hasPuttySession) command += L" -load " + QuoteCommandLineArgument(puttySessionName_);
-    command += L" -batch -ssh -t -no-antispoof -no-sanitise-stdout -no-sanitise-stderr -P " +
+    command += L" -batch -v -ssh -t -no-antispoof -no-sanitise-stdout -no-sanitise-stderr -P " +
         std::to_wstring(port_) +
         L" -l " + QuoteCommandLineArgument(username_);
     command += L" -serialctl-resize-event " +
@@ -101,9 +101,21 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
     std::vector<wchar_t> commandBuffer(command.begin(), command.end());
     commandBuffer.push_back(L'\0');
 
+    // With a PTY, remote shell output stays on stdout. Keep PuTTY's local
+    // verbose diagnostics separate: its accepted-shell event confirms this
+    // actual interactive session, rather than merely a successful login probe.
+    HANDLE diagnosticWrite = nullptr;
+    if (!CreatePipe(&diagnosticRead_, &diagnosticWrite, &security, 65536) ||
+        !SetHandleInheritable(diagnosticRead_, false, L"设置 SSH 诊断管道失败", error)) {
+        if (diagnosticWrite) CloseHandle(diagnosticWrite);
+        CloseHandle(inputRead); CloseHandle(outputWrite); Stop();
+        return false;
+    }
     RestrictedProcessStartup startup;
-    if (!startup.Initialize(inputRead, outputWrite, outputWrite,
+    if (!startup.Initialize(inputRead, outputWrite, diagnosticWrite,
             {resizeEvent_, resizeMapping_}, error)) {
+        CloseHandle(diagnosticWrite);
+        CloseHandle(diagnosticRead_); diagnosticRead_ = nullptr;
         DeletePuttySession();
         CloseResizeChannel();
         CloseHandle(inputRead);
@@ -128,10 +140,12 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
     const DWORD createError = created ? ERROR_SUCCESS : GetLastError();
     CloseHandle(inputRead);
     CloseHandle(outputWrite);
+    CloseHandle(diagnosticWrite);
 
     if (!created) {
         DeletePuttySession();
         CloseResizeChannel();
+        CloseHandle(diagnosticRead_); diagnosticRead_ = nullptr;
         error = L"启动 plink.exe 失败：" + Win32ErrorMessage(createError);
         CloseHandle(outputRead_);
         CloseHandle(inputWrite_);
@@ -141,19 +155,31 @@ bool PlinkConnection::Start(DataCallback onData, StatusCallback onStatus, std::w
 
     process_ = processInfo.hProcess;
     processThread_ = processInfo.hThread;
-    const auto passwordDeadline = GetTickCount64() + 15000;
-    while (!passwordPipe_.Delivered()) {
+    const auto deadline = GetTickCount64() + 15000;
+    std::string diagnostics;
+    bool shellReady = false;
+    while (!shellReady) {
         passwordPipe_.Poll();
-        if (passwordPipe_.Failed() || cancelStarting_ || GetTickCount64() >= passwordDeadline ||
-            WaitForSingleObject(process_, 10) != WAIT_TIMEOUT) {
-            error = cancelStarting_ ? L"SSH 登录已取消" : L"SSH 安全密码通道失败或登录进程已退出";
-            Stop();
-            return false;
+        DWORD available = 0;
+        if (PeekNamedPipe(diagnosticRead_, nullptr, 0, nullptr, &available, nullptr) && available) {
+            std::array<char, 4096> buffer{}; DWORD read = 0;
+            if (ReadFile(diagnosticRead_, buffer.data(), std::min<DWORD>(available, static_cast<DWORD>(buffer.size())), &read, nullptr))
+                diagnostics.append(buffer.data(), read);
+            shellReady = diagnostics.find("Started a shell/command") != std::string::npos;
+        }
+        if (diagnostics.size() > 256 * 1024 || passwordPipe_.Failed() || cancelStarting_ ||
+            GetTickCount64() >= deadline || WaitForSingleObject(process_, 10) != WAIT_TIMEOUT) {
+            const auto fatal = diagnostics.rfind("FATAL ERROR:");
+            const auto detail = fatal == std::string::npos ? diagnostics.substr(diagnostics.size() > 800 ? diagnostics.size()-800 : 0) : diagnostics.substr(fatal);
+            error = cancelStarting_ ? L"SSH 登录已取消" : L"SSH 会话未成功建立：" +
+                MultiByteToWide(reinterpret_cast<const uint8_t*>(detail.data()), detail.size(), CP_UTF8);
+            Stop(); return false;
         }
     }
     onData_ = std::move(onData);
     onStatus_ = std::move(onStatus);
     connected_ = true;
+    diagnosticThread_ = std::thread(&PlinkConnection::DiagnosticLoop, this);
     readThread_ = std::thread(&PlinkConnection::ReadLoop, this);
     if (onStatus_) {
         onStatus_(L"SSH 已启动：" + host_ + L":" + std::to_wstring(port_), false);
@@ -182,6 +208,8 @@ void PlinkConnection::Stop() {
     }
 
     if (readThread_.joinable()) readThread_.join();
+    if (diagnosticThread_.joinable()) diagnosticThread_.join();
+    if (diagnosticRead_) { CloseHandle(diagnosticRead_); diagnosticRead_ = nullptr; }
 
     // 5) Only now release the handles the reader thread may have been using.
     if (outputRead_) {
@@ -238,6 +266,21 @@ void PlinkConnection::ResizeTerminal(int columns, int rows) {
     SetEvent(resizeEvent_);
 }
 
+void PlinkConnection::DiagnosticLoop() {
+    std::array<char, 4096> bytes{};
+    std::string tail;
+    DWORD read = 0;
+    while (!stopping_ && ReadFile(diagnosticRead_, bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr) && read) {
+        tail.append(bytes.data(), read);
+        if (tail.size() > 8192) tail.erase(0, tail.size()-8192);
+        const auto fatal = tail.find("FATAL ERROR:");
+        if (fatal != std::string::npos && onStatus_) {
+            auto detail = tail.substr(fatal);
+            onStatus_(MultiByteToWide(reinterpret_cast<const uint8_t*>(detail.data()), detail.size(), CP_UTF8), true);
+            tail.clear();
+        }
+    }
+}
 void PlinkConnection::ReadLoop() {
     std::array<std::uint8_t, 4096> buffer{};
     while (!stopping_) {

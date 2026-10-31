@@ -1,6 +1,7 @@
 #include "CodexClient.h"
 #include "ChildProcess.h"
 #include "PasswordPipe.h"
+#include "PlatformConnection.h"
 #include "Win32Helpers.h"
 #include <array>
 #include <cwctype>
@@ -38,6 +39,10 @@ bool ForgetSavedServerPassword(const ServerSettings &s, std::wstring &error) {
     return false;
 }
 bool ValidateServer(const ServerSettings &s, std::wstring &error) {
+    unsigned actual=0;
+    if(s.platformMode && (!PlatformSshPort(s.employeeNumber,actual) || actual!=s.port)) {
+        error=L"请输入有效员工工号（1–55535）";return false;
+    }
     if (s.host.empty() || s.host.size() > 253 || s.host.front() == L'-' ||
         s.host.find_first_of(L" \t\r\n/\\\"'@") != std::wstring::npos)
         error = L"请输入有效的服务器 IP 地址或域名";
@@ -59,9 +64,12 @@ ServerSettings LoadServerSettings() {
     ServerSettings s;
     s.username = L"linux";
     HKEY key = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, SettingsKey, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
-        return s;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, SettingsKey, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS) {
+        s.platformMode=true;return s;
+    }
     s.host = ReadString(key, L"Host");
+    s.employeeNumber=ReadString(key,L"EmployeeNumber");
+    s.platformMode=!s.employeeNumber.empty();
     s.username = ReadString(key, L"Username");
     if (s.username.empty()) s.username = L"linux";
     s.workingDirectory = ReadString(key, L"WorkingDirectory");
@@ -69,6 +77,7 @@ ServerSettings LoadServerSettings() {
     DWORD port = 22, size = sizeof(port), type = REG_DWORD;
     RegQueryValueExW(key, L"Port", nullptr, &type, reinterpret_cast<BYTE *>(&port), &size);
     s.port = port > 0 && port <= 65535 ? port : 22;
+    if(s.platformMode && !PlatformSshPort(s.employeeNumber,s.port)) {s.platformMode=false;s.employeeNumber.clear();}
     RegCloseKey(key);
     PCREDENTIALW credential = nullptr;
     if (CredReadW(CredentialName(s).c_str(), CRED_TYPE_GENERIC, 0, &credential)) {
@@ -94,6 +103,7 @@ bool SaveServerSettings(const ServerSettings &s, std::wstring &error) {
         set(L"Host", s.host);
         set(L"Username", s.username);
         set(L"WorkingDirectory", s.workingDirectory);
+        set(L"EmployeeNumber",s.platformMode?s.employeeNumber:L"");
         DWORD port = s.port;
         if (result == ERROR_SUCCESS)
             result = RegSetValueExW(key, L"Port", 0, REG_DWORD, reinterpret_cast<const BYTE *>(&port), sizeof(port));

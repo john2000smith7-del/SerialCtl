@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet('x64', 'All')]
     [string]$Architecture = 'All',
@@ -172,14 +172,15 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'ui_dialog_viewport_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
         'update_client_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'WINHTTP.dll', 'WS2_32.dll')
         'update_installer_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'SHELL32.dll', 'USER32.dll')
-        'power_service_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
-        'power_connection_gate_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
+        'power_service_test.exe' = @('KERNEL32.dll', 'SHELL32.dll', 'ADVAPI32.dll')
+        'power_connection_gate_test.exe' = @('KERNEL32.dll', 'SHELL32.dll', 'ADVAPI32.dll')
         'session_logger_test.exe' = @('ADVAPI32.dll', 'KERNEL32.dll', 'SHELL32.dll')
         'cmd_connection_test.exe' = @('KERNEL32.dll')
         'api_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'shared_serial_protocol_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'udp_serial_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'tcp_connection_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
+        'connection_profile_test.exe' = @('KERNEL32.dll')
         'terminal_model_test.exe' = @('KERNEL32.dll')
         'terminal_decoder_test.exe' = @('KERNEL32.dll')
         'putty_host_key_test.exe' = @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll')

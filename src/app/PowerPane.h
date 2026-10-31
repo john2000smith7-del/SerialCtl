@@ -18,6 +18,7 @@ class PowerPane {
     }
     void Theme(bool dark);
     void ShowConnection();
+    void RefreshAvailability() {refreshRequired_=true;Refresh();}
     void BeginShutdown();
     void WaitForBackground();
     using LogExportHandler = std::function<void(bool, const std::wstring &, SessionLogger::ExportPoint)>;

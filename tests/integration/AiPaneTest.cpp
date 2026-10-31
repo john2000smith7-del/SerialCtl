@@ -210,6 +210,13 @@ struct AiPaneTestAccess {
     }
     static void CheckWorkspaceDialogs(AiPane &pane) {
         const auto previousCwd=pane.workspaceDirectory_;const auto previousThread=pane.thread_;
+        const auto oldCount=pane.messages_.size();
+        pane.pendingWorkspace_=L"/srv/candidate";pane.busy_=true;
+        const auto token=pane.nextRequest_++;
+        pane.requests_[token]={"workspace-start",""};
+        pane.Event({{"event","response"},{"token",token},{"error","permission denied"}});
+        if(pane.workspaceDirectory_!=previousCwd || pane.thread_!=previousThread || pane.messages_.size()!=oldCount || pane.busy_)
+            throw std::runtime_error("Failed workspace switch destroyed the previous conversation");
         const auto font=pane.font_;const int dpi=pane.dpi_;const auto dark=pane.dark_;
         for(int scale : {96,120,144,192}) for(bool theme : {false,true}) {
             auto scaled=CreateFontW(-MulDiv(15,scale,96),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
@@ -247,16 +254,13 @@ struct AiPaneTestAccess {
             GetAncestor(pane.window_, GA_ROOT), AiPane::ConnectProc, reinterpret_cast<LPARAM>(&pane));
         if (!dialog || SendDlgItemMessageW(dialog, 208, CB_GETCOUNT, 0, 0) != 0)
             throw std::runtime_error("AI form populated cached directories before its first paint");
-        SetDlgItemTextW(dialog, 213, L"/home/linux/my-early-edit");
         ShowWindow(dialog, SW_SHOW); UpdateWindow(dialog);
         MSG firstPaint{};
         if (!PeekMessageW(&firstPaint, dialog, UiFirstPaintReady, UiFirstPaintReady, PM_REMOVE))
             throw std::runtime_error("AI form did not schedule its post-paint initialization");
         DispatchMessageW(&firstPaint);
-        wchar_t path[256]{}; GetDlgItemTextW(dialog, 213, path, 256);
-        if (SendDlgItemMessageW(dialog, 208, CB_GETCOUNT, 0, 0) != 501 ||
-            std::wstring(path) != L"/home/linux/my-early-edit" || pane.client_.Running())
-            throw std::runtime_error("AI post-paint initialization lost input or started an unsolicited connection");
+        if (GetDlgItem(dialog,208) || GetDlgItem(dialog,213) || pane.client_.Running())
+            throw std::runtime_error("AI connection form must keep workspace controls in the page header and never connect unsolicited");
         for (bool dark : {false, true}) {
             pane.Theme(dark);
             ui_test::SaveUiEvidence(dialog, dark ? L"dialog-ai-dark.png" : L"dialog-ai-light.png");

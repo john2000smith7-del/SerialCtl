@@ -9,9 +9,9 @@ enum class Activity { Offline, Connecting, Idle, Thinking, Working, Replying, Do
 enum class Action { None, Idle, Wave, Boxing };
 struct Settings {
     bool enabled = true, follow = true, opening = true;
-    bool desktop = true, topmost = true;
+    bool desktop = true, topmost = true, roaming = true;
     int desktopX = -2147483647, desktopY = -2147483647;
-    int size = 96, x = 500, y = 500;
+    int size = 144, x = 500, y = 500;
     void Normalize() {
         if (size != 96 && size != 120 && size != 144)
             size = 96;
@@ -29,6 +29,20 @@ struct Sample {
 
 // Pure monotonic-clock state machine. It has no model, network or device API.
 // The Win32 component provides visibility and draws only this bounded result.
+class RoamingClock {
+  public:
+    double Step(std::uint64_t now, bool allowed) {
+        const auto delta = last_ && now >= last_ ? std::min<std::uint64_t>(now-last_,100) : 0;
+        last_ = now;
+        if (!allowed) return 0;
+        phase_ = (phase_ + delta) % 12000;
+        return phase_ < 7000 ? delta * .012 : 0;
+    }
+    unsigned Pose() const { constexpr unsigned gait[] = {2,3,4,5,6,7,8,9}; return gait[(phase_/160)%8]; }
+  private:
+    std::uint64_t last_ = 0, phase_ = 0;
+};
+
 class Model {
   public:
     static constexpr std::uint64_t OpeningDelay = 4000, BoxingDuration = 8000;
@@ -37,6 +51,11 @@ class Model {
     }
     Activity CurrentActivity() const {
         return activity_;
+    }
+    bool CanRoam() const {
+        return settings_.enabled && settings_.desktop && settings_.roaming &&
+            action_ == Action::None && !due_ &&
+            (activity_ == Activity::Offline || activity_ == Activity::Idle || activity_ == Activity::Done);
     }
     Action CurrentAction() const {
         return action_;

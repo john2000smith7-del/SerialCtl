@@ -189,8 +189,10 @@ void CommandNotebook::Layout() {
     const int w = r.right;
     const int height = D(Ui::CompactIconButtonSize), gap = D(8);
     MoveWindow(more_, std::max(0, w - D(28)), D(2), D(28), D(28), TRUE);
+    const int width=std::max(D(28),std::min(D(64),(w-3*gap)/4));
+    const int start=std::max(0,(w-width*4-gap*3)/2);
     for (int i = 0; i < 4; ++i)
-        MoveWindow(buttons_[i], i * (height + gap), D(40), height, height, TRUE);
+        MoveWindow(buttons_[i],start+i*(width+gap),D(40),width,height,TRUE);
     top_ = D(80);
     bottom_ = std::max(top_ + D(24), static_cast<int>(r.bottom) - D(48));
     MoveWindow(editor_, gutter_, top_, std::max(1, w - gutter_ - D(16)), std::max(1, bottom_ - top_ - D(16)), TRUE);
@@ -286,7 +288,7 @@ void CommandNotebook::Paint(HDC dc) {
         hint =
             L"运行第 " + std::to_wstring(range.first + 1) + L"–" + std::to_wstring(range.second + 1) + L" 行完整命令";
     else
-        hint = doubleClick_ ? L"双击正文运行 · Ctrl+Enter" : L"Ctrl+Enter 运行本行";
+        hint = doubleClick_ ? L"多行选中后运行 · 双击本行 · Ctrl+Enter" : L"多行选中后运行 · Ctrl+Enter";
     TextAt(dc, ui_, detail, hint, c.muted);
 }
 void CommandNotebook::Scroll(int x, int y) {
@@ -616,7 +618,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
         auto v = primary ? UiButtonVisual(c, true, pressed, hovered, true)
                          : UiFlatIconVisual(c, c.surface, enabled, pressed, hovered);
         if (primary || v.fill != c.surface)
-            UiRoundedSurface(dc, it.rcItem, v.fill, v.fill, D(Ui::CompactIconRadius), dpi_);
+            UiRoundedSurface(dc, it.rcItem, v.fill, v.fill, UiCapsuleRadius(it.rcItem), dpi_);
         if (more) {
             TextAt(dc, ui_, it.rcItem, L"···", v.ink, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         } else {

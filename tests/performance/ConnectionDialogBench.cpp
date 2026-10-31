@@ -100,7 +100,7 @@ int wmain(int argc,wchar_t **argv) {
     }
     struct Spec {const char *name; int id;}; const Spec all[]={{"ssh",100},{"serial",101},{"telnet",102},{"remote",103},{"ai",304},{"settings",303}};
     for(const auto &spec:all) {
-       for(int rep=0;rep<(traffic?2:5);rep++) {
+       for(int rep=0;rep<(traffic?2:30);rep++) {
           HWND b=GetDlgItem(main,spec.id);SetForegroundWindow(main);Sleep(GetDoubleClickTime()+100);
           const auto paintBefore=reinterpret_cast<UINT_PTR>(GetPropW(GetDlgItem(main,107),L"SerialCtl.PaintSample"));
           const auto bytesBefore=source.bytes.load();

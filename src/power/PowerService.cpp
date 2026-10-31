@@ -1,4 +1,5 @@
 #include "PowerService.h"
+#include <wincrypt.h>
 #include "Win32Helpers.h"
 #include <algorithm>
 #include <cctype>
@@ -284,6 +285,30 @@ struct PowerService::Transport {
         throw std::runtime_error("SCPI query timed out");
     }
 };
+std::atomic<bool> PowerService::testEnabled_{false};
+bool PowerService::AuthorizeTest(const std::wstring& password) {
+    if(password.size()>128)return false;
+    const BYTE expected[32]={0x8e,0xf3,0x61,0x9e,0x00,0x68,0x8b,0x1d,0x9b,0x05,0xc8,0x89,0xe1,0xab,0x38,0x7e,0xb1,0xfd,0xa8,0x70,0xd8,0xe7,0x10,0x83,0x1e,0x0b,0xdd,0x5f,0xa4,0x9d,0xcc,0xc1};
+    HCRYPTPROV provider=0;HCRYPTHASH hash=0;
+    std::wstring material=L"SerialCtl.Test.V1:"+password;
+    BYTE result[32]{};DWORD size=sizeof(result);
+    bool ok=CryptAcquireContextW(&provider,nullptr,nullptr,PROV_RSA_AES,CRYPT_VERIFYCONTEXT) &&
+        CryptCreateHash(provider,CALG_SHA_256,0,0,&hash) &&
+        CryptHashData(hash,reinterpret_cast<const BYTE*>(material.data()),static_cast<DWORD>(material.size()*sizeof(wchar_t)),0) &&
+        CryptGetHashParam(hash,HP_HASHVAL,result,&size,0);
+    if(hash)CryptDestroyHash(hash);if(provider)CryptReleaseContext(provider,0);
+    SecureZeroMemory(material.data(),material.size()*sizeof(wchar_t));
+    unsigned difference=0;for(unsigned i=0;i<32;++i)difference|=result[i]^expected[i];
+    SecureZeroMemory(result,sizeof(result));
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(ok && !difference && !lockRequested_ && !stopping_) {testEnabled_=true;return true;}return false;
+}
+void PowerService::DisableTest() {
+    testEnabled_=false;++recoveryCancelEpoch_;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for(const auto& item:queue_)actions_[item.first]["state"]="canceled";
+    queue_.clear();lockRequested_=true;wake_.notify_all();
+}
 bool PowerService::VisaAvailable() {
     if (!ConnectionAvailable()) return false;
     Visa visa;
@@ -549,6 +574,9 @@ Json PowerService::Submit(const Json &command) {
         }
         std::lock_guard<std::mutex> lock(mutex_);
         Require(!stopping_, "Power service is shutting down");
+#ifndef SERIALCTL_POWER_TESTING
+        Require(ConnectionAvailable(),ConnectionUnavailableMessage());
+#endif
         if (command.contains("requestId")) {
             Require(command["requestId"].is_string() && command["requestId"].get<std::string>().size() <= 128,
                     "Invalid request ID");
@@ -625,10 +653,16 @@ Json PowerService::Submit(const Json &command) {
     }
 }
 void PowerService::Command(const std::string &command) {
+#ifndef SERIALCTL_POWER_TESTING
+    Require(ConnectionAvailable(),ConnectionUnavailableMessage());
+#endif
     Require(transport_ != nullptr, "Power supply disconnected");
     transport_->Write(command);
 }
 std::string PowerService::Query(const std::string &command) {
+#ifndef SERIALCTL_POWER_TESTING
+    Require(ConnectionAvailable(),ConnectionUnavailableMessage());
+#endif
     Require(transport_ != nullptr, "Power supply disconnected");
     return transport_->Query(command);
 }
@@ -779,7 +813,13 @@ void PowerService::StopTask() {
         state_["ownedChannels"] = owned_;
     }
 }
-void PowerService::Disconnect() {
+void PowerService::Disconnect(bool preserveOutputs) {
+    if(preserveOutputs) {
+        owned_=Json::array();task_=Json();
+        std::lock_guard<std::mutex> lock(mutex_);
+        state_["task"]={{"running",false}};state_["ownedChannels"]=owned_;
+        for(auto& item:actions_)if(item.second.value("state",std::string())=="running")item.second["state"]="canceled";
+    }
     try {
         StopTask();
     } catch (const std::exception &e) {
@@ -795,6 +835,8 @@ void PowerService::Disconnect() {
     task_ = Json();
     owned_ = Json::array();
     state_["ownedChannels"] = owned_;
+    state_["readbackStale"] = preserveOutputs;
+    if (preserveOutputs) return;
     for (auto &channel : state_["channels"]) {
         channel["output"] = nullptr;
         channel["voltage"] = nullptr;
@@ -894,7 +936,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             Poll();
             pollAt_ = GetTickCount64() + pollInterval_;
         } else if (type == "disconnect")
-            Disconnect();
+            Disconnect(command.value("preserveOutputs",false));
         else if (type == "stop")
             StopTask();
         else if (type == "recover") {
@@ -1100,7 +1142,7 @@ void PowerService::Run() {
         {
             std::unique_lock<std::mutex> lock(mutex_);
             wake_.wait_for(lock, std::chrono::milliseconds(50), [this] {
-                bool ready = stopping_ || !queue_.empty();
+                bool ready = stopping_ || lockRequested_ || !queue_.empty();
 #ifdef SERIALCTL_POWER_TESTING
                 ready = ready || testPauseRequested_;
 #endif
@@ -1116,13 +1158,24 @@ void PowerService::Run() {
 #endif
             if (stopping_)
                 break;
+            if(lockRequested_) {
+                lock.unlock(); Disconnect(true); lock.lock(); lockRequested_=false;
+                continue;
+            }
             if (!queue_.empty()) {
                 job = std::move(queue_.front());
                 queue_.pop_front();
             }
         }
-        if (!job.first.empty())
+        if (!job.first.empty()) {
+#ifndef SERIALCTL_POWER_TESTING
+            if(!ConnectionAvailable()) {std::lock_guard<std::mutex> guard(mutex_);actions_[job.first]["state"]="canceled";continue;}
+#endif
             Execute(job.first, job.second);
+        }
+        #ifndef SERIALCTL_POWER_TESTING
+        if(!ConnectionAvailable())continue;
+#endif
         if (!transport_)
             continue;
         try {

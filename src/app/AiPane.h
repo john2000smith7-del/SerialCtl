@@ -103,6 +103,8 @@ class AiPane {
     void Stop();
     void NewConversation();
     bool ChooseWorkspace();
+    void BeginWorkspaceConversation(const std::wstring&);
+    std::wstring pendingWorkspace_;
     void BrowseDirectory(const std::wstring &, bool initial = false);
     void DirectoryResult(const Json &, bool fallback);
     void PopulateDirectories(bool updatePath = false);
@@ -122,7 +124,7 @@ class AiPane {
     TextPoint HitText(POINT) const;
     std::wstring SelectedText() const;
     void ClearTextSelection();
-    bool waitingReply_ = false, needsPassword_ = false;
+    bool waitingReply_ = false, needsPassword_ = false, quickObserve_ = false;
     bool deferReflow_ = false, reflowPending_ = false, appendPending_ = false;
     bool polling_ = false;
     RECT composerBounds_{}, waitingBounds_{};
@@ -132,7 +134,7 @@ class AiPane {
     std::map<std::string, std::wstring> groupStates_;
     std::map<std::string, ULONGLONG> groupDurations_;
     std::vector<std::wstring> targetLabels_;
-    std::wstring compactTargetLabel_, targetTooltip_;
+    std::wstring compactTargetLabel_, targetTooltip_, workspaceTooltip_, modelTooltip_;
     Json targetSnapshot_;
     HWND tips_ = nullptr;
     void UpdateTargetLabel();

@@ -32,6 +32,18 @@ int main() {
                     throw std::runtime_error("Disabled power action was queued or changed state");
             }
         }
+        if (power.AuthorizeTest(L"JJ123123") || power.AuthorizeTest(L"wrong") || serialctl::PowerService::ConnectionAvailable())
+            throw std::runtime_error("Wrong Test password unlocked production power");
+        if (!power.AuthorizeTest(L"jj123123") || !serialctl::PowerService::ConnectionAvailable())
+            throw std::runtime_error("Correct Test password did not unlock the shared gate");
+        // Authorization alone must not open, enumerate or alter any device.
+        if (power.State() != initial) throw std::runtime_error("Unlock changed power state");
+        power.DisableTest();
+        if (serialctl::PowerService::ConnectionAvailable() || !power.Submit({{"type","output"},{"channels",{1}},{"enabled",true}}).contains("error"))
+            throw std::runtime_error("Lock failed to reject subsequent commands");
+        power.Shutdown();
+        serialctl::PowerService restarted;
+        if (serialctl::PowerService::ConnectionAvailable()) throw std::runtime_error("Test authorization survived locking/restart");
         std::cout << "Production power disabled: USB/serial/simulation and all actions rejected before queueing; no hardware opened\n";
         return 0;
     } catch (const std::exception &e) {

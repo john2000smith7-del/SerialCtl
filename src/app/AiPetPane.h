@@ -25,6 +25,7 @@ class AiPetPane {
     void Activity(pet::Activity activity);
     void ShowMenu(POINT point);
     void Shutdown();
+    void InitialAnchor(RECT anchor) { initialAnchor_ = anchor; }
 
   private:
 #ifdef SERIALCTL_AI_TESTING
@@ -49,7 +50,12 @@ class AiPetPane {
     int dpi_ = 96;
     bool dark_ = false, available_ = false, dragging_ = false, moved_ = false, hover_ = false;
     bool keyboardFocus_ = true;
-    bool desktopMode_ = false, seenAi_ = false;
+    bool desktopMode_ = false, seenAi_ = false, interacting_ = false;
+    bool walking_ = false;
+    int roamDirection_ = 1;
+    double roamOffsetX_ = 0;
+    pet::RoamingClock roaming_;
+    RECT initialAnchor_{};
     POINT dragWindow_{};
     HDC desktopDc_ = nullptr;
     HBITMAP desktopBitmap_ = nullptr, desktopOld_ = nullptr;

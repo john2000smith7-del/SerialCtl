@@ -113,6 +113,10 @@ int main() {
                 RegDeleteValueW(key, L"serialctl-lifecycle-crash:22"); RegCloseKey(key);
             }
         }
+        {
+            PlinkConnection denied(L"serialctl-lifecycle-authfail",22,L"fixture",L"",80,24);
+            Require(!denied.Start({}, {}, error) && !denied.IsConnected(), "post-probe authentication failure must not become a successful session/history");
+        }
         SetEnvironmentVariableW(L"SERIALCTL_SSH_READY", nullptr);
         DWORD handlesAfter = 0; GetProcessHandleCount(GetCurrentProcess(), &handlesAfter);
         const auto threadsAfter = Threads();

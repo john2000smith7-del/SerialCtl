@@ -22,6 +22,7 @@
 #include "CommandNotebook.h"
 #include "AiDeviceBridge.h"
 #include "UiSettingsWriter.h"
+#include "SshConnectionHistory.h"
 #include "ToolbarIcons.h"
 #include <deque>
 #include <functional>
@@ -105,6 +106,8 @@ private:
         int lineEndingIndex = 0;
         UINT codePage = CP_UTF8;
         bool rawTrace = false;
+        bool saveSshHistory = false;
+        std::wstring employeeNumber;
         std::wstring host;
         std::wstring remoteCom;
         bool udpRaw = false, udpReceived = false;
@@ -442,7 +445,10 @@ private:
     int leftPanelAnimatedWidth_ = -1, leftPanelAnimationFrom_ = 0, leftPanelAnimationTo_ = 0;
     ULONGLONG leftPanelAnimationAt_ = 0;
     bool rightPanelAutoCollapsed_ = false;
-    bool rightPanelDragging_ = false;
+    bool rightPanelDragging_ = false, leftPanelDragging_ = false;
+    int leftPanelWidth_ = 190;
+    std::wstring clipboardNotice_;
+    void ShowClipboardNotice(const std::wstring&);
     bool rightPanelAnimating_ = false;
     int rightPanelAnimatedWidth_ = -1, rightPanelAnimationFrom_ = 0, rightPanelAnimationTo_ = 0;
     ULONGLONG rightPanelAnimationAt_ = 0;
@@ -492,6 +498,9 @@ private:
     std::uint16_t discoveryExplicitPort_ = 0;
     int pendingMode_ = 0;
     bool pendingHostKeyReverify_ = false;
+    bool pendingSaveSshHistory_ = false;
+    std::wstring pendingEmployeeNumber_;
+    Json sshHistory_ = Json::array();
     bool initializingConnectionDialog_ = false;
     SerialSettings pendingSerial_;
     std::wstring pendingHost_;

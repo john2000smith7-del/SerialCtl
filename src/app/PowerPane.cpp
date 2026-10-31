@@ -306,7 +306,7 @@ void PowerPane::Action(int id) {
         if (id == Connect)
             ShowConnection();
         else if (id == Disconnect)
-            Submit({{"type", "disconnect"}});
+            Submit({{"type", "disconnect"},{"preserveOutputs",true}});
         else if (id == Protection) {
             tab_ = 2;
             settings_ = 0;
@@ -1170,12 +1170,24 @@ RECT PowerPane::ScrollThumb() const {
     return {r.right-MulDiv(8,dpi_,96),top,r.right-MulDiv(3,dpi_,96),top+height};
 }
 void PowerPane::Scroll(int position) {
-    RECT r{};
-    GetClientRect(body_, &r);
-    scroll_ = std::clamp(position, 0, std::max(0, contentHeight_ - bodyHeight_));
-    Layout();
-    InvalidateRect(window_, nullptr, FALSE);
-    InvalidateRect(body_, nullptr, FALSE);
+    const int next=std::clamp(position,0,std::max(0,contentHeight_-bodyHeight_));
+    if(next==scroll_)return;
+    const int delta=scroll_-next;scroll_=next;
+    UiRedrawScope redraw(body_);
+    std::vector<std::pair<HWND,RECT>> moves;
+    for(HWND child=GetWindow(body_,GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT)) {
+        RECT bounds{};GetWindowRect(child,&bounds);MapWindowPoints(nullptr,body_,reinterpret_cast<POINT*>(&bounds),2);
+        OffsetRect(&bounds,0,delta);moves.push_back({child,bounds});
+    }
+    const UINT flags=SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOREDRAW|SWP_NOCOPYBITS;
+    auto batch=BeginDeferWindowPos(static_cast<int>(moves.size()));
+    for(const auto& move:moves) {
+        if(!batch)break;
+        batch=DeferWindowPos(batch,move.first,nullptr,move.second.left,move.second.top,0,0,flags);
+    }
+    if(!batch || !EndDeferWindowPos(batch))
+        for(const auto& move:moves) SetWindowPos(move.first,nullptr,move.second.left,move.second.top,0,0,flags);
+    InvalidateRect(body_,nullptr,FALSE);
 }
 LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto *self = reinterpret_cast<PowerPane *>(GetWindowLongPtrW(h, GWLP_USERDATA));
@@ -1202,7 +1214,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     if (m == WM_SIZE) {
-        self->Scroll(self->scroll_);
+        self->Layout();
         return 0;
     }
     if (m == WM_DESTROY) {
@@ -1300,7 +1312,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             const COLORREF base = UiControlBackdrop(item.hwndItem, UiAiTheme(self->dark_).surface);
             const COLORREF fill = pressed ? c.accent : (active || hovered) ? (self->dark_ ? c.surface : c.raised) : base;
             if (fill != base)
-                UiBox(item.hDC, item.rcItem, fill, fill, MulDiv(10, self->dpi_, 96));
+                UiBox(item.hDC, item.rcItem, fill, fill, UiCapsuleRadius(item.rcItem));
             UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_,
                 UiFocusInk(self->dark_, !(item.itemState & ODS_DISABLED) && (primary || (item.itemState & ODS_SELECTED))));
             SetBkMode(item.hDC, TRANSPARENT);
@@ -1320,7 +1332,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         DeleteObject(outside);
         const auto visual = UiButtonVisual(c, !(item.itemState & ODS_DISABLED), item.itemState & ODS_SELECTED,
                                            GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
-        UiBox(item.hDC, item.rcItem, visual.fill, (item.itemState & ODS_DISABLED) ? UiPanelBorder(self->dark_) : visual.border, MulDiv(10, self->dpi_, 96));
+        UiBox(item.hDC, item.rcItem, visual.fill, (item.itemState & ODS_DISABLED) ? UiPanelBorder(self->dark_) : visual.border, UiCapsuleRadius(item.rcItem));
         UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_,
                 UiFocusInk(self->dark_, !(item.itemState & ODS_DISABLED) && (primary || (item.itemState & ODS_SELECTED))));
         SetBkMode(item.hDC, TRANSPARENT);
@@ -1858,7 +1870,7 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const bool primary = item.CtlID == IDOK && enabled;
         const auto visual = UiButtonVisual(c, enabled, item.itemState & ODS_SELECTED,
                                            GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
-        UiBox(item.hDC, item.rcItem, visual.fill, visual.border, MulDiv(10, pane->dpi_, 96));
+        UiBox(item.hDC, item.rcItem, visual.fill, visual.border, UiCapsuleRadius(item.rcItem));
         UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, pane->dpi_,
             UiFocusInk(pane->dark_, enabled && (primary || (item.itemState & ODS_SELECTED))));
         SetBkMode(item.hDC, TRANSPARENT);

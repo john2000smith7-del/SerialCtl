@@ -13,6 +13,8 @@ struct ServerSettings {
     std::wstring workingDirectory = L"/home/linux/workspace";
     unsigned port = 22;
     bool rememberPassword = false;
+    bool platformMode = false;
+    std::wstring employeeNumber;
 };
 bool ValidateServer(const ServerSettings &, std::wstring &error);
 ServerSettings LoadServerSettings();
