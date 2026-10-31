@@ -1,5 +1,6 @@
 #include "UiStyle.h"
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 
 namespace {
@@ -19,6 +20,13 @@ struct Canvas {
     ~Canvas() { if(previous)SelectObject(dc,previous);if(bitmap)DeleteObject(bitmap);if(dc)DeleteDC(dc); }
     void Clear(COLORREF color) {
         RECT bounds{0,0,Side,Side};SetDCBrushColor(dc,color);FillRect(dc,&bounds,static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
+    }
+    void Save(const char *path) {
+        std::ofstream out(path,std::ios::binary);out<<"P6\n"<<Side<<' '<<Side<<"\n255\n";
+        for(int i=0;i<Side*Side;++i) {
+            const char rgb[]{static_cast<char>((pixels[i]>>16)&255),static_cast<char>((pixels[i]>>8)&255),static_cast<char>(pixels[i]&255)};
+            out.write(rgb,3);
+        }
     }
 };
 unsigned notifications=0,depth=0,maximumDepth=0;
@@ -59,7 +67,8 @@ int main() {
     int result=0;
     try {
         Canvas reference,candidate;
-        unsigned cases=0,different=0,maximumError=0;
+        unsigned cases=0,different=0,maximumError=0,badPixels=0;
+        bool saved=false;
         for(int size:{16,24,48})for(auto ink:{RGB(29,29,31),RGB(245,245,247),RGB(31,79,216),RGB(152,152,157)})
             for(auto background:{RGB(255,255,255),RGB(36,36,38)})for(int glyph=0;glyph<27;++glyph) {
                 reference.Clear(background);candidate.Clear(background);const RECT bounds{7,5,7+size,5+size};
@@ -72,13 +81,22 @@ int main() {
                     for(int shift:{0,8,16}) {
                         const auto delta=static_cast<unsigned>(std::abs(static_cast<int>((a>>shift)&255)-static_cast<int>((b>>shift)&255)));
                         maximumError=std::max(maximumError,delta);
-                        Require(delta<=1,"Cached glyph changed the approved artwork or color beyond alpha-rounding tolerance");
+                        if(delta>1) {
+                            ++badPixels;
+                            if(!saved) {
+                                saved=true;std::cerr<<"FIRST_GLYPH_DIFFERENCE glyph="<<glyph<<" size="<<size<<" ink="<<ink
+                                    <<" background="<<background<<" x="<<i%Canvas::Side<<" y="<<i/Canvas::Side
+                                    <<" direct="<<std::hex<<(a&0xffffff)<<" cached="<<(b&0xffffff)<<std::dec<<" delta="<<delta<<"\n";
+                                reference.Save("ui-glyph-direct.ppm");candidate.Save("ui-glyph-cached.ppm");
+                            }
+                        }
                     }
                 }
                 ++cases;
             }
+        std::cout<<"GLYPH cases="<<cases<<" differentPixels="<<different<<" maxChannelError="<<maximumError<<" badChannels="<<badPixels<<"\n";
+        Require(maximumError<=1,"Cached glyph changed the approved artwork or color beyond alpha-rounding tolerance");
         CheckRegion();
-        std::cout<<"GLYPH cases="<<cases<<" differentPixels="<<different<<" maxChannelError="<<maximumError<<"\n";
     } catch(const std::exception &error) { std::cerr<<error.what()<<'\n';result=1; }
     Gdiplus::GdiplusShutdown(token);return result;
 }

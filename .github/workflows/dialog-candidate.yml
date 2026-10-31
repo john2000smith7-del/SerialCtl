@@ -23,6 +23,9 @@ jobs:
           $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
           $directory = Get-SerialCtlBuildDirectory -Architecture x64
           Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure normal candidate without profiling flags' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile exact artwork comparison first' -Arguments @('--build',$directory,'--config','Release','--target','ui_glyph_cache_test','--parallel','2')
+          ctest --test-dir $directory -C Release --output-on-failure -R '^ui_glyph_cache$'
+          if ($LASTEXITCODE -ne 0) { throw 'Exact artwork comparison failed before app compilation' }
           Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile native application and targeted UI regressions' -Arguments @('--build',$directory,'--config','Release','--target','serialctl','ui_glyph_cache_test','ui_viewport_reentry_test','ui_combo_paint_test','ui_dialog_viewport_test','--parallel','2')
           ctest --test-dir $directory -C Release --output-on-failure -R '^(ui_glyph_cache|ui_viewport_reentry_scroll|ui_viewport_reentry_reset|ui_combo_paint|ui_dialog_viewport)$'
           if ($LASTEXITCODE -ne 0) { throw 'Native pixels, callback lifetime or first-selection behavior failed' }
@@ -62,5 +65,8 @@ jobs:
         if: always()
         with:
           name: SerialCtl-dialog-normal-candidate
-          path: ${{ runner.temp }}/dialog-normal-*.log
+          path: |
+            ${{ runner.temp }}/dialog-normal-*.log
+            build/windows/x64/cmake/ui-glyph-*.ppm
+            build/windows/x64/cmake/Testing/Temporary/LastTest.log
           if-no-files-found: warn
