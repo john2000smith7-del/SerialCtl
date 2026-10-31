@@ -381,7 +381,7 @@ struct AiDeviceTestAccess {
         main.pendingMode_ = 0;
         main.rightPanelWidth_ = 320;
         main.rightPanelCollapsed_ = false;
-        main.LayoutControls(1180,760);
+        RECT leftViewport{};GetClientRect(parent,&leftViewport);main.LayoutControls(leftViewport.right,leftViewport.bottom);
         RECT leftBefore{},toggleBefore{},leftAfter{},toggleAfter{};
         GetWindowRect(main.terminal_,&leftBefore);GetWindowRect(main.connectionHeader_,&toggleBefore);
         main.SetLeftPanelCollapsed(true);
@@ -392,6 +392,9 @@ struct AiDeviceTestAccess {
         GetWindowRect(main.terminal_,&leftAfter);GetWindowRect(main.connectionHeader_,&toggleAfter);
         Require(!main.leftPanelAnimating_ && !IsWindowVisible(main.connectionList_) && leftAfter.left<leftBefore.left && EqualRect(&toggleBefore,&toggleAfter),
                 "Left rail did not free terminal space or moved its toggle during collapse");
+        ui_test::SaveUiEvidence(parent,L"v215-left-rail-light.png");
+        main.darkMode_=true;main.ApplyTheme();ui_test::SaveUiEvidence(parent,L"v215-left-rail-dark.png");
+        main.darkMode_=false;main.ApplyTheme();
         main.SetLeftPanelCollapsed(false);
         const auto restoreDeadline=GetTickCount64()+1000;
         while(main.leftPanelAnimating_ && GetTickCount64()<restoreDeadline) {

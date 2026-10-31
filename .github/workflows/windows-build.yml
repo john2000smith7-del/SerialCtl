@@ -69,6 +69,25 @@ jobs:
       - name: Build connection dialog stopwatch
         shell: cmd
         run: cl /nologo /std:c++17 /EHsc /O2 /MT /Fe:dialog-bench.exe tests\performance\ConnectionDialogBench.cpp user32.lib ws2_32.lib
+      - name: Confirm the real-click dropdown regression detects the original defect
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $baseline = Join-Path $env:RUNNER_TEMP 'combo-baseline'
+          New-Item -ItemType Directory $baseline -Force | Out-Null
+          Copy-Item src/app/*.h $baseline
+          $original = git show 937e2d052f5289e1465e44277d33cbabb54441c2:src/app/UiStyle.h
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read the exact original dropdown renderer' }
+          [IO.File]::WriteAllText((Join-Path $baseline 'UiStyle.h'), ($original -join "`n"), (New-Object Text.UTF8Encoding($false)))
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DUNICODE /D_UNICODE /DNOMINMAX /I "$baseline" /I tests/integration /Fe:"$baseline/combo-baseline.exe" tests/integration/UiComboPaintTest.cpp gdiplus.lib gdi32.lib user32.lib comctl32.lib ole32.lib msimg32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot build the isolated original dropdown renderer probe' }
+          $ErrorActionPreference = 'Continue'
+          $result = & "$baseline/combo-baseline.exe" 2>&1
+          $code = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          $result | Write-Host
+          if ($code -eq 0 -or ($result -join "`n") -notmatch 'Shared painter moved a native downward drop|Opening click scrolled a long list') { throw 'The new actual-mouse regression did not isolate the original popup geometry defect' }
+          Write-Host 'PASS: original renderer reproduces the dropdown defect; current renderer passed the same real-mouse cases in CTest.'
       - name: Measure connection dialog latency against the accepted release
         shell: powershell
         env:
@@ -180,7 +199,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        page: [ai, power-light, power-dark, sftp-settings]
+        page: [ai, power-light, power-dark, sftp-settings, workspace]
     env:
       REVIEW_SOURCE_RUN: ${{ inputs.evidence_run || github.run_id }}
     steps:
@@ -210,6 +229,7 @@ jobs:
           root = pathlib.Path('ui-evidence')
           page = os.environ['REVIEW_PAGE']
           patterns = {
+              'workspace': ['v207-workspace-*-96dpi.png', 'v215-left-rail-*.png', 'v215-path-*.png'],
               'ai': ['x64-*-ai-expanded.png', 'x64-*-ai-collapsed.png', 'v208-ai-pet-main-*.png'],
               'power-light': ['x64-light-power-layout.png', 'x64-light-power-disconnected.png'],
               'power-dark': ['x64-dark-power-layout.png', 'x64-dark-power-disconnected.png'],

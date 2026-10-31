@@ -1,5 +1,6 @@
 #include "UiStyle.h"
 #include "UiPathField.h"
+#include "UiTestEvidence.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -112,7 +113,9 @@ void RunLongList(HWND parent,bool editable) {
     SetWindowTextW(path,value.c_str());RedrawWindow(path,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
     SendMessageW(path,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(20,15));
     RedrawWindow(path,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);const auto before=Snapshot(path);
+    ui_test::SaveUiEvidence(path,dark?L"v215-path-dark-start.png":L"v215-path-light-start.png");
     SendMessageW(path,WM_KEYDOWN,VK_END,0);RedrawWindow(path,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
+    ui_test::SaveUiEvidence(path,dark?L"v215-path-dark-end.png":L"v215-path-light-end.png");
     Require(before!=Snapshot(path),"Long path has no horizontal viewport movement");
     std::vector<wchar_t> actual(value.size()+1);GetWindowTextW(path,actual.data(),static_cast<int>(actual.size()));
     Require(value==actual.data(),"Horizontal viewing changed the stored full path");DestroyWindow(path);
