@@ -442,6 +442,7 @@ public static class FakePlink {
             return 0;
         }
         foreach (string arg in args) if (arg == "-hostkey") {
+            Console.Error.WriteLine("Started a shell/command");
             var producer = new System.Threading.Thread(() => {
                 for (int i=0;;i++) {
                     Console.WriteLine("SERIALCTL_PAINT_" + (i%1000).ToString("D3") + " controlled SSH output during SFTP layout");
@@ -565,7 +566,8 @@ foreach ($architecture in @('x64')) {
             Click-Control $application.MainWindowHandle 304
             $aiDialog = Wait-Dialog $application.Id '连接 AI 服务器'
             [SerialCtlUiSmoke]::AssertLabels($aiDialog, $expectedUiFace)
-            if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,208) -eq [IntPtr]::Zero) { throw 'AI project directory missing.' }
+            if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,208) -ne [IntPtr]::Zero -or [SerialCtlUiSmoke]::GetDlgItem($aiDialog,213) -ne [IntPtr]::Zero) { throw 'AI connection form still owns workspace controls.' }
+            if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,214) -eq [IntPtr]::Zero) { throw 'AI platform mode field missing.' }
             Capture-Window $aiDialog "$architecture-$theme-ai-connect"
             Click-Control $aiDialog 2
             Start-Sleep -Milliseconds 250
