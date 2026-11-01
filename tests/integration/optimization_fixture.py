@@ -184,7 +184,8 @@ def main():
                 return True
             desktop.user.EnumChildWindows(hwnd,find_connection_power,0)
             require(power_panes,'Power pane is missing for refresh inspection')
-            click(control(power_panes[0],10));power_connection=dialog()
+            power_connect=control(power_panes[0],10)
+            wait(lambda:user.IsWindowEnabled(power_connect));click(power_connect);power_connection=dialog()
             refresh=refresh_glyph(power_connection,103,101)
             desktop.capture(theme+'-power-refresh-usb')
             # Enumerate the CI host's local ports only; never connect or issue
