@@ -1,0 +1,2382 @@
+{
+  "status": "PASS",
+  "scope": "Actual packaged GUI, real mouse clicks and nonclient/splitter drags; controlled CMD stdout; no physical devices",
+  "limits": [
+    "Actual CI system DPI only",
+    "Finite bounded stress, no eight-hour soak claim",
+    "Finite screen samples do not prove absence of every inter-frame artifact"
+  ],
+  "dpi": 96,
+  "desktop_bounds": [
+    0,
+    0,
+    1920,
+    1080
+  ],
+  "actual_click_count": 198,
+  "actual_mouse_releases": 289,
+  "modal_cycles": 60,
+  "response_samples_ms": [
+    30.95,
+    36.362,
+    31.488,
+    37.077,
+    0.362,
+    36.014,
+    35.852,
+    36.228,
+    31.75,
+    4.791,
+    31.321,
+    36.201,
+    36.229,
+    31.95,
+    0.615,
+    35.983,
+    35.802,
+    31.14,
+    36.175,
+    2.959,
+    32.671,
+    31.181,
+    36.188,
+    36.39,
+    15.374,
+    16.307,
+    13.051,
+    15.978,
+    15.845,
+    15.962,
+    0.074,
+    0.074,
+    0.098,
+    6.81,
+    0.076,
+    0.201,
+    0.088,
+    1.85,
+    30.678,
+    34.583,
+    30.541,
+    35.06,
+    4.786,
+    30.045,
+    30.224,
+    30.593,
+    30.543,
+    2.782,
+    30.422,
+    35.223,
+    30.135,
+    35.376,
+    1.171,
+    30.45,
+    34.32,
+    34.162,
+    30.075,
+    1.324,
+    34.722,
+    34.821,
+    30.62,
+    30.095,
+    19.609,
+    19.781,
+    19.978,
+    18.453,
+    20.649,
+    18.92,
+    4.205,
+    0.927,
+    0.098,
+    0.089,
+    0.094,
+    0.104,
+    0.096,
+    0.107
+  ],
+  "resource_samples": [
+    {
+      "seconds": 7.763449,
+      "utc": "2026-10-31T17:03:24.026227+00:00",
+      "label": "whole-audit-start",
+      "handles": 264,
+      "gdi": 135,
+      "user": 198
+    },
+    {
+      "seconds": 8.343417,
+      "utc": "2026-10-31T17:03:24.598888+00:00",
+      "label": "light-dialogs-0",
+      "handles": 264,
+      "gdi": 154,
+      "user": 199
+    },
+    {
+      "seconds": 10.493026,
+      "utc": "2026-10-31T17:03:26.755477+00:00",
+      "label": "light-dialogs-4",
+      "handles": 311,
+      "gdi": 263,
+      "user": 198
+    },
+    {
+      "seconds": 11.684474,
+      "utc": "2026-10-31T17:03:27.939239+00:00",
+      "label": "light-dialogs-8",
+      "handles": 312,
+      "gdi": 264,
+      "user": 198
+    },
+    {
+      "seconds": 12.158217,
+      "utc": "2026-10-31T17:03:28.413481+00:00",
+      "label": "light-dialogs-12",
+      "handles": 311,
+      "gdi": 264,
+      "user": 198
+    },
+    {
+      "seconds": 13.322931,
+      "utc": "2026-10-31T17:03:29.577609+00:00",
+      "label": "light-dialogs-16",
+      "handles": 311,
+      "gdi": 264,
+      "user": 198
+    },
+    {
+      "seconds": 14.48732,
+      "utc": "2026-10-31T17:03:30.740657+00:00",
+      "label": "light-dialogs-20",
+      "handles": 311,
+      "gdi": 264,
+      "user": 198
+    },
+    {
+      "seconds": 16.513403,
+      "utc": "2026-10-31T17:03:32.776078+00:00",
+      "label": "light-warm",
+      "handles": 311,
+      "gdi": 264,
+      "user": 198
+    },
+    {
+      "seconds": 18.97244,
+      "utc": "2026-10-31T17:03:35.226668+00:00",
+      "label": "light-drag-0",
+      "handles": 311,
+      "gdi": 155,
+      "user": 197
+    },
+    {
+      "seconds": 21.484233,
+      "utc": "2026-10-31T17:03:37.739077+00:00",
+      "label": "light-drag-1",
+      "handles": 311,
+      "gdi": 143,
+      "user": 197
+    },
+    {
+      "seconds": 23.971341,
+      "utc": "2026-10-31T17:03:40.233490+00:00",
+      "label": "light-drag-2",
+      "handles": 311,
+      "gdi": 149,
+      "user": 197
+    },
+    {
+      "seconds": 26.347402,
+      "utc": "2026-10-31T17:03:42.603256+00:00",
+      "label": "light-drag-3",
+      "handles": 311,
+      "gdi": 141,
+      "user": 197
+    },
+    {
+      "seconds": 28.876788,
+      "utc": "2026-10-31T17:03:45.129004+00:00",
+      "label": "light-drag-4",
+      "handles": 311,
+      "gdi": 139,
+      "user": 197
+    },
+    {
+      "seconds": 31.435741,
+      "utc": "2026-10-31T17:03:47.687522+00:00",
+      "label": "light-drag-5",
+      "handles": 311,
+      "gdi": 137,
+      "user": 197
+    },
+    {
+      "seconds": 34.001393,
+      "utc": "2026-10-31T17:03:50.259909+00:00",
+      "label": "light-drag-6",
+      "handles": 311,
+      "gdi": 139,
+      "user": 197
+    },
+    {
+      "seconds": 36.606625,
+      "utc": "2026-10-31T17:03:52.863151+00:00",
+      "label": "light-drag-7",
+      "handles": 311,
+      "gdi": 137,
+      "user": 197
+    },
+    {
+      "seconds": 49.246901,
+      "utc": "2026-10-31T17:04:05.508926+00:00",
+      "label": "light-after",
+      "handles": 311,
+      "gdi": 115,
+      "user": 197
+    },
+    {
+      "seconds": 49.976525,
+      "utc": "2026-10-31T17:04:06.232865+00:00",
+      "label": "dark-dialogs-0",
+      "handles": 311,
+      "gdi": 167,
+      "user": 200
+    },
+    {
+      "seconds": 52.120686,
+      "utc": "2026-10-31T17:04:08.379324+00:00",
+      "label": "dark-dialogs-4",
+      "handles": 311,
+      "gdi": 213,
+      "user": 200
+    },
+    {
+      "seconds": 53.315551,
+      "utc": "2026-10-31T17:04:09.572271+00:00",
+      "label": "dark-dialogs-8",
+      "handles": 312,
+      "gdi": 213,
+      "user": 200
+    },
+    {
+      "seconds": 53.853406,
+      "utc": "2026-10-31T17:04:10.109959+00:00",
+      "label": "dark-dialogs-12",
+      "handles": 311,
+      "gdi": 213,
+      "user": 200
+    },
+    {
+      "seconds": 55.010264,
+      "utc": "2026-10-31T17:04:11.272764+00:00",
+      "label": "dark-dialogs-16",
+      "handles": 311,
+      "gdi": 213,
+      "user": 200
+    },
+    {
+      "seconds": 56.147358,
+      "utc": "2026-10-31T17:04:12.403414+00:00",
+      "label": "dark-dialogs-20",
+      "handles": 311,
+      "gdi": 213,
+      "user": 200
+    },
+    {
+      "seconds": 58.250501,
+      "utc": "2026-10-31T17:04:14.513759+00:00",
+      "label": "dark-warm",
+      "handles": 311,
+      "gdi": 239,
+      "user": 200
+    },
+    {
+      "seconds": 60.735828,
+      "utc": "2026-10-31T17:04:16.992597+00:00",
+      "label": "dark-drag-0",
+      "handles": 311,
+      "gdi": 148,
+      "user": 199
+    },
+    {
+      "seconds": 63.369511,
+      "utc": "2026-10-31T17:04:19.627954+00:00",
+      "label": "dark-drag-1",
+      "handles": 311,
+      "gdi": 145,
+      "user": 199
+    },
+    {
+      "seconds": 66.00057,
+      "utc": "2026-10-31T17:04:22.264148+00:00",
+      "label": "dark-drag-2",
+      "handles": 311,
+      "gdi": 146,
+      "user": 199
+    },
+    {
+      "seconds": 68.600091,
+      "utc": "2026-10-31T17:04:24.861124+00:00",
+      "label": "dark-drag-3",
+      "handles": 311,
+      "gdi": 144,
+      "user": 199
+    },
+    {
+      "seconds": 71.207131,
+      "utc": "2026-10-31T17:04:27.458901+00:00",
+      "label": "dark-drag-4",
+      "handles": 311,
+      "gdi": 146,
+      "user": 199
+    },
+    {
+      "seconds": 73.74257,
+      "utc": "2026-10-31T17:04:30.001914+00:00",
+      "label": "dark-drag-5",
+      "handles": 311,
+      "gdi": 144,
+      "user": 199
+    },
+    {
+      "seconds": 76.245615,
+      "utc": "2026-10-31T17:04:32.497887+00:00",
+      "label": "dark-drag-6",
+      "handles": 311,
+      "gdi": 146,
+      "user": 199
+    },
+    {
+      "seconds": 78.880317,
+      "utc": "2026-10-31T17:04:35.134912+00:00",
+      "label": "dark-drag-7",
+      "handles": 311,
+      "gdi": 144,
+      "user": 199
+    },
+    {
+      "seconds": 91.650031,
+      "utc": "2026-10-31T17:04:47.902256+00:00",
+      "label": "dark-after",
+      "handles": 312,
+      "gdi": 120,
+      "user": 199
+    },
+    {
+      "seconds": 91.774102,
+      "utc": "2026-10-31T17:04:48.027315+00:00",
+      "label": "whole-audit-end",
+      "handles": 312,
+      "gdi": 121,
+      "user": 199
+    }
+  ],
+  "dialog_operations": [
+    {
+      "control": 100,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        169,
+        816,
+        591
+      ],
+      "screen_sample": "endurance-light-desktop-0003-modal-100.png",
+      "observed_ready_ms": 74.829,
+      "response_ms": 30.95,
+      "background_burst": true
+    },
+    {
+      "control": 101,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        171,
+        816,
+        588
+      ],
+      "screen_sample": "endurance-light-desktop-0004-modal-101.png",
+      "observed_ready_ms": 68.915,
+      "response_ms": 36.362,
+      "background_burst": true
+    },
+    {
+      "control": 102,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        279,
+        816,
+        480
+      ],
+      "screen_sample": "endurance-light-desktop-0005-modal-102.png",
+      "observed_ready_ms": 58.555,
+      "response_ms": 31.488,
+      "background_burst": true
+    },
+    {
+      "control": 103,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        243,
+        816,
+        516
+      ],
+      "screen_sample": "endurance-light-desktop-0006-modal-103.png",
+      "observed_ready_ms": 75.02,
+      "response_ms": 37.077,
+      "background_burst": true
+    },
+    {
+      "control": 303,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        60,
+        826,
+        699
+      ],
+      "screen_sample": "endurance-light-desktop-0007-modal-303.png",
+      "observed_ready_ms": 102.934,
+      "response_ms": 0.362,
+      "background_burst": true
+    },
+    {
+      "control": 100,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        169,
+        816,
+        591
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 60.382,
+      "response_ms": 36.014,
+      "background_burst": false
+    },
+    {
+      "control": 101,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        171,
+        816,
+        588
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 77.197,
+      "response_ms": 35.852,
+      "background_burst": false
+    },
+    {
+      "control": 102,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        279,
+        816,
+        480
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 58.636,
+      "response_ms": 36.228,
+      "background_burst": false
+    },
+    {
+      "control": 103,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        243,
+        816,
+        516
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 78.412,
+      "response_ms": 31.75,
+      "background_burst": false
+    },
+    {
+      "control": 303,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        60,
+        826,
+        699
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 67.855,
+      "response_ms": 4.791,
+      "background_burst": false
+    },
+    {
+      "control": 100,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        169,
+        816,
+        591
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 54.221,
+      "response_ms": 31.321,
+      "background_burst": false
+    },
+    {
+      "control": 101,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        171,
+        816,
+        588
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 64.225,
+      "response_ms": 36.201,
+      "background_burst": false
+    },
+    {
+      "control": 102,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        279,
+        816,
+        480
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 74.928,
+      "response_ms": 36.229,
+      "background_burst": false
+    },
+    {
+      "control": 103,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        243,
+        816,
+        516
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 74.258,
+      "response_ms": 31.95,
+      "background_burst": false
+    },
+    {
+      "control": 303,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        60,
+        826,
+        699
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 77.451,
+      "response_ms": 0.615,
+      "background_burst": false
+    },
+    {
+      "control": 100,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        169,
+        816,
+        591
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 59.372,
+      "response_ms": 35.983,
+      "background_burst": false
+    },
+    {
+      "control": 101,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        171,
+        816,
+        588
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 82.749,
+      "response_ms": 35.802,
+      "background_burst": false
+    },
+    {
+      "control": 102,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        279,
+        816,
+        480
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 70.756,
+      "response_ms": 31.14,
+      "background_burst": false
+    },
+    {
+      "control": 103,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        243,
+        816,
+        516
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 81.231,
+      "response_ms": 36.175,
+      "background_burst": false
+    },
+    {
+      "control": 303,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        60,
+        826,
+        699
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 57.816,
+      "response_ms": 2.959,
+      "background_burst": false
+    },
+    {
+      "control": 100,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        169,
+        816,
+        591
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 56.505,
+      "response_ms": 32.671,
+      "background_burst": false
+    },
+    {
+      "control": 101,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        171,
+        816,
+        588
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 56.227,
+      "response_ms": 31.181,
+      "background_burst": false
+    },
+    {
+      "control": 102,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        279,
+        816,
+        480
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 74.992,
+      "response_ms": 36.188,
+      "background_burst": false
+    },
+    {
+      "control": 103,
+      "theme": "light",
+      "first_paint_bounds": [
+        383,
+        243,
+        816,
+        516
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 73.671,
+      "response_ms": 36.39,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        132,
+        826,
+        627
+      ],
+      "screen_sample": "endurance-light-desktop-0008-modal-304.png",
+      "observed_ready_ms": 67.776,
+      "response_ms": 15.374,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        132,
+        826,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 84.821,
+      "response_ms": 16.307,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        132,
+        826,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 76.052,
+      "response_ms": 13.051,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        132,
+        826,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 73.244,
+      "response_ms": 15.978,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        132,
+        826,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 75.034,
+      "response_ms": 15.845,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "light",
+      "first_paint_bounds": [
+        374,
+        132,
+        826,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 74.153,
+      "response_ms": 15.962,
+      "background_burst": false
+    },
+    {
+      "control": 100,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        169,
+        806,
+        591
+      ],
+      "screen_sample": "endurance-dark-desktop-0224-modal-100.png",
+      "observed_ready_ms": 78.195,
+      "response_ms": 30.678,
+      "background_burst": true
+    },
+    {
+      "control": 101,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        171,
+        806,
+        588
+      ],
+      "screen_sample": "endurance-dark-desktop-0225-modal-101.png",
+      "observed_ready_ms": 65.774,
+      "response_ms": 34.583,
+      "background_burst": true
+    },
+    {
+      "control": 102,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        279,
+        806,
+        480
+      ],
+      "screen_sample": "endurance-dark-desktop-0226-modal-102.png",
+      "observed_ready_ms": 71.592,
+      "response_ms": 30.541,
+      "background_burst": true
+    },
+    {
+      "control": 103,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        243,
+        806,
+        516
+      ],
+      "screen_sample": "endurance-dark-desktop-0227-modal-103.png",
+      "observed_ready_ms": 75.675,
+      "response_ms": 35.06,
+      "background_burst": true
+    },
+    {
+      "control": 303,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        60,
+        816,
+        699
+      ],
+      "screen_sample": "endurance-dark-desktop-0228-modal-303.png",
+      "observed_ready_ms": 75.639,
+      "response_ms": 4.786,
+      "background_burst": true
+    },
+    {
+      "control": 100,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        169,
+        806,
+        591
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 67.098,
+      "response_ms": 30.045,
+      "background_burst": false
+    },
+    {
+      "control": 101,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        171,
+        806,
+        588
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 75.15,
+      "response_ms": 30.224,
+      "background_burst": false
+    },
+    {
+      "control": 102,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        279,
+        806,
+        480
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 73.802,
+      "response_ms": 30.593,
+      "background_burst": false
+    },
+    {
+      "control": 103,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        243,
+        806,
+        516
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 73.971,
+      "response_ms": 30.543,
+      "background_burst": false
+    },
+    {
+      "control": 303,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        60,
+        816,
+        699
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 62.964,
+      "response_ms": 2.782,
+      "background_burst": false
+    },
+    {
+      "control": 100,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        169,
+        806,
+        591
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 54.749,
+      "response_ms": 30.422,
+      "background_burst": false
+    },
+    {
+      "control": 101,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        171,
+        806,
+        588
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 75.107,
+      "response_ms": 35.223,
+      "background_burst": false
+    },
+    {
+      "control": 102,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        279,
+        806,
+        480
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 82.49,
+      "response_ms": 30.135,
+      "background_burst": false
+    },
+    {
+      "control": 103,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        243,
+        806,
+        516
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 53.877,
+      "response_ms": 35.376,
+      "background_burst": false
+    },
+    {
+      "control": 303,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        60,
+        816,
+        699
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 77.453,
+      "response_ms": 1.171,
+      "background_burst": false
+    },
+    {
+      "control": 100,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        169,
+        806,
+        591
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 57.388,
+      "response_ms": 30.45,
+      "background_burst": false
+    },
+    {
+      "control": 101,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        171,
+        806,
+        588
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 81.581,
+      "response_ms": 34.32,
+      "background_burst": false
+    },
+    {
+      "control": 102,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        279,
+        806,
+        480
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 56.145,
+      "response_ms": 34.162,
+      "background_burst": false
+    },
+    {
+      "control": 103,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        243,
+        806,
+        516
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 59.849,
+      "response_ms": 30.075,
+      "background_burst": false
+    },
+    {
+      "control": 303,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        60,
+        816,
+        699
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 79.342,
+      "response_ms": 1.324,
+      "background_burst": false
+    },
+    {
+      "control": 100,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        169,
+        806,
+        591
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 59.961,
+      "response_ms": 34.722,
+      "background_burst": false
+    },
+    {
+      "control": 101,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        171,
+        806,
+        588
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 60.647,
+      "response_ms": 34.821,
+      "background_burst": false
+    },
+    {
+      "control": 102,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        279,
+        806,
+        480
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 77.152,
+      "response_ms": 30.62,
+      "background_burst": false
+    },
+    {
+      "control": 103,
+      "theme": "dark",
+      "first_paint_bounds": [
+        373,
+        243,
+        806,
+        516
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 81.021,
+      "response_ms": 30.095,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        132,
+        816,
+        627
+      ],
+      "screen_sample": "endurance-dark-desktop-0229-modal-304.png",
+      "observed_ready_ms": 63.475,
+      "response_ms": 19.609,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        132,
+        816,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 83.923,
+      "response_ms": 19.781,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        132,
+        816,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 80.711,
+      "response_ms": 19.978,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        132,
+        816,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 81.721,
+      "response_ms": 18.453,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        132,
+        816,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 77.334,
+      "response_ms": 20.649,
+      "background_burst": false
+    },
+    {
+      "control": 304,
+      "theme": "dark",
+      "first_paint_bounds": [
+        364,
+        132,
+        816,
+        627
+      ],
+      "screen_sample": null,
+      "observed_ready_ms": 73.659,
+      "response_ms": 18.92,
+      "background_burst": false
+    }
+  ],
+  "close_seconds": 0.037,
+  "exit_code": 0,
+  "pet_fixture": {
+    "before": [
+      36,
+      332,
+      260,
+      612
+    ],
+    "after": [
+      1212,
+      120,
+      1436,
+      400
+    ],
+    "input": "one real drag after observed native capture",
+    "enabled_and_visible": true,
+    "position_only": "Test-account fixture; topmost/roaming preferences unchanged"
+  },
+  "drag_evidence": [
+    {
+      "name": "caption-0",
+      "held_frames": [
+        "endurance-light-desktop-0009-caption-0-held-01.png",
+        "endurance-light-desktop-0010-caption-0-held-02.png",
+        "endurance-light-desktop-0011-caption-0-held-03.png",
+        "endurance-light-desktop-0012-caption-0-held-04.png",
+        "endurance-light-desktop-0013-caption-0-held-05.png",
+        "endurance-light-desktop-0014-caption-0-held-06.png",
+        "endurance-light-desktop-0015-caption-0-held-07.png",
+        "endurance-light-desktop-0016-caption-0-held-08.png"
+      ],
+      "paint_sample_first": 255,
+      "paint_sample_last": 269,
+      "stdout_markers_while_held": [
+        279,
+        282,
+        284,
+        285,
+        287,
+        288,
+        290,
+        293
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-0",
+      "held_frames": [
+        "endurance-light-desktop-0018-resize-0-held-01.png",
+        "endurance-light-desktop-0019-resize-0-held-02.png",
+        "endurance-light-desktop-0020-resize-0-held-03.png",
+        "endurance-light-desktop-0021-resize-0-held-04.png",
+        "endurance-light-desktop-0022-resize-0-held-05.png",
+        "endurance-light-desktop-0023-resize-0-held-06.png",
+        "endurance-light-desktop-0024-resize-0-held-07.png",
+        "endurance-light-desktop-0025-resize-0-held-08.png"
+      ],
+      "paint_sample_first": 293,
+      "paint_sample_last": 304,
+      "stdout_markers_while_held": [
+        317,
+        318,
+        320,
+        324,
+        326,
+        328,
+        332
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-1",
+      "held_frames": [
+        "endurance-light-desktop-0027-caption-1-held-01.png",
+        "endurance-light-desktop-0028-caption-1-held-02.png",
+        "endurance-light-desktop-0029-caption-1-held-03.png",
+        "endurance-light-desktop-0030-caption-1-held-04.png",
+        "endurance-light-desktop-0031-caption-1-held-05.png",
+        "endurance-light-desktop-0032-caption-1-held-06.png",
+        "endurance-light-desktop-0033-caption-1-held-07.png",
+        "endurance-light-desktop-0034-caption-1-held-08.png"
+      ],
+      "paint_sample_first": 328,
+      "paint_sample_last": 345,
+      "stdout_markers_while_held": [
+        356,
+        361,
+        362,
+        364,
+        365,
+        368,
+        370,
+        373
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-1",
+      "held_frames": [
+        "endurance-light-desktop-0036-resize-1-held-01.png",
+        "endurance-light-desktop-0037-resize-1-held-02.png",
+        "endurance-light-desktop-0038-resize-1-held-03.png",
+        "endurance-light-desktop-0039-resize-1-held-04.png",
+        "endurance-light-desktop-0040-resize-1-held-05.png",
+        "endurance-light-desktop-0041-resize-1-held-06.png",
+        "endurance-light-desktop-0042-resize-1-held-07.png",
+        "endurance-light-desktop-0043-resize-1-held-08.png"
+      ],
+      "paint_sample_first": 370,
+      "paint_sample_last": 382,
+      "stdout_markers_while_held": [
+        398,
+        401,
+        402,
+        404,
+        405,
+        407,
+        409,
+        412
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-2",
+      "held_frames": [
+        "endurance-light-desktop-0045-caption-2-held-01.png",
+        "endurance-light-desktop-0046-caption-2-held-02.png",
+        "endurance-light-desktop-0047-caption-2-held-03.png",
+        "endurance-light-desktop-0048-caption-2-held-04.png",
+        "endurance-light-desktop-0049-caption-2-held-05.png",
+        "endurance-light-desktop-0050-caption-2-held-06.png",
+        "endurance-light-desktop-0051-caption-2-held-07.png",
+        "endurance-light-desktop-0052-caption-2-held-08.png"
+      ],
+      "paint_sample_first": 407,
+      "paint_sample_last": 423,
+      "stdout_markers_while_held": [
+        437,
+        439,
+        441,
+        445,
+        447,
+        448,
+        450,
+        453
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-2",
+      "held_frames": [
+        "endurance-light-desktop-0054-resize-2-held-01.png",
+        "endurance-light-desktop-0055-resize-2-held-02.png",
+        "endurance-light-desktop-0056-resize-2-held-03.png",
+        "endurance-light-desktop-0057-resize-2-held-04.png",
+        "endurance-light-desktop-0058-resize-2-held-05.png",
+        "endurance-light-desktop-0059-resize-2-held-06.png",
+        "endurance-light-desktop-0060-resize-2-held-07.png",
+        "endurance-light-desktop-0061-resize-2-held-08.png"
+      ],
+      "paint_sample_first": 447,
+      "paint_sample_last": 455,
+      "stdout_markers_while_held": [
+        478,
+        480,
+        482,
+        483,
+        487,
+        488,
+        489
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-3",
+      "held_frames": [
+        "endurance-light-desktop-0063-caption-3-held-01.png",
+        "endurance-light-desktop-0064-caption-3-held-02.png",
+        "endurance-light-desktop-0065-caption-3-held-03.png",
+        "endurance-light-desktop-0066-caption-3-held-04.png",
+        "endurance-light-desktop-0067-caption-3-held-05.png",
+        "endurance-light-desktop-0068-caption-3-held-06.png",
+        "endurance-light-desktop-0069-caption-3-held-07.png",
+        "endurance-light-desktop-0070-caption-3-held-08.png"
+      ],
+      "paint_sample_first": 480,
+      "paint_sample_last": 494,
+      "stdout_markers_while_held": [
+        516,
+        519,
+        521,
+        523,
+        524,
+        527,
+        528,
+        530
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-3",
+      "held_frames": [
+        "endurance-light-desktop-0072-resize-3-held-01.png",
+        "endurance-light-desktop-0073-resize-3-held-02.png",
+        "endurance-light-desktop-0074-resize-3-held-03.png",
+        "endurance-light-desktop-0075-resize-3-held-04.png",
+        "endurance-light-desktop-0076-resize-3-held-05.png",
+        "endurance-light-desktop-0077-resize-3-held-06.png",
+        "endurance-light-desktop-0078-resize-3-held-07.png",
+        "endurance-light-desktop-0079-resize-3-held-08.png"
+      ],
+      "paint_sample_first": 518,
+      "paint_sample_last": 528,
+      "stdout_markers_while_held": [
+        554,
+        556,
+        557,
+        559,
+        560,
+        562,
+        564,
+        566
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-4",
+      "held_frames": [
+        "endurance-light-desktop-0081-caption-4-held-01.png",
+        "endurance-light-desktop-0082-caption-4-held-02.png",
+        "endurance-light-desktop-0083-caption-4-held-03.png",
+        "endurance-light-desktop-0084-caption-4-held-04.png",
+        "endurance-light-desktop-0085-caption-4-held-05.png",
+        "endurance-light-desktop-0086-caption-4-held-06.png",
+        "endurance-light-desktop-0087-caption-4-held-07.png",
+        "endurance-light-desktop-0088-caption-4-held-08.png"
+      ],
+      "paint_sample_first": 554,
+      "paint_sample_last": 570,
+      "stdout_markers_while_held": [
+        592,
+        595,
+        596,
+        599,
+        601,
+        605,
+        607,
+        608
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-4",
+      "held_frames": [
+        "endurance-light-desktop-0090-resize-4-held-01.png",
+        "endurance-light-desktop-0091-resize-4-held-02.png",
+        "endurance-light-desktop-0092-resize-4-held-03.png",
+        "endurance-light-desktop-0093-resize-4-held-04.png",
+        "endurance-light-desktop-0094-resize-4-held-05.png",
+        "endurance-light-desktop-0095-resize-4-held-06.png",
+        "endurance-light-desktop-0096-resize-4-held-07.png",
+        "endurance-light-desktop-0097-resize-4-held-08.png"
+      ],
+      "paint_sample_first": 595,
+      "paint_sample_last": 603,
+      "stdout_markers_while_held": [
+        633,
+        635,
+        636,
+        638,
+        639,
+        641,
+        643,
+        644
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-5",
+      "held_frames": [
+        "endurance-light-desktop-0099-caption-5-held-01.png",
+        "endurance-light-desktop-0100-caption-5-held-02.png",
+        "endurance-light-desktop-0101-caption-5-held-03.png",
+        "endurance-light-desktop-0102-caption-5-held-04.png",
+        "endurance-light-desktop-0103-caption-5-held-05.png",
+        "endurance-light-desktop-0104-caption-5-held-06.png",
+        "endurance-light-desktop-0105-caption-5-held-07.png",
+        "endurance-light-desktop-0106-caption-5-held-08.png"
+      ],
+      "paint_sample_first": 631,
+      "paint_sample_last": 645,
+      "stdout_markers_while_held": [
+        673,
+        676,
+        679,
+        681,
+        683,
+        684,
+        686,
+        687
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-5",
+      "held_frames": [
+        "endurance-light-desktop-0108-resize-5-held-01.png",
+        "endurance-light-desktop-0109-resize-5-held-02.png",
+        "endurance-light-desktop-0110-resize-5-held-03.png",
+        "endurance-light-desktop-0111-resize-5-held-04.png",
+        "endurance-light-desktop-0112-resize-5-held-05.png",
+        "endurance-light-desktop-0113-resize-5-held-06.png",
+        "endurance-light-desktop-0114-resize-5-held-07.png",
+        "endurance-light-desktop-0115-resize-5-held-08.png"
+      ],
+      "paint_sample_first": 670,
+      "paint_sample_last": 682,
+      "stdout_markers_while_held": [
+        713,
+        715,
+        718,
+        722,
+        724,
+        726,
+        727,
+        728
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-6",
+      "held_frames": [
+        "endurance-light-desktop-0117-caption-6-held-01.png",
+        "endurance-light-desktop-0118-caption-6-held-02.png",
+        "endurance-light-desktop-0119-caption-6-held-03.png",
+        "endurance-light-desktop-0120-caption-6-held-04.png",
+        "endurance-light-desktop-0121-caption-6-held-05.png",
+        "endurance-light-desktop-0122-caption-6-held-06.png",
+        "endurance-light-desktop-0123-caption-6-held-07.png",
+        "endurance-light-desktop-0124-caption-6-held-08.png"
+      ],
+      "paint_sample_first": 705,
+      "paint_sample_last": 722,
+      "stdout_markers_while_held": [
+        753,
+        756,
+        759,
+        762,
+        763,
+        766,
+        767,
+        770
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-6",
+      "held_frames": [
+        "endurance-light-desktop-0126-resize-6-held-01.png",
+        "endurance-light-desktop-0127-resize-6-held-02.png",
+        "endurance-light-desktop-0128-resize-6-held-03.png",
+        "endurance-light-desktop-0129-resize-6-held-04.png",
+        "endurance-light-desktop-0130-resize-6-held-05.png",
+        "endurance-light-desktop-0131-resize-6-held-06.png",
+        "endurance-light-desktop-0132-resize-6-held-07.png",
+        "endurance-light-desktop-0133-resize-6-held-08.png"
+      ],
+      "paint_sample_first": 747,
+      "paint_sample_last": 757,
+      "stdout_markers_while_held": [
+        795,
+        797,
+        802,
+        806,
+        808,
+        810
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-7",
+      "held_frames": [
+        "endurance-light-desktop-0135-caption-7-held-01.png",
+        "endurance-light-desktop-0136-caption-7-held-02.png",
+        "endurance-light-desktop-0137-caption-7-held-03.png",
+        "endurance-light-desktop-0138-caption-7-held-04.png",
+        "endurance-light-desktop-0139-caption-7-held-05.png",
+        "endurance-light-desktop-0140-caption-7-held-06.png",
+        "endurance-light-desktop-0141-caption-7-held-07.png",
+        "endurance-light-desktop-0142-caption-7-held-08.png"
+      ],
+      "paint_sample_first": 781,
+      "paint_sample_last": 799,
+      "stdout_markers_while_held": [
+        834,
+        838,
+        839,
+        842,
+        845,
+        847,
+        851,
+        853
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-7",
+      "held_frames": [
+        "endurance-light-desktop-0144-resize-7-held-01.png",
+        "endurance-light-desktop-0145-resize-7-held-02.png",
+        "endurance-light-desktop-0146-resize-7-held-03.png",
+        "endurance-light-desktop-0147-resize-7-held-04.png",
+        "endurance-light-desktop-0148-resize-7-held-05.png",
+        "endurance-light-desktop-0149-resize-7-held-06.png",
+        "endurance-light-desktop-0150-resize-7-held-07.png",
+        "endurance-light-desktop-0151-resize-7-held-08.png"
+      ],
+      "paint_sample_first": 824,
+      "paint_sample_last": 835,
+      "stdout_markers_while_held": [
+        878,
+        880,
+        882,
+        886,
+        888,
+        890,
+        891,
+        893
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-1",
+      "held_frames": [
+        "endurance-light-desktop-0153-sidebar-splitter-1-held-01.png",
+        "endurance-light-desktop-0154-sidebar-splitter-1-held-02.png",
+        "endurance-light-desktop-0155-sidebar-splitter-1-held-03.png",
+        "endurance-light-desktop-0156-sidebar-splitter-1-held-04.png",
+        "endurance-light-desktop-0157-sidebar-splitter-1-held-05.png",
+        "endurance-light-desktop-0158-sidebar-splitter-1-held-06.png",
+        "endurance-light-desktop-0159-sidebar-splitter-1-held-07.png",
+        "endurance-light-desktop-0160-sidebar-splitter-1-held-08.png"
+      ],
+      "paint_sample_first": 860,
+      "paint_sample_last": 874,
+      "stdout_markers_while_held": [
+        919,
+        920,
+        922,
+        926,
+        927,
+        928,
+        930,
+        933
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-2",
+      "held_frames": [
+        "endurance-light-desktop-0162-sidebar-splitter-2-held-01.png",
+        "endurance-light-desktop-0163-sidebar-splitter-2-held-02.png",
+        "endurance-light-desktop-0164-sidebar-splitter-2-held-03.png",
+        "endurance-light-desktop-0165-sidebar-splitter-2-held-04.png",
+        "endurance-light-desktop-0166-sidebar-splitter-2-held-05.png",
+        "endurance-light-desktop-0167-sidebar-splitter-2-held-06.png",
+        "endurance-light-desktop-0168-sidebar-splitter-2-held-07.png",
+        "endurance-light-desktop-0169-sidebar-splitter-2-held-08.png"
+      ],
+      "paint_sample_first": 899,
+      "paint_sample_last": 919,
+      "stdout_markers_while_held": [
+        958,
+        961,
+        963,
+        966,
+        967,
+        971,
+        974,
+        978
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-3",
+      "held_frames": [
+        "endurance-light-desktop-0171-sidebar-splitter-3-held-01.png",
+        "endurance-light-desktop-0172-sidebar-splitter-3-held-02.png",
+        "endurance-light-desktop-0173-sidebar-splitter-3-held-03.png",
+        "endurance-light-desktop-0174-sidebar-splitter-3-held-04.png",
+        "endurance-light-desktop-0175-sidebar-splitter-3-held-05.png",
+        "endurance-light-desktop-0176-sidebar-splitter-3-held-06.png",
+        "endurance-light-desktop-0177-sidebar-splitter-3-held-07.png",
+        "endurance-light-desktop-0178-sidebar-splitter-3-held-08.png"
+      ],
+      "paint_sample_first": 946,
+      "paint_sample_last": 960,
+      "stdout_markers_while_held": [
+        5,
+        7,
+        9,
+        10,
+        13,
+        14,
+        17,
+        19
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-0",
+      "held_frames": [
+        "endurance-dark-desktop-0230-caption-0-held-01.png",
+        "endurance-dark-desktop-0231-caption-0-held-02.png",
+        "endurance-dark-desktop-0232-caption-0-held-03.png",
+        "endurance-dark-desktop-0233-caption-0-held-04.png",
+        "endurance-dark-desktop-0234-caption-0-held-05.png",
+        "endurance-dark-desktop-0235-caption-0-held-06.png",
+        "endurance-dark-desktop-0236-caption-0-held-07.png",
+        "endurance-dark-desktop-0237-caption-0-held-08.png"
+      ],
+      "paint_sample_first": 1530,
+      "paint_sample_last": 1546,
+      "stdout_markers_while_held": [
+        608,
+        611,
+        613,
+        614,
+        617,
+        619,
+        621,
+        624
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-0",
+      "held_frames": [
+        "endurance-dark-desktop-0239-resize-0-held-01.png",
+        "endurance-dark-desktop-0240-resize-0-held-02.png",
+        "endurance-dark-desktop-0241-resize-0-held-03.png",
+        "endurance-dark-desktop-0242-resize-0-held-04.png",
+        "endurance-dark-desktop-0243-resize-0-held-05.png",
+        "endurance-dark-desktop-0244-resize-0-held-06.png",
+        "endurance-dark-desktop-0245-resize-0-held-07.png",
+        "endurance-dark-desktop-0246-resize-0-held-08.png"
+      ],
+      "paint_sample_first": 1570,
+      "paint_sample_last": 1577,
+      "stdout_markers_while_held": [
+        648,
+        649,
+        651,
+        655,
+        656,
+        658,
+        660
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-1",
+      "held_frames": [
+        "endurance-dark-desktop-0248-caption-1-held-01.png",
+        "endurance-dark-desktop-0249-caption-1-held-02.png",
+        "endurance-dark-desktop-0250-caption-1-held-03.png",
+        "endurance-dark-desktop-0251-caption-1-held-04.png",
+        "endurance-dark-desktop-0252-caption-1-held-05.png",
+        "endurance-dark-desktop-0253-caption-1-held-06.png",
+        "endurance-dark-desktop-0254-caption-1-held-07.png",
+        "endurance-dark-desktop-0255-caption-1-held-08.png"
+      ],
+      "paint_sample_first": 1601,
+      "paint_sample_last": 1615,
+      "stdout_markers_while_held": [
+        684,
+        687,
+        689,
+        692,
+        695,
+        697,
+        699
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-1",
+      "held_frames": [
+        "endurance-dark-desktop-0257-resize-1-held-01.png",
+        "endurance-dark-desktop-0258-resize-1-held-02.png",
+        "endurance-dark-desktop-0259-resize-1-held-03.png",
+        "endurance-dark-desktop-0260-resize-1-held-04.png",
+        "endurance-dark-desktop-0261-resize-1-held-05.png",
+        "endurance-dark-desktop-0262-resize-1-held-06.png",
+        "endurance-dark-desktop-0263-resize-1-held-07.png",
+        "endurance-dark-desktop-0264-resize-1-held-08.png"
+      ],
+      "paint_sample_first": 1643,
+      "paint_sample_last": 1650,
+      "stdout_markers_while_held": [
+        728,
+        729,
+        731,
+        733,
+        734,
+        736,
+        737
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-2",
+      "held_frames": [
+        "endurance-dark-desktop-0266-caption-2-held-01.png",
+        "endurance-dark-desktop-0267-caption-2-held-02.png",
+        "endurance-dark-desktop-0268-caption-2-held-03.png",
+        "endurance-dark-desktop-0269-caption-2-held-04.png",
+        "endurance-dark-desktop-0270-caption-2-held-05.png",
+        "endurance-dark-desktop-0271-caption-2-held-06.png",
+        "endurance-dark-desktop-0272-caption-2-held-07.png",
+        "endurance-dark-desktop-0273-caption-2-held-08.png"
+      ],
+      "paint_sample_first": 1676,
+      "paint_sample_last": 1691,
+      "stdout_markers_while_held": [
+        764,
+        766,
+        769,
+        770,
+        774,
+        776,
+        778,
+        779
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-2",
+      "held_frames": [
+        "endurance-dark-desktop-0275-resize-2-held-01.png",
+        "endurance-dark-desktop-0276-resize-2-held-02.png",
+        "endurance-dark-desktop-0277-resize-2-held-03.png",
+        "endurance-dark-desktop-0278-resize-2-held-04.png",
+        "endurance-dark-desktop-0279-resize-2-held-05.png",
+        "endurance-dark-desktop-0280-resize-2-held-06.png",
+        "endurance-dark-desktop-0281-resize-2-held-07.png",
+        "endurance-dark-desktop-0282-resize-2-held-08.png"
+      ],
+      "paint_sample_first": 1717,
+      "paint_sample_last": 1733,
+      "stdout_markers_while_held": [
+        805,
+        809,
+        811,
+        813,
+        816,
+        819,
+        821,
+        823
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-3",
+      "held_frames": [
+        "endurance-dark-desktop-0284-caption-3-held-01.png",
+        "endurance-dark-desktop-0285-caption-3-held-02.png",
+        "endurance-dark-desktop-0286-caption-3-held-03.png",
+        "endurance-dark-desktop-0287-caption-3-held-04.png",
+        "endurance-dark-desktop-0288-caption-3-held-05.png",
+        "endurance-dark-desktop-0289-caption-3-held-06.png",
+        "endurance-dark-desktop-0290-caption-3-held-07.png",
+        "endurance-dark-desktop-0291-caption-3-held-08.png"
+      ],
+      "paint_sample_first": 1758,
+      "paint_sample_last": 1774,
+      "stdout_markers_while_held": [
+        848,
+        850,
+        854,
+        855,
+        857,
+        858,
+        861,
+        865
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-3",
+      "held_frames": [
+        "endurance-dark-desktop-0293-resize-3-held-01.png",
+        "endurance-dark-desktop-0294-resize-3-held-02.png",
+        "endurance-dark-desktop-0295-resize-3-held-03.png",
+        "endurance-dark-desktop-0296-resize-3-held-04.png",
+        "endurance-dark-desktop-0297-resize-3-held-05.png",
+        "endurance-dark-desktop-0298-resize-3-held-06.png",
+        "endurance-dark-desktop-0299-resize-3-held-07.png",
+        "endurance-dark-desktop-0300-resize-3-held-08.png"
+      ],
+      "paint_sample_first": 1801,
+      "paint_sample_last": 1808,
+      "stdout_markers_while_held": [
+        892,
+        894,
+        897,
+        898,
+        899,
+        901,
+        903
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-4",
+      "held_frames": [
+        "endurance-dark-desktop-0302-caption-4-held-01.png",
+        "endurance-dark-desktop-0303-caption-4-held-02.png",
+        "endurance-dark-desktop-0304-caption-4-held-03.png",
+        "endurance-dark-desktop-0305-caption-4-held-04.png",
+        "endurance-dark-desktop-0306-caption-4-held-05.png",
+        "endurance-dark-desktop-0307-caption-4-held-06.png",
+        "endurance-dark-desktop-0308-caption-4-held-07.png",
+        "endurance-dark-desktop-0309-caption-4-held-08.png"
+      ],
+      "paint_sample_first": 1835,
+      "paint_sample_last": 1850,
+      "stdout_markers_while_held": [
+        930,
+        932,
+        934,
+        935,
+        939,
+        942,
+        945,
+        946
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-4",
+      "held_frames": [
+        "endurance-dark-desktop-0311-resize-4-held-01.png",
+        "endurance-dark-desktop-0312-resize-4-held-02.png",
+        "endurance-dark-desktop-0313-resize-4-held-03.png",
+        "endurance-dark-desktop-0314-resize-4-held-04.png",
+        "endurance-dark-desktop-0315-resize-4-held-05.png",
+        "endurance-dark-desktop-0316-resize-4-held-06.png",
+        "endurance-dark-desktop-0317-resize-4-held-07.png",
+        "endurance-dark-desktop-0318-resize-4-held-08.png"
+      ],
+      "paint_sample_first": 1877,
+      "paint_sample_last": 1888,
+      "stdout_markers_while_held": [
+        973,
+        975,
+        977,
+        979,
+        981,
+        985,
+        986
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-5",
+      "held_frames": [
+        "endurance-dark-desktop-0320-caption-5-held-01.png",
+        "endurance-dark-desktop-0321-caption-5-held-02.png",
+        "endurance-dark-desktop-0322-caption-5-held-03.png",
+        "endurance-dark-desktop-0323-caption-5-held-04.png",
+        "endurance-dark-desktop-0324-caption-5-held-05.png",
+        "endurance-dark-desktop-0325-caption-5-held-06.png",
+        "endurance-dark-desktop-0326-caption-5-held-07.png",
+        "endurance-dark-desktop-0327-caption-5-held-08.png"
+      ],
+      "paint_sample_first": 1914,
+      "paint_sample_last": 1928,
+      "stdout_markers_while_held": [
+        13,
+        17,
+        18,
+        20,
+        22,
+        24,
+        25,
+        27
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-5",
+      "held_frames": [
+        "endurance-dark-desktop-0329-resize-5-held-01.png",
+        "endurance-dark-desktop-0330-resize-5-held-02.png",
+        "endurance-dark-desktop-0331-resize-5-held-03.png",
+        "endurance-dark-desktop-0332-resize-5-held-04.png",
+        "endurance-dark-desktop-0333-resize-5-held-05.png",
+        "endurance-dark-desktop-0334-resize-5-held-06.png",
+        "endurance-dark-desktop-0335-resize-5-held-07.png",
+        "endurance-dark-desktop-0336-resize-5-held-08.png"
+      ],
+      "paint_sample_first": 1954,
+      "paint_sample_last": 1968,
+      "stdout_markers_while_held": [
+        53,
+        55,
+        57,
+        58,
+        61,
+        64,
+        66,
+        69
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-6",
+      "held_frames": [
+        "endurance-dark-desktop-0338-caption-6-held-01.png",
+        "endurance-dark-desktop-0339-caption-6-held-02.png",
+        "endurance-dark-desktop-0340-caption-6-held-03.png",
+        "endurance-dark-desktop-0341-caption-6-held-04.png",
+        "endurance-dark-desktop-0342-caption-6-held-05.png",
+        "endurance-dark-desktop-0343-caption-6-held-06.png",
+        "endurance-dark-desktop-0344-caption-6-held-07.png",
+        "endurance-dark-desktop-0345-caption-6-held-08.png"
+      ],
+      "paint_sample_first": 1993,
+      "paint_sample_last": 2006,
+      "stdout_markers_while_held": [
+        94,
+        97,
+        98,
+        100,
+        102,
+        103,
+        104,
+        107
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-6",
+      "held_frames": [
+        "endurance-dark-desktop-0347-resize-6-held-01.png",
+        "endurance-dark-desktop-0348-resize-6-held-02.png",
+        "endurance-dark-desktop-0349-resize-6-held-03.png",
+        "endurance-dark-desktop-0350-resize-6-held-04.png",
+        "endurance-dark-desktop-0351-resize-6-held-05.png",
+        "endurance-dark-desktop-0352-resize-6-held-06.png",
+        "endurance-dark-desktop-0353-resize-6-held-07.png",
+        "endurance-dark-desktop-0354-resize-6-held-08.png"
+      ],
+      "paint_sample_first": 2030,
+      "paint_sample_last": 2041,
+      "stdout_markers_while_held": [
+        132,
+        135,
+        136,
+        140,
+        143,
+        145,
+        147
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "caption-7",
+      "held_frames": [
+        "endurance-dark-desktop-0356-caption-7-held-01.png",
+        "endurance-dark-desktop-0357-caption-7-held-02.png",
+        "endurance-dark-desktop-0358-caption-7-held-03.png",
+        "endurance-dark-desktop-0359-caption-7-held-04.png",
+        "endurance-dark-desktop-0360-caption-7-held-05.png",
+        "endurance-dark-desktop-0361-caption-7-held-06.png",
+        "endurance-dark-desktop-0362-caption-7-held-07.png",
+        "endurance-dark-desktop-0363-caption-7-held-08.png"
+      ],
+      "paint_sample_first": 2066,
+      "paint_sample_last": 2086,
+      "stdout_markers_while_held": [
+        172,
+        175,
+        177,
+        180,
+        184,
+        187,
+        189,
+        192
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "resize-7",
+      "held_frames": [
+        "endurance-dark-desktop-0365-resize-7-held-01.png",
+        "endurance-dark-desktop-0366-resize-7-held-02.png",
+        "endurance-dark-desktop-0367-resize-7-held-03.png",
+        "endurance-dark-desktop-0368-resize-7-held-04.png",
+        "endurance-dark-desktop-0369-resize-7-held-05.png",
+        "endurance-dark-desktop-0370-resize-7-held-06.png",
+        "endurance-dark-desktop-0371-resize-7-held-07.png",
+        "endurance-dark-desktop-0372-resize-7-held-08.png"
+      ],
+      "paint_sample_first": 2111,
+      "paint_sample_last": 2124,
+      "stdout_markers_while_held": [
+        218,
+        219,
+        222,
+        223,
+        226,
+        227,
+        231
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-1",
+      "held_frames": [
+        "endurance-dark-desktop-0374-sidebar-splitter-1-held-01.png",
+        "endurance-dark-desktop-0375-sidebar-splitter-1-held-02.png",
+        "endurance-dark-desktop-0376-sidebar-splitter-1-held-03.png",
+        "endurance-dark-desktop-0377-sidebar-splitter-1-held-04.png",
+        "endurance-dark-desktop-0378-sidebar-splitter-1-held-05.png",
+        "endurance-dark-desktop-0379-sidebar-splitter-1-held-06.png",
+        "endurance-dark-desktop-0380-sidebar-splitter-1-held-07.png",
+        "endurance-dark-desktop-0381-sidebar-splitter-1-held-08.png"
+      ],
+      "paint_sample_first": 2152,
+      "paint_sample_last": 2170,
+      "stdout_markers_while_held": [
+        259,
+        261,
+        264,
+        267,
+        269,
+        272,
+        275,
+        277
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-2",
+      "held_frames": [
+        "endurance-dark-desktop-0383-sidebar-splitter-2-held-01.png",
+        "endurance-dark-desktop-0384-sidebar-splitter-2-held-02.png",
+        "endurance-dark-desktop-0385-sidebar-splitter-2-held-03.png",
+        "endurance-dark-desktop-0386-sidebar-splitter-2-held-04.png",
+        "endurance-dark-desktop-0387-sidebar-splitter-2-held-05.png",
+        "endurance-dark-desktop-0388-sidebar-splitter-2-held-06.png",
+        "endurance-dark-desktop-0389-sidebar-splitter-2-held-07.png",
+        "endurance-dark-desktop-0390-sidebar-splitter-2-held-08.png"
+      ],
+      "paint_sample_first": 2196,
+      "paint_sample_last": 2212,
+      "stdout_markers_while_held": [
+        303,
+        307,
+        308,
+        312,
+        314,
+        315,
+        317,
+        319
+      ],
+      "stdout_changed_while_held": true
+    },
+    {
+      "name": "sidebar-splitter-3",
+      "held_frames": [
+        "endurance-dark-desktop-0392-sidebar-splitter-3-held-01.png",
+        "endurance-dark-desktop-0393-sidebar-splitter-3-held-02.png",
+        "endurance-dark-desktop-0394-sidebar-splitter-3-held-03.png",
+        "endurance-dark-desktop-0395-sidebar-splitter-3-held-04.png",
+        "endurance-dark-desktop-0396-sidebar-splitter-3-held-05.png",
+        "endurance-dark-desktop-0397-sidebar-splitter-3-held-06.png",
+        "endurance-dark-desktop-0398-sidebar-splitter-3-held-07.png",
+        "endurance-dark-desktop-0399-sidebar-splitter-3-held-08.png"
+      ],
+      "paint_sample_first": 2239,
+      "paint_sample_last": 2256,
+      "stdout_markers_while_held": [
+        346,
+        349,
+        351,
+        354,
+        355,
+        358,
+        359,
+        363
+      ],
+      "stdout_changed_while_held": true
+    }
+  ],
+  "recordings": [
+    {
+      "capture": "GetDC(NULL) + BitBlt from actual visible desktop; no PrintWindow; cursor excluded",
+      "capture_bounds": [
+        0,
+        0,
+        1920,
+        1080
+      ],
+      "width": 1920,
+      "height": 1080,
+      "requested_fps": 8,
+      "sampled_frames": 261,
+      "encoded_frames": 261,
+      "sampled_duration_seconds": 32.542517,
+      "effective_sample_fps": 8.02,
+      "sampling_deadlines_missed": 0,
+      "encoder_queue_drops": 0,
+      "interval_ms": {
+        "p50": 125.502,
+        "p95": 130.846,
+        "p99": 137.2,
+        "maximum": 139.45
+      },
+      "video": "endurance-light-desktop-paint.mkv",
+      "video_sha256": "071ede2e4a2ebe7025af6c1792cc5ca18377b35ecfaeadc0241696be4505a1bc",
+      "codec": "FFV1 level 3, RGB lossless (bgr0), intra frames, CRC; nominal-rate playback",
+      "actual_timeline": "endurance-light-desktop-paint-frames.jsonl",
+      "video_timing_limitation": "Playback spacing is nominal, not proof of uniform real sampling. Use JSONL seconds/capture_end_seconds and encoded_index for actual timing; missed slots are not duplicated.",
+      "ffmpeg_command": [
+        "C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pixel_format",
+        "bgr0",
+        "-video_size",
+        "1920x1080",
+        "-framerate",
+        "8",
+        "-i",
+        "pipe:0",
+        "-an",
+        "-c:v",
+        "ffv1",
+        "-level",
+        "3",
+        "-g",
+        "1",
+        "-slicecrc",
+        "1",
+        "-pix_fmt",
+        "bgr0",
+        "-threads",
+        "2",
+        "D:\\a\\_temp\\serialctl-endurance\\endurance-light-desktop-paint.mkv"
+      ],
+      "ffmpeg_log": "endurance-light-desktop-paint-ffmpeg.log",
+      "sampling_error": null,
+      "encoder_error": null,
+      "neutral_light_patch_oracle_enabled": false,
+      "neutral_light_patch_candidate_frames": 0,
+      "neutral_light_patch_candidates": [],
+      "saved_screen_samples": [
+        {
+          "path": "endurance-light-desktop-paint-00000-initial.png",
+          "sha256": "8a21a9a09415d7d08942b8262e3a53d74bb95785284ac2223f8262f8b0772c08",
+          "sample_index": 0,
+          "encoded_index": 0,
+          "phase": "initial",
+          "capture_bounds": [
+            0,
+            0,
+            1920,
+            1080
+          ],
+          "seconds": 16.51441
+        }
+      ],
+      "distinct_stdout_markers": 260
+    },
+    {
+      "capture": "GetDC(NULL) + BitBlt from actual visible desktop; no PrintWindow; cursor excluded",
+      "capture_bounds": [
+        0,
+        0,
+        1920,
+        1080
+      ],
+      "width": 1920,
+      "height": 1080,
+      "requested_fps": 8,
+      "sampled_frames": 266,
+      "encoded_frames": 266,
+      "sampled_duration_seconds": 33.20629,
+      "effective_sample_fps": 8.011,
+      "sampling_deadlines_missed": 0,
+      "encoder_queue_drops": 0,
+      "interval_ms": {
+        "p50": 125.517,
+        "p95": 131.469,
+        "p99": 136.252,
+        "maximum": 141.337
+      },
+      "video": "endurance-dark-desktop-paint.mkv",
+      "video_sha256": "b1438daa80ef49ffe5c8b5632b6bce474a0c476f07a68211c6728ca1e107127e",
+      "codec": "FFV1 level 3, RGB lossless (bgr0), intra frames, CRC; nominal-rate playback",
+      "actual_timeline": "endurance-dark-desktop-paint-frames.jsonl",
+      "video_timing_limitation": "Playback spacing is nominal, not proof of uniform real sampling. Use JSONL seconds/capture_end_seconds and encoded_index for actual timing; missed slots are not duplicated.",
+      "ffmpeg_command": [
+        "C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pixel_format",
+        "bgr0",
+        "-video_size",
+        "1920x1080",
+        "-framerate",
+        "8",
+        "-i",
+        "pipe:0",
+        "-an",
+        "-c:v",
+        "ffv1",
+        "-level",
+        "3",
+        "-g",
+        "1",
+        "-slicecrc",
+        "1",
+        "-pix_fmt",
+        "bgr0",
+        "-threads",
+        "2",
+        "D:\\a\\_temp\\serialctl-endurance\\endurance-dark-desktop-paint.mkv"
+      ],
+      "ffmpeg_log": "endurance-dark-desktop-paint-ffmpeg.log",
+      "sampling_error": null,
+      "encoder_error": null,
+      "neutral_light_patch_oracle_enabled": false,
+      "neutral_light_patch_candidate_frames": 0,
+      "neutral_light_patch_candidates": [],
+      "saved_screen_samples": [
+        {
+          "path": "endurance-dark-desktop-paint-00000-initial.png",
+          "sha256": "57659d3e10bdd6972b6c1029c054cb6853642a4105b7321c06e1800b5918ade3",
+          "sample_index": 0,
+          "encoded_index": 0,
+          "phase": "initial",
+          "capture_bounds": [
+            0,
+            0,
+            1920,
+            1080
+          ],
+          "seconds": 58.25168
+        }
+      ],
+      "distinct_stdout_markers": 263
+    }
+  ],
+  "run": 41222577746,
+  "program_source": "1bb122aae8378906a54e6ebfe3bbc75eca00320d",
+  "source_artifact": "https://github.com/john2000smith7-del/SerialCtl/actions/runs/41222577746/artifacts/13050268740"
+}

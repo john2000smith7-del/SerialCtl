@@ -1,0 +1,175 @@
+{
+  "program_source": "1bb122aae8378906a54e6ebfe3bbc75eca00320d",
+  "source_run": 41223593934,
+  "capture": "Visible desktop BitBlt, real clicks; reading crops preserve source pixels and exclude system title/shadow. Stable frames after nominal 384ms, NOT proof of <=100ms present. Labels are report annotations.",
+  "frames": [
+    {
+      "theme": "light",
+      "control": 101,
+      "original": "first-screen-light-101-384.png",
+      "sha256": "31570e05be269333cfc4fc7d77c60cdaf616560abcb426eee1c9a1041796e554",
+      "reading_crop": [
+        8,
+        31,
+        425,
+        409
+      ],
+      "source_frame": {
+        "file": "first-screen-light-101-384.png",
+        "nominal_after_tag_ms": 384,
+        "actual_from_click_ms": 502.6,
+        "capture_finished_ms": 520.305,
+        "width": 433,
+        "height": 417
+      },
+      "native_tag_ms": 125
+    },
+    {
+      "theme": "light",
+      "control": 303,
+      "original": "first-screen-light-303-384.png",
+      "sha256": "7ee286d9a7b4a0ec189a71133d556e62d4ff34c5b4a8798d7bb529b5fc9e80d8",
+      "reading_crop": [
+        8,
+        31,
+        444,
+        631
+      ],
+      "source_frame": {
+        "file": "first-screen-light-303-384.png",
+        "nominal_after_tag_ms": 384,
+        "actual_from_click_ms": 557.984,
+        "capture_finished_ms": 587.739,
+        "width": 452,
+        "height": 639
+      },
+      "native_tag_ms": 172
+    },
+    {
+      "theme": "light",
+      "control": 103,
+      "original": "first-screen-light-103-384.png",
+      "sha256": "d5de8cbb1cf36dec66df96eeca017e69528533e0a79d2bd107050f4964b68218",
+      "reading_crop": [
+        8,
+        31,
+        425,
+        265
+      ],
+      "source_frame": {
+        "file": "first-screen-light-103-384.png",
+        "nominal_after_tag_ms": 384,
+        "actual_from_click_ms": 477.108,
+        "capture_finished_ms": 498.688,
+        "width": 433,
+        "height": 273
+      },
+      "native_tag_ms": 94
+    },
+    {
+      "theme": "light",
+      "control": 304,
+      "original": "first-screen-light-304-384.png",
+      "sha256": "dfd7166f6106deca2403cbd147b240a639627366309d098b22a21f71991a24d1",
+      "reading_crop": [
+        8,
+        31,
+        444,
+        487
+      ],
+      "source_frame": {
+        "file": "first-screen-light-304-384.png",
+        "nominal_after_tag_ms": 384,
+        "actual_from_click_ms": 472.919,
+        "capture_finished_ms": 507.143,
+        "width": 452,
+        "height": 495
+      },
+      "native_tag_ms": 94
+    },
+    {
+      "theme": "dark",
+      "control": 101,
+      "original": "first-screen-dark-101-384.png",
+      "sha256": "42b0a48cef1240468971d39a21d669c307b76dde58c390d6e233c49b9c64987d",
+      "reading_crop": [
+        8,
+        31,
+        425,
+        409
+      ],
+      "source_frame": {
+        "file": "first-screen-dark-101-384.png",
+        "nominal_after_tag_ms": 384,
+        "actual_from_click_ms": 483.357,
+        "capture_finished_ms": 513.171,
+        "width": 433,
+        "height": 417
+      },
+      "native_tag_ms": 94
+    },
+    {
+      "theme": "dark",
+      "control": 303,
+      "original": "first-screen-dark-303-384.png",
+      "sha256": "110f5f8cecc8b313eda09ca30d8bdd29688b97142a002718d4bdd7edba1fe2d4",
+      "reading_crop": [
+        8,
+        31,
+        444,
+        631
+      ],
+      "source_frame": {
+        "file": "first-screen-dark-303-384.png",
+        "nominal_after_tag_ms": 384,
+        "actual_from_click_ms": 478.417,
+        "capture_finished_ms": 505.809,
+        "width": 452,
+        "height": 639
+      },
+      "native_tag_ms": 78
+    },
+    {
+      "theme": "dark",
+      "control": 103,
+      "original": "first-screen-dark-103-384.png",
+      "sha256": "fc303ad2ec8a4b259ec49e8cdb559778833563ba0aebd8105d60f4431ca6a79f",
+      "reading_crop": [
+        8,
+        31,
+        425,
+        265
+      ],
+      "source_frame": {
+        "file": "first-screen-dark-103-384.png",
+        "nominal_after_tag_ms": 384,
+        "actual_from_click_ms": 464.432,
+        "capture_finished_ms": 493.673,
+        "width": 433,
+        "height": 273
+      },
+      "native_tag_ms": 78
+    },
+    {
+      "theme": "dark",
+      "control": 304,
+      "original": "first-screen-dark-304-384.png",
+      "sha256": "b342c034e8c87f4022ef8d2a491d4c97a76a701f9bdc823853e909fe8023fff7",
+      "reading_crop": [
+        8,
+        31,
+        444,
+        487
+      ],
+      "source_frame": {
+        "file": "first-screen-dark-304-384.png",
+        "nominal_after_tag_ms": 384,
+        "actual_from_click_ms": 444.798,
+        "capture_finished_ms": 463.438,
+        "width": 452,
+        "height": 495
+      },
+      "native_tag_ms": 62
+    }
+  ]
+}
