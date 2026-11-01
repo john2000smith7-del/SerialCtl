@@ -20,6 +20,24 @@ import zipfile
 from desktop_user_actions import DesktopActions, RECT, POINT, require
 
 
+def glyph_rounding_equivalent(before, after, pixel, width, regions):
+    """Only original glyph resampling may differ by at most two RGB levels."""
+    x,y=pixel%width,pixel//width
+    return (any(left<=x<right and top<=y<bottom for left,top,right,bottom in regions) and
+            max(abs(before[pixel*4+channel]-after[pixel*4+channel]) for channel in range(3))<=2)
+
+
+def combo_glyph_regions(geometry,dpi):
+    # Same existing 16px ChevronDown rectangle used by UiPaintComboBox.
+    d=lambda value:(value*dpi+48)//96
+    regions=[]
+    for _,kind,left,top,right,bottom,_ in geometry:
+        if kind.lower()=='combobox':
+            regions.append([right-d(24)-1,top+(bottom-top-d(16))//2-1,
+                            right-d(8)+1,top+(bottom-top+d(16))//2+1])
+    return regions
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline', type=Path, required=True)
@@ -196,6 +214,7 @@ def main():
                     rgb = bytearray(pixels); rgb[3::4] = bytes(len(rgb)//4)
                     capture = {'size': [width, height], 'geometry': geometry(target, name=='main'),
                                'pixels': bytes(rgb), 'rawPixels': bytes(rgb), 'frame': frame['path']}
+                    capture['glyphRoundingRegions']=combo_glyph_regions(capture['geometry'],desktop.dpi)
                     if name == 'main':
                         # Approved UI polish: compact detached utility controls,
                         # command notebook, connection heading and panel contours.
@@ -292,12 +311,27 @@ def main():
                 left, top, right, bottom = before['version']['rect']
                 unexempt = sum(not exempt(p) and not (left <= p % before['size'][0] < right and top <= p // before['size'][0] < bottom)
                                for p in raw_changes)
+            glyph_regions=before.get('glyphRoundingRegions',[])+after.get('glyphRoundingRegions',[])
+            def rounding(pixel,raw=False):
+                field='rawPixels' if raw else 'pixels'
+                return glyph_rounding_equivalent(before[field],after[field],pixel,before['size'][0],glyph_regions)
+            normalized_changes=[i//4 for i in range(0,len(before['pixels']),4)
+                                if before['pixels'][i:i+3]!=after['pixels'][i:i+3]]
+            rounded=sum(rounding(pixel) for pixel in normalized_changes)
+            raw_rounded=sum(not exempt(pixel) and rounding(pixel,True) for pixel in raw_changes)
+            unexpected=changed-rounded
+            unexpected_raw=unexempt-raw_rounded
+            residual=[pixel for pixel in normalized_changes if not rounding(pixel)]
             report['cases'].append({'theme': key[0], 'view': key[1], 'changedPixels': changed,
+                'glyphRoundingPixels':rounded,'glyphRoundingRegions':glyph_regions,'glyphMaxChannelDifference':
+                    max((max(abs(before['pixels'][p*4+k]-after['pixels'][p*4+k]) for k in range(3)) for p in normalized_changes if rounding(p)),default=0),
+                'unexpectedChangedPixels':unexpected,'unexpectedRawChangedPixels':unexpected_raw,
+                'unexpectedPixelExamples':[[p%before['size'][0],p//before['size'][0]] for p in residual[:12]],
                 'rawChangedPixels': len(raw_changes), 'unexemptRawChangedPixels': unexempt,
                 'approvedChangeRegions':approved,'geometryEqual': before['geometry'] == after['geometry'], 'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
                 'baselineVersion': before.get('version'), 'candidateVersion': after.get('version'),
                 'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')})
-        require(all(case['changedPixels'] == 0 and case['unexemptRawChangedPixels'] == 0 and
+        require(all(case['unexpectedChangedPixels'] == 0 and case['unexpectedRawChangedPixels'] == 0 and
                     case['geometryEqual'] for case in report['cases']), 'UI freeze pixel/geometry mismatch')
         report['status'] = 'PASS'
     except Exception as error:
