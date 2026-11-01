@@ -258,6 +258,7 @@ bool PlinkConnection::IsConnected() const {
 }
 
 void PlinkConnection::ResizeTerminal(int columns, int rows) {
+    std::lock_guard<std::mutex> lock(resizeMutex_);
     terminalColumns_ = std::max(20, columns);
     terminalRows_ = std::max(4, rows);
     if (!resizeState_ || !resizeEvent_) return;
@@ -338,6 +339,7 @@ bool PlinkConnection::CreateResizeChannel(std::wstring& error) {
 }
 
 void PlinkConnection::CloseResizeChannel() {
+    std::lock_guard<std::mutex> lock(resizeMutex_);
     if (resizeState_) {
         UnmapViewOfFile(const_cast<LONG*>(resizeState_));
         resizeState_ = nullptr;

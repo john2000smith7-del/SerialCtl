@@ -54,6 +54,9 @@ private:
     HANDLE resizeEvent_ = nullptr;
     HANDLE resizeMapping_ = nullptr;
     volatile LONG* resizeState_ = nullptr;
+    // Queued dimensions can be delivered while background cleanup stops SSH.
+    // Keep the mapped view/event alive for the complete resize notification.
+    std::mutex resizeMutex_;
     std::atomic_bool cancelStarting_{false};
     std::atomic<bool> stopping_{false};
     std::thread readThread_;

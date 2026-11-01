@@ -29,6 +29,7 @@ int main() {
         const DWORD coldHandles = handlesBefore;
         auto threadsBefore = Threads();
         std::vector<ULONGLONG> elapsed;
+        size_t concurrentResizeCalls = 0;
         nlohmann::json resourceTrace = nlohmann::json::array();
         std::wstring error;
         // First complete cycle initializes process/CRT synchronization caches.
@@ -50,19 +51,48 @@ int main() {
             std::packaged_task<bool()> writeTask([ssh] { std::wstring message; return ssh->Send(Bytes(8 * 1024 * 1024, 'x'), message); });
             auto writer = writeTask.get_future();
             std::thread sender(std::move(writeTask));
+            std::atomic_bool resizing{false};
+            std::atomic_size_t resizeCalls{0};
+            std::thread resizer;
             struct StopAndJoin {
                 std::shared_ptr<PlinkConnection> ssh; std::thread& sender;
-                ~StopAndJoin() { ssh->Stop(); if (sender.joinable()) sender.join(); }
-            } stopAndJoin{ssh, sender};
+                std::atomic_bool& resizing; std::thread& resizer;
+                ~StopAndJoin() {
+                    resizing = false;
+                    if (resizer.joinable()) resizer.join();
+                    ssh->Stop(); if (sender.joinable()) sender.join();
+                }
+            } stopAndJoin{ssh, sender, resizing, resizer};
             if (mode == L"noread") Require(writer.wait_for(50ms) == std::future_status::timeout, "nonreading fixture must fill stdin pipe");
             const auto check = GetTickCount64();
             for (int i = 0; i < 1000; ++i) Require(ssh->IsConnected(), "state stays readable during blocked send");
             Require(GetTickCount64() - check < 100, "connection status blocked behind writer");
+            // The production queue now delivers dimensions on its writer.
+            // Keep issuing real mapped-view updates through Stop's channel
+            // teardown, including calls after Stop, not just before closing.
+            resizing = true;
+            resizer = std::thread([&] {
+                while (resizing) {
+                    const auto count = resizeCalls.load();
+                    ssh->ResizeTerminal(80 + int(count % 100), 24 + int(count % 40));
+                    ++resizeCalls;
+                    std::this_thread::yield();
+                }
+            });
+            const auto resizeDeadline = GetTickCount64() + 500;
+            while (resizeCalls < 100 && GetTickCount64() < resizeDeadline) Sleep(1);
+            Require(resizeCalls >= 100, "concurrent resize writer did not run");
             const auto start = GetTickCount64();
             BackgroundCleanup cleanup;
             cleanup.Retire([ssh] { ssh->Stop(); });
             Require(GetTickCount64() - start < 100, "UI retirement blocked");
             cleanup.Drain();
+            const auto afterStop = resizeCalls.load();
+            const auto postStopDeadline = GetTickCount64() + 500;
+            while (resizeCalls < afterStop + 100 && GetTickCount64() < postStopDeadline) Sleep(1);
+            Require(resizeCalls >= afterStop + 100, "resize after channel teardown did not finish");
+            resizing = false; resizer.join();
+            concurrentResizeCalls += resizeCalls.load();
             const auto stoppedAfter = GetTickCount64() - start;
             Require(stoppedAfter < 1500, "stop deadline");
             // Stop drains the transport write under its mutex. The caller still
@@ -125,6 +155,7 @@ int main() {
         Require(handlesAfter <= handlesBefore + 3 && threadsAfter <= threadsBefore + 1, "SSH handle/thread growth");
         std::sort(elapsed.begin(), elapsed.end());
         nlohmann::json evidence{{"samples", elapsed}, {"maxMs", elapsed.back()}, {"p50Ms", elapsed[elapsed.size()/2]},
+            {"concurrentResizeCalls", concurrentResizeCalls}, {"resizeThroughStop", "PASS"},
             {"coldHandles", coldHandles}, {"handlesBefore", handlesBefore}, {"handlesAfter", handlesAfter}, {"threadsBefore", threadsBefore}, {"threadsAfter", threadsAfter},
             {"resourceTrace", resourceTrace},
             {"scope", "controlled child processes, no SSH server or UART hardware"}};

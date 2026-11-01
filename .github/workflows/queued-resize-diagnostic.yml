@@ -6,6 +6,37 @@ on:
 permissions:
   contents: read
 jobs:
+  ssh-lifetime:
+    name: SSH mapped resize during concurrent shutdown
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile actual SSH transport and controlled child lifecycle
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory ssh-resize-fixture -Force | Out-Null
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 /Fe:ssh-resize-fixture/plink.exe tests/integration/SshLifecycleFake.cpp
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile isolated SSH child' }
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 /I src/connections /I src/platform /I src/app /I third_party/json /Fe:ssh-resize-fixture/ssh-lifecycle-test.exe tests/integration/SshLifecycleTest.cpp src/connections/PlinkConnection.cpp src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp advapi32.lib ole32.lib user32.lib shell32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile actual SSH resize/close regression' }
+      - name: Race mapped resize notifications against close and repeat after teardown
+        shell: powershell
+        run: |
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/ssh-resize-evidence"
+          New-Item -ItemType Directory $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
+          & ./ssh-resize-fixture/ssh-lifecycle-test.exe | Tee-Object "$env:SERIALCTL_EVIDENCE_DIR/result.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'SSH resize/close lifecycle failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-ssh-resize-lifetime
+          path: ${{ runner.temp }}/ssh-resize-evidence/
+          if-no-files-found: warn
+
   resize:
     runs-on: windows-2022
     timeout-minutes: 10
