@@ -88,7 +88,11 @@ def main():
         def close(h):
             user.PostMessageW(h,0x10,0,0);wait(lambda:user.IsWindowEnabled(hwnd))
         def text(h):
-            value=c.create_unicode_buffer(256);user.GetWindowTextW(h,value,256);return value.value
+            # GetWindowTextW cannot read another process's Edit buffer. The
+            # system WM_GETTEXT message is marshalled across this boundary.
+            value=c.create_unicode_buffer(4096)
+            user.SendMessageW(h,0xD,len(value),c.addressof(value))
+            return value.value
         def fill(h,value):
             # SetWindowText does not fill another process's Edit buffer.
             # Windows marshals the system WM_SETTEXT message across processes.
@@ -159,6 +163,7 @@ def main():
             desktop.drag(theme+'-left-restore',(point.x+55,point.y),(point.x,point.y),steps=8)
             desktop.click_control(100);ssh=dialog()
             require(control(ssh,1028) and control(ssh,1029) and not user.GetDlgItem(ssh,1030),'Standard SSH history or removed platform mode regressed')
+            wait(lambda:text(control(ssh,1016))=='22')
             require(text(control(ssh,1016))=='22','New ordinary SSH must default to port 22')
             wait(lambda:user.SendMessageW(control(ssh,1028),0x146,0,0)>=2)
             click(control(ssh,1028));key(0x28);key(0x0D)
