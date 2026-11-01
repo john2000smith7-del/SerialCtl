@@ -1,0 +1,449 @@
+{
+  "disposition": "First main verification only; publication blocked after final source review found SSH resize mapping lifetime race; not final release",
+  "windows_run": 41257530429,
+  "normal_timing": {
+    "source_commit": "6bacd371f877b677dc7f92a26358bca6c93dd7f8",
+    "run": 41257530429,
+    "build_job": 124703767091,
+    "native_tests": 47,
+    "clock": "full initial child GDI paint; WM_NULL responsiveness; not DWM presentation",
+    "cases": {
+      "baseline/light/ssh": {
+        "first_paint_ms": {
+          "first": 156,
+          "warm_n": 30,
+          "warm_p50": 93,
+          "warm_p95": 94,
+          "warm_max": 94
+        },
+        "responsive_ms": {
+          "first": 171,
+          "warm_n": 30,
+          "warm_p50": 109,
+          "warm_p95": 110,
+          "warm_max": 110
+        }
+      },
+      "baseline/light/serial": {
+        "first_paint_ms": {
+          "first": 265,
+          "warm_n": 30,
+          "warm_p50": 235,
+          "warm_p95": 250,
+          "warm_max": 250
+        },
+        "responsive_ms": {
+          "first": 296,
+          "warm_n": 30,
+          "warm_p50": 266,
+          "warm_p95": 282,
+          "warm_max": 297
+        }
+      },
+      "baseline/light/telnet": {
+        "first_paint_ms": {
+          "first": 62,
+          "warm_n": 30,
+          "warm_p50": 47,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 79
+        }
+      },
+      "baseline/light/remote": {
+        "first_paint_ms": {
+          "first": 94,
+          "warm_n": 30,
+          "warm_p50": 78,
+          "warm_p95": 94,
+          "warm_max": 110
+        },
+        "responsive_ms": {
+          "first": 110,
+          "warm_n": 30,
+          "warm_p50": 94,
+          "warm_p95": 110,
+          "warm_max": 110
+        }
+      },
+      "baseline/light/ai": {
+        "first_paint_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 62,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 94,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 79
+        }
+      },
+      "baseline/light/settings": {
+        "first_paint_ms": {
+          "first": 187,
+          "warm_n": 30,
+          "warm_p50": 157,
+          "warm_p95": 172,
+          "warm_max": 188
+        },
+        "responsive_ms": {
+          "first": 203,
+          "warm_n": 30,
+          "warm_p50": 172,
+          "warm_p95": 188,
+          "warm_max": 203
+        }
+      },
+      "candidate/light/ssh": {
+        "first_paint_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 78
+        },
+        "responsive_ms": {
+          "first": 94,
+          "warm_n": 30,
+          "warm_p50": 78,
+          "warm_p95": 94,
+          "warm_max": 94
+        }
+      },
+      "candidate/light/serial": {
+        "first_paint_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 78
+        },
+        "responsive_ms": {
+          "first": 94,
+          "warm_n": 30,
+          "warm_p50": 79,
+          "warm_p95": 94,
+          "warm_max": 94
+        }
+      },
+      "candidate/light/telnet": {
+        "first_paint_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 47,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 78
+        }
+      },
+      "candidate/light/remote": {
+        "first_paint_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 62,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 78,
+          "warm_p95": 79,
+          "warm_max": 79
+        }
+      },
+      "candidate/light/ai": {
+        "first_paint_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 47,
+          "warm_p95": 63,
+          "warm_max": 79
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 79,
+          "warm_max": 94
+        }
+      },
+      "candidate/light/settings": {
+        "first_paint_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 78
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 78,
+          "warm_p95": 94,
+          "warm_max": 94
+        }
+      },
+      "baseline/dark/ssh": {
+        "first_paint_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 78,
+          "warm_p95": 94,
+          "warm_max": 94
+        },
+        "responsive_ms": {
+          "first": 94,
+          "warm_n": 30,
+          "warm_p50": 94,
+          "warm_p95": 110,
+          "warm_max": 110
+        }
+      },
+      "baseline/dark/serial": {
+        "first_paint_ms": {
+          "first": 235,
+          "warm_n": 30,
+          "warm_p50": 250,
+          "warm_p95": 250,
+          "warm_max": 250
+        },
+        "responsive_ms": {
+          "first": 266,
+          "warm_n": 30,
+          "warm_p50": 266,
+          "warm_p95": 282,
+          "warm_max": 297
+        }
+      },
+      "baseline/dark/telnet": {
+        "first_paint_ms": {
+          "first": 62,
+          "warm_n": 30,
+          "warm_p50": 47,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 79,
+          "warm_max": 79
+        }
+      },
+      "baseline/dark/remote": {
+        "first_paint_ms": {
+          "first": 94,
+          "warm_n": 30,
+          "warm_p50": 94,
+          "warm_p95": 94,
+          "warm_max": 110
+        },
+        "responsive_ms": {
+          "first": 110,
+          "warm_n": 30,
+          "warm_p50": 109,
+          "warm_p95": 110,
+          "warm_max": 125
+        }
+      },
+      "baseline/dark/ai": {
+        "first_paint_ms": {
+          "first": 47,
+          "warm_n": 30,
+          "warm_p50": 62,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 79
+        }
+      },
+      "baseline/dark/settings": {
+        "first_paint_ms": {
+          "first": 156,
+          "warm_n": 30,
+          "warm_p50": 156,
+          "warm_p95": 172,
+          "warm_max": 172
+        },
+        "responsive_ms": {
+          "first": 172,
+          "warm_n": 30,
+          "warm_p50": 172,
+          "warm_p95": 188,
+          "warm_max": 188
+        }
+      },
+      "candidate/dark/ssh": {
+        "first_paint_ms": {
+          "first": 62,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 79
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 78,
+          "warm_p95": 94,
+          "warm_max": 94
+        }
+      },
+      "candidate/dark/serial": {
+        "first_paint_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 78,
+          "warm_max": 78
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 79,
+          "warm_p95": 94,
+          "warm_max": 94
+        }
+      },
+      "candidate/dark/telnet": {
+        "first_paint_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 47,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 79,
+          "warm_max": 79
+        }
+      },
+      "candidate/dark/remote": {
+        "first_paint_ms": {
+          "first": 47,
+          "warm_n": 30,
+          "warm_p50": 62,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 78,
+          "warm_p95": 79,
+          "warm_max": 79
+        }
+      },
+      "candidate/dark/ai": {
+        "first_paint_ms": {
+          "first": 63,
+          "warm_n": 30,
+          "warm_p50": 47,
+          "warm_p95": 63,
+          "warm_max": 63
+        },
+        "responsive_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 79,
+          "warm_max": 79
+        }
+      },
+      "candidate/dark/settings": {
+        "first_paint_ms": {
+          "first": 78,
+          "warm_n": 30,
+          "warm_p50": 63,
+          "warm_p95": 79,
+          "warm_max": 79
+        },
+        "responsive_ms": {
+          "first": 94,
+          "warm_n": 30,
+          "warm_p50": 78,
+          "warm_p95": 94,
+          "warm_max": 94
+        }
+      }
+    },
+    "archive": {
+      "url": "SerialCtl-V2.0.17-Win7-x64.zip",
+      "size": 131109716,
+      "sha256": "d4a5262c1aeb6e516a9f3dfacf732be5f6219eef22bafbbdfb2d5b2f27124e82"
+    }
+  },
+  "actual_endurance": {
+    "source_commit": "6bacd371f877b677dc7f92a26358bca6c93dd7f8",
+    "run": "41257530429",
+    "status": "PASS",
+    "modal_cycles": 60,
+    "mouse_releases": 289,
+    "drags_with_output_progress": 38,
+    "rapid_reversals": 40,
+    "rapid_reversal_max_ms": 20.996,
+    "message_response_max_ms": 49.233,
+    "first_resources": {
+      "seconds": 8.335064,
+      "utc": "2026-11-01T01:09:48.547066+00:00",
+      "label": "whole-audit-start",
+      "handles": 265,
+      "gdi": 135,
+      "user": 198
+    },
+    "final_resources": {
+      "seconds": 111.390843,
+      "utc": "2026-11-01T01:11:31.592277+00:00",
+      "label": "whole-audit-end",
+      "handles": 314,
+      "gdi": 120,
+      "user": 199
+    },
+    "sampled_frames": 658,
+    "encoded_frames": 658,
+    "missed_slots": 0,
+    "encoder_drops": 0,
+    "busy_dialog_ready_max_ms": {
+      "100": 110.197,
+      "101": 120.193,
+      "103": 101.54,
+      "303": 158.516,
+      "304": 122.263
+    },
+    "close_seconds": 0.042,
+    "exit_code": 0
+  },
+  "clock": "initial child GDI paint and WM_NULL; not DWM physical presentation",
+  "unrun": [
+    "physical Win7",
+    "field SSH/model gateway",
+    "physical serial board and power",
+    "eight-hour hardware soak"
+  ]
+}
