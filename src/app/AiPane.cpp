@@ -433,7 +433,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
 
     SetPropW(Control(Target), L"SerialCtl.Capsule", reinterpret_cast<HANDLE>(1));
     SetPropW(Control(Target), L"SerialCtl.CompactLabel", reinterpret_cast<HANDLE>(&compactTargetLabel_));
-    Child(L"STATIC", L"模型未获取", Model, SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS);
+    Child(L"STATIC", L"模型未获取", Model, SS_OWNERDRAW | SS_NOTIFY);
     Child(L"BUTTON", L"发送", Send, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"分析日志", Analyze, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON",L"更多日志操作",QuickMenu,BS_OWNERDRAW | WS_TABSTOP);
@@ -582,6 +582,17 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     case WM_DRAWITEM: {
         auto &item = *reinterpret_cast<DRAWITEMSTRUCT *>(l);
+        if (item.CtlType == ODT_STATIC && item.CtlID == Model) {
+            UiBufferedPaint paint(item.hDC, item.rcItem);
+            const auto dc = paint.Dc();
+            const auto colors = UiAiTheme(self->dark_);
+            FillRect(dc, &item.rcItem, self->fieldBrush_);
+            UiBox(dc, item.rcItem, colors.field, UiPanelBorder(self->dark_), UiCapsuleRadius(item.rcItem));
+            RECT label = item.rcItem;
+            label.left += self->D(8); label.right -= self->D(8);
+            Draw(dc, Text(item.hwndItem), label, self->font_, colors.text);
+            return TRUE;
+        }
         if (item.CtlType == ODT_COMBOBOX) {
             UiDrawComboItem(item, self->style_);
             return TRUE;
@@ -618,7 +629,9 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                   UiCapsuleRadius(item.rcItem));
         UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->style_.dpi,
             UiFocusInk(self->dark_, enabled && !quiet && (primary || pressed)));
-        if(item.CtlID==WorkspaceButton) {
+        if (UiDrawButtonGlyph(dc, item, button.ink, self->dpi_)) {
+            return TRUE;
+        } else if(item.CtlID==WorkspaceButton) {
             auto path=self->workspaceDirectory_;while(path.size()>1 && path.back()==L'/')path.pop_back();
             const auto slash=path.rfind(L'/');auto leaf=slash==std::wstring::npos?path:path.substr(slash+1);if(leaf.empty())leaf=L"/";
             UiDrawGlyph(dc,{item.rcItem.left+self->D(4),item.rcItem.top+self->D(6),item.rcItem.left+self->D(20),item.rcItem.top+self->D(22)},button.ink,UiGlyph::Folder);
@@ -650,7 +663,7 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_CTLCOLOREDIT: {
         auto dc = reinterpret_cast<HDC>(w);
         const auto c = UiAiTheme(self->dark_);
-        const bool field = EditColorMessage(m, l);
+        const bool field = EditColorMessage(m, l) || reinterpret_cast<HWND>(l) == self->Control(Model);
         SetTextColor(dc, field && !IsWindowEnabled(reinterpret_cast<HWND>(l)) ? c.muted : c.text);
         SetBkColor(dc, field ? c.field : c.surface);
         return reinterpret_cast<LRESULT>(field ? self->fieldBrush_ : self->surfaceBrush_);
@@ -690,7 +703,16 @@ void AiPane::Layout() {
     b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(136), std::max(D(88), width/3)), D(220));
     b.ComboVisibleHeight(Control(Target), D(28));
     const int modelLeft=D(16)+std::min(D(136),std::max(D(88),width/3));
-    b.Move(Control(Model),modelLeft,composerTop+D(60),std::max(D(12),width-D(52)-modelLeft),D(28));
+    const int modelAvailable = std::max(D(12), width - D(52) - modelLeft);
+    SIZE modelText{};
+    if (HDC dc = GetDC(window_)) {
+        const auto old = SelectObject(dc, font_);
+        const auto label = Text(Control(Model));
+        GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &modelText);
+        SelectObject(dc, old); ReleaseDC(window_, dc);
+    }
+    b.Move(Control(Model), modelLeft, composerTop + D(60),
+           std::min(modelAvailable, std::max(D(28), static_cast<int>(modelText.cx) + D(16))), D(28));
     b.Show(Control(Model),SW_SHOW);
     b.Move(Control(Send), width - D(8 + Ui::CompactIconButtonSize), composerTop + D(60),
            D(Ui::CompactIconButtonSize), D(Ui::CompactIconButtonSize));
@@ -1359,15 +1381,18 @@ void AiPane::SetStatus(const std::wstring &text) {
 }
 void AiPane::UpdateActions() {
     SetWindowTextW(window_,client_.Ready()?L"AI 已连接":client_.Running()?L"AI 连接中":L"AI 未连接");
-    workspaceTooltip_ = workspaceDirectory_ + (workspaceVerified_ ? std::wstring() : std::wstring(L" · 目录待验证")) + (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器");
-    modelTooltip_ = serverDefaultModel_.empty() ? L"模型未获取" : Wide(serverDefaultModel_);
-    for (int id : {WorkspaceButton, Model}) {
+    const auto updateTip = [&](int id, const std::wstring &next, std::wstring &current) {
+        if (current == next) return;
         TOOLINFOW tip{sizeof(tip)}; tip.uFlags=TTF_IDISHWND|TTF_SUBCLASS;tip.hwnd=window_;
         tip.uId=reinterpret_cast<UINT_PTR>(Control(id));
-        tip.lpszText=const_cast<wchar_t*>((id==Model?modelTooltip_:workspaceTooltip_).c_str());
         SendMessageW(tips_,TTM_DELTOOLW,0,reinterpret_cast<LPARAM>(&tip));
+        current = next;
+        tip.lpszText=const_cast<wchar_t*>(current.c_str());
         SendMessageW(tips_,TTM_ADDTOOLW,0,reinterpret_cast<LPARAM>(&tip));
-    }
+    };
+    updateTip(WorkspaceButton, workspaceDirectory_ + (workspaceVerified_ ? std::wstring() : std::wstring(L" · 目录待验证")) +
+              (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器"), workspaceTooltip_);
+    updateTip(Model, serverDefaultModel_.empty() ? L"模型未获取" : Wide(serverDefaultModel_), modelTooltip_);
     const bool ready = client_.Ready();
     if (!busy_ && companionActivity_ != pet::Activity::Done && companionActivity_ != pet::Activity::Failed && companionActivity_ != pet::Activity::Stopped)
         SetCompanionActivity(ready ? pet::Activity::Idle : client_.Running() ? pet::Activity::Connecting : pet::Activity::Offline);
@@ -2720,7 +2745,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SendMessageW(combo,CB_SETDROPPEDWIDTH,self->D(404),0);
         SendMessageW(combo,CB_LIMITTEXT,4096,0);
         add(L"BUTTON",L"上一级",DirectoryUp,280,92,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON",L"刷新",DirectoryRefresh,356,92,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        UiSetButtonGlyph(add(L"BUTTON",L"刷新",DirectoryRefresh,356,92,64,28,BS_OWNERDRAW | WS_TABSTOP), UiGlyph::Refresh, L"刷新目录");
         add(L"STATIC",L"单击路径查看完整内容；双击编辑。下拉选择子目录。",Note,16,136,404,56,0);
         add(L"BUTTON",L"取消",IDCANCEL,216,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
         add(L"BUTTON",L"切换",IDOK,324,216,96,36,BS_OWNERDRAW | WS_TABSTOP);

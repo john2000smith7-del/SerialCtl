@@ -7,10 +7,10 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $candidate = (Resolve-Path $CandidateArchive).Path
 $baseline = Join-Path $OutputDirectory 'baseline'
 New-Item -ItemType Directory -Force -Path $baseline | Out-Null
-gh release download v2.0.16 --repo $env:GITHUB_REPOSITORY --pattern 'SerialCtl-V2.0.16-Win7-x64.zip' --dir $baseline
+gh release download v2.0.17 --repo $env:GITHUB_REPOSITORY --pattern 'SerialCtl-V2.0.17-Win7-x64.zip' --dir $baseline
 if ($LASTEXITCODE -ne 0) { throw 'Cannot download accepted baseline.' }
-$old = Join-Path $baseline 'SerialCtl-V2.0.16-Win7-x64.zip'
-if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c5609bcdc52753045a90a7839529fa9f9f475067f7d914dcf647030025a47a65') {
+$old = Join-Path $baseline 'SerialCtl-V2.0.17-Win7-x64.zip'
+if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne '4ae5b6999fa9fb843121550b10c891540757b1e038cbe0b56f51b993c9fa386b') {
     throw 'Baseline archive identity mismatch.'
 }
 foreach ($name in @('baseline', 'candidate')) {

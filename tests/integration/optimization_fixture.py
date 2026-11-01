@@ -1,4 +1,4 @@
-"""V2.0.16 actual packaged Windows controls; no device/server claims."""
+"""Approved packaged UI controls and capsules; no device/server claims."""
 import argparse
 import ctypes as c
 from ctypes import wintypes as w
@@ -70,7 +70,8 @@ def main():
             require(not config.is_symlink(),'Linked configuration is unsupported')
             os.replace(config,backup);moved=True
         config.mkdir();created=True
-        (config/'settings.ini').write_text('[Pet]\r\nEnabled=0\r\n[Layout]\r\nRightPanelCollapsed=0\r\n',encoding='ascii')
+        history=json.dumps([{'host':'192.0.2.20','port':10042,'username':'linux','employee':'42','lastSuccess':1}],separators=(',',':'))
+        (config/'settings.ini').write_text('[Pet]\r\nEnabled=0\r\n[Layout]\r\nRightPanelCollapsed=0\r\n[SSH]\r\nHistory='+history+'\r\n',encoding='ascii')
         process=subprocess.Popen([str(app/'serialctl.exe')],cwd=app)
         hwnd=wait(lambda: windows(process.pid))[0]
         user.MoveWindow(hwnd,0,0,1044,760,True)
@@ -94,8 +95,51 @@ def main():
             buffer=c.create_unicode_buffer(value)
             require(user.SendMessageW(h,0xC,0,c.addressof(buffer)),'Cannot fill test control')
             require(user.SendMessageW(h,0xE,0,0)==len(value),'Test control did not receive all characters')
+        def capsule_frame(label):
+            desktop.capture(label)
+            frame,raw=desktop.pending_pixels[-1]
+            left,top,_,_=desktop.desktop_rect()
+            def pixel(x,y):
+                x,y=x-left,y-top
+                require(0<=x<frame['width'] and 0<=y<frame['height'],'Capsule sample outside actual desktop')
+                offset=(y*frame['width']+x)*4
+                return tuple(raw[offset+i] for i in (2,1,0))
+            origin=POINT();user.ClientToScreen(hwnd,c.byref(origin))
+            d=lambda value:round(value*desktop.dpi/96)
+            outside=pixel(origin.x+d(4),origin.y+d(20))
+            first,last=desktop.rect(control(hwnd,100)),desktop.rect(control(hwnd,304))
+            samples=[pixel(first[0],first[1]),pixel(last[2]-1,last[1])]
+            require(all(max(abs(a-b) for a,b in zip(sample,outside))<=2 for sample in samples),
+                    'Navigation end button exposed a square corner outside its capsule: '+repr(samples))
+            status=desktop.rect(control(hwnd,111));line_y=status[1]-d(12)
+            line=pixel(status[0]+d(60),line_y)
+            require(all(pixel(x,line_y)==line for x in range(status[0],status[0]+d(32))),
+                    'Status title interrupted the required continuous hairline')
+            return {'frame':frame['path'],'endCorners':samples,'outside':outside,'statusLine':line}
+        def refresh_glyph(parent,identifier,reference=None):
+            button=control(parent,identifier)
+            require(text(button)=='刷新','Refresh accessible caption was removed')
+            require(int(desktop.user.GetPropW(button,'SerialCtl.ButtonGlyph') or 0)==15,'Refresh did not use the shared artwork')
+            if reference is not None:
+                a,b=desktop.rect(button),desktop.rect(control(parent,reference))
+                require(a[3]-a[1]==b[3]-b[1],'Refresh and its field have different runtime heights')
+            return button
+        def key(vk):
+            user.keybd_event(vk,0,0,0);time.sleep(.01);user.keybd_event(vk,0,2,0)
         for theme in ('light','dark'):
             if theme=='dark':desktop.click_control(104);time.sleep(.15)
+            shots=[capsule_frame(theme+'-capsule-idle')]
+            for identifier in (100,304):
+                bounds=desktop.rect(control(hwnd,identifier));desktop.move_mouse(((bounds[0]+bounds[2])//2,(bounds[1]+bounds[3])//2))
+                time.sleep(.1);shots.append(capsule_frame(theme+'-capsule-hover-'+str(identifier)))
+                desktop.button(True)
+                try:
+                    time.sleep(.1);shots.append(capsule_frame(theme+'-capsule-pressed-'+str(identifier)))
+                finally:
+                    point=POINT(4,4);user.ClientToScreen(hwnd,c.byref(point));desktop.move_mouse((point.x,point.y));desktop.button(False)
+                require(not windows(process.pid,'#32770'),'Cancelled capsule press activated its page')
+            report.setdefault('capsuleFrames',[]).extend(shots)
+            refresh_glyph(hwnd,122)
             # Left lane remains bounded and changes width through actual capture/drag.
             before=desktop.rect(control(hwnd,106))
             point=POINT(196,230);user.ClientToScreen(hwnd,c.byref(point))
@@ -104,8 +148,19 @@ def main():
             require(after[2]-after[0]>before[2]-before[0],'Left sidebar drag did not resize')
             desktop.drag(theme+'-left-restore',(point.x+55,point.y),(point.x,point.y),steps=8)
             desktop.click_control(100);ssh=dialog()
-            require(control(ssh,1028) and control(ssh,1029) and control(ssh,1030),'SSH history/platform controls absent')
+            require(control(ssh,1028) and control(ssh,1029) and not user.GetDlgItem(ssh,1030),'Standard SSH history or removed platform mode regressed')
+            require(text(control(ssh,1016))=='22','New ordinary SSH must default to port 22')
+            wait(lambda:user.SendMessageW(control(ssh,1028),0x146,0,0)>=2)
+            click(control(ssh,1028));key(0x28);key(0x0D)
+            wait(lambda:text(control(ssh,1016))=='10042')
+            require(text(control(ssh,1016))=='10042','Legacy SSH history was interpreted as an employee number')
+            fill(control(ssh,1016),'2222');require(text(control(ssh,1016))=='2222','Custom SSH port was rewritten')
             desktop.capture(theme+'-ssh-history');close(ssh)
+            for identifier in (101,103):
+                desktop.click_control(identifier);connection=dialog()
+                refresh=refresh_glyph(connection,1024,1002 if identifier==101 else 1014)
+                wait(lambda:user.IsWindowEnabled(refresh));click(refresh)
+                desktop.capture(theme+'-refresh-'+str(identifier));close(connection)
             desktop.click_control(303);settings=dialog();gate=control(settings,2507)
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Test must default to off')
             click(gate);password=dialog();fill(control(password,10),'JJ123123');click(control(password,1))

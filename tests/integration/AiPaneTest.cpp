@@ -93,6 +93,54 @@ void CheckHostKeyDialogs(HWND parent, HFONT font) {
 
 namespace serialctl {
 struct AiPaneTestAccess {
+    static void CheckModelCapsules(AiPane &pane) {
+        const auto check = [](bool value, const char *why) { if (!value) throw std::runtime_error(why); };
+        const auto savedModel = pane.serverDefaultModel_;
+        const bool savedDark = pane.dark_;
+        wchar_t savedText[1024]{}; GetWindowTextW(pane.Control(12), savedText, 1024);
+        RECT saved{}; GetWindowRect(pane.window_, &saved);
+        MapWindowPoints(HWND_DESKTOP, GetParent(pane.window_), reinterpret_cast<POINT *>(&saved), 2);
+        unsigned cases = 0;
+        for (bool dark : {false, true}) {
+            pane.Theme(dark);
+            for (int width : {260, 420}) {
+                MoveWindow(pane.window_, saved.left, saved.top, width, 600, TRUE);
+                for (const auto &name : {std::string(), std::string("m"), std::string("fixture-") + std::string(200, 'x')}) {
+                    pane.serverDefaultModel_ = name;
+                    const std::wstring label = name.empty() ? L"模型未获取" : L"默认 · " + std::wstring(name.begin(), name.end());
+                    SetWindowTextW(pane.Control(12), label.c_str());
+                    pane.UpdateActions();
+                    const auto style = GetWindowLongPtrW(pane.Control(12), GWL_STYLE);
+                    check((style & SS_TYPEMASK) == SS_OWNERDRAW && !(style & WS_TABSTOP), "Model capsule became an editable/tab-stop control");
+                    RECT model{}, target{}, send{};
+                    GetWindowRect(pane.Control(12), &model); GetWindowRect(pane.Control(14), &target); GetWindowRect(pane.Control(11), &send);
+                    check(model.left >= target.right + pane.D(8) && model.right <= send.left - pane.D(8) &&
+                          model.bottom - model.top == pane.D(28), "Model capsule overlaps target/send or changed row height");
+                    if (name == "m") check(model.right - model.left < send.left - pane.D(16) - model.left,
+                                            "Short model name unnecessarily fills the whole composer lane");
+                    check(pane.modelTooltip_ == (name.empty() ? L"模型未获取" : std::wstring(name.begin(), name.end())),
+                          "Model tooltip lost the full name or invented a server model");
+                    RedrawWindow(pane.window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+                    HDC dc = GetDC(pane.Control(12));
+                    const bool cleanCorner = dc && GetPixel(dc, 0, 0) == UiAiTheme(dark).field;
+                    const bool outlined = dc && GetPixel(dc, 0, pane.D(14)) != UiAiTheme(dark).field;
+                    if (dc) ReleaseDC(pane.Control(12), dc);
+                    check(cleanCorner, "Rectangular model background escaped onto the composer");
+                    check(outlined, "Model caption lost its capsule outline");
+                    const auto image = std::wstring(L"v218-model-") + (dark ? L"dark-" : L"light-") +
+                        std::to_wstring(width) + (name.empty() ? L"-unknown.png" : name == "m" ? L"-short.png" : L"-long.png");
+                    ui_test::SaveUiEvidence(pane.window_, image);
+                    ++cases;
+                }
+            }
+        }
+        pane.serverDefaultModel_ = savedModel;
+        SetWindowTextW(pane.Control(12), savedText);
+        pane.Theme(savedDark);
+        MoveWindow(pane.window_, saved.left, saved.top, saved.right - saved.left, saved.bottom - saved.top, TRUE);
+        pane.UpdateActions();
+        std::cout << "MODEL_CAPSULE_CASES=" << cases << " PASS: empty/short/long model, both palettes, narrow/normal, readonly, tooltip and composer corner\n";
+    }
     static void CALLBACK TechnicalTick(HWND parent, UINT, UINT_PTR timer, DWORD) {
         struct Find {
             static BOOL CALLBACK Each(HWND h, LPARAM) {
@@ -338,6 +386,7 @@ struct AiPaneTestAccess {
         GetClassNameW(pane.Control(12), modelClass, 32);
         require(_wcsicmp(modelClass, L"Static") == 0 && !pane.Control(13),
                 "Model must be read-only server default without refresh/manual controls");
+        CheckModelCapsules(pane);
         require(pane.target_.empty(), "AI must not select a local serial port by default");
         require(SendMessageW(pane.Control(14), CB_GETCOUNT, 0, 0) == 3,
                 "Target picker must offer explicit selection plus remote-IP discovery");

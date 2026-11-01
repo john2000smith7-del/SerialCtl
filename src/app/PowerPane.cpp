@@ -1345,7 +1345,8 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         auto old = SelectObject(item.hDC, item.CtlID >= 90 ? self->smallFont_ : self->font_);
         RECT rect = item.rcItem;
         auto value = self->Text(item.hwndItem);
-        DrawTextW(item.hDC, value.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        if (!UiDrawButtonGlyph(item.hDC, item, GetTextColor(item.hDC), self->dpi_))
+            DrawTextW(item.hDC, value.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         SelectObject(item.hDC, old);
         return TRUE;
     }
@@ -1415,7 +1416,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         add(L"STATIC", L"设备 / COM 口", -1, 16, 80, 200);
         data->resource = add(L"COMBOBOX", L"", 101, 16, 108, 300, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
         data->port = add(L"COMBOBOX", L"", 102, 16, 108, 300, WS_TABSTOP | CBS_DROPDOWNLIST, 200);
-        add(L"BUTTON", L"刷新", 103, 328, 108, 88, WS_TABSTOP | BS_OWNERDRAW);
+        UiSetButtonGlyph(add(L"BUTTON", L"刷新", 103, 328, 108, 88, WS_TABSTOP | BS_OWNERDRAW), UiGlyph::Refresh, L"刷新设备列表");
         add(L"STATIC", L"波特率", 110, 16, 156, 92);
         add(L"STATIC", L"数据位", 111, 120, 156, 92);
         add(L"STATIC", L"校验", 112, 224, 156, 92);

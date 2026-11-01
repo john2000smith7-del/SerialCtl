@@ -2746,6 +2746,7 @@ void MainWindow::CreateControls() {
     sftpClearTransfersButton_ = CreateChild(L"BUTTON", L"清理", BS_OWNERDRAW, IdSftpClearTransfers);
     sftpUpButton_ = CreateChild(L"BUTTON", L"上级", BS_OWNERDRAW, IdSftpUp);
     sftpRefreshButton_ = CreateChild(L"BUTTON", L"刷新", BS_OWNERDRAW, IdSftpRefresh);
+    UiSetButtonGlyph(sftpRefreshButton_, UiGlyph::Refresh, L"刷新目录");
     sftpUploadButton_ = CreateChild(L"BUTTON", L"上传", BS_OWNERDRAW, IdSftpUpload);
     sftpDownloadButton_ = CreateChild(L"BUTTON", L"下载", BS_OWNERDRAW, IdSftpDownload);
     RefreshSftpTransferList();
@@ -2941,7 +2942,7 @@ void MainWindow::PaintWindow(HDC dc) {
     const Palette colors = Colors(darkMode_);
     FillRect(dc, &client, windowBrush_);
     const RECT toolbar = NavigationFrame(client.right);
-    DrawRoundedBox(dc, toolbar, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
+    DrawRoundedBox(dc, toolbar, UiCapsuleRadius(toolbar), colors.panel, UiPanelBorder(darkMode_));
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
                                                           SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
@@ -2954,8 +2955,7 @@ void MainWindow::PaintWindow(HDC dc) {
     DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
     if(!leftPanelCollapsed_ && !leftPanelAnimating_) {
         const int line=leftCard.bottom-Ui::PanelPadding-Ui::CompactHeight-Ui::Space-statusHeight_-Ui::Scale(Ui::StatusHeaderHeight96/2);
-        DrawTextSimple(dc,L"状态",{leftCard.left+Ui::PanelPadding,line-Ui::Scale(10),leftCard.left+Ui::PanelPadding+Ui::Scale(32),line+Ui::Scale(10)},colors.muted,smallFont_,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
-        UiSeparator(dc,leftCard.left+Ui::PanelPadding+Ui::Scale(40),leftCard.right-Ui::PanelPadding,line,colors.border);
+        UiSeparator(dc,leftCard.left+Ui::PanelPadding,leftCard.right-Ui::PanelPadding,line,colors.border);
     }
     DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, LiveMonitorPage() ? UiAiTheme(darkMode_).surface : colors.terminal, UiPanelBorder(darkMode_));
     DrawRoundedBox(dc, rightCard, Ui::CardRadius, LiveMonitorPage() ? colors.terminal : colors.panel, UiPanelBorder(darkMode_));
@@ -3119,6 +3119,16 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         FillRect(dc, &rect, outsideBrush);
         DeleteObject(outsideBrush);
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) {
+            if (id == IdSsh || id == IdAi) {
+                // End controls overlap the parent's curved corner rectangles.
+                // Restore that exact capsule instead of a square panel patch.
+                FillRect(dc, &rect, windowBrush_);
+                RECT client{}; GetClientRect(window_, &client);
+                RECT frame = NavigationFrame(client.right);
+                POINT origin{}; MapWindowPoints(item.hwndItem, window_, &origin, 1);
+                OffsetRect(&frame, -origin.x, -origin.y);
+                DrawRoundedBox(dc, frame, UiCapsuleRadius(frame), colors.panel, UiPanelBorder(darkMode_));
+            }
             const bool down = pressed && enabled;
             const bool inverse = darkMode_ || down;
             const COLORREF ink = !enabled ? colors.muted : down ? RGB(255, 255, 255) : colors.text;
@@ -3312,7 +3322,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                                                           : UiGlyph::Document);
             DrawTextSimple(dc, ControlText(item.hwndItem), text, color, uiFont_,
                            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        } else {
+        } else if (!UiDrawButtonGlyph(dc, item, visual.ink, Ui::Dpi)) {
             DrawTextSimple(dc, ControlText(item.hwndItem), rect, visual.ink, uiFont_,
                            DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
@@ -3682,7 +3692,6 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             };
             add(WC_COMBOBOXW,L"",IDC_SSH_HISTORY,CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS|WS_VSCROLL|WS_TABSTOP);
             add(L"BUTTON",L"成功后保存",IDC_SSH_SAVE,BS_AUTOCHECKBOX|WS_TABSTOP);
-            add(L"BUTTON",L"平台工号模式",IDC_SSH_PLATFORM,BS_AUTOCHECKBOX|WS_TABSTOP);
         }
         self->ConfigureConnectionDialog(dialog);
         CenterOnOwner(dialog, self->window_);
@@ -3696,8 +3705,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"历史连接…"));
             for(const auto& row:self->sshHistory_) {
                 auto label=row["username"].get<std::string>()+"@"+row["host"].get<std::string>();
-                const auto employee=row.value("employee",std::string());
-                label+=employee.empty()?":"+std::to_string(row["port"].get<unsigned>()):u8" · 工号"+employee;
+                label+=":"+std::to_string(row["port"].get<unsigned>());
                 const auto wide=MultiByteToWide(reinterpret_cast<const uint8_t*>(label.data()),label.size(),CP_UTF8);
                 SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(wide.c_str()));
             }
@@ -3757,12 +3765,10 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             self->initializingConnectionDialog_=true;
             SetDlgItemTextW(dialog,IDC_HOST,wide(row["host"].get<std::string>()).c_str());
             SetDlgItemTextW(dialog,IDC_USER,wide(row["username"].get<std::string>()).c_str());
-            const auto employee=row.value("employee",std::string());
-            SetDlgItemTextW(dialog,IDC_PORT,employee.empty()?std::to_wstring(row["port"].get<unsigned>()).c_str():wide(employee).c_str());
+            SetDlgItemTextW(dialog,IDC_PORT,std::to_wstring(row["port"].get<unsigned>()).c_str());
             SetDlgItemTextW(dialog,IDC_PASSWORD,L"");
-            CheckDlgButton(dialog,IDC_SSH_PLATFORM,employee.empty()?BST_UNCHECKED:BST_CHECKED);
             CheckDlgButton(dialog,IDC_SSH_SAVE,BST_CHECKED);
-            SetDlgItemTextW(dialog,IDC_PORT_LABEL,employee.empty()?L"SSH 端口":L"SSH 端口 · 员工工号");
+            SetDlgItemTextW(dialog,IDC_PORT_LABEL,L"SSH 端口");
             self->initializingConnectionDialog_=false;self->RefreshConnectionHostIdentity(dialog);
         }
         return TRUE;
@@ -3791,14 +3797,6 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         if(self->pendingMode_==0 && LOWORD(wParam)==IDC_SSH_HISTORY && HIWORD(wParam)==CBN_SELENDOK) {
             const auto i=SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_GETCURSEL,0,0);
             if(i>0)PostMessageW(dialog,WM_APP+210,i-1,0);return TRUE;
-        }
-        if(self->pendingMode_==0 && LOWORD(wParam)==IDC_SSH_PLATFORM) {
-            const bool platform=IsDlgButtonChecked(dialog,IDC_SSH_PLATFORM)==BST_CHECKED;
-            const auto value=ControlText(GetDlgItem(dialog,IDC_PORT));unsigned port=0;
-            if(platform) {const auto direct=ParsePositive(value);SetDlgItemTextW(dialog,IDC_PORT,direct>10000 && direct<=65535?std::to_wstring(direct-10000).c_str():L"");}
-            else if(PlatformSshPort(value,port))SetDlgItemTextW(dialog,IDC_PORT,std::to_wstring(port).c_str());
-            if(platform && Trim(ControlText(GetDlgItem(dialog,IDC_USER))).empty())SetDlgItemTextW(dialog,IDC_USER,L"linux");
-            SetDlgItemTextW(dialog,IDC_PORT_LABEL,platform?L"员工工号":L"SSH 端口");self->RefreshConnectionHostIdentity(dialog);return TRUE;
         }
         if (self->pendingMode_ == 0 &&
             (LOWORD(wParam) == IDC_HOST || LOWORD(wParam) == IDC_PORT) && HIWORD(wParam) == EN_CHANGE) {
@@ -3849,7 +3847,6 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
 void MainWindow::RefreshConnectionHostIdentity(HWND dialog) {
     const auto host = Trim(ControlText(GetDlgItem(dialog, IDC_HOST)));
     unsigned port = ParsePositive(ControlText(GetDlgItem(dialog, IDC_PORT)));
-    if(IsDlgButtonChecked(dialog,IDC_SSH_PLATFORM)==BST_CHECKED && !PlatformSshPort(ControlText(GetDlgItem(dialog,IDC_PORT)),port))port=0;
     const bool saved = port > 0 && port <= 65535 &&
         !TrustedPuttyHostKey(host, static_cast<std::uint16_t>(port)).empty();
     SetDlgItemTextW(dialog, IDC_HOST_IDENTITY, saved ? L"主机身份已保存" : L"连接时核验主机身份");
@@ -3927,12 +3924,11 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     } else if (ssh) {
         MoveDialogItemDlu(dialog,IDC_SSH_HISTORY,margin,80,124,114);
         MoveDialogItemDlu(dialog,IDC_SSH_SAVE,144,80,82,14);
-        MoveDialogItemDlu(dialog,IDC_SSH_PLATFORM,margin,102,fullWidth,14);
-        MoveDialogItemDlu(dialog, IDC_HOST_IDENTITY, margin, 124, 120, 14);
-        MoveDialogItemDlu(dialog, IDC_HOST_REVERIFY, 144, 120, 82, 18);
-        errorY = 142;
-        buttonY = 154;
-        dialogHeight = 180;
+        MoveDialogItemDlu(dialog, IDC_HOST_IDENTITY, margin, 102, 120, 14);
+        MoveDialogItemDlu(dialog, IDC_HOST_REVERIFY, 144, 98, 82, 18);
+        errorY = 120;
+        buttonY = 132;
+        dialogHeight = 158;
     } else if (share) {
         errorY = 72;
         buttonY = 84;
@@ -3947,6 +3943,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     MoveDialogItemDlu(dialog, IDOK, dialogWidth - 80, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight);
     FitDialogLabels(dialog, true);
+    if (serial || share) UiSetButtonGlyph(GetDlgItem(dialog, IDC_SERIAL_REFRESH), UiGlyph::Refresh, L"刷新串口列表");
 
     const wchar_t* titles[] = {L"新建 SSH 连接", L"新建串口连接", L"新建 Telnet 连接", L"连接共享串口"};
     SetWindowTextW(dialog, titles[pendingMode_]);
@@ -4114,11 +4111,6 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
     DWORD port = ParsePositive(text(IDC_PORT));
     pendingSaveSshHistory_=pendingMode_==0 && IsDlgButtonChecked(dialog,IDC_SSH_SAVE)==BST_CHECKED;
     pendingEmployeeNumber_.clear();
-    if(pendingMode_==0 && IsDlgButtonChecked(dialog,IDC_SSH_PLATFORM)==BST_CHECKED) {
-        unsigned mapped=0;pendingEmployeeNumber_=text(IDC_PORT);
-        if(!PlatformSshPort(pendingEmployeeNumber_,mapped)) {error=L"请输入有效员工工号（1–55535）";return false;}
-        port=mapped;
-    }
     if (pendingHost_.empty() || port == 0 || port > 65535) {
         error = L"主机或端口无效。";
         return false;

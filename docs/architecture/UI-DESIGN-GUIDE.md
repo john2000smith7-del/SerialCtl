@@ -309,3 +309,12 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 - Power is disabled by default. The local password-verified Test switch unlocks the existing service only for this process run; all entry points use that same gate. Locking does not submit power-output changes.
 
 - Desktop pet defaults once to144 logical px, retains later user choices, anchors above the fixed status area, and has no ellipsis hit target. Context/keyboard menus remain. Desktop roaming is independently switchable; pause displacement during hover, drag, menus, opening/manual actions and AI work. Also pause while the pointer is over the active main window or its owned dialogs so the floating status bubble does not move across controls being operated. Use bounded short steps and preserve the manual anchor without writing settings each animation frame.
+
+## V2.0.18 approved interface refinement
+
+- The complete top navigation container uses capsule ends through the shared half-height radius. Retain navigation order, control bounds and spacing. End items must restore the actual curved parent background in every theme/hover/press/focus state.
+- The left status viewport retains its messages and error handling. Its header is a single inset hairline without the literal Status title.
+- Ordinary SSH uses a directly editable SSH port, default 22, with history and host verification retained. Remove the platform/employee-number mode from this form. Restore legacy history by its saved actual port. The separate AI account/employee configuration is unchanged.
+- The AI composer displays the read-only server model as a compact capsule on the composer surface, with the shared border, height and radius. Size to content within the available lane, ellipsize long names and expose the full model in the existing tooltip. Keep it out of keyboard tab order; do not introduce model selection or invent a model name when the server has not returned one.
+- Visible Refresh buttons use the existing shared Refresh artwork, centered at the standard compact glyph size. Preserve native captions for accessibility, tooltip names, command IDs, keyboard activation, disabled states and discovery cancellation. Keep field-adjacent buttons the same runtime height as their field. Menus retain readable command labels.
+- Pet preferences, animation and roaming behavior are outside this change.

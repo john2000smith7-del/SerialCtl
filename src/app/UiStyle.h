@@ -754,6 +754,50 @@ inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, U
 inline void UiStyleButton(HWND h) {
     SetWindowSubclass(h, UiButtonProc, 81, 0);
 }
+inline constexpr wchar_t UiButtonGlyphProperty[] = L"SerialCtl.ButtonGlyph";
+inline constexpr wchar_t UiControlTipsProperty[] = L"SerialCtl.ControlTips";
+inline LRESULT CALLBACK UiControlTipsProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR data) {
+    if (message == WM_NCDESTROY) {
+        RemoveWindowSubclass(h, UiControlTipsProc, id);
+        RemovePropW(h, UiControlTipsProperty);
+        const HWND tips = reinterpret_cast<HWND>(data);
+        if (IsWindow(tips)) DestroyWindow(tips);
+    }
+    return DefSubclassProc(h, message, w, l);
+}
+inline void UiSetButtonGlyph(HWND button, UiGlyph glyph, const wchar_t *tooltip) {
+    // The native caption remains the accessible name; only its painting changes.
+    SetPropW(button, UiButtonGlyphProperty, reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(glyph) + 1));
+    const HWND owner = GetParent(button);
+    HWND tips = reinterpret_cast<HWND>(GetPropW(owner, UiControlTipsProperty));
+    if (!IsWindow(tips)) {
+        tips = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+                              CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                              owner, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!tips) return;
+        if (!SetWindowSubclass(owner, UiControlTipsProc, 95, reinterpret_cast<DWORD_PTR>(tips)) ||
+            !SetPropW(owner, UiControlTipsProperty, tips)) {
+            RemoveWindowSubclass(owner, UiControlTipsProc, 95);
+            DestroyWindow(tips);
+            return;
+        }
+    }
+    TOOLINFOW tool{sizeof(tool)};
+    tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    tool.hwnd = owner;
+    tool.uId = reinterpret_cast<UINT_PTR>(button);
+    tool.lpszText = const_cast<wchar_t *>(tooltip);
+    SendMessageW(tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
+}
+inline bool UiDrawButtonGlyph(HDC dc, const DRAWITEMSTRUCT &item, COLORREF ink, int dpi) {
+    const auto value = reinterpret_cast<UINT_PTR>(GetPropW(item.hwndItem, UiButtonGlyphProperty));
+    if (!value) return false;
+    const int size = MulDiv(16, dpi, 96);
+    const int x = (item.rcItem.left + item.rcItem.right - size) / 2;
+    const int y = (item.rcItem.top + item.rcItem.bottom - size) / 2;
+    UiDrawGlyph(dc, {x, y, x + size, y + size}, ink, static_cast<UiGlyph>(value - 1));
+    return true;
+}
 inline void UiPaintCheckBox(HWND h, HDC target, const UiFieldStyle &style) {
     RECT bounds{};
     GetClientRect(h, &bounds);
