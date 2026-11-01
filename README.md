@@ -6,6 +6,8 @@ SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具�
 
 开发者与 AI 接手先读 [AGENTS.md](AGENTS.md)，再读 [架构](docs/architecture/README.md)、[UI 规则](docs/architecture/UI-DESIGN-GUIDE.md)、[构建发布操作](docs/architecture/build-release.md)和[发布包文件范围](docs/architecture/RELEASE-CONTENTS.md)。Windows 7 SP1 与原签名身份下的自动更新兼容均为发布红线；原私钥不随 clone 获取。
 
+PR、main／标签保护配置、Actions权限、发布证据门槛及当前GitHub套餐／管理权限限制见 [仓库保护与开发发布流程](docs/maintenance/REPOSITORY-PROTECTION.md)。安全问题按 [SECURITY.md](SECURITY.md) 处理；配置文件存在不代表服务端保护已启用。
+
 当前正式版说明见 [V2.0.18](docs/package/RELEASE-NOTES-V2.0.18.md)，实时交付状态以 GitHub Releases 和对应成功 main 构建为准。后续提交的打包规则精简在下一次递增版本的正式交付生效，不覆盖现有 V2.0.18 发布资产。
 
 ## 主要功能

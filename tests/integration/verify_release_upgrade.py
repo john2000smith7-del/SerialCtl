@@ -17,6 +17,17 @@ import threading
 import time
 import uuid
 import zipfile
+import re
+
+
+def archive_version(path):
+    with zipfile.ZipFile(path) as archive:
+        lines = archive.read('VERSION').decode('utf-8-sig').splitlines()
+    require(len(lines) == 2 and lines[0].startswith('PROJECT_VERSION='), 'Invalid client VERSION')
+    version = lines[0].split('=', 1)[1]
+    require(re.fullmatch(r'V(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version), 'Invalid client version')
+    require(lines[1] == 'CPP_VERSION=' + version, 'Client version entries disagree')
+    return version
 
 
 def require(value,message):
@@ -67,7 +78,15 @@ def main():
     buf=c.create_unicode_buffer(260);require(shell.SHGetFolderPathW(None,0x1A,None,0,buf)==0,'No actual profile directory')
     config=Path(buf.value)/'SerialCtl';backup=config.with_name('SerialCtl.upgrade-backup-'+uuid.uuid4().hex)
     moved=False;created=False;server=None;worker=None;process=None
-    report={'status':'RUNNING','candidateSha256':hashlib.sha256(args.candidate.read_bytes()).hexdigest(),'cases':[],'scope':'Real released Windows executables; original production signature; loopback HTTP; actual confirmation, install and healthy restart; no physical devices or Win7 claim'}
+    previous_version, older_version = archive_version(args.previous), archive_version(args.older)
+    candidate_version = archive_version(args.candidate)
+    version_key = lambda value: tuple(map(int, value[1:].split('.')))
+    require(version_key(older_version) < version_key(previous_version) < version_key(candidate_version),
+            'Require distinct older and previous clients and a genuinely newer candidate')
+    report={'status':'RUNNING','candidateSha256':hashlib.sha256(args.candidate.read_bytes()).hexdigest(),
+            'metadataSha256':hashlib.sha256(args.metadata.read_bytes()).hexdigest(),
+            'previousVersion':previous_version,'olderVersion':older_version,'cases':[],
+            'scope':'Real released Windows executables; original production signature; loopback HTTP; actual confirmation, install and healthy restart; no physical devices or Win7 claim'}
     with zipfile.ZipFile(args.candidate) as z:
         expected_exe=hashlib.sha256(z.read('serialctl.exe')).hexdigest()
         expected_version=z.read('VERSION')
@@ -103,7 +122,7 @@ def main():
         (config/'command-notebook.txt').write_text('echo KEEP_UPGRADE_NOTEBOOK\r\n',encoding='utf-8')
         note=(config/'command-notebook.txt').read_bytes()
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);worker=threading.Thread(target=server.serve_forever);worker.start()
-        for label,archive in (('V2.0.17',args.previous),('V2.0.6',args.older)):
+        for label,archive in ((previous_version,args.previous),(older_version,args.older)):
             for mode in ('invalid-signature','corrupt-archive','valid'):
                 invalid=mode=='invalid-signature'
                 corrupt_archive[0]=mode=='corrupt-archive'

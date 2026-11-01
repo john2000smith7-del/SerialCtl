@@ -83,17 +83,19 @@ python tools/new_update_feed.py --verify-archive <同一个最终完整ZIP> --me
 gh workflow run verify-release-upgrade.yml --repo john2000smith7-del/SerialCtl --ref main --json < /path/to/upgrade-inputs.json
 ```
 
-当前升级工作流固定下载 V2.0.17 与 V2.0.6，只能作历史基线；下一版正式发布前必须将真实上一正式版选择、下载与测试结果标记同步核对（当前上一正式版为 V2.0.18）。不要把性能比较的固定基线一起替换。升级验证通过后，发布 JSON 输入为：
+升级工作流自动从最新正式Release选择previous，显式previous_tag也必须等于最新，较老原身份客户端保留V2.0.6。测试从实际ZIP的VERSION读取并记录版本，要求older < previous < candidate；不要把性能比较的固定V2.0.17基线一起替换。桌面和六个真实旧客户端场景均成功后生成与当前main、build_run_id和ZIP绑定的收据，升级收据还绑定原始update.json字节SHA-256。升级验证通过后，发布 JSON 输入为：
 
 ```json
-{"version":"Vx.y.z","release_tag":"vx.y.z","archive_sha256":"<最终完整ZIP的SHA-256>","source_commit":"<成功main构建的完整40位SHA>","build_run_id":"<同一构建ID>","metadata_base64":"<旧客户端实测的同一个update.json的Base64>"}
+{"version":"Vx.y.z","release_tag":"vx.y.z","archive_sha256":"<最终完整ZIP的SHA-256>","source_commit":"<成功main构建的完整40位SHA>","build_run_id":"<同一构建ID>","desktop_run_id":"<匹配桌面成功run>","upgrade_run_id":"<匹配真实旧版升级成功run>","metadata_base64":"<旧客户端实测的同一个update.json的Base64>"}
 ```
 
 ```bash
 gh workflow run publish-release.yml --repo john2000smith7-del/SerialCtl --ref main --json < /path/to/publish-inputs.json
 ```
 
-发布前完整 Windows 工作流、匹配桌面审核和真实旧客户端升级均须成功；参数准确不等于测试已通过。发布后重新下载两个资产，核对版本、原签名、完整 ZIP／运行文件清单及构建来源，再提供真实下载链接。V2.0.18 历史发布与后来的维护提交分别追溯，不为精简包覆盖旧版本。
+发布只允许拥有者身份从main手动触发，串行执行，不再支持release/**请求文件自动发版。tools/release_gate.py核对全部必需Windows作业和完整工作流、精确当前main、桌面／升级收据、ZIP与JSON字节哈希、真实上一正式版；失败或跳过不发布。参数准确不等于测试已通过，收据门槛回归也不等于实际执行了Windows升级。后续仍由原工具复核原公钥签名及完整ZIP，再创建更高版本Release；发布后重新下载两个资产核对。V2.0.18历史发布与维护提交分别追溯，不覆盖旧版本。
+
+分支／标签保护和PR流程的实际状态及拥有者启用入口见 [仓库保护说明](../maintenance/REPOSITORY-PROTECTION.md)。当前管理权限／套餐阻碍未因提交JSON消失，不宣称服务端保护或第三人审批已启用。
 
 ## V2.0.3 已审核的系统依赖
 

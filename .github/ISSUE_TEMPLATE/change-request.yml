@@ -1,0 +1,17 @@
+name: 功能或优化需求
+description: 明确目标和验收条件，避免无关重构
+title: "[需求] "
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 使用场景与需要改变的行为
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 修改范围、应保留行为与验收条件
+      description: Win7 与原身份自动更新兼容属于红线；需求登记不等于已授权开发或发布。
+    validations:
+      required: true

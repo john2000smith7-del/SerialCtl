@@ -1,10 +1,5 @@
 name: Desktop user interaction audit
 on:
-  # A deliberate workflow-file update on the feature branch runs the same
-  # desktop audit against the matching successful Windows build.
-  push:
-    branches: [feat/v2.0.10-arch-final]
-    paths: [.github/workflows/desktop-interaction.yml]
   workflow_run:
     workflows: [Windows Win7 release build]
     types: [completed]
@@ -14,63 +9,30 @@ on:
       build_run:
         description: Successful Windows release build run containing the program to test
         required: true
-        default: '38854030334'
 permissions:
   contents: read
   actions: read
 jobs:
-  resolve-feature-build:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    outputs:
-      build_run: ${{ steps.find.outputs.build_run }}
-    steps:
-      - name: Wait for the Windows build of this exact commit
-        id: find
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 90); do
-            record="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow windows-build.yml --commit "$TARGET_SHA" \
-              --limit 10 --json databaseId,status,conclusion \
-              --jq 'if length > 0 then .[0] | [.databaseId, .status, .conclusion] | @tsv else "" end')"
-            IFS=$'\t' read -r run_id status conclusion <<< "$record"
-            if [[ "${status:-}" == "completed" ]]; then
-              if [[ "${conclusion:-}" != "success" ]]; then
-                echo "Matching Windows build $run_id ended with $conclusion" >&2
-                exit 1
-              fi
-              echo "build_run=$run_id" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            sleep 20
-          done
-          echo "Matching Windows build did not complete in time" >&2
-          exit 1
   desktop:
-    needs: resolve-feature-build
-    if: ${{ always() && ((github.event_name == 'push' && needs.resolve-feature-build.result == 'success') || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Verify tested program source matches production on this commit
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN: ${{ needs.resolve-feature-build.outputs.build_run || inputs.build_run || github.event.workflow_run.id }}
+          BUILD_RUN: ${{ inputs.build_run || github.event.workflow_run.id }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:BUILD_RUN -notmatch '^\d+$') { throw 'Expected numeric build run ID.' }
           $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $run.status -ne 'completed' -or $run.conclusion -ne 'success' -or $run.name -ne 'Windows Win7 release build') { throw 'Source build must have passed the complete Windows verification workflow.' }
+          if ((git rev-parse HEAD).Trim() -ne $run.head_sha -or $run.head_branch -ne 'main') { throw 'Desktop release evidence requires the exact main build commit' }
           git cat-file -e "$($run.head_sha)^{commit}"
           if ($LASTEXITCODE -ne 0) { throw 'Source build commit not present in repository.' }
           git diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1
@@ -78,11 +40,11 @@ jobs:
           New-Item -ItemType Directory "$env:RUNNER_TEMP/serialctl-ui" -Force | Out-Null
           $testSha = git rev-parse HEAD
           [ordered]@{ programSourceSha=$run.head_sha; testSourceSha=$testSha; buildRun=$env:BUILD_RUN; testRun=$env:GITHUB_RUN_ID; programSource='Verified portable artifact, unchanged production source'; os=[Environment]::OSVersion.VersionString; scope='Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices' } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/interaction-receipt.json" -Encoding UTF8
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: SerialCtl-Win7-portable
           path: bin
-          run-id: ${{ needs.resolve-feature-build.outputs.build_run || inputs.build_run || github.event.workflow_run.id }}
+          run-id: ${{ inputs.build_run || github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - name: Verify the packaged resolver child mode
         shell: powershell
@@ -145,7 +107,7 @@ jobs:
             }
             Write-Host "SERIALCTL_UI_REVIEW_END $($image.Name)"
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: SerialCtl-actual-desktop-interaction
@@ -157,7 +119,7 @@ jobs:
             ${{ runner.temp }}/serialctl-ui/*.log
           if-no-files-found: error
           retention-days: 30
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: SerialCtl-paint-regression-recordings
@@ -173,7 +135,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Preserve compact original review evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: SerialCtl-desktop-review
@@ -194,3 +156,18 @@ jobs:
             ${{ runner.temp }}/serialctl-ui/gui-connections-drag-*.png
           if-no-files-found: error
           retention-days: 30
+      - name: Record exact release desktop receipt after successful interactions
+        shell: powershell
+        env:
+          BUILD_RUN: ${{ inputs.build_run || github.event.workflow_run.id }}
+        run: |
+          $archive = @(Get-ChildItem bin -Filter '*.zip')
+          if ($archive.Count -ne 1) { throw 'Expected one exact desktop-tested ZIP' }
+          python tools/release_gate.py receipt --kind desktop --archive $archive[0].FullName --build-run-id $env:BUILD_RUN --source-commit (git rev-parse HEAD) --output "$env:RUNNER_TEMP/release-receipt.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: SerialCtl-release-desktop-receipt
+          path: ${{ runner.temp }}/release-receipt.json
+          if-no-files-found: error
+          retention-days: 90

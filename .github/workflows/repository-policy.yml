@@ -1,0 +1,26 @@
+name: Repository development policy
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  policy:
+    name: Repository policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Validate versioned branch, structured commits, PR and basic secret patterns
+        env:
+          POLICY_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: python tools/repository_policy.py
+      - name: Exercise negative and positive release-gate cases
+        run: python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v

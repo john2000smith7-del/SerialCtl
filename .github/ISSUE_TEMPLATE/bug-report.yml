@@ -1,0 +1,28 @@
+name: 缺陷反馈
+description: 记录实际问题、运行环境和复现步骤
+title: "[缺陷] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: 软件版本与来源
+      description: 例如 V2.0.18；正式包或构建提交
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows 版本、x64、DPI 与主题
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤、实际结果与预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 日志、截图与测试范围
+      description: 注明是否实机或受控环境；请勿上传私钥、令牌、密码、真实设备敏感信息或完整源码备份。

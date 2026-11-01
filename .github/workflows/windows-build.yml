@@ -18,11 +18,11 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Cache pinned official VISA offline installer
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ runner.temp }}/SerialCtl-NIVISA1800runtime.zip
           key: visa18-e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517
@@ -57,13 +57,13 @@ jobs:
       # Preserve the exact native-verified ZIP for diagnostics if a later GUI
       # fixture fails. Publication still requires the complete main run success.
       - name: Upload verified portable bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: SerialCtl-Win7-portable
           path: bin/SerialCtl-*-Win7-x64.zip
           if-no-files-found: error
           retention-days: 30
-      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
       - name: Build connection dialog stopwatch
@@ -155,6 +155,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/integration/test_update_key_recovery.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Describe the exact verified ZIP for offline signing
         shell: powershell
         run: |
@@ -190,8 +192,9 @@ jobs:
           }
       - name: Upload UI evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
+          retention-days: 14
           name: SerialCtl-UI-evidence
           path: |
             ${{ runner.temp }}/serialctl-ui/*.png
@@ -233,7 +236,7 @@ jobs:
           source_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$REVIEW_SOURCE_RUN" --jq .head_sha)
           [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
           echo "REVIEW_SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: SerialCtl-UI-evidence
           path: ui-evidence
@@ -274,11 +277,11 @@ jobs:
           (out / 'source.json').write_text(json.dumps(manifest, indent=2) + '\n')
           print('Preserved', len(selected), 'authentic', page, 'screenshots.')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: SerialCtl-UI-review-${{ matrix.page }}
           path: review-${{ matrix.page }}/
-          retention-days: 30
+          retention-days: 14
 
   endurance:
     name: Packaged frequent-click and layout endurance
@@ -287,8 +290,8 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: SerialCtl-Win7-portable
           path: bin
@@ -318,15 +321,17 @@ jobs:
                   shutil.copy2(path,out/path.name)
           manifest={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
           (out/'review-provenance.json').write_text(json.dumps({'source_commit':os.environ['GITHUB_SHA'],'run':os.environ['GITHUB_RUN_ID'],'files_sha256':manifest,'capture':'Unchanged selected original screenshot and result files; full recording retained in packaged-endurance artifact'},indent=2),encoding='utf-8')
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
+          retention-days: 14
           name: SerialCtl-packaged-endurance-review
           path: ${{ runner.temp }}/serialctl-endurance-review/*
           if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
+          retention-days: 14
           name: SerialCtl-packaged-endurance
           path: |
             ${{ runner.temp }}/serialctl-endurance/*.json
@@ -343,8 +348,8 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
       - name: Compile actual native callback probe with AddressSanitizer
@@ -365,8 +370,9 @@ jobs:
             if (($lines -join "`n") -match 'AddressSanitizer:') { throw 'Sanitizer found a callback lifetime error' }
           }
           $global:LASTEXITCODE = 0
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
+          retention-days: 14
           name: SerialCtl-viewport-address-sanitizer
           path: viewport-lifetime*.txt

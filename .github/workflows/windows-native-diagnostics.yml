@@ -25,7 +25,7 @@ jobs:
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build and execute the new native regression targets first
         shell: powershell
         run: |
@@ -85,9 +85,10 @@ jobs:
               }
             }
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
+          retention-days: 14
           name: SerialCtl-native-regression-diagnostics
           path: ${{ runner.temp }}/native-evidence/
           if-no-files-found: warn
@@ -96,7 +97,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Load exact native-verified program with unchanged production source
@@ -146,9 +147,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/integration/ui_freeze_compare.py --baseline $old[0].FullName --candidate $new[0].FullName --output "$env:RUNNER_TEMP/gui-evidence/freeze"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
+          retention-days: 14
           name: SerialCtl-GUI-diagnostics
           path: |
             ${{ runner.temp }}/gui-evidence/**/*.png
@@ -157,9 +159,10 @@ jobs:
             ${{ runner.temp }}/gui-evidence/**/*.jsonl
             ${{ runner.temp }}/gui-evidence/**/*.log
           if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
+          retention-days: 14
           name: SerialCtl-approved-ui-review
           path: |
             ${{ runner.temp }}/gui-evidence/optimization/*.png
