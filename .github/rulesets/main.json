@@ -75,6 +75,10 @@
           {
             "context": "UI screenshots - workspace",
             "integration_id": 15368
+          },
+          {
+            "context": "Workflow tools on Windows",
+            "integration_id": 15368
           }
         ]
       }

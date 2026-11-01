@@ -35,7 +35,7 @@ python tools/configure_repository.py --apply --output /path/to/settings-applicat
 | 禁止其他仓库复用私有动作／工作流 | [actions-sharing.json](../../.github/actions-sharing.json) | [Actions](https://github.com/john2000smith7-del/SerialCtl/settings/actions) |
 | 允许GitHub官方动作及固定的MSVC初始化动作 | [actions-permissions.json](../../.github/actions-permissions.json)、[allowed-actions.json](../../.github/allowed-actions.json) | [Actions](https://github.com/john2000smith7-del/SerialCtl/settings/actions) |
 
-main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Repository policy、build、Native callback destruction memory safety、Packaged frequent-click and layout endurance，以及五个 UI screenshots 页面作业。严格检查最新 main，不用失败后仍能继续运行的截图作业代替完整构建成功。
+main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Repository policy、Workflow tools on Windows、build、Native callback destruction memory safety、Packaged frequent-click and layout endurance，以及五个 UI screenshots 页面作业。Windows流程工具单独运行15项回归和PowerShell语法解析，不等待完整应用性能测试；它不代表原生应用验收。严格检查最新 main，不用失败后仍能继续运行的截图作业代替完整构建成功。
 
 当前只有拥有者一位维护者，PR规则要求PR和讨论解决，但不设置必须由另一人批准，以免无法自批而锁死。CODEOWNERS负责归属和通知，不等于审批已发生；将来增加维护者后再明确所需批准人数和代码所有者审查。
 

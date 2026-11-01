@@ -24,3 +24,23 @@ jobs:
         run: python tools/repository_policy.py
       - name: Exercise negative and positive release-gate cases
         run: python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v
+  windows-tools:
+    name: Workflow tools on Windows
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Test release evidence helpers and parse PowerShell without publishing
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($path in @(Get-ChildItem scripts,tools -Filter '*.ps1' -Recurse -File)) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][Management.Automation.Language.Parser]::ParseFile($path.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count) { throw "PowerShell syntax check failed: $($path.Name)" }
+          }
