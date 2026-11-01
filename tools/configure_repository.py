@@ -38,6 +38,7 @@ def contains(actual, expected):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Apply reviewed settings; default is read-only")
+    parser.add_argument("--include-rulesets", action="store_true", help="Explicitly include optional paid private-repository rulesets")
     parser.add_argument("--output", type=Path, help="Write actual results outside the repository")
     args = parser.parse_args()
     if args.output and (ROOT in args.output.resolve().parents or not args.output.parent.is_dir()):
@@ -54,6 +55,9 @@ def main():
         "allowed-actions": ("actions/permissions/selected-actions", "allowed-actions.json"),
     }
     for name in ("repository", "main", "release-tags", *action_settings):
+        if name in ("main", "release-tags") and not args.include_rulesets:
+            results.append({"setting": name, "status": "DEFERRED_CURRENT_PLAN"})
+            continue
         try:
             if name == "repository":
                 actual = repo
@@ -86,11 +90,12 @@ def main():
             results.append({"setting": name, "status": status})
         except RuntimeError as error:
             results.append({"setting": name, "status": "BLOCKED", "reason": str(error)})
-    report = {"repository": REPOSITORY, "apply_requested": args.apply, "results": results}
+    report = {"repository": REPOSITORY, "apply_requested": args.apply,
+              "optional_rulesets_included": args.include_rulesets, "results": results}
     if args.output:
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    raise SystemExit(0 if all(r["status"] == "ENFORCED" for r in results) else 2)
+    raise SystemExit(0 if all(r["status"] in ("ENFORCED", "DEFERRED_CURRENT_PLAN") for r in results) else 2)
 
 
 if __name__ == "__main__":

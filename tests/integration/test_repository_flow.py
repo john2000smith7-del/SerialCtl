@@ -3,9 +3,12 @@ import copy
 import hashlib
 import importlib.util
 import json
+import contextlib
+import io
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 
@@ -136,6 +139,23 @@ class ReleaseGateTests(unittest.TestCase):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_current_plan_defers_paid_rulesets_without_requesting_them(self):
+        def response(endpoint, method="GET", data=None):
+            self.assertNotIn("rulesets", endpoint)
+            filename = {"": "repository-settings.json", "actions/permissions/workflow": "workflow-token-permissions.json",
+                        "actions/permissions/access": "actions-sharing.json", "actions/permissions": "actions-permissions.json",
+                        "actions/permissions/selected-actions": "allowed-actions.json"}[endpoint]
+            return json.loads((ROOT / ".github" / filename).read_text())
+        output = io.StringIO()
+        with mock.patch.object(settings, "api", side_effect=response), mock.patch("sys.argv", ["configure_repository.py"]), contextlib.redirect_stdout(output):
+            with self.assertRaises(SystemExit) as exit_result:
+                settings.main()
+        self.assertEqual(exit_result.exception.code, 0)
+        report = json.loads(output.getvalue())
+        self.assertFalse(report["optional_rulesets_included"])
+        self.assertEqual([row["status"] for row in report["results"] if row["setting"] in ("main", "release-tags")],
+                         ["DEFERRED_CURRENT_PLAN", "DEFERRED_CURRENT_PLAN"])
+
     def test_commit_and_markdown_pr_sections(self):
         for prefix in ("", "## "):
             policy.validate_message("build(V2.0.18): 更新流程\n\n" + "\n".join(

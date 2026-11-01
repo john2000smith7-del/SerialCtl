@@ -2,6 +2,8 @@
 
 本页区分服务器实际限制、仓库内可执行流程和待拥有者启用的配置。文件存在不代表 GitHub 已执行对应规则。当前机器版本仍为 V2.0.18，本次不发布新版、不覆盖正式资产，也不改变 Win7 或原身份更新兼容。
 
+用户已明确选择保持当前套餐，先按PR／CI规范运行，不购买Pro。本文Rulesets配置为未来可选预案，不是当前必须升级的待办，也不反复索要付费确认。免费方案的流程约定不能阻止拥有者直接推送或手动绕过，不能把它描述为服务器已强制保护。
+
 ## 当前基础保护状态（2026-11-01 检查快照）
 
 - 仓库实际 private，默认分支 main；正式标签和历史 Release 保留。
@@ -16,13 +18,15 @@
 python tools/configure_repository.py --output /path/to/settings-check.json
 ```
 
-拥有者具备相应套餐和管理权限，审查下列 JSON 后可应用（使用其现有 gh 登录；不向 AI 或聊天发送令牌）：
+拥有者具备相应管理权限，审查下列 JSON 后可应用免费的仓库／Actions设置（默认跳过Rulesets，使用其现有gh登录，不向AI或聊天发送令牌）：
 
 ```bash
 python tools/configure_repository.py --apply --output /path/to/settings-application.json
 ```
 
 每项修改后重新读取 GitHub 验证，全部匹配才标为 ENFORCED；403、套餐限制或配置不同返回非零状态。脚本不改变其他仓库、不改标签、不上传私钥。
+
+付费规则在默认报告中明确为DEFERRED_CURRENT_PLAN，含义是未启用；其他设置须真实匹配才为ENFORCED。未来若拥有者主动改变套餐选择并有管理权限，才显式加--include-rulesets检查／应用这两份规则，不从本次授权推断购买服务。
 
 ## 精确配置与拥有者设置入口
 
@@ -35,7 +39,7 @@ python tools/configure_repository.py --apply --output /path/to/settings-applicat
 | 禁止其他仓库复用私有动作／工作流 | [actions-sharing.json](../../.github/actions-sharing.json) | [Actions](https://github.com/john2000smith7-del/SerialCtl/settings/actions) |
 | 允许GitHub官方动作及固定的MSVC初始化动作 | [actions-permissions.json](../../.github/actions-permissions.json)、[allowed-actions.json](../../.github/allowed-actions.json) | [Actions](https://github.com/john2000smith7-del/SerialCtl/settings/actions) |
 
-main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Repository policy、Workflow tools on Windows、build、Native callback destruction memory safety、Packaged frequent-click and layout endurance，以及五个 UI screenshots 页面作业。Windows流程工具单独运行15项回归和PowerShell语法解析，不等待完整应用性能测试；它不代表原生应用验收。严格检查最新 main，不用失败后仍能继续运行的截图作业代替完整构建成功。
+main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Repository policy、Workflow tools on Windows、build、Native callback destruction memory safety、Packaged frequent-click and layout endurance，以及五个 UI screenshots 页面作业。Windows流程工具单独运行流程回归和PowerShell语法解析，不等待完整应用性能测试；它不代表原生应用验收。严格检查最新 main，不用失败后仍能继续运行的截图作业代替完整构建成功。
 
 当前只有拥有者一位维护者，PR规则要求PR和讨论解决，但不设置必须由另一人批准，以免无法自批而锁死。CODEOWNERS负责归属和通知，不等于审批已发生；将来增加维护者后再明确所需批准人数和代码所有者审查。
 
