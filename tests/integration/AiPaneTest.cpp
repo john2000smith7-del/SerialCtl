@@ -253,6 +253,9 @@ struct AiPaneTestAccess {
             GetWindowRect(combo,&field);GetWindowRect(GetDlgItem(dialog,211),&up);GetWindowRect(GetDlgItem(dialog,212),&refresh);
             if(field.right>=up.left || up.right>=refresh.left || field.bottom-field.top < MulDiv(24,p->dpi,96))
                 throw std::runtime_error("Workspace directory/up/refresh controls overlap or clip");
+            if (reinterpret_cast<UINT_PTR>(GetPropW(GetDlgItem(dialog,212),UiButtonGlyphProperty)) !=
+                    static_cast<UINT_PTR>(UiGlyph::Refresh) + 1)
+                throw std::runtime_error("Workspace refresh lost shared icon or its native command control");
             GetClientRect(dialog,&client);RECT ok{};GetWindowRect(GetDlgItem(dialog,IDOK),&ok);MapWindowPoints(nullptr,dialog,reinterpret_cast<POINT*>(&ok),2);
             if(ok.bottom>client.bottom || ok.right>client.right) throw std::runtime_error("Workspace footer escaped modal");
             ui_test::SaveUiEvidence(dialog,L"v207-workspace-"+std::wstring(p->dark?L"dark":L"light")+L"-"+std::to_wstring(p->dpi)+L"dpi.png");
