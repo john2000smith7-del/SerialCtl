@@ -139,6 +139,8 @@ jobs:
           $old = @(Get-ChildItem $baseline -Filter '*.zip')
           $new = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
           if ($old.Count -ne 1 -or $new.Count -ne 1) { throw 'Expected one exact baseline and candidate package.' }
+          python tests/integration/test_ui_glyph_comparison.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/integration/ui_freeze_compare.py --baseline $old[0].FullName --candidate $new[0].FullName --output "$env:RUNNER_TEMP/serialctl-ui"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Python Linux AI client protocol tests
