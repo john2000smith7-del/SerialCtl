@@ -125,8 +125,14 @@ def main():
             require(text(button)=='刷新','Refresh accessible caption was removed')
             require(int(desktop.user.GetPropW(button,'SerialCtl.ButtonGlyph') or 0)==15,'Refresh did not use the shared artwork')
             if reference is not None:
-                a,b=desktop.rect(button),desktop.rect(control(parent,reference))
-                require(a[3]-a[1]==b[3]-b[1],'Refresh and its field have different runtime heights')
+                field=control(parent,reference)
+                # Edits sit inside their visible rounded frame; compare the
+                # painted field boundary, as production MatchDialogControlHeight does.
+                field=desktop.user.GetPropW(field,'SerialCtl.FieldFrame') or field
+                wait(lambda:desktop.rect(button)[3]-desktop.rect(button)[1]==desktop.rect(field)[3]-desktop.rect(field)[1])
+                a,b=desktop.rect(button),desktop.rect(field)
+                require(a[3]-a[1]==b[3]-b[1],
+                        'Refresh and visible field have different runtime heights: '+repr((identifier,reference,a,b)))
             return button
         def key(vk):
             user.keybd_event(vk,0,0,0);time.sleep(.01);user.keybd_event(vk,0,2,0)
