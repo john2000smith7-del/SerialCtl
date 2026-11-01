@@ -29,7 +29,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $original = (git show 30bcdf5471a899e41f02a8a09a3c37b5c18a1759:tests/integration/SshLifecycleTest.cpp) -join "`n"
+          $original = (git show 50f5fbbd942452a6e71a0a457ff40cef7d1f1f79:tests/integration/SshLifecycleTest.cpp) -join "`n"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot load the original failed harness' }
           $needle = 'resizer = std::thread([&] {'
           if (-not $original.Contains($needle)) { throw 'Original startup injection point changed' }

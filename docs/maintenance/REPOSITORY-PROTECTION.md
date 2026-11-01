@@ -26,7 +26,7 @@ python tools/configure_repository.py --apply --output /path/to/settings-applicat
 
 每项修改后重新读取 GitHub 验证，全部匹配才标为 ENFORCED；403、套餐限制或配置不同返回非零状态。脚本不改变其他仓库、不改标签、不上传私钥。
 
-付费规则在默认报告中明确为DEFERRED_CURRENT_PLAN，含义是未启用；其他设置须真实匹配才为ENFORCED。未来若拥有者主动改变套餐选择并有管理权限，才显式加--include-rulesets检查／应用这两份规则，不从本次授权推断购买服务。
+付费规则在默认报告中明确为DEFERRED_CURRENT_PLAN，表示本次未纳入检查或应用，不能据此断言未来服务端实际状态；其他设置须真实匹配才为ENFORCED。未来若拥有者主动改变套餐选择并有管理权限，才显式加--include-rulesets检查／应用这两份规则，不从本次授权推断购买服务。
 
 ## 精确配置与拥有者设置入口
 
@@ -75,3 +75,5 @@ main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Rep
 已有50f5fbb分支run41292894215在native编译／47项CTest／ZIP验证之后，因dark/serial responsive warm P95=109ms超过100ms失败。相关失败及原始样本保留，未声明修复，也未调整门槛。新流程不能把这次构建当作成功正式发版来源。当前实际CI结果必须重新查询，历史失败不是未来代码自动失败的证明，历史通过也不是未来代码验收凭证。
 
 流程PR的30bcdf5构建run41297573105中，47项CTest有46项通过，ssh_lifecycle报告“concurrent resize writer did not run”。原夹具没有先确认并发线程已获得调度，就开始500ms的进度等待，存在把启动延迟算入工作时间的误报路径；原日志没有调用次数，不能据此断言生产SSH故障或认定唯一根因。只补测试启动握手和诊断，原500ms进度、100ms UI及1500ms停止断言保持；增加一次600ms受控启动延迟，与原夹具作前后对照，正常及延迟证据分别保留。CMake仅新增延迟测试注册，生产源码不改；仍需实际Windows回归证明，不把夹具改动当作现场SSH验收。
+
+针对性Windows运行41299521181已通过旧夹具受控误报复现、新夹具普通及600ms启动延迟、队列和绘制回归。600ms设置只用于冷启动握手前，原500/100/1500ms工作断言保留；新CMake共有48项测试，完整结果另查。诊断基准使用main祖先50f5fbb中相同的旧测试blob（d29de8d9aa639dea63ace30fd2e3200c6948fa7e），不依赖squash后被删除的临时分支提交；这保证仅保留main时仍可复现。

@@ -97,9 +97,12 @@ int main(int argc, char** argv) {
             const auto startupMs = GetTickCount64() - resizeStart;
             const auto resizeDeadline = GetTickCount64() + 500;
             while (resizeCalls < 100 && GetTickCount64() < resizeDeadline) Sleep(1);
-            resizeStartup.push_back({{"cycle", index}, {"startupMs", startupMs}, {"callsBeforeStop", resizeCalls.load()}});
+            // Capture at the deadline: diagnostics must not let a late worker
+            // satisfy the original assertion while console output is written.
+            const auto completedResizes = resizeCalls.load();
+            resizeStartup.push_back({{"cycle", index}, {"startupMs", startupMs}, {"callsBeforeStop", completedResizes}});
             std::cout << "resize_startup=" << resizeStartup.back().dump() << std::endl;
-            Require(resizeCalls >= 100, "concurrent resize writer did not run");
+            Require(completedResizes >= 100, "concurrent resize writer did not run");
             const auto start = GetTickCount64();
             BackgroundCleanup cleanup;
             cleanup.Retire([ssh] { ssh->Stop(); });
