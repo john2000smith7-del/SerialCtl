@@ -6,6 +6,15 @@ SerialCtl 的交付链路固定为：
 check → clean build → test → PE compatibility check → package → extract and verify → bin
 ```
 
+## 环境前提
+
+- 在 Windows 开发机或 windows-2022 CI 执行生产构建。安装 Visual Studio 2022／C++ 桌面开发组件、x64 MSVC 与 Windows SDK；开发机无需是 Win7，但产物必须保持 Win7 SP1 兼容。
+- CMake 至少3.20，cmake.exe 与 ctest.exe 可调用；脚本使用 Visual Studio generator，兼容性检查还需 dumpbin.exe，common.ps1 可通过 vswhere 定位已安装工具。
+- Python 3 用于 CTest 中的客户端测试及完整 ZIP 的更新提取回归；Git 用于来源追踪，OpenSSL 用于隔离测试签名和发布端签名／验签。Windows ZIP 回归可回退到 Git for Windows 的 `C:/Program Files/Git/usr/bin/openssl.exe`；正式签名工具也可显式指定 `--openssl`，先确认实际路径。
+- 打包需要下载 third_party/ni-visa/files.json 固定的官方 NI-VISA ZIP，或通过 SERIALCTL_VISA_CACHE 指定摘要匹配的已有归档；不可达时报告阻碍，不省略驱动或放宽摘要检查。构建 GUI 本身与完整驱动打包是不同阶段。
+- CI 桌面夹具使用 Python 和固定版本 imageio-ffmpeg；这是测试依赖，不是 Windows 产品运行依赖。仅在隔离测试账号运行会修改桌面／测试配置的夹具。
+- GitHub CLI 的私有仓库读取、Actions 调度／下载、推送及发布需要实际授权，clone 不会自动转移旧环境的凭据。原签名私钥在仓库外，位置、原身份指纹与缺失时向用户索取的流程见根 AGENTS.md；禁止上传到 CI。
+
 ## 目录职责
 
 - `build/`：CMake cache、对象、测试程序、依赖临时解包和发布 staging，可随时删除。
@@ -22,22 +31,69 @@ check → clean build → test → PE compatibility check → package → extrac
 .\scripts\package.ps1
 ```
 
-`release.ps1` 按上述顺序执行完整流程。任何 mandatory step 失败都不得在 `bin/` 留下新的正式外观文件。
+`release.ps1` 按上述顺序执行完整流程，正式调用为 `.\scripts\release.ps1`。任何 mandatory step 失败都不得在 `bin/` 留下新的正式外观文件。脚本产出的验证 ZIP 尚不等于正式双文件交付，仍需精确 main 验收、原私钥签名和实际升级验证；同版本 CI 输出不得覆盖已发布资产。
 
 `clean.ps1` 只清理可重新生成的 `build/`。首次目录迁移后可额外使用
 `clean.ps1 -RepositoryHygiene` 清除旧原型的 `bin/obj`、依赖包历史展开副本和已经迁空的目录；它不会删除正式源码、固定依赖输入或 `bin` 中的已验证发布包。
 
 ## 发布内容
 
-打包采用显式 allowlist，不复制整个仓库。压缩包只包含 x64 运行程序、用户文档、版本、第三方声明/许可证、MANIFEST 和包内 SHA-256 清单。PDB、OBJ、测试程序、源码、CMake cache、Git metadata、本机配置及 Secret 一律禁止进入。
+打包采用显式 allowlist，不复制整个仓库。内容范围见 [RELEASE-CONTENTS.md](RELEASE-CONTENTS.md)：保留 x64 运行程序、既有接入工具、完整离线驱动、用户文档、版本、第三方声明/许可证、MANIFEST 和包内 SHA-256 清单；开发验收文档只留源码仓库。PDB、OBJ、测试程序、未批准源码、CMake cache、Git metadata、本机配置及 Secret 一律禁止进入。三个已批准 Python 客户端是运行工具例外，Windows GUI 不需要 Python。
 
-正式包主目录直接包含 serialctl.exe、plink.exe、psftp.exe 和用户说明，驱动位于 drivers 子目录。该项目特例见 `docs/decisions/0001-single-win7-release-bundle.md`。
+正式包主目录直接包含 serialctl.exe、plink.exe、psftp.exe 和用户说明，驱动位于 drivers 子目录。旧 ADR 0001 记录的双架构外层目录是历史决策，当前 x64 平铺规则以本文件、AGENTS 和实际 package.ps1 为准。
 
 ## 云端构建
 
 `.github/workflows/windows-build.yml` 在 windows-2022 运行同一 release.ps1 流程，再启动解压后的 x64 程序进行 UI 冒烟检查并上传便携包。实际 Win7 验收按 docs/testing 执行。
 
-发布工作流使用成功的 main 分支 Windows 构建 run ID、完整源码 SHA 和压缩包 SHA-256，从 Actions 下载已经验证的包再发布，不重新编译，不要求大压缩包进入 Git。发布标签 V1.0.4 对应 v1.0.4，保留历史发布。
+发布工作流使用成功的 main 分支 Windows 构建 run ID、完整源码 SHA 和压缩包 SHA-256，从 Actions 下载已经验证的包再发布，不重新编译，不要求大压缩包进入 Git。正式版本 Vx.y.z 对应 vx.y.z 标签，保留历史发布；新正式交付递增版本。
+
+### 从 Linux 调度 Windows 验证
+
+以下为获得本次授权后的命令模板。先确认仓库权限、最新 main、VERSION 和 GitHub Releases；不要复制旧默认 build_run 或把未完成的 run 当作成功。
+
+```bash
+gh workflow run windows-build.yml --repo john2000smith7-del/SerialCtl --ref main
+gh run list --repo john2000smith7-del/SerialCtl --workflow windows-build.yml --branch main --limit 10 --json databaseId,event,headSha,status,conclusion,url
+gh run view <本次构建ID> --repo john2000smith7-del/SerialCtl --json headSha,event,status,conclusion,jobs,url
+gh run download <本次构建ID> --repo john2000smith7-del/SerialCtl --name SerialCtl-Win7-portable --dir <仓库外新目录>
+gh workflow run desktop-interaction.yml --repo john2000smith7-del/SerialCtl --ref main -f build_run=<同一成功构建ID>
+```
+
+main 成功构建也会触发 workflow_run 桌面审核；核对存在匹配证据后避免重复启动。实际构建在 Windows 托管虚拟机运行，截图和操作夹具也在其桌面执行；Linux 下载和检查 PNG／JSON／录像，不能把 Linux 查看图片写成 Windows／Win7 实测。下载便携包仅供匹配验证，检查来源提交和完整 ZIP 哈希后再选定。
+
+### 原私钥签名与正式发布
+
+签名在授权的原私钥环境执行，使用已验证完整 ZIP：
+
+```bash
+python tools/new_update_feed.py --archive <最终完整ZIP> --output-dir <不存在的双文件目录> --private-key <原私钥受控路径>
+python tools/new_update_feed.py --verify-archive <同一个最终完整ZIP> --metadata <配套update.json>
+```
+
+工具核对原客户端信任头；私钥缺失时按 AGENTS 向用户索取受控位置或安全提供方式，不能生成替代私钥。输出目录只有原字节 ZIP 和其匹配的 update.json。
+
+旧客户端验证与发布使用 workflow_dispatch 的公开 JSON 输入文件，防止长 Base64 在命令行中损坏。用 JSON 序列化工具生成文件，模板中的占位值须替换；不手拼带秘密的 shell 命令、不包含私钥或访问令牌：
+
+```json
+{"build_run_id":"<成功main构建ID>","metadata_base64":"<最终update.json原始字节的Base64>"}
+```
+
+```bash
+gh workflow run verify-release-upgrade.yml --repo john2000smith7-del/SerialCtl --ref main --json < /path/to/upgrade-inputs.json
+```
+
+当前升级工作流固定下载 V2.0.17 与 V2.0.6，只能作历史基线；下一版正式发布前必须将真实上一正式版选择、下载与测试结果标记同步核对（当前上一正式版为 V2.0.18）。不要把性能比较的固定基线一起替换。升级验证通过后，发布 JSON 输入为：
+
+```json
+{"version":"Vx.y.z","release_tag":"vx.y.z","archive_sha256":"<最终完整ZIP的SHA-256>","source_commit":"<成功main构建的完整40位SHA>","build_run_id":"<同一构建ID>","metadata_base64":"<旧客户端实测的同一个update.json的Base64>"}
+```
+
+```bash
+gh workflow run publish-release.yml --repo john2000smith7-del/SerialCtl --ref main --json < /path/to/publish-inputs.json
+```
+
+发布前完整 Windows 工作流、匹配桌面审核和真实旧客户端升级均须成功；参数准确不等于测试已通过。发布后重新下载两个资产，核对版本、原签名、完整 ZIP／运行文件清单及构建来源，再提供真实下载链接。V2.0.18 历史发布与后来的维护提交分别追溯，不为精简包覆盖旧版本。
 
 ## V2.0.3 已审核的系统依赖
 

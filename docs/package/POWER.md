@@ -31,7 +31,7 @@
 
 AI 接口保留状态查询与页面勾选通道的总加电/掉电，组合卡作为整体；模式、参数、保护、任务、预设、面板及诊断仅本机操作。
 
-指令依据 ITECH IT6300 Programming Guide（包含 IT6332A）：[厂商英文版](https://usa.itechate.com/uploadfiles/%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C/user%20manual/it6300/IT6300%20Programming%20Guide-EN.pdf)，[厂商中文编程手册镜像](https://www.jdingtech.com.tw/Official/sharefile/ITECH_Protocol_IT6300_V1.0.0.1.pdf)。当前没有实机，具体固件、接线、设备定时器作用范围与 Win7 驱动仍需按 WIN7-HARDWARE-TEST.md 及 V1.0.5 验收文档人工确认。
+指令依据 ITECH IT6300 Programming Guide（包含 IT6332A）：[厂商英文版](https://usa.itechate.com/uploadfiles/%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C/user%20manual/it6300/IT6300%20Programming%20Guide-EN.pdf)，[厂商中文编程手册镜像](https://www.jdingtech.com.tw/Official/sharefile/ITECH_Protocol_IT6300_V1.0.0.1.pdf)。当前没有实机，具体固件、接线、设备定时器作用范围与 Win7 驱动仍需人工确认；开发验收清单保留在源码仓库 docs/testing/WIN7-HARDWARE-TEST.md，软件包不附带开发测试资料。历史验收记录不等于当前设备已验证。
 
 ## AI 绑定恢复
 

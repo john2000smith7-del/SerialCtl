@@ -1,6 +1,6 @@
 # 分支管理与历史保留
 
-仓库仅长期保留 main。新任务统一使用 `feat/<topic>_YYYYMMDD_HHMM`，时间为北京时间。例：`feat/ui_capsules_20261031_0908`。
+仓库仅长期保留 main。新任务统一使用 `feat/<topic>_v<major>.<minor>.<patch>_YYYYMMDD_HHMM`，时间为北京时间。例：`feat/ui_capsules_v2.0.18_20261031_0908`。每次 commit 使用 `类型(Vx.y.z): 修改摘要`，正文包含修改内容、验证情况、兼容性；完整要求见顶层 AGENTS.md。
 
 该命名匹配 `.github/workflows/windows-build.yml` 已有的 `feat/**` push 规则；无需为了命名更改生产构建或 CI 触发器。单独 `xxx_20261031_0908` 不匹配现有规则。获准推送后还应核对实际 Actions 事件、分支名和提交 SHA，不能把“名字正确”当作“已编译通过”。
 

@@ -4,6 +4,10 @@ SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具�
 
 当前源码版本：`V2.0.18`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。正式便携包须通过 MSVC 与 Windows 兼容性检查后生成。
 
+开发者与 AI 接手先读 [AGENTS.md](AGENTS.md)，再读 [架构](docs/architecture/README.md)、[UI 规则](docs/architecture/UI-DESIGN-GUIDE.md)、[构建发布操作](docs/architecture/build-release.md)和[发布包文件范围](docs/architecture/RELEASE-CONTENTS.md)。Windows 7 SP1 与原签名身份下的自动更新兼容均为发布红线；原私钥不随 clone 获取。
+
+当前正式版说明见 [V2.0.18](docs/package/RELEASE-NOTES-V2.0.18.md)，实时交付状态以 GitHub Releases 和对应成功 main 构建为准。后续提交的打包规则精简在下一次递增版本的正式交付生效，不覆盖现有 V2.0.18 发布资产。
+
 ## 主要功能
 
 - Windows 7 SP1、Windows 10、Windows 11，仅提供 x64 程序。
@@ -122,7 +126,7 @@ SerialCtl/
 
 ## 构建与测试
 
-在 Visual Studio C++、Windows SDK 和 CMake 已安装的开发环境中执行：
+先按[环境前提](docs/architecture/build-release.md#环境前提)安装 Visual Studio C++、Windows SDK、CMake 3.20 或更新版本、Python 3、Git 和 OpenSSL，再在 Windows 开发环境执行：
 
 ```powershell
 .\scripts\build.ps1 -Architecture All -Configuration Release -Clean
@@ -188,7 +192,9 @@ update.json
 
 V2.0.0 操作说明见 [发布包说明](docs/package/README.md)，Linux AI 接入见 [AI 串口说明](docs/package/AI-SERIAL.md)。发布 ZIP 直接在根目录放置 x64 运行程序。
 
-统一协议和客户端说明见 [WEBSOCKET-PROTOCOL.md](docs/architecture/WEBSOCKET-PROTOCOL.md)，本轮状态见 [V1.0.6-ACCEPTANCE.md](docs/testing/V1.0.6-ACCEPTANCE.md)。
+统一协议和客户端说明见 [WEBSOCKET-PROTOCOL.md](docs/architecture/WEBSOCKET-PROTOCOL.md)。[V1.0.6 验收](docs/testing/V1.0.6-ACCEPTANCE.md)是历史记录，不能作为当前版本验收证明。
+
+以下为版本历史摘要，当前普通 SSH 行为以 V2.0.18 说明为准：
 
 V2.0.16 增加平台工号模式（实际 SSH 端口=10000+工号），保留通用直连端口语义。SSH 可选在实际会话建立后保存连接历史；密码不写入历史。宠物增加独立“桌面漫游”开关，右键或 Shift+F10 进入菜单。main 为唯一正式主线，发布资产绑定成功 main 构建的源码提交及原身份签名。
 

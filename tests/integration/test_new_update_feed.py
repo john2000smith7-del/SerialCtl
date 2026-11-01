@@ -241,6 +241,37 @@ class FeedTests(unittest.TestCase):
             feed.build_archive_feed(self.make_archive(), self.output, self.wrong_private, self.header, self.openssl)
         self.assertFalse(self.output.exists())
 
+    def test_archive_with_and_without_historical_acceptance_documents(self):
+        # Older packages legitimately include these optional files. A slimmer
+        # package must sign and verify under the same trust identity and schema.
+        documents = {"AUTO-UPDATE-ACCEPTANCE.md", "V1.0.6-ACCEPTANCE.md",
+                     "WIN7-HARDWARE-TEST.md", "MANUAL-REGRESSION.md"}
+        self.assertTrue(documents <= set(feed.ALLOWED_FILES))
+        payloads = {}
+        for label, include_documents in (("historical", True), ("slim", False)):
+            for name in documents:
+                path = self.package / name
+                if include_documents:
+                    path.write_text("Historical acceptance fixture\n", encoding="utf-8")
+                else:
+                    path.unlink()
+            self.rehash()
+            archive = self.make_archive()
+            destination = self.root / label
+            feed.build_archive_feed(archive, destination, self.private, self.header, self.openssl)
+            self.assertTrue(feed.verify_archive_feed(destination / "update.json",
+                                                    destination / archive.name,
+                                                    self.header, self.openssl)["verified"])
+            self.assertEqual({p.name for p in destination.iterdir()}, {archive.name, "update.json"})
+            payloads[label] = json.loads(json.loads((destination / "update.json").read_text())["payload"])
+        historical = {row["name"]: row for row in payloads["historical"]["files"]}
+        slim = {row["name"]: row for row in payloads["slim"]["files"]}
+        self.assertEqual(set(historical) - set(slim), documents)
+        self.assertEqual({name: row for name, row in historical.items() if name not in documents}, slim)
+        self.assertEqual(payloads["historical"]["schema"], payloads["slim"]["schema"])
+        self.assertNotEqual(payloads["historical"]["archive"]["sha256"],
+                            payloads["slim"]["archive"]["sha256"])
+
     def test_archive_checksum_mismatch(self):
         (self.package / "README.md").write_bytes(b"modified after verification")
         with self.assertRaises(ValueError):
