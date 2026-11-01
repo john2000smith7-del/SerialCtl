@@ -174,7 +174,27 @@ def main():
                 report['testValidationNote']=text(control(settings,2508))
             note=text(control(settings,2508))
             require('Test 已开启' in note and user.SendMessageW(gate,0xF0,0,0)==1,'Correct password did not unlock Test: '+note)
-            desktop.capture(theme+'-test-unlocked');click(gate)
+            desktop.capture(theme+'-test-unlocked');close(settings)
+            desktop.click_control(301);time.sleep(.15)
+            power_panes=[]
+            @callback
+            def find_connection_power(child,_):
+                name=c.create_unicode_buffer(128);user.GetClassNameW(child,name,128)
+                if name.value=='SerialCtlPowerPane':power_panes.append(child)
+                return True
+            desktop.user.EnumChildWindows(hwnd,find_connection_power,0)
+            require(power_panes,'Power pane is missing for refresh inspection')
+            click(control(power_panes[0],10));power_connection=dialog()
+            refresh=refresh_glyph(power_connection,103,101)
+            desktop.capture(theme+'-power-refresh-usb')
+            # Enumerate the CI host's local ports only; never connect or issue
+            # an output command. Switch with real native dropdown input.
+            click(control(power_connection,100));key(0x28);key(0x0D)
+            wait(lambda:user.IsWindowEnabled(refresh));click(refresh)
+            desktop.capture(theme+'-power-refresh-serial');close(power_connection)
+            desktop.click_control(105);desktop.click_control(303);settings=dialog();gate=control(settings,2507)
+            require(user.SendMessageW(gate,0xF0,0,0)==1,'Closing settings lost process-only Test authorization')
+            click(gate)
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Test did not lock immediately')
             desktop.capture(theme+'-test-locked');close(settings)
             desktop.click_control(301);time.sleep(.2)
