@@ -1,0 +1,3090 @@
+{
+  "main": "c7cdfff4c459f90ca99b88809b7525aac286dda7",
+  "branches": [
+    {
+      "name": "audit/v2.0.4-desktop-input-sync",
+      "sha": "19e3f39ee8dfefe26407aa351c39d6e2341dccac",
+      "main_only": 229,
+      "branch_only": 2,
+      "merge_base": "d14b2f8a929a6f3ff03948ae9a255aa8606881fb",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "19e3f39ee8dfefe26407aa351c39d6e2341dccac",
+          "subject": "Measure rapid macro Stop from real input without waiting on event delivery",
+          "paths": [
+            ".github/workflows/desktop-interaction.yml",
+            "docs/testing/DESKTOP-INTERACTION.md",
+            "tests/integration/gui_macro_submission.py"
+          ]
+        },
+        {
+          "sha": "d4aa65a55986c886e34e1d35a1bd28b2ca77c96f",
+          "subject": "Wait for bounded native resize delivery without relaxing desktop assertions",
+          "paths": [
+            ".github/workflows/desktop-interaction.yml",
+            "docs/testing/DESKTOP-INTERACTION.md",
+            "tests/integration/desktop_user_actions.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "M\t.github/workflows/desktop-interaction.yml",
+        "M\tdocs/testing/DESKTOP-INTERACTION.md",
+        "M\ttests/integration/desktop_user_actions.py",
+        "M\ttests/integration/gui_macro_submission.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "diag/v2016-ui",
+      "sha": "dcda01f37cb88ca94e5b4d00f56dd2c1b354d6fe",
+      "main_only": 70,
+      "branch_only": 1,
+      "merge_base": "e5e183262073200cc3fb12204dba6e2e9bc0dd4d",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "dcda01f37cb88ca94e5b4d00f56dd2c1b354d6fe",
+          "subject": "Inspect the prior native-verified UI with observed-state assertions",
+          "paths": [
+            ".github/workflows/windows-native-diagnostics.yml",
+            "scripts/smoke-ui.ps1"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "M\t.github/workflows/windows-native-diagnostics.yml",
+        "M\tscripts/smoke-ui.ps1"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "diag/v2016-upgrade",
+      "sha": "aba5cddd606fe9ca0392898acb0ae8edca6e03bc",
+      "main_only": 62,
+      "branch_only": 2,
+      "merge_base": "d052d7aa48bb781713207b5adb4eb7b4902d96d6",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "aba5cddd606fe9ca0392898acb0ae8edca6e03bc",
+          "subject": "Fetch the earlier exact candidate commit for isolated upgrade preflight",
+          "paths": [
+            ".github/workflows/verify-release-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "dfbd9ec2dc2874ee78f5ad688f1ff78075c98159",
+          "subject": "Preflight older clients without changing main release verification gates",
+          "paths": [
+            ".github/workflows/verify-release-upgrade.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "M\t.github/workflows/verify-release-upgrade.yml"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "diag/v2017-candidate",
+      "sha": "59cdddbb2008ded10520b638770dd23d5804d506",
+      "main_only": 38,
+      "branch_only": 0,
+      "merge_base": "59cdddbb2008ded10520b638770dd23d5804d506",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "diag/v2017-endurance",
+      "sha": "c8e151dc8edffb7757f84f3fd59d942f5b0770ad",
+      "main_only": 18,
+      "branch_only": 8,
+      "merge_base": "d6fa1a962f535989a5504f4b55054943eca35537",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "c8e151dc8edffb7757f84f3fd59d942f5b0770ad",
+          "subject": "Fetch program ancestry for exact native source comparison in the endurance runner",
+          "paths": [
+            ".github/workflows/dialog-endurance-lab.yml"
+          ]
+        },
+        {
+          "sha": "9d048c565592d1f5e1b8ea357f4bc706db709e9f",
+          "subject": "Audit real clicks and drags against the exact native-verified V2.0.17 candidate with unchanged production inputs",
+          "paths": [
+            ".github/workflows/dialog-endurance-lab.yml"
+          ]
+        },
+        {
+          "sha": "7be6697f1fc34f658ac38f8a0bd223c624706234",
+          "subject": "Merge branch 'feat/v2017-dialog-latency-audit' into diag/v2017-endurance",
+          "paths": []
+        },
+        {
+          "sha": "dc1c887874d18d839826a83f41ae7a90c1a12e06",
+          "subject": "Distinguish delayed sidebar input from lost clicks and record actual release-to-caption latency",
+          "paths": [
+            "tests/integration/desktop_user_actions.py",
+            "tests/integration/gui_endurance.py"
+          ]
+        },
+        {
+          "sha": "d552ee7dd687b71f0eb3af1d1e7ce416ccb4c1ea",
+          "subject": "Provision and restore adequate ephemeral desktop geometry for actual drag endurance",
+          "paths": [
+            "tests/integration/gui_command_drag_fixture.py"
+          ]
+        },
+        {
+          "sha": "35ff9fbe117b6395e9ccaef885fc0985248196d1",
+          "subject": "Park the enabled pet below the real test window on standard hosted desktop sizes",
+          "paths": [
+            "tests/integration/gui_command_drag_fixture.py",
+            "tests/integration/gui_endurance.py"
+          ]
+        },
+        {
+          "sha": "6f617772773f94612f18970dd77cd1b43d1e2d27",
+          "subject": "Record busy dialog readiness and bound native resources across the complete click-and-drag audit",
+          "paths": [
+            "tests/integration/gui_endurance.py"
+          ]
+        },
+        {
+          "sha": "ab95a2c6b9e88bee5731055920adc5dc5b87a4c5",
+          "subject": "Check actual-click endurance fixture against immutable published baseline",
+          "paths": [
+            ".github/workflows/dialog-endurance-lab.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/dialog-endurance-lab.yml"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "diag/v2017-evidence",
+      "sha": "2726883b7c4d512607222b2fbf8472d0864a0f98",
+      "main_only": 33,
+      "branch_only": 3,
+      "merge_base": "16de226555002a8702d23e58c189e7d6ee4a98ae",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "2726883b7c4d512607222b2fbf8472d0864a0f98",
+          "subject": "Extract original GUI comparison counterexamples and unchanged actual screenshots for pixel review",
+          "paths": [
+            ".github/workflows/dialog-evidence-extract.yml"
+          ]
+        },
+        {
+          "sha": "48c03a9bb476881ac09b8ac24b9beea03839a805",
+          "subject": "Review complete successful baseline endurance and actual changed-dialog screenshots",
+          "paths": [
+            ".github/workflows/dialog-evidence-extract.yml"
+          ]
+        },
+        {
+          "sha": "e64b176643646ffda20645b1ad1f6707dcd0186e",
+          "subject": "Extract unchanged endurance result JSON and selected actual screenshots for focused review",
+          "paths": [
+            ".github/workflows/dialog-evidence-extract.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/dialog-evidence-extract.yml"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "diag/v2017-firstscreen",
+      "sha": "a62a25bcf3cdf4e252c707b3ed30243bf676b2b7",
+      "main_only": 18,
+      "branch_only": 3,
+      "merge_base": "d6fa1a962f535989a5504f4b55054943eca35537",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "a62a25bcf3cdf4e252c707b3ed30243bf676b2b7",
+          "subject": "Isolate per-dialog compositor transitions without altering paints, control geometry or global Windows settings",
+          "paths": [
+            ".github/workflows/dialog-firstscreen.yml",
+            "src/app/UiStyle.h",
+            "tests/integration/gui_first_screen.py"
+          ]
+        },
+        {
+          "sha": "ab3057a3362fbe1ec85491cd24dc098d830d52c6",
+          "subject": "Compare fresh actual-screen samples with GDI flush, full initial paint and combined variants",
+          "paths": [
+            ".github/workflows/dialog-firstscreen.yml",
+            "src/app/UiStyle.h",
+            "tests/integration/gui_first_screen.py"
+          ]
+        },
+        {
+          "sha": "14a941adb85bdceec3b9ac0e582022f82d50a503",
+          "subject": "Capture real modal pixels at native first-paint and successive presentation times under actual CMD output",
+          "paths": [
+            ".github/workflows/dialog-firstscreen.yml",
+            "tests/integration/gui_command_drag_fixture.py",
+            "tests/integration/gui_first_screen.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/dialog-firstscreen.yml",
+        "M\tsrc/app/UiStyle.h",
+        "M\ttests/integration/gui_command_drag_fixture.py",
+        "A\ttests/integration/gui_first_screen.py"
+      ],
+      "production_paths": [
+        "M\tsrc/app/UiStyle.h"
+      ],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "C-production-delta"
+    },
+    {
+      "name": "diag/v2017-glyphlab",
+      "sha": "07b25f0d8bd14ca9582d5e6e5f018158b6c671e4",
+      "main_only": 42,
+      "branch_only": 3,
+      "merge_base": "7cc3632f73bd55c24f74a80a8ed2af064d1a9de9",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "07b25f0d8bd14ca9582d5e6e5f018158b6c671e4",
+          "subject": "Compare premultiplied tint rounding without changing source coordinates",
+          "paths": [
+            "tests/performance/UiGlyphFilterProbe.cpp"
+          ]
+        },
+        {
+          "sha": "66335af72d023300b200c1a653a1100e3f45a033",
+          "subject": "Compare original tint on decoded atlas and guarded source crops",
+          "paths": [
+            "tests/performance/UiGlyphFilterProbe.cpp"
+          ]
+        },
+        {
+          "sha": "a5b2c07a1a6324383a589001131394ae04c5d0c5",
+          "subject": "Compare native 32-bit and high-precision tint pipelines against original artwork",
+          "paths": [
+            ".github/workflows/glyph-filter-lab.yml",
+            "tests/performance/UiGlyphFilterProbe.cpp"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/glyph-filter-lab.yml",
+        "A\ttests/performance/UiGlyphFilterProbe.cpp"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "diag/v2017-gui-review",
+      "sha": "c10d408c2cca20816856e2ff4ea1b24fa2e8bcfd",
+      "main_only": 15,
+      "branch_only": 0,
+      "merge_base": "c10d408c2cca20816856e2ff4ea1b24fa2e8bcfd",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "diag/v2017-latency",
+      "sha": "37383d05adf81110f284a317eb162d3342e0746b",
+      "main_only": 49,
+      "branch_only": 3,
+      "merge_base": "5b950a3310d8f7b09b5771668af7cd5ef923b278",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "37383d05adf81110f284a317eb162d3342e0746b",
+          "subject": "Measure repeated popup-region reentry and cache unchanged tinted glyph rendering",
+          "paths": [
+            ".github/workflows/dialog-profile.yml",
+            "src/app/UiResources.h",
+            "src/app/UiStyle.h",
+            "tests/performance/DialogTimingHooks.h"
+          ]
+        },
+        {
+          "sha": "b3605e0244f52e1f7e15e51e8fadba286d191918",
+          "subject": "Separate native font metrics and buffer readback costs with controlled diagnostic variants",
+          "paths": [
+            ".github/workflows/dialog-profile.yml",
+            "src/app/UiStyle.h",
+            "tests/performance/DialogTimingHooks.h"
+          ]
+        },
+        {
+          "sha": "8a8b573b708a9a23b3a425dda814f05cfde140fa",
+          "subject": "Instrument dialog initialization and first-paint stages in diagnostic builds",
+          "paths": [
+            ".github/workflows/dialog-profile.yml",
+            "src/app/AiPane.cpp",
+            "src/app/MainWindow.cpp",
+            "src/app/UiDialogViewport.h",
+            "src/app/UiStyle.h",
+            "tests/performance/ConnectionDialogBench.cpp",
+            "tests/performance/DialogTimingHooks.h"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/dialog-profile.yml",
+        "M\tsrc/app/AiPane.cpp",
+        "M\tsrc/app/MainWindow.cpp",
+        "M\tsrc/app/UiDialogViewport.h",
+        "M\tsrc/app/UiResources.h",
+        "M\tsrc/app/UiStyle.h",
+        "M\ttests/performance/ConnectionDialogBench.cpp",
+        "A\ttests/performance/DialogTimingHooks.h"
+      ],
+      "production_paths": [
+        "M\tsrc/app/AiPane.cpp",
+        "M\tsrc/app/MainWindow.cpp",
+        "M\tsrc/app/UiDialogViewport.h",
+        "M\tsrc/app/UiResources.h",
+        "M\tsrc/app/UiStyle.h"
+      ],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "C-production-delta"
+    },
+    {
+      "name": "diag/v2017-lifetime",
+      "sha": "3e223f3a420164f7f278233a6df1d5f8b0b7e17d",
+      "main_only": 49,
+      "branch_only": 2,
+      "merge_base": "5b950a3310d8f7b09b5771668af7cd5ef923b278",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "3e223f3a420164f7f278233a6df1d5f8b0b7e17d",
+          "subject": "Stop viewport layout immediately after reentrant owner destruction and retain reset ownership",
+          "paths": [
+            ".github/workflows/viewport-lifetime.yml",
+            "src/app/UiDialogViewport.h",
+            "tests/integration/UiViewportReentryProbe.cpp"
+          ]
+        },
+        {
+          "sha": "b1f33647eb8ab6b1d2dc32ef679c3efbf4df0a23",
+          "subject": "Probe native viewport destruction during synchronous child positioning under AddressSanitizer",
+          "paths": [
+            ".github/workflows/viewport-lifetime.yml",
+            "tests/integration/UiViewportReentryProbe.cpp"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/viewport-lifetime.yml",
+        "M\tsrc/app/UiDialogViewport.h",
+        "A\ttests/integration/UiViewportReentryProbe.cpp"
+      ],
+      "production_paths": [
+        "M\tsrc/app/UiDialogViewport.h"
+      ],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "C-production-delta"
+    },
+    {
+      "name": "diag/v2017-queuedresize",
+      "sha": "1bb122aae8378906a54e6ebfe3bbc75eca00320d",
+      "main_only": 22,
+      "branch_only": 0,
+      "merge_base": "1bb122aae8378906a54e6ebfe3bbc75eca00320d",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "diagnostic/connection-dialog-latency",
+      "sha": "4acce1a3cf8c743276073e0426e1a89f84d34780",
+      "main_only": 132,
+      "branch_only": 2,
+      "merge_base": "7ea0577c0b26250e8f203cb1dd41809e0ed7eb3b",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "4acce1a3cf8c743276073e0426e1a89f84d34780",
+          "subject": "Compare dialog response with full history and sustained CMD output",
+          "paths": [
+            ".github/workflows/dialog-latency.yml",
+            "tests/performance/dialog_bench.cpp",
+            "tests/performance/dialog_load.cpp"
+          ]
+        },
+        {
+          "sha": "b05105d4558cdf762d1cbf4be59c228987b8cc86",
+          "subject": "Measure released connection dialogs on native Windows",
+          "paths": [
+            ".github/workflows/dialog-latency.yml",
+            "tests/performance/dialog_bench.cpp"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/dialog-latency.yml",
+        "A\ttests/performance/dialog_bench.cpp",
+        "A\ttests/performance/dialog_load.cpp"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "diagnostic/v209-smoke",
+      "sha": "4a78ca6978758ba1e0d146c582c3a7224c5fa578",
+      "main_only": 203,
+      "branch_only": 4,
+      "merge_base": "2d4aab28384fb2b4fc59109fb4c8eab625e3eee6",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "4a78ca6978758ba1e0d146c582c3a7224c5fa578",
+          "subject": "Inspect final packaged desktop screenshots",
+          "paths": [
+            ".github/workflows/v209-failure-diagnostic.yml"
+          ]
+        },
+        {
+          "sha": "f232a58a5d5557e5fd901bdbf8d0f281349e2275",
+          "subject": "Inspect latest save failure screenshots",
+          "paths": [
+            ".github/workflows/v209-failure-diagnostic.yml"
+          ]
+        },
+        {
+          "sha": "c1f0bd24389e310fe0248330112de6fc94aeab2d",
+          "subject": "Trigger isolated evidence inspection on diagnostics branch",
+          "paths": [
+            ".github/workflows/v209-failure-diagnostic.yml"
+          ]
+        },
+        {
+          "sha": "2c2c1eb8b14758c6dcc9e51fd68a4e2e46281555",
+          "subject": "Inspect failed V2.0.9 UI smoke evidence",
+          "paths": [
+            ".github/workflows/v209-failure-diagnostic.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/v209-failure-diagnostic.yml"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "docs/handover-20261031",
+      "sha": "b945e19aaf4e16ae454afe1481c0d30d91648354",
+      "main_only": 94,
+      "branch_only": 1,
+      "merge_base": "cdc4c90bffe959a2f3626a3aa5a9ee2ffb75c238",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "b945e19aaf4e16ae454afe1481c0d30d91648354",
+          "subject": "docs: provide SerialCtl project handover download",
+          "paths": [
+            "handover/README.md",
+            "handover/SHA256SUMS.txt",
+            "handover/SerialCtl-AI-Handover.md",
+            "handover/SerialCtl-Project-Handover.zip"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\thandover/README.md",
+        "A\thandover/SHA256SUMS.txt",
+        "A\thandover/SerialCtl-AI-Handover.md",
+        "A\thandover/SerialCtl-Project-Handover.zip"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "B-documents"
+    },
+    {
+      "name": "docs/manual-v2.0.5-downloads",
+      "sha": "11d5b782bd1159aa2cceec3c48b2c1fbfafdee91",
+      "main_only": 225,
+      "branch_only": 1,
+      "merge_base": "e27b6b9ecffb6b9877c80233911c40000fd139a1",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "11d5b782bd1159aa2cceec3c48b2c1fbfafdee91",
+          "subject": "docs: deliver illustrated V2.0.5 user manual [skip ci]",
+          "paths": [
+            "docs/user-manual/v2.0.5/README.md",
+            "docs/user-manual/v2.0.5/SerialCtl-V2.0.5-User-Manual-Complete.zip",
+            "docs/user-manual/v2.0.5/SerialCtl-V2.0.5-User-Manual.md",
+            "docs/user-manual/v2.0.5/SerialCtl-V2.0.5-User-Manual.pdf",
+            "docs/user-manual/v2.0.5/images/01-overview.png",
+            "docs/user-manual/v2.0.5/images/02-sessions.png",
+            "docs/user-manual/v2.0.5/images/03-local-serial.png",
+            "docs/user-manual/v2.0.5/images/04-remote.png",
+            "docs/user-manual/v2.0.5/images/04b-remote-port.png",
+            "docs/user-manual/v2.0.5/images/05-ssh.png",
+            "docs/user-manual/v2.0.5/images/05b-host-key.png",
+            "docs/user-manual/v2.0.5/images/06-telnet.png",
+            "docs/user-manual/v2.0.5/images/07-cmd.png",
+            "docs/user-manual/v2.0.5/images/08-terminal.png",
+            "docs/user-manual/v2.0.5/images/09-commands.png",
+            "docs/user-manual/v2.0.5/images/09b-add-command.png",
+            "docs/user-manual/v2.0.5/images/10-macro.png",
+            "docs/user-manual/v2.0.5/images/11-sftp.png",
+            "docs/user-manual/v2.0.5/images/11b-sftp-path.png",
+            "docs/user-manual/v2.0.5/images/12-settings.png",
+            "docs/user-manual/v2.0.5/images/13-logs.png",
+            "docs/user-manual/v2.0.5/images/14-ai-connect.png",
+            "docs/user-manual/v2.0.5/images/14b-ai-ready.png",
+            "docs/user-manual/v2.0.5/images/15-ai-task.png",
+            "docs/user-manual/v2.0.5/images/15b-ai-command.png",
+            "docs/user-manual/v2.0.5/images/16-ai-monitor.png",
+            "docs/user-manual/v2.0.5/images/17-ai-process.png",
+            "docs/user-manual/v2.0.5/images/17b-ai-history.png",
+            "docs/user-manual/v2.0.5/images/18-ai-project.png",
+            "docs/user-manual/v2.0.5/images/19-theme.png",
+            "docs/user-manual/v2.0.5/images/20-update.png",
+            "docs/user-manual/v2.0.5/images/20b-update-progress.png",
+            "docs/user-manual/v2.0.5/images/21-power.png"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\tdocs/user-manual/v2.0.5/README.md",
+        "A\tdocs/user-manual/v2.0.5/SerialCtl-V2.0.5-User-Manual-Complete.zip",
+        "A\tdocs/user-manual/v2.0.5/SerialCtl-V2.0.5-User-Manual.md",
+        "A\tdocs/user-manual/v2.0.5/SerialCtl-V2.0.5-User-Manual.pdf",
+        "A\tdocs/user-manual/v2.0.5/images/01-overview.png",
+        "A\tdocs/user-manual/v2.0.5/images/02-sessions.png",
+        "A\tdocs/user-manual/v2.0.5/images/03-local-serial.png",
+        "A\tdocs/user-manual/v2.0.5/images/04-remote.png",
+        "A\tdocs/user-manual/v2.0.5/images/04b-remote-port.png",
+        "A\tdocs/user-manual/v2.0.5/images/05-ssh.png",
+        "A\tdocs/user-manual/v2.0.5/images/05b-host-key.png",
+        "A\tdocs/user-manual/v2.0.5/images/06-telnet.png",
+        "A\tdocs/user-manual/v2.0.5/images/07-cmd.png",
+        "A\tdocs/user-manual/v2.0.5/images/08-terminal.png",
+        "A\tdocs/user-manual/v2.0.5/images/09-commands.png",
+        "A\tdocs/user-manual/v2.0.5/images/09b-add-command.png",
+        "A\tdocs/user-manual/v2.0.5/images/10-macro.png",
+        "A\tdocs/user-manual/v2.0.5/images/11-sftp.png",
+        "A\tdocs/user-manual/v2.0.5/images/11b-sftp-path.png",
+        "A\tdocs/user-manual/v2.0.5/images/12-settings.png",
+        "A\tdocs/user-manual/v2.0.5/images/13-logs.png",
+        "A\tdocs/user-manual/v2.0.5/images/14-ai-connect.png",
+        "A\tdocs/user-manual/v2.0.5/images/14b-ai-ready.png",
+        "A\tdocs/user-manual/v2.0.5/images/15-ai-task.png",
+        "A\tdocs/user-manual/v2.0.5/images/15b-ai-command.png",
+        "A\tdocs/user-manual/v2.0.5/images/16-ai-monitor.png",
+        "A\tdocs/user-manual/v2.0.5/images/17-ai-process.png",
+        "A\tdocs/user-manual/v2.0.5/images/17b-ai-history.png",
+        "A\tdocs/user-manual/v2.0.5/images/18-ai-project.png",
+        "A\tdocs/user-manual/v2.0.5/images/19-theme.png",
+        "A\tdocs/user-manual/v2.0.5/images/20-update.png",
+        "A\tdocs/user-manual/v2.0.5/images/20b-update-progress.png",
+        "A\tdocs/user-manual/v2.0.5/images/21-power.png"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "B-documents"
+    },
+    {
+      "name": "evidence/v2.0.4-transfer",
+      "sha": "7a44c88ae148c4b50bdb45c16a6f4303af987a56",
+      "main_only": 232,
+      "branch_only": 9,
+      "merge_base": "0b01da73264968a76e509e884547f27d2f706a16",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "7a44c88ae148c4b50bdb45c16a6f4303af987a56",
+          "subject": "Preserve successful final desktop input timings and original screenshots",
+          "paths": [
+            "evidence-request.json"
+          ]
+        },
+        {
+          "sha": "78532b24fb17c51083996bb21688c53d4030092d",
+          "subject": "Transfer the verified final jiojio release bytes for offline signing",
+          "paths": [
+            "evidence-request.json"
+          ]
+        },
+        {
+          "sha": "86021a0314d871b090bf7adc2ed353f0ca5d5393",
+          "subject": "Preserve the successful complete desktop audit source and original review images",
+          "paths": [
+            "evidence-request.json"
+          ]
+        },
+        {
+          "sha": "8a2af38b46bd94b84a5d83d5bfbc627630d94d80",
+          "subject": "Run the unresolved SSH and SFTP real-input cases against the verified startup fix",
+          "paths": [
+            ".github/workflows/focused-host-fixture.yml"
+          ]
+        },
+        {
+          "sha": "10c867da7ed3f8e4cd2201ff4d227188692e7abb",
+          "subject": "Transfer original final desktop failure screenshot and input trace",
+          "paths": [
+            "evidence-request.json"
+          ]
+        },
+        {
+          "sha": "b39e2b44da0787fee78181b21195c937de34625e",
+          "subject": "Prioritize original failure captures for desktop review",
+          "paths": [
+            ".github/workflows/transfer-release-artifacts.yml"
+          ]
+        },
+        {
+          "sha": "bbbe8c9e09e4cacdd9f0ae6bb1d5f94491178130",
+          "subject": "Transfer the final resize-fixed V2.0.4 candidate and original native screenshots",
+          "paths": [
+            "evidence-request.json"
+          ]
+        },
+        {
+          "sha": "4a9712a070ba73660d67bb1f05335af052b3ee77",
+          "subject": "Transfer the exact verified V2.0.4 candidate and native screenshots",
+          "paths": [
+            "evidence-request.json"
+          ]
+        },
+        {
+          "sha": "f2dc63db88963a02eb5e67388f7a3ff50910a6d4",
+          "subject": "Prepare bounded transfers of the verified release and original UI evidence",
+          "paths": [
+            ".github/workflows/transfer-release-artifacts.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/focused-host-fixture.yml",
+        "A\t.github/workflows/transfer-release-artifacts.yml",
+        "A\tevidence-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "feat/command-notebook",
+      "sha": "31b1a15c5545eb87584dd9ccd70e20097571f5ac",
+      "main_only": 117,
+      "branch_only": 0,
+      "merge_base": "31b1a15c5545eb87584dd9ccd70e20097571f5ac",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/compact-ui-polish",
+      "sha": "469338861722b196fa0e200969eaaeea219ce766",
+      "main_only": 109,
+      "branch_only": 0,
+      "merge_base": "469338861722b196fa0e200969eaaeea219ce766",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/connection-dialog-latency",
+      "sha": "c03bac3b38a0363d4401499e32ae3e642c98e1cc",
+      "main_only": 131,
+      "branch_only": 0,
+      "merge_base": "c03bac3b38a0363d4401499e32ae3e642c98e1cc",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/dialog-first-paint",
+      "sha": "a649e4981be4c7123a6edd692bf7626ac3ad2e2d",
+      "main_only": 126,
+      "branch_only": 0,
+      "merge_base": "a649e4981be4c7123a6edd692bf7626ac3ad2e2d",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/v2.0.10-arch-final",
+      "sha": "ce92c9651975d6ea8ec296b1a09a9921b11221ec",
+      "main_only": 133,
+      "branch_only": 0,
+      "merge_base": "ce92c9651975d6ea8ec296b1a09a9921b11221ec",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/v2.0.10-arch-hardening",
+      "sha": "9d70d93abb068e808b9159c5fb8a7227aaf9c7bd",
+      "main_only": 194,
+      "branch_only": 0,
+      "merge_base": "9d70d93abb068e808b9159c5fb8a7227aaf9c7bd",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/v2.0.9-desktop-ai",
+      "sha": "5264544a9ff403f489c5557ea20a2e2762805b3d",
+      "main_only": 200,
+      "branch_only": 0,
+      "merge_base": "5264544a9ff403f489c5557ea20a2e2762805b3d",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.9"
+      ],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/v2016-optimization",
+      "sha": "d052d7aa48bb781713207b5adb4eb7b4902d96d6",
+      "main_only": 62,
+      "branch_only": 0,
+      "merge_base": "d052d7aa48bb781713207b5adb4eb7b4902d96d6",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/v2017-dialog-latency-audit",
+      "sha": "6bacd371f877b677dc7f92a26358bca6c93dd7f8",
+      "main_only": 14,
+      "branch_only": 0,
+      "merge_base": "6bacd371f877b677dc7f92a26358bca6c93dd7f8",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/v2018-ui-capsules",
+      "sha": "c7cdfff4c459f90ca99b88809b7525aac286dda7",
+      "main_only": 0,
+      "branch_only": 0,
+      "merge_base": "c7cdfff4c459f90ca99b88809b7525aac286dda7",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.18"
+      ],
+      "retained_by_tags": [
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feat/v215-dropdowns-workspace-boot",
+      "sha": "33cd5cf2e6d90c85ae04c569b1e86519e20f468e",
+      "main_only": 96,
+      "branch_only": 0,
+      "merge_base": "33cd5cf2e6d90c85ae04c569b1e86519e20f468e",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feature/ai-assistant-v1",
+      "sha": "0d55a53445e7229136a2c7f656127f6b96ba74db",
+      "main_only": 273,
+      "branch_only": 0,
+      "merge_base": "0d55a53445e7229136a2c7f656127f6b96ba74db",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.0",
+        "v2.0.1",
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.2",
+        "v2.0.2-r2",
+        "v2.0.3",
+        "v2.0.3-r1",
+        "v2.0.3-r2",
+        "v2.0.4",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feature/two-file-update-v2",
+      "sha": "1f8180cb0ba6da002aad91fa7f7d6ede99f42002",
+      "main_only": 269,
+      "branch_only": 0,
+      "merge_base": "1f8180cb0ba6da002aad91fa7f7d6ede99f42002",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.0",
+        "v2.0.1",
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.2",
+        "v2.0.2-r2",
+        "v2.0.3",
+        "v2.0.3-r1",
+        "v2.0.3-r2",
+        "v2.0.4",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feature/v2.0.3-compact-assets",
+      "sha": "0e4b3370a70f97c9017ad5e8f4fd1b70d2b554a2",
+      "main_only": 253,
+      "branch_only": 0,
+      "merge_base": "0e4b3370a70f97c9017ad5e8f4fd1b70d2b554a2",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.3",
+        "v2.0.3-r1",
+        "v2.0.3-r2",
+        "v2.0.4",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feature/v2.0.7-terminal-power-workspaces",
+      "sha": "3294f2f19e133426d1cf50e7f079bcb69918ced0",
+      "main_only": 218,
+      "branch_only": 0,
+      "merge_base": "3294f2f19e133426d1cf50e7f079bcb69918ced0",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "feature/v203-responsive-ui",
+      "sha": "5f12f5cfb0aeed4c035adc1f77b42357304528ec",
+      "main_only": 239,
+      "branch_only": 0,
+      "merge_base": "5f12f5cfb0aeed4c035adc1f77b42357304528ec",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.3-r2",
+        "v2.0.4",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/original-signing-release-validation",
+      "sha": "157e99ba3f693272fa14c74e65b464a11ba96144",
+      "main_only": 226,
+      "branch_only": 0,
+      "merge_base": "157e99ba3f693272fa14c74e65b464a11ba96144",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.4-r1"
+      ],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/restore-original-update-signing",
+      "sha": "32119cf8bf4cc64d4e1b499ff782defc8ac32f50",
+      "main_only": 227,
+      "branch_only": 0,
+      "merge_base": "32119cf8bf4cc64d4e1b499ff782defc8ac32f50",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v2.0.10-command-drag",
+      "sha": "5385e8bde1e60ee9c1babce9d1da54e8ee6cb372",
+      "main_only": 199,
+      "branch_only": 0,
+      "merge_base": "5385e8bde1e60ee9c1babce9d1da54e8ee6cb372",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v2.0.5-ai-fold-serial-discovery",
+      "sha": "e27b6b9ecffb6b9877c80233911c40000fd139a1",
+      "main_only": 225,
+      "branch_only": 0,
+      "merge_base": "e27b6b9ecffb6b9877c80233911c40000fd139a1",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.5"
+      ],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v2.0.6-host-key",
+      "sha": "2e9d97f41ca0ad8a1ce39067c6c045ef788ff3b0",
+      "main_only": 221,
+      "branch_only": 0,
+      "merge_base": "2e9d97f41ca0ad8a1ce39067c6c045ef788ff3b0",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.6"
+      ],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v2016-lifecycle-fixture",
+      "sha": "5b950a3310d8f7b09b5771668af7cd5ef923b278",
+      "main_only": 49,
+      "branch_only": 0,
+      "merge_base": "5b950a3310d8f7b09b5771668af7cd5ef923b278",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.16"
+      ],
+      "retained_by_tags": [
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v2016-roaming-owner",
+      "sha": "d26d64cff4df82b05d37c213ebe08146f4a91f2a",
+      "main_only": 52,
+      "branch_only": 0,
+      "merge_base": "d26d64cff4df82b05d37c213ebe08146f4a91f2a",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v2017-resize-delivery",
+      "sha": "0cf66a5d4b7b299139a6a587f05011c9f2bcc427",
+      "main_only": 7,
+      "branch_only": 0,
+      "merge_base": "0cf66a5d4b7b299139a6a587f05011c9f2bcc427",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.17"
+      ],
+      "retained_by_tags": [
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v2017-ssh-resize-lifetime",
+      "sha": "e6d9b515d50298577075c9f9c9fa980dcf0dba43",
+      "main_only": 11,
+      "branch_only": 0,
+      "merge_base": "e6d9b515d50298577075c9f9c9fa980dcf0dba43",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.17",
+        "v2.0.18"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v203-responsive-ui",
+      "sha": "0e709448bb59c195c830ecedbd95a7a190c33314",
+      "main_only": 240,
+      "branch_only": 0,
+      "merge_base": "0e709448bb59c195c830ecedbd95a7a190c33314",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.3-r2",
+        "v2.0.4",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v203-terminal-release",
+      "sha": "7639d8f9bbad9a764a49946ded02271ef1570dc4",
+      "main_only": 236,
+      "branch_only": 0,
+      "merge_base": "7639d8f9bbad9a764a49946ded02271ef1570dc4",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.3-r2"
+      ],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.3-r2",
+        "v2.0.4",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "fix/v203-ui-final",
+      "sha": "1afa14a14000f1e45072fa78aeb9666bfefa9146",
+      "main_only": 237,
+      "branch_only": 0,
+      "merge_base": "1afa14a14000f1e45072fa78aeb9666bfefa9146",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.3-r2",
+        "v2.0.4",
+        "v2.0.4-r1",
+        "v2.0.5",
+        "v2.0.6",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "release/v2.0.11",
+      "sha": "01d294592711300686688a653d3a1dd41ce23ebb",
+      "main_only": 129,
+      "branch_only": 1,
+      "merge_base": "2a21255af3fe422f2c36eb2d77658e58cc5e0f5c",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "01d294592711300686688a653d3a1dd41ce23ebb",
+          "subject": "Publish verified original-key signed V2.0.11 release",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.12",
+      "sha": "4ce31c2a65a1ad86f1d85512c92a64a0d7b14427",
+      "main_only": 120,
+      "branch_only": 1,
+      "merge_base": "2158ff24d802290aee27c105da6378b531cff67c",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "4ce31c2a65a1ad86f1d85512c92a64a0d7b14427",
+          "subject": "Publish verified original-key signed SerialCtl V2.0.12",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.13",
+      "sha": "3a81e6c5cf0068390e7ba6ad502b1d7c867093f2",
+      "main_only": 113,
+      "branch_only": 1,
+      "merge_base": "4ee782b350e608a4057f4f3cd926df9d5b4715e7",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "3a81e6c5cf0068390e7ba6ad502b1d7c867093f2",
+          "subject": "Publish original-key signed SerialCtl V2.0.13 command notebook release",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.14",
+      "sha": "f5377ee46cab67e0950f24c4454ce8a21a0800e4",
+      "main_only": 107,
+      "branch_only": 1,
+      "merge_base": "937e2d052f5289e1465e44277d33cbabb54441c2",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "f5377ee46cab67e0950f24c4454ce8a21a0800e4",
+          "subject": "Publish verified V2.0.14 with original-identity signed ZIP metadata",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.15",
+      "sha": "b762a90ce437505493545c72289b2e2761a78b1e",
+      "main_only": 94,
+      "branch_only": 1,
+      "merge_base": "cdc4c90bffe959a2f3626a3aa5a9ee2ffb75c238",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "b762a90ce437505493545c72289b2e2761a78b1e",
+          "subject": "Publish exact signed V2.0.15 Windows archive from successful main build",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.16-final",
+      "sha": "e00e8a0ee884ef2c64a669c29c9ad165c7e0e8be",
+      "main_only": 62,
+      "branch_only": 25,
+      "merge_base": "d052d7aa48bb781713207b5adb4eb7b4902d96d6",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "e00e8a0ee884ef2c64a669c29c9ad165c7e0e8be",
+          "subject": "Publish exact final main V2.0.16 only after original-signature old-client upgrade and matching actual-desktop gates",
+          "paths": [
+            "release-request.json"
+          ]
+        },
+        {
+          "sha": "9d1f8d84e6ac5fe92a0ec74f711252f8bf03e648",
+          "subject": "Review original successful real pet parking and list lifecycle desktop evidence",
+          "paths": [
+            ".github/workflows/v216-desktop-inspection.yml"
+          ]
+        },
+        {
+          "sha": "53ba3e6bc5f61d45b5596599ea05325f64711d59",
+          "subject": "Establish the same closed AI-page precondition as the full list lifecycle audit",
+          "paths": [
+            ".github/workflows/lifecycle-fixture-regression.yml"
+          ]
+        },
+        {
+          "sha": "11e3d18413ce2222deb93d858b4ae166edfc4c7f",
+          "subject": "Verify the native capture acknowledged single pet drag and unchanged list lifecycle",
+          "paths": [
+            ".github/workflows/lifecycle-fixture-regression.yml"
+          ]
+        },
+        {
+          "sha": "4d82700e9114391efa34b247632cd2e7376842c7",
+          "subject": "Inspect actual failed pet drag geometry and original desktop frames",
+          "paths": [
+            ".github/workflows/v216-desktop-inspection.yml"
+          ]
+        },
+        {
+          "sha": "56128a8a285c4ce5fc33057e7bdaa8efeea97770",
+          "subject": "Identify the native AI dialog without inline Windows PowerShell code-page ambiguity",
+          "paths": [
+            ".github/workflows/lifecycle-fixture-regression.yml"
+          ]
+        },
+        {
+          "sha": "462d3240487daaed90ac80d3a8d7f2327ed6ae24",
+          "subject": "Cancel the real unconfigured AI modal before testing the visible pet and list",
+          "paths": [
+            ".github/workflows/lifecycle-fixture-regression.yml"
+          ]
+        },
+        {
+          "sha": "9f60e91eda0e6499432972ef4da59394fc390d21",
+          "subject": "Observe full native startup readiness in the isolated focused lifecycle runner",
+          "paths": [
+            ".github/workflows/lifecycle-fixture-regression.yml"
+          ]
+        },
+        {
+          "sha": "762db3f6df46372e16dfc908c9866f538f2a15d1",
+          "subject": "Reproduce real pet parking and list lifecycle on the unchanged verified main binary",
+          "paths": [
+            ".github/workflows/lifecycle-fixture-regression.yml"
+          ]
+        },
+        {
+          "sha": "bf7ab777a714ad5f54c77571f32c86f56602beb0",
+          "subject": "Export original lifecycle failure desktop and window frames",
+          "paths": [
+            ".github/workflows/v216-desktop-inspection.yml"
+          ]
+        },
+        {
+          "sha": "043ff7b426fd48ba03361ca6ebb59150c2bae17e",
+          "subject": "Inspect actual lifecycle hit-test failure without changing product or assertions",
+          "paths": [
+            ".github/workflows/v216-desktop-inspection.yml"
+          ]
+        },
+        {
+          "sha": "a42175a292a592e677a504940ad45551d51bb26c",
+          "subject": "Deliver the final main V2.0.16 ZIP with its matching original-key signature after exact-build audits",
+          "paths": [
+            "release-request.json"
+          ]
+        },
+        {
+          "sha": "2f8876d743460caf046c2d7d41b107f0b3e9295c",
+          "subject": "Bind the desktop audit to the actual tested main build, including workflow-run event provenance",
+          "paths": [
+            ".github/workflows/publish-release.yml"
+          ]
+        },
+        {
+          "sha": "42b87dfa409e5e94643ff68761a9dbd03ebece76",
+          "subject": "Validate main-window and outside-owned-dialog pauses against real desktop motion",
+          "paths": [
+            ".github/workflows/pet-owner-regression.yml"
+          ]
+        },
+        {
+          "sha": "5b7df4b83fc6f0a5830b6ccb03d23d388db9481b",
+          "subject": "Repeat the native owner regression with explicit visible-window preconditions",
+          "paths": [
+            ".github/workflows/pet-owner-regression.yml"
+          ]
+        },
+        {
+          "sha": "5fbc4d338e136e4a7c690ee649879449b0ca2b58",
+          "subject": "Pin the focused regression to the fixture with a verified native click target",
+          "paths": [
+            ".github/workflows/pet-owner-regression.yml"
+          ]
+        },
+        {
+          "sha": "ff9e2da66943788c72b0c6774c2ac7467543b40a",
+          "subject": "Run the focused native owner interaction regression before the full release build",
+          "paths": [
+            ".github/workflows/pet-owner-regression.yml"
+          ]
+        },
+        {
+          "sha": "a21f0a3d423c8230da2b7ae1ee2e091d60c3bb82",
+          "subject": "Verify draft assets by immutable asset ID before publishing the paired release",
+          "paths": [
+            ".github/workflows/publish-release.yml"
+          ]
+        },
+        {
+          "sha": "5fc041025e7b4bfe847ca0ad0c3205c11b69b128",
+          "subject": "Inspect the unmodified actual desktop evidence at the blocked automation click",
+          "paths": [
+            ".github/workflows/v216-desktop-inspection.yml"
+          ]
+        },
+        {
+          "sha": "eabf7d9d7899cec510117f1b303eada49f360f4e",
+          "subject": "Run corrected final main signing, older-client upgrade and publication checks",
+          "paths": [
+            "release-request.json"
+          ]
+        },
+        {
+          "sha": "f90596eaaeb5f432744e8fb64f2a985e109623d6",
+          "subject": "Correct literal shell text in final-release orchestration without changing product main",
+          "paths": [
+            ".github/workflows/publish-release.yml"
+          ]
+        },
+        {
+          "sha": "916a94447ed4cfdb044e9ea1cf6b41f5d27c402e",
+          "subject": "Publish V2.0.16 from the exact successful main build with the original-identity signed metadata",
+          "paths": [
+            "release-request.json"
+          ]
+        },
+        {
+          "sha": "e2b137354a54c02b4f69fbd3445c3314563529f1",
+          "subject": "Verify both uploaded draft assets before making the release public",
+          "paths": [
+            ".github/workflows/publish-release.yml"
+          ]
+        },
+        {
+          "sha": "ca14baebf25b81db2690d9d5e79b33a37ec075d6",
+          "subject": "Gate publication on the matching main desktop audit and record the final receipt",
+          "paths": [
+            ".github/workflows/publish-release.yml"
+          ]
+        },
+        {
+          "sha": "4e7b45c738bbb2aeb8a70c76f68cae12cdba5400",
+          "subject": "Require final exact-main older-client upgrade and published two-file readback before delivery",
+          "paths": [
+            ".github/workflows/publish-release.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/lifecycle-fixture-regression.yml",
+        "A\t.github/workflows/pet-owner-regression.yml",
+        "M\t.github/workflows/publish-release.yml",
+        "A\t.github/workflows/v216-desktop-inspection.yml",
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.3-r2",
+      "sha": "7fcaeac82b3dfe9a2f306b2b097323db78df4255",
+      "main_only": 236,
+      "branch_only": 1,
+      "merge_base": "7639d8f9bbad9a764a49946ded02271ef1570dc4",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "7fcaeac82b3dfe9a2f306b2b097323db78df4255",
+          "subject": "Publish V2.0.3 r2 from the verified Windows build and successful desktop audit",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.4-d14b2f8",
+      "sha": "df09a94fd7eac0079b4a58363d7f79403908df74",
+      "main_only": 229,
+      "branch_only": 1,
+      "merge_base": "d14b2f8a929a6f3ff03948ae9a255aa8606881fb",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "df09a94fd7eac0079b4a58363d7f79403908df74",
+          "subject": "Publish verified V2.0.4 with its matching signed update metadata",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.4-r1",
+      "sha": "24f7146a582b5740ac6e9fa5335e173400246754",
+      "main_only": 226,
+      "branch_only": 1,
+      "merge_base": "157e99ba3f693272fa14c74e65b464a11ba96144",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "24f7146a582b5740ac6e9fa5335e173400246754",
+          "subject": "Publish original-identity V2.0.4-r1 after verified V2.0.2 automatic upgrade",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.5",
+      "sha": "236a44c5f1fd2f7eabe8bcbcde501e06f6c1819c",
+      "main_only": 225,
+      "branch_only": 1,
+      "merge_base": "e27b6b9ecffb6b9877c80233911c40000fd139a1",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "236a44c5f1fd2f7eabe8bcbcde501e06f6c1819c",
+          "subject": "Publish V2.0.5 after native Windows checks and verified V2.0.4 signed automatic upgrade",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v2.0.6",
+      "sha": "416ddd6193e85138e53921515bca1287fd7d089a",
+      "main_only": 221,
+      "branch_only": 1,
+      "merge_base": "2e9d97f41ca0ad8a1ce39067c6c045ef788ff3b0",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "416ddd6193e85138e53921515bca1287fd7d089a",
+          "subject": "release: publish verified V2.0.6 with original update signature",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v207-original",
+      "sha": "a546271f955b7a651464646af34c6f06b05f3634",
+      "main_only": 209,
+      "branch_only": 1,
+      "merge_base": "285ef89d96969f5f55fd59a6b9d49ad64f519367",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "a546271f955b7a651464646af34c6f06b05f3634",
+          "subject": "Publish verified V2.0.7 original-key two-file release after successful V2.0.6 upgrade",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "release/v208-original",
+      "sha": "7c89384b6d1f845211f6f1e53f52e1db51f8ef03",
+      "main_only": 205,
+      "branch_only": 1,
+      "merge_base": "111df269bab75ac38fc70acdddebdc90b3683180",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "7c89384b6d1f845211f6f1e53f52e1db51f8ef03",
+          "subject": "Publish verified original-key SerialCtl V2.0.8 companion release",
+          "paths": [
+            "release-request.json"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\trelease-request.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "D-release-requests"
+    },
+    {
+      "name": "staging/v207-cancel-readback",
+      "sha": "5ba593519582f1108af8d6131bd38d3b6b3645ff",
+      "main_only": 214,
+      "branch_only": 0,
+      "merge_base": "5ba593519582f1108af8d6131bd38d3b6b3645ff",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "staging/v207-editable-combo",
+      "sha": "285ef89d96969f5f55fd59a6b9d49ad64f519367",
+      "main_only": 209,
+      "branch_only": 0,
+      "merge_base": "285ef89d96969f5f55fd59a6b9d49ad64f519367",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.7"
+      ],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.7",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    },
+    {
+      "name": "verification/dialog-freeze",
+      "sha": "3a02e5caec114f16f8c3d42e7937a69858944002",
+      "main_only": 121,
+      "branch_only": 2,
+      "merge_base": "564f865da9faa405077f5ae0b33daa32e8ff4bc5",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "3a02e5caec114f16f8c3d42e7937a69858944002",
+          "subject": "Wait on completed remote service response instead of nonexistent combo edit text",
+          "paths": [
+            "tests/integration/ui_freeze_compare.py"
+          ]
+        },
+        {
+          "sha": "492186ff24bf509ed26d5492cb4aa8cfea75fe81",
+          "subject": "Inspect actual native remote-discovery completion state",
+          "paths": [
+            ".github/workflows/dialog-freeze-diagnostic.yml",
+            "tests/integration/ui_freeze_compare.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/dialog-freeze-diagnostic.yml",
+        "M\ttests/integration/ui_freeze_compare.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/dialog-popup",
+      "sha": "b566fa963adf6a01682a628473e60f98a9701fa2",
+      "main_only": 128,
+      "branch_only": 2,
+      "merge_base": "6f20279da27e8ba93ad30ae2746baebbc62559ef",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "b566fa963adf6a01682a628473e60f98a9701fa2",
+          "subject": "Verify early native list geometry with deferred popup rendering",
+          "paths": [
+            ".github/workflows/dialog-popup-diagnostic.yml",
+            "tests/performance/popup_variants.py"
+          ]
+        },
+        {
+          "sha": "a0c97c8397368ae839d5b2cda8cdbf7c4bcc0fbe",
+          "subject": "Diagnose native combo selection when popup setup is deferred",
+          "paths": [
+            ".github/workflows/dialog-popup-diagnostic.yml",
+            "tests/integration/UiComboPaintTest.cpp",
+            "tests/performance/popup_variants.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/dialog-popup-diagnostic.yml",
+        "M\ttests/integration/UiComboPaintTest.cpp",
+        "A\ttests/performance/popup_variants.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/dialog-traffic",
+      "sha": "ebb15a694c9fa6274636b5acab1ddbf685ab6609",
+      "main_only": 123,
+      "branch_only": 5,
+      "merge_base": "6d78ab595240734213ada4599e1bcf6904ec168c",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "ebb15a694c9fa6274636b5acab1ddbf685ab6609",
+          "subject": "Use the documented default Telnet port for the isolated traffic fixture",
+          "paths": [
+            ".github/workflows/dialog-traffic-diagnostic.yml",
+            "tests/performance/ConnectionDialogBench.cpp"
+          ]
+        },
+        {
+          "sha": "e8a8de214f22507b96cc40d35e8673d3ead1a31b",
+          "subject": "Wait for queued native focus before configuring the baseline dialog",
+          "paths": [
+            ".github/workflows/dialog-traffic-diagnostic.yml",
+            "tests/performance/ConnectionDialogBench.cpp"
+          ]
+        },
+        {
+          "sha": "b1687b2fed49430bb4e5c2b39aeb167364a5e516",
+          "subject": "Record the actual controlled connection endpoint from runtime logs",
+          "paths": [
+            ".github/workflows/dialog-traffic-diagnostic.yml"
+          ]
+        },
+        {
+          "sha": "ddeccebf4971f33b1326fd57366658904d0b7cc8",
+          "subject": "Trace controlled socket acceptance, process health and connection status",
+          "paths": [
+            ".github/workflows/dialog-traffic-diagnostic.yml",
+            "tests/performance/ConnectionDialogBench.cpp"
+          ]
+        },
+        {
+          "sha": "5bc20b3d2872d45f2e4075da9afbb1025b247cc3",
+          "subject": "Verify fixture TCP setup independently against published V2.0.11",
+          "paths": [
+            ".github/workflows/dialog-traffic-diagnostic.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/dialog-traffic-diagnostic.yml",
+        "M\ttests/performance/ConnectionDialogBench.cpp"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v203-evidence-review",
+      "sha": "776f8f01ee078e3fe2fe256170249e01e06f1a45",
+      "main_only": 238,
+      "branch_only": 7,
+      "merge_base": "f2098199461af383509da438d2d83d5b548962b4",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "776f8f01ee078e3fe2fe256170249e01e06f1a45",
+          "subject": "ci: review exact final desktop receipts and native narrow-pane screenshots",
+          "paths": [
+            ".github/workflows/ui-evidence-review.yml"
+          ]
+        },
+        {
+          "sha": "2afad85e7433ced6a1f1e83c003c70e029fb72bb",
+          "subject": "ci: inspect exact clipboard and input evidence from final native terminal audit",
+          "paths": [
+            ".github/workflows/ui-evidence-review.yml"
+          ]
+        },
+        {
+          "sha": "aa45dc796f6f38f72be0395cef0f5fcfcaf5c2a9",
+          "subject": "ci: summarize single-release response latency from successful focused native audit",
+          "paths": [
+            ".github/workflows/ui-evidence-review.yml"
+          ]
+        },
+        {
+          "sha": "b879726191ae9c328abb8619a59e8b25cd7f1ab1",
+          "subject": "ci: inspect delayed sidebar click evidence without resending input",
+          "paths": [
+            ".github/workflows/ui-evidence-review.yml"
+          ]
+        },
+        {
+          "sha": "778a657c5bf233b001faa1e81f5e61465000d61f",
+          "subject": "ci: inspect original native screenshots and distinguish focus cues from stale fill",
+          "paths": [
+            ".github/workflows/ui-evidence-review.yml"
+          ]
+        },
+        {
+          "sha": "9806d4a4b485d982c8b850b33241bf2ae3faba96",
+          "subject": "ci: diagnose first native SSH click on unchanged verified binary",
+          "paths": [
+            ".github/workflows/ui-first-click.yml"
+          ]
+        },
+        {
+          "sha": "e818e416fee2a95b4b897a7d37bee8a8434bbe29",
+          "subject": "ci: inspect preserved desktop audit reports without rerunning application",
+          "paths": [
+            ".github/workflows/ui-evidence-review.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/ui-evidence-review.yml",
+        "A\t.github/workflows/ui-first-click.yml"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v203-responsive-desktop",
+      "sha": "a821d9233e3ff15603646fccfc26dc67ca73537f",
+      "main_only": 238,
+      "branch_only": 1,
+      "merge_base": "f2098199461af383509da438d2d83d5b548962b4",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "a821d9233e3ff15603646fccfc26dc67ca73537f",
+          "subject": "Verify native focus pixels and isolate host fixture updates on the verified release",
+          "paths": [
+            ".github/workflows/desktop-interaction.yml",
+            "scripts/smoke-ui.ps1",
+            "tests/integration/gui_theme_user_actions.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "M\t.github/workflows/desktop-interaction.yml",
+        "M\tscripts/smoke-ui.ps1",
+        "M\ttests/integration/gui_theme_user_actions.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v203-sidebar-observation",
+      "sha": "7295562920635cb794c2388460db80e1b68d57b9",
+      "main_only": 237,
+      "branch_only": 1,
+      "merge_base": "1afa14a14000f1e45072fa78aeb9666bfefa9146",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "7295562920635cb794c2388460db80e1b68d57b9",
+          "subject": "Observe each single sidebar release without resending input and retain latency evidence",
+          "paths": [
+            ".github/workflows/desktop-interaction.yml",
+            "tests/integration/gui_paint_user_actions.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "M\t.github/workflows/desktop-interaction.yml",
+        "M\ttests/integration/gui_paint_user_actions.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v204-original-key-upgrade",
+      "sha": "7c3ff2ec17e5d27eb1e0c00f40772ad8ea300396",
+      "main_only": 227,
+      "branch_only": 7,
+      "merge_base": "32119cf8bf4cc64d4e1b499ff782defc8ac32f50",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "7c3ff2ec17e5d27eb1e0c00f40772ad8ea300396",
+          "subject": "Verify exact original-key signed V2.0.4 with the real V2.0.2 client",
+          "paths": [
+            "signed-update.json"
+          ]
+        },
+        {
+          "sha": "c46e14e68d0e4f5333921ee194546f8346be677a",
+          "subject": "Match original client ZIP to its authenticated published archive digest",
+          "paths": [
+            "tests/integration/verify_original_key_upgrade.py"
+          ]
+        },
+        {
+          "sha": "3a104720155a45fb2604a7a18950953173dd0f6a",
+          "subject": "Bind original-client upgrade test to the final release verification build",
+          "paths": [
+            ".github/workflows/original-key-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "57a7747048a3c36f51d79f3c5a4319e5e985b67e",
+          "subject": "Read nested original macro timing evidence",
+          "paths": [
+            ".github/workflows/read-macro-timing.yml"
+          ]
+        },
+        {
+          "sha": "1ed15f2e318157a64ba57c43f3efabc0d5dd2739",
+          "subject": "Inspect preserved native input timing from the failed build without replaying commands",
+          "paths": [
+            ".github/workflows/read-macro-timing.yml"
+          ]
+        },
+        {
+          "sha": "32d31b2ec571fdca0b12c38d3ce51203006dc521",
+          "subject": "Verify the released V2.0.2 updater before publishing the restored identity",
+          "paths": [
+            ".github/workflows/original-key-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "7ffa758765366d9ae8f82a57b8064a6ab3ae1f41",
+          "subject": "Test actual released V2.0.2 upgrade against the exact signed candidate",
+          "paths": [
+            "tests/integration/verify_original_key_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/original-key-upgrade.yml",
+        "A\t.github/workflows/read-macro-timing.yml",
+        "A\tsigned-update.json",
+        "A\ttests/integration/verify_original_key_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v205-autoupdate",
+      "sha": "caf3be10c88976b5b76c1ed3af0d4b81d289967d",
+      "main_only": 225,
+      "branch_only": 9,
+      "merge_base": "e27b6b9ecffb6b9877c80233911c40000fd139a1",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "caf3be10c88976b5b76c1ed3af0d4b81d289967d",
+          "subject": "Read real cross-process edit and combo text correctly during manual screenshot capture",
+          "paths": [
+            ".github/workflows/v205-manual-capture.yml",
+            "docs-capture/capture_guide.py"
+          ]
+        },
+        {
+          "sha": "3cf23eee7ca7b2c30ae33cb4fba7cb8820d2ce12",
+          "subject": "Keep screenshot automation text buffers alive and select the actual update progress dialog",
+          "paths": [
+            ".github/workflows/v205-manual-capture.yml",
+            "docs-capture/capture_guide.py",
+            "docs-capture/capture_update.py"
+          ]
+        },
+        {
+          "sha": "c1e5fbc5f22042ca3196357fa4b11fb91ca14f85",
+          "subject": "Use actual mouse actions and capture genuine signed update screens for the manual",
+          "paths": [
+            ".github/workflows/v205-manual-capture.yml",
+            "docs-capture/capture_guide.py",
+            "docs-capture/capture_update.py"
+          ]
+        },
+        {
+          "sha": "53998259dbe4cdd1bcb9f60c4b02068a50eeccf2",
+          "subject": "Capture unchanged V2.0.5 native Windows GUI for illustrated operations manual",
+          "paths": [
+            ".github/workflows/v205-manual-capture.yml",
+            "docs-capture/capture_guide.py",
+            "docs-capture/guide_plink.cpp"
+          ]
+        },
+        {
+          "sha": "503aa47cbb88dbdab5a8ec10c4817411224bc836",
+          "subject": "Export authentic user-manual screenshots in small independently readable groups",
+          "paths": [
+            ".github/workflows/v205-manual-assets-small.yml"
+          ]
+        },
+        {
+          "sha": "29e49149e9b6d30f8b8922ee106217d75276cac2",
+          "subject": "Read authentic released V2.0.5 Windows screenshots for the illustrated user manual",
+          "paths": [
+            ".github/workflows/v205-manual-assets.yml"
+          ]
+        },
+        {
+          "sha": "e11e201bbac591acb8831531f6131e8a4b02d8f9",
+          "subject": "Read nested original native UI evidence without repeating the successful upgrade",
+          "paths": [
+            ".github/workflows/v205-native-review.yml"
+          ]
+        },
+        {
+          "sha": "07dff9daf2df0e6ae2a137341362702559b796f8",
+          "subject": "Verify signed V2.0.5 candidate with released V2.0.4 and native screenshots",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "52d7d6d8db29df7aaab353ad108df31be75e0c5b",
+          "subject": "Prepare controlled V2.0.4-r1 to V2.0.5 signed upgrade and native UI verification",
+          "paths": [
+            ".github/workflows/v205-upgrade.yml",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/v205-manual-assets-small.yml",
+        "A\t.github/workflows/v205-manual-assets.yml",
+        "A\t.github/workflows/v205-manual-capture.yml",
+        "A\t.github/workflows/v205-native-review.yml",
+        "A\t.github/workflows/v205-upgrade.yml",
+        "A\tcandidate-update.json",
+        "A\tdocs-capture/capture_guide.py",
+        "A\tdocs-capture/capture_update.py",
+        "A\tdocs-capture/guide_plink.cpp",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v206-autoupdate",
+      "sha": "f393ae5ae9b1e732b35f8a0b152dc412c035f98c",
+      "main_only": 221,
+      "branch_only": 7,
+      "merge_base": "2e9d97f41ca0ad8a1ce39067c6c045ef788ff3b0",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "f393ae5ae9b1e732b35f8a0b152dc412c035f98c",
+          "subject": "test: verify final V2.0.6 signed upgrade and native host-key dialogs",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "1bc1acfee1d120015b0e2ea90898cae5a034ac91",
+          "subject": "Retain actual application host verification windows for final visual review",
+          "paths": [
+            ".github/workflows/v206-upgrade-verification.yml"
+          ]
+        },
+        {
+          "sha": "56b7a76e19f8fa0cbcfe8f8c8f452e978356046d",
+          "subject": "Prepare exact aligned V2.0.6 UI candidate verification",
+          "paths": []
+        },
+        {
+          "sha": "9b31a356e0db7eecde6642106b2cf02ef346c263",
+          "subject": "Verify signed V2.0.6 candidate from exact successful main build",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "1f545794adfdfbede0f02cbf2a03149ad2e70fc3",
+          "subject": "Verify final shared host identity source and exact V2.0.6 build",
+          "paths": []
+        },
+        {
+          "sha": "b350f22471fa7f69cd173cdb0feb558459a5a648",
+          "subject": "Align V2.0.6 upgrade verification with native consent acceptance fix",
+          "paths": []
+        },
+        {
+          "sha": "53ad15ef2f2ed1ade60670e40b5c6433748ecdfc",
+          "subject": "Prepare controlled V2.0.5 to V2.0.6 upgrade and native UI verification",
+          "paths": [
+            ".github/workflows/v206-upgrade-verification.yml",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/v206-upgrade-verification.yml",
+        "A\tcandidate-update.json",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v207-autoupdate",
+      "sha": "9064e90955352ff750398d9f4e640167fe94d5ac",
+      "main_only": 214,
+      "branch_only": 6,
+      "merge_base": "5ba593519582f1108af8d6131bd38d3b6b3645ff",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "9064e90955352ff750398d9f4e640167fe94d5ac",
+          "subject": "Test the original-key signed exact V2.0.7 main archive against released V2.0.6",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "df4054f3a78cc8763c2dd83489beb731e98b2908",
+          "subject": "Keep the release re-download verifier compatible with hosted Python versions",
+          "paths": [
+            "tests/integration/verify_published_assets.py"
+          ]
+        },
+        {
+          "sha": "177270faf4bbca9220095ef0230ce4aa7fe54fbd",
+          "subject": "Check the exact published two-file bytes signature archive and bounded retrieval parts",
+          "paths": [
+            "tests/integration/verify_published_assets.py"
+          ]
+        },
+        {
+          "sha": "9dc53429024ac62b5e28412848527cd72910f196",
+          "subject": "Verify published V2.0.7 assets independently of the build artifacts",
+          "paths": [
+            ".github/workflows/verify-v207-assets.yml"
+          ]
+        },
+        {
+          "sha": "04beec53486141abb372960c7c16069028c2265b",
+          "subject": "Exercise genuine released V2.0.6 confirmation install restart and data preservation",
+          "paths": [
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        },
+        {
+          "sha": "25b07faa76ad6380cf252b7e2424105952e0d1d4",
+          "subject": "Verify V2.0.7 signed update with the authentic V2.0.6 GUI and review native screenshots",
+          "paths": [
+            ".github/workflows/verify-v207-upgrade.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/verify-v207-assets.yml",
+        "A\t.github/workflows/verify-v207-upgrade.yml",
+        "A\tcandidate-update.json",
+        "A\ttests/integration/verify_published_assets.py",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v207-final",
+      "sha": "c206939b19c29d9f214f581887db78493e761ff2",
+      "main_only": 209,
+      "branch_only": 6,
+      "merge_base": "285ef89d96969f5f55fd59a6b9d49ad64f519367",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "c206939b19c29d9f214f581887db78493e761ff2",
+          "subject": "Re-download and independently verify the actual published V2.0.7 two-file delivery",
+          "paths": [
+            "verify-public-assets.json"
+          ]
+        },
+        {
+          "sha": "75957d7cc0e6c5cd3b2c34d356c5c449174b6b45",
+          "subject": "Verify original-key signed V2.0.7 candidate from successful main build 40328232613",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "7f00002dbba7700eb7b6fa19f40befa8ae4e9c9f",
+          "subject": "Prepare exact V2.0.7 signed upgrade and public delivery verification",
+          "paths": [
+            "tests/integration/verify_published_assets.py"
+          ]
+        },
+        {
+          "sha": "1a2834cf24f4bb37e54fb0b4207d82a223ba4c12",
+          "subject": "Prepare exact V2.0.7 signed upgrade and public delivery verification",
+          "paths": [
+            ".github/workflows/verify-v207-assets.yml"
+          ]
+        },
+        {
+          "sha": "e6684f5803e33074a3e7aa122c793b8026cb622d",
+          "subject": "Prepare exact V2.0.7 signed upgrade and public delivery verification",
+          "paths": [
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        },
+        {
+          "sha": "8172138b4efeb10d73da18e5fcfe2fb1b260f5ec",
+          "subject": "Prepare exact V2.0.7 signed upgrade and public delivery verification",
+          "paths": [
+            ".github/workflows/verify-v207-upgrade.yml"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/verify-v207-assets.yml",
+        "A\t.github/workflows/verify-v207-upgrade.yml",
+        "A\tcandidate-update.json",
+        "A\ttests/integration/verify_published_assets.py",
+        "A\ttests/integration/verify_release_upgrade.py",
+        "A\tverify-public-assets.json"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v208-final",
+      "sha": "e07920ae8564f9b483de5d7fcaa651846701f5b4",
+      "main_only": 208,
+      "branch_only": 5,
+      "merge_base": "4caac7c12618aac34d1ea4a5656d850ed1363e4d",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "e07920ae8564f9b483de5d7fcaa651846701f5b4",
+          "subject": "Re-download and verify published V2.0.8 two-file delivery",
+          "paths": [
+            "verify-public-assets.json"
+          ]
+        },
+        {
+          "sha": "60c6ecec0db4e4479f81e2f20edc096d30d50f47",
+          "subject": "Verify exact original-key V2.0.8 candidate through released V2.0.7 updater",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "fa5c09ca83851cb6b063d59fd06255f0db546ced",
+          "subject": "Bind signed V2.0.8 verification to final pet interaction source",
+          "paths": [
+            ".github/workflows/verify-v208-upgrade.yml",
+            "src/app/AiPetPane.cpp",
+            "src/app/AiPetPane.h",
+            "tests/integration/AiPetPaneTest.cpp",
+            "tests/integration/verify_published_assets.py"
+          ]
+        },
+        {
+          "sha": "017ea5d4d18f534d5312945b9012a56625e48519",
+          "subject": "Bind V2.0.8 release verification to final on-screen companion settings source",
+          "paths": [
+            ".github/workflows/verify-v208-upgrade.yml",
+            "src/app/AiPetPane.cpp",
+            "src/app/MainWindow.cpp",
+            "src/app/MainWindow.h",
+            "tests/integration/AiDeviceTest.cpp",
+            "tests/integration/AiPetPaneTest.cpp",
+            "tests/integration/verify_published_assets.py"
+          ]
+        },
+        {
+          "sha": "a2652daeadaabf4cad22641855542416352b044d",
+          "subject": "Prepare exact V2.0.8 signed upgrade and native UI verification",
+          "paths": [
+            ".github/workflows/verify-v208-assets.yml",
+            ".github/workflows/verify-v208-upgrade.yml",
+            "tests/integration/verify_published_assets.py",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/verify-v208-assets.yml",
+        "A\t.github/workflows/verify-v208-upgrade.yml",
+        "A\tcandidate-update.json",
+        "M\tsrc/app/AiPetPane.cpp",
+        "M\tsrc/app/AiPetPane.h",
+        "M\tsrc/app/MainWindow.cpp",
+        "M\tsrc/app/MainWindow.h",
+        "M\ttests/integration/AiDeviceTest.cpp",
+        "M\ttests/integration/AiPetPaneTest.cpp",
+        "A\ttests/integration/verify_published_assets.py",
+        "A\ttests/integration/verify_release_upgrade.py",
+        "A\tverify-public-assets.json"
+      ],
+      "production_paths": [
+        "M\tsrc/app/AiPetPane.cpp",
+        "M\tsrc/app/AiPetPane.h",
+        "M\tsrc/app/MainWindow.cpp",
+        "M\tsrc/app/MainWindow.h"
+      ],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "C-production-delta"
+    },
+    {
+      "name": "verification/v209-final",
+      "sha": "adf9a1237f1998d8bc37800f7851033b12b80aae",
+      "main_only": 200,
+      "branch_only": 1,
+      "merge_base": "5264544a9ff403f489c5557ea20a2e2762805b3d",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "adf9a1237f1998d8bc37800f7851033b12b80aae",
+          "subject": "Verify signed V2.0.9 upgrade from released V2.0.6",
+          "paths": [
+            ".github/workflows/verify-v209-upgrade.yml",
+            "candidate-update.json",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/verify-v209-upgrade.yml",
+        "A\tcandidate-update.json",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v210-final",
+      "sha": "604f0a6820d1ffc83e24e7f69aa3d8fc714dfe43",
+      "main_only": 132,
+      "branch_only": 1,
+      "merge_base": "7ea0577c0b26250e8f203cb1dd41809e0ed7eb3b",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "604f0a6820d1ffc83e24e7f69aa3d8fc714dfe43",
+          "subject": "Verify signed V2.0.10 update from V2.0.9",
+          "paths": [
+            ".github/workflows/verify-v210-upgrade.yml",
+            "candidate-update.json",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/verify-v210-upgrade.yml",
+        "A\tcandidate-update.json",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v211-final",
+      "sha": "01d0f1df641e6fb29e4c788de1bb8a7e3313f8cd",
+      "main_only": 129,
+      "branch_only": 2,
+      "merge_base": "2a21255af3fe422f2c36eb2d77658e58cc5e0f5c",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "01d0f1df641e6fb29e4c788de1bb8a7e3313f8cd",
+          "subject": "Verify original-key signed V2.0.11 update against released V2.0.10",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "e9eb374debf803ba41c643c52ebb93201cffc0ca",
+          "subject": "Prepare signed V2.0.11 upgrade check and retain original settings evidence",
+          "paths": [
+            ".github/workflows/inspect-freeze.yml",
+            ".github/workflows/verify-upgrade.yml",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/inspect-freeze.yml",
+        "A\t.github/workflows/verify-upgrade.yml",
+        "A\tcandidate-update.json",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v212-final",
+      "sha": "26288262266691304c7de4ac7eda164e916c0601",
+      "main_only": 126,
+      "branch_only": 1,
+      "merge_base": "a649e4981be4c7123a6edd692bf7626ac3ad2e2d",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "26288262266691304c7de4ac7eda164e916c0601",
+          "subject": "Prepare exact V2.0.11 to V2.0.12 signed upgrade verification",
+          "paths": [
+            ".github/workflows/verify-v212-upgrade.yml",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/verify-v212-upgrade.yml",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v212-native",
+      "sha": "0a42ec83f3d41c44a85d1a57e60afe5fc41bcb0a",
+      "main_only": 120,
+      "branch_only": 12,
+      "merge_base": "2158ff24d802290aee27c105da6378b531cff67c",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "0a42ec83f3d41c44a85d1a57e60afe5fc41bcb0a",
+          "subject": "Verify original-key signed V2.0.12 candidate through released updater",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "904da9af0e4eac9ce3390e1851d7ed51087d85fa",
+          "subject": "Bind signed upgrade verification to final native dialog completion build",
+          "paths": [
+            ".github/workflows/verify-v212-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "000e6e57f93420c70909656cc2f2999325c3c93d",
+          "subject": "Merge commit '2158ff24d802290aee27c105da6378b531cff67c' into verification/v212-native",
+          "paths": []
+        },
+        {
+          "sha": "9c2330e959e42db5fc4a5f002d40d84ab9ba5e9d",
+          "subject": "Bind final V2.0.12 signed upgrade to the verified default-port traffic build",
+          "paths": [
+            ".github/workflows/verify-v212-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "e33907e7b3fafeae2ecb4ad796397595f8cc51c2",
+          "subject": "Merge commit 'dd729e7e914a62618d0a6d756c721c5025d90c15' into verification/v212-native",
+          "paths": []
+        },
+        {
+          "sha": "0eaf7bff5d041e3d12d7be258d5b0dfa34310158",
+          "subject": "Bind upgrade check to final main native and timing verification",
+          "paths": [
+            ".github/workflows/verify-v212-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "c6517e164162ba9572f86329a6558f907b43f171",
+          "subject": "Merge commit '6d78ab595240734213ada4599e1bcf6904ec168c' into verification/v212-native",
+          "paths": []
+        },
+        {
+          "sha": "17228492510b20d5ff1374be2824d02eecf520a3",
+          "subject": "Bind final upgrade check to preserved input focus and exposed fixture paint",
+          "paths": [
+            ".github/workflows/verify-v212-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "44aa712b12cede304a429c6bf7d20ec940d904aa",
+          "subject": "Merge commit 'baff3fdac9125bdf6bd3c759a096b9c0f1ffb091' into verification/v212-native",
+          "paths": []
+        },
+        {
+          "sha": "2209d14247cb0ac6bf302dbb3e4a7b0af9f4d06d",
+          "subject": "Use an isolated final native verification branch",
+          "paths": [
+            ".github/workflows/verify-v212-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "095fbe6960e6b8b8ec0e6386eab546b82100452f",
+          "subject": "Bind upgrade verification to final main build and test dependency declaration",
+          "paths": [
+            ".github/workflows/verify-v212-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "c2f6bf86a73aef6ff62f5f80f68fc0d843c162b0",
+          "subject": "Prepare exact V2.0.11 to V2.0.12 signed upgrade verification",
+          "paths": [
+            ".github/workflows/verify-v212-upgrade.yml",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/verify-v212-upgrade.yml",
+        "A\tcandidate-update.json",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v213-native",
+      "sha": "5dd682325aec922a3d3ddbd01ad8e2561abff481",
+      "main_only": 113,
+      "branch_only": 6,
+      "merge_base": "4ee782b350e608a4057f4f3cd926df9d5b4715e7",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "5dd682325aec922a3d3ddbd01ad8e2561abff481",
+          "subject": "Inspect exact final wide dark-theme main frame from completed native evidence",
+          "paths": [
+            ".github/workflows/notebook-final-frame.yml"
+          ]
+        },
+        {
+          "sha": "673ae0e40a0d52b36d682bec8dd9d7fb940a76d5",
+          "subject": "Keep native theme diagnostic inside its guarded temporary fixture directory",
+          "paths": [
+            ".github/workflows/notebook-theme-check.yml"
+          ]
+        },
+        {
+          "sha": "197c0a7fbf993077cc9f19be5eb1fcc7d848d445",
+          "subject": "Check whether notebook theme corner artifacts persist after repaint settles",
+          "paths": [
+            ".github/workflows/notebook-theme-check.yml",
+            "tests/integration/gui_command_notebook.py"
+          ]
+        },
+        {
+          "sha": "47f5e30d609baaabc7665bab7fe3de26ee0b989c",
+          "subject": "Verify final original-key signed V2.0.13 through the released V2.0.12 updater",
+          "paths": [
+            "candidate-update.json"
+          ]
+        },
+        {
+          "sha": "aff7eb78ca7cefd8431238d11c3b0d9e38c649ee",
+          "subject": "Validate the native notebook screenshot export expression",
+          "paths": [
+            ".github/workflows/verify-v213-upgrade.yml"
+          ]
+        },
+        {
+          "sha": "71d9721f5f3404e26abaa90cbe00f95cfb4b7bfb",
+          "subject": "Prepare real released V2.0.12 to original-key signed V2.0.13 upgrade verification",
+          "paths": [
+            ".github/workflows/verify-v213-upgrade.yml",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/notebook-final-frame.yml",
+        "A\t.github/workflows/notebook-theme-check.yml",
+        "A\t.github/workflows/verify-v213-upgrade.yml",
+        "A\tcandidate-update.json",
+        "M\ttests/integration/gui_command_notebook.py",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v214-native",
+      "sha": "662cd9d48be3f509610eaa2d330f5287cba43d4d",
+      "main_only": 107,
+      "branch_only": 6,
+      "merge_base": "937e2d052f5289e1465e44277d33cbabb54441c2",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "662cd9d48be3f509610eaa2d330f5287cba43d4d",
+          "subject": "Prepare power page without invoking its separate unavailable-connection notice",
+          "paths": [
+            ".github/workflows/v214-focus-verify.yml",
+            "tests/integration/launch_focus_verification.py"
+          ]
+        },
+        {
+          "sha": "8cab45ab571acd441bf79be17cfe971c4eac93fe",
+          "subject": "Wait for exact native main HWND and establish full audit fixtures",
+          "paths": [
+            ".github/workflows/v214-focus-verify.yml",
+            "tests/integration/launch_focus_verification.py"
+          ]
+        },
+        {
+          "sha": "15aeb34a99a0a1e308b00305f8e38309c21336fc",
+          "subject": "Observe actual native focus completion without focus repair",
+          "paths": [
+            ".github/workflows/v214-focus-verify.yml",
+            "tests/integration/gui_user_lifecycle.py"
+          ]
+        },
+        {
+          "sha": "fbf56c5669bba41522b35ac15b159c132aae4358",
+          "subject": "Read precise connection keyboard audit evidence before release",
+          "paths": [
+            ".github/workflows/v214-desktop-report.yml"
+          ]
+        },
+        {
+          "sha": "711bc7968508aa1cbaac575177495b7e78315adf",
+          "subject": "Bind each authentic released updater to its own verified ZIP",
+          "paths": [
+            ".github/workflows/verify-v214-upgrade.yml",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        },
+        {
+          "sha": "8f56149cd1b56a034e6fec03cac73ac11d182fd8",
+          "subject": "Verify original-signature upgrades from V2.0.6 and V2.0.13 to V2.0.14",
+          "paths": [
+            ".github/workflows/verify-v214-upgrade.yml",
+            "candidate-update.json",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/v214-desktop-report.yml",
+        "A\t.github/workflows/v214-focus-verify.yml",
+        "A\t.github/workflows/verify-v214-upgrade.yml",
+        "A\tcandidate-update.json",
+        "M\ttests/integration/gui_user_lifecycle.py",
+        "A\ttests/integration/launch_focus_verification.py",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "verification/v215-native",
+      "sha": "c2962db6ad050dae8a1647ff12ac770e47e60256",
+      "main_only": 94,
+      "branch_only": 2,
+      "merge_base": "cdc4c90bffe959a2f3626a3aa5a9ee2ffb75c238",
+      "merged": false,
+      "commits": [
+        {
+          "sha": "c2962db6ad050dae8a1647ff12ac770e47e60256",
+          "subject": "Keep preference buffers separate from the JSON window report",
+          "paths": [
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        },
+        {
+          "sha": "1331e26c6d2de8004516cf74aad207edd9d41f53",
+          "subject": "Verify authentic V2.0.6 and V2.0.14 GUI upgrade to signed V2.0.15",
+          "paths": [
+            ".github/workflows/verify-v215-upgrade.yml",
+            "candidate-update.json",
+            "tests/integration/verify_release_upgrade.py"
+          ]
+        }
+      ],
+      "unique_diff": [
+        "A\t.github/workflows/verify-v215-upgrade.yml",
+        "A\tcandidate-update.json",
+        "A\ttests/integration/verify_release_upgrade.py"
+      ],
+      "production_paths": [],
+      "tags_at_head": [],
+      "retained_by_tags": [],
+      "category": "E-test-and-CI"
+    },
+    {
+      "name": "work/v2.0.8-ai-pet",
+      "sha": "111df269bab75ac38fc70acdddebdc90b3683180",
+      "main_only": 205,
+      "branch_only": 0,
+      "merge_base": "111df269bab75ac38fc70acdddebdc90b3683180",
+      "merged": true,
+      "commits": [],
+      "unique_diff": [],
+      "production_paths": [],
+      "tags_at_head": [
+        "v2.0.8"
+      ],
+      "retained_by_tags": [
+        "v2.0.10",
+        "v2.0.11",
+        "v2.0.12",
+        "v2.0.13",
+        "v2.0.14",
+        "v2.0.15",
+        "v2.0.16",
+        "v2.0.17",
+        "v2.0.18",
+        "v2.0.8",
+        "v2.0.9"
+      ],
+      "category": "A-fully-merged"
+    }
+  ]
+}
