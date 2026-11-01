@@ -40,6 +40,10 @@ class IConnection {
     }
     // Local terminal encoding selection; zero resumes actual-console detection.
     virtual void OverrideTextCodePage(unsigned) {}
+    // Independent channels (for example SSH's mapped size/event) stay
+    // immediate even when input is blocked. Wire-based resize opts into the
+    // sender queue so native layout never waits for socket I/O.
+    virtual bool ResizeTerminalMayBlock() const { return false; }
     virtual void ResizeTerminal(int columns, int rows) {
         (void)columns;
         (void)rows;

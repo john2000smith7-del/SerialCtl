@@ -68,6 +68,16 @@ bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std:
     return true;
 }
 void QueuedConnection::ResizeTerminal(int columns, int rows) {
+    if (!inner_->ResizeTerminalMayBlock()) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stopping_) return;
+        }
+        // Preserve SSH's independent mapped channel; do not put its dimensions
+        // behind a blocked input write. The transport owns channel lifetime.
+        inner_->ResizeTerminal(columns, rows);
+        return;
+    }
     // Telnet NAWS can wait on the wire mutex/socket just like terminal input.
     // Native layout must only publish the latest dimensions, never send them.
     std::lock_guard<std::mutex> lock(mutex_);

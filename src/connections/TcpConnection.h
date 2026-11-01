@@ -20,6 +20,7 @@ public:
     void Stop() override;
     bool Send(const Bytes& data, std::wstring& error) override;
     bool IsConnected() const override;
+    bool ResizeTerminalMayBlock() const override { return telnet_; }
     void ResizeTerminal(int columns, int rows) override;
 
 private:
