@@ -60,7 +60,7 @@ def main():
             if value:return value
             time.sleep(.02)
         raise RuntimeError('Windows control did not reach expected state')
-    process=None; moved=False; created=False; report={'status':'RUNNING','themes':[],'hardware':'NOT RUN','scope':'Actual packaged GUI, actual mouse, measured system DPI, continuous desktop scroll frames'}
+    process=None; desktop=None; moved=False; created=False; report={'status':'RUNNING','themes':[],'hardware':'NOT RUN','scope':'Actual packaged GUI, actual mouse, measured system DPI, continuous desktop scroll frames'}
     try:
         app=args.output/'app';app.mkdir()
         with zipfile.ZipFile(args.archive) as z:
@@ -130,14 +130,24 @@ def main():
             if theme=='dark':desktop.click_control(104);time.sleep(.15)
             shots=[capsule_frame(theme+'-capsule-idle')]
             for identifier in (100,304):
-                bounds=desktop.rect(control(hwnd,identifier));desktop.move_mouse(((bounds[0]+bounds[2])//2,(bounds[1]+bounds[3])//2))
+                button=control(hwnd,identifier)
+                require(not windows(process.pid,'#32770'),'Unexpected modal before capsule press '+str(identifier))
+                bounds=desktop.rect(button);desktop.move_mouse(((bounds[0]+bounds[2])//2,(bounds[1]+bounds[3])//2))
                 time.sleep(.1);shots.append(capsule_frame(theme+'-capsule-hover-'+str(identifier)))
                 desktop.button(True)
                 try:
+                    wait(lambda:user.SendMessageW(button,0xF2,0,0)&4)
                     time.sleep(.1);shots.append(capsule_frame(theme+'-capsule-pressed-'+str(identifier)))
                 finally:
-                    point=POINT(4,4);user.ClientToScreen(hwnd,c.byref(point));desktop.move_mouse((point.x,point.y));desktop.button(False)
-                require(not windows(process.pid,'#32770'),'Cancelled capsule press activated its page')
+                    point=POINT(4,4);user.ClientToScreen(hwnd,c.byref(point));desktop.move_mouse((point.x,point.y))
+                    try:
+                        # Cursor coordinates alone do not acknowledge the
+                        # button thread's WM_MOUSEMOVE/capture processing.
+                        wait(lambda:not (user.SendMessageW(button,0xF2,0,0)&4))
+                    finally:desktop.button(False)
+                desktop.responsive();time.sleep(.05)
+                modals=windows(process.pid,'#32770')
+                require(not modals,'Cancelled capsule press activated '+str(identifier)+': '+repr([text(h) for h in modals]))
             report.setdefault('capsuleFrames',[]).extend(shots)
             refresh_glyph(hwnd,122)
             # Left lane remains bounded and changes width through actual capture/drag.
@@ -241,7 +251,11 @@ def main():
         user.PostMessageW(hwnd,0x10,0,0);process.wait(timeout=15);process=None
         report.update(status='PASS',systemDpi=desktop.report.get('dpi'),frames=desktop.frames)
     except Exception as exc:
-        report.update(status='FAIL',error=str(exc));raise
+        report.update(status='FAIL',error=str(exc))
+        if desktop:
+            try:desktop.capture('failure');desktop.flush_frames()
+            except Exception as capture_error:report['failureCaptureError']=str(capture_error)
+        raise
     finally:
         if process and process.poll() is None:process.terminate();process.wait(timeout=10)
         if created and config.exists():shutil.rmtree(config)

@@ -157,3 +157,15 @@ jobs:
             ${{ runner.temp }}/gui-evidence/**/*.jsonl
             ${{ runner.temp }}/gui-evidence/**/*.log
           if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SerialCtl-approved-ui-review
+          path: |
+            ${{ runner.temp }}/gui-evidence/optimization/*.png
+            ${{ runner.temp }}/gui-evidence/optimization/*.json
+            ${{ runner.temp }}/gui-evidence/smoke/x64-packaged-*.png
+            ${{ runner.temp }}/gui-evidence/smoke/x64-*-ssh-dialog.png
+            ${{ runner.temp }}/gui-evidence/smoke/x64-*-sftp.png
+            ${{ runner.temp }}/gui-evidence/freeze/comparison.json
+          if-no-files-found: warn
