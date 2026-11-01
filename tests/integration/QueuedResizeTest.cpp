@@ -10,16 +10,22 @@ struct HeldWire final : serialctl::IConnection {
     HANDLE entered=CreateEventW(nullptr,TRUE,FALSE,nullptr);
     HANDLE release=CreateEventW(nullptr,TRUE,FALSE,nullptr);
     HANDLE resized=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    HANDLE prepareEntered=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    HANDLE prepareRelease=CreateEventW(nullptr,TRUE,FALSE,nullptr);
     std::atomic_bool connected{false},holdResize{false};
-    bool separateResizeChannel = false;
+    bool separateResizeChannel = false, holdPrepare = false;
     std::mutex wire;
     serialctl::Bytes sent;
     int columns=0,rows=0,resizeCalls=0;
-    ~HeldWire() override { CloseHandle(entered);CloseHandle(release);CloseHandle(resized); }
+    ~HeldWire() override { CloseHandle(entered);CloseHandle(release);CloseHandle(resized);CloseHandle(prepareEntered);CloseHandle(prepareRelease); }
     bool Start(serialctl::DataCallback,serialctl::StatusCallback,std::wstring&) override { connected=true;return true; }
     void Stop() override { connected=false;SetEvent(release); }
     bool IsConnected() const override { return connected; }
     bool ResizeTerminalMayBlock() const override { return !separateResizeChannel; }
+    serialctl::Bytes PrepareInput(const serialctl::Bytes &bytes) override {
+        if (holdPrepare) { SetEvent(prepareEntered);WaitForSingleObject(prepareRelease,1000); }
+        return bytes;
+    }
     bool Send(const serialctl::Bytes &bytes,std::wstring&) override {
         std::lock_guard<std::mutex> lock(wire);
         if(!sent.size()) { SetEvent(entered);WaitForSingleObject(release,4000); }
@@ -87,11 +93,24 @@ int main() {
         Require(immediate<100,"Independent resize channel blocked behind input");
         Require(WaitForSingleObject(fast->resized,0)==WAIT_OBJECT_0 && fast->columns==1079 && fast->rows==1023,
                 "Independent resize waited in the input queue");
+        fast->holdPrepare=true;
+        bool acceptedDuringPrepare=false;
+        std::wstring prepareError;
+        std::thread preparing([&] { acceptedDuringPrepare=independent.Send({'B'},prepareError); });
+        const bool preparationEntered=WaitForSingleObject(fast->prepareEntered,1000)==WAIT_OBJECT_0;
+        begin=std::chrono::steady_clock::now();
+        for(int i=0;i<1000;++i)independent.ResizeTerminal(100+i,40+i);
+        const auto preparingResize=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
+        SetEvent(fast->prepareRelease);preparing.join();
+        Require(preparationEntered && acceptedDuringPrepare,"Input preparation fixture did not run");
+        Require(preparingResize<100,"Independent resize waited for the input preparation queue lock");
+        Require(fast->columns==1099 && fast->rows==1039,"Independent resize did not reach its channel during preparation");
         independent.Stop();
         const int callsAfterStop=fast->resizeCalls;
         independent.ResizeTerminal(200,50);
         Require(fast->resizeCalls==callsAfterStop,"Stopped independent channel received another resize");
         std::cout<<"RESIZE_INDEPENDENT_CALLER_1000_MS="<<immediate<<"\nPASS: independent resize reaches its channel while input remains blocked\n";
+        std::cout<<"RESIZE_INDEPENDENT_PREPARE_1000_MS="<<preparingResize<<"\nPASS: independent resize stays clear of the input preparation queue lock\n";
     } catch(const std::exception &error) { std::cerr<<error.what()<<'\n';result=1; }
     SetEvent(done);SetEvent(held->release);if(watchdog.joinable())watchdog.join();
     connection.Stop();CloseHandle(done);return result;

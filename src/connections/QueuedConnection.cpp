@@ -69,12 +69,10 @@ bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std:
 }
 void QueuedConnection::ResizeTerminal(int columns, int rows) {
     if (!inner_->ResizeTerminalMayBlock()) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (stopping_) return;
-        }
+        if (!connected_.load()) return;
         // Preserve SSH's independent mapped channel; do not put its dimensions
-        // behind a blocked input write. The transport owns channel lifetime.
+        // behind input I/O or preparation under the queue lock. The transport
+        // owns channel lifetime when Stop races this atomic state check.
         inner_->ResizeTerminal(columns, rows);
         return;
     }
