@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <future>
 #include <iostream>
+#include <string>
 #include <tlhelp32.h>
 using namespace serialctl;
 using namespace std::chrono_literals;
@@ -17,8 +18,10 @@ DWORD Threads() {
     if (Thread32First(snapshot, &entry)) do { if (entry.th32OwnerProcessID == GetCurrentProcessId()) ++count; } while (Thread32Next(snapshot, &entry));
     CloseHandle(snapshot); return count;
 }
-int main() {
+int main(int argc, char** argv) {
     try {
+        const bool delayResizeStart = argc == 2 && std::string(argv[1]) == "--delay-resize-start";
+        Require(argc == 1 || delayResizeStart, "expected optional --delay-resize-start");
         // Warm GUID/pipe runtime state. The harness uses joined std::threads,
         // not MSVC's reusable async pool, so its cached workers cannot be
         // mistaken for leaked transport threads.
@@ -31,6 +34,7 @@ int main() {
         std::vector<ULONGLONG> elapsed;
         size_t concurrentResizeCalls = 0;
         nlohmann::json resourceTrace = nlohmann::json::array();
+        nlohmann::json resizeStartup = nlohmann::json::array();
         std::wstring error;
         // First complete cycle initializes process/CRT synchronization caches.
         // The diagnostic trace established 123 -> 128 once, then exactly 128
@@ -54,6 +58,10 @@ int main() {
             std::atomic_bool resizing{false};
             std::atomic_size_t resizeCalls{0};
             std::thread resizer;
+            // Keep the promise alive until StopAndJoin has joined the worker,
+            // including when readiness times out and an assertion unwinds.
+            std::promise<void> resizeStarted;
+            auto resizeReady = resizeStarted.get_future();
             struct StopAndJoin {
                 std::shared_ptr<PlinkConnection> ssh; std::thread& sender;
                 std::atomic_bool& resizing; std::thread& resizer;
@@ -71,7 +79,12 @@ int main() {
             // Keep issuing real mapped-view updates through Stop's channel
             // teardown, including calls after Stop, not just before closing.
             resizing = true;
+            const auto resizeStart = GetTickCount64();
             resizer = std::thread([&] {
+                // A controlled scheduler delay is test setup, not a resize or
+                // teardown operation. Only the warm-up cycle injects it.
+                if (delayResizeStart && index == -1) Sleep(600);
+                resizeStarted.set_value();
                 while (resizing) {
                     const auto count = resizeCalls.load();
                     ssh->ResizeTerminal(80 + int(count % 100), 24 + int(count % 40));
@@ -79,8 +92,13 @@ int main() {
                     std::this_thread::yield();
                 }
             });
+            Require(resizeReady.wait_for(3000ms) == std::future_status::ready, "resize worker startup");
+            resizeReady.get();
+            const auto startupMs = GetTickCount64() - resizeStart;
             const auto resizeDeadline = GetTickCount64() + 500;
             while (resizeCalls < 100 && GetTickCount64() < resizeDeadline) Sleep(1);
+            resizeStartup.push_back({{"cycle", index}, {"startupMs", startupMs}, {"callsBeforeStop", resizeCalls.load()}});
+            std::cout << "resize_startup=" << resizeStartup.back().dump() << std::endl;
             Require(resizeCalls >= 100, "concurrent resize writer did not run");
             const auto start = GetTickCount64();
             BackgroundCleanup cleanup;
@@ -158,10 +176,14 @@ int main() {
             {"concurrentResizeCalls", concurrentResizeCalls}, {"resizeThroughStop", "PASS"},
             {"coldHandles", coldHandles}, {"handlesBefore", handlesBefore}, {"handlesAfter", handlesAfter}, {"threadsBefore", threadsBefore}, {"threadsAfter", threadsAfter},
             {"resourceTrace", resourceTrace},
+            {"resizeStartup", resizeStartup}, {"startupDelayInjected", delayResizeStart},
             {"scope", "controlled child processes, no SSH server or UART hardware"}};
         std::cout << evidence.dump() << '\n';
         wchar_t directory[32768]{};
-        if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768)) std::ofstream(std::filesystem::path(directory) / L"ssh-lifecycle.json") << evidence.dump(2);
+        if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768)) {
+            const auto file = delayResizeStart ? L"ssh-lifecycle-delayed-start.json" : L"ssh-lifecycle.json";
+            std::ofstream(std::filesystem::path(directory) / file) << evidence.dump(2);
+        }
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

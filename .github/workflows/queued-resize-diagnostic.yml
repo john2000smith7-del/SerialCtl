@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
@@ -23,13 +25,37 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot compile isolated SSH child' }
           cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 /I src/connections /I src/platform /I src/app /I third_party/json /Fe:ssh-resize-fixture/ssh-lifecycle-test.exe tests/integration/SshLifecycleTest.cpp src/connections/PlinkConnection.cpp src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp advapi32.lib ole32.lib user32.lib shell32.lib
           if ($LASTEXITCODE -ne 0) { throw 'Cannot compile actual SSH resize/close regression' }
+      - name: Prove the original harness counts scheduler startup against its work deadline
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $original = (git show 30bcdf5471a899e41f02a8a09a3c37b5c18a1759:tests/integration/SshLifecycleTest.cpp) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot load the original failed harness' }
+          $needle = 'resizer = std::thread([&] {'
+          if (-not $original.Contains($needle)) { throw 'Original startup injection point changed' }
+          $reproduction = $original.Replace($needle, ($needle + "`n                if (index == -1) Sleep(600);"))
+          [IO.File]::WriteAllText((Join-Path $pwd 'ssh-resize-fixture/old-startup.cpp'), $reproduction, (New-Object Text.UTF8Encoding($false)))
+          cl /nologo /std:c++17 /EHsc /O2 /MT /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0601 /I src/connections /I src/platform /I src/app /I third_party/json /Fe:ssh-resize-fixture/old-startup.exe ssh-resize-fixture/old-startup.cpp src/connections/PlinkConnection.cpp src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp advapi32.lib ole32.lib user32.lib shell32.lib
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compile the original startup reproduction' }
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/ssh-resize-evidence" -Force | Out-Null
+          $ErrorActionPreference = 'Continue'
+          $result = & ./ssh-resize-fixture/old-startup.exe 2>&1
+          $code = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          $result | Tee-Object "$env:RUNNER_TEMP/ssh-resize-evidence/original-startup-rejection.txt" | Write-Host
+          if ($code -eq 0 -or ($result -join "`n") -notmatch 'concurrent resize writer did not run') { throw 'Original harness did not reproduce startup false rejection' }
+          $global:LASTEXITCODE = 0
       - name: Race mapped resize notifications against close and repeat after teardown
         shell: powershell
         run: |
-          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/ssh-resize-evidence"
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/ssh-resize-evidence/normal"
           New-Item -ItemType Directory $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
           & ./ssh-resize-fixture/ssh-lifecycle-test.exe | Tee-Object "$env:SERIALCTL_EVIDENCE_DIR/result.txt"
           if ($LASTEXITCODE -ne 0) { throw 'SSH resize/close lifecycle failed' }
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/ssh-resize-evidence/delayed"
+          New-Item -ItemType Directory $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
+          & ./ssh-resize-fixture/ssh-lifecycle-test.exe --delay-resize-start | Tee-Object "$env:SERIALCTL_EVIDENCE_DIR/result.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'Ready worker failed unchanged resize/stop deadlines after controlled startup delay' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
