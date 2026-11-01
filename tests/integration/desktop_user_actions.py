@@ -532,7 +532,7 @@ class DesktopActions:
                         "Sidebar drag did not resize terminal")
                 entry["assertions"] = self.check_layout()
 
-    def sidebar_toggle(self, observation_budget=.06):
+    def sidebar_toggle(self, observation_budget=.06, *, capture_rapid_frames=True):
         initial_toggle_bounds = self.rect(self.control(125))
 
         def check_anchor(bounds, phase):
@@ -567,6 +567,8 @@ class DesktopActions:
                 entry["stationary_pointer"] = stationary
                 entry["caption_observation_budget_ms"] = observation_budget*1000
                 entry["single_click_observations"] = click_observations
+                entry["rapid_frame_capture"] = ("synchronous desktop snapshots" if capture_rapid_frames
+                                                  else "caller-owned independent screen recording")
                 entry["double_click_ambiguity"] = (
                     "This sequence uses one fixed point and verifies the target caption after every "
                     "released click, including input eligible for native double-click handling. "
@@ -630,7 +632,11 @@ class DesktopActions:
                             "see down/up bounds and hit targets before attributing message delivery")
                     previous_point = point
                     time.sleep(.033)
-                    capture_frame(f"{frame_prefix}-{index:02d}")
+                    # Endurance already records the same actual desktop on an
+                    # independent sampler. A second full-screen BitBlt here
+                    # can consume the 200ms input interval being tested.
+                    if capture_rapid_frames:
+                        capture_frame(f"{frame_prefix}-{index:02d}")
                 time.sleep(.3)
                 intervals = [round((b - a) * 1000, 3) for a, b in zip(clicks, clicks[1:])]
                 entry["click_intervals_ms"] = intervals
