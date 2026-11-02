@@ -39,10 +39,64 @@ on:
         required: false
         type: boolean
         default: false
+      inspect_run:
+        description: Read-only exact-run cached diagnostics inspection; never test or release qualification
+        required: false
+        default: ''
+      inspect_name:
+        description: Exact logical evidence name for read-only inspection
+        required: false
+        default: SerialCtl-Xfer-native-diagnostics
+      inspect_images:
+        description: Optional comma-separated exact PNG basenames, at most three; no image rewriting
+        required: false
+        default: ''
 permissions:
   contents: read
   actions: read
 jobs:
+  inspect:
+    if: ${{ inputs.inspect_run }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: ${{ inputs.inspect_name }}
+          run-id: ${{ inputs.inspect_run }}
+          path: inspection
+      - name: Export bounded original reports or explicitly selected PNGs without rerunning tests
+        shell: python
+        env:
+          INSPECT_IMAGES: ${{ inputs.inspect_images }}
+        run: |
+          import base64, hashlib, json, os, pathlib
+          root=pathlib.Path('inspection')
+          print('INSPECTION_ONLY: cached evidence; a successful extraction is not a passing test')
+          for path in sorted(root.rglob('*.json')):
+              if path.stat().st_size>8*1024*1024: raise ValueError('Report exceeds bounded inspection size')
+              data=json.loads(path.read_text(encoding='utf-8-sig'))
+              if not isinstance(data,dict): continue
+              row={key:data[key] for key in ('status','error','failure','cleanup_error','source_commit','scope','cases','checks','macro_observations','retained_cards_after_disconnect') if key in data}
+              print('INSPECT_REPORT',path.name,json.dumps(row,ensure_ascii=True)[:20000])
+          names=[name.strip() for name in os.environ.get('INSPECT_IMAGES','').split(',') if name.strip()]
+          if len(names)>3 or len(names)!=len(set(names)): raise ValueError('Select at most three distinct PNG basenames')
+          total=0
+          for name in names:
+              if pathlib.PurePath(name).name!=name or not name.endswith('.png') or '\\' in name: raise ValueError('Invalid image basename')
+              matches=list(root.rglob(name))
+              if len(matches)!=1: raise ValueError('Expected one exact PNG: '+name)
+              data=matches[0].read_bytes();total+=len(data)
+              if total>2*1024*1024: raise ValueError('Selected PNGs exceed bounded log size')
+              print('INSPECT_IMAGE_SHA256',name,hashlib.sha256(data).hexdigest())
+              print('SERIALCTL_UI_REVIEW_BEGIN '+name)
+              encoded=base64.b64encode(data).decode('ascii')
+              for offset in range(0,len(encoded),4096):print('SERIALCTL_UI_REVIEW_DATA '+encoded[offset:offset+4096])
+              print('SERIALCTL_UI_REVIEW_END '+name)
+          print('INSPECT_PNG_NAMES',json.dumps([p.name for p in sorted(root.rglob('*.png'))]))
   compile-helpers:
     if: ${{ inputs.compile_only && inputs.rebuild_helpers && startsWith(github.ref, 'refs/heads/feat/') }}
     runs-on: windows-2022
@@ -162,7 +216,7 @@ jobs:
           name: SerialCtl-lifecycle-diagnostics
           path: ${{ runner.temp }}/serialctl-lifecycle/
   native:
-    if: ${{ !inputs.lifecycle && !inputs.compile_only && !inputs.ui_run && !inputs.xfer_ui }}
+    if: ${{ !inputs.inspect_run && !inputs.lifecycle && !inputs.compile_only && !inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 30
     env:
@@ -384,6 +438,9 @@ jobs:
           foreach ($name in @('serialctl.exe','plink.exe','psftp.exe')) { Copy-Item (Join-Path $native $name) (Join-Path $stage $name) }
           Copy-Item VERSION (Join-Path $stage 'VERSION')
           Copy-Item docs/package/update.ini (Join-Path $stage 'update.ini')
+          foreach ($name in @('serialctl_client.py','serialctl_api.py','serialctl_ws.py')) {
+            Copy-Item (Join-Path 'tools' $name) (Join-Path $stage $name)
+          }
           Compress-Archive -Path "$stage/*" -DestinationPath $zip
           python tests/integration/xfer_ui_fixture.py --archive $zip --gateway $fixture --output "$env:RUNNER_TEMP/xfer-diagnostic-ui"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -418,8 +475,10 @@ jobs:
               for path in directory.glob('*.json'):
                   if path.name.endswith('result.json') or path.name=='comparison.json':
                       print(path.name,json.dumps(json.loads(path.read_text(encoding='utf-8-sig')),ensure_ascii=True))
-          for path in root.glob('*.png'):
-              if not any(part in path.name for part in ('complete','failure','narrow','in-progress','disabled')): continue
+          # Keep all original PNGs in the exact-run cache, but bound this job's
+          # log. Additional originals can be read with inspect_run/images.
+          selected=[p for p in sorted(root.glob('*.png')) if any(part in p.name for part in ('failure','narrow','in-progress','disabled'))]
+          for path in selected[:3]:
               print('SERIALCTL_UI_REVIEW_BEGIN '+path.name)
               encoded=base64.b64encode(path.read_bytes()).decode('ascii')
               for offset in range(0,len(encoded),4096): print('SERIALCTL_UI_REVIEW_DATA '+encoded[offset:offset+4096])
