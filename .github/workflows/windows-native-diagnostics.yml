@@ -19,12 +19,17 @@ on:
         required: false
         type: boolean
         default: false
+      xfer_ui:
+        description: Focused current-source Xfer native and actual GUI diagnostics; never formal release evidence
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
 jobs:
   native:
-    if: ${{ !inputs.ui_run }}
+    if: ${{ !inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 30
     env:
@@ -98,7 +103,7 @@ jobs:
           path: ${{ runner.temp }}/native-evidence/
           if-no-files-found: warn
   gui:
-    if: ${{ inputs.ui_run }}
+    if: ${{ inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
@@ -187,3 +192,62 @@ jobs:
             ${{ runner.temp }}/gui-evidence/smoke/x64-*-sftp.png
             ${{ runner.temp }}/gui-evidence/freeze/comparison.json
           if-no-files-found: warn
+  xfer:
+    if: ${{ inputs.xfer_ui }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      SERIALCTL_EVIDENCE_DIR: ${{ runner.temp }}/xfer-diagnostic-evidence
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Compile current production program and focused native regressions
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64
+          New-Item -ItemType Directory $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure focused Xfer diagnostics' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Build actual program and Xfer tests' -Arguments @('--build',$directory,'--config','Release','--target','serialctl','transfer_controller_test','ui_popup_menu_test','boot_interrupt_test','queued_transfer_test','xfer_gateway_fixture','--parallel','2')
+          $ctest = Get-RequiredCommandPath -Name ctest.exe
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Run focused native checks without weakening formal suite' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(transfer_controller|ui_popup_menu|boot_interrupt|queued_transfer)$')
+      - name: Run actual current-source Xfer GUI with controlled peer
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $native = Get-SerialCtlBuildOutputDirectory -Architecture x64 -Configuration Release
+          $fixture = Join-Path $native 'xfer_gateway_fixture.exe'
+          [ordered]@{source_commit=(git rev-parse HEAD); fixture='xfer_gateway_fixture.exe'; sha256=(Get-FileHash $fixture -Algorithm SHA256).Hash.ToLowerInvariant();scope='Diagnostic only, current source, never formal evidence'} | ConvertTo-Json | Set-Content (Join-Path $native 'fixture-source.json') -Encoding UTF8
+          $zip = "$env:RUNNER_TEMP/SerialCtl-Xfer-UI-Diagnostic.zip"
+          Compress-Archive -LiteralPath @((Join-Path $native 'serialctl.exe'),(Join-Path $native 'plink.exe'),(Join-Path $native 'psftp.exe')) -DestinationPath $zip
+          python tests/integration/xfer_ui_fixture.py --archive $zip --gateway $fixture --output "$env:RUNNER_TEMP/xfer-diagnostic-ui"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Export bounded actual diagnostic results and images
+        if: always()
+        shell: python
+        run: |
+          import base64, json, os, pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'xfer-diagnostic-ui'
+          for path in root.glob('*result.json'):
+              print(path.name, path.read_text(encoding='utf-8'))
+          for path in root.glob('*.png'):
+              if not any(part in path.name for part in ('complete','failure','narrow','in-progress','disabled')): continue
+              print('SERIALCTL_UI_REVIEW_BEGIN '+path.name)
+              encoded=base64.b64encode(path.read_bytes()).decode('ascii')
+              for offset in range(0,len(encoded),4096): print('SERIALCTL_UI_REVIEW_DATA '+encoded[offset:offset+4096])
+              print('SERIALCTL_UI_REVIEW_END '+path.name)
+      - uses: ./.github/actions/ci-evidence
+        if: always()
+        with:
+          mode: save
+          name: SerialCtl-Xfer-native-diagnostics
+          path: |
+            ${{ runner.temp }}/xfer-diagnostic-evidence/*.png
+            ${{ runner.temp }}/xfer-diagnostic-ui/*.png
+            ${{ runner.temp }}/xfer-diagnostic-ui/*.json
+            ${{ runner.temp }}/xfer-diagnostic-ui/*.log

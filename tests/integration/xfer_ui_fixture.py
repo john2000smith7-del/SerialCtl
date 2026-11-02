@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import time
 from types import SimpleNamespace
@@ -136,12 +137,34 @@ def main():
     require(not mains(), "Existing GUI; refusing profile changes")
     process = peer = desktop = peer_log = None
     moved = created = False
+    original_display = None
     report = {"status": "RUNNING", "cases": [], "scope": "Actual ZIP executable, mouse/SendInput, "
               "native file dialogs, actual WebSocket remote serial with controlled native protocol peer "
               "(10ms fixture pacing per peer output/save for visible in-progress interaction, not a UART throughput measurement)",
               "notRun": ["physical UART/board", "real Win7", "device power", "field SSH"],
-              "fixtureSource":fixture}
+              "fixtureSource":fixture,
+              "releaseQualification":"Determined by the parent workflow; diagnostic ZIPs cannot qualify a formal release"}
     try:
+        # This fixture also runs independently of smoke-ui. Ensure the actual
+        # hosted screen can contain the declared one-shot border drags.
+        user.EnumDisplaySettingsW.argtypes=(w.LPCWSTR,w.DWORD,c.c_void_p)
+        user.EnumDisplaySettingsW.restype=w.BOOL
+        user.ChangeDisplaySettingsW.argtypes=(c.c_void_p,w.DWORD)
+        user.ChangeDisplaySettingsW.restype=w.LONG
+        user.GetSystemMetrics.argtypes=(c.c_int,)
+        mode=c.create_string_buffer(220)
+        struct.pack_into("<H",mode,68,220)
+        require(user.EnumDisplaySettingsW(None,0xffffffff,mode),"Cannot read actual hosted display")
+        original_display=mode.raw
+        report["displayBefore"]=[user.GetSystemMetrics(0),user.GetSystemMetrics(1)]
+        for width,height in ((1920,1080),(1280,1024)):
+            struct.pack_into("<I",mode,72,0x00180000)
+            struct.pack_into("<II",mode,172,width,height)
+            if user.ChangeDisplaySettingsW(mode,0)==0:
+                break
+        report["displayDuring"]=[user.GetSystemMetrics(0),user.GetSystemMetrics(1)]
+        require(report["displayDuring"][0]>=1280 and report["displayDuring"][1]>=900,
+                "Hosted screen cannot contain the actual Xfer resize test")
         app = output / "app"
         app.mkdir()
         with zipfile.ZipFile(args.archive) as archive:
@@ -318,6 +341,9 @@ def main():
             shutil.rmtree(config)
         if moved:
             os.replace(backup, config)
+        if original_display is not None:
+            restored=c.create_string_buffer(original_display,len(original_display))
+            require(user.ChangeDisplaySettingsW(restored,0)==0,"Cannot restore hosted display mode")
         (output / "xfer-ui-result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps({k:v for k,v in report.items() if k != "frames"}, ensure_ascii=True), flush=True)
 
