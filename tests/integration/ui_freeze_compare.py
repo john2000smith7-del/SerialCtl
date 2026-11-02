@@ -375,7 +375,11 @@ def main():
                 'unexpectedChangedPixels':unexpected,'unexpectedRawChangedPixels':unexpected_raw,
                 'unexpectedPixelExamples':[[p%before['size'][0],p//before['size'][0]] for p in residual[:12]],
                 'rawChangedPixels': len(raw_changes), 'unexemptRawChangedPixels': unexempt,
-                'approvedChangeRegions':approved,'geometryEqual': before['geometry'] == after['geometry'], 'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
+                'approvedChangeRegions':approved,'geometryEqual': before['geometry'] == after['geometry'],
+                'geometryDifferences':{'baselineOnly':[row for row in before['geometry'] if row not in after['geometry']],
+                    'candidateOnly':[row for row in after['geometry'] if row not in before['geometry']],
+                    'orderOnly':before['geometry']!=after['geometry'] and sorted(before['geometry'])==sorted(after['geometry'])},
+                'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
                 'baselineVersion': before.get('version'), 'candidateVersion': after.get('version'),
                 'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')})
         require(all((case.get("comparison")=="approved-layout" and case["layoutContract"]["status"]=="PASS") or
@@ -393,6 +397,9 @@ def main():
             require(not config.exists(), 'Configuration destination occupied; backup retained')
             os.replace(backup, config)
         (args.output / 'ui-freeze-comparison.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+        for case in report['cases']:
+            fields=('theme','view','comparison','layoutContract','unexpectedChangedPixels','unexpectedRawChangedPixels','geometryEqual','geometryDifferences')
+            print('UI_FREEZE_CASE_JSON='+json.dumps({k:case[k] for k in fields if k in case},separators=(',',':')))
         print('::notice title=UI freeze comparison::'+json.dumps(report, separators=(',', ':')))
     return 0 if report['status'] == 'PASS' else 1
 
