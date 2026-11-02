@@ -260,7 +260,7 @@ class Engine {
     }
     void Header(int type,std::uint32_t position=0) {
         Bytes bytes{static_cast<std::uint8_t>(type),static_cast<std::uint8_t>(position),static_cast<std::uint8_t>(position>>8),static_cast<std::uint8_t>(position>>16),static_cast<std::uint8_t>(position>>24)};
-        const auto crc=Crc16(bytes.data(),bytes.size());bytes.push_back(static_cast<std::uint8_t>(crc>>8));bytes.push_back(crc&255);
+        const auto crc=Crc16(bytes.data(),bytes.size());bytes.push_back(static_cast<std::uint8_t>(crc>>8));bytes.push_back(static_cast<std::uint8_t>(crc&255));
         Bytes out{'*','*',ZDLE,ZHEX};const char* hex="0123456789abcdef";
         for(auto b:bytes){out.push_back(hex[b>>4]);out.push_back(hex[b&15]);}
         out.push_back('\r');out.push_back('\n');if(type!=ZFIN&&type!=ZACK)out.push_back(0x11);Put(out);

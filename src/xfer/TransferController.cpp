@@ -22,11 +22,11 @@ struct TransferController::Task {
     bool restoreTail=false;
     ~Task(){if(workerHandle)CloseHandle(workerHandle);}
     void Note(std::wstring text){std::lock_guard<std::mutex> lock(textMutex);note=std::move(text);}
-    void Offer(const serialctl::Bytes& bytes) noexcept {
+    void Offer(const serialctl::Bytes& incoming) noexcept {
         try {
             std::lock_guard<std::mutex> lock(rxMutex);
-            if(bytes.size()>4*1024*1024-rx.size())overflow=true;
-            else {rx.insert(rx.end(),bytes.begin(),bytes.end());acceptedReceive+=bytes.size();}
+            if(incoming.size()>4*1024*1024-rx.size())overflow=true;
+            else {rx.insert(rx.end(),incoming.begin(),incoming.end());acceptedReceive+=incoming.size();}
             wake.notify_all();
         }catch(...) {overflow=true;wake.notify_all();}
     }

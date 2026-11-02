@@ -128,11 +128,12 @@ class UiPopupMenu {
                 }
                 const bool disabled=!!(item.itemState&(ODS_DISABLED|ODS_GRAYED));
                 const bool selected=!!(item.itemState&ODS_SELECTED)&&!disabled;
-                if(selected)UiBox(dc,r,colors.accentSoft,colors.accentSoft,c.D(8));
-                const auto ink=disabled?colors.muted:colors.text;
+                RECT highlight=r;InflateRect(&highlight,0,-std::max(1,c.D(1)));
+                if(selected)UiBox(dc,highlight,colors.accent,colors.accent,c.D(8));
+                const auto ink=disabled?colors.muted:selected?RGB(255,255,255):colors.text;
                 if(item.itemState&ODS_CHECKED) {
                     const int y=(r.top+r.bottom-c.D(16))/2;
-                    UiDrawGlyph(dc,{r.left+c.D(8),y,r.left+c.D(24),y+c.D(16)},disabled?colors.muted:UiAccentInk(*c.style.dark),UiGlyph::Check);
+                    UiDrawGlyph(dc,{r.left+c.D(8),y,r.left+c.D(24),y+c.D(16)},selected?ink:disabled?colors.muted:UiAccentInk(*c.style.dark),UiGlyph::Check);
                 }
                 auto text=r;text.left+=c.D(32);text.right-=c.D(16);
                 const auto old=SelectObject(dc,c.style.font);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,ink);
@@ -141,7 +142,7 @@ class UiPopupMenu {
                 else {
                     RECT title=text;title.top+=c.D(4);title.bottom=title.top+c.D(20);
                     DrawTextW(dc,row.label.data(),static_cast<int>(split),&title,DT_SINGLELINE|DT_VCENTER|DT_NOPREFIX);
-                    text.top=title.bottom;SetTextColor(dc,colors.muted);
+                    text.top=title.bottom;SetTextColor(dc,selected?ink:colors.muted);
                     DrawTextW(dc,row.label.c_str()+split+1,-1,&text,DT_SINGLELINE|DT_VCENTER|DT_NOPREFIX);
                 }
                 SelectObject(dc,old);return TRUE;

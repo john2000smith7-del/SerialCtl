@@ -100,6 +100,11 @@ def main():
     temp = Path(os.environ["RUNNER_TEMP"]).resolve()
     require(temp in output.parents and output != temp, "Output must be a new RUNNER_TEMP child")
     output.mkdir(exist_ok=False, parents=True)
+    fixture = json.loads((args.gateway.resolve().parent/"fixture-source.json").read_text(encoding="utf-8-sig"))
+    source_commit = subprocess.check_output(["git","rev-parse","HEAD"], text=True).strip()
+    require(fixture["source_commit"]==source_commit and
+            fixture["sha256"]==hashlib.sha256(args.gateway.read_bytes()).hexdigest(),
+            "Native test helper differs from the verified source/hash")
     user = c.WinDLL("user32", use_last_error=True)
     shell = c.WinDLL("shell32", use_last_error=True)
     shell.SHGetFolderPathW.argtypes = (w.HWND, c.c_int, w.HANDLE, w.DWORD, w.LPWSTR)
@@ -134,7 +139,8 @@ def main():
     report = {"status": "RUNNING", "cases": [], "scope": "Actual ZIP executable, mouse/SendInput, "
               "native file dialogs, actual WebSocket remote serial with controlled native protocol peer "
               "(10ms fixture pacing per peer output/save for visible in-progress interaction, not a UART throughput measurement)",
-              "notRun": ["physical UART/board", "real Win7", "device power", "field SSH"]}
+              "notRun": ["physical UART/board", "real Win7", "device power", "field SSH"],
+              "fixtureSource":fixture}
     try:
         app = output / "app"
         app.mkdir()

@@ -64,6 +64,8 @@ main 成功构建也会触发 workflow_run 桌面审核；核对存在匹配证�
 
 ### Actions 附件配额受限时的证据传递
 
+Windows主流程给release.ps1传入TestFixtureDirectory，将已通过PE检查的Xfer原生辅助程序及源码／哈希收据保留到仓库外RUNNER_TEMP，供后续真实打包程序UI验收使用。release.ps1仍清理整个build目录；辅助程序不进入bin或用户ZIP。普通本地发布不指定该参数即可，实际UI验证仍按当次环境执行。
+
 V2.0.19 主流程使用固定版本的官方 actions/cache save/restore，通过 .github/actions/ci-evidence 和 tools/ci_evidence.py 传递候选 ZIP、原始截图、录像及收据，不扩删历史附件、不增加付费预算。缓存与 artifact 使用不同存储机制；这项调整不是测试跳过或失败豁免。
 
 键绑定运行 ID、完整源码 SHA、逻辑资料名和执行 attempt；仅恢复同仓库、同 ref、同来源运行的精确缓存。容器内清单再次核对身份、大小和每个文件 SHA-256，拒绝路径穿越、重复名称、篡改和覆盖不同文件。应用 ZIP 保持原字节，不重新压缩应用内容。发布器仍要求所有实际测试与完整工作流成功，并验证原公钥签名和两个真实旧客户端的六种升级场景。

@@ -12,7 +12,7 @@ struct Probe {
     int dpi=96;
     DWORD started=0;
     unsigned positions=0;
-    bool observed=false,region=false,nestedRejected=false;
+    bool observed=false,region=false,nestedRejected=false,navigated=false;
     std::string error;
 };
 thread_local Probe* active=nullptr;
@@ -42,7 +42,6 @@ void CALLBACK Tick(HWND owner,UINT,UINT_PTR timer,DWORD) {
             if(GetTickCount()-p->started>3000)throw std::runtime_error("native menu did not become visible");
             return;
         }
-        KillTimer(owner,timer);
         p->observed=true;
         HRGN region=CreateRectRgn(0,0,0,0);
         RECT box{};GetWindowRect(menu,&box);
@@ -54,8 +53,18 @@ void CALLBACK Tick(HWND owner,UINT,UINT_PTR timer,DWORD) {
         auto nested=CreatePopupMenu();AppendMenuW(nested,MF_STRING,99,L"Nested should be rejected");
         p->nestedRejected=UiPopupMenu::Track(nested,TPM_RETURNCMD,10,10,owner,UiFieldStyle{&p->dark,nullptr,p->dpi})==0;
         DestroyMenu(nested);
-        if(p->accept)ui_test::SaveUiEvidence(menu,L"v219-popup-"+std::wstring(p->dark?L"dark-":L"light-")+std::to_wstring(p->dpi)+L"dpi.png");
-        if(p->accept){Key(VK_DOWN);Key(VK_RETURN);}else Key(VK_ESCAPE);
+        if(p->accept&&!p->navigated){p->navigated=true;Key(VK_DOWN);return;}
+        KillTimer(owner,timer);
+        if(p->accept) {
+            Check((GetMenuState(p->menu,1,MF_BYCOMMAND)&MF_HILITE)!=0,"native menu keyboard selection missing");
+            RedrawWindow(menu,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_UPDATENOW);
+            RECT row{};Check(GetMenuItemRect(owner,p->menu,0,&row)!=FALSE,"native menu item bounds");
+            POINT sample{row.left+MulDiv(20,p->dpi,96),(row.top+row.bottom)/2};ScreenToClient(menu,&sample);
+            HDC dc=GetDC(menu);const auto fill=GetPixel(dc,sample.x,sample.y);ReleaseDC(menu,dc);
+            Check(fill==UiTheme(p->dark).accent,"menu selection differs from shared combo accent");
+            ui_test::SaveUiEvidence(menu,L"v219-popup-"+std::wstring(p->dark?L"dark-":L"light-")+std::to_wstring(p->dpi)+L"dpi.png");
+            Key(VK_RETURN);
+        } else Key(VK_ESCAPE);
     }catch(const std::exception& e){p->error=e.what();KillTimer(owner,timer);EndMenu();}
 }
 }

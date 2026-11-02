@@ -91,6 +91,24 @@ void EdgeCases(const std::wstring& folder) {
         std::cout<<"PASS native edge="<<scenario<<" (manual finish / blocked-write cancel / disconnect / no overwrite)"<<std::endl;
     }
 }
+void DisconnectedRemoteLease() {
+    testing::XferGateway gateway;std::wstring error;
+    Check(gateway.Start(xfer::Protocol::Raw,xfer::Direction::Receive,Bytes(4096,'x'),25900,25950,error),"disconnect gateway");
+    auto connection=std::make_shared<QueuedConnection>(std::make_unique<SharedSerialConnection>(
+        L"127.0.0.1",static_cast<std::uint16_t>(gateway.Port()),L"COM77"));
+    Check(connection->Start({}, {},error),"disconnect remote connection");
+    Check(connection->BeginTransfer("disconnect-owner",[](const Bytes&){},error)&&gateway.Busy(),"remote actually owns wire before disconnect");
+    connection->Stop();
+    const auto deadline=GetTickCount64()+3000;
+    while(gateway.Busy()&&GetTickCount64()<deadline)Sleep(1);
+    Check(!gateway.Busy(),"remote disconnect left a serial lease behind");
+    auto next=std::make_shared<QueuedConnection>(std::make_unique<SharedSerialConnection>(
+        L"127.0.0.1",static_cast<std::uint16_t>(gateway.Port()),L"COM77"));
+    Check(next->Start({}, {},error)&&next->BeginTransfer("new-owner",[](const Bytes&){},error),"later remote owner cannot acquire released wire");
+    Check(next->EndTransfer("new-owner",error)&&!gateway.Busy(),"later owner release");
+    next->Stop();
+    std::cout<<"PASS remote disconnect releases ownership and a later client can acquire"<<std::endl;
+}
 }
 int wmain() {
     const auto folder=std::wstring(L".\\xfer-native-")+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
@@ -102,6 +120,8 @@ int wmain() {
             std::wstring error;
             const auto protocol=static_cast<xfer::Protocol>(p);
             Check(gateway.Start(protocol,d==0?xfer::Direction::Receive:xfer::Direction::Send,payload,25900,25950,error),"start actual WebSocket gateway and controlled wire");
+            GatewayClient spectator;spectator.Connect(L"127.0.0.1",gateway.Port());
+            spectator.Request("subscribe","serial-xfer-fixture",{{"after",0}});
             auto remote=std::make_unique<SharedSerialConnection>(L"127.0.0.1",static_cast<std::uint16_t>(gateway.Port()),L"COM77");
             auto queue=std::make_shared<QueuedConnection>(std::move(remote));
             Check(queue->Start({}, {},error)&&queue->SupportsTransfer(),"new remote serial capability negotiation");
@@ -128,6 +148,8 @@ int wmain() {
             const auto report=gateway.Report();
             Check(report.value("status","")=="PASS"&&report.value("exactBytes",false),"controlled wire must independently finish same payload");
             Check(gateway.History().value("events",Json::array()).empty(),"protocol file bytes must not enter public terminal history");
+            Check(spectator.Request("resources").contains("resources"),"private protocol bytes leaked to subscribed spectator");
+            spectator.Close();
             const auto written=gateway.Written();
             Check(queue->Send({'o','k'},error),"ordinary remote input restored after transfer");
             const auto writeDeadline=GetTickCount64()+1000;
@@ -137,6 +159,7 @@ int wmain() {
             std::cout<<"PASS remote protocol="<<p<<" direction="<<d<<" bytes="<<payload.size()<<std::endl;
         }
         EdgeCases(folder);
+        DisconnectedRemoteLease();
         RemoveDirectoryW(folder.c_str());
         std::cout<<"PASS: actual native controller, private WebSocket transfer, saved binary files and ordinary input restoration; no physical serial device\n";
         return 0;

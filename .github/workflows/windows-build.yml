@@ -34,7 +34,7 @@ jobs:
         run: |
           Start-Transcript -Path "$env:RUNNER_TEMP/serialctl-build.txt"
           $transcriptOpen = $true
-          try { ./scripts/release.ps1 }
+          try { ./scripts/release.ps1 -TestFixtureDirectory "$env:RUNNER_TEMP/serialctl-native-fixtures" }
           catch {
             $failure = $_
             Stop-Transcript
@@ -112,7 +112,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
           if ($archive.Count -ne 1) { throw 'Expected one verified archive' }
-          python tests/integration/xfer_ui_fixture.py --archive $archive[0].FullName --gateway build/windows/x64/cmake/Release/xfer_gateway_fixture.exe --output "$env:RUNNER_TEMP/serialctl-xfer"
+          python tests/integration/xfer_ui_fixture.py --archive $archive[0].FullName --gateway "$env:RUNNER_TEMP/serialctl-native-fixtures/xfer_gateway_fixture.exe" --output "$env:RUNNER_TEMP/serialctl-xfer"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise command notebook with actual mouse, clipboard and CMD
         shell: powershell
@@ -214,6 +214,7 @@ jobs:
             ${{ runner.temp }}/serialctl-xfer/*.png
             ${{ runner.temp }}/serialctl-xfer/*.json
             ${{ runner.temp }}/serialctl-xfer/*.log
+            ${{ runner.temp }}/serialctl-native-fixtures/*.json
             ${{ runner.temp }}/serialctl-optimization/*.png
             ${{ runner.temp }}/serialctl-optimization/*.json
             ${{ runner.temp }}/serialctl-optimization/*.mkv
@@ -264,7 +265,7 @@ jobs:
           root = pathlib.Path('ui-evidence')
           page = os.environ['REVIEW_PAGE']
           patterns = {
-              'workspace': ['v207-workspace-*-96dpi.png', 'v219-workspace-capsule-*.png', 'dialog-ai-*.png', 'dialog-serial-*.png', 'v205-remote-*.png', 'v215-left-rail-*.png', 'v215-path-*.png', 'v219-popup-*-96dpi.png', 'v219-xfer-*-complete.png', 'v219-xfer-*-disabled.png', 'v219-xfer-*-narrow.png'],
+              'workspace': ['v207-workspace-*-96dpi.png', 'v219-workspace-capsule-*.png', 'dialog-ai-*.png', 'dialog-serial-*.png', 'v205-remote-*.png', 'v215-left-rail-*.png', 'v215-path-*.png', 'v219-popup-*-96dpi.png', 'v219-xfer-*-complete.png', 'v219-xfer-*-in-progress.png', 'v219-xfer-*-disabled.png', 'v219-xfer-*-narrow.png'],
               'ai': ['x64-*-ai-expanded.png', 'x64-*-ai-collapsed.png', 'v208-ai-pet-main-*.png', 'v218-model-*.png'],
               'power-light': ['x64-light-power-layout.png', 'x64-light-power-disconnected.png'],
               'power-dark': ['x64-dark-power-layout.png', 'x64-dark-power-disconnected.png'],

@@ -260,7 +260,12 @@ bool SharedSerialConnection::TransferRequest(const std::string& op,nlohmann::jso
         return true;
     }catch(const std::exception& e) {
         pendingRpc_.erase(id);
-        error=MultiByteToWide(reinterpret_cast<const std::uint8_t*>(e.what()),strlen(e.what()),CP_UTF8);return false;
+        // A partially sent request may already own/write the remote serial.
+        // Disconnect so server-side client cleanup can release that ownership;
+        // keeping this channel alive would leave an unconfirmed lease behind.
+        lock.unlock();client_.Cancel();connected_=false;rpcWake_.notify_all();
+        error=L"远端传输确认异常，已断开；已写出字节状态未知："+
+            MultiByteToWide(reinterpret_cast<const std::uint8_t*>(e.what()),strlen(e.what()),CP_UTF8);return false;
     }
 }
 bool SharedSerialConnection::BeginTransferWire(const std::string& owner,std::wstring& error) {
