@@ -1,0 +1,29 @@
+--- a/windows/network.c
++++ b/windows/network.c
+@@ -18,7 +18,8 @@
+ #include "tree234.h"
+ #include "ssh.h"
+ 
+-#include <ws2tcpip.h>
++#include <ws2tcpip.h>
++#include <mstcpip.h>
+ 
+ #if HAVE_AFUNIX_H
+ #include <afunix.h>
+@@ -950,7 +951,15 @@
+ 
+     if (sock->keepalive) {
+         BOOL b = true;
+-        p_setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, (void *) &b, sizeof(b));
++        p_setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, (void *) &b, sizeof(b));
++        /* SerialCtl: Win7 supports SIO_KEEPALIVE_VALS. Detect silent power
++         * loss without sending characters or executing remote commands.
++         * Vista/Win7+ use ten probes: 10s idle, then 3s between probes.
++         * Preserve SO_KEEPALIVE fallback if a provider lacks this ioctl. */
++        struct tcp_keepalive timing = { 1, 10000, 3000 };
++        DWORD returned = 0;
++        p_WSAIoctl(s, SIO_KEEPALIVE_VALS, &timing, sizeof(timing),
++                   NULL, 0, &returned, NULL, NULL);
+     }
+ 
+     /*

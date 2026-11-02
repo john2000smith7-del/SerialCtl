@@ -61,6 +61,11 @@
           "role": "runtime",
           "architecture": "x64",
           "sha256": "065a5ea3086e54fb65ba9f2e05f4b72d984fc82dda978dbd1017c9b45ee4feb8"
+        },
+        {
+          "path": "third_party/putty/patches/serialctl-tcp-keepalive.patch",
+          "role": "patch",
+          "sha256": "1518bf555462ed828c2f5da82c232154a54d2791f9829207507fb26567ae1c85"
         }
       ]
     },

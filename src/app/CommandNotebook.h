@@ -40,6 +40,7 @@ class CommandNotebook {
     bool DoubleClick() const {
         return doubleClick_;
     }
+    bool Repeat() const { return repeat_; }
     unsigned Interval() const {
         return interval_;
     }
@@ -70,6 +71,7 @@ class CommandNotebook {
     HWND window_ = nullptr, editor_ = nullptr, buttons_[4]{}, more_ = nullptr, tooltip_ = nullptr;
     HFONT ui_ = nullptr, mono_ = nullptr;
     bool dark_ = false, dirty_ = false, loading_ = false, writable_ = false, running_ = false, doubleClick_ = true;
+    bool repeat_ = false; // Deliberately off for each application launch.
     int dpi_ = 96, rowHeight_ = 20, top_ = 80, bottom_ = 0, gutter_ = 48, scrollAxis_ = 0, scrollGrab_ = 0;
     int armedLine_ = -1;
     int contentWidth_ = 0;

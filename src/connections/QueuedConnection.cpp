@@ -41,8 +41,8 @@ void QueuedConnection::Stop() {
 bool QueuedConnection::Send(const Bytes &data, std::wstring &error) {
     return SendObserved(data, error, {});
 }
-bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std::function<void()> accepted) {
-    return Enqueue(data,error,std::move(accepted),{});
+bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std::function<void()> accepted, std::function<bool()> allowed) {
+    return Enqueue(data,error,std::move(accepted),std::move(allowed));
 }
 bool QueuedConnection::SendConditional(const Bytes& data,std::wstring& error,std::function<bool()> allowed) {
     return Enqueue(data,error,{},std::move(allowed));

@@ -131,7 +131,7 @@ void CommandNotebook::State(bool writable, bool running, size_t sent, size_t tot
     if (wasRunning != running)
         SendMessageW(editor_, EM_SETREADONLY, running, 0);
     if (wasRunning != running)
-        SetWindowTextW(buttons_[0], running ? L"停止" : L"运行");
+        SetWindowTextW(buttons_[0], running ? L"暂停发送" : L"运行");
     if (different) {
         InvalidateRect(window_, nullptr, FALSE);
         for (auto b : buttons_)
@@ -306,14 +306,15 @@ void CommandNotebook::Menu() {
     info.fMask = MIM_BACKGROUND;
     info.hbrBack = background;
     SetMenuInfo(menu, &info);
-    std::vector<std::wstring> labels{L"正文双击运行"};
+    std::vector<std::wstring> labels{L"正文双击运行", L"持续发送"};
     const unsigned values[] = {100, 500, 1500, 5000};
     for (const auto value : values)
         labels.push_back(L"发送间隔 " + std::to_wstring(value) + L" ms");
     AppendMenuW(menu, MF_OWNERDRAW | (doubleClick_ ? MF_CHECKED : 0), 1, labels[0].c_str());
+    AppendMenuW(menu, MF_OWNERDRAW | (repeat_ ? MF_CHECKED : 0) | (running_ ? MF_GRAYED : 0), 2, labels[1].c_str());
     AppendMenuW(menu, MF_OWNERDRAW | MF_SEPARATOR, 0, nullptr);
     for (int i = 0; i < 4; ++i)
-        AppendMenuW(menu, MF_OWNERDRAW | (interval_ == values[i] ? MF_CHECKED : 0), 10 + i, labels[i + 1].c_str());
+        AppendMenuW(menu, MF_OWNERDRAW | (interval_ == values[i] ? MF_CHECKED : 0), 10 + i, labels[i + 2].c_str());
     RECT r{};
     GetWindowRect(more_, &r);
     auto choice = UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTALIGN,r.right,r.bottom,window_,UiFieldStyle{&dark_,ui_,dpi_});
@@ -321,6 +322,7 @@ void CommandNotebook::Menu() {
     DeleteObject(background);
     if (choice == 1)
         doubleClick_ = !doubleClick_;
+    if (choice == 2 && !running_) repeat_ = !repeat_;
     if (choice >= 10 && choice < 14)
         interval_ = values[choice - 10];
     if (choice && optionsChanged)
@@ -476,9 +478,21 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
     if (m == WM_LBUTTONDBLCLK && self->doubleClick_ && !self->running_) {
         POINTL p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
         const auto pos = SendMessageW(h, EM_CHARFROMPOS, 0, reinterpret_cast<LPARAM>(&p));
+        if (pos < 0 || static_cast<size_t>(pos) >= self->text_.size()) return 0;
         const auto row = self->NativeRow(static_cast<LONG>(pos));
-        if (self->runLine)
-            self->runLine(row);
+        if (row >= self->lines_.size()) return 0;
+        const auto& line = self->lines_[row];
+        const auto last = self->text_.find_last_not_of(L" \t\r\n", line.end ? line.end - 1 : 0);
+        if (line.start == line.end || last == std::wstring::npos || last < line.start) return 0;
+        POINTL start{}, end{};
+        SendMessageW(h, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&start), static_cast<LPARAM>(line.start));
+        SendMessageW(h, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end), static_cast<LPARAM>(last + 1));
+        TEXTMETRICW metrics{};
+        HDC dc = GetDC(h); const auto font = SelectObject(dc, self->mono_);
+        GetTextMetricsW(dc, &metrics); SelectObject(dc, font); ReleaseDC(h, dc);
+        if (p.y < start.y || p.y >= start.y + std::max<LONG>(1, metrics.tmHeight) ||
+            p.x < start.x || p.x >= end.x) return 0;
+        if (self->runLine) self->runLine(row);
         return 0;
     }
     const auto result = DefSubclassProc(h, m, w, l);
@@ -623,6 +637,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
         const bool primary = i == 0 && enabled;
         auto v = primary ? UiButtonVisual(c, true, pressed, hovered, true)
                          : UiFlatIconVisual(c, c.surface, enabled, pressed, hovered);
+        if (i == 0 && running_ && enabled) { v.fill = c.danger; v.ink = RGB(255,255,255); }
         if (primary || v.fill != c.surface)
             UiRoundedSurface(dc, it.rcItem, v.fill, v.fill, UiCapsuleRadius(it.rcItem), dpi_);
         if (more) {
@@ -631,7 +646,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
             const int size = D(Ui::CompactGlyphSize);
             const int x = (it.rcItem.left + it.rcItem.right - size) / 2;
             const int y = (it.rcItem.top + it.rcItem.bottom - size) / 2;
-            UiGlyph glyph = i == 0   ? (running_ ? UiGlyph::Stop : UiGlyph::Run)
+            UiGlyph glyph = i == 0   ? (running_ ? UiGlyph::Pause : UiGlyph::Run)
                             : i == 1 ? UiGlyph::Save
                             : i == 2 ? UiGlyph::Import
                                      : UiGlyph::Export;

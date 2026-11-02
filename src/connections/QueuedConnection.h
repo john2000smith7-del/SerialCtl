@@ -46,7 +46,7 @@ class QueuedConnection final : public IConnection {
     void OverrideTextCodePage(unsigned page) override {
         inner_->OverrideTextCodePage(page);
     }
-    bool SendObserved(const Bytes &, std::wstring &, std::function<void()> accepted);
+    bool SendObserved(const Bytes &, std::wstring &, std::function<void()> accepted, std::function<bool()> allowed = {});
     void ResizeTerminal(int columns, int rows) override;
 
   private:

@@ -91,6 +91,7 @@ void XferPane::Refresh() {
     if(SendMessageW(Control(Direction),CB_GETDROPPEDSTATE,0,0)||SendMessageW(Control(Mode),CB_GETDROPPEDSTATE,0,0))return;
     const auto target=target_();const auto state=controller_->State();
     const bool receive=SendMessageW(Control(Direction),CB_GETCURSEL,0,0)==1;
+    UiSetButtonGlyph(Control(Start), receive ? UiGlyph::Export : UiGlyph::Import, receive ? L"开始接收文件" : L"开始发送文件");
     const int protocol=static_cast<int>(SendMessageW(Control(Mode),CB_GETCURSEL,0,0));
     const bool supported=target.connection&&target.connection->IsConnected()&&target.connection->SupportsTransfer()&&target.unavailable.empty();
     bool layout=false;

@@ -22,6 +22,7 @@ Apply the patches in this order:
 2. `patches/serialctl-sftp-list.patch`
 3. `patches/serialctl-sftp-exact-rename.patch`
 4. `patches/serialctl-sftp-utf8-local.patch`
+5. `patches/serialctl-tcp-keepalive.patch`
 
 The resize patch adds two private options used only between `serialctl.exe`
 and its bundled `plink.exe`:
@@ -73,6 +74,7 @@ git -C $puttySource apply (Join-Path $repoRoot 'third_party\putty\patches\serial
 git -C $puttySource apply (Join-Path $repoRoot 'third_party\putty\patches\serialctl-sftp-list.patch')
 git -C $puttySource apply (Join-Path $repoRoot 'third_party\putty\patches\serialctl-sftp-exact-rename.patch')
 git -C $puttySource apply (Join-Path $repoRoot 'third_party\putty\patches\serialctl-sftp-utf8-local.patch')
+git -C $puttySource apply (Join-Path $repoRoot 'third_party\putty\patches\serialctl-tcp-keepalive.patch')
 
 cmake -S $puttySource -B (Join-Path $repoRoot 'build\putty-x64') -A x64 `
     -DPUTTY_GSSAPI=OFF `
@@ -93,3 +95,9 @@ The rebuilt files are produced under `build/putty-x64/Release/` and
 `build/putty-x86/Release/`. Do not replace files under `prebuilt/` until both
 architectures have passed the Windows 7 subsystem/import checks and the
 corresponding hashes in `third_party/manifest.json` are updated.
+
+The TCP keepalive patch configures Windows SIO_KEEPALIVE_VALS only when TCP
+keepalive is enabled. SerialCtl SSH sessions enable it and disable PuTTY
+IGNORE-only pings. The requested timers are 10s idle / 3s probe interval; the
+OS/provider controls probe count and may fall back to system defaults. These
+values are not evidence of measured board power-loss detection latency.

@@ -27,7 +27,7 @@ class SessionService {
     std::vector<std::string> Ids();
     Json Resources();
     Json State(const std::string &);
-    Json Input(const std::string &, const Bytes &, const std::string &source);
+    Json Input(const std::string &, const Bytes &, const std::string &source, std::function<bool()> allowed = {});
     Json Transfer(const std::string& op,const std::string& id,const std::string& owner,const Bytes& bytes={});
     void ReleaseTransfers(const std::string& source);
     static Bytes CmdBatch(const Bytes &); // completed command lines, never interactive VT bytes

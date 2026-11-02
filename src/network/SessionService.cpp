@@ -88,7 +88,7 @@ Bytes SessionService::CmdBatch(const Bytes &bytes) {
     }
     return batch;
 }
-SessionService::Json SessionService::Input(const std::string &id, const Bytes &bytes, const std::string &source) {
+SessionService::Json SessionService::Input(const std::string &id, const Bytes &bytes, const std::string &source, std::function<bool()> allowed) {
     if (bytes.empty() || bytes.size() > 65536)
         return Error("INPUT_SIZE", "Input must contain 1..65536 bytes");
     auto e = Find(id);
@@ -109,7 +109,7 @@ SessionService::Json SessionService::Input(const std::string &id, const Bytes &b
             observer_(id, batch, source, e->transport->InputCodePage());
     };
     auto queued = dynamic_cast<QueuedConnection *>(e->transport.get());
-    if (!(queued ? queued->SendObserved(batch, error, accepted) : e->transport->Send(batch, error)))
+    if (!(queued ? queued->SendObserved(batch, error, accepted, allowed) : e->transport->Send(batch, error)))
         return Error("INPUT_REJECTED", WideToMultiByte(error, CP_UTF8));
     if (!queued)
         accepted();

@@ -120,7 +120,10 @@ enum class UiGlyph {
     Import,
     Export,
     SessionList,
-    Send
+    Send,
+    Pause,
+    Disconnect,
+    Close
 };
 inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
     if (UiResourceGlyph(dc, bounds, color, static_cast<int>(icon)))
@@ -134,6 +137,17 @@ inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon
     pen.SetEndCap(Gdiplus::LineCapRound);
     auto line = [&](int a, int b, int c, int d) { g.DrawLine(&pen, a, b, c, d); };
     switch (icon) {
+    case UiGlyph::Pause:
+        line(8, 5, 8, 19); line(16, 5, 16, 19);
+        break;
+    case UiGlyph::Disconnect:
+        line(4, 8, 9, 8); line(9, 8, 9, 4);
+        line(15, 20, 15, 16); line(15, 16, 20, 16);
+        line(4, 20, 20, 4);
+        break;
+    case UiGlyph::Close:
+        line(6, 6, 18, 18); line(6, 18, 18, 6);
+        break;
     case UiGlyph::Clock:
         g.DrawEllipse(&pen, 3, 3, 18, 18);
         line(12, 6, 12, 12);
@@ -787,7 +801,8 @@ inline void UiSetButtonGlyph(HWND button, UiGlyph glyph, const wchar_t *tooltip)
     tool.hwnd = owner;
     tool.uId = reinterpret_cast<UINT_PTR>(button);
     tool.lpszText = const_cast<wchar_t *>(tooltip);
-    SendMessageW(tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
+    if (!SendMessageW(tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool)))
+        SendMessageW(tips, TTM_UPDATETIPTEXTW, 0, reinterpret_cast<LPARAM>(&tool));
 }
 inline bool UiDrawButtonGlyph(HDC dc, const DRAWITEMSTRUCT &item, COLORREF ink, int dpi) {
     const auto value = reinterpret_cast<UINT_PTR>(GetPropW(item.hwndItem, UiButtonGlyphProperty));
