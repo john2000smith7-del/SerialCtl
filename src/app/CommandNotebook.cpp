@@ -482,10 +482,11 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
         const auto row = self->NativeRow(static_cast<LONG>(pos));
         if (row >= self->lines_.size()) return 0;
         const auto& line = self->lines_[row];
+        const auto first = self->text_.find_first_not_of(L" \t", line.start);
         const auto last = self->text_.find_last_not_of(L" \t\r\n", line.end ? line.end - 1 : 0);
-        if (line.start == line.end || last == std::wstring::npos || last < line.start) return 0;
+        if (line.start == line.end || first >= line.end || last == std::wstring::npos || last < line.start) return 0;
         POINTL start{}, end{};
-        SendMessageW(h, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&start), static_cast<LPARAM>(line.start));
+        SendMessageW(h, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&start), static_cast<LPARAM>(first));
         SendMessageW(h, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end), static_cast<LPARAM>(last + 1));
         TEXTMETRICW metrics{};
         HDC dc = GetDC(h); const auto font = SelectObject(dc, self->mono_);

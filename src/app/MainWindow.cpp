@@ -2903,7 +2903,7 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Show(terminal_, LiveMonitorPage() ? (monitor && activeSession_ && monitorTarget == "session-" +
         std::to_string(activeSession_->id) ? SW_SHOW : SW_HIDE) : SW_SHOW);
     batch.Show(powerPane_.Handle(), powerVisible_ ? SW_SHOW : SW_HIDE);
-    batch.Show(reconnectButton_, !leftPanelCollapsed_ && !leftPanelAnimating_ && activeSession_ && !aiVisible_ && !powerVisible_ ? SW_SHOW : SW_HIDE);
+    batch.Show(reconnectButton_, !leftPanelCollapsed_ && !leftPanelAnimating_ && (activeSession_ || aiVisible_ || powerVisible_) ? SW_SHOW : SW_HIDE);
     batch.Show(disconnectButton_, !leftPanelCollapsed_ && !leftPanelAnimating_ && (aiVisible_ || powerVisible_ || activeSession_) ? SW_SHOW : SW_HIDE);
     for(HWND control : {connectionList_,disconnectAllButton_}) batch.Show(control,!leftPanelCollapsed_ && !leftPanelAnimating_ ? SW_SHOW : SW_HIDE);
     batch.Show(status_,!leftPanelCollapsed_ && !leftPanelAnimating_ ? SW_SHOW : SW_HIDE);
@@ -3226,7 +3226,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             return;
         }
         if (id == IdDisconnect || id == IdReconnect) {
-            const bool close=activeSession_&&activeSession_->disconnected;
+            const bool close=(activeSession_&&!aiVisible_&&!powerVisible_&&activeSession_->disconnected)||
+                (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false));
             const COLORREF ink=!enabled?colors.muted:id==IdReconnect?(darkMode_?RGB(48,209,88):RGB(28,137,61)):close?colors.muted:colors.danger;
             const auto v=UiFlatIconVisual(UiTheme(darkMode_),colors.panel,enabled,pressed,hovered);
             if(v.fill!=colors.panel) UiRoundedSurface(dc,rect,v.fill,v.fill,UiCapsuleRadius(rect),Ui::Dpi);
@@ -4392,6 +4393,9 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
         }
         sessionService_.Unregister("session-" + std::to_string(pendingSession_->id));
         apiServer_.EnqueueSessions(sessionService_.Ids());
+        const auto failedTransport=pendingSession_->connection; const auto failedLog=pendingSession_->logger;
+        connectionCleanup_.Retire([failedTransport,failedLog] {if(failedTransport)failedTransport->Stop();if(failedLog)failedLog->Stop();});
+        SetTimer(window_,SessionCleanupTimerId,40,nullptr);
         pendingSession_.reset();
         RefreshConnectionActions(); RefreshConnectionList();
         pendingConnectionData_.clear();
@@ -4530,11 +4534,15 @@ void MainWindow::PollSessionCleanup() {
         if (session.get()==activeSession_) AppendStatus(L"已断开，连接资源已释放；可重连或关闭卡片",false);
     }
     for (const auto id : close) CloseSession(id);
-    if (!pending) KillTimer(window_,SessionCleanupTimerId);
+    pending = pending || connectionCleanup_.Busy();
+    if (pending) SetTimer(window_,SessionCleanupTimerId,40,nullptr);
+    else KillTimer(window_,SessionCleanupTimerId);
     RefreshConnectionActions(); RefreshConnectionList();
 }
 
 void MainWindow::Reconnect() {
+    if (aiVisible_) { if(!aiPane_.Connected()) ShowAiPage(true); return; }
+    if (powerVisible_) { if(!powerService_.State().value("connected",false)&&!disconnectAllPending_) powerPane_.ShowConnection(); return; }
     if (!activeSession_ || pendingSession_ || pendingReconnectId_ || activeSession_->disconnecting || !activeSession_->disconnected) return;
     if (connectionThread_.joinable()) connectionThread_.join();
     auto& old=*activeSession_;
@@ -4557,7 +4565,9 @@ void MainWindow::RefreshConnectionActions() {
     SetWindowTextW(disconnectButton_,closingCard?L"关闭卡片":L"断开连接");
     UiSetButtonGlyph(disconnectButton_, closingCard?UiGlyph::Close:UiGlyph::Disconnect, closingCard?L"关闭卡片":L"断开连接");
     EnableWindow(disconnectButton_,special||(available&&!activeSession_->disconnecting&&pendingReconnectId_!=activeSession_->id));
-    EnableWindow(reconnectButton_,available&&activeSession_->disconnected&&!activeSession_->disconnecting&&!pendingSession_&&!pendingReconnectId_);
+    const bool reconnectable=(available&&activeSession_->disconnected&&!activeSession_->disconnecting)||
+        (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false)&&!disconnectAllPending_);
+    EnableWindow(reconnectButton_,reconnectable&&!pendingSession_&&!pendingReconnectId_&&!connectionCleanup_.Busy());
     bool live=aiPane_.Connected()||powerService_.State().value("connected",false)||pendingSession_!=nullptr;
     bool busy=disconnectAllPending_||connectionCleanup_.Busy()||cancelledConnectionPending_;
     for(const auto& session:sessions_) {live|=!session->disconnected; busy|=session->disconnecting;}
@@ -5994,9 +6004,10 @@ std::wstring MainWindow::SelectedLineEnding() const {
 }
 
 void MainWindow::SetConnectedUi(bool connected) {
+    connected = connected && (!activeSession_ || (!activeSession_->disconnecting && !activeSession_->disconnected));
     ShowWindow(disconnectButton_, (aiVisible_ || powerVisible_ || activeSession_) ? SW_SHOW : SW_HIDE);
     RefreshConnectionActions();
-    ShowWindow(reconnectButton_, !leftPanelCollapsed_ && !leftPanelAnimating_ && activeSession_ && !aiVisible_ && !powerVisible_ ? SW_SHOW : SW_HIDE);
+    ShowWindow(reconnectButton_, !leftPanelCollapsed_ && !leftPanelAnimating_ && (activeSession_ || aiVisible_ || powerVisible_) ? SW_SHOW : SW_HIDE);
 
     EnableWindow(sftpTabButton_, connected && selectedMode_ == 0 && SftpClient::IsAvailable());
     EnableWindow(xferTabButton_,connected&&activeSession_&&(selectedMode_==1||selectedMode_==3)&&connection_->SupportsTransfer());
@@ -6317,7 +6328,7 @@ XferPane::Target MainWindow::XferTarget() {
     }
     target.id=activeSession_->id;target.name=activeSession_->name;
     target.connection=std::dynamic_pointer_cast<QueuedConnection>(activeSession_->connection);
-    if(!target.connection||!target.connection->IsConnected())target.unavailable=L"请先连接串口";
+    if(!target.connection||!target.connection->IsConnected()||(activeSession_&&(activeSession_->disconnecting||activeSession_->disconnected)))target.unavailable=L"请先连接串口";
     else if(!target.connection->SupportsTransfer())target.unavailable=L"远端版本不支持 Xfer，请先升级远端 SerialCtl";
     else {
         const auto boot=activeSession_->boot->Status(GetTickCount64());
