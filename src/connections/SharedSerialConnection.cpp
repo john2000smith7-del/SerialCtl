@@ -139,6 +139,7 @@ bool SharedSerialConnection::Start(DataCallback data, StatusCallback status, std
         auto resources = client_.Request("resources");
         std::string com = ws::Lower(WideToMultiByte(serialName_, CP_UTF8));
         resource_.clear();
+        transferSupported_=false;
         for (auto &r : resources["resources"])
             if (r.value("kind", "") == "serial" && ws::Lower(r.value("com", "")) == com) {
                 if (!resource_.empty())
@@ -146,6 +147,7 @@ bool SharedSerialConnection::Start(DataCallback data, StatusCallback status, std
                 if (!r.value("connected", false))
                     throw std::runtime_error("TARGET_NOT_OPEN");
                 resource_ = r["id"];
+                transferSupported_=r.value("xfer",false);
             }
         if (resource_.empty())
             throw std::runtime_error("TARGET_NOT_FOUND: COM must be opened locally first");
@@ -177,9 +179,11 @@ void SharedSerialConnection::Stop() {
     stopping_ = true;
     connected_ = false;
     client_.Cancel();
+    rpcWake_.notify_all();
     if (reader_.joinable())
         reader_.join();
     client_.Close();
+    {std::lock_guard<std::mutex> lock(rpcMutex_);pendingRpc_.clear();rpcReplies_.clear();transferToken_.clear();}
     data_ = {};
     status_ = {};
 }
@@ -205,7 +209,18 @@ void SharedSerialConnection::Read() {
         while (!stopping_) {
             auto j = client_.Receive();
             auto type = j.value("type", "");
-            if (type == "event" && j.value("resource", "") == resource_) {
+            if(type=="xfer_data"&&j.value("resource","")==resource_) {
+                bool accepted=false;
+                {std::lock_guard<std::mutex> lock(rpcMutex_);accepted=!transferToken_.empty()&&j.value("token",std::string())==transferToken_;}
+                if(accepted&&data_)data_(ws::Unbase64(j.at("data")));
+            } else if(type=="response") {
+                bool transferReply=false;
+                {std::lock_guard<std::mutex> lock(rpcMutex_);const auto id=j.value("requestId",std::string());
+                    if(pendingRpc_.count(id)){rpcReplies_[id]=j;transferReply=true;rpcWake_.notify_all();}}
+                if(!transferReply&&!j.value("ok",false)&&status_) {
+                    const auto msg=j["error"].dump();status_(MultiByteToWide(reinterpret_cast<const std::uint8_t*>(msg.data()),msg.size(),CP_UTF8),true);
+                }
+            } else if (type == "event" && j.value("resource", "") == resource_) {
                 if (j.value("kind", "") == "output" && data_)
                     data_(ws::Unbase64(j["data"]));
                 else if (j.value("kind", "") == "error" && status_) {
@@ -214,17 +229,61 @@ void SharedSerialConnection::Read() {
                 }
             } else if (type == "resource_gone")
                 throw std::runtime_error("TARGET_GONE");
-            else if (type == "response" && !j.value("ok", false)) {
-                auto msg = j["error"].dump();
-                if (status_)
-                    status_(MultiByteToWide(reinterpret_cast<const std::uint8_t *>(msg.data()), msg.size(), CP_UTF8),
-                            true);
-            }
         }
     } catch (const std::exception &e) {
         if (!stopping_ && status_)
             status_(MultiByteToWide(reinterpret_cast<const std::uint8_t *>(e.what()), strlen(e.what()), CP_UTF8), true);
     }
     connected_ = false;
+    rpcWake_.notify_all();
 }
+bool SharedSerialConnection::TransferRequest(const std::string& op,nlohmann::json params,std::wstring& error,nlohmann::json* result) {
+    std::unique_lock<std::mutex> lock(rpcMutex_);
+    if(!connected_||stopping_) {error=L"远程串口已断开";return false;}
+    std::string id;
+    try {
+        id=client_.SendRequest(op,resource_,std::move(params));
+        pendingRpc_.insert(id);
+        if(!rpcWake_.wait_for(lock,std::chrono::seconds(5),[&]{return rpcReplies_.count(id)||!connected_||stopping_;})) {
+            pendingRpc_.erase(id);lock.unlock();client_.Cancel();connected_=false;rpcWake_.notify_all();
+            error=L"远端传输确认超时，已断开以释放所有权；已写出的字节不可撤回";return false;
+        }
+        pendingRpc_.erase(id);
+        const auto it=rpcReplies_.find(id);
+        if(it==rpcReplies_.end()) {error=L"远程串口断开，传输结果未知";return false;}
+        auto reply=std::move(it->second);rpcReplies_.erase(it);
+        if(!reply.value("ok",false)) {
+            const auto detail=reply.value("error",nlohmann::json::object()).dump();
+            error=MultiByteToWide(reinterpret_cast<const std::uint8_t*>(detail.data()),detail.size(),CP_UTF8);return false;
+        }
+        if(result)*result=reply.at("result");
+        return true;
+    }catch(const std::exception& e) {
+        pendingRpc_.erase(id);
+        error=MultiByteToWide(reinterpret_cast<const std::uint8_t*>(e.what()),strlen(e.what()),CP_UTF8);return false;
+    }
+}
+bool SharedSerialConnection::BeginTransferWire(const std::string& owner,std::wstring& error) {
+    if(!transferSupported_) {error=L"远端 SerialCtl 不支持 Xfer，请升级远端；原有串口收发仍可用";return false;}
+    {std::lock_guard<std::mutex> lock(rpcMutex_);if(!transferToken_.empty()){error=L"已有远端传输";return false;}transferToken_=owner;}
+    if(TransferRequest("transfer.begin",{{"token",owner}},error))return true;
+    {std::lock_guard<std::mutex> lock(rpcMutex_);transferToken_.clear();}
+    return false;
+}
+bool SharedSerialConnection::SendTransferWire(const std::string& owner,const Bytes& bytes,std::wstring& error) {
+    {std::lock_guard<std::mutex> lock(rpcMutex_);if(transferToken_!=owner||owner.empty()){error=L"远端传输所有权已变化";return false;}}
+    nlohmann::json result;
+    if(!TransferRequest("transfer.write",{{"token",owner},{"data",ws::Base64(bytes)}},error,&result))return false;
+    if(!result.contains("written")||!result["written"].is_number_unsigned()||result["written"].get<std::uint64_t>()!=bytes.size()) {
+        error=L"远端未确认完整写入，结果未知";client_.Cancel();connected_=false;rpcWake_.notify_all();return false;
+    }
+    return true;
+}
+bool SharedSerialConnection::EndTransferWire(const std::string& owner,std::wstring& error) {
+    const bool released=TransferRequest("transfer.end",{{"token",owner}},error);
+    {std::lock_guard<std::mutex> lock(rpcMutex_);if(transferToken_==owner)transferToken_.clear();}
+    if(!released){client_.Cancel();connected_=false;rpcWake_.notify_all();}
+    return released;
+}
+
 } // namespace serialctl

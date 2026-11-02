@@ -77,12 +77,12 @@ int main() {
         auto unknown = bridge.Request("command", {{"sessionId", "session-999"}, {"command", "no"}}, targets, context, now, pulse);
         Check(unknown.contains("error") && transport->writes == writes, "unassociated session never auto-opens or receives bytes");
         auto enter=request("boot_enter",{{"preset","uboot_space"}});
-        Check(!enter.contains("error") && enter.value("intervalMs",0)==300 && enter.value("untilStopped",false) && pulse && transport->last==Bytes{' '},"Restart is followed immediately by a local space");
+        Check(!enter.contains("error") && enter.value("intervalMs",0)==500 && enter.value("untilStopped",false) && pulse && transport->last==Bytes({' ','s','t','o','p'}),"Restart is followed immediately by the requested local stop sequence");
         Check(transport->history[transport->history.size()-2]==Bytes({'r','e','b','o','o','t','\r'}),"Reboot and interrupt ordering changed");
         const auto rebootWrites=transport->writes;
         Check(request("command",{{"command","echo unrelated"}}).contains("error") && request("boot_arm").contains("error") && transport->writes==rebootWrites,"Other AI commands or legacy capture interleaved a continuous boot task");
         Check(request("boot_enter",{{"preset","uboot_space"}}).contains("error") && transport->writes==rebootWrites,"Repeated tool call rebooted the board twice");
-        now+=300;AiDeviceBridge::Pulse(state,transport,now);
+        now+=500;AiDeviceBridge::Pulse(state,transport,now);
         Check(transport->writes==rebootWrites+1,"Native timer does not continue interrupting without model calls");
         request("release");
         targets[0].mode=0;
@@ -90,7 +90,7 @@ int main() {
         targets[0].mode=1;
         Check(!request("boot_enter",{{"preset","phytium_uefi_f2"},{"intervalMs",500}}).contains("error") && transport->last==Bytes({27,'O','Q'}),"Phytium preset did not send a real F2 key");
         Check(request("boot_status").value("intervalMs",0)==500,"Selected cadence was not exposed in task status");
-        request("boot_stop");const auto stoppedWrites=transport->writes;now+=300;AiDeviceBridge::Pulse(state,transport,now);
+        request("boot_stop");const auto stoppedWrites=transport->writes;now+=500;AiDeviceBridge::Pulse(state,transport,now);
         Check(transport->writes==stoppedWrites,"Stopped task continues sending keys");request("release");
         transport->accept=false;const auto rejectedWrites=transport->writes;
         Check(request("boot_enter",{{"preset","uboot_space"}}).contains("error") && transport->writes==rejectedWrites+1 && !pulse,"Rejected restart emitted interrupt keys");

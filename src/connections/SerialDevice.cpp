@@ -109,7 +109,7 @@ void SerialDevice::Close() {
     onStatus_ = {};
 }
 
-bool SerialDevice::Write(const Bytes &data, std::wstring &error) {
+bool SerialDevice::Write(const Bytes &data, std::wstring &error,HANDLE operationCancel) {
     std::lock_guard<std::mutex> lock(writeMutex_);
     if (!IsOpen()) {
         error = L"串口尚未打开";
@@ -119,10 +119,14 @@ bool SerialDevice::Write(const Bytes &data, std::wstring &error) {
         return true;
     }
     size_t offset = 0;
+    const auto deadline=operationCancel?GetTickCount64()+10000:0;
     while (offset < data.size()) {
+        const auto now=GetTickCount64();
+        if(deadline&&now>=deadline) {error=L"串口文件写入超时，已写出的字节不可撤回";return false;}
         DWORD written = 0;
         if (!writeIo_.Transfer(handle_, const_cast<std::uint8_t*>(data.data() + offset),
-                static_cast<DWORD>(data.size() - offset), true, stopEvent_, written)) {
+                static_cast<DWORD>(data.size() - offset), true, stopEvent_, written,operationCancel,
+                deadline?static_cast<DWORD>(deadline-now):INFINITE)) {
             error = L"串口写入失败，执行状态未知：" + Win32ErrorMessage();
             return false;
         }

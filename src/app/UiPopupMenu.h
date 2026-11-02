@@ -58,7 +58,7 @@ class UiPopupMenu {
                 const int saved=SaveDC(dc);
                 ExcludeClipRect(dc,client.left,client.top,client.right,client.bottom);
                 const auto colors=UiFieldColors(c.style);
-                UiBox(dc,bounds,colors.surface,colors.border,c.D(10));
+                UiBox(dc,bounds,colors.field,colors.border,c.D(10));
                 RestoreDC(dc,saved);ReleaseDC(h,dc);
             }
             return 0;
@@ -97,8 +97,8 @@ class UiPopupMenu {
                 HDC dc=GetDC(h);auto old=SelectObject(dc,c.style.font);
                 RECT r{};DrawTextW(dc,row.label.c_str(),-1,&r,DT_CALCRECT|DT_NOPREFIX);
                 SelectObject(dc,old);ReleaseDC(h,dc);
-                item.itemWidth=std::max(c.D(144),r.right+c.D(60));
-                item.itemHeight=row.separator?c.D(12):std::max(c.D(32),r.bottom+c.D(12));
+                item.itemWidth=std::max<LONG>(c.D(144),r.right+c.D(60));
+                item.itemHeight=row.separator?c.D(12):std::max<LONG>(c.D(32),r.bottom+c.D(12));
                 return TRUE;
             }
         }
@@ -108,7 +108,7 @@ class UiPopupMenu {
                 const auto& row=*reinterpret_cast<Row*>(item.itemData);
                 UiBufferedPaint paint(item.hDC,item.rcItem);HDC dc=paint.Dc();
                 const auto colors=UiFieldColors(c.style);
-                const auto brush=CreateSolidBrush(colors.surface);FillRect(dc,&item.rcItem,brush);DeleteObject(brush);
+                const auto brush=CreateSolidBrush(colors.field);FillRect(dc,&item.rcItem,brush);DeleteObject(brush);
                 RECT r=item.rcItem;r.left+=c.D(4);r.right-=c.D(4);
                 if(row.separator) {
                     r.left+=c.D(12);r.right-=c.D(12);r.top=(r.top+r.bottom)/2;r.bottom=r.top+std::max(1,c.D(1));
@@ -147,15 +147,16 @@ class UiPopupMenu {
         const bool subclassed=SetWindowSubclass(owner,OwnerProc,219,reinterpret_cast<DWORD_PTR>(&context))!=FALSE;
         if(!subclassed) {context.Restore();active_=previous;return TrackPopupMenu(menu,flags,x,y,0,owner,nullptr);}
         const auto colors=UiFieldColors(style);
-        const auto background=CreateSolidBrush(colors.surface);
+        const auto background=CreateSolidBrush(colors.field);
+        MENUINFO previousInfo{sizeof(previousInfo)};previousInfo.fMask=MIM_BACKGROUND;GetMenuInfo(menu,&previousInfo);
         MENUINFO info{sizeof(info)};info.fMask=MIM_BACKGROUND;info.hbrBack=background;SetMenuInfo(menu,&info);
         HHOOK hook=SetWindowsHookExW(WH_CALLWNDPROC,Hook,nullptr,GetCurrentThreadId());
         const UINT command=TrackPopupMenu(menu,flags|TPM_RETURNCMD,x,y,0,owner,nullptr);
         if(hook)UnhookWindowsHookEx(hook);
-        for(HWND popup:context.popups)if(IsWindow(popup))RemoveWindowSubclass(popup,PopupProc,219);
+        for(HWND popup:context.popups)if(IsWindow(popup)){RemoveWindowSubclass(popup,PopupProc,219);SetWindowRgn(popup,nullptr,FALSE);}
         RemoveWindowSubclass(owner,OwnerProc,219);
         context.Restore();active_=previous;
-        info.hbrBack=nullptr;SetMenuInfo(menu,&info);DeleteObject(background);
+        info.hbrBack=previousInfo.hbrBack;SetMenuInfo(menu,&info);DeleteObject(background);
         return command;
     }
 };

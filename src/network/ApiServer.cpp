@@ -386,6 +386,9 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
     }
     if (c->slow)
         Trace(c, "close", "SLOW_CLIENT: bounded send queue exceeded");
+    if(c->hasTransfer)try {
+        handler_("transfer.release_owner","",{{"source","network:"+std::to_string(c->id)}});
+    }catch(...) {Trace(c,"close","XFER_OWNER_RELEASE_FAILED");}
     if (upgraded) {
         Close(c, 1001, "SERVER_STOPPING");
         if (c->sender.joinable())
@@ -486,6 +489,17 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
                     Json body = p;
                     body["source"] = "network:" + std::to_string(c->id);
                     result = handler_(op, target, body);
+                }
+            } else if ((op=="transfer.begin"||op=="transfer.end"||op=="transfer.write")&&
+                       Text(p,"token",128)&&Keys(p,op=="transfer.write"?std::initializer_list<const char*>{"token","data"}:std::initializer_list<const char*>{"token"})) {
+                bool subscribed=false;
+                {std::lock_guard<std::mutex> lock(mutex_);subscribed=c->subscriptions.count(target)!=0;}
+                if(!session||!subscribed)result=Failure("TARGET_NOT_FOUND","Subscribe to the selected serial before transfer");
+                else if(op=="transfer.write"&&!Text(p,"data",90000))result=Failure("INPUT_SIZE","Invalid transfer data");
+                else {
+                    Json body=p;body["source"]="network:"+std::to_string(c->id);
+                    result=handler_(op,target,body);
+                    if(op=="transfer.begin"&&!result.contains("error"))c->hasTransfer=true;
                 }
             } else if (op == "subscribe" && Keys(p, {"after"}) &&
                        (!p.contains("after") || p["after"].is_number_unsigned() ||
@@ -642,6 +656,24 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
                         unsigned codePage) {
     if (data.empty())
         return;
+    if(std::string(kind)=="xfer_output") {
+        // Protocol bytes go only to the client holding this transfer; never
+        // retain file payload in terminal history or broadcast it to viewers.
+        const std::string owner=source;
+        std::lock_guard<std::mutex> lock(mutex_);
+        if(!sessions_.count(target))return;
+        for(const auto& client:clients_) {
+            const auto prefix="network:"+std::to_string(client->id)+"/";
+            if(owner.compare(0,prefix.size(),prefix)!=0)continue;
+            for(size_t offset=0;offset<data.size();offset+=16384) {
+                Bytes part(data.begin()+offset,data.begin()+std::min(data.size(),offset+16384));
+                Queue(client,Json{{"type","xfer_data"},{"version",1},{"instance",instance_},{"resource",target},
+                    {"token",owner.substr(prefix.size())},{"data",Encode64(part)}});
+            }
+            break;
+        }
+        return;
+    }
     std::lock_guard<std::mutex> l(mutex_);
     if (!sessions_.count(target))
         return;

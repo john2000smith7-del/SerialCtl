@@ -123,7 +123,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
         }
         session->state.aiCommandAt = now;
         session->state.bootRestartUsed = true;
-        session->state.bootPreset = preset;
+        session->state.bootPreset = session->state.boot->Status(now).preset;
         session->state.bootIntervalMs = session->state.boot->Status(now).intervalMs;
         session->state.aiCommandCursor = session->state.aiCursor;
         session->state.aiCommandText = command;
@@ -132,11 +132,12 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
         // Submit the first key now; the local timer/receive path continues it.
         Pulse(session->state, session->connection, now);
         armBootPulse = true;
-        result["preset"] = preset;
+        result["preset"] = session->state.bootPreset;
         result["state"] = session->state.boot->Status(now).state;
         result["intervalMs"] = session->state.boot->Status(now).intervalMs;
         result["untilStopped"] = session->state.boot->Status(now).untilStopped;
-        result["entered"] = false;
+        result["entered"] = session->state.boot->Status(now).entered;
+        result["execution"] = session->state.boot->Status(now).entered ? "prompt-observed" : "unconfirmed";
         return result;
     }
     if (method == "boot_stop") {
@@ -195,6 +196,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
     }
     if (method == "screen") {
         session->state.aiObservedAt = now;
+        const auto boot=session->state.boot->Status(now);
         auto text = WideToMultiByte(session->terminal.ScreenText(), CP_UTF8);
         bool truncated = text.size() > 65536 || session->terminal.Rows() > 200;
         if (text.size() > 65536) {
@@ -206,7 +208,8 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
             {"columns", session->terminal.Columns()}, {"rows", session->terminal.Rows()},
             {"cursorRow", session->terminal.CursorRow()}, {"cursorColumn", session->terminal.CursorColumn()},
             {"alternateScreen", session->terminal.AlternateScreen()}, {"keyboardFlags", session->terminal.KeyboardFlags()},
-            {"mouseCaptured", session->terminal.MouseCaptured()}, {"cursor", session->state.aiCursor}};
+            {"mouseCaptured", session->terminal.MouseCaptured()}, {"cursor", session->state.aiCursor},
+            {"bootState",boot.state},{"bootEntered",boot.entered},{"bootPrompt",boot.prompt}};
     }
     if (method == "key") {
         if (context.macroRunning || session->mode == 4)
@@ -217,6 +220,7 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
     }
     if (method == "read") {
         session->state.aiObservedAt = now;
+        const auto boot=session->state.boot->Status(now);
         const auto after = params.value("after", std::uint64_t(0));
         const int lines = std::clamp(params.value("lines", 200), 1, 500);
         std::string text, first, last;
@@ -242,7 +246,8 @@ Json AiDeviceBridge::Request(const std::string& method, const Json& params, std:
             {"commandId", session->state.aiCommandNumber},
             {"commandAgeMs", session->state.aiCommandAt ? Json(now - session->state.aiCommandAt) : Json(nullptr)},
             {"outputSinceCommand", session->state.aiCursor > session->state.aiCommandCursor},
-            {"execution", "unknown"}, {"noOutputIsNotHangProof", true}};
+            {"execution", "unknown"}, {"noOutputIsNotHangProof", true},
+            {"bootState",boot.state},{"bootEntered",boot.entered},{"bootPrompt",boot.prompt}};
     }
     if (method == "command" || method == "text") {
         const auto boot=session->state.boot->Status(now);
@@ -313,10 +318,12 @@ void AiDeviceBridge::Observe(State& state, const std::wstring& decoded,
 bool AiDeviceBridge::Pulse(State& state, const std::shared_ptr<IConnection>& connection, ULONGLONG now) {
     const auto status = state.boot->Status(now);
     const bool active = status.state == "armed" || status.state == "interrupting" || status.state == "prepared";
-    const auto bytes = state.boot->Poll(now);
-    if (!bytes.empty()) {
+    const auto burst = state.boot->PollBurst(now);
+    if (!burst.bytes.empty()) {
         std::wstring error;
-        const bool accepted = connection && connection->IsConnected() && connection->Send(Bytes(bytes.begin(), bytes.end()), error);
+        const auto boot=state.boot;
+        const bool accepted = connection && connection->IsConnected() &&
+            connection->SendConditional(Bytes(burst.bytes.begin(),burst.bytes.end()),error,[boot,generation=burst.generation]{return boot->CanSend(generation);});
         state.boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8));
     }
     return active;

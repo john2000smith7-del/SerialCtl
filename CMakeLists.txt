@@ -117,6 +117,7 @@ set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/power"
     "${SERIALCTL_SOURCE_DIR}/network"
     "${SERIALCTL_SOURCE_DIR}/update"
+    "${SERIALCTL_SOURCE_DIR}/xfer"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json"
 )
 
@@ -164,6 +165,9 @@ add_executable(serialctl WIN32
     src/app/App.cpp
     src/app/CommandDocument.cpp
     src/app/CommandNotebook.cpp
+    src/app/XferPane.cpp
+    src/xfer/TransferController.cpp
+    src/xfer/TransferProtocol.cpp
     src/app/MainWindow.cpp
     src/app/TerminalViewport.cpp
     src/app/CommandMacroController.cpp
@@ -262,6 +266,18 @@ if(BUILD_TESTING)
     target_include_directories(ssh_credentials_test PRIVATE src/app src/connections third_party/json)
     target_link_libraries(ssh_credentials_test PRIVATE advapi32)
     add_test(NAME ssh_credentials COMMAND ssh_credentials_test)
+    add_executable(transfer_protocol_test tests/unit/TransferProtocolTest.cpp src/xfer/TransferProtocol.cpp)
+    serialctl_configure_native_target(transfer_protocol_test CONSOLE)
+    target_include_directories(transfer_protocol_test PRIVATE src/xfer)
+    add_test(NAME transfer_protocol COMMAND transfer_protocol_test)
+    set_tests_properties(transfer_protocol PROPERTIES TIMEOUT 60)
+    add_executable(boot_interrupt_test tests/unit/BootInterruptTest.cpp)
+    serialctl_configure_native_target(boot_interrupt_test CONSOLE)
+    add_test(NAME boot_interrupt COMMAND boot_interrupt_test)
+    add_executable(queued_transfer_test tests/integration/QueuedTransferTest.cpp src/connections/QueuedConnection.cpp)
+    serialctl_configure_native_target(queued_transfer_test CONSOLE)
+    add_test(NAME queued_transfer COMMAND queued_transfer_test)
+    set_tests_properties(queued_transfer PROPERTIES TIMEOUT 15)
     add_test(NAME ssh_lifecycle_delayed_start COMMAND ssh_lifecycle_test --delay-resize-start)
     set_tests_properties(ssh_lifecycle ssh_lifecycle_delayed_start PROPERTIES TIMEOUT 45)
     add_executable(tool_presentation_test tests/unit/ToolPresentationTest.cpp)

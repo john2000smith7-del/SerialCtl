@@ -8,10 +8,11 @@ nlohmann::json Error(const char *code, const std::string &message) {
     return {{"error", {{"code", code}, {"message", message}}}};
 }
 } // namespace
-void SessionService::Register(Json resource, std::shared_ptr<IConnection> transport) {
+void SessionService::Register(Json resource, std::shared_ptr<IConnection> transport,std::function<bool()> canTransfer) {
     auto e = std::make_shared<Entry>();
     e->resource = std::move(resource);
     e->transport = std::move(transport);
+    e->canTransfer=std::move(canTransfer);
     std::lock_guard<std::mutex> l(mutex_);
     entries_[e->resource.at("id").get<std::string>()] = e;
 }
@@ -44,6 +45,7 @@ SessionService::Json SessionService::Resources() {
             r["codePageSource"] = p.second->transport->CodePageSource();
         }
         r["operations"] = {"session.get", "input", "subscribe", "unsubscribe", "events"};
+        r["xfer"]=r.value("kind",std::string())=="serial"&&p.second->transport->SupportsTransfer();
         out.push_back(r);
     }
     return out;
@@ -112,4 +114,50 @@ SessionService::Json SessionService::Input(const std::string &id, const Bytes &b
         accepted();
     return {{"accepted", batch.size()}, {"state", "queued"}, {"execution", "unknown"}};
 }
+SessionService::Json SessionService::Transfer(const std::string& op,const std::string& id,const std::string& owner,const Bytes& bytes) {
+    const auto e=Find(id);
+    if(!e)return Error("TARGET_NOT_FOUND","Serial session no longer exists");
+    auto* queue=dynamic_cast<QueuedConnection*>(e->transport.get());
+    if(!queue||e->resource.value("kind",std::string())!="serial"||!queue->SupportsTransfer())
+        return Error("XFER_UNSUPPORTED","Selected session does not support exclusive serial file transfer");
+    if(owner.empty()||owner.size()>192)return Error("XFER_OWNER","Invalid transfer owner");
+    std::wstring error;
+    if(op=="transfer.begin") {
+        std::lock_guard<std::mutex> lock(e->transfer);
+        if(!e->transferOwner.empty())return Error("XFER_BUSY","A transfer already owns this serial");
+        if(e->canTransfer&&!e->canTransfer())return Error("XFER_BUSY","A local boot task is active; stop it before file transfer");
+        if(!queue->BeginTransfer(owner,[this,id,owner](const Bytes& data) {if(transferObserver_)transferObserver_(id,owner,data);},error))
+            return Error("XFER_BEGIN",WideToMultiByte(error,CP_UTF8));
+        e->transferOwner=owner;
+        return {{"acquired",true}};
+    }
+    if(op=="transfer.write") {
+        {std::lock_guard<std::mutex> lock(e->transfer);if(e->transferOwner!=owner)return Error("XFER_OWNER","Transfer owner changed");}
+        if(bytes.empty()||bytes.size()>256)return Error("INPUT_SIZE","Transfer write requires 1..256 bytes");
+        if(!queue->SendTransfer(owner,bytes,error))return Error("XFER_WRITE_UNKNOWN",WideToMultiByte(error,CP_UTF8));
+        return {{"written",bytes.size()},{"state","transport-written"},{"execution","device-receipt-unconfirmed"}};
+    }
+    if(op=="transfer.end") {
+        std::lock_guard<std::mutex> lock(e->transfer);
+        if(e->transferOwner!=owner)return Error("XFER_OWNER","Transfer owner changed");
+        const bool released=queue->EndTransfer(owner,error);
+        e->transferOwner.clear();
+        return released?Json{{"released",true}}:Error("XFER_RELEASE",WideToMultiByte(error,CP_UTF8));
+    }
+    return Error("INVALID_OPERATION","Unknown transfer operation");
+}
+void SessionService::ReleaseTransfers(const std::string& source) {
+    std::vector<std::shared_ptr<Entry>> snapshot;
+    {std::lock_guard<std::mutex> lock(mutex_);for(const auto& row:entries_)snapshot.push_back(row.second);}
+    const auto prefix=source+"/";
+    for(const auto& e:snapshot) {
+        std::lock_guard<std::mutex> lock(e->transfer);
+        if(e->transferOwner.compare(0,prefix.size(),prefix)!=0)continue;
+        if(auto* queue=dynamic_cast<QueuedConnection*>(e->transport.get())) {
+            std::wstring error;queue->EndTransfer(e->transferOwner,error);
+        }
+        e->transferOwner.clear();
+    }
+}
+
 } // namespace serialctl

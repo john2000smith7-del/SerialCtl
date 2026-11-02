@@ -133,7 +133,8 @@ enum ControlId {
     IdSendSelectionToAi,
     IdAiWrap,
     IdPowerMonitorTarget,
-    IdConnectionHeader = 309
+    IdConnectionHeader = 309,
+    IdXferTab = 310
 };
 
 bool IsToolbarButton(int id) {
@@ -851,6 +852,7 @@ void MainWindow::RequestShutdown() {
     apiServer_.RequestStop();
     sftp_.ClearCallbacks();
     sftp_.CancelIo();
+    xfer_.Cancel();
     if (logExportJob_) logExportJob_->cancel.store(true);
     if (logExportThread_.joinable())
         CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
@@ -864,11 +866,12 @@ void MainWindow::RequestShutdown() {
 void MainWindow::WaitForShutdown() {
     // MainWindow, its session models and HWND stay alive until this returns.
     // No worker retains a reference to a UI state that can be destroyed early.
-    apiServer_.Stop();
     for (const auto &session : sessions_) {
         if (session->connection) session->connection->Stop();
         if (session->logger) session->logger->Stop();
     }
+    apiServer_.Stop(); // Serial Stop cancels any in-flight remote transfer write first.
+    xfer_.Shutdown();
     if (connectionThread_.joinable()) connectionThread_.join();
     if (pendingSession_) {
         if (pendingSession_->connection) pendingSession_->connection->Stop();
@@ -1081,7 +1084,7 @@ bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && !connectionCleanup_.Busy() && sessions_.empty() &&
            !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
            !disconnectAllPending_ && !disconnectAllInProgress_ && !macro_.Dirty() && !notebook_.Dirty() && macro_.RunningIndex() < 0 &&
-           !sftp_.Busy() && !sftp_.ActiveTransfer() && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ && !leftPanelAnimating_ &&
+           !sftp_.Busy() && !sftp_.ActiveTransfer() && !xfer_.Busy() && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ && !leftPanelAnimating_ &&
            draggingCommandIndex_ < 0 && !sftpColumnDragging_ && !GetCapture() &&
            (IsWindowEnabled(window_) || updateRequired_);
 }
@@ -1802,7 +1805,7 @@ LRESULT CALLBACK MainWindow::SftpPathSubclassProc(HWND window, UINT message, WPA
 bool MainWindow::PreTranslate(MSG& message) {
     if (message.message == WM_KEYDOWN && message.wParam == VK_F6 && (GetKeyState(VK_CONTROL) & 0x8000)) {
         std::vector<HWND> panes{connectionList_, aiVisible_ ? aiPane_.Handle() : powerVisible_ ? powerPane_.Handle() : terminal_,
-                                LiveMonitorPage() ? terminal_ : sftpPanelVisible_ ? sftpList_ : commandList_};
+                                LiveMonitorPage() ? terminal_ : xferPanelVisible_ ? xferPane_.Handle() : sftpPanelVisible_ ? sftpList_ : commandList_};
         panes.erase(std::remove_if(panes.begin(), panes.end(), [](HWND h) {
             return !h || !IsWindowVisible(h) || !IsWindowEnabled(h);
         }), panes.end());
@@ -2017,6 +2020,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             // preserving input/output event order without waiting for fan-out.
             apiServer_.EnqueuePublish(id, bytes, source.c_str(), "input", codePage);
             QueueReceived({std::stoull(id.substr(8)), bytes, codePage, source, 0});
+        });
+        sessionService_.ObserveTransfer([this](const std::string& id,const std::string& owner,const Bytes& bytes) {
+            apiServer_.EnqueuePublish(id,bytes,owner.c_str(),"xfer_output");
         });
         { std::wstring error;
           if (!apiServer_.Start([this](const auto& method, const auto& path, const auto& body) {
@@ -2313,6 +2319,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             else if (id == IdAddCommand) AddCommand();
             else if (id == IdDeleteCommand) DeleteSelectedCommand();
             else if (id == IdCommandTab) ShowSftpPanel(false);
+            else if (id == IdXferTab) ShowXferPanel();
             else if (id == IdSftpTab) {
                 ShowSftpPanel(true);
                 RefreshSftp();
@@ -2693,6 +2700,13 @@ void MainWindow::CreateControls() {
 
     commandHeader_ = CreateChild(L"BUTTON", L"命令", BS_OWNERDRAW, IdCommandTab);
     sftpTabButton_ = CreateChild(L"BUTTON", L"SFTP", BS_OWNERDRAW, IdSftpTab);
+    xferTabButton_ = CreateChild(L"BUTTON",L"Xfer",BS_OWNERDRAW,IdXferTab);
+    {TOOLINFOW tip{sizeof(tip)};tip.uFlags=TTF_IDISHWND|TTF_SUBCLASS;tip.hwnd=window_;
+     tip.uId=reinterpret_cast<UINT_PTR>(xferTabButton_);tip.lpszText=const_cast<wchar_t*>(L"串口传输文件");
+     SendMessageW(navigationTooltip_,TTM_ADDTOOLW,0,reinterpret_cast<LPARAM>(&tip));}
+    if(!xferPane_.Create(window_,xfer_,[this]{return XferTarget();},smallFont_,darkMode_,Ui::Dpi))
+        throw std::runtime_error("Cannot create serial transfer pane");
+    xferPane_.stateChanged=[this]{if(!closing_)UpdateCommandActions();};
     rightPanelToggleButton_ = CreateChild(L"BUTTON",
         rightPanelCollapsed_ ? L"展开侧栏" : L"折叠侧栏", BS_OWNERDRAW, IdRightPanelToggle);
     if (!notebook_.Create(window_, IdCommandList)) throw std::runtime_error("Cannot create command text editor");
@@ -2888,12 +2902,16 @@ void MainWindow::LayoutControls(int width, int height) {
     const int toggleLeft = width - Ui::Gap - Ui::CollapsedRightWidth +
         (Ui::CollapsedRightWidth - Ui::IconButtonSize) / 2;
     batch.Move(rightPanelToggleButton_, toggleLeft, headerTop + 2, Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
-    batch.Move(commandHeader_, rightInnerLeft, headerTop + Ui::Scale(2), Ui::SegmentWidth, Ui::SegmentHeight, TRUE);
-    batch.Move(sftpTabButton_, rightInnerLeft + Ui::SegmentWidth + Ui::Scale(4), headerTop + Ui::Scale(2), Ui::SegmentWidth,
+    const int tabWidth=std::max(Ui::Scale(48),std::min(Ui::SegmentWidth,(rightInnerRight-rightInnerLeft-Ui::CollapsedRightWidth-Ui::Scale(16))/3));
+    batch.Move(commandHeader_, rightInnerLeft, headerTop + Ui::Scale(2), tabWidth, Ui::SegmentHeight, TRUE);
+    batch.Move(sftpTabButton_, rightInnerLeft + tabWidth + Ui::Scale(4), headerTop + Ui::Scale(2), tabWidth,
                Ui::SegmentHeight, TRUE);
+    batch.Move(xferTabButton_,rightInnerLeft+(tabWidth+Ui::Scale(4))*2,headerTop+Ui::Scale(2),tabWidth,Ui::SegmentHeight,TRUE);
     const int footerTop = sideCardBottom - Ui::PanelPadding - Ui::CompactHeight;
     batch.Move(commandList_, rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
                std::max(Ui::Scale(160), sideCardBottom - Ui::PanelPadding - rightListTop), TRUE);
+    batch.Move(xferPane_.Handle(),rightInnerLeft,rightListTop,rightInnerRight-rightInnerLeft,
+               std::max(Ui::Scale(160),sideCardBottom-Ui::PanelPadding-rightListTop),TRUE);
     const int sftpContentWidth = std::max(1, rightInnerRight - rightInnerLeft);
     batch.Move(sftpPath_, rightInnerLeft, rightListTop, sftpContentWidth, Ui::CompactHeight, TRUE);
     const int sftpHeaderTop = rightListTop + Ui::CompactHeight + Ui::Space;
@@ -3115,7 +3133,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         COLORREF outside = (id == IdTheme || id == IdSettings) ? colors.window : colors.panel;
         if (LiveMonitorPage() && (id == IdAiWrap || id == IdRightPanelToggle))
             outside = colors.terminal;
-        if (id == IdCommandTab || id == IdSftpTab) outside = colors.panel;
+        if (id == IdCommandTab || id == IdSftpTab || id == IdXferTab) outside = colors.panel;
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) outside = colors.panel;
         HBRUSH outsideBrush = CreateSolidBrush(outside);
         FillRect(dc, &rect, outsideBrush);
@@ -3201,8 +3219,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                            smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
         }
-        if (id == IdCommandTab || id == IdSftpTab) {
-            const bool active = (id == IdSftpTab) == sftpPanelVisible_;
+        if (id == IdCommandTab || id == IdSftpTab || id == IdXferTab) {
+            const bool active = id==IdXferTab?xferPanelVisible_:id==IdSftpTab?sftpPanelVisible_:!xferPanelVisible_&&!sftpPanelVisible_;
             const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
             const auto tabFill = pressed ? visual.fill : (active || hovered) ? colors.panelAlt : colors.panel;
             if (tabFill != colors.panel)
@@ -3580,6 +3598,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
 }
 
 void MainWindow::ApplyTheme() {
+    xferPane_.Theme(darkMode_,Ui::Dpi,smallFont_);
     notebook_.Style(darkMode_, Ui::Dpi, smallFont_, terminalFont_);
     powerPane_.Theme(darkMode_);
     aiPane_.Theme(darkMode_);
@@ -4264,7 +4283,10 @@ void MainWindow::ConnectFromDialog() {
             resource["baudRate"] = pendingSerial_.baudRate;
             resource["friendlyName"] = WideToMultiByte(pendingSerial_.friendlyName, CP_UTF8);
         }
-        sessionService_.Register(resource, session->connection);
+        sessionService_.Register(resource, session->connection,[boot=session->boot] {
+            const auto state=boot->Status(GetTickCount64()).state;
+            return state!="prepared"&&state!="armed"&&state!="interrupting";
+        });
         apiServer_.EnqueueSessions(sessionService_.Ids());
     }
     pendingSession_ = std::move(session);
@@ -4283,12 +4305,13 @@ void MainWindow::ConnectFromDialog() {
                 if (!connectionCancel_.load() && pending->logger->Start(pending->name, result->error)) {
                     result->success = pending->connection->Start(
                         [this, sessionId, boot = pending->boot, transport = std::weak_ptr<IConnection>(pending->connection)](const Bytes& data) {
-                            const auto bytes = boot->Feed(reinterpret_cast<const char*>(data.data()), data.size(), GetTickCount64());
-                            if (!bytes.empty()) {
+                            const auto burst = boot->FeedBurst(reinterpret_cast<const char*>(data.data()), data.size(), GetTickCount64());
+                            if (!burst.bytes.empty()) {
                                 std::wstring error;
                                 const auto connection = transport.lock();
                                 const bool accepted = connection && connection->IsConnected() &&
-                                    connection->Send(Bytes(bytes.begin(), bytes.end()), error);
+                                    connection->SendConditional(Bytes(burst.bytes.begin(),burst.bytes.end()),error,
+                                        [boot,generation=burst.generation]{return boot->CanSend(generation);});
                                 boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8));
                             }
                             const auto connection = transport.lock();
@@ -4404,6 +4427,7 @@ void MainWindow::Disconnect() {
                         L"用户断开当前连接");
     const std::wstring macroStatus = interruptedMacro ? statusText_ : L"";
     const std::uint64_t disconnectedSessionId = activeSession_->id;
+    xfer_.CancelSession(disconnectedSessionId);
     sftp_.CancelSession(disconnectedSessionId);
     RefreshSftpTransferList();
     const auto found = std::find_if(sessions_.begin(), sessions_.end(),
@@ -4437,6 +4461,7 @@ void MainWindow::Disconnect() {
 }
 
 void MainWindow::DisconnectAll() {
+    xfer_.Cancel();
     aiPane_.Disconnect();
     aiVisible_ = false; aiPageOpened_ = false;
     disconnectAllInProgress_ = true;
@@ -5882,6 +5907,7 @@ void MainWindow::SetConnectedUi(bool connected) {
     EnableWindow(disconnectButton_, aiVisible_ || powerVisible_ || activeSession_ != nullptr);
 
     EnableWindow(sftpTabButton_, connected && selectedMode_ == 0 && SftpClient::IsAvailable());
+    EnableWindow(xferTabButton_,connected&&activeSession_&&(selectedMode_==1||selectedMode_==3)&&connection_->SupportsTransfer());
 
 
     SetSftpBusy(sftp_.Busy());
@@ -6082,8 +6108,8 @@ void MainWindow::LoadUiState() {
         const auto separator=value.find(L'|');const auto preset=value.substr(0,separator);
         const auto interval=separator==std::wstring::npos?L"300":value.substr(separator+1);
         if(std::all_of(key.begin(),key.end(),[](wchar_t c){return (c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');}) &&
-           (preset==L"uboot_space" || preset==L"phytium_uefi_f2") && (interval==L"300" || interval==L"500"))
-            bootPresets_[key]={WideToMultiByte(preset,CP_UTF8),interval==L"500"?500u:300u};
+           (preset==L"uboot_space" || preset==L"uboot_stop" || preset==L"phytium_uefi_f2") && (interval==L"300" || interval==L"500"))
+            bootPresets_[key]={preset==L"uboot_space"?"uboot_stop":WideToMultiByte(preset,CP_UTF8),preset!=L"phytium_uefi_f2"?500u:interval==L"500"?500u:300u};
     }
     leftPanelWidth_=Ui::Scale(std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Layout",L"LeftPanelWidth96",190,path.c_str())),190,Ui::MaxResizableLeftWidth96));
     leftPanelCollapsed_ = GetPrivateProfileIntW(L"Layout", L"LeftPanelCollapsed", 0, path.c_str()) != 0;
@@ -6182,7 +6208,7 @@ void MainWindow::SetRightPanelCollapsed(bool collapsed) {
     rightPanelAnimating_=before.rightWidth!=after.rightWidth;
     SaveUiState();
     if(rightPanelAnimating_ && SetTimer(window_,SideAnimationTimerId,16,nullptr)) {
-        ShowSftpPanel(sftpPanelVisible_); return;
+        ShowSftpPanel(sftpPanelVisible_,true); return;
     }
     KillTimer(window_, SideAnimationTimerId);
     rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;
@@ -6190,9 +6216,39 @@ void MainWindow::SetRightPanelCollapsed(bool collapsed) {
     InvalidateRect(window_,nullptr,FALSE);
 }
 
-void MainWindow::ShowSftpPanel(bool show) {
+XferPane::Target MainWindow::XferTarget() {
+    XferPane::Target target;
+    if(closing_) {target.unavailable=L"程序正在退出";return target;}
+    if(!activeSession_||(activeSession_->mode!=1&&activeSession_->mode!=3)) {
+        target.unavailable=L"Xfer 仅用于本地串口或远程串口";return target;
+    }
+    target.id=activeSession_->id;target.name=activeSession_->name;
+    target.connection=std::dynamic_pointer_cast<QueuedConnection>(activeSession_->connection);
+    if(!target.connection||!target.connection->IsConnected())target.unavailable=L"请先连接串口";
+    else if(!target.connection->SupportsTransfer())target.unavailable=L"远端版本不支持 Xfer，请先升级远端 SerialCtl";
+    else {
+        const auto boot=activeSession_->boot->Status(GetTickCount64());
+        if(boot.state=="prepared"||boot.state=="armed"||boot.state=="interrupting")
+            target.unavailable=L"启动打断任务正在使用该串口，请先停止或等待进入目标界面";
+        else if(macro_.Running())target.unavailable=L"请先完成或停止命令发送任务";
+        else if(aiPane_.TaskRunning()&&aiPane_.AssociatedTarget()=="session-"+std::to_string(target.id))
+            target.unavailable=L"AI 正在使用该串口，请先完成或停止当前 AI 任务";
+    }
+    return target;
+}
+void MainWindow::ShowXferPanel() {
+    if(!activeSession_||!connection_||!connection_->IsConnected()||
+       (selectedMode_!=1&&selectedMode_!=3)||!connection_->SupportsTransfer())return;
+    xferPanelVisible_=true;sftpPanelVisible_=false;
+    RECT r{};GetClientRect(sftpList_,&r);UiLayoutBatch batch;QueueSidebarVisibility(batch,r.right);batch.Commit();
+    xferPane_.Refresh();
+    for(HWND h:{commandHeader_,sftpTabButton_,xferTabButton_})InvalidateRect(h,nullptr,FALSE);
+}
+
+void MainWindow::ShowSftpPanel(bool show,bool preserveXfer) {
     if (show && (!connection_ || selectedMode_ != 0 || !SftpClient::IsAvailable())) show = false;
     sftpPanelVisible_ = show;
+    if(!preserveXfer||show)xferPanelVisible_=false;
     RECT listRect{};
     GetClientRect(sftpList_, &listRect);
     UiLayoutBatch batch;
@@ -6200,6 +6256,7 @@ void MainWindow::ShowSftpPanel(bool show) {
     batch.Commit();
     InvalidateRect(commandHeader_, nullptr, FALSE);
     InvalidateRect(sftpTabButton_, nullptr, FALSE);
+    InvalidateRect(xferTabButton_,nullptr,FALSE);
     InvalidateRect(window_, nullptr, FALSE);
 }
 
@@ -6209,8 +6266,10 @@ void MainWindow::QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth) 
     batch.Show(rightPanelToggleButton_, SW_SHOW);
     batch.Show(commandHeader_, expanded ? SW_SHOW : SW_HIDE);
     batch.Show(sftpTabButton_, expanded ? SW_SHOW : SW_HIDE);
+    batch.Show(xferTabButton_,expanded?SW_SHOW:SW_HIDE);
+    batch.Show(xferPane_.Handle(),expanded&&xferPanelVisible_?SW_SHOW:SW_HIDE);
     for (HWND control : {commandList_})
-        batch.Show(control, expanded && !show ? SW_SHOW : SW_HIDE);
+        batch.Show(control, expanded && !show && !xferPanelVisible_ ? SW_SHOW : SW_HIDE);
     for (HWND control : {sftpPath_, sftpNameHeader_, sftpSizeHeader_, sftpList_,
              sftpTransferToggleButton_, sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_,
              sftpUploadButton_, sftpDownloadButton_})
@@ -7184,7 +7243,8 @@ bool MainWindow::SaveCommandsToFile(const std::wstring& path,std::wstring& error
 void MainWindow::RefreshCommandList() { UpdateCommandActions(); }
 void MainWindow::UpdateCommandActions() {
     if (!commandList_) return;
-    notebook_.State(connection_ && connection_->IsConnected(),macro_.Running(),macro_.Accepted(),macro_.Total(),
+    const auto transfer=xfer_.State();
+    notebook_.State(connection_ && connection_->IsConnected()&&!(transfer.busy&&activeSession_&&transfer.session==activeSession_->id),macro_.Running(),macro_.Accepted(),macro_.Total(),
         activeSession_ ? L"发送至 " + activeSession_->name : L"");
 }
 
@@ -7649,6 +7709,7 @@ Json MainWindow::ApiResources() {
     return {{"resources", resources}};
 }
 Json MainWindow::ApiRequest(const std::string &op, const std::string &resource, const Json &params) {
+    if(op=="transfer.release_owner") {sessionService_.ReleaseTransfers(params.value("source",std::string()));return {{"released",true}};}
     if (closing_)
         return {{"error", {{"code", "APPLICATION_CLOSING"}, {"message", "Application closing"}}}};
     if (op == "resources")
@@ -7658,6 +7719,9 @@ Json MainWindow::ApiRequest(const std::string &op, const std::string &resource, 
     if (op == "input")
         return sessionService_.Input(resource, Decode64(params.at("data").get<std::string>()),
                                      params.value("source", "network"));
+    if(op=="transfer.begin"||op=="transfer.write"||op=="transfer.end")
+        return sessionService_.Transfer(op,resource,params.at("source").get<std::string>()+"/"+params.at("token").get<std::string>(),
+            op=="transfer.write"?Decode64(params.at("data").get<std::string>()):Bytes{});
     auto request = std::make_shared<ApiMessage>();
     request->method = op;
     request->path = resource;

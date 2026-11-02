@@ -16,7 +16,7 @@ public:
 
     bool Open(const SerialSettings& settings, DataCallback onData, StatusCallback onStatus, std::wstring& error);
     void Close();
-    bool Write(const Bytes& data, std::wstring& error);
+    bool Write(const Bytes& data, std::wstring& error,HANDLE operationCancel=nullptr);
     bool IsOpen() const;
 
 private:

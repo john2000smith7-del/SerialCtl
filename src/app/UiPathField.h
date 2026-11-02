@@ -90,7 +90,7 @@ class UiPathField {
                 d->maximum = std::max(0, static_cast<int>(size.cx) - available);
                 d->offset = std::clamp(d->offset, 0, d->maximum);
                 const bool scrolling = d->expanded && d->maximum;
-                RECT text{D(*d, 8), D(*d, scrolling ? 2 : 4), r.right - D(*d, 8),
+                RECT text{D(*d, 8), D(*d, scrolling ? 0 : 4), r.right - D(*d, 8),
                           r.bottom - D(*d, scrolling ? 8 : 4)};
                 auto display = d->value;
                 if (!d->expanded) {

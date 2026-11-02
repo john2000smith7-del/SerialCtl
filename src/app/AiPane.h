@@ -37,6 +37,7 @@ class AiPane {
     bool Busy() const {
         return busy_ || client_.Running();
     }
+    bool TaskRunning() const {return busy_;}
     void RefreshTargets();
     void SelectTarget(const std::string &id);
     const std::string& AssociatedTarget() const { return busy_ ? turnTarget_ : target_; }

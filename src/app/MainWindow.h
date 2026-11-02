@@ -23,6 +23,7 @@
 #include "AiDeviceBridge.h"
 #include "UiSettingsWriter.h"
 #include "SshConnectionHistory.h"
+#include "XferPane.h"
 #include "ToolbarIcons.h"
 #include <deque>
 #include <functional>
@@ -245,7 +246,9 @@ private:
     void SyncPowerTerminal();
     bool LiveMonitorPage() const { return aiVisible_ || powerVisible_; }
 
-    void ShowSftpPanel(bool show);
+    void ShowSftpPanel(bool show,bool preserveXfer=false);
+    void ShowXferPanel();
+    XferPane::Target XferTarget();
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
     void RefreshSftp(const std::wstring& directory = {});
     static SftpController::Endpoint SftpEndpoint(const SessionState&);
@@ -381,6 +384,7 @@ private:
     int statusHeight_ = 0;
     HWND commandHeader_ = nullptr;
     HWND sftpTabButton_ = nullptr;
+    HWND xferTabButton_ = nullptr;
     HWND rightPanelToggleButton_ = nullptr;
     CommandNotebook notebook_;
     HWND commandHint_ = nullptr;
@@ -455,6 +459,9 @@ private:
     int rightPanelAnimatedWidth_ = -1, rightPanelAnimationFrom_ = 0, rightPanelAnimationTo_ = 0;
     ULONGLONG rightPanelAnimationAt_ = 0;
     SftpController sftp_;
+    xfer::TransferController xfer_;
+    XferPane xferPane_;
+    bool xferPanelVisible_ = false;
     bool sftpPanelVisible_ = false;
     std::vector<SftpBreadcrumbHit> sftpBreadcrumbHits_;
     int sftpNameWidth_ = 180;
