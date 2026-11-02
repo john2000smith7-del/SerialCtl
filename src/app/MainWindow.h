@@ -98,6 +98,7 @@ private:
     struct SessionState : AiDeviceBridge::State, TerminalViewport::State, SftpController::Session {
         bool disconnected = false, disconnecting = false, closeAfterStop = false;
         std::shared_ptr<std::atomic_bool> cleanupDone;
+        std::wstring disconnectCommandOutcome;
         SerialSettings serialSettings;
         std::string remoteInstance;
         std::wstring lastStatus;

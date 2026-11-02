@@ -131,7 +131,9 @@ def main():
         @callback
         def each(child, _):
             text = c.create_unicode_buffer(128); user.GetWindowTextW(child,text,len(text))
-            approved = main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310) or
+            # Disconnect/close and the new reconnect action intentionally hide
+            # on the blank main page; they are exercised on real cards elsewhere.
+            approved = main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,105,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310,311) or
                                  text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))
             if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
@@ -242,6 +244,14 @@ def main():
                                'pixels': bytes(rgb), 'rawPixels': bytes(rgb), 'frame': frame['path']}
                     capture['glyphRoundingRegions']=combo_glyph_regions(capture['geometry'],desktop.dpi)
                     if name == 'main':
+                        if label == 'candidate':
+                            require(user.GetDlgItem(target,311) and user.GetDlgItem(target,310),
+                                    'Candidate lost reconnect or Xfer controls')
+                            require(not user.IsWindowVisible(user.GetDlgItem(target,105)) and
+                                    not user.IsWindowVisible(user.GetDlgItem(target,311)),
+                                    'Blank main must hide per-card disconnect/reconnect actions')
+                            require(not user.IsWindowEnabled(user.GetDlgItem(target,310)),
+                                    'Blank main must disable serial file transfer')
                         # Approved UI polish: compact detached utility controls,
                         # command notebook, connection heading and panel contours.
                         # All terminal pixels and remaining dialog geometry stay frozen.

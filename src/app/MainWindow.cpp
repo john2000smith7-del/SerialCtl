@@ -2469,6 +2469,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             SessionState* session = FindSession(status->sessionId);
             if (session && (session->disconnected || session->disconnecting)) return 0;
             if (session && session->connection && !session->connection->IsConnected()) BeginDisconnect(*session);
+            const auto displayText = session && !session->disconnectCommandOutcome.empty()
+                ? session->disconnectCommandOutcome + L"\n" + status->text : status->text;
+            const bool messageIsError = status->isError || (session && !session->disconnectCommandOutcome.empty());
             auto* aiSession = session ? session : pendingSession_ && pendingSession_->id == status->sessionId ? pendingSession_.get() : nullptr;
             if (aiSession && *ai::TerminalKind(aiSession->mode)) {
                 if (status->isError || status->text.find(L"HISTORY_GAP") != std::wstring::npos)
@@ -2478,8 +2481,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             if (session) {
                 if (!session->connection || !session->connection->IsConnected())
                     AiDeviceRequest("release", {{"sessionId", "session-" + std::to_string(session->id)}});
-                session->lastStatus = status->text;
-                session->lastStatusIsError = status->isError;
+                session->lastStatus = displayText;
+                session->lastStatusIsError = messageIsError;
                 session->unreadStatus = session != activeSession_;
                 GetLocalTime(&session->statusTime);
             }
@@ -2488,7 +2491,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 if (macro_.RunningIndex() >= 0 && (!connection_ || !connection_->IsConnected()))
                     StopCommandSequence(CommandSequenceEnd::Interrupted, status->text);
                 else
-                    AppendStatus(status->text, status->isError);
+                    AppendStatus(displayText, messageIsError);
             } else if (session && session->logger) {
                 session->logger->WriteStatus(status->text);
             }
@@ -4509,7 +4512,9 @@ void MainWindow::Disconnect() {
     }
     if (activeSession_->disconnected) { CloseSession(activeSession_->id); return; }
     BeginDisconnect(*activeSession_);
-    AppendStatus(L"正在断开，释放资源后保留卡片", false);
+    const auto& outcome = activeSession_->disconnectCommandOutcome;
+    AppendStatus(outcome.empty() ? L"正在断开，释放资源后保留卡片" :
+                 outcome + L"\n正在断开，释放资源后保留卡片", !outcome.empty());
 }
 
 void MainWindow::CloseSession(std::uint64_t id) {
@@ -4538,7 +4543,11 @@ void MainWindow::PollSessionCleanup() {
         if (!session->cleanupDone || !session->cleanupDone->load()) { pending = true; continue; }
         session->disconnecting=false; session->disconnected=true; session->cleanupDone.reset();
         if (session->closeAfterStop) close.push_back(session->id);
-        if (session.get()==activeSession_) AppendStatus(L"已断开，连接资源已释放；可重连或关闭卡片",false);
+        if (session.get()==activeSession_) {
+            const auto& outcome = session->disconnectCommandOutcome;
+            AppendStatus(outcome.empty() ? L"已断开，连接资源已释放；可重连或关闭卡片" :
+                         outcome + L"\n已断开，连接资源已释放；可重连或关闭卡片", !outcome.empty());
+        }
     }
     for (const auto id : close) CloseSession(id);
     pending = pending || connectionCleanup_.Busy();
@@ -4598,7 +4607,10 @@ void MainWindow::DisconnectAll() {
         AppendStatus(L"全部卡片已关闭",false); return;
     }
     xfer_.Cancel(); aiPane_.Disconnect(); sftp_.CancelIo();
+    const auto macroSession = macro_.Running() ? macro_.Session() : 0;
     StopCommandSequence(CommandSequenceEnd::Interrupted,L"用户断开全部连接");
+    const std::wstring commandOutcome = macroSession ? statusText_ : L"";
+    if (auto* owner = FindSession(macroSession)) owner->disconnectCommandOutcome = commandOutcome;
     connectionCancel_=true;
     if(pendingSession_) {cancelledConnectionPending_=true;pendingSession_->connection->CancelStart();FinishPendingConnection();}
     for(const auto& session:sessions_) BeginDisconnect(*session);
@@ -4608,7 +4620,8 @@ void MainWindow::DisconnectAll() {
         else disconnectAllPending_=true;
     }
     RefreshConnectionActions(); RefreshConnectionList();
-    AppendStatus(L"正在断开全部连接，卡片将保留；完成后可点击全部关闭",false);
+    AppendStatus(commandOutcome.empty() ? L"正在断开全部连接，卡片将保留；完成后可点击全部关闭" :
+                 commandOutcome + L"\n正在断开全部连接，卡片将保留；完成后可点击全部关闭", !commandOutcome.empty());
 }
 
 void MainWindow::FinishPendingConnection() {
@@ -5030,6 +5043,9 @@ void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring&
     if (owner && end != CommandSequenceEnd::Silent) {
         owner->lastStatus = statusText_;
         owner->lastStatusIsError = completion.error;
+        if (end == CommandSequenceEnd::Interrupted &&
+            (owner->disconnecting || !owner->connection || !owner->connection->IsConnected()))
+            owner->disconnectCommandOutcome = completion.message;
         owner->unreadStatus = owner != activeSession_;
         GetLocalTime(&owner->statusTime);
     }

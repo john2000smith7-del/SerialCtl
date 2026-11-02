@@ -953,6 +953,9 @@ struct AiDeviceTestAccess {
         row->connection=held;row->logger=std::make_shared<SessionLogger>();
         row->terminal.Feed(L"KEEP_HISTORY\r\n\x1b[",L"");
         main.nextSessionId_=701;main.sessions_.push_back(std::move(row));main.SwitchSession(0);
+        main.notebook_.SetInterval(5000);
+        main.RunNotebook({L"first-before-disconnect",L"must-not-follow-disconnect"});
+        Require(main.macro_.Running()&&main.macro_.Accepted()==1,"Disconnect regression starts after exactly one accepted step");
         const auto start=GetTickCount64();main.Disconnect();
         Require(GetTickCount64()-start<250,"Disconnect must not wait for held transport cleanup");
         Require(main.sessions_.size()==1&&main.sessions_[0]->disconnecting,"Disconnect retains the card during resource cleanup");
@@ -961,6 +964,9 @@ struct AiDeviceTestAccess {
         main.Disconnect();Require(main.sessions_.size()==1,"Second click during Stop cannot remove card");
         SetEvent(held->release);
         until([&]{return main.sessions_[0]->disconnected&&!main.connectionCleanup_.Busy();},"Card becomes disconnected only after resource cleanup");
+        Require(main.statusIsError_&&main.statusText_.find(L"后续提交已中断（1/2）")!=std::wstring::npos&&
+                main.statusText_.find(L"执行状态未知")!=std::wstring::npos,
+                "Explicit disconnect cleanup preserves accepted-count and unknown-execution warning");
         main.RefreshConnectionActions();
         Require(IsWindowEnabled(main.reconnectButton_)&&MainWindow::ControlText(main.disconnectButton_)==L"关闭卡片","Stopped card exposes reconnect and close");
         ui_test::SaveUiEvidence(main.window_,L"connection-retained-native.png");
@@ -992,14 +998,32 @@ struct AiDeviceTestAccess {
         // Three independent cards: first click releases resources, second closes cards.
         for(unsigned i=0;i<3;++i){auto item=std::make_unique<MainWindow::SessionState>();item->id=800+i;item->mode=3;item->name=L"batch";
             item->connection=std::make_shared<Transport>();item->logger=std::make_shared<SessionLogger>();main.sessions_.push_back(std::move(item));}
-        main.SwitchSession(0);main.DisconnectAll();
+        main.SwitchSession(0);main.RunNotebook({L"first-before-all-disconnect",L"must-not-follow-all-disconnect"});
+        Require(main.macro_.Running()&&main.macro_.Accepted()==1,"All-disconnect starts after one accepted step");
+        main.DisconnectAll();
         Require(main.sessions_.size()==3,"All-disconnect retains every terminal card");
         until([&]{return !main.connectionCleanup_.Busy()&&std::all_of(main.sessions_.begin(),main.sessions_.end(),[](const auto& item){return item->disconnected;});},"All resources finish cleanup");
+        Require(main.statusIsError_&&main.statusText_.find(L"后续提交已中断（1/2）")!=std::wstring::npos,
+                "All-disconnect cleanup preserves macro interruption instead of generic success");
         main.RefreshConnectionActions();Require(MainWindow::ControlText(main.disconnectAllButton_)==L"全部关闭","Footer switches only after cleanup");
         main.DisconnectAll();Require(main.sessions_.empty(),"Second all action closes stopped cards");
+        auto exited=std::make_shared<Transport>();
+        auto processRow=std::make_unique<MainWindow::SessionState>();
+        processRow->id=900;processRow->mode=4;processRow->name=L"natural exit";
+        processRow->connection=exited;processRow->logger=std::make_shared<SessionLogger>();
+        main.sessions_.push_back(std::move(processRow));main.SwitchSession(0);
+        main.RunNotebook({L"exit",L"must-not-follow-natural-exit"});
+        Require(main.macro_.Accepted()==1,"Natural-exit regression accepts only its first step");
+        exited->connected=false;main.PostStatus(900,L"CMD 已结束",false);
+        until([&]{return main.sessions_[0]->disconnected&&!main.connectionCleanup_.Busy();},"Natural exit releases transport");
+        Require(main.statusIsError_&&main.statusText_.find(L"后续提交已中断（1/2）")!=std::wstring::npos&&
+                main.sessions_[0]->lastStatus.find(L"执行状态未知")!=std::wstring::npos&&exited->writes==1,
+                "Natural exit status and cleanup preserve warning and prevent the second step");
+        main.CloseSession(900);
         main.RequestShutdown();main.WaitForShutdown();main.FinishShutdown();
         const Json report{{"heldStopNonblocking",true},{"disconnectRetainsCard",true},{"loopbackReconnect",true},
                           {"reconnectCancellation",true},{"freshGeneration",true},{"historyRetained",true},{"oldCallbackIgnored",true},{"twoStageAllClose",true},
+                          {"naturalAndExplicitDisconnectPreserveMacroOutcome",true},
                           {"scope","native window, controlled blocking transport and production loopback gateway; no COM hardware claim"}};
         wchar_t dir[32768]{};if(GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR",dir,32768))std::ofstream(std::filesystem::path(dir)/L"connection-lifecycle-native.json")<<report.dump(2);
         std::cout<<report.dump()<<'\n';
