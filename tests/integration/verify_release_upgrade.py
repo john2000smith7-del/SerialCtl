@@ -93,7 +93,7 @@ def main():
     with zipfile.ZipFile(args.candidate) as z:
         expected_exe=hashlib.sha256(z.read('serialctl.exe')).hexdigest()
         expected_version=z.read('VERSION')
-    metadata=json.loads(args.metadata.read_text());payload=json.loads(metadata['payload'])
+    metadata=json.loads(args.metadata.read_text(encoding='utf-8-sig'));payload=json.loads(metadata['payload'])
     require(payload['archive']['sha256']==report['candidateSha256'],'JSON does not describe exact candidate ZIP')
     feed=args.output/'feed';feed.mkdir();shutil.copyfile(args.candidate,feed/args.candidate.name);shutil.copyfile(args.metadata,feed/'update.json')
     tampered=dict(metadata);tampered['signature']=('0' if metadata['signature'][0]!='0' else '1')+metadata['signature'][1:]
