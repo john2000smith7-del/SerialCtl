@@ -132,7 +132,8 @@ def main():
     process = peer = desktop = peer_log = None
     moved = created = False
     report = {"status": "RUNNING", "cases": [], "scope": "Actual ZIP executable, mouse/SendInput, "
-              "native file dialogs, actual WebSocket remote serial with controlled native protocol peer",
+              "native file dialogs, actual WebSocket remote serial with controlled native protocol peer "
+              "(10ms fixture pacing per peer output/save for visible in-progress interaction, not a UART throughput measurement)",
               "notRun": ["physical UART/board", "real Win7", "device power", "field SSH"]}
     try:
         app = output / "app"
@@ -178,7 +179,7 @@ def main():
                 peer_report = output / (label + "-peer.json")
                 peer_log = (output / (label + "-peer.log")).open("wb")
                 peer = subprocess.Popen([str(args.gateway.resolve()), "7014", str(protocol),
-                       "receive" if direction == 0 else "send", str(source), str(peer_report)],
+                       "receive" if direction == 0 else "send", str(source), str(peer_report), "10"],
                        stdout=peer_log, stderr=subprocess.STDOUT)
                 desktop.wait(lambda: peer_report.exists() and peer_report.stat().st_size > 0,
                              "controlled peer listening")
@@ -234,6 +235,21 @@ def main():
                 layout = desktop.check_layout()
                 desktop.capture(label + "-ready")
                 desktop.click_window(desktop.user.GetDlgItem(desktop.pane, 15))
+                response_samples=[]
+                if protocol==1 and direction==0:
+                    desktop.wait(lambda: desktop.user.IsWindowEnabled(desktop.user.GetDlgItem(desktop.pane,16)),
+                                 "controlled paced transfer is in progress")
+                    desktop.capture(label+"-in-progress")
+                    button=desktop.rect(desktop.user.GetDlgItem(desktop.pane,15))
+                    for _ in range(5):
+                        # Actual repeated mouse presses on the disabled action
+                        # must not create a second file operation or send again.
+                        desktop.click(((button[0]+button[2])//2,(button[1]+button[3])//2))
+                        response_samples.append(desktop.responsive())
+                    desktop.resize(980,680,"xfer-active-resize")
+                    response_samples.append(desktop.responsive())
+                    desktop.resize(1044,760,"xfer-active-restore")
+                    require(max(response_samples)<100,"Xfer blocked GUI responsiveness during repeated input")
                 def completed():
                     if not peer_report.exists():
                         return False
@@ -256,7 +272,8 @@ def main():
                     desktop.capture("narrow")
                     desktop.resize(1044, 760, "xfer-restored")
                 report["cases"].append({"protocol": protocol, "direction": direction, "status": "PASS",
-                    "bytes": len(payload), "peer": json.loads(peer_report.read_text()), "uiStatus": status, "layout": layout})
+                    "bytes": len(payload), "peer": json.loads(peer_report.read_text()), "uiStatus": status, "layout": layout,
+                    "activeWmNullSamplesMs":response_samples})
                 desktop.click_window(desktop.control(105))
                 desktop.wait(lambda: not desktop.user.IsWindowEnabled(desktop.control(310)), "disconnect disables Xfer")
                 desktop.pane = None

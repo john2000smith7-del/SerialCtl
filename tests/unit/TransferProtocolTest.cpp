@@ -70,6 +70,28 @@ void RejectMetadata(const std::string& text) {
     bool rejected=false;try {Run(o,io);}catch(const std::exception&) {rejected=true;}
     Require(rejected&&!wrote,"bad metadata must fail before file bytes are written");
 }
+void MalformedStreams() {
+    // Deterministic, bounded hostile byte streams. This checks parser memory
+    // safety under sanitizers; a synthetic ACK is not an independent peer.
+    std::uint32_t seed=0x219500;
+    for(unsigned sample=0;sample<1200;++sample) {
+        const auto random=[&](){seed=seed*1664525u+1013904223u;return seed;};
+        Bytes input(1+random()%2048);for(auto& b:input)b=static_cast<std::uint8_t>(random()>>16);
+        if(sample%3==0)input.insert(input.begin(),{'*','*',24,'C'}); // binary CRC32 header path
+        if(sample%3==1)input.insert(input.begin(),{1,0,255});       // metadata/block path
+        std::size_t cursor=0,emitted=0,saved=0;
+        Io io;io.readByte=[&](unsigned)->int {if(cursor==input.size())throw std::runtime_error("controlled input ended");return input[cursor++];};
+        io.write=[&](const Bytes& b){emitted+=b.size();Require(emitted<=1024*1024,"unbounded malformed-stream response");};
+        io.readFile=[](std::uint64_t at,std::uint8_t* out,std::size_t n){for(std::size_t i=0;i<n;++i)out[i]=static_cast<std::uint8_t>(at+i);return n;};
+        io.writeFile=[&](const std::uint8_t*,std::size_t n){saved+=n;Require(saved<=4096,"malformed stream exceeded receive limit");};
+        Options options;options.protocol=static_cast<Protocol>(1+sample%3);
+        options.direction=sample%2?Direction::Send:Direction::Receive;
+        options.filename="fixture.bin";options.size=32;options.receiveLimit=4096;options.expectedReceiveBytes=32;options.timeoutMs=50;options.retries=1;
+        try {Run(options,io);}catch(const std::runtime_error&) {}
+        Require(cursor<=input.size()&&emitted<=1024*1024&&saved<=4096,"malformed-stream bounds");
+    }
+    std::cout<<"PASS: 1200 deterministic malformed-stream parser cases (seed 0x219500); no hardware/peer authenticity claim\n";
+}
 }
 int main() {
     try {
@@ -86,6 +108,7 @@ int main() {
         RejectMetadata(std::string("../escape.bin")+char(0)+"10");
         RejectMetadata(std::string("fixture.bin")+char(0)+"18446744073709551616");
         RejectMetadata(std::string("fixture.bin")+char(0)+"999999999999");
+        MalformedStreams();
         Io cancelled;cancelled.cancelled=[]{return true;};Options options;
         bool stopped=false;try {Run(options,cancelled);}catch(const Cancelled&){stopped=true;}
         Require(stopped,"cancellation before any wire/file operation");

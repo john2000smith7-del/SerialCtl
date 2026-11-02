@@ -264,7 +264,7 @@ jobs:
           root = pathlib.Path('ui-evidence')
           page = os.environ['REVIEW_PAGE']
           patterns = {
-              'workspace': ['v207-workspace-*-96dpi.png', 'dialog-ai-*.png', 'dialog-serial-*.png', 'v205-remote-*.png', 'v215-left-rail-*.png', 'v215-path-*.png', 'v219-popup-*-96dpi.png', 'v219-xfer-*-complete.png', 'v219-xfer-*-disabled.png', 'v219-xfer-*-narrow.png'],
+              'workspace': ['v207-workspace-*-96dpi.png', 'v219-workspace-capsule-*.png', 'dialog-ai-*.png', 'dialog-serial-*.png', 'v205-remote-*.png', 'v215-left-rail-*.png', 'v215-path-*.png', 'v219-popup-*-96dpi.png', 'v219-xfer-*-complete.png', 'v219-xfer-*-disabled.png', 'v219-xfer-*-narrow.png'],
               'ai': ['x64-*-ai-expanded.png', 'x64-*-ai-collapsed.png', 'v208-ai-pet-main-*.png', 'v218-model-*.png'],
               'power-light': ['x64-light-power-layout.png', 'x64-light-power-disconnected.png'],
               'power-dark': ['x64-dark-power-layout.png', 'x64-dark-power-disconnected.png'],

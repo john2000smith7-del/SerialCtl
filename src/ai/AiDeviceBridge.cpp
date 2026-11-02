@@ -324,7 +324,7 @@ bool AiDeviceBridge::Pulse(State& state, const std::shared_ptr<IConnection>& con
         const auto boot=state.boot;
         const bool accepted = connection && connection->IsConnected() &&
             connection->SendConditional(Bytes(burst.bytes.begin(),burst.bytes.end()),error,[boot,generation=burst.generation]{return boot->CanSend(generation);});
-        state.boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8));
+        state.boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8),burst.generation);
     }
     return active;
 }

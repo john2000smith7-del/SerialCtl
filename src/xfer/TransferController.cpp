@@ -55,7 +55,15 @@ TransferController::~TransferController(){Shutdown();}
 bool TransferController::Start(Request request,std::wstring& error) {
     std::lock_guard<std::mutex> lock(mutex_);
     if(task_&&!task_->done){error=L"已有文件传输任务，请先完成或取消";return false;}
-    if(worker_.joinable())worker_.join(); // done is published only after cleanup/file handles close.
+    if(worker_.joinable()) {
+        // Publishing done is earlier than OS thread exit. Never join a merely
+        // notified worker from a window callback, even if it was descheduled
+        // between publishing its result and returning from its entry point.
+        if(WaitForSingleObject(reinterpret_cast<HANDLE>(worker_.native_handle()),0)!=WAIT_OBJECT_0) {
+            error=L"上次传输正在收尾，请稍后重试";return false;
+        }
+        worker_.join();
+    }
     if(!request.connection||!request.connection->IsConnected()||!request.connection->SupportsTransfer()) {
         error=L"当前连接未就绪或远端版本不支持 Xfer";return false;
     }
@@ -124,6 +132,7 @@ void TransferController::Work(const std::shared_ptr<Task>& task) {
         return result;
     };
     try {
+        if(task->cancel)throw Cancelled();
         Check(task->request);
         auto options=task->request.options;
         const auto path=ExtendedFilePath(task->request.path);

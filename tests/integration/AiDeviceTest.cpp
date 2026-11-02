@@ -3,6 +3,7 @@
 #include "UiTestEvidence.h"
 #include "Win32Helpers.h"
 #include "resource.h"
+#include "SshCredentials.h"
 #include <gdiplus.h>
 #include <iostream>
 #include <stdexcept>
@@ -307,6 +308,37 @@ struct AiDeviceTestAccess {
                 Require(!main.ReadConnectionDialog(network, error), "SSH must still require a username");
                 SetDlgItemTextW(network, IDC_USER, L"fixture");
                 SetDlgItemTextW(network, IDC_PASSWORD, L"fixture-password");
+                const auto host=L"serialctl-history-ui-"+std::to_wstring(GetCurrentProcessId())+L".invalid";
+                const auto target=SshCredentialTarget(host,2222,L"fixture");
+                struct CleanupCredential {
+                    std::wstring target;
+                    ~CleanupCredential(){DWORD ignored=0;ForgetSshCredential(target,ignored);}
+                } credentialCleanup{target};
+                DWORD credentialError=0;
+                Require(SaveSshCredential(target,L"fixture",L"controlled-history-password",credentialError),
+                        "Cannot seed isolated history credential");
+                const auto savedHistory=main.sshHistory_;
+                struct RestoreHistory {Json& value;Json old;~RestoreHistory(){value=std::move(old);}} restoreHistory{main.sshHistory_,savedHistory};
+                main.sshHistory_=Json::array({{{"host",WideToMultiByte(host,CP_UTF8)},{"port",2222},{"username","fixture"},{"lastSuccess",1}}});
+                for(int changed:{IDC_PORT,IDC_HOST,IDC_USER}) {
+                    SendMessageW(network,WM_APP+210,0,0); // Production deferred history-selection handler.
+                    Require(MainWindow::ControlText(GetDlgItem(network,IDC_PASSWORD))==L"controlled-history-password"&&
+                            IsDlgButtonChecked(network,IDC_SSH_REMEMBER_PASSWORD)==BST_CHECKED,
+                            "SSH history did not refill actual Windows credential");
+                    Require((GetWindowLongPtrW(GetDlgItem(network,IDC_PASSWORD),GWL_STYLE)&ES_PASSWORD)!=0,
+                            "SSH history password must remain masked");
+                    SetDlgItemTextW(network,changed,changed==IDC_PORT?L"2223":changed==IDC_HOST?L"other.invalid":L"other-user");
+                    Require(MainWindow::ControlText(GetDlgItem(network,IDC_PASSWORD)).empty()&&
+                            IsDlgButtonChecked(network,IDC_SSH_REMEMBER_PASSWORD)==BST_UNCHECKED,
+                            "SSH password was carried across a different host/port/user");
+                }
+                main.loadedSshCredentialTarget_.clear();
+                CheckDlgButton(network,IDC_SSH_SAVE,BST_UNCHECKED);
+                CheckDlgButton(network,IDC_SSH_REMEMBER_PASSWORD,BST_UNCHECKED);
+                SetDlgItemTextW(network,IDC_HOST,L"127.0.0.1");
+                SetDlgItemTextW(network,IDC_PORT,L"22");
+                SetDlgItemTextW(network,IDC_USER,L"fixture");
+                SetDlgItemTextW(network,IDC_PASSWORD,L"fixture-password");
             }
             Require(main.ReadConnectionDialog(network, error) && main.pendingPort_ == (mode == 0 ? 22 : 23),
                     "Network form cannot read its initialized settings");

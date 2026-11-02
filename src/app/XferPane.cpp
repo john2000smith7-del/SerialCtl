@@ -106,7 +106,9 @@ void XferPane::Refresh() {
     layout|=Label(Control(Help),help);
     const auto note=!state.busy&&!localNotice_.empty()?localNotice_:
         state.busy||(!state.note.empty()&&state.session==target.id)?state.note:
-        target.unavailable.empty()?L"请先在设备端进入匹配的收发模式，再开始传输。":target.unavailable;
+        target.unavailable.empty()?(receive&&protocol==0?
+            L"请先开始接收，再触发设备发送原始字节；原始模式不会补收开始前的数据。":
+            L"请先在设备端进入匹配的收发模式，再开始传输。"):target.unavailable;
     layout|=Label(Control(Status),note+(state.partial.empty()?L"":L"\r\n部分文件："+state.partial));
     const bool relevant=state.session&&(state.busy||state.session==target.id);
     displayBytes_=relevant?state.bytes:0;displayTotal_=relevant?state.total:0;

@@ -9,6 +9,36 @@ on:
 permissions:
   contents: read
 jobs:
+  protocol-reference:
+    name: Independent serial protocol interoperability
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Fetch hash-pinned independent test-only reference
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, os, pathlib, urllib.request
+          data=urllib.request.urlopen('https://deb.debian.org/debian/pool/main/l/lrzsz/lrzsz_0.12.21-10+b1_amd64.deb',timeout=60).read()
+          assert hashlib.sha256(data).hexdigest()=='60c15258a977b837671f99f60a7876b1dfa7cebd9ed1a7dcd16d922b6e1b9cfe'
+          (pathlib.Path(os.environ['RUNNER_TEMP'])/'lrzsz.deb').write_bytes(data)
+          PY
+          dpkg-deb -x "$RUNNER_TEMP/lrzsz.deb" "$RUNNER_TEMP/serialctl-reference"
+      - name: Compare production engine with independent X/Y/ZMODEM implementations
+        shell: bash
+        run: |
+          g++ -std=c++17 -O2 -pthread -Isrc/xfer tests/integration/XferInteropProbePosix.cpp src/xfer/TransferProtocol.cpp -o "$RUNNER_TEMP/xfer-interop-probe"
+          python tests/integration/protocol_interop_posix.py --probe "$RUNNER_TEMP/xfer-interop-probe" --reference-dir "$RUNNER_TEMP/serialctl-reference/usr/bin" --output "$RUNNER_TEMP/xfer-interop"
+      - name: Preserve bounded reference result in workflow log
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/xfer-interop/interop-results.json" ]]; then
+            cat "$RUNNER_TEMP/xfer-interop/interop-results.json"
+          fi
   policy:
     name: Repository policy
     runs-on: ubuntu-latest

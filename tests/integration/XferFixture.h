@@ -22,9 +22,10 @@ class XferWire final:public IConnection {
     std::deque<std::uint8_t> rx_;
     Bytes received_;
     std::atomic_uint64_t written_{0};
+    unsigned delayMs_=0;
     Json report_={{"status","IDLE"}};
   public:
-    XferWire(xfer::Protocol p,xfer::Direction d,Bytes bytes):protocol_(p),direction_(d),payload_(std::move(bytes)){}
+    XferWire(xfer::Protocol p,xfer::Direction d,Bytes bytes,unsigned delayMs=0):protocol_(p),direction_(d),payload_(std::move(bytes)),delayMs_(std::min(delayMs,50u)){}
     ~XferWire(){Stop();}
     bool SupportsTransfer()const override{return true;}
     bool Start(DataCallback data,StatusCallback,std::wstring&)override{incoming_=std::move(data);connected_=true;return true;}
@@ -50,9 +51,9 @@ class XferWire final:public IConnection {
                 if(rx_.empty())return -1;
                 const int c=rx_.front();rx_.pop_front();return c;
             };
-            io.write=[this](const Bytes& bytes){if(incoming_)incoming_(bytes);};
+            io.write=[this](const Bytes& bytes){if(incoming_)incoming_(bytes);if(delayMs_)Sleep(delayMs_);};
             io.readFile=[this](std::uint64_t at,std::uint8_t* out,std::size_t n){std::copy_n(payload_.data()+at,n,out);return n;};
-            io.writeFile=[this](const std::uint8_t* bytes,std::size_t n){received_.insert(received_.end(),bytes,bytes+n);};
+            io.writeFile=[this](const std::uint8_t* bytes,std::size_t n){received_.insert(received_.end(),bytes,bytes+n);if(delayMs_)Sleep(delayMs_);};
             Json report;
             try {
                 const auto result=xfer::Run(o,io);
@@ -82,8 +83,8 @@ class XferGateway {
   public:
     XferGateway(){if(WSAStartup(MAKEWORD(2,2),&wsa_))throw std::runtime_error("WSAStartup");}
     ~XferGateway(){if(queue_)queue_->Stop();api_.Stop();WSACleanup();}
-    bool Start(xfer::Protocol protocol,xfer::Direction direction,const Bytes& bytes,unsigned first,unsigned last,std::wstring& error) {
-        auto owned=std::make_unique<XferWire>(protocol,direction,bytes);wire_=owned.get();queue_=std::make_shared<QueuedConnection>(std::move(owned));
+    bool Start(xfer::Protocol protocol,xfer::Direction direction,const Bytes& bytes,unsigned first,unsigned last,std::wstring& error,unsigned delayMs=0) {
+        auto owned=std::make_unique<XferWire>(protocol,direction,bytes,delayMs);wire_=owned.get();queue_=std::make_shared<QueuedConnection>(std::move(owned));
         service_.ObserveTransfer([this](const std::string& id,const std::string& owner,const Bytes& data){api_.EnqueuePublish(id,data,owner.c_str(),"xfer_output");});
         service_.Register({{"id","serial-xfer-fixture"},{"kind","serial"},{"com","COM77"},{"name","Controlled Xfer COM77"},{"baudRate",115200},{"codePage",65001}},queue_);
         if(!queue_->Start([this](const Bytes& data){api_.EnqueuePublish("serial-xfer-fixture",data);},{},error))return false;

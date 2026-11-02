@@ -38,6 +38,32 @@ def combo_glyph_regions(geometry,dpi):
     return regions
 
 
+def approved_v219_ssh_layout(before, after):
+    """The approved history/credential form changes field positions, not semantics."""
+    require(before["size"][0] == after["size"][0], "Approved SSH form changed its width")
+    old = {row[0]: row for row in before["geometry"]}
+    new = {row[0]: row for row in after["geometry"]}
+    fields = (1014, 1016, 1018, 1020)
+    require(all(i in old and i in new and old[i][1].lower() == new[i][1].lower() == "edit"
+                and new[i][6] for i in fields), "SSH lost an editable host/port/user/password field")
+    require(all(i in new for i in (1028, 1029, 1031)), "SSH lost history/save/remember controls")
+    heights = [new[i][5]-new[i][3] for i in fields]
+    require(min(heights)>0 and max(heights)-min(heights)<=1, "SSH field heights differ")
+    for i in (*fields, 1028, 1029, 1031, 1, 2):
+        require(i in new, "SSH control missing")
+        _, _, left, top, right, bottom, _ = new[i]
+        require(0<=left<right<=after["size"][0] and 0<=top<bottom<=after["size"][1],
+                "SSH control outside approved form")
+    for index, first in enumerate(fields):
+        a = new[first][2:6]
+        for second in fields[index+1:]:
+            b = new[second][2:6]
+            require(max(a[0],b[0])>=min(a[2],b[2]) or max(a[1],b[1])>=min(a[3],b[3]),
+                    "SSH input fields overlap")
+    return {"status": "PASS", "preservedEditableFields": list(fields), "fieldHeights": heights,
+            "historyAndSeparateRemember": "PASS", "boundsAndNonoverlap": "PASS"}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline', type=Path, required=True)
@@ -105,7 +131,7 @@ def main():
         @callback
         def each(child, _):
             text = c.create_unicode_buffer(128); user.GetWindowTextW(child,text,len(text))
-            approved = main and (user.GetDlgCtrlID(child) in (104,106,111,112,113,114,115,116,132,303,308,309) or
+            approved = main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310) or
                                  text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))
             if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
@@ -279,6 +305,17 @@ def main():
             process.wait(timeout=15); process = None
         for key, before in baseline.items():
             after = candidate[key]
+            if key[1]=="ssh" and version=="V2.0.19":
+                # Explicit user approval adds history + secure-remember rows
+                # and repositions all four input fields. Preserve both actual
+                # screenshots; do not claim these unequal layouts are frozen.
+                contract=approved_v219_ssh_layout(before,after)
+                report["cases"].append({"theme":key[0],"view":"ssh","comparison":"approved-layout",
+                    "layoutContract":contract,"geometryEqual":before["geometry"]==after["geometry"],
+                    "baselineSize":before["size"],"candidateSize":after["size"],
+                    "baselineFrame":before["frame"],"candidateFrame":after["frame"],
+                    "pixelComparison":"Not applicable to the explicitly redesigned SSH form; visual review required"})
+                continue
             if key[1] in ('ssh','settings'):
                 # Explicitly approved content-height changes; compare unchanged
                 # input controls and their complete top band in client coordinates.
@@ -331,8 +368,10 @@ def main():
                 'approvedChangeRegions':approved,'geometryEqual': before['geometry'] == after['geometry'], 'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
                 'baselineVersion': before.get('version'), 'candidateVersion': after.get('version'),
                 'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')})
-        require(all(case['unexpectedChangedPixels'] == 0 and case['unexpectedRawChangedPixels'] == 0 and
-                    case['geometryEqual'] for case in report['cases']), 'UI freeze pixel/geometry mismatch')
+        require(all((case.get("comparison")=="approved-layout" and case["layoutContract"]["status"]=="PASS") or
+                    (case.get("comparison")!="approved-layout" and case['unexpectedChangedPixels']==0 and
+                     case['unexpectedRawChangedPixels']==0 and case['geometryEqual'])
+                    for case in report['cases']), 'UI freeze pixel/geometry or approved-layout contract mismatch')
         report['status'] = 'PASS'
     except Exception as error:
         report['status'] = 'FAIL'; report['error'] = str(error)

@@ -35,6 +35,10 @@ CMD保留原有不发送控制序列的提示。此约束只涉及合成回复�
 
 ## 兼容边界
 
+V2.0.19 Xfer复用现有串口与唯一网络读线程。QueuedConnection授予独占传输所有权，数据走私有接收路径，绕过终端文本处理与输入编码；期间拒绝普通发送。远程服务协商xfer能力，以每个网络连接和任务token隔离transfer.begin／write／end及私有xfer_data，文件字节不进入公共终端历史。旧端缺少能力时只禁用Xfer，普通serialctl.v1操作保持原有行为。
+
+TransferProtocol是无Win32依赖的C++17协议核心；TransferController在拥有的后台线程流式读取／保存文件，使用有界接收队列、超时／重试和取消事件。接收暂存文件与原路径同目录，完成后无覆盖地改名；非空失败文件保留。UI只读取快照并发送取消请求，不持有文件I/O或工作线程的HWND回调。文件任务、COM I/O及网络服务按顺序取消和回收，正式更新安装须等待传输结束。
+
 - 最低系统版本为 Windows 7 SP1。
 - 生产构建使用 C++17、Unicode Win32、Winsock、Common Controls 和 GDI owner-draw。
 - 生产程序不暴露可供其他工程链接的 Public SDK，因此当前没有 `include/` 目录。

@@ -4312,7 +4312,7 @@ void MainWindow::ConnectFromDialog() {
                                 const bool accepted = connection && connection->IsConnected() &&
                                     connection->SendConditional(Bytes(burst.bytes.begin(),burst.bytes.end()),error,
                                         [boot,generation=burst.generation]{return boot->CanSend(generation);});
-                                boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8));
+                                boot->Delivery(accepted, WideToMultiByte(error, CP_UTF8),burst.generation);
                             }
                             const auto connection = transport.lock();
                             PostData(sessionId, data, connection ? connection->OutputCodePage() : 0);

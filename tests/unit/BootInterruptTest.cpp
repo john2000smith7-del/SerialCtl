@@ -24,6 +24,8 @@ int main() {
         Check(boot.Status(1200).entered&&boot.Status(1200).state=="entered","late write cancellation cannot erase observed entry");
         Check(boot.PreparePreset("phytium_uefi_f2",0,1300),"next task may start after entered");
         boot.RestartSubmitted(1300);
+        boot.Delivery(false,"late error from the previous cancelled task",burst.generation);
+        Check(boot.Status(1300).state=="interrupting","old delivery error cannot stop a later generation");
         Check(!boot.CanSend(burst.generation)&&boot.Poll(1300)=="\x1bOQ"&&boot.Status(1300).intervalMs==300,"old generation cannot spill into unchanged UEFI strategy");
         boot.Cancel();
         for(const auto* named:{"U-Boot>","U-Boot #","hisilicon #"}) {

@@ -108,10 +108,10 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         return generation==generation_&&status_.state=="interrupting";
     }
-    void Delivery(bool accepted, std::string error) {
+    void Delivery(bool accepted, std::string error,std::uint64_t generation=0) {
         if (accepted) return;
         std::lock_guard<std::mutex> lock(mutex_);
-        if(!Active())return;
+        if(!Active()||(generation&&generation!=generation_))return;
         status_.state = "failed";
         status_.error = std::move(error);
     }
