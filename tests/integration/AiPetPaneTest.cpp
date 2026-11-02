@@ -1,5 +1,6 @@
 #include "AiPetPane.h"
 #include "UiTestEvidence.h"
+#include <commctrl.h>
 #include <iostream>
 #include <stdexcept>
 using namespace serialctl;
@@ -10,6 +11,15 @@ void Check(bool ok, const char *why) {
 }
 std::wstring evidenceName;
 bool menuTest = false, saveDialog = false, modalObserved = false, modalFits = true;
+struct OwnerClickProbe {
+    unsigned downs = 0, ups = 0;
+    static LRESULT CALLBACK Observe(HWND window, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR data) {
+        auto& probe = *reinterpret_cast<OwnerClickProbe*>(data);
+        if (message == WM_LBUTTONDOWN) ++probe.downs;
+        if (message == WM_LBUTTONUP) ++probe.ups;
+        return DefSubclassProc(window,message,w,l);
+    }
+};
 HWND FindNative(const wchar_t *cls) {
     struct Search {
         const wchar_t *cls;
@@ -267,10 +277,15 @@ struct AiPetPaneTestAccess {
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             Check(WindowFromPoint(point) == target, "Native owner click is covered by another window");
             Check(SetCursorPos(point.x, point.y) != FALSE, "Cannot position the real owner click");
+            OwnerClickProbe probe;
+            Check(SetWindowSubclass(target,OwnerClickProbe::Observe,0x219d,reinterpret_cast<DWORD_PTR>(&probe))!=FALSE,
+                  "Cannot observe real owner mouse input");
             mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
             mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
             const auto deadline = GetTickCount64() + 2000;
-            while (GetForegroundWindow() != target && GetTickCount64() < deadline) {
+            // Already being foreground does not mean the injected mouse pair
+            // has been dispatched. Always observe the actual button release.
+            while ((GetForegroundWindow() != target || !probe.ups) && GetTickCount64() < deadline) {
                 MSG message{};
                 while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
                     TranslateMessage(&message);
@@ -278,6 +293,8 @@ struct AiPetPaneTestAccess {
                 }
                 Sleep(5);
             }
+            RemoveWindowSubclass(target,OwnerClickProbe::Observe,0x219d);
+            Check(probe.downs==1 && probe.ups==1, "Real owner interaction was not processed exactly once");
             Check(GetForegroundWindow() == target, "Real mouse did not activate the native owner fixture");
         };
         POINT ownerPoint{24, 24};
@@ -288,6 +305,16 @@ struct AiPetPaneTestAccess {
         GetWindowRect(pane.Handle(), &ownerInteractionBefore);
         for (int step = 0; step < 3; ++step) { Sleep(80); pane.Tick(); }
         GetWindowRect(pane.Handle(), &ownerInteractionPosition);
+        if (!EqualRect(&ownerInteractionPosition, &ownerInteractionBefore)) {
+            POINT actualPointer{};GetCursorPos(&actualPointer);
+            RECT actualOwner{};GetWindowRect(parent,&actualOwner);
+            std::cerr << "Owner pause observed: foreground=" << GetForegroundWindow()
+                      << " owner=" << parent << " cursor=" << actualPointer.x << ',' << actualPointer.y
+                      << " owner_bounds=" << actualOwner.left << ',' << actualOwner.top << ',' << actualOwner.right << ',' << actualOwner.bottom
+                      << " pet_before=" << ownerInteractionBefore.left << ',' << ownerInteractionBefore.top
+                      << " pet_after=" << ownerInteractionPosition.left << ',' << ownerInteractionPosition.top
+                      << " roam_offset=" << pane.roamOffsetX_ << " walking=" << pane.walking_ << '\n';
+        }
         Check(EqualRect(&ownerInteractionPosition, &ownerInteractionBefore),
               "Active owner interaction did not pause the real desktop pet");
         roamAfter = ownerInteractionPosition;
