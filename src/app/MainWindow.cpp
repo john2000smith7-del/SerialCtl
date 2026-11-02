@@ -1903,7 +1903,6 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case AiStateChanged:
         RefreshConnectionList();
-        EnableWindow(disconnectButton_, aiVisible_ || powerVisible_ || activeSession_ != nullptr);
         return 0;
     case MessageUpdatePrompt: {
         std::unique_ptr<UpdatePrompt> prompt(reinterpret_cast<UpdatePrompt *>(lParam));
@@ -4632,6 +4631,7 @@ MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
 }
 
 void MainWindow::ShowAiPage(bool connect) {
+    if(macro_.Running()) StopCommandSequence(CommandSequenceEnd::Interrupted,L"切换到 AI 页面");
     // The modal is the user's immediate action. Do not make it wait for page
     // layout, transcript remeasurement, target refresh or terminal repaint.
     const bool requestedConnection = connect && !aiPane_.Connected();
@@ -4698,6 +4698,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
 }
 
 void MainWindow::ShowPowerPage() {
+    if(macro_.Running()) StopCommandSequence(CommandSequenceEnd::Interrupted,L"切换到电源页面");
     UiRedrawScope redraw(window_);
     aiVisible_ = false;
     KillTimer(window_, SideAnimationTimerId);
@@ -4797,6 +4798,7 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
         const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
         std::wstring display=echoedText;
         if (!display.empty() && display.back()==L'\r') display+=L'\n';
+        else if (!display.empty() && display.back()==L'\n' && (display.size()==1 || display[display.size()-2]!=L'\r')) display.insert(display.size()-1,1,L'\r');
         const TerminalFeedResult result = activeSession_->terminal.Feed(display, timestamp);
         if (logger_ && !result.logText.empty()) logger_->WriteText(result.logText);
         if (activeSession_->terminalScrollOffset > 0) {

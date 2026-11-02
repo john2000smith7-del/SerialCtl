@@ -52,7 +52,7 @@ jobs:
           fetch-depth: 0
       - name: Compile pinned PuTTY 0.85 with existing patches and TCP keepalive patch
         id: helpers
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           . ./scripts/common.ps1
@@ -105,7 +105,7 @@ jobs:
           ref: ${{ needs.compile-helpers.outputs.source || github.sha }}
           fetch-depth: 0
       - name: Compile x64 Release using build.ps1; no tests or application execution
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           . ./scripts/common.ps1
