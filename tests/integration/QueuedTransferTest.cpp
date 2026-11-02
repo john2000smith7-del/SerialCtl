@@ -1,4 +1,5 @@
 #include "QueuedConnection.h"
+#include "SerialConnection.h"
 #include "BootInterrupt.h"
 #include <iostream>
 #include <stdexcept>
@@ -27,6 +28,17 @@ struct Wire final:IConnection {
 }
 int main() {
     try {
+        std::wstring profileError;
+        for(BYTE bits:{BYTE(5),BYTE(6),BYTE(7)}) {
+            SerialSettings settings;settings.dataBits=bits;SerialConnection serial(settings);
+            Check(!serial.BeginTransferWire("profile-test",profileError)&&profileError.find(L"8位")!=std::wstring::npos,"real serial transfer preflight rejects truncated data-bit profiles before opening a port");
+        }
+        SerialSettings software;software.flowControl=2;SerialConnection xon(software);
+        Check(!xon.BeginTransferWire("profile-test",profileError)&&profileError.find(L"XON/XOFF")!=std::wstring::npos,"software flow control cannot silently consume file bytes");
+        for(DWORD flow:{DWORD(0),DWORD(1)}) {
+            SerialSettings settings;settings.flowControl=flow;SerialConnection serial(settings);
+            Check(!serial.BeginTransferWire("profile-test",profileError)&&profileError.find(L"串口已断开")!=std::wstring::npos,"lossless profiles pass configuration validation and still require a real open port");
+        }
         auto owned=std::make_unique<Wire>();auto* wire=owned.get();
         QueuedConnection queue(std::move(owned));
         Bytes normal,captured;std::wstring error;

@@ -15,6 +15,12 @@ public:
     bool IsConnected() const override;
     bool SupportsTransfer() const override {return true;}
     bool BeginTransferWire(const std::string&,std::wstring& error) override {
+        if(settings_.dataBits!=8) {
+            error=L"Xfer需要8位数据位；请先断开并调整串口参数，避免二进制高位丢失";return false;
+        }
+        if(settings_.flowControl>1) {
+            error=L"Xfer不支持XON/XOFF软件流控；请先断开并选择无流控或硬件流控，避免文件字节被解释为控制字符";return false;
+        }
         if(IsConnected()&&transferCancel_){ResetEvent(transferCancel_);return true;}error=L"串口已断开或取消事件不可用";return false;
     }
     bool SendTransferWire(const std::string&,const Bytes& bytes,std::wstring& error) override {return device_.Write(bytes,error,transferCancel_);}
