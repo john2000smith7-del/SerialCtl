@@ -46,6 +46,7 @@ SessionService::Json SessionService::Resources() {
         }
         r["operations"] = {"session.get", "input", "subscribe", "unsubscribe", "events"};
         r["xfer"]=r.value("kind",std::string())=="serial"&&p.second->transport->SupportsTransfer();
+        if(r["xfer"]==true)if(const auto* queue=dynamic_cast<QueuedConnection*>(p.second->transport.get()))r["xferBusy"]=queue->TransferActive();
         out.push_back(r);
     }
     return out;

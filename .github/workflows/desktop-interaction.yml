@@ -40,12 +40,12 @@ jobs:
           New-Item -ItemType Directory "$env:RUNNER_TEMP/serialctl-ui" -Force | Out-Null
           $testSha = git rev-parse HEAD
           [ordered]@{ programSourceSha=$run.head_sha; testSourceSha=$testSha; buildRun=$env:BUILD_RUN; testRun=$env:GITHUB_RUN_ID; programSource='Verified portable artifact, unchanged production source'; os=[Environment]::OSVersion.VersionString; scope='Actual Windows desktop inputs; SFTP child process fixture only; no physical power/serial devices' } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/serialctl-ui/interaction-receipt.json" -Encoding UTF8
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: ./.github/actions/ci-evidence
         with:
+          mode: restore
           name: SerialCtl-Win7-portable
           path: bin
           run-id: ${{ inputs.build_run || github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
       - name: Verify the packaged resolver child mode
         shell: powershell
         run: |
@@ -107,9 +107,10 @@ jobs:
             }
             Write-Host "SERIALCTL_UI_REVIEW_END $($image.Name)"
           }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: ./.github/actions/ci-evidence
         if: always()
         with:
+          mode: save
           name: SerialCtl-actual-desktop-interaction
           path: |
             ${{ runner.temp }}/serialctl-ui/*.png
@@ -117,11 +118,10 @@ jobs:
             ${{ runner.temp }}/serialctl-ui/*.jsonl
             ${{ runner.temp }}/serialctl-ui/*.txt
             ${{ runner.temp }}/serialctl-ui/*.log
-          if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: ./.github/actions/ci-evidence
         if: always()
         with:
+          mode: save
           name: SerialCtl-paint-regression-recordings
           path: |
             ${{ runner.temp }}/serialctl-ui/*.mkv
@@ -132,12 +132,11 @@ jobs:
             ${{ runner.temp }}/serialctl-ui/*theme*.png
             ${{ runner.temp }}/serialctl-ui/interaction-receipt.json
             ${{ runner.temp }}/serialctl-ui/program-*-sha256.json
-          if-no-files-found: error
-          retention-days: 30
       - name: Preserve compact original review evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: ./.github/actions/ci-evidence
         if: always()
         with:
+          mode: save
           name: SerialCtl-desktop-review
           path: |
             ${{ runner.temp }}/serialctl-ui/*.json
@@ -154,8 +153,6 @@ jobs:
             ${{ runner.temp }}/serialctl-ui/*0009-settings-opened-presented-1.png
             ${{ runner.temp }}/serialctl-ui/*paint*settled-final.png
             ${{ runner.temp }}/serialctl-ui/gui-connections-drag-*.png
-          if-no-files-found: error
-          retention-days: 30
       - name: Record exact release desktop receipt after successful interactions
         shell: powershell
         env:
@@ -165,9 +162,8 @@ jobs:
           if ($archive.Count -ne 1) { throw 'Expected one exact desktop-tested ZIP' }
           python tools/release_gate.py receipt --kind desktop --archive $archive[0].FullName --build-run-id $env:BUILD_RUN --source-commit (git rev-parse HEAD) --output "$env:RUNNER_TEMP/release-receipt.json"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: ./.github/actions/ci-evidence
         with:
+          mode: save
           name: SerialCtl-release-desktop-receipt
           path: ${{ runner.temp }}/release-receipt.json
-          if-no-files-found: error
-          retention-days: 90

@@ -56,11 +56,19 @@ check → clean build → test → PE compatibility check → package → extrac
 gh workflow run windows-build.yml --repo john2000smith7-del/SerialCtl --ref main
 gh run list --repo john2000smith7-del/SerialCtl --workflow windows-build.yml --branch main --limit 10 --json databaseId,event,headSha,status,conclusion,url
 gh run view <本次构建ID> --repo john2000smith7-del/SerialCtl --json headSha,event,status,conclusion,jobs,url
-gh run download <本次构建ID> --repo john2000smith7-del/SerialCtl --name SerialCtl-Win7-portable --dir <仓库外新目录>
+# 当前主流程由本地复合 action 自动恢复精确 run 的候选与收据，见下一节。
 gh workflow run desktop-interaction.yml --repo john2000smith7-del/SerialCtl --ref main -f build_run=<同一成功构建ID>
 ```
 
 main 成功构建也会触发 workflow_run 桌面审核；核对存在匹配证据后避免重复启动。实际构建在 Windows 托管虚拟机运行，截图和操作夹具也在其桌面执行；Linux 下载和检查 PNG／JSON／录像，不能把 Linux 查看图片写成 Windows／Win7 实测。下载便携包仅供匹配验证，检查来源提交和完整 ZIP 哈希后再选定。
+
+### Actions 附件配额受限时的证据传递
+
+V2.0.19 主流程使用固定版本的官方 actions/cache save/restore，通过 .github/actions/ci-evidence 和 tools/ci_evidence.py 传递候选 ZIP、原始截图、录像及收据，不扩删历史附件、不增加付费预算。缓存与 artifact 使用不同存储机制；这项调整不是测试跳过或失败豁免。
+
+键绑定运行 ID、完整源码 SHA、逻辑资料名和执行 attempt；仅恢复同仓库、同 ref、同来源运行的精确缓存。容器内清单再次核对身份、大小和每个文件 SHA-256，拒绝路径穿越、重复名称、篡改和覆盖不同文件。应用 ZIP 保持原字节，不重新压缩应用内容。发布器仍要求所有实际测试与完整工作流成功，并验证原公钥签名和两个真实旧客户端的六种升级场景。
+
+缓存会因 GitHub 的容量／闲置策略被自动淘汰，不承诺原 artifact 的14／30／90天保留期，更不是正式档案。缺失时明确失败并重新验证构建，不借用其他源码／旧包。正式发布后重新下载并核对两个 Release 文件，必要测试报告另存仓库；历史 artifact 的读取与保留规则不变。
 
 ### 原私钥签名与正式发布
 

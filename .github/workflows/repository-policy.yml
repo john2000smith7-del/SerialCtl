@@ -24,6 +24,8 @@ jobs:
         run: python tools/repository_policy.py
       - name: Exercise negative and positive release-gate cases
         run: python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v
+      - name: Verify CI transport integrity without artifact quota assumptions
+        run: python -m unittest discover -s tests/integration -p 'test_ci_evidence.py' -v
       - name: Reproduce desktop observation overhead without Windows claims
         run: python -m unittest discover -s tests/integration -p 'test_desktop_observation.py' -v
   windows-tools:
@@ -39,6 +41,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests/integration -p 'test_ci_evidence.py' -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m unittest discover -s tests/integration -p 'test_desktop_observation.py' -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

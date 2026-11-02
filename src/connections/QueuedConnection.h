@@ -25,6 +25,7 @@ class QueuedConnection final : public IConnection {
     bool Send(const Bytes &data, std::wstring &error) override;
     bool SendConditional(const Bytes&,std::wstring&,std::function<bool()>) override;
     bool SupportsTransfer() const override {return inner_->SupportsTransfer();}
+    bool TransferActive() const {std::lock_guard<std::mutex> lock(mutex_);return !transferOwner_.empty();}
     bool BeginTransfer(const std::string&,DataCallback,std::wstring&,std::function<Bytes()> drain={});
     bool SendTransfer(const std::string&,const Bytes&,std::wstring&);
     bool EndTransfer(const std::string&,std::wstring&);
@@ -54,7 +55,7 @@ class QueuedConnection final : public IConnection {
     void ReleaseCapture();
     void Run();
     std::unique_ptr<IConnection> inner_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable wake_;
     std::deque<Write> queue_;
     std::mutex receiveMutex_,transferWriteMutex_;

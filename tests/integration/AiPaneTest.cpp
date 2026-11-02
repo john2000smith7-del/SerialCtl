@@ -507,16 +507,26 @@ struct AiPaneTestAccess {
         pane.busy_ = true;
         pane.stopRequested_ = false;
         pane.Layout();
-        RECT sendArea{}, stopArea{};
+        RECT sendArea{};
         GetWindowRect(pane.Control(11), &sendArea);
-        GetWindowRect(pane.Control(21), &stopArea);
-        RECT overlap{};
-        require(IsWindowVisible(pane.Control(21)) && !IntersectRect(&overlap, &sendArea, &stopArea),
-                "Busy Stop must have a separate hit rectangle from Send");
+        require(IsWindowVisible(pane.Control(11)) && !IsWindowVisible(pane.Control(21)) &&
+                    sendArea.right > sendArea.left && sendArea.bottom > sendArea.top,
+                "Busy Stop must reuse the visible Send button; legacy Stop remains hidden");
+        pane.sendGesture_ = 0; // A press that started as Send must not cancel a just-started turn.
+        pane.Action(11);
+        require(!pane.stopRequested_, "Send press crossed into Stop after the task started");
+        SendMessageW(pane.Control(11), WM_LBUTTONDBLCLK, MK_LBUTTON, MAKELPARAM(5,5));
+        pane.Action(11);
+        require(!pane.stopRequested_, "Send double-click cancelled the active task");
+        SendMessageW(pane.Control(11), WM_LBUTTONUP, 0, MAKELPARAM(5,5));
+        require(pane.sendGesture_ == -1, "Double-click suppression leaked into the next gesture");
+        pane.sendGesture_ = 1; // A fresh press while busy is the explicit Stop action.
+        pane.Action(11);
+        require(pane.stopRequested_, "Shared Send/Stop button did not request cancellation");
+        require(!IsWindowEnabled(pane.Control(11)), "Stopping button must reject repeated cancellation");
         for (int i = 0; i < 5; ++i) pane.Action(11);
-        require(!pane.stopRequested_, "Repeated Send clicks stopped the active task");
-        pane.Action(21);
-        require(pane.stopRequested_, "Explicit Stop did not request cancellation");
+        require(pane.stopRequested_, "Repeated Stop lost the active cancellation state");
+        pane.sendGesture_ = -1;
         pane.busy_ = pane.stopRequested_ = false;
         pane.NewConversation();
         pane.displayGroup_ = "process-fixture";

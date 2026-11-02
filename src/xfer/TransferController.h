@@ -10,7 +10,7 @@ namespace serialctl::xfer {
 class TransferController {
   public:
     struct Snapshot {
-        std::uint64_t session=0,bytes=0,total=0,expectedReceiveBytes=0;
+        std::uint64_t session=0,bytes=0,total=0,expectedReceiveBytes=0,rawReceiveCutoff=0;
         bool busy=false,success=false,cancelled=false,peerAcknowledged=false,includesPadding=false;
         bool stopping=false,finishing=false;
         Protocol protocol=Protocol::Ymodem;

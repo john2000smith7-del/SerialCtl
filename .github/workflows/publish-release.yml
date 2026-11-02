@@ -52,6 +52,24 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-release-desktop-receipt
+          path: evidence/desktop
+          run-id: ${{ inputs.desktop_run_id }}
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-release-upgrade-receipt
+          path: evidence/upgrade
+          run-id: ${{ inputs.upgrade_run_id }}
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-Win7-portable
+          path: candidate
+          run-id: ${{ inputs.build_run_id }}
       - name: Bind all successful Windows evidence before publishing exactly two files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -84,13 +102,10 @@ jobs:
               raise ValueError('Invalid signed metadata size')
           pathlib.Path('/tmp/update.json').write_bytes(data)
           PYCODE
-          gh run download "$RELEASE_DESKTOP_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-release-desktop-receipt --dir evidence/desktop
-          gh run download "$RELEASE_UPGRADE_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-release-upgrade-receipt --dir evidence/upgrade
           python tools/release_gate.py check --version "$RELEASE_VERSION" --source-commit "$RELEASE_COMMIT" --archive-sha256 "$RELEASE_SHA256" --build-run-id "$RELEASE_BUILD_RUN" --desktop-run-id "$RELEASE_DESKTOP_RUN" --upgrade-run-id "$RELEASE_UPGRADE_RUN" --metadata /tmp/update.json --evidence-dir evidence
           [[ "$(git rev-parse HEAD)" == "$RELEASE_COMMIT" ]]
           grep -Fxq "PROJECT_VERSION=$RELEASE_VERSION" VERSION
           grep -Fxq "CPP_VERSION=$RELEASE_VERSION" VERSION
-          gh run download "$RELEASE_BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-Win7-portable --dir candidate
           RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
           printf '%s  %s\n' "$RELEASE_SHA256" "candidate/$RELEASE_ARCHIVE" | sha256sum --check
           python tools/new_update_feed.py --verify-archive "candidate/$RELEASE_ARCHIVE" --metadata /tmp/update.json

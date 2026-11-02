@@ -413,6 +413,16 @@ if(BUILD_TESTING)
         src/network/GatewayClient.cpp src/network/SessionService.cpp
         src/connections/QueuedConnection.cpp src/connections/SharedSerialConnection.cpp
         src/connections/NetworkConnect.cpp src/connections/ChildProcess.cpp)
+    add_executable(transfer_controller_test tests/integration/TransferControllerTest.cpp
+        src/xfer/TransferController.cpp src/xfer/TransferProtocol.cpp ${GATEWAY_TEST_SOURCES})
+    serialctl_configure_native_target(transfer_controller_test CONSOLE)
+    target_link_libraries(transfer_controller_test PRIVATE ws2_32 advapi32)
+    add_test(NAME transfer_controller COMMAND transfer_controller_test)
+    set_tests_properties(transfer_controller PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+    add_executable(xfer_gateway_fixture tests/integration/XferGatewayFixture.cpp
+        src/xfer/TransferProtocol.cpp ${GATEWAY_TEST_SOURCES})
+    serialctl_configure_native_target(xfer_gateway_fixture CONSOLE)
+    target_link_libraries(xfer_gateway_fixture PRIVATE ws2_32 advapi32)
     add_executable(api_server_test tests/integration/ApiServerTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(api_server_test CONSOLE)
     target_link_libraries(api_server_test PRIVATE ws2_32 advapi32)

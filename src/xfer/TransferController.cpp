@@ -12,6 +12,8 @@ struct TransferController::Task {
     std::atomic_bool cancel{false},finish{false},done{false},success{false},cancelled{false},overflow{false};
     std::atomic_bool peerAcknowledged{false},includesPadding{false};
     std::atomic_uint64_t bytes{0},total{0};
+    std::atomic_uint64_t acceptedReceive{0},rawCutoff{0};
+    std::size_t finishRemaining=0;
     std::mutex textMutex,rxMutex;
     std::condition_variable wake;
     std::deque<std::uint8_t> rx;
@@ -24,7 +26,7 @@ struct TransferController::Task {
         try {
             std::lock_guard<std::mutex> lock(rxMutex);
             if(bytes.size()>4*1024*1024-rx.size())overflow=true;
-            else rx.insert(rx.end(),bytes.begin(),bytes.end());
+            else {rx.insert(rx.end(),bytes.begin(),bytes.end());acceptedReceive+=bytes.size();}
             wake.notify_all();
         }catch(...) {overflow=true;wake.notify_all();}
     }
@@ -76,6 +78,7 @@ TransferController::Snapshot TransferController::State() const {
     state.busy=!task->done;state.success=task->success;state.cancelled=task->cancelled;
     state.bytes=task->bytes;state.total=task->total;state.peerAcknowledged=task->peerAcknowledged;state.includesPadding=task->includesPadding;
     state.expectedReceiveBytes=task->request.options.expectedReceiveBytes;state.stopping=task->cancel;state.finishing=task->finish;
+    state.rawReceiveCutoff=task->rawCutoff;
     {std::lock_guard<std::mutex> lock(task->textMutex);state.note=task->note;state.partial=task->partial;state.peerName=task->peerName;}
     return state;
 }
@@ -96,7 +99,10 @@ void TransferController::CancelSession(std::uint64_t id) {
 }
 void TransferController::FinishRawReceive() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if(task_&&task_->request.options.protocol==Protocol::Raw&&task_->request.options.direction==Direction::Receive) {
+    if(task_&&task_->request.options.protocol==Protocol::Raw&&task_->request.options.direction==Direction::Receive&&
+        !task_->request.options.expectedReceiveBytes&&!task_->finish) {
+        std::lock_guard<std::mutex> receive(task_->rxMutex);
+        task_->finishRemaining=task_->rx.size();task_->rawCutoff=task_->acceptedReceive.load();
         task_->finish=true;task_->wake.notify_all();
     }
 }
@@ -149,15 +155,16 @@ void TransferController::Work(const std::shared_ptr<Task>& task) {
         task->Note(options.direction==Direction::Send?L"正在发送；等待对端协议反馈…":L"正在接收；请在设备端启动对应发送命令");
         Io io;
         io.cancelled=[task]{return task->cancel.load();};
-        io.finishRaw=[task]{return task->finish.load();};
+        io.finishRaw=[task]{std::lock_guard<std::mutex> lock(task->rxMutex);return task->finish&&!task->finishRemaining;};
         io.readByte=[task](unsigned ms) {
             std::unique_lock<std::mutex> lock(task->rxMutex);
             task->wake.wait_for(lock,std::chrono::milliseconds(ms),[&]{return !task->rx.empty()||task->cancel||task->overflow||task->finish;});
             if(task->overflow)throw std::runtime_error("Receive buffer exceeded 4 MiB; transfer aborted without claiming success");
             if(task->cancel)throw Cancelled();
             if(!task->request.connection->IsConnected())throw std::runtime_error("Serial connection was lost");
+            if(task->finish&&!task->finishRemaining)return -1;
             if(task->rx.empty())return -1;
-            const int byte=task->rx.front();task->rx.pop_front();return byte;
+            const int byte=task->rx.front();task->rx.pop_front();if(task->finish&&task->finishRemaining)--task->finishRemaining;return byte;
         };
         io.write=[task](const Bytes& bytes) {
             // Short bounded writes keep cancellation opportunities even at low baud.
@@ -216,13 +223,17 @@ void TransferController::Work(const std::shared_ptr<Task>& task) {
         task->Note(protocolDone?L"数据协议阶段已结束；本地保存/收尾已取消":L"已取消；已经写出的字节无法撤回");
     }catch(const std::exception& e) {
         const auto text=MultiByteToWide(reinterpret_cast<const std::uint8_t*>(e.what()),strlen(e.what()),CP_UTF8);
-        task->Note((protocolDone?L"数据协议阶段已结束，但本地保存/收尾失败：":L"传输失败：")+text);
+        if(task->cancel){task->cancelled=true;task->Note(protocolDone?L"数据协议阶段已结束；本地保存/收尾已取消":L"已取消；已经写出的字节无法撤回");}
+        else task->Note((protocolDone?L"数据协议阶段已结束，但本地保存/收尾失败：":L"传输失败：")+text);
     }catch(...) {task->Note(L"传输失败：未预期的内部错误");}
     try {release();}catch(...) {task->Note(L"传输结束，但串口释放失败");}
     file.Close();
-    if(!temporary.empty()&&task->bytes==0) {
-        DeleteFileW(ExtendedFilePath(temporary).c_str());
-        std::lock_guard<std::mutex> lock(task->textMutex);task->partial.clear();
+    if(!temporary.empty()) {
+        WIN32_FILE_ATTRIBUTE_DATA partial{};
+        if(GetFileAttributesExW(ExtendedFilePath(temporary).c_str(),GetFileExInfoStandard,&partial)&&!partial.nFileSizeHigh&&!partial.nFileSizeLow&&
+           DeleteFileW(ExtendedFilePath(temporary).c_str())) {
+            std::lock_guard<std::mutex> lock(task->textMutex);task->partial.clear();
+        }
     }
     task->done=true;task->wake.notify_all();
 }

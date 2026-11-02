@@ -77,7 +77,7 @@ def main():
         data = path.read_bytes()
         if PRIVATE_KEY.search(data) or TOKEN.search(data):
             raise ValueError("Possible credential material in tracked file: " + name)
-    for workflow in Path(".github/workflows").glob("*.yml"):
+    for workflow in [*Path(".github/workflows").glob("*.yml"), *Path(".github/actions").rglob("action.yml")]:
         for action in re.findall(r"uses:\s*([^\s#]+)", workflow.read_text(encoding="utf-8")):
             if not action.startswith("./") and not re.fullmatch(r"[A-Za-z0-9_./-]+@[0-9a-f]{40}", action):
                 raise ValueError("Workflow action must use a full pinned commit: " + str(workflow))
