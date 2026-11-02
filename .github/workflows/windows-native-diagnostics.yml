@@ -85,6 +85,10 @@ jobs:
                   for offset in range(0,len(encoded),4096):print('INSPECT_DIALOG_JSON_CHUNK='+encoded[offset:offset+4096])
                   continue
               row={key:data[key] for key in ('status','error','failure','cleanup_error','source_commit','archive_sha256','metadata_sha256','build_run_id','previous_version','older_version','scope','cases','checks','macro_observations','retained_cards_after_disconnect') if key in data}
+              for key in ('actual_click_count','modal_cycles','exit_code','close_seconds','response_samples_ms','resource_samples'):
+                  if key in data:row[key]=data[key]
+              if 'dialog_operations' in data:
+                  row['dialog_operations']=[{key:item[key] for key in ('control','theme','observed_ready_ms','response_ms','background_burst') if key in item} for item in data['dialog_operations']]
               print('INSPECT_REPORT',path.name,json.dumps(row,ensure_ascii=True)[:20000])
           for path in sorted(root.rglob('*-traffic.log')):
               if path.name not in ('baseline-traffic.log','candidate-traffic.log') or path.stat().st_size>65536: continue
