@@ -390,7 +390,7 @@ jobs:
             ${{ runner.temp }}/gui-evidence/**/*.log
             ${{ runner.temp }}/gui-evidence/**/*.txt
       - uses: ./.github/actions/ci-evidence
-        if: always()
+        if: ${{ always() && !inputs.ui_endurance }}
         with:
           mode: save
           name: SerialCtl-approved-ui-review
