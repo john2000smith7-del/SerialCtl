@@ -64,17 +64,25 @@ int main(int argc, char**) {
         Require(ready != nullptr, "Cannot create output synchronization event");
         SetEnvironmentVariableW(L"SERIALCTL_TEST_OUTPUT_READY", eventName.c_str());
         bool streaming = false;
+        ULONGLONG cancelRequestedAt = 0;
         const auto start = GetTickCount64();
         std::thread stop([&] {
             streaming = WaitForSingleObject(ready, 5000) == WAIT_OBJECT_0;
-            Sleep(50);
+            // The child signals only after 64KiB has actually reached the
+            // pipe. A fixed extra delay races the independent 32MiB limit on
+            // fast machines and does not prove that cancellation was starved.
+            cancelRequestedAt = GetTickCount64();
             cancel = true;
         });
         const bool completed = continuous.CreateDirectory(L"/test", error, &cancel);
         stop.join();
         SetEnvironmentVariableW(L"SERIALCTL_TEST_OUTPUT_READY", nullptr);
         CloseHandle(ready);
-        Require(streaming && !completed && error.find(L"取消") != std::wstring::npos && GetTickCount64() - start < 3000,
+        const auto cancelElapsed = GetTickCount64() - start;
+        std::cout << "SFTP streaming cancellation: ready=" << streaming << " completed=" << completed
+                  << " requested_ms=" << cancelRequestedAt-start << " elapsed_ms=" << cancelElapsed
+                  << " error=" << WideToMultiByte(error,CP_UTF8) << '\n';
+        Require(streaming && !completed && error.find(L"取消") != std::wstring::npos && cancelElapsed < 3000,
                 "Continuous output starved cancellation");
         {
             namespace fs = std::filesystem;

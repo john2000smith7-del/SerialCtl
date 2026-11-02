@@ -211,9 +211,9 @@ jobs:
           $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
           $directory = Get-SerialCtlBuildDirectory -Architecture x64 -RepositoryRoot (Get-SerialCtlRepositoryRoot)
           Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure focused native regressions' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
-          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile command and connection regressions' -Arguments @('--build',$directory,'--config','Release','--target','ai_device_test','ssh_lifecycle_test','queued_transfer_test','terminal_model_test','--parallel','2')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile command and connection regressions' -Arguments @('--build',$directory,'--config','Release','--target','ai_device_test','ssh_lifecycle_test','queued_transfer_test','terminal_model_test','sftp_client_test','--parallel','2')
           $ctest = Get-RequiredCommandPath -Name ctest.exe
-          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Repeat exact native command and connection regressions' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(ai_device|ssh_lifecycle|queued_transfer|terminal_model)$','--repeat','until-fail:3')
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Repeat exact native command and connection regressions' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(ai_device|ssh_lifecycle|queued_transfer|terminal_model|sftp_client)$','--repeat','until-fail:3')
       - name: Retain native failure and bounded structured diagnostics
         if: always()
         shell: python
