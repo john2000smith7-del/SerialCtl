@@ -3226,7 +3226,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             return;
         }
         if (id == IdDisconnect || id == IdReconnect) {
-            const bool close=(activeSession_&&!aiVisible_&&!powerVisible_&&activeSession_->disconnected)||
+            const bool close=(activeSession_&&!aiVisible_&&!powerVisible_&&activeSession_->disconnected&&pendingReconnectId_!=activeSession_->id)||
                 (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false));
             const COLORREF ink=!enabled?colors.muted:id==IdReconnect?(darkMode_?RGB(48,209,88):RGB(28,137,61)):close?colors.muted:colors.danger;
             const auto v=UiFlatIconVisual(UiTheme(darkMode_),colors.panel,enabled,pressed,hovered);
@@ -4499,7 +4499,14 @@ void MainWindow::BeginDisconnect(SessionState& session) {
 }
 
 void MainWindow::Disconnect() {
-    if (!activeSession_ || activeSession_->disconnecting || pendingReconnectId_ == activeSession_->id) return;
+    if (!activeSession_ || activeSession_->disconnecting) return;
+    if (pendingReconnectId_ == activeSession_->id && pendingSession_) {
+        if (!cancelledConnectionPending_) {
+            connectionCancel_=true; cancelledConnectionPending_=true;
+            pendingSession_->connection->CancelStart(); FinishPendingConnection();
+        }
+        RefreshConnectionActions(); return;
+    }
     if (activeSession_->disconnected) { CloseSession(activeSession_->id); return; }
     BeginDisconnect(*activeSession_);
     AppendStatus(L"正在断开，释放资源后保留卡片", false);
@@ -4561,10 +4568,12 @@ void MainWindow::Reconnect() {
 void MainWindow::RefreshConnectionActions() {
     const bool special=aiVisible_||powerVisible_;
     const bool available=activeSession_&&!special;
-    const bool closingCard=(available&&activeSession_->disconnected)||(aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false));
-    SetWindowTextW(disconnectButton_,closingCard?L"关闭卡片":L"断开连接");
-    UiSetButtonGlyph(disconnectButton_, closingCard?UiGlyph::Close:UiGlyph::Disconnect, closingCard?L"关闭卡片":L"断开连接");
-    EnableWindow(disconnectButton_,special||(available&&!activeSession_->disconnecting&&pendingReconnectId_!=activeSession_->id));
+    const bool reconnecting=available&&pendingReconnectId_==activeSession_->id;
+    const bool closingCard=(available&&activeSession_->disconnected&&!reconnecting)||(aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false));
+    const auto caption=closingCard?L"关闭卡片":reconnecting?L"取消重连":L"断开连接";
+    SetWindowTextW(disconnectButton_,caption);
+    UiSetButtonGlyph(disconnectButton_, closingCard?UiGlyph::Close:UiGlyph::Disconnect, caption);
+    EnableWindow(disconnectButton_,special||(available&&!activeSession_->disconnecting&&!cancelledConnectionPending_));
     const bool reconnectable=(available&&activeSession_->disconnected&&!activeSession_->disconnecting)||
         (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false)&&!disconnectAllPending_);
     EnableWindow(reconnectButton_,reconnectable&&!pendingSession_&&!pendingReconnectId_&&!connectionCleanup_.Busy());
@@ -4630,6 +4639,7 @@ void MainWindow::FinishPendingConnection() {
         });
     }
     pendingSession_.reset(); pendingReconnectId_=0;
+    pendingConnectionData_.clear(); pendingConnectionBytes_=0;
     cancelledConnectionPending_ = false;
     RefreshConnectionActions(); RefreshConnectionList();
 }
