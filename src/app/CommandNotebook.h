@@ -5,6 +5,9 @@
 #include <windows.h>
 namespace serialctl {
 class CommandNotebook {
+#ifdef SERIALCTL_AI_TESTING
+    friend struct AiDeviceTestAccess;
+#endif
   public:
     bool Create(HWND parent, int id);
     HWND Handle() const {

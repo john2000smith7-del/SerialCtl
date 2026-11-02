@@ -37,6 +37,9 @@ int main() {
         auto boot=std::make_shared<BootInterrupt>();boot->PreparePreset("uboot_stop",0,100);boot->RestartSubmitted(100);
         const auto burst=boot->PollBurst(100);
         Check(queue.SendConditional(Bytes(burst.bytes.begin(),burst.bytes.end()),error,[boot,g=burst.generation]{return boot->CanSend(g);}),"queue boot interrupt behind actual blocked writer");
+        auto permit=std::make_shared<std::atomic_bool>(true);
+        Check(queue.SendObserved(Bytes{'R'},error,{},[permit]{return permit->load();}),"queue repeated command behind held writer");
+        permit->store(false);
         boot->Feed("\r\n=> ",5,101);
         SetEvent(wire->release);
         bool leased=false;
@@ -45,7 +48,7 @@ int main() {
             if(!leased)Sleep(1);
         }
         Check(leased,"transfer lease after ordinary queue drained");
-        {std::lock_guard<std::mutex> lock(wire->mutex);Check(wire->sent==Bytes{'A'},"observed prompt must invalidate queued stop sequence before wire write");}
+        {std::lock_guard<std::mutex> lock(wire->mutex);Check(wire->sent==Bytes{'A'},"stop token and observed boot prompt invalidate queued command/key bytes before wire write");}
         Check(!queue.Send({'B'},error),"other input must not interleave");
         Check(!queue.SendTransfer("other",Bytes{0,255},error),"another owner must not write");
         const auto prepared=wire->prepared;

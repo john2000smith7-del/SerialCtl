@@ -275,7 +275,10 @@ void TerminalModel::ControlCharacter(
     case L'\n':
     case L'\v':
     case L'\f':
-        EnsureTimestamp(screen.lines[static_cast<size_t>(screen.cursorRow)], timestamp);
+        // A soft continuation belongs to the same logical line. Giving it a
+        // timestamp here would inject a second prefix into copied long lines.
+        if (screen.lines[static_cast<size_t>(screen.cursorRow)].logicalOffset == 0)
+            EnsureTimestamp(screen.lines[static_cast<size_t>(screen.cursorRow)], timestamp);
         screen.lines[static_cast<size_t>(screen.cursorRow)].hardBreak = true;
         screen.lines[static_cast<size_t>(screen.cursorRow)].wrapped = false;
         LineFeed(result);

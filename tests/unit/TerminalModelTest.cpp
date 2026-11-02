@@ -449,6 +449,18 @@ void TestCmdEditor() {
 
 int main() {
     {
+        serialctl::TerminalModel boundary(8,3);
+        boundary.Feed(L"OLD_HISTORY\r\n\x1b[",L"old");
+        boundary.BeginConnection();
+        boundary.Feed(L"NEW_OUTPUT\r\n",L"new");
+        const auto text=boundary.PlainText(true);
+        Expect(text.find(L"OLD_HISTORY")!=std::wstring::npos,"reconnect retains historical text");
+        Expect(text.find(L"NEW_OUTPUT")!=std::wstring::npos,"reconnect clears half CSI parser before new output");
+        Expect(text.find(L"old ")==text.rfind(L"old ")&&text.find(L"new ")==text.rfind(L"new "),"soft wrapped lines carry one timestamp per logical line");
+        boundary.Resize(3,2);boundary.Resize(80,24);
+        Expect(boundary.PlainText(true).find(L"OLD_HISTORY")!=std::wstring::npos,"reconnect history survives subsequent reflow");
+    }
+    {
         // Incremental projection must match a fresh, single-pass VT replay.
         for (const size_t history : {size_t(120), size_t(20000)}) {
             serialctl::TerminalModel incremental(40, 12, history), replay(40, 12, history);

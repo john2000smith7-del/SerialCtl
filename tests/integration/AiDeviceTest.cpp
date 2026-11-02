@@ -25,7 +25,7 @@ void Require(bool ok, const char* reason) {
     if (!ok) { std::cerr << "FAILED: " << reason << std::endl; throw std::runtime_error(reason); }
 }
 struct Transport : IConnection {
-    bool connected = true;
+    std::atomic_bool connected{true};
     unsigned input = CP_UTF8;
     unsigned writes = 0;
     Bytes sent;
@@ -532,6 +532,28 @@ struct AiDeviceTestAccess {
             main.notebook_.action(1);
             Require(!main.macro_.Running()&&transports[4]->writes==writes+1,"Same single Run action becomes Stop without sending the remaining command");
             Require(main.statusText_.find(L"已停止后续提交")!=std::wstring::npos,"Stop reports accepted count without claiming execution finished");
+            Require(!main.notebook_.Repeat(),"Repeat is off by default");
+            main.notebook_.repeat_=true; main.notebook_.SetInterval(500);
+            main.RunNotebook(main.notebook_.SelectedCommands());
+            Require(main.macro_.Running()&&main.notebookRepeating_,"Repeat must stay active after first submission");
+            main.notebook_.action(1);
+            const auto restartWrites=transports[4]->writes;
+            main.notebook_.action(1);
+            Require(main.macro_.Running()&&transports[4]->writes==restartWrites+1,"Explicit immediate restart is not blocked by stale double-click suppression");
+            const auto repeatDeadline=GetTickCount64()+4000;
+            while(transports[4]->writes<restartWrites+3&&GetTickCount64()<repeatDeadline) {
+                MSG event{};while(PeekMessageW(&event,nullptr,0,0,PM_REMOVE)){if(event.message!=WM_QUIT){TranslateMessage(&event);DispatchMessageW(&event);}}
+                Sleep(1);
+            }
+            Require(main.macro_.Running()&&transports[4]->writes==restartWrites+3,"Actual WM_TIMER crosses the repeat cycle without completing the task");
+            Require(transports[4]->sent==Bytes({'e','c','h','o',' ','f','i','r','s','t','\r','\n'}),"Repeat returns to first full command after second command");
+            const auto stopPermit=main.commandSendPermit_;
+            main.notebook_.action(1);
+            Require(!main.macro_.Running()&&stopPermit&&!stopPermit->load(),"Stop invalidates the unwritten queue generation");
+            const auto stoppedWrites=transports[4]->writes;
+            main.SendNextCommandStep();
+            Require(transports[4]->writes==stoppedWrites,"Late timer after stop cannot submit another line");
+            main.notebook_.repeat_=false;
             std::wstring manyRows;for(int i=0;i<80;++i)manyRows+=L"echo row-"+std::to_wstring(i)+L"\r\n";
             main.notebook_.SetText(manyRows);main.notebook_.SelectLine(63);
             Require(main.notebook_.SelectedCommands()==std::vector<std::wstring>{L"echo row-63"},"Native paragraph offsets must map to the correct complete row after many CRLF lines");
@@ -546,6 +568,17 @@ struct AiDeviceTestAccess {
             SendMessageW(main.notebook_.Editor(),WM_KEYDOWN,VK_RETURN,0);
             SendMessageW(main.notebook_.Editor(),WM_CHAR,L'\n',0);SetKeyboardState(originalKeys);
             Require(transports[4]->writes==beforeWrites+1&&main.notebook_.Text()==beforeShortcut,"Ctrl+Enter sends the whole caret line without inserting a newline");
+            main.notebook_.SetText(L"    echo hit-test    ");
+            main.notebook_.SetDoubleClick(true);
+            const auto hitWrites=transports[4]->writes;
+            POINTL first{},end{};
+            SendMessageW(main.notebook_.Editor(),EM_POSFROMCHAR,reinterpret_cast<WPARAM>(&first),4);
+            SendMessageW(main.notebook_.Editor(),EM_POSFROMCHAR,reinterpret_cast<WPARAM>(&end),17);
+            for(const POINT point: {POINT{1,first.y+1},POINT{end.x+30,first.y+1},POINT{first.x+3,first.y+100}})
+                SendMessageW(main.notebook_.Editor(),WM_LBUTTONDBLCLK,MK_LBUTTON,MAKELPARAM(point.x,point.y));
+            Require(transports[4]->writes==hitWrites,"Indent, trailing blank and below-text double clicks never send");
+            SendMessageW(main.notebook_.Editor(),WM_LBUTTONDBLCLK,MK_LBUTTON,MAKELPARAM(first.x+2,first.y+1));
+            Require(transports[4]->writes==hitWrites+1,"Double click on actual text submits exactly one full line");
             main.notebook_.SetText(L"# 调试\r\necho first\r\necho second\r\n");
             const auto restoredRows=CommandLines(main.notebook_.Text());
             main.notebook_.Selection(static_cast<LONG>(restoredRows[1].start+4),static_cast<LONG>(restoredRows[2].start+4));
@@ -905,6 +938,57 @@ struct AiDeviceTestAccess {
         DestroyWindow(parent);
         for (auto font : {main.uiFont_, main.smallFont_, main.titleFont_, main.terminalFont_}) DeleteObject(font);
     }
+    static void RunConnections() {
+        MainWindow main;
+        Require(main.Create(GetModuleHandleW(nullptr),SW_SHOWNOACTIVATE),"Create lifecycle window");
+        auto pump=[] {MSG m{};while(PeekMessageW(&m,nullptr,0,0,PM_REMOVE)){if(m.message!=WM_QUIT){TranslateMessage(&m);DispatchMessageW(&m);}}};
+        auto until=[&](auto ready,const char* why) {const auto deadline=GetTickCount64()+5000;while(!ready()&&GetTickCount64()<deadline){pump();Sleep(1);}Require(ready(),why);};
+        test::Wsa winsock; test::Fixture gateway(17720,17735);
+        auto held=std::make_shared<HeldTransport>();
+        struct Release {std::shared_ptr<HeldTransport> p;~Release(){SetEvent(p->release);}} release{held};
+        auto row=std::make_unique<MainWindow::SessionState>();
+        row->id=700;row->mode=3;row->host=L"127.0.0.1";row->port=gateway.server.Port();
+        row->remoteCom=L"COM3";row->name=L"controlled remote COM3";
+        row->connection=held;row->logger=std::make_shared<SessionLogger>();
+        row->terminal.Feed(L"KEEP_HISTORY\r\n\x1b[",L"");
+        main.nextSessionId_=701;main.sessions_.push_back(std::move(row));main.SwitchSession(0);
+        const auto start=GetTickCount64();main.Disconnect();
+        Require(GetTickCount64()-start<250,"Disconnect must not wait for held transport cleanup");
+        Require(main.sessions_.size()==1&&main.sessions_[0]->disconnecting,"Disconnect retains the card during resource cleanup");
+        Require(!IsWindowEnabled(main.disconnectButton_)&&!IsWindowEnabled(main.reconnectButton_),"Cleanup prevents duplicate close/reconnect");
+        Require(WaitForSingleObject(held->entered,3000)==WAIT_OBJECT_0,"Transport Stop runs on cleanup worker");
+        main.Disconnect();Require(main.sessions_.size()==1,"Second click during Stop cannot remove card");
+        SetEvent(held->release);
+        until([&]{return main.sessions_[0]->disconnected&&!main.connectionCleanup_.Busy();},"Card becomes disconnected only after resource cleanup");
+        main.RefreshConnectionActions();
+        Require(IsWindowEnabled(main.reconnectButton_)&&MainWindow::ControlText(main.disconnectButton_)==L"关闭卡片","Stopped card exposes reconnect and close");
+        ui_test::SaveUiEvidence(main.window_,L"connection-retained-native.png");
+        const auto oldId=main.sessions_[0]->id;
+        main.Reconnect();Require(main.pendingSession_&&main.pendingReconnectId_==oldId,"Reconnect begins in the retained card");
+        until([&]{return !main.pendingSession_;},"Loopback remote serial reconnect completes");
+        Require(main.sessions_.size()==1&&main.sessions_[0]->id!=oldId&&main.sessions_[0]->connection->IsConnected(),"Reconnect replaces only transport generation in same position");
+        Require(main.sessions_[0]->terminal.PlainText(true).find(L"KEEP_HISTORY")!=std::wstring::npos,"Reconnect retains prior terminal history");
+        main.PostStatus(oldId,L"obsolete failure",true);pump();
+        Require(main.sessions_[0]->connection->IsConnected()&&main.sessions_[0]->lastStatus!=L"obsolete failure","Old callbacks do not change new generation");
+        Require(main.SendBytesToActive(Bytes{'O','K'},false),"New generation accepts terminal input");
+        until([&]{return main.sessions_[0]->terminal.PlainText(true).find(L"OK")!=std::wstring::npos;},"New output parses after old partial CSI was reset");
+        main.Disconnect();until([&]{return main.sessions_[0]->disconnected&&!main.connectionCleanup_.Busy();},"Reconnect disconnect releases new transport");
+        main.Disconnect();Require(main.sessions_.empty(),"Second disconnect action closes a stopped card");
+        // Three independent cards: first click releases resources, second closes cards.
+        for(unsigned i=0;i<3;++i){auto item=std::make_unique<MainWindow::SessionState>();item->id=800+i;item->mode=3;item->name=L"batch";
+            item->connection=std::make_shared<Transport>();item->logger=std::make_shared<SessionLogger>();main.sessions_.push_back(std::move(item));}
+        main.SwitchSession(0);main.DisconnectAll();
+        Require(main.sessions_.size()==3,"All-disconnect retains every terminal card");
+        until([&]{return !main.connectionCleanup_.Busy()&&std::all_of(main.sessions_.begin(),main.sessions_.end(),[](const auto& item){return item->disconnected;});},"All resources finish cleanup");
+        main.RefreshConnectionActions();Require(MainWindow::ControlText(main.disconnectAllButton_)==L"全部关闭","Footer switches only after cleanup");
+        main.DisconnectAll();Require(main.sessions_.empty(),"Second all action closes stopped cards");
+        main.RequestShutdown();main.WaitForShutdown();main.FinishShutdown();
+        const Json report{{"heldStopNonblocking",true},{"disconnectRetainsCard",true},{"loopbackReconnect",true},
+                          {"freshGeneration",true},{"historyRetained",true},{"oldCallbackIgnored",true},{"twoStageAllClose",true},
+                          {"scope","native window, controlled blocking transport and production loopback gateway; no COM hardware claim"}};
+        wchar_t dir[32768]{};if(GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR",dir,32768))std::ofstream(std::filesystem::path(dir)/L"connection-lifecycle-native.json")<<report.dump(2);
+        std::cout<<report.dump()<<'\n';
+    }
     static void RunShutdown() {
         test::Wsa sockets;
         MainWindow main;
@@ -1015,7 +1099,7 @@ int main() {
     Gdiplus::GdiplusStartupInput startup; ULONG_PTR token{}; Gdiplus::GdiplusStartup(&token, &startup, nullptr);
     HWND parent = CreateWindowExW(0,L"STATIC",L"AI device callback fixture",WS_OVERLAPPEDWINDOW,0,0,1000,700,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     int result = 0;
-    try { serialctl::AiDeviceTestAccess::Run(parent); serialctl::AiDeviceTestAccess::RunShutdown(); std::cout << "[PASS] Actual desktop AI callback and asynchronous connection/shutdown lifecycle; controlled transports, no physical devices\n"; }
+    try { serialctl::AiDeviceTestAccess::Run(parent); serialctl::AiDeviceTestAccess::RunConnections(); serialctl::AiDeviceTestAccess::RunShutdown(); std::cout << "[PASS] Actual desktop AI callback and asynchronous connection/shutdown lifecycle; controlled transports, no physical devices\n"; }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; result = 1; }
     DestroyWindow(parent); Gdiplus::GdiplusShutdown(token); return result;
 }

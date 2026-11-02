@@ -55,6 +55,53 @@ def main():
         require(len(accepted)==3,'Run must submit exactly three complete commands')
         for i,raw in enumerate(accepted):require(raw.rstrip(b'\r\n')==('echo '+token+'_'+chr(65+i)).encode(),'partial text selection sent a truncated command')
         t.check('partial selection sends complete lines',submitted=[x.decode().strip() for x in accepted])
+        # Actual menu, SendInput and production CMD prove repeat/stop without a test API.
+        def repeat_option():
+            t.click_window(t.user.GetDlgItem(pane,411))
+            t.wait(lambda:bool(t.user.FindWindowW('#32768',None)),'notebook native options menu opens')
+            t.key(0x24);t.key(0x28);t.key(0x0d)
+            t.wait(lambda:not t.user.FindWindowW('#32768',None),'repeat choice closes menu')
+        repeat_option()
+        loop_token='LOOP_'+uuid.uuid4().hex[:8]
+        loop_lines=['echo '+loop_token+'_A','echo '+loop_token+'_B']
+        t.click_window(edit);t.chord(0x11,ord('A'));t.set_clipboard('\r\n'.join(loop_lines));t.chord(0x11,ord('V'))
+        t.chord(0x11,ord('A'));t.click_window(t.user.GetDlgItem(pane,412))
+        loops=[];arrivals=[];deadline=time.monotonic()+8
+        while len(loops)<4 and time.monotonic()<deadline:
+            try:e=client.next_event(cmd,timeout=.05)
+            except queue.Empty:continue
+            raw=base64.b64decode(e.get('data',''))
+            if e.get('kind')=='input' and e.get('source')=='gui' and loop_token.encode() in raw:
+                loops.append(raw.rstrip(b'\r\n'));arrivals.append(time.monotonic())
+        require(len(loops)>=4 and loops[:4]==[line.encode() for line in loop_lines]*2,'repeat must send complete selected lines in order across cycles')
+        t.screenshot('repeat-running-red-pause')
+        t.click_window(t.user.GetDlgItem(pane,412))
+        require(t.native_control_text(t.user.GetDlgItem(pane,412))=='运行','pause click must end task and restore Run')
+        # Drain events accepted before the user stop, then require no new inputs.
+        quiet=time.monotonic()+.15
+        while time.monotonic()<quiet:
+            try:client.next_event(cmd,timeout=.02)
+            except queue.Empty:pass
+        deadline=time.monotonic()+.8
+        while time.monotonic()<deadline:
+            try:e=client.next_event(cmd,timeout=.05)
+            except queue.Empty:continue
+            raw=base64.b64decode(e.get('data',''))
+            require(not(e.get('kind')=='input' and e.get('source')=='gui' and loop_token.encode() in raw),'stopped repeat submitted another command')
+        repeat_option()
+        t.check('native repeat menu, ordered cycles and red-pause stop',inputs=[x.decode() for x in loops],
+                observed_input_event_intervals_ms=[round((b-a)*1000,3) for a,b in zip(arrivals,arrivals[1:])],
+                timing_scope='GUI submission events observed over loopback; not physical UART write timing')
+        # Double-click empty editor padding must not resolve to its closest text row.
+        bounds=t.rect(edit);blank=(bounds[2]-24,bounds[3]-24)
+        t.click_window(edit,blank);t.click_window(edit,blank)
+        deadline=time.monotonic()+.3
+        while time.monotonic()<deadline:
+            try:e=client.next_event(cmd,timeout=.03)
+            except queue.Empty:continue
+            raw=base64.b64decode(e.get('data',''))
+            require(not(e.get('kind')=='input' and e.get('source')=='gui' and loop_token.encode() in raw),'blank-area double click falsely sent a command')
+        t.check('actual blank-area double click has no send side effect')
         # Ordinary Enter edits the document, and clipboard copy is ordinary text selection.
         t.click_window(edit);t.chord(0x11,0x23);t.key(0x0d);t.text('# retained note')
         t.wait(lambda:'retained note' in t.native_control_text(edit),'Enter inserts a new document line')
