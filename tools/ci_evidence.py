@@ -152,7 +152,7 @@ def unpack(source, destination, expected):
 
 def gh(repository, endpoint):
     result = subprocess.run(["gh", "api", "repos/" + repository + "/" + endpoint],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True)
     return json.loads(result.stdout)
 
 

@@ -169,6 +169,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'COMDLG32.dll', 'GDI32.dll', 'OLE32.dll', 'SHELL32.dll', 'MSIMG32.dll', 'SETUPAPI.dll', 'WINHTTP.dll')
         'ui_buffered_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'OLE32.dll', 'MSIMG32.dll')
         'ui_combo_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
+        'ui_popup_menu_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
         # Rounded viewport thumbs no longer load PNG artwork through OLE streams.
         'ui_dialog_viewport_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
         'ui_viewport_reentry_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'MSIMG32.dll')

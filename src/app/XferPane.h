@@ -32,6 +32,7 @@ class XferPane {
     int grab_=0;
     std::wstring localNotice_;
     int dpi_=96,offset_=0,contentHeight_=0,bodyHeight_=0,progressTop_=0;
+    std::uint64_t displayBytes_=0,displayTotal_=0;
     UiFieldStyle style_{};
     xfer::TransferController* controller_=nullptr;
     std::function<Target()> target_;

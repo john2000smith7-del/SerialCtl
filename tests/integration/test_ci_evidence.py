@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest import mock
 import zipfile
@@ -106,6 +107,12 @@ class EvidenceTests(unittest.TestCase):
         ]):
             with self.assertRaisesRegex(ValueError, "rebuild required"):
                 evidence.resolve("owner/repo", "123", self.meta["name"])
+
+    def test_github_utf8_json_does_not_use_windows_legacy_console_codec(self):
+        result = subprocess.CompletedProcess(["gh"], 0, stdout='{"title":"中文提交"}'.encode("utf-8"))
+        with mock.patch.object(evidence.subprocess, "run", return_value=result) as run:
+            self.assertEqual(evidence.gh("owner/repo", "actions/runs/123")["title"], "中文提交")
+            self.assertFalse(run.call_args.kwargs.get("text", False))
 
 
 if __name__ == "__main__":

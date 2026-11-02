@@ -108,7 +108,9 @@ void XferPane::Refresh() {
         state.busy||(!state.note.empty()&&state.session==target.id)?state.note:
         target.unavailable.empty()?L"请先在设备端进入匹配的收发模式，再开始传输。":target.unavailable;
     layout|=Label(Control(Status),note+(state.partial.empty()?L"":L"\r\n部分文件："+state.partial));
-    const auto count=state.session?std::to_wstring(state.bytes)+L" / "+(state.total?std::to_wstring(state.total):L"未知")+L" 字节":L"等待开始";
+    const bool relevant=state.session&&(state.busy||state.session==target.id);
+    displayBytes_=relevant?state.bytes:0;displayTotal_=relevant?state.total:0;
+    const auto count=relevant?std::to_wstring(state.bytes)+L" / "+(state.total?std::to_wstring(state.total):L"未知")+L" 字节":L"等待开始";
     Label(Control(Count),count);
     for(int id:{Direction,Mode,File,Browse})EnableWindow(Control(id),!state.busy);
     EnableWindow(Control(Length),!state.busy&&receive&&protocol<2);
@@ -153,9 +155,8 @@ void XferPane::Paint(HDC target) {
     FillRect(dc,&r,surface_);const auto c=UiTheme(dark_);
     const int right=std::max(D(16),static_cast<int>(r.right)-D(16)),top=progressTop_-offset_;
     UiBox(dc,{0,top,right,top+D(6)},c.raised,c.raised,D(3));
-    const auto state=controller_->State();
-    if(state.total&&state.bytes) {
-        const auto fraction=static_cast<long double>(std::min(state.bytes,state.total))/state.total;
+    if(displayTotal_&&displayBytes_) {
+        const auto fraction=static_cast<long double>(std::min(displayBytes_,displayTotal_))/displayTotal_;
         UiBox(dc,{0,top,static_cast<LONG>(right*fraction),top+D(6)},c.accent,c.accent,D(3));
     }
     if(contentHeight_>bodyHeight_) {

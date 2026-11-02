@@ -1,6 +1,7 @@
 #pragma once
 #include "UiStyle.h"
 #include <deque>
+#include <map>
 
 namespace serialctl {
 // Keep the native menu loop, keyboard semantics and accessibility. Only item
@@ -17,6 +18,7 @@ class UiPopupMenu {
         UiFieldStyle style;
         std::deque<Row> rows;
         std::vector<HWND> popups;
+        std::map<HWND,SIZE> regionSizes;
         int D(int n) const { return MulDiv(n, style.dpi, 96); }
         void Prepare(HMENU menu) {
             for (int i = 0; i < GetMenuItemCount(menu); ++i) {
@@ -66,11 +68,20 @@ class UiPopupMenu {
         if (m==WM_WINDOWPOSCHANGED) {
             RECT r{};GetWindowRect(h,&r);
             if(r.right>r.left&&r.bottom>r.top) {
-                HRGN region=CreateRoundRectRgn(0,0,r.right-r.left+1,r.bottom-r.top+1,c.D(20),c.D(20));
-                if(region&&!SetWindowRgn(h,region,FALSE))DeleteObject(region);
+                const SIZE size{r.right-r.left,r.bottom-r.top};
+                const auto found=c.regionSizes.find(h);
+                // SetWindowRgn synchronously sends WINDOWPOS notifications.
+                // Publish the dimensions first, including for reentrant calls.
+                if(found==c.regionSizes.end()||found->second.cx!=size.cx||found->second.cy!=size.cy) {
+                    HRGN region=CreateRoundRectRgn(0,0,size.cx+1,size.cy+1,c.D(20),c.D(20));
+                    if(region) {
+                        c.regionSizes[h]=size;
+                        if(!SetWindowRgn(h,region,FALSE)){DeleteObject(region);c.regionSizes.erase(h);}
+                    }
+                }
             }
         }
-        if(m==WM_NCDESTROY)RemoveWindowSubclass(h,PopupProc,id);
+        if(m==WM_NCDESTROY){c.regionSizes.erase(h);RemoveWindowSubclass(h,PopupProc,id);}
         return DefSubclassProc(h,m,w,l);
     }
     static LRESULT CALLBACK Hook(int code, WPARAM w, LPARAM l) {
@@ -140,8 +151,8 @@ class UiPopupMenu {
     }
   public:
     static UINT Track(HMENU menu, UINT flags, int x, int y, HWND owner, const UiFieldStyle& style) {
-        if(!menu||!IsWindow(owner))return 0;
-        Context context{style,{},{}};
+        if(!menu||!IsWindow(owner)||active_)return 0;
+        Context context{style,{},{},{}};
         context.Prepare(menu);
         auto* previous=active_;active_=&context;
         const bool subclassed=SetWindowSubclass(owner,OwnerProc,219,reinterpret_cast<DWORD_PTR>(&context))!=FALSE;
@@ -153,7 +164,12 @@ class UiPopupMenu {
         HHOOK hook=SetWindowsHookExW(WH_CALLWNDPROC,Hook,nullptr,GetCurrentThreadId());
         const UINT command=TrackPopupMenu(menu,flags|TPM_RETURNCMD,x,y,0,owner,nullptr);
         if(hook)UnhookWindowsHookEx(hook);
-        for(HWND popup:context.popups)if(IsWindow(popup)){RemoveWindowSubclass(popup,PopupProc,219);SetWindowRgn(popup,nullptr,FALSE);}
+        for(HWND popup:context.popups) {
+            DWORD_PTR reference{};
+            if(IsWindow(popup)&&GetWindowSubclass(popup,PopupProc,219,&reference)&&reference==reinterpret_cast<DWORD_PTR>(&context)) {
+                RemoveWindowSubclass(popup,PopupProc,219);SetWindowRgn(popup,nullptr,FALSE);
+            }
+        }
         RemoveWindowSubclass(owner,OwnerProc,219);
         context.Restore();active_=previous;
         info.hbrBack=previousInfo.hbrBack;SetMenuInfo(menu,&info);DeleteObject(background);
