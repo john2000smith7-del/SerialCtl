@@ -139,12 +139,36 @@ class MacroActions(GlobalActions):
         self.wait(lambda: second in self.native_control_text(edit), 'pasted command document')
         self.chord(0x11, ord('A'))
         self.click_window(self.user.GetDlgItem(notebook,411))
-        # Native owned options popup: checkbox, separator, then four intervals.
+        # Native owned options popup: two checkboxes, separator, four intervals.
         choices = [100,500,1500,5000]
         target = min(choices,key=lambda v:abs(v-interval))
-        self.key(0x24)
-        for _ in range(choices.index(target)+1): self.key(0x28)
-        self.key(0x0d)
+        self.user.GetMenuItemRect.argtypes=(c.c_void_p,c.c_void_p,c.c_uint,c.POINTER(RECT))
+        self.user.GetMenuItemRect.restype=c.c_int
+        self.user.GetMenuState.argtypes=(c.c_void_p,c.c_uint,c.c_uint)
+        self.user.GetMenuState.restype=c.c_uint
+        position=3+choices.index(target)
+        state={}
+        def menu_ready():
+            popup=self.user.FindWindowW('#32768',None)
+            if not popup or not self.user.IsWindowVisible(popup):return False
+            menu=self.query(popup,0x01e1)
+            rect=RECT()
+            if not menu or not self.user.GetMenuItemRect(None,menu,position,c.byref(rect)):return False
+            point=POINT((rect.left+rect.right)//2,(rect.top+rect.bottom)//2)
+            if rect.right<=rect.left or self.user.WindowFromPoint(point)!=popup:return False
+            state.update(menu=menu,point=(point.x,point.y))
+            return True
+        self.wait(menu_ready,'interval option visible, measured and exposed')
+        self.click(state['point'])
+        self.wait(lambda:not self.user.FindWindowW('#32768',None),'interval choice closes')
+        # Read back the check without retrying or repairing the original click.
+        self.click_window(self.user.GetDlgItem(notebook,411))
+        self.wait(menu_ready,'read chosen interval')
+        checked=self.user.GetMenuState(state['menu'],10+choices.index(target),0)
+        self.report.setdefault('interval_menu_observations',[]).append({'requested_ms':target,'native_flags':checked})
+        require(checked!=0xffffffff and checked&8,'Actual interval click did not select the requested option')
+        self.key(0x1b)
+        self.wait(lambda:not self.user.FindWindowW('#32768',None),'read-only interval inspection closes')
         self.wait(lambda: self.user.GetForegroundWindow() == self.window, 'notebook options closed')
         return 0
 

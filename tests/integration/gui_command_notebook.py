@@ -80,15 +80,16 @@ def main():
             before=t.user.GetMenuState(menu,2,0)
             require(before!=0xffffffff and not(before&3),'repeat menu item must be enabled')
             require(bool(before&8)!=enabled,'repeat starts from the expected unchecked/checked state')
-            t.key(0x24);t.key(0x28)
-            t.wait(lambda:bool(t.user.GetMenuState(menu,2,0)&0x80),'Home/Down actually highlights the Repeat item')
-            t.key(0x0d)
+            rect=RECT()
+            require(t.user.GetMenuItemRect(None,menu,1,c.byref(rect)),'Cannot locate native Repeat item')
+            t.click(((rect.left+rect.right)//2,(rect.top+rect.bottom)//2))
             t.wait(lambda:not t.user.FindWindowW('#32768',None),'repeat choice closes menu')
             # Reopen only to read the result; never retry the toggle or repair
             # a failed input. Preserve the original action as a failure.
             menu=open_options()
             after=t.user.GetMenuState(menu,2,0)
-            t.report.setdefault('repeat_menu_observations',[]).append({'before_flags':before,'after_flags':after,'expected_checked':enabled})
+            t.report.setdefault('repeat_menu_observations',[]).append({'before_flags':before,'after_flags':after,'expected_checked':enabled,
+                'input':'one actual mouse click at the native second menu item; reopen only reads state'})
             t.screenshot('repeat-option-enabled' if enabled else 'repeat-option-disabled')
             require(after!=0xffffffff and bool(after&8)==enabled,'single menu choice did not toggle Repeat: '+str(t.report['repeat_menu_observations']))
             t.key(0x1b)
