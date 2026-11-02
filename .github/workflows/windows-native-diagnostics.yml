@@ -5,6 +5,11 @@ on:
     paths: [.github/workflows/windows-native-diagnostics.yml]
   workflow_dispatch:
     inputs:
+      lifecycle:
+        description: Focused real native command, connection lifecycle and SSH regressions; never release evidence
+        required: false
+        type: boolean
+        default: false
       compile_only:
         description: Compile only; do not execute tests, GUI, packaging or release
         required: false
@@ -115,8 +120,49 @@ jobs:
           $program = Join-Path $output 'serialctl.exe'
           Write-Host "SERIALCTL_COMPILE_EXE_SHA256=$((Get-FileHash $program -Algorithm SHA256).Hash)"
           Write-Host 'SERIALCTL_COMPILE_SCOPE=Compilation only; tests, GUI, packaging, signing and publication were not run.'
+  lifecycle:
+    if: ${{ inputs.lifecycle && !inputs.compile_only && !inputs.xfer_ui && !inputs.ui_run }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build and execute native command and connection regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/serialctl-lifecycle"
+          New-Item -ItemType Directory $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64 -RepositoryRoot (Get-SerialCtlRepositoryRoot)
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure focused native regressions' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile command and connection regressions' -Arguments @('--build',$directory,'--config','Release','--target','ai_device_test','ssh_lifecycle_test','queued_transfer_test','terminal_model_test','--parallel','2')
+          $ctest = Get-RequiredCommandPath -Name ctest.exe
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Repeat exact native command and connection regressions' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(ai_device|ssh_lifecycle|queued_transfer|terminal_model)$','--repeat','until-fail:3')
+      - name: Retain native failure and bounded structured diagnostics
+        if: always()
+        shell: python
+        run: |
+          import json, os, pathlib, shutil
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'serialctl-lifecycle'
+          root.mkdir(exist_ok=True)
+          log=pathlib.Path('build/windows/x64/cmake/Testing/Temporary/LastTest.log')
+          if log.exists():
+              shutil.copy2(log,root/'ctest.txt')
+              print(log.read_text(encoding='utf-8',errors='replace')[-16000:].encode('ascii','backslashreplace').decode())
+          for p in root.glob('*.json'):
+              print(p.name,json.dumps(json.loads(p.read_text(encoding='utf-8-sig')),ensure_ascii=True))
+      - uses: ./.github/actions/ci-evidence
+        if: always()
+        with:
+          mode: save
+          name: SerialCtl-lifecycle-diagnostics
+          path: ${{ runner.temp }}/serialctl-lifecycle/
   native:
-    if: ${{ !inputs.compile_only && !inputs.ui_run && !inputs.xfer_ui }}
+    if: ${{ !inputs.lifecycle && !inputs.compile_only && !inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 30
     env:
@@ -190,7 +236,7 @@ jobs:
           path: ${{ runner.temp }}/native-evidence/
           if-no-files-found: warn
   gui:
-    if: ${{ !inputs.compile_only && inputs.ui_run && !inputs.xfer_ui }}
+    if: ${{ !inputs.lifecycle && !inputs.compile_only && inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
@@ -280,7 +326,7 @@ jobs:
             ${{ runner.temp }}/gui-evidence/freeze/comparison.json
           if-no-files-found: warn
   xfer:
-    if: ${{ !inputs.compile_only && inputs.xfer_ui }}
+    if: ${{ !inputs.lifecycle && !inputs.compile_only && inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 25
     steps:

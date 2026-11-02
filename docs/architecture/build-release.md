@@ -114,3 +114,9 @@ gh workflow run publish-release.yml --repo john2000smith7-del/SerialCtl --ref ma
 接口最低系统说明可查 [AlphaBlend](https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-alphablend) 和 [SetupDiGetClassDevsW](https://learn.microsoft.com/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw)。静态接口核对不替代 Windows 7 实机验收。
 
 V2.0.12 的 `ui_dialog_viewport_test` 新增实际下拉列表测试，使用共享图标资源装载器的 OLE32!CreateStreamOnHGlobal（Windows 2000 起支持）。仅该测试目标补充显式 OLE32 链接及精确导入清单，和既有 `ui_combo_paint_test` 一致；生产程序原本已使用此系统库，生产依赖清单不变，Win7 禁止导入与子系统检查继续执行。
+
+### 当前候选到更高版本的隔离升级验证
+
+`forward-update-verification.yml`在main上分prepare/verify两阶段执行。prepare从同一main源码隔离克隆，只将VERSION增加一个补丁号，编译生产目标并检查PE，再生成带FORWARD-TEST标记的四运行文件测试ZIP；没有自动测试通过的正式MANIFEST，正式签名工具必须拒绝它。它不是下一个正式版本，不上传Release。公开payload仍由授权本地环境用原身份签名，CI从不接收私钥。
+
+verify核对当前已验证main ZIP、测试来源和精确payload，再运行真实当前候选及上一正式客户端的签名拒绝、损坏ZIP拒绝和成功安装/健康重启。当前候选先创建并断开真实CMD，确认保留卡片后才返回升级清单，验证保留断开卡片不阻塞用户确认后的空闲安装。此测试不替代正式旧客户端到最终候选的verify-release-upgrade，也不承诺尚不存在的未来功能版本；原始收据和测试范围保留在专用证据缓存。发布仍只使用正式候选ZIP及其对应的update.json。

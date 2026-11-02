@@ -1,0 +1,136 @@
+name: Verify candidate forward update
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Prepare an isolated next-version fixture or verify its public signed metadata
+        type: choice
+        options: [prepare, verify]
+        required: true
+      build_run_id:
+        description: Successful exact-main production build under review
+        type: string
+        required: true
+      future_run_id:
+        description: Successful prepare run from this workflow (verify phase only)
+        type: string
+        default: ''
+      metadata_base64:
+        description: Public signed test-only JSON; never a private key
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.phase == 'prepare' }}
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-Win7-portable
+          run-id: ${{ inputs.build_run_id }}
+          path: candidate
+      - name: Build identical production source with only the future VERSION in an isolated clone
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $root = (Get-Location).Path
+          $head = (git rev-parse HEAD).Trim()
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -or $run.conclusion -ne 'success' -or $run.head_branch -ne 'main' -or $run.head_sha -ne $head -or $run.name -ne 'Windows Win7 release build') { throw 'Requires successful exact-main production build' }
+          $archive = @(Get-ChildItem candidate -Filter '*.zip')
+          if ($archive.Count -ne 1) { throw 'Expected one verified production ZIP' }
+          $scratch = Join-Path $env:RUNNER_TEMP 'serialctl-forward-source'
+          git clone --no-hardlinks --no-checkout $root $scratch
+          if ($LASTEXITCODE) { throw 'Cannot isolate future source' }
+          git -C $scratch config core.autocrlf false
+          git -C $scratch checkout --detach $head
+          if ($LASTEXITCODE) { throw 'Cannot checkout exact source' }
+          $base = Get-SerialCtlVersionInfo -RepositoryRoot $root
+          $parts = $base.FileVersion.Split('.')
+          $future = "$($parts[0]).$($parts[1]).$([int]$parts[2]+1)"
+          [IO.File]::WriteAllText((Join-Path $scratch 'VERSION'),"PROJECT_VERSION=V$future`nCPP_VERSION=V$future`n",(New-Object Text.UTF8Encoding($false)))
+          Push-Location $scratch
+          try { ./scripts/build.ps1 -Architecture x64 -Configuration Release -Target serialctl -Clean } finally { Pop-Location }
+          $delta = @(git -C $scratch diff --name-only)
+          if ($LASTEXITCODE -or $delta.Count -ne 1 -or $delta[0] -ne 'VERSION') { throw 'Future source changed beyond VERSION' }
+          $output = Get-SerialCtlBuildOutputDirectory -Architecture x64 -Configuration Release -RepositoryRoot $scratch
+          $program = Join-Path $output 'serialctl.exe'
+          ./tools/verify_win7_binary.ps1 -Path $program -Architecture x64 -Subsystem GUI -ExpectedProductVersion "$future.0" -AllowedDll @('ADVAPI32.dll','COMCTL32.dll','COMDLG32.dll','GDI32.dll','gdiplus.dll','KERNEL32.dll','MSIMG32.dll','ole32.dll','SETUPAPI.dll','SHELL32.dll','USER32.dll','WINHTTP.dll','WS2_32.dll')
+          python tests/integration/forward_update_fixture.py prepare --candidate $archive[0].FullName --exe $program --source-commit $head --build-run $env:BUILD_RUN --output "$env:RUNNER_TEMP/serialctl-forward-fixture"
+          if ($LASTEXITCODE) { throw 'Cannot describe isolated future fixture' }
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: save
+          name: SerialCtl-forward-test-fixture
+          path: ${{ runner.temp }}/serialctl-forward-fixture/*
+  verify:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.phase == 'verify' }}
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-Win7-portable
+          run-id: ${{ inputs.build_run_id }}
+          path: current
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-forward-test-fixture
+          run-id: ${{ inputs.future_run_id }}
+          path: future
+      - name: Verify exact fixture identity and exercise actual forward client installation
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run_id }}
+          FUTURE_RUN: ${{ inputs.future_run_id }}
+          PUBLIC_METADATA: ${{ inputs.metadata_base64 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = (git rev-parse HEAD).Trim()
+          $build = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
+          $future = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:FUTURE_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -or $build.conclusion -ne 'success' -or $build.head_branch -ne 'main' -or $build.head_sha -ne $head -or $build.name -ne 'Windows Win7 release build') { throw 'Invalid production build identity' }
+          if ($future.conclusion -ne 'success' -or $future.head_sha -ne $head -or $future.path -ne '.github/workflows/forward-update-verification.yml') { throw 'Invalid forward prepare run' }
+          $archive = @(Get-ChildItem current -Filter '*.zip')
+          $fixture = @(Get-ChildItem future -Filter 'SerialCtl-TEST-forward-*.zip')
+          if ($archive.Count -ne 1 -or $fixture.Count -ne 1) { throw 'Expected exact production and test-only ZIPs' }
+          [IO.File]::WriteAllBytes((Join-Path $pwd 'future/update.json'),[Convert]::FromBase64String($env:PUBLIC_METADATA))
+          python tests/integration/forward_update_fixture.py validate --candidate $archive[0].FullName --source-commit $head --build-run $env:BUILD_RUN --output future --metadata future/update.json
+          if ($LASTEXITCODE) { throw 'Future fixture metadata/provenance mismatch' }
+          $previous = (gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name).Trim()
+          gh release download $previous --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir previous
+          if ($LASTEXITCODE) { throw 'Cannot obtain genuine previous release' }
+          $older = @(Get-ChildItem previous -Filter '*.zip')
+          if ($older.Count -ne 1) { throw 'Expected one genuine previous ZIP' }
+          python tests/integration/verify_release_upgrade.py --candidate $fixture[0].FullName --metadata future/update.json --previous $archive[0].FullName --older $older[0].FullName --retained-card --output "$env:RUNNER_TEMP/serialctl-forward-result"
+          if ($LASTEXITCODE) { throw 'Actual forward upgrade failed' }
+      - uses: ./.github/actions/ci-evidence
+        if: always()
+        with:
+          mode: save
+          name: SerialCtl-forward-test-result
+          path: |
+            ${{ runner.temp }}/serialctl-forward-result/upgrade-result.json
+            ${{ runner.temp }}/serialctl-forward-result/**/update.log

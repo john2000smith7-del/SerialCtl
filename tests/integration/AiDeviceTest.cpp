@@ -593,8 +593,9 @@ struct AiDeviceTestAccess {
             {std::ofstream stream(file);stream<<"# imported\necho imported-only\n";}
             const auto name=file.wstring();auto handle=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,sizeof(DROPFILES)+(name.size()+2)*sizeof(wchar_t));
             auto data=static_cast<DROPFILES*>(GlobalLock(handle));data->pFiles=sizeof(DROPFILES);data->fWide=TRUE;memcpy(reinterpret_cast<char*>(data)+sizeof(DROPFILES),name.c_str(),(name.size()+1)*sizeof(wchar_t));GlobalUnlock(handle);
+            const auto beforeDropWrites=transports[4]->writes;
             SendMessageW(main.notebook_.Editor(),WM_DROPFILES,reinterpret_cast<WPARAM>(handle),0);
-            Require(main.notebook_.Text().find(L"echo imported-only")!=std::wstring::npos&&main.notebook_.Dirty()&&transports[4]->writes==beforeWrites+1,"Dropped UTF8 file updates a draft and never executes");
+            Require(main.notebook_.Text().find(L"echo imported-only")!=std::wstring::npos&&main.notebook_.Dirty()&&transports[4]->writes==beforeDropWrites,"Dropped UTF8 file updates a draft and never executes");
             std::filesystem::remove(file);
             main.notebook_.SetText(originalText);
             main.RunNotebook({L"echo retained-stop",L"echo must-not-be-sent"});
