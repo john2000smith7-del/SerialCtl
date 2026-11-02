@@ -964,6 +964,20 @@ struct AiDeviceTestAccess {
         Require(IsWindowEnabled(main.reconnectButton_)&&MainWindow::ControlText(main.disconnectButton_)==L"关闭卡片","Stopped card exposes reconnect and close");
         ui_test::SaveUiEvidence(main.window_,L"connection-retained-native.png");
         const auto oldId=main.sessions_[0]->id;
+        // A canceled startup must leave the same disconnected card intact.
+        auto cancelStart=std::make_shared<HeldTransport>();
+        struct ReleaseCancel {std::shared_ptr<HeldTransport> p;~ReleaseCancel(){SetEvent(p->release);}} releaseCancel{cancelStart};
+        auto pending=std::make_unique<MainWindow::SessionState>();
+        pending->id=799;pending->mode=3;pending->connection=cancelStart;pending->logger=std::make_shared<SessionLogger>();
+        main.pendingSession_=std::move(pending);main.pendingReconnectId_=oldId;
+        main.connectionThread_=std::thread([cancelStart]{SetEvent(cancelStart->entered);WaitForSingleObject(cancelStart->release,INFINITE);});
+        Require(WaitForSingleObject(cancelStart->entered,3000)==WAIT_OBJECT_0,"Controlled reconnect worker is waiting");
+        main.Disconnect();
+        Require(cancelStart->cancelled&&main.cancelledConnectionPending_,"Header disconnect requests cancellation of pending reconnect");
+        SetEvent(cancelStart->release);
+        until([&]{return !main.pendingSession_&&!main.connectionCleanup_.Busy();},"Canceled reconnect owns cleanup until worker exits");
+        Require(main.sessions_.size()==1&&main.sessions_[0]->id==oldId&&main.sessions_[0]->disconnected,"Cancel preserves original card and history");
+        until([&]{return IsWindowEnabled(main.reconnectButton_)!=FALSE;},"Canceled reconnect enables its action without another user event");
         main.Reconnect();Require(main.pendingSession_&&main.pendingReconnectId_==oldId,"Reconnect begins in the retained card");
         until([&]{return !main.pendingSession_;},"Loopback remote serial reconnect completes");
         Require(main.sessions_.size()==1&&main.sessions_[0]->id!=oldId&&main.sessions_[0]->connection->IsConnected(),"Reconnect replaces only transport generation in same position");
@@ -984,7 +998,7 @@ struct AiDeviceTestAccess {
         main.DisconnectAll();Require(main.sessions_.empty(),"Second all action closes stopped cards");
         main.RequestShutdown();main.WaitForShutdown();main.FinishShutdown();
         const Json report{{"heldStopNonblocking",true},{"disconnectRetainsCard",true},{"loopbackReconnect",true},
-                          {"freshGeneration",true},{"historyRetained",true},{"oldCallbackIgnored",true},{"twoStageAllClose",true},
+                          {"reconnectCancellation",true},{"freshGeneration",true},{"historyRetained",true},{"oldCallbackIgnored",true},{"twoStageAllClose",true},
                           {"scope","native window, controlled blocking transport and production loopback gateway; no COM hardware claim"}};
         wchar_t dir[32768]{};if(GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR",dir,32768))std::ofstream(std::filesystem::path(dir)/L"connection-lifecycle-native.json")<<report.dump(2);
         std::cout<<report.dump()<<'\n';

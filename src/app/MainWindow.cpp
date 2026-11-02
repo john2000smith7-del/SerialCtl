@@ -4637,6 +4637,9 @@ void MainWindow::FinishPendingConnection() {
             if (transport) transport->Stop();
             if (log) log->Stop();
         });
+        // This task has no retained card completion token. Poll its cleanup
+        // counter too, so cancel cannot leave the reconnect button disabled.
+        SetTimer(window_,SessionCleanupTimerId,40,nullptr);
     }
     pendingSession_.reset(); pendingReconnectId_=0;
     pendingConnectionData_.clear(); pendingConnectionBytes_=0;

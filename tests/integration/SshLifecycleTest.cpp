@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string>
 #include <tlhelp32.h>
+#include <utility>
 using namespace serialctl;
 using namespace std::chrono_literals;
 void Require(bool ok, const char* why) { if (!ok) throw std::runtime_error(why); }
@@ -17,6 +18,28 @@ DWORD Threads() {
     THREADENTRY32 entry{sizeof(entry)}; DWORD count = 0;
     if (Thread32First(snapshot, &entry)) do { if (entry.th32OwnerProcessID == GetCurrentProcessId()) ++count; } while (Thread32Next(snapshot, &entry));
     CloseHandle(snapshot); return count;
+}
+void VerifyKeepaliveConfiguration() {
+    HKEY sessions=nullptr;
+    Require(RegOpenKeyExW(HKEY_CURRENT_USER,L"Software\\SimonTatham\\PuTTY\\Sessions",0,KEY_READ,&sessions)==ERROR_SUCCESS,"SSH temporary session registry exists");
+    struct CloseKey {HKEY key;~CloseKey(){RegCloseKey(key);}} close{sessions};
+    const auto prefix=L"SerialCtl-"+std::to_wstring(GetCurrentProcessId())+L"-";
+    unsigned found=0;
+    for(DWORD index=0;;++index) {
+        wchar_t name[512]{};DWORD chars=512;
+        const auto result=RegEnumKeyExW(sessions,index,name,&chars,nullptr,nullptr,nullptr,nullptr);
+        if(result==ERROR_NO_MORE_ITEMS)break;
+        Require(result==ERROR_SUCCESS,"Enumerate SSH temporary session");
+        if(std::wstring(name).rfind(prefix,0)!=0)continue;
+        HKEY entry=nullptr;Require(RegOpenKeyExW(sessions,name,0,KEY_QUERY_VALUE,&entry)==ERROR_SUCCESS,"Read SSH temporary session");
+        CloseKey closeEntry{entry};++found;
+        for(const auto& setting: {std::pair<const wchar_t*,DWORD>{L"TCPKeepalives",1},{L"PingInterval",0},{L"PingIntervalSecs",0}}) {
+            DWORD value=~DWORD(0),type=0,size=sizeof(value);
+            Require(RegQueryValueExW(entry,setting.first,nullptr,&type,reinterpret_cast<BYTE*>(&value),&size)==ERROR_SUCCESS&&
+                    type==REG_DWORD&&size==sizeof(value)&&value==setting.second,"SSH enables response-based TCP keepalive without IGNORE-only pings");
+        }
+    }
+    Require(found==1,"One configured temporary PuTTY session belongs to this connection");
 }
 int main(int argc, char** argv) {
     try {
@@ -50,6 +73,7 @@ int main(int argc, char** argv) {
             auto ssh = std::make_shared<PlinkConnection>(host, std::uint16_t(22), L"fixture", L"", 80, 24, confirm);
             std::atomic<size_t> received{0};
             Require(ssh->Start([&](const Bytes& bytes) { received += bytes.size(); }, [](const auto&, bool) {}, error), "SSH fixture start");
+            VerifyKeepaliveConfiguration();
             Require(WaitForSingleObject(ready, 3000) == WAIT_OBJECT_0, "child ready");
             CloseHandle(ready);
             std::packaged_task<bool()> writeTask([ssh] { std::wstring message; return ssh->Send(Bytes(8 * 1024 * 1024, 'x'), message); });
