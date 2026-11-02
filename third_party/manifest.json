@@ -42,7 +42,7 @@
           "path": "third_party/putty/prebuilt/x86/plink.exe",
           "role": "runtime",
           "architecture": "x86",
-          "sha256": "ad5323540095763498091e9c654e617551f47e630193135d71a615e890b4d00c"
+          "sha256": "ac86b5a4acb3d16f29286cabdfae35e0dc051f8702dd521932ea81525621adbb"
         },
         {
           "path": "third_party/putty/prebuilt/x86/psftp.exe",
@@ -54,7 +54,7 @@
           "path": "third_party/putty/prebuilt/x64/plink.exe",
           "role": "runtime",
           "architecture": "x64",
-          "sha256": "fb15bf12b038abb6174cb073f710eac55a68a1479769f81c0ee02d03a0c5c246"
+          "sha256": "5706af5c5f4d1f16f0bb1623d5fdd4639233e143c164169bee391bc4e8ee6588"
         },
         {
           "path": "third_party/putty/prebuilt/x64/psftp.exe",
