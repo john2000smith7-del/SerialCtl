@@ -138,8 +138,12 @@ def main():
             if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
                 name = c.create_unicode_buffer(128); user.GetClassNameW(child, name, 128)
+                # Empty-list All-disconnect is intentionally disabled in the
+                # new two-stage action. Keep its full geometry frozen; only
+                # normalize that approved state, asserted on the candidate below.
+                enabled = False if main and user.GetDlgCtrlID(child)==302 else bool(user.IsWindowEnabled(child))
                 rows.append([user.GetDlgCtrlID(child), name.value, rect.left-origin.x, rect.top-origin.y,
-                             rect.right-origin.x, rect.bottom-origin.y, bool(user.IsWindowEnabled(child))])
+                             rect.right-origin.x, rect.bottom-origin.y, enabled])
             return True
         user.EnumChildWindows(hwnd, each, 0)
         return rows
@@ -245,6 +249,8 @@ def main():
                     capture['glyphRoundingRegions']=combo_glyph_regions(capture['geometry'],desktop.dpi)
                     if name == 'main':
                         if label == 'candidate':
+                            require(user.SendMessageW(user.GetDlgItem(target,106),0x18b,0,0)==0,
+                                    'Blank-page contract requires an actually empty connection list')
                             require(user.GetDlgItem(target,311) and user.GetDlgItem(target,310),
                                     'Candidate lost reconnect or Xfer controls')
                             require(not user.IsWindowVisible(user.GetDlgItem(target,105)) and
@@ -252,6 +258,8 @@ def main():
                                     'Blank main must hide per-card disconnect/reconnect actions')
                             require(not user.IsWindowEnabled(user.GetDlgItem(target,310)),
                                     'Blank main must disable serial file transfer')
+                            require(not user.IsWindowEnabled(user.GetDlgItem(target,302)),
+                                    'Blank main must disable the resource-free All-disconnect action')
                         # Approved UI polish: compact detached utility controls,
                         # command notebook, connection heading and panel contours.
                         # All terminal pixels and remaining dialog geometry stay frozen.

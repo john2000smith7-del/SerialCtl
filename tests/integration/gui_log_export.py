@@ -45,30 +45,50 @@ class ExportActions(GlobalActions):
         self.monitor = None
         self.token = uuid.uuid4().hex[:8]
         self.barrier_id = 0
+        self.stream_stop = threading.Event()
+        self.stream_condition = threading.Condition()
+        self.stream_error = None
+        self.stream_reader = threading.Thread(target=self.read_events)
+        self.stream_reader.start()
 
     def prop(self, name):
         return int(self.user.GetPropW(self.window, 'SerialCtl.' + name) or 0)
 
-    def drain(self):
-        while True:
-            try: event = self.client.next_event(self.resource, timeout=.001)
-            except queue.Empty: return
-            self.events += 1
-            if event.get('kind') == 'output':
-                self.raw.extend(base64.b64decode(event.get('data', ''), validate=True))
-                del self.raw[:-8192]
+    def read_events(self):
+        # A subscribed observer must keep consuming during dialogs, file hashing
+        # and the concurrent healthy-client writes. Do not enlarge the client's
+        # bounded queue or discard events to mask a stalled test consumer.
+        try:
+            while not self.stream_stop.is_set():
+                try: event = self.client.next_event(self.resource, timeout=.05)
+                except queue.Empty: continue
+                with self.stream_condition:
+                    self.events += 1
+                    if event.get('kind') == 'output':
+                        self.raw.extend(base64.b64decode(event.get('data', ''), validate=True))
+                        del self.raw[:-8192]
+                    self.stream_condition.notify_all()
+        except BaseException:
+            if not self.stream_stop.is_set():
+                with self.stream_condition:
+                    self.stream_error = traceback.format_exc()
+                    self.report['stream_consumer_error'] = self.stream_error
+                    self.stream_condition.notify_all()
 
     def barrier(self, prefix=b''):
         self.barrier_id += 1
         marker = ('EX_' + self.token + '_B' + str(self.barrier_id)).encode()
-        self.raw.clear()
+        with self.stream_condition:
+            self.raw.clear()
         data = prefix + ('echo EX_' + self.token + '_^B' + str(self.barrier_id) + '\r\n').encode()
         self.client.input(self.resource, data)
         deadline = time.monotonic() + 10
-        while marker not in self.raw:
-            self.drain()
-            require(time.monotonic() < deadline, 'actual CMD FIFO output barrier')
-            time.sleep(.002)
+        with self.stream_condition:
+            while marker not in self.raw:
+                require(not self.stream_error, 'Subscribed export observer failed: ' + str(self.stream_error))
+                require(time.monotonic() < deadline, 'actual CMD FIFO output barrier')
+                self.stream_condition.wait(.01)
+            require(not self.stream_error, 'Subscribed export observer failed: ' + str(self.stream_error))
 
     def create_large_source(self):
         settings = self.open_settings()
@@ -194,7 +214,10 @@ def main():
     finally:
         test.monitor_stop.set()
         if test.monitor: test.monitor.join(10)
+        test.stream_stop.set()
         test.client.close()
+        test.stream_reader.join(2)
+        require(not test.stream_reader.is_alive(), 'Subscribed export observer did not stop')
         test.healthy.close()
         test.flush_frames()
 
