@@ -423,17 +423,35 @@ class DesktopActions:
 
     def drag(self, name, start, end, steps=8):
         first_frame = len(self.frames)
+        observation = {"name": name, "start": list(start), "end": list(end), "native_input_states": []}
+        self.report.setdefault("native_drag_observations", []).append(observation)
+
+        def observe(phase):
+            sampler = getattr(self, "sample_drag_native_state", None)
+            if sampler:
+                try:
+                    state = {"phase": phase, **sampler()}
+                except Exception as error:
+                    state = {"phase": phase, "observation_error": repr(error)}
+                observation["native_input_states"].append(state)
+
         self.move_mouse(start)
+        observe("before_mouse_down")
         self.button(True)
         try:
+            observe("after_mouse_down_before_first_move")
             for index in range(1, steps + 1):
                 point = (round(start[0] + (end[0] - start[0]) * index / steps),
                          round(start[1] + (end[1] - start[1]) * index / steps))
                 self.move_mouse(point)
                 time.sleep(.018)
+                capture_started = time.perf_counter()
                 self.capture(f"{name}-held-{index:02d}")
+                self.frames[-1]["capture_elapsed_ms"] = round((time.perf_counter() - capture_started) * 1000, 3)
+            observe("before_mouse_up")
         finally:
             self.button(False)
+            observe("after_mouse_up")
         held = self.frames[first_frame:]
         evidence = {
             "name": name, "held_frames": [frame["path"] for frame in held],

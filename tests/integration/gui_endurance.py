@@ -56,6 +56,23 @@ class Endurance(DesktopActions):
         self.report['limits']=['Actual CI system DPI only','Finite bounded stress, no eight-hour soak claim',
                                'Finite screen samples do not prove absence of every inter-frame artifact']
 
+    def sample_drag_native_state(self):
+        # Read-only observations: no waiting, retry, activation or input repair.
+        pid=w.DWORD()
+        thread=self.user.GetWindowThreadProcessId(self.window,c.byref(pid))
+        info=GuiThreadInfo();info.size=c.sizeof(info)
+        available=bool(self.user.GetGUIThreadInfo(thread,c.byref(info))) if thread else False
+        point=POINT();cursor_available=bool(self.user.GetCursorPos(c.byref(point)))
+        return {**self.timestamp(),'thread':thread,'thread_info_available':available,
+                'flags':info.flags if available else None,
+                'capture':int(info.capture or 0) if available else None,
+                'move_size_window':int(info.moveSize or 0) if available else None,
+                'active':int(info.active or 0) if available else None,
+                'foreground':int(self.user.GetForegroundWindow() or 0),
+                'window_bounds':self.rect(self.window),
+                'cursor':[point.x,point.y] if cursor_available else None,
+                'window_at_cursor':int(self.user.WindowFromPoint(point) or 0) if cursor_available else None}
+
     def sample_resources(self,label):
         count=w.DWORD()
         require(self.kernel.GetProcessHandleCount(self.process,c.byref(count)),'Cannot read process handles')
@@ -268,6 +285,19 @@ def main():
                                'actual_click_count':actions.clicks,'resource_samples':actions.resources,
                                'response_samples_ms':actions.responses,'dialog_operations':actions.dialogs})
         print(traceback.format_exc(),file=sys.stderr)
+        # Keep bounded input evidence in the job log even when artifact quota
+        # prevents saving the full original JSON/screenshots/recording.
+        operations=[]
+        for entry in actions.operations[-2:]:
+            operations.append({key:value for key,value in entry.items()
+                               if key in ('name','status','error','native_resize_ack','target_outer_size') or
+                               key in ('before','after')})
+        diagnostics={'error':repr(error),'operations':operations,
+                     'native_drags':actions.report.get('native_drag_observations',[])[-3:],
+                     'mouse_events':actions.trace[-40:],
+                     'recent_capture_ms':[frame.get('capture_elapsed_ms') for frame in actions.frames[-20:]
+                                          if 'capture_elapsed_ms' in frame]}
+        print('ENDURANCE_FAILURE_DIAGNOSTICS '+json.dumps(diagnostics,ensure_ascii=True),flush=True)
         try:actions.capture('failure-desktop');actions.flush_frames()
         except Exception:pass
     finally:
