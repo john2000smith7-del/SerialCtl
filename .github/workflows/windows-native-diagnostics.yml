@@ -243,6 +243,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-Win7-portable
+          path: bin
+          run-id: ${{ inputs.ui_run }}
       - name: Load exact native-verified program with unchanged production source
         id: source
         env:
@@ -259,8 +265,8 @@ jobs:
           if ($verified.Count -ne 1) { throw 'Source did not complete native tests, PE and archive checks' }
           git diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Production source changed; select its matching build' }
-          gh run download $env:BUILD_RUN --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir bin
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot download the verified program' }
+          $archives = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archives.Count -ne 1) { throw 'Exact verified program cache is missing or ambiguous' }
           python -m pip install imageio-ffmpeg==0.6.0
           if ($LASTEXITCODE -ne 0) { throw 'Cannot install the test-only encoder' }
           New-Item -ItemType Directory "$env:RUNNER_TEMP/gui-evidence" -Force | Out-Null
@@ -299,10 +305,10 @@ jobs:
           if ($archive.Count -ne 1) { throw 'Expected one exact native-verified package' }
           python tests/integration/gui_command_drag_fixture.py --scenario endurance --archive $archive[0].FullName --output "$env:RUNNER_TEMP/gui-evidence/endurance"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: ./.github/actions/ci-evidence
         if: always()
         with:
-          retention-days: 14
+          mode: save
           name: SerialCtl-GUI-diagnostics
           path: |
             ${{ runner.temp }}/gui-evidence/**/*.png
@@ -311,11 +317,10 @@ jobs:
             ${{ runner.temp }}/gui-evidence/**/*.jsonl
             ${{ runner.temp }}/gui-evidence/**/*.log
             ${{ runner.temp }}/gui-evidence/**/*.txt
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: ./.github/actions/ci-evidence
         if: always()
         with:
-          retention-days: 14
+          mode: save
           name: SerialCtl-approved-ui-review
           path: |
             ${{ runner.temp }}/gui-evidence/optimization/*.png
@@ -324,7 +329,6 @@ jobs:
             ${{ runner.temp }}/gui-evidence/smoke/x64-*-ssh-dialog.png
             ${{ runner.temp }}/gui-evidence/smoke/x64-*-sftp.png
             ${{ runner.temp }}/gui-evidence/freeze/comparison.json
-          if-no-files-found: warn
   xfer:
     if: ${{ !inputs.lifecycle && !inputs.compile_only && inputs.xfer_ui }}
     runs-on: windows-2022

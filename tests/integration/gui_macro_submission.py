@@ -54,9 +54,10 @@ class MacroActions(GlobalActions):
             except queue.Empty:
                 return
             except ConnectionError as error:
-                # Explicit UI disconnect is required to remove this resource.
-                # Accept exactly that terminal event, never a failed socket or
-                # receive overflow. Its arrival is asserted by the test below.
+                # A natural process exit and explicit UI disconnect both
+                # release the live resource while retaining its UI card.
+                # Accept only the expected terminal event, never a failed
+                # socket or receive overflow; each case asserts its arrival.
                 if self.expect_resource_gone and str(error) == 'TARGET_GONE: ' + self.cmd:
                     self.resource_gone = True
                     self.report.setdefault('resource_removals', []).append(
@@ -229,15 +230,24 @@ class MacroActions(GlobalActions):
 
     def interrupted_submission(self):
         self.begin_case()
+        cards = self.query(self.control(106), 0x18b)  # LB_GETCOUNT
         index = self.add_macro('exit & rem ' + self.token, 'echo UNSENT_' + self.token, 1500)
+        self.expect_resource_gone = True
         self.run_or_stop(index)
-        self.observe(lambda: '后续提交已中断（1/2）' in self.status(), 'CMD exit interrupts future submission', 8)
+        self.observe(lambda: self.resource_gone and '后续提交已中断（1/2）' in self.status(),
+                     'CMD exit releases its resource and interrupts future submission', 8)
         self.pump()
         status = self.status()
         require('执行状态未知' in status and '不自动重发' in status and len(self.inputs) == 1,
                 'interruption retains unknown execution state and accepted count')
+        require(not any(r['id'] == self.cmd for r in self.client.resources()['resources']),
+                'natural CMD exit releases the live resource')
+        self.wait(lambda: self.user.IsWindowEnabled(self.control(105)) and
+                  self.native_control_text(self.control(105)) == '关闭卡片', 'exited CMD card cleanup completes')
+        require(self.query(self.control(106), 0x18b) == cards, 'natural CMD exit retains its UI card')
         self.report['macro_observations'].append({**self.timestamp(), 'case': 'interrupted', 'status': status,
-                                                  'accepted_steps': len(self.inputs)})
+                                                  'accepted_steps': len(self.inputs),
+                                                  'resource_removed': True, 'card_retained': True})
         self.screenshot('interrupted-unknown')
         self.remove_macro(index)
         self.restore_cmd()
