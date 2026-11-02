@@ -2,7 +2,7 @@
 
 SerialCtl 是面向 Windows 的原生 C++17 / Win32 串口与远程终端工具。
 
-当前源码版本：`V2.0.18`。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。正式便携包须通过 MSVC 与 Windows 兼容性检查后生成。
+当前源码版本：`V2.0.19`（开发中，尚未正式发布）。生产程序不依赖 .NET Framework，使用 `/MT` 静态运行库，并以 Windows 7 SP1 为最低系统版本。正式便携包须通过 MSVC 与 Windows 兼容性检查后生成。
 
 开发者与 AI 接手先读 [AGENTS.md](AGENTS.md)，再读 [架构](docs/architecture/README.md)、[UI 规则](docs/architecture/UI-DESIGN-GUIDE.md)、[构建发布操作](docs/architecture/build-release.md)和[发布包文件范围](docs/architecture/RELEASE-CONTENTS.md)。Windows 7 SP1 与原签名身份下的自动更新兼容均为发布红线；原私钥不随 clone 获取。
 
@@ -156,7 +156,7 @@ CMake 会从 `third_party/yy-thunks/yy-thunks.1.2.1.nupkg` 临时解出所需兼
 构建流程会重新构建并测试 x64，检查 PE 架构、文件版本、子系统版本 6.01 和禁止依赖，生成固定白名单内容，压缩后重新解压并核对 SHA-256。成功后 `bin` 中保留完整 ZIP；正式签名完成后，交付其配套 `update.json`：
 
 ```text
-SerialCtl-V2.0.18-Win7-x64.zip
+SerialCtl-V2.0.19-Win7-x64.zip
 update.json
 ```
 
@@ -203,3 +203,5 @@ V2.0.16 增加平台工号模式（实际 SSH 端口=10000+工号），保留通
 V2.0.17 修复弹窗下拉列表区域的同步布局反馈，缓存带滤波边缘的原始图标切片以减少首帧绘制工作，并修复滚动视口在同步销毁窗口回调后的访问。完整验收与性能结果见 `docs/audit/V2.0.17-PERFORMANCE-STABILITY.md`。
 
 V2.0.18 将顶部工具栏与只读模型名称改为胶囊，简化状态分隔线；普通 SSH 使用默认 22 的直接端口并兼容旧历史，刷新按钮统一使用原有图标。宠物保持现状。修改说明见 [V2.0.18 发布说明](docs/package/RELEASE-NOTES-V2.0.18.md)。
+
+V2.0.19 开发范围：统一字段/菜单/胶囊，SSH 历史安全凭据，AI 发送/停止合一与历史会话，Xfer 串口/远程串口文件传输。当前验证状态见对应发布说明，开发提交不等于正式版本。

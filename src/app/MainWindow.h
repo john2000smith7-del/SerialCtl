@@ -107,6 +107,7 @@ private:
         UINT codePage = CP_UTF8;
         bool rawTrace = false;
         bool saveSshHistory = false;
+        bool rememberSshPassword = false;
         std::wstring employeeNumber;
         std::wstring host;
         std::wstring remoteCom;
@@ -500,6 +501,8 @@ private:
     int pendingMode_ = 0;
     bool pendingHostKeyReverify_ = false;
     bool pendingSaveSshHistory_ = false;
+    bool pendingRememberSshPassword_ = false;
+    std::wstring loadedSshCredentialTarget_;
     std::wstring pendingEmployeeNumber_;
     Json sshHistory_ = Json::array();
     bool initializingConnectionDialog_ = false;

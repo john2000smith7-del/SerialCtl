@@ -1,6 +1,7 @@
 #include "CommandNotebook.h"
 #include "UiMetrics.h"
 #include "UiStyle.h"
+#include "UiPopupMenu.h"
 #include <commctrl.h>
 #include <shellapi.h>
 #include <windowsx.h>
@@ -315,7 +316,7 @@ void CommandNotebook::Menu() {
         AppendMenuW(menu, MF_OWNERDRAW | (interval_ == values[i] ? MF_CHECKED : 0), 10 + i, labels[i + 1].c_str());
     RECT r{};
     GetWindowRect(more_, &r);
-    auto choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTALIGN, r.right, r.bottom, 0, window_, nullptr);
+    auto choice = UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTALIGN,r.right,r.bottom,window_,UiFieldStyle{&dark_,ui_,dpi_});
     DestroyMenu(menu);
     DeleteObject(background);
     if (choice == 1)
@@ -351,7 +352,12 @@ void CommandNotebook::SelectionInk(HDC dc) {
             continue;
         SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&end),
                      nativeStart + lines_[i].end - lines_[i].start);
-        RECT box{p.x, p.y, end.x, p.y + rowHeight_};
+        // RichEdit's terminal position and GDI's fallback CJK glyph metrics
+        // differ on Win7. Paint the complete glyph run, never clip at the
+        // native caret position (which can cut off the last Chinese glyph).
+        // The editor client is already clipped, so this also clears the tail
+        // without drawing into the scrollbar or outside the text surface.
+        RECT box{p.x, p.y, client.right, p.y + rowHeight_};
         SetBkColor(dc, c.surface);
         SetTextColor(dc, c.muted);
         ExtTextOutW(dc, p.x, p.y, ETO_OPAQUE | ETO_CLIPPED, &box, text_.data() + lines_[i].start,
@@ -444,7 +450,7 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
             GetCaretPos(&point);
             ClientToScreen(h, &point);
         }
-        const auto picked = TrackPopupMenu(menu, TPM_RETURNCMD, point.x, point.y, 0, self->window_, nullptr);
+        const auto picked = UiPopupMenu::Track(menu,TPM_RETURNCMD,point.x,point.y,self->window_,UiFieldStyle{&self->dark_,self->ui_,self->dpi_});
         DestroyMenu(menu);
         const UINT messages[] = {WM_UNDO, WM_CUT, WM_COPY, WM_PASTE};
         if (picked >= 1 && picked <= 4)

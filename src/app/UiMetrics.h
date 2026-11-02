@@ -18,6 +18,7 @@ inline int ToolbarHeight = 72;
 inline constexpr int ToolbarButtonWidths[] = {89, 88, 98, 118, 92, 88, 80};
 inline constexpr int CompactIconButtonSize = 28;
 inline constexpr int CompactGlyphSize = 16;
+inline constexpr int NavigationOpticalInset96 = 2;
 inline constexpr int CompactIconRadius = 14;
 inline constexpr int UtilityGlyphSize = 16;
 inline int StandardHeight = 36;

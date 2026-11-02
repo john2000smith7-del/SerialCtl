@@ -6,6 +6,8 @@
 #include "UiDialogViewport.h"
 #include "HostKeyDialog.h"
 #include "UiPasswordPrompt.h"
+#include "SshCredentials.h"
+#include "UiPopupMenu.h"
 #include "PlatformConnection.h"
 #include <ctime>
 
@@ -247,10 +249,10 @@ bool CompactNavigation(int width) {
 }
 
 RECT NavigationFrame(int width) {
-    int right = Ui::Gap + Ui::Space;
+    int right = Ui::Gap + Ui::Scale(Ui::NavigationOpticalInset96);
     const bool compact = CompactNavigation(width);
     for (int item : Ui::ToolbarButtonWidths) right += Ui::Scale(compact ? 48 : item) + Ui::Space;
-    return {Ui::Gap, Ui::Section, right, Ui::ToolbarHeight - Ui::Section};
+    return {Ui::Gap, Ui::Section, right - Ui::Space + Ui::Scale(Ui::NavigationOpticalInset96), Ui::ToolbarHeight - Ui::Section};
 }
 
 int MainCardTop() {
@@ -2771,7 +2773,7 @@ void MainWindow::LayoutControls(int width, int height) {
                                            (LiveMonitorPage() ? Ui::MinRightWidth : Ui::MinCenterWidth) + Ui::Gap * 3;
     const int toolbarButtonTop = (Ui::ToolbarHeight - Ui::StandardHeight) / 2;
     compactNavigation_ = CompactNavigation(width);
-    int x = Ui::Gap + Ui::Space;
+    int x = Ui::Gap + Ui::Scale(Ui::NavigationOpticalInset96);
     for (size_t index = 0; index < toolbarButtons_.size(); ++index) {
         const int buttonWidth = Ui::Scale(compactNavigation_ ? 48 : Ui::ToolbarButtonWidths[index]);
         batch.Move(toolbarButtons_[index], x, toolbarButtonTop, buttonWidth, Ui::StandardHeight,
@@ -3684,14 +3686,19 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             }
         }
         if(self->pendingMode_==0) {
+            self->loadedSshCredentialTarget_.clear();
             const auto add=[&](const wchar_t* cls,const wchar_t* label,int id,DWORD style) {
                 auto c=CreateWindowExW(0,cls,label,WS_CHILD|WS_VISIBLE|style,0,0,1,1,dialog,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),self->instance_,nullptr);
                 SendMessageW(c,WM_SETFONT,reinterpret_cast<WPARAM>(self->uiFont_),FALSE);
-                if(id==IDC_SSH_HISTORY)UiStyleField(c,&self->dialogFieldStyle_);else UiStyleCheckBox(c,&self->dialogFieldStyle_,true);
+                if(id==IDC_SSH_HISTORY)UiStyleField(c,&self->dialogFieldStyle_);
+                else if (_wcsicmp(cls,L"BUTTON")==0) UiStyleCheckBox(c,&self->dialogFieldStyle_,true);
                 return c;
             };
             add(WC_COMBOBOXW,L"",IDC_SSH_HISTORY,CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS|WS_VSCROLL|WS_TABSTOP);
-            add(L"BUTTON",L"成功后保存",IDC_SSH_SAVE,BS_AUTOCHECKBOX|WS_TABSTOP);
+            add(L"STATIC",L"历史连接",IDC_SSH_HISTORY_LABEL,0);
+            add(L"BUTTON",L"成功后保存连接",IDC_SSH_SAVE,BS_AUTOCHECKBOX|WS_TABSTOP);
+            add(L"BUTTON",L"记住密码",IDC_SSH_REMEMBER_PASSWORD,BS_AUTOCHECKBOX|WS_TABSTOP);
+            add(L"STATIC",L"密码仅在勾选后保存到当前 Windows 用户凭据",IDC_SSH_CREDENTIAL_NOTE,0);
         }
         self->ConfigureConnectionDialog(dialog);
         CenterOnOwner(dialog, self->window_);
@@ -3752,7 +3759,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         AppendMenuW(menu, MF_STRING, IdSharedAutoPort, L"恢复自动发现 7000–7015");
         POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         if (point.x == -1) { RECT rect{}; GetWindowRect(GetDlgItem(dialog, IDC_SERIAL_REFRESH), &rect); point = {rect.left, rect.bottom}; }
-        const UINT choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, dialog, nullptr);
+        const UINT choice = UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,point.x,point.y,dialog,UiFieldStyle{&self->darkMode_,self->uiFont_,Ui::Dpi});
         DestroyMenu(menu);
         if (choice) PostMessageW(dialog, WM_COMMAND, choice, 0);
         return TRUE;
@@ -3767,6 +3774,16 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             SetDlgItemTextW(dialog,IDC_USER,wide(row["username"].get<std::string>()).c_str());
             SetDlgItemTextW(dialog,IDC_PORT,std::to_wstring(row["port"].get<unsigned>()).c_str());
             SetDlgItemTextW(dialog,IDC_PASSWORD,L"");
+            std::wstring password;
+            DWORD credentialError = ERROR_SUCCESS;
+            const auto target = SshCredentialTarget(wide(row["host"].get<std::string>()), row["port"].get<unsigned>(), wide(row["username"].get<std::string>()));
+            const auto result = ReadSshCredential(target, password, credentialError);
+            self->loadedSshCredentialTarget_ = result == SshCredentialResult::Loaded ? target : L"";
+            CheckDlgButton(dialog,IDC_SSH_REMEMBER_PASSWORD,result == SshCredentialResult::Loaded ? BST_CHECKED : BST_UNCHECKED);
+            if (result == SshCredentialResult::Loaded) SetDlgItemTextW(dialog,IDC_PASSWORD,password.c_str());
+            ClearSshSecret(password);
+            SetDlgItemTextW(dialog,IDC_DIALOG_ERROR,result == SshCredentialResult::Error ?
+                (L"无法读取已存密码，请手动输入（" + std::to_wstring(credentialError) + L"）").c_str() : L"");
             CheckDlgButton(dialog,IDC_SSH_SAVE,BST_CHECKED);
             SetDlgItemTextW(dialog,IDC_PORT_LABEL,L"SSH 端口");
             self->initializingConnectionDialog_=false;self->RefreshConnectionHostIdentity(dialog);
@@ -3778,8 +3795,23 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         if(selected>0 && static_cast<size_t>(selected)<=self->sshHistory_.size()) {
             HMENU menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING,1,L"删除此历史连接");POINT point{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};
             if(point.x==-1)GetCursorPos(&point);
-            const auto choice=TrackPopupMenu(menu,TPM_RETURNCMD,point.x,point.y,0,dialog,nullptr);DestroyMenu(menu);
-            if(choice) {self->sshHistory_.erase(self->sshHistory_.begin()+selected-1);SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_DELETESTRING,selected,0);SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_SETCURSEL,0,0);self->SaveUiState();}
+            const auto choice=UiPopupMenu::Track(menu,TPM_RETURNCMD,point.x,point.y,dialog,UiFieldStyle{&self->darkMode_,self->uiFont_,Ui::Dpi});DestroyMenu(menu);
+            if(choice) {
+                const auto& row=self->sshHistory_[selected-1];
+                const auto wide=[](const std::string& v) {return MultiByteToWide(reinterpret_cast<const uint8_t*>(v.data()),v.size(),CP_UTF8);};
+                DWORD credentialError=ERROR_SUCCESS;
+                if (!ForgetSshCredential(SshCredentialTarget(wide(row["host"].get<std::string>()),row["port"].get<unsigned>(),wide(row["username"].get<std::string>())),credentialError)) {
+                    SetDlgItemTextW(dialog,IDC_DIALOG_ERROR,L"无法清除该连接的已存密码，请稍后重试");
+                    return TRUE;
+                }
+                self->sshHistory_.erase(self->sshHistory_.begin()+selected-1);
+                SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_DELETESTRING,selected,0);
+                SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_SETCURSEL,0,0);
+                self->loadedSshCredentialTarget_.clear();
+                SetDlgItemTextW(dialog,IDC_PASSWORD,L"");
+                CheckDlgButton(dialog,IDC_SSH_REMEMBER_PASSWORD,BST_UNCHECKED);
+                self->SaveUiState();
+            }
         }
         return TRUE;
     }
@@ -3794,6 +3826,17 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         return TRUE;
     }
     if (message == WM_COMMAND) {
+        if (self->pendingMode_ == 0 && HIWORD(wParam) == EN_CHANGE &&
+            (LOWORD(wParam) == IDC_HOST || LOWORD(wParam) == IDC_USER || LOWORD(wParam) == IDC_PORT) &&
+            !self->initializingConnectionDialog_ && !self->loadedSshCredentialTarget_.empty()) {
+            const auto target = SshCredentialTarget(ControlText(GetDlgItem(dialog,IDC_HOST)),
+                ParsePositive(ControlText(GetDlgItem(dialog,IDC_PORT))),ControlText(GetDlgItem(dialog,IDC_USER)));
+            if (target != self->loadedSshCredentialTarget_) {
+                self->loadedSshCredentialTarget_.clear();
+                SetDlgItemTextW(dialog,IDC_PASSWORD,L"");
+                CheckDlgButton(dialog,IDC_SSH_REMEMBER_PASSWORD,BST_UNCHECKED);
+            }
+        }
         if(self->pendingMode_==0 && LOWORD(wParam)==IDC_SSH_HISTORY && HIWORD(wParam)==CBN_SELENDOK) {
             const auto i=SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_GETCURSEL,0,0);
             if(i>0)PostMessageW(dialog,WM_APP+210,i-1,0);return TRUE;
@@ -3922,13 +3965,24 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         buttonY = 152;
         dialogHeight = 178;
     } else if (ssh) {
-        MoveDialogItemDlu(dialog,IDC_SSH_HISTORY,margin,80,124,114);
-        MoveDialogItemDlu(dialog,IDC_SSH_SAVE,144,80,82,14);
-        MoveDialogItemDlu(dialog, IDC_HOST_IDENTITY, margin, 102, 120, 14);
-        MoveDialogItemDlu(dialog, IDC_HOST_REVERIFY, 144, 98, 82, 18);
-        errorY = 120;
-        buttonY = 132;
-        dialogHeight = 158;
+        MoveDialogItemDlu(dialog,IDC_SSH_HISTORY_LABEL,margin,10,fullWidth,10);
+        MoveDialogItemDlu(dialog,IDC_SSH_HISTORY,margin,22,fullWidth,114);
+        MoveDialogItemDlu(dialog,IDC_HOST_LABEL,margin,44,columnWidth,10);
+        MoveDialogItemDlu(dialog,IDC_HOST,margin,56,columnWidth,14);
+        MoveDialogItemDlu(dialog,IDC_PORT_LABEL,rightColumn,44,columnWidth,10);
+        MoveDialogItemDlu(dialog,IDC_PORT,rightColumn,56,columnWidth,14);
+        MoveDialogItemDlu(dialog,IDC_USER_LABEL,margin,78,columnWidth,10);
+        MoveDialogItemDlu(dialog,IDC_USER,margin,90,columnWidth,14);
+        MoveDialogItemDlu(dialog,IDC_PASSWORD_LABEL,rightColumn,78,columnWidth,10);
+        MoveDialogItemDlu(dialog,IDC_PASSWORD,rightColumn,90,columnWidth,14);
+        MoveDialogItemDlu(dialog,IDC_SSH_SAVE,margin,114,112,14);
+        MoveDialogItemDlu(dialog,IDC_SSH_REMEMBER_PASSWORD,rightColumn,114,columnWidth,14);
+        MoveDialogItemDlu(dialog,IDC_SSH_CREDENTIAL_NOTE,margin,134,fullWidth,14);
+        MoveDialogItemDlu(dialog, IDC_HOST_IDENTITY, margin, 156, 120, 14);
+        MoveDialogItemDlu(dialog, IDC_HOST_REVERIFY, 144, 152, 82, 18);
+        errorY = 174;
+        buttonY = 186;
+        dialogHeight = 212;
     } else if (share) {
         errorY = 72;
         buttonY = 84;
@@ -4110,6 +4164,7 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
     pendingPassword_ = ControlText(GetDlgItem(dialog, IDC_PASSWORD));
     DWORD port = ParsePositive(text(IDC_PORT));
     pendingSaveSshHistory_=pendingMode_==0 && IsDlgButtonChecked(dialog,IDC_SSH_SAVE)==BST_CHECKED;
+    pendingRememberSshPassword_=pendingMode_==0 && IsDlgButtonChecked(dialog,IDC_SSH_REMEMBER_PASSWORD)==BST_CHECKED;
     pendingEmployeeNumber_.clear();
     if (pendingHost_.empty() || port == 0 || port > 65535) {
         error = L"主机或端口无效。";
@@ -4186,6 +4241,7 @@ void MainWindow::ConnectFromDialog() {
     session->name = sessionName + (pendingMode_ == 4 ? L" #" + std::to_wstring(session->id) : L"");
     session->host = pendingHost_;
     session->saveSshHistory=pendingMode_==0 && pendingSaveSshHistory_;
+    session->rememberSshPassword=pendingMode_==0 && pendingRememberSshPassword_;
     session->employeeNumber=pendingMode_==0?pendingEmployeeNumber_:L"";
     if (session->mode == 3 && !session->udpRaw)
         session->remoteCom = pendingRemoteSerial_;
@@ -4290,6 +4346,15 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     if (pendingSession_->mode == 1)
         pendingSession_->port = static_cast<std::uint16_t>(apiServer_.Port());
     const std::uint64_t id = pendingSession_->id;
+    std::wstring credentialWarning;
+    if (pendingSession_->mode == 0 && pendingSession_->connection->IsConnected()) {
+        const auto& c = *pendingSession_;
+        DWORD credentialError = ERROR_SUCCESS;
+        const auto target = SshCredentialTarget(c.host, c.port, c.username);
+        const bool saved = c.rememberSshPassword ? SaveSshCredential(target, c.username, c.password, credentialError)
+                                                : ForgetSshCredential(target, credentialError);
+        if (!saved) credentialWarning = L"SSH 已连接；密码保存设置未能更新（" + std::to_wstring(credentialError) + L"）";
+    }
     if(pendingSession_->mode==0 && pendingSession_->saveSshHistory && pendingSession_->connection->IsConnected()) {
         const auto& c=*pendingSession_;
         sshHistory_=RememberSshConnection(sshHistory_,{{"host",WideToMultiByte(c.host,CP_UTF8)},{"port",static_cast<unsigned>(c.port)},{"username",WideToMultiByte(c.username,CP_UTF8)},{"employee",WideToMultiByte(c.employeeNumber,CP_UTF8)},{"lastSuccess",static_cast<std::uint64_t>(time(nullptr))}});
@@ -4324,6 +4389,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
                          : L"本地串口已连接；7000–7015 均不可用，网络服务未启用",
                      activeSession_->port == 0);
     } else AppendStatus(L"已连接：" + activeSession_->name, false);
+    if (!credentialWarning.empty()) AppendStatus(credentialWarning, true);
     if (aiRemoteConnect_) {
         aiRemoteConnect_ = false;
         aiPane_.SelectTarget("session-" + std::to_string(id));
@@ -6400,8 +6466,7 @@ void MainWindow::ShowSftpContextMenu(POINT screenPoint) {
     AppendMenuW(menu, MF_OWNERDRAW | (!available ? MF_GRAYED : 0), IdMenuSftpRefresh, refreshLabel);
 
     SetForegroundWindow(window_);
-    const UINT command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN,
-        screenPoint.x, screenPoint.y, 0, window_, nullptr);
+    const UINT command = UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON|TPM_LEFTALIGN,screenPoint.x,screenPoint.y,window_,UiFieldStyle{&darkMode_,uiFont_,Ui::Dpi});
     DestroyMenu(menu);
     DeleteObject(menuBrush);
     PostMessageW(window_, WM_NULL, 0, 0);
@@ -6459,8 +6524,7 @@ void MainWindow::ShowSftpTransferContextMenu(POINT screenPoint) {
     AppendMenuW(menu, MF_OWNERDRAW | (!anyFinished ? MF_GRAYED : 0),
         IdMenuTransferClearFinished, clearLabel);
     SetForegroundWindow(window_);
-    const UINT command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN,
-        screenPoint.x, screenPoint.y, 0, window_, nullptr);
+    const UINT command = UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON|TPM_LEFTALIGN,screenPoint.x,screenPoint.y,window_,UiFieldStyle{&darkMode_,uiFont_,Ui::Dpi});
     DestroyMenu(menu);
     DeleteObject(menuBrush);
     PostMessageW(window_, WM_NULL, 0, 0);
