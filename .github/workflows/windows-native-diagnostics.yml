@@ -73,15 +73,33 @@ jobs:
         env:
           INSPECT_IMAGES: ${{ inputs.inspect_images }}
         run: |
-          import base64, hashlib, json, os, pathlib
+          import base64, hashlib, json, os, pathlib, sys, zipfile
           root=pathlib.Path('inspection')
           print('INSPECTION_ONLY: cached evidence; a successful extraction is not a passing test')
           for path in sorted(root.rglob('*.json')):
               if path.stat().st_size>8*1024*1024: raise ValueError('Report exceeds bounded inspection size')
               data=json.loads(path.read_text(encoding='utf-8-sig'))
               if not isinstance(data,dict): continue
-              row={key:data[key] for key in ('status','error','failure','cleanup_error','source_commit','scope','cases','checks','macro_observations','retained_cards_after_disconnect') if key in data}
+              if path.name=='dialog-summary.json':
+                  encoded=base64.b64encode(path.read_bytes()).decode('ascii')
+                  for offset in range(0,len(encoded),4096):print('INSPECT_DIALOG_JSON_CHUNK='+encoded[offset:offset+4096])
+                  continue
+              row={key:data[key] for key in ('status','error','failure','cleanup_error','source_commit','archive_sha256','metadata_sha256','build_run_id','previous_version','older_version','scope','cases','checks','macro_observations','retained_cards_after_disconnect') if key in data}
               print('INSPECT_REPORT',path.name,json.dumps(row,ensure_ascii=True)[:20000])
+          for path in sorted(root.rglob('*-traffic.log')):
+              if path.name not in ('baseline-traffic.log','candidate-traffic.log') or path.stat().st_size>65536: continue
+              print('INSPECT_DIALOG_TRAFFIC',path.name,base64.b64encode(path.read_bytes()).decode('ascii'))
+          archives=list(root.rglob('SerialCtl-V*-Win7-x64.zip'))
+          if archives:
+              if len(archives)!=1:raise ValueError('Ambiguous production archive')
+              sys.path.insert(0,'tools')
+              import new_update_feed as feed
+              descriptor=feed.describe_archive(archives[0])
+              encoded=base64.b64encode(json.dumps(descriptor,ensure_ascii=False,separators=(',',':')).encode()).decode()
+              for offset in range(0,len(encoded),2048):print('SERIALCTL_UPDATE_PAYLOAD_CHUNK='+encoded[offset:offset+2048])
+              with zipfile.ZipFile(archives[0]) as bundle:
+                  manifest=json.loads(bundle.read('MANIFEST.json').decode('utf-8-sig'))
+              print('INSPECT_PACKAGE_SOURCE',json.dumps(manifest['source']))
           names=[name.strip() for name in os.environ.get('INSPECT_IMAGES','').split(',') if name.strip()]
           if len(names)>3 or len(names)!=len(set(names)): raise ValueError('Select at most three distinct PNG basenames')
           total=0

@@ -1012,6 +1012,7 @@ struct AiDeviceTestAccess {
         processRow->id=900;processRow->mode=4;processRow->name=L"natural exit";
         processRow->connection=exited;processRow->logger=std::make_shared<SessionLogger>();
         main.sessions_.push_back(std::move(processRow));main.SwitchSession(0);
+        main.sessionService_.Register({{"id","session-900"},{"kind","cmd"}},exited);
         main.RunNotebook({L"exit",L"must-not-follow-natural-exit"});
         Require(main.macro_.Accepted()==1,"Natural-exit regression accepts only its first step");
         exited->connected=false;main.PostStatus(900,L"CMD 已结束",false);
