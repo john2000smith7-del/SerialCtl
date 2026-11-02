@@ -5012,6 +5012,9 @@ void MainWindow::SendNextCommandStep() {
 }
 
 void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail) {
+    if (end != CommandSequenceEnd::Submitted) {
+        lastNotebookPlan_.clear(); lastNotebookSession_=0; lastNotebookAt_=0;
+    }
     if (end != CommandSequenceEnd::Submitted && commandSendPermit_) commandSendPermit_->store(false);
     commandSendPermit_.reset(); notebookRepeating_ = false; notebookRound_ = 0;
     const auto completion = macro_.Stop(end, detail);
