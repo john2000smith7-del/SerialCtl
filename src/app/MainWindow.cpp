@@ -2778,8 +2778,8 @@ void MainWindow::CreateControls() {
     sftpUploadButton_ = CreateChild(L"BUTTON", L"上传", BS_OWNERDRAW, IdSftpUpload);
     sftpDownloadButton_ = CreateChild(L"BUTTON", L"下载", BS_OWNERDRAW, IdSftpDownload);
     UiSetButtonGlyph(sftpUpButton_, UiGlyph::ChevronUp, L"上级目录");
-    UiSetButtonGlyph(sftpUploadButton_, UiGlyph::Import, L"上传文件");
-    UiSetButtonGlyph(sftpDownloadButton_, UiGlyph::Export, L"下载文件");
+    UiSetButtonGlyph(sftpUploadButton_, UiGlyph::Export, L"上传文件");
+    UiSetButtonGlyph(sftpDownloadButton_, UiGlyph::Import, L"下载文件");
     UiSetButtonGlyph(sftpClearTransfersButton_, UiGlyph::Trash, L"清理已结束记录");
     RefreshSftpTransferList();
     ShowSftpPanel(false);
