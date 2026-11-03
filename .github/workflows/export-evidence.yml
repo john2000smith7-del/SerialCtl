@@ -64,102 +64,103 @@ jobs:
           print('Verified original SHA-256:', digest)
           print('Original files, screenshots and test records were not modified.')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
+          retention-days: 14
           name: SerialCtl-evidence-index
           path: index/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: SerialCtl-evidence-part-0
           path: part-0/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-1/*') != '' }}
         with:
           name: SerialCtl-evidence-part-1
           path: part-1/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-2/*') != '' }}
         with:
           name: SerialCtl-evidence-part-2
           path: part-2/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-3/*') != '' }}
         with:
           name: SerialCtl-evidence-part-3
           path: part-3/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-4/*') != '' }}
         with:
           name: SerialCtl-evidence-part-4
           path: part-4/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-5/*') != '' }}
         with:
           name: SerialCtl-evidence-part-5
           path: part-5/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-6/*') != '' }}
         with:
           name: SerialCtl-evidence-part-6
           path: part-6/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-7/*') != '' }}
         with:
           name: SerialCtl-evidence-part-7
           path: part-7/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-8/*') != '' }}
         with:
           name: SerialCtl-evidence-part-8
           path: part-8/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-9/*') != '' }}
         with:
           name: SerialCtl-evidence-part-9
           path: part-9/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-10/*') != '' }}
         with:
           name: SerialCtl-evidence-part-10
           path: part-10/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
-      - uses: actions/upload-artifact@v4
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ hashFiles('part-11/*') != '' }}
         with:
           name: SerialCtl-evidence-part-11
           path: part-11/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14

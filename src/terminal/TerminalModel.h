@@ -81,6 +81,7 @@ public:
     Anchor CaptureAnchor(size_t line, int column = 0) const;
     std::pair<size_t, int> LocateAnchor(Anchor) const;
     TerminalModel PreviewInput(const std::wstring &text, size_t cursor) const;
+    void BeginConnection(); // Preserve scrollback, reset parser/modes and start a fresh live screen.
     void Reset();
     void Clear();
     void ClearScrollback();

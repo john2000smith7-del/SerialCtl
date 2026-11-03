@@ -13,10 +13,12 @@ public:
     ~CancellableIo() { if (event_) CloseHandle(event_); }
     CancellableIo(const CancellableIo&) = delete;
     CancellableIo& operator=(const CancellableIo&) = delete;
-    bool Transfer(HANDLE file, void* data, DWORD size, bool write, HANDLE cancel, DWORD& count) {
+    bool Transfer(HANDLE file, void* data, DWORD size, bool write, HANDLE cancel, DWORD& count,
+                  HANDLE operationCancel=nullptr,DWORD timeout=INFINITE) {
         count = 0;
         if (!event_ || !cancel) { SetLastError(ERROR_INVALID_HANDLE); return false; }
-        if (WaitForSingleObject(cancel, 0) != WAIT_TIMEOUT) {
+        if (WaitForSingleObject(cancel, 0) != WAIT_TIMEOUT ||
+            (operationCancel&&WaitForSingleObject(operationCancel,0)!=WAIT_TIMEOUT)) {
             SetLastError(ERROR_OPERATION_ABORTED); return false;
         }
         ResetEvent(event_);
@@ -26,12 +28,12 @@ public:
                                      : ReadFile(file, data, size, &count, &io);
         if (immediate) return true;
         if (GetLastError() != ERROR_IO_PENDING) return false;
-        HANDLE waits[]{cancel, event_};
-        const DWORD signal = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
+        HANDLE waits[]{cancel, event_,operationCancel};
+        const DWORD signal = WaitForMultipleObjects(operationCancel?3:2, waits, FALSE, timeout);
         if (signal != WAIT_OBJECT_0 + 1) {
             CancelIoEx(file, &io);
             GetOverlappedResult(file, &io, &count, TRUE);
-            SetLastError(ERROR_OPERATION_ABORTED);
+            SetLastError(signal==WAIT_TIMEOUT?ERROR_TIMEOUT:ERROR_OPERATION_ABORTED);
             return false;
         }
         return GetOverlappedResult(file, &io, &count, FALSE) != FALSE;

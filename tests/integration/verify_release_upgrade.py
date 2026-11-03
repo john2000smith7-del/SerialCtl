@@ -17,6 +17,17 @@ import threading
 import time
 import uuid
 import zipfile
+import re
+
+
+def archive_version(path):
+    with zipfile.ZipFile(path) as archive:
+        lines = archive.read('VERSION').decode('utf-8-sig').splitlines()
+    require(len(lines) == 2 and lines[0].startswith('PROJECT_VERSION='), 'Invalid client VERSION')
+    version = lines[0].split('=', 1)[1]
+    require(re.fullmatch(r'V(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version), 'Invalid client version')
+    require(lines[1] == 'CPP_VERSION=' + version, 'Client version entries disagree')
+    return version
 
 
 def require(value,message):
@@ -25,6 +36,7 @@ def require(value,message):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for arg in ('candidate','metadata','previous','older','output'):p.add_argument('--'+arg,type=Path,required=True)
+    p.add_argument('--retained-card',action='store_true',help='Forward fixture: delay metadata until the current client has disconnected a real CMD but retained its card')
     args=p.parse_args()
     require(os.name=='nt' and os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted','Requires isolated hosted Windows')
     args.output.mkdir(parents=True,exist_ok=False)
@@ -35,6 +47,8 @@ def main():
     user.GetClassNameW.argtypes=(w.HWND,w.LPWSTR,c.c_int)
     user.GetWindowTextW.argtypes=(w.HWND,w.LPWSTR,c.c_int)
     user.IsWindowVisible.argtypes=(w.HWND,)
+    user.IsWindowEnabled.argtypes=(w.HWND,)
+    user.SendMessageW.argtypes=(w.HWND,w.UINT,c.c_size_t,c.c_ssize_t);user.SendMessageW.restype=c.c_ssize_t
     user.GetDlgItem.argtypes,user.GetDlgItem.restype=(w.HWND,c.c_int),w.HWND
     user.GetWindowRect.argtypes=(w.HWND,c.c_void_p)
     user.PostMessageW.argtypes=(w.HWND,w.UINT,c.c_size_t,c.c_ssize_t)
@@ -67,21 +81,32 @@ def main():
     buf=c.create_unicode_buffer(260);require(shell.SHGetFolderPathW(None,0x1A,None,0,buf)==0,'No actual profile directory')
     config=Path(buf.value)/'SerialCtl';backup=config.with_name('SerialCtl.upgrade-backup-'+uuid.uuid4().hex)
     moved=False;created=False;server=None;worker=None;process=None
-    report={'status':'RUNNING','candidateSha256':hashlib.sha256(args.candidate.read_bytes()).hexdigest(),'cases':[],'scope':'Real released Windows executables; original production signature; loopback HTTP; actual confirmation, install and healthy restart; no physical devices or Win7 claim'}
+    previous_version, older_version = archive_version(args.previous), archive_version(args.older)
+    candidate_version = archive_version(args.candidate)
+    version_key = lambda value: tuple(map(int, value[1:].split('.')))
+    require(version_key(older_version) < version_key(previous_version) < version_key(candidate_version),
+            'Require distinct older and previous clients and a genuinely newer candidate')
+    report={'status':'RUNNING','candidateSha256':hashlib.sha256(args.candidate.read_bytes()).hexdigest(),
+            'metadataSha256':hashlib.sha256(args.metadata.read_bytes()).hexdigest(),
+            'previousVersion':previous_version,'olderVersion':older_version,'cases':[],
+            'scope':('Current candidate and previous release to an isolated next-version fixture; original production signature; retained disconnected card; no formal future release' if args.retained_card else 'Real released Windows executables; original production signature; loopback HTTP; actual confirmation, install and healthy restart; no physical devices or Win7 claim')}
     with zipfile.ZipFile(args.candidate) as z:
         expected_exe=hashlib.sha256(z.read('serialctl.exe')).hexdigest()
         expected_version=z.read('VERSION')
-    metadata=json.loads(args.metadata.read_text());payload=json.loads(metadata['payload'])
+    metadata=json.loads(args.metadata.read_text(encoding='utf-8-sig'));payload=json.loads(metadata['payload'])
     require(payload['archive']['sha256']==report['candidateSha256'],'JSON does not describe exact candidate ZIP')
     feed=args.output/'feed';feed.mkdir();shutil.copyfile(args.candidate,feed/args.candidate.name);shutil.copyfile(args.metadata,feed/'update.json')
     tampered=dict(metadata);tampered['signature']=('0' if metadata['signature'][0]!='0' else '1')+metadata['signature'][1:]
     (feed/'invalid.json').write_text(json.dumps(tampered),encoding='utf-8')
     requests=[]
     corrupt_archive=[False]
+    metadata_ready=threading.Event();metadata_ready.set()
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self,*a,**k):super().__init__(*a,directory=str(feed),**k)
         def do_GET(self):
             requests.append(self.path)
+            if self.path in ('/update.json','/invalid.json'):
+                require(metadata_ready.wait(30),'Forward card setup did not release metadata')
             if corrupt_archive[0] and self.path=='/'+args.candidate.name:
                 self.send_response(200);self.send_header('Content-Length',str(args.candidate.stat().st_size));self.end_headers()
                 with args.candidate.open('rb') as source:
@@ -103,7 +128,7 @@ def main():
         (config/'command-notebook.txt').write_text('echo KEEP_UPGRADE_NOTEBOOK\r\n',encoding='utf-8')
         note=(config/'command-notebook.txt').read_bytes()
         server=ThreadingHTTPServer(('127.0.0.1',0),Handler);worker=threading.Thread(target=server.serve_forever);worker.start()
-        for label,archive in (('V2.0.17',args.previous),('V2.0.6',args.older)):
+        for label,archive in ((previous_version,args.previous),(older_version,args.older)):
             for mode in ('invalid-signature','corrupt-archive','valid'):
                 invalid=mode=='invalid-signature'
                 corrupt_archive[0]=mode=='corrupt-archive'
@@ -115,7 +140,23 @@ def main():
                 url=f'http://127.0.0.1:{server.server_port}/'+('invalid.json' if invalid else 'update.json')
                 ini=('[update]\r\nurl='+url+'\r\n').encode('ascii');(install/'update.ini').write_bytes(ini)
                 original=hashlib.sha256((install/'serialctl.exe').read_bytes()).hexdigest()
+                retain=args.retained_card and label==previous_version
+                if retain:metadata_ready.clear()
+                else:metadata_ready.set()
                 start=len(requests);process=subprocess.Popen([str(install/'serialctl.exe')],cwd=install)
+                if retain:
+                    window=wait(lambda:next(iter(windows('SerialCtlWin7NativeWindowV3')),None),20)
+                    cmd=user.GetDlgItem(window,300);wait(lambda:user.IsWindowEnabled(cmd),10);click(cmd)
+                    listing=user.GetDlgItem(window,106)
+                    wait(lambda:user.SendMessageW(listing,0x18b,0,0)>0,20)
+                    disconnect=user.GetDlgItem(window,105);wait(lambda:user.IsWindowEnabled(disconnect),20);click(disconnect)
+                    def stopped_card():
+                        text=c.create_unicode_buffer(80);user.GetWindowTextW(disconnect,text,len(text))
+                        return user.IsWindowEnabled(disconnect) and text.value=='关闭卡片'
+                    wait(stopped_card,20)
+                    require(user.SendMessageW(listing,0x18b,0,0)>0,'Disconnected card disappeared before forward update')
+                    report['retainedDisconnectedCardBeforeUpdate']=True
+                    metadata_ready.set()
                 wait(lambda:len(requests)>start,20)
                 if invalid:
                     time.sleep(2)
@@ -166,6 +207,7 @@ def main():
     except Exception as exc:
         report['status']='FAIL';report['error']=str(exc);raise
     finally:
+        metadata_ready.set()
         try:shutdown_apps()
         except Exception:pass
         if process and process.poll() is None:process.terminate();process.wait(timeout=10)

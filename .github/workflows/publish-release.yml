@@ -1,97 +1,114 @@
 name: Publish verified release
 on:
-  push:
-    branches: ["release/**"]
-    paths: [release-request.json]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Verified version, e.g. V1.0.3'
+        description: Canonical NEW product version, greater than latest release
         required: true
         type: string
       release_tag:
-        description: 'Optional revision tag, e.g. v2.0.2-r2; product version remains unchanged'
+        description: Optional tag, must be v plus the new product version
         required: false
         type: string
       archive_sha256:
-        description: 'SHA-256 of the verified archive'
+        description: SHA-256 of the exact verified archive
         required: true
         type: string
       source_commit:
-        description: 'Full commit SHA verified by the Windows build'
+        description: Full current main commit SHA
         required: true
         type: string
       build_run_id:
-        description: Successful Windows build run on main
+        description: Completely successful exact-main Windows build
+        required: true
+        type: string
+      desktop_run_id:
+        description: Successful exact-main desktop interaction run with release receipt
+        required: true
+        type: string
+      upgrade_run_id:
+        description: Successful real previous and older client upgrade run with matching JSON receipt
         required: true
         type: string
       metadata_base64:
-        description: 'Public signed update.json, Base64 encoded; never a private key'
+        description: Public original-key signed update.json bytes, never a private key
         required: true
         type: string
 permissions:
-  contents: write
+  contents: read
   actions: read
+concurrency:
+  group: serialctl-formal-publish
+  cancel-in-progress: false
 jobs:
   publish:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     steps:
-      - uses: actions/checkout@v4
-      - name: Read the public signed release request
-        id: request
-        if: github.event_name == 'push'
-        run: |
-          python - <<'PY'
-          import json, os, pathlib
-          raw = pathlib.Path('release-request.json').read_bytes()
-          if len(raw) > 100000:
-              raise ValueError('Release request exceeds its limit')
-          data = json.loads(raw)
-          fields = {'version', 'release_tag', 'archive_sha256', 'source_commit', 'build_run_id', 'metadata_base64'}
-          if set(data) != fields or any(not isinstance(v, str) or '\n' in v or '\r' in v for v in data.values()):
-              raise ValueError('Invalid release request fields')
-          # Public signature/metadata only. The existing archive verifier below
-          # authenticates the exact ZIP; no signing key is sent to this runner.
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              for name in sorted(fields):
-                  output.write(name + '=' + data[name] + '\n')
-          PY
-      - name: Verify the previously built archive and publish
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-release-desktop-receipt
+          path: evidence/desktop
+          run-id: ${{ inputs.desktop_run_id }}
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-release-upgrade-receipt
+          path: evidence/upgrade
+          run-id: ${{ inputs.upgrade_run_id }}
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-Win7-portable
+          path: candidate
+          run-id: ${{ inputs.build_run_id }}
+      - name: Bind all successful Windows evidence before publishing exactly two files
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version || steps.request.outputs.version }}
-          RELEASE_TAG: ${{ inputs.release_tag || steps.request.outputs.release_tag }}
-          RELEASE_SHA256: ${{ inputs.archive_sha256 || steps.request.outputs.archive_sha256 }}
-          RELEASE_COMMIT: ${{ inputs.source_commit || steps.request.outputs.source_commit }}
-          RELEASE_BUILD_RUN: ${{ inputs.build_run_id || steps.request.outputs.build_run_id }}
-          RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 || steps.request.outputs.metadata_base64 }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_SHA256: ${{ inputs.archive_sha256 }}
+          RELEASE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_BUILD_RUN: ${{ inputs.build_run_id }}
+          RELEASE_DESKTOP_RUN: ${{ inputs.desktop_run_id }}
+          RELEASE_UPGRADE_RUN: ${{ inputs.upgrade_run_id }}
+          RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 }}
+        shell: bash
         run: |
+          set -euo pipefail
           [[ "$RELEASE_VERSION" =~ ^V[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          RELEASE_BASE_TAG="v${RELEASE_VERSION#V}"
-          RELEASE_TAG="${RELEASE_TAG:-$RELEASE_BASE_TAG}"
-          [[ "$RELEASE_TAG" == "$RELEASE_BASE_TAG" || ( "$RELEASE_TAG" == "$RELEASE_BASE_TAG"-r* && "${RELEASE_TAG#"$RELEASE_BASE_TAG"-r}" =~ ^[1-9][0-9]*$ ) ]]
+          RELEASE_TAG="${RELEASE_TAG:-v${RELEASE_VERSION#V}}"
+          [[ "$RELEASE_TAG" == "v${RELEASE_VERSION#V}" ]]
           [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$RELEASE_BUILD_RUN" =~ ^[0-9]+$ ]]
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_BUILD_RUN" > /tmp/serialctl-build-run.json
-          jq -e --arg sha "$RELEASE_COMMIT" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .name == "Windows Win7 release build"' /tmp/serialctl-build-run.json
-          git fetch origin "$RELEASE_COMMIT"
-          git checkout --detach "$RELEASE_COMMIT"
-          grep -Fxq "PROJECT_VERSION=$RELEASE_VERSION" VERSION
-          grep -Fxq "CPP_VERSION=$RELEASE_VERSION" VERSION
-          mkdir -p bin
-          gh run download "$RELEASE_BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name SerialCtl-Win7-portable --dir bin
-          RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
-          printf '%s  %s\n' "$RELEASE_SHA256" "bin/$RELEASE_ARCHIVE" | sha256sum --check
-          python - <<'PY'
+          for run_id in "$RELEASE_BUILD_RUN" "$RELEASE_DESKTOP_RUN" "$RELEASE_UPGRADE_RUN"; do
+            [[ "$run_id" =~ ^[0-9]+$ ]]
+          done
+          python - <<'PYCODE'
           import base64, os, pathlib
           encoded = os.environ['RELEASE_METADATA_BASE64']
           if len(encoded) > 90000:
               raise ValueError('Signed metadata exceeds its envelope limit')
           data = base64.b64decode(encoded, validate=True)
           if not 0 < len(data) <= 65536:
-              raise ValueError('Invalid metadata size')
+              raise ValueError('Invalid signed metadata size')
           pathlib.Path('/tmp/update.json').write_bytes(data)
-          PY
-          python tools/new_update_feed.py --verify-archive "bin/$RELEASE_ARCHIVE" --metadata /tmp/update.json
-          gh release create "$RELEASE_TAG" "bin/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION ($RELEASE_TAG) — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"
+          PYCODE
+          python tools/release_gate.py check --version "$RELEASE_VERSION" --source-commit "$RELEASE_COMMIT" --archive-sha256 "$RELEASE_SHA256" --build-run-id "$RELEASE_BUILD_RUN" --desktop-run-id "$RELEASE_DESKTOP_RUN" --upgrade-run-id "$RELEASE_UPGRADE_RUN" --metadata /tmp/update.json --evidence-dir evidence
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_COMMIT" ]]
+          grep -Fxq "PROJECT_VERSION=$RELEASE_VERSION" VERSION
+          grep -Fxq "CPP_VERSION=$RELEASE_VERSION" VERSION
+          RELEASE_ARCHIVE="SerialCtl-${RELEASE_VERSION}-Win7-x64.zip"
+          printf '%s  %s\n' "$RELEASE_SHA256" "candidate/$RELEASE_ARCHIVE" | sha256sum --check
+          python tools/new_update_feed.py --verify-archive "candidate/$RELEASE_ARCHIVE" --metadata /tmp/update.json
+          # Recheck the head immediately before the irreversible release action.
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" == "$RELEASE_COMMIT" ]]
+          gh release create "$RELEASE_TAG" "candidate/$RELEASE_ARCHIVE" /tmp/update.json --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" --latest --title "SerialCtl $RELEASE_VERSION — Windows 7 SP1 x64" --notes-file "docs/package/RELEASE-NOTES-${RELEASE_VERSION}.md"

@@ -1,6 +1,7 @@
 #include "SerialConnection.h"
 
 namespace serialctl {
+SerialConnection::~SerialConnection(){Stop();if(transferCancel_)CloseHandle(transferCancel_);}
 
 SerialConnection::SerialConnection(SerialSettings settings) : settings_(std::move(settings)) {}
 

@@ -37,6 +37,7 @@ class AiPane {
     bool Busy() const {
         return busy_ || client_.Running();
     }
+    bool TaskRunning() const {return busy_;}
     void RefreshTargets();
     void SelectTarget(const std::string &id);
     const std::string& AssociatedTarget() const { return busy_ ? turnTarget_ : target_; }
@@ -77,6 +78,7 @@ class AiPane {
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK TranscriptProc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK InputProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
+    static LRESULT CALLBACK SendButtonProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static INT_PTR CALLBACK ConnectProc(HWND, UINT, WPARAM, LPARAM);
     static INT_PTR CALLBACK WorkspaceProc(HWND, UINT, WPARAM, LPARAM);
     static INT_PTR CALLBACK ValueProc(HWND, UINT, WPARAM, LPARAM);
@@ -136,7 +138,8 @@ class AiPane {
     std::map<std::string, std::wstring> groupStates_;
     std::map<std::string, ULONGLONG> groupDurations_;
     std::vector<std::wstring> targetLabels_;
-    std::wstring compactTargetLabel_, targetTooltip_, workspaceTooltip_, modelTooltip_;
+    std::wstring compactTargetLabel_, targetTooltip_, workspaceTooltip_, modelTooltip_, sendTooltip_;
+    int sendGesture_ = -1;
     Json targetSnapshot_;
     HWND tips_ = nullptr;
     void UpdateTargetLabel();

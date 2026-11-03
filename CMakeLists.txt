@@ -117,6 +117,7 @@ set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/power"
     "${SERIALCTL_SOURCE_DIR}/network"
     "${SERIALCTL_SOURCE_DIR}/update"
+    "${SERIALCTL_SOURCE_DIR}/xfer"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json"
 )
 
@@ -164,6 +165,9 @@ add_executable(serialctl WIN32
     src/app/App.cpp
     src/app/CommandDocument.cpp
     src/app/CommandNotebook.cpp
+    src/app/XferPane.cpp
+    src/xfer/TransferController.cpp
+    src/xfer/TransferProtocol.cpp
     src/app/MainWindow.cpp
     src/app/TerminalViewport.cpp
     src/app/CommandMacroController.cpp
@@ -257,7 +261,26 @@ if(BUILD_TESTING)
     set_target_properties(ssh_lifecycle_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ssh-fixture")
     add_dependencies(ssh_lifecycle_test ssh_lifecycle_fake)
     add_test(NAME ssh_lifecycle COMMAND ssh_lifecycle_test)
-    set_tests_properties(ssh_lifecycle PROPERTIES TIMEOUT 45)
+    add_executable(ssh_credentials_test tests/integration/SshCredentialsTest.cpp)
+    serialctl_configure_native_target(ssh_credentials_test CONSOLE)
+    target_include_directories(ssh_credentials_test PRIVATE src/app src/connections third_party/json)
+    target_link_libraries(ssh_credentials_test PRIVATE advapi32)
+    add_test(NAME ssh_credentials COMMAND ssh_credentials_test)
+    add_executable(transfer_protocol_test tests/unit/TransferProtocolTest.cpp src/xfer/TransferProtocol.cpp)
+    serialctl_configure_native_target(transfer_protocol_test CONSOLE)
+    target_include_directories(transfer_protocol_test PRIVATE src/xfer)
+    add_test(NAME transfer_protocol COMMAND transfer_protocol_test)
+    set_tests_properties(transfer_protocol PROPERTIES TIMEOUT 60)
+    add_executable(boot_interrupt_test tests/unit/BootInterruptTest.cpp)
+    serialctl_configure_native_target(boot_interrupt_test CONSOLE)
+    add_test(NAME boot_interrupt COMMAND boot_interrupt_test)
+    add_executable(queued_transfer_test tests/integration/QueuedTransferTest.cpp src/connections/QueuedConnection.cpp
+        src/connections/SerialConnection.cpp src/connections/SerialDevice.cpp)
+    serialctl_configure_native_target(queued_transfer_test CONSOLE)
+    add_test(NAME queued_transfer COMMAND queued_transfer_test)
+    set_tests_properties(queued_transfer PROPERTIES TIMEOUT 15)
+    add_test(NAME ssh_lifecycle_delayed_start COMMAND ssh_lifecycle_test --delay-resize-start)
+    set_tests_properties(ssh_lifecycle ssh_lifecycle_delayed_start PROPERTIES TIMEOUT 45)
     add_executable(tool_presentation_test tests/unit/ToolPresentationTest.cpp)
     serialctl_configure_native_target(tool_presentation_test CONSOLE)
     add_test(NAME tool_presentation COMMAND tool_presentation_test)
@@ -353,6 +376,11 @@ if(BUILD_TESTING)
     target_link_libraries(ui_combo_paint_test PRIVATE gdiplus gdi32 user32 comctl32)
     add_test(NAME ui_combo_paint COMMAND ui_combo_paint_test)
     set_tests_properties(ui_combo_paint PROPERTIES TIMEOUT 60)
+    add_executable(ui_popup_menu_test tests/integration/UiPopupMenuTest.cpp)
+    serialctl_configure_native_target(ui_popup_menu_test CONSOLE)
+    target_link_libraries(ui_popup_menu_test PRIVATE ole32 msimg32 gdiplus gdi32 user32 comctl32)
+    add_test(NAME ui_popup_menu COMMAND ui_popup_menu_test)
+    set_tests_properties(ui_popup_menu PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
     add_executable(update_client_test tests/integration/UpdateClientTest.cpp
         src/update/UpdateClient.cpp src/update/UpdateManifest.cpp src/update/UpdateArchive.cpp src/update/UpdateInflate.cpp)
     serialctl_configure_native_target(update_client_test CONSOLE)
@@ -391,6 +419,16 @@ if(BUILD_TESTING)
         src/network/GatewayClient.cpp src/network/SessionService.cpp
         src/connections/QueuedConnection.cpp src/connections/SharedSerialConnection.cpp
         src/connections/NetworkConnect.cpp src/connections/ChildProcess.cpp)
+    add_executable(transfer_controller_test tests/integration/TransferControllerTest.cpp
+        src/xfer/TransferController.cpp src/xfer/TransferProtocol.cpp ${GATEWAY_TEST_SOURCES})
+    serialctl_configure_native_target(transfer_controller_test CONSOLE)
+    target_link_libraries(transfer_controller_test PRIVATE ws2_32 advapi32)
+    add_test(NAME transfer_controller COMMAND transfer_controller_test)
+    set_tests_properties(transfer_controller PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+    add_executable(xfer_gateway_fixture tests/integration/XferGatewayFixture.cpp
+        src/xfer/TransferProtocol.cpp ${GATEWAY_TEST_SOURCES})
+    serialctl_configure_native_target(xfer_gateway_fixture CONSOLE)
+    target_link_libraries(xfer_gateway_fixture PRIVATE ws2_32 advapi32)
     add_executable(api_server_test tests/integration/ApiServerTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(api_server_test CONSOLE)
     target_link_libraries(api_server_test PRIVATE ws2_32 advapi32)

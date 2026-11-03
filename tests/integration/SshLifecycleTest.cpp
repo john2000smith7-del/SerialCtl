@@ -7,7 +7,9 @@
 #include <filesystem>
 #include <future>
 #include <iostream>
+#include <string>
 #include <tlhelp32.h>
+#include <utility>
 using namespace serialctl;
 using namespace std::chrono_literals;
 void Require(bool ok, const char* why) { if (!ok) throw std::runtime_error(why); }
@@ -17,8 +19,32 @@ DWORD Threads() {
     if (Thread32First(snapshot, &entry)) do { if (entry.th32OwnerProcessID == GetCurrentProcessId()) ++count; } while (Thread32Next(snapshot, &entry));
     CloseHandle(snapshot); return count;
 }
-int main() {
+void VerifyKeepaliveConfiguration() {
+    HKEY sessions=nullptr;
+    Require(RegOpenKeyExW(HKEY_CURRENT_USER,L"Software\\SimonTatham\\PuTTY\\Sessions",0,KEY_READ,&sessions)==ERROR_SUCCESS,"SSH temporary session registry exists");
+    struct CloseKey {HKEY key;~CloseKey(){RegCloseKey(key);}} close{sessions};
+    const auto prefix=L"SerialCtl-"+std::to_wstring(GetCurrentProcessId())+L"-";
+    unsigned found=0;
+    for(DWORD index=0;;++index) {
+        wchar_t name[512]{};DWORD chars=512;
+        const auto result=RegEnumKeyExW(sessions,index,name,&chars,nullptr,nullptr,nullptr,nullptr);
+        if(result==ERROR_NO_MORE_ITEMS)break;
+        Require(result==ERROR_SUCCESS,"Enumerate SSH temporary session");
+        if(std::wstring(name).rfind(prefix,0)!=0)continue;
+        HKEY entry=nullptr;Require(RegOpenKeyExW(sessions,name,0,KEY_QUERY_VALUE,&entry)==ERROR_SUCCESS,"Read SSH temporary session");
+        CloseKey closeEntry{entry};++found;
+        for(const auto& setting: {std::pair<const wchar_t*,DWORD>{L"TCPKeepalives",1},{L"PingInterval",0},{L"PingIntervalSecs",0}}) {
+            DWORD value=~DWORD(0),type=0,size=sizeof(value);
+            Require(RegQueryValueExW(entry,setting.first,nullptr,&type,reinterpret_cast<BYTE*>(&value),&size)==ERROR_SUCCESS&&
+                    type==REG_DWORD&&size==sizeof(value)&&value==setting.second,"SSH enables response-based TCP keepalive without IGNORE-only pings");
+        }
+    }
+    Require(found==1,"One configured temporary PuTTY session belongs to this connection");
+}
+int main(int argc, char** argv) {
     try {
+        const bool delayResizeStart = argc == 2 && std::string(argv[1]) == "--delay-resize-start";
+        Require(argc == 1 || delayResizeStart, "expected optional --delay-resize-start");
         // Warm GUID/pipe runtime state. The harness uses joined std::threads,
         // not MSVC's reusable async pool, so its cached workers cannot be
         // mistaken for leaked transport threads.
@@ -31,6 +57,7 @@ int main() {
         std::vector<ULONGLONG> elapsed;
         size_t concurrentResizeCalls = 0;
         nlohmann::json resourceTrace = nlohmann::json::array();
+        nlohmann::json resizeStartup = nlohmann::json::array();
         std::wstring error;
         // First complete cycle initializes process/CRT synchronization caches.
         // The diagnostic trace established 123 -> 128 once, then exactly 128
@@ -46,6 +73,7 @@ int main() {
             auto ssh = std::make_shared<PlinkConnection>(host, std::uint16_t(22), L"fixture", L"", 80, 24, confirm);
             std::atomic<size_t> received{0};
             Require(ssh->Start([&](const Bytes& bytes) { received += bytes.size(); }, [](const auto&, bool) {}, error), "SSH fixture start");
+            VerifyKeepaliveConfiguration();
             Require(WaitForSingleObject(ready, 3000) == WAIT_OBJECT_0, "child ready");
             CloseHandle(ready);
             std::packaged_task<bool()> writeTask([ssh] { std::wstring message; return ssh->Send(Bytes(8 * 1024 * 1024, 'x'), message); });
@@ -54,6 +82,10 @@ int main() {
             std::atomic_bool resizing{false};
             std::atomic_size_t resizeCalls{0};
             std::thread resizer;
+            // Keep the promise alive until StopAndJoin has joined the worker,
+            // including when readiness times out and an assertion unwinds.
+            std::promise<void> resizeStarted;
+            auto resizeReady = resizeStarted.get_future();
             struct StopAndJoin {
                 std::shared_ptr<PlinkConnection> ssh; std::thread& sender;
                 std::atomic_bool& resizing; std::thread& resizer;
@@ -71,7 +103,12 @@ int main() {
             // Keep issuing real mapped-view updates through Stop's channel
             // teardown, including calls after Stop, not just before closing.
             resizing = true;
+            const auto resizeStart = GetTickCount64();
             resizer = std::thread([&] {
+                // A controlled scheduler delay is test setup, not a resize or
+                // teardown operation. Only the warm-up cycle injects it.
+                if (delayResizeStart && index == -1) Sleep(600);
+                resizeStarted.set_value();
                 while (resizing) {
                     const auto count = resizeCalls.load();
                     ssh->ResizeTerminal(80 + int(count % 100), 24 + int(count % 40));
@@ -79,9 +116,17 @@ int main() {
                     std::this_thread::yield();
                 }
             });
+            Require(resizeReady.wait_for(3000ms) == std::future_status::ready, "resize worker startup");
+            resizeReady.get();
+            const auto startupMs = GetTickCount64() - resizeStart;
             const auto resizeDeadline = GetTickCount64() + 500;
             while (resizeCalls < 100 && GetTickCount64() < resizeDeadline) Sleep(1);
-            Require(resizeCalls >= 100, "concurrent resize writer did not run");
+            // Capture at the deadline: diagnostics must not let a late worker
+            // satisfy the original assertion while console output is written.
+            const auto completedResizes = resizeCalls.load();
+            resizeStartup.push_back({{"cycle", index}, {"startupMs", startupMs}, {"callsBeforeStop", completedResizes}});
+            std::cout << "resize_startup=" << resizeStartup.back().dump() << std::endl;
+            Require(completedResizes >= 100, "concurrent resize writer did not run");
             const auto start = GetTickCount64();
             BackgroundCleanup cleanup;
             cleanup.Retire([ssh] { ssh->Stop(); });
@@ -158,10 +203,14 @@ int main() {
             {"concurrentResizeCalls", concurrentResizeCalls}, {"resizeThroughStop", "PASS"},
             {"coldHandles", coldHandles}, {"handlesBefore", handlesBefore}, {"handlesAfter", handlesAfter}, {"threadsBefore", threadsBefore}, {"threadsAfter", threadsAfter},
             {"resourceTrace", resourceTrace},
+            {"resizeStartup", resizeStartup}, {"startupDelayInjected", delayResizeStart},
             {"scope", "controlled child processes, no SSH server or UART hardware"}};
         std::cout << evidence.dump() << '\n';
         wchar_t directory[32768]{};
-        if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768)) std::ofstream(std::filesystem::path(directory) / L"ssh-lifecycle.json") << evidence.dump(2);
+        if (GetEnvironmentVariableW(L"SERIALCTL_EVIDENCE_DIR", directory, 32768)) {
+            const auto file = delayResizeStart ? L"ssh-lifecycle-delayed-start.json" : L"ssh-lifecycle.json";
+            std::ofstream(std::filesystem::path(directory) / file) << evidence.dump(2);
+        }
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

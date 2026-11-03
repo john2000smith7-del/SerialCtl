@@ -1,0 +1,58 @@
+name: Exact-run CI evidence
+description: Temporary integrity-checked cache transport; never replaces tests or formal release assets
+inputs:
+  mode:
+    description: save or restore
+    required: true
+  name:
+    description: Logical evidence identity
+    required: true
+  path:
+    description: Save patterns or restore directory
+    required: true
+  run-id:
+    description: Source workflow run, default current run
+    required: false
+    default: ${{ github.run_id }}
+runs:
+  using: composite
+  steps:
+    - id: prepare
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVIDENCE_MODE: ${{ inputs.mode }}
+        EVIDENCE_NAME: ${{ inputs.name }}
+        EVIDENCE_PATHS: ${{ inputs.path }}
+        EVIDENCE_RUN: ${{ inputs.run-id }}
+      run: python tools/ci_evidence.py prepare --mode "$EVIDENCE_MODE" --name "$EVIDENCE_NAME" --run-id "$EVIDENCE_RUN"
+    - if: ${{ inputs.mode == 'save' }}
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: ${{ steps.prepare.outputs.path }}
+        key: ${{ steps.prepare.outputs.key }}
+        enableCrossOsArchive: true
+    - id: restore
+      if: ${{ inputs.mode == 'restore' }}
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: ${{ steps.prepare.outputs.path }}
+        key: ${{ steps.prepare.outputs.key }}
+        enableCrossOsArchive: true
+        fail-on-cache-miss: true
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVIDENCE_MODE: ${{ inputs.mode }}
+        EVIDENCE_NAME: ${{ inputs.name }}
+        EVIDENCE_PATHS: ${{ inputs.path }}
+        EVIDENCE_RUN: ${{ steps.prepare.outputs.run }}
+        EVIDENCE_SOURCE: ${{ steps.prepare.outputs.source }}
+        EVIDENCE_ATTEMPT: ${{ steps.prepare.outputs.attempt }}
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: |
+        if [[ "$EVIDENCE_MODE" == restore && "$CACHE_HIT" != true ]]; then
+          echo "::error::Exact evidence cache was not restored"
+          exit 1
+        fi
+        python tools/ci_evidence.py verify --mode "$EVIDENCE_MODE" --name "$EVIDENCE_NAME" --run-id "$EVIDENCE_RUN" --source-sha "$EVIDENCE_SOURCE" --attempt "$EVIDENCE_ATTEMPT"

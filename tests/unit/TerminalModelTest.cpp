@@ -109,12 +109,12 @@ void TestLocalBootInterrupt() {
     Expect(boot.PreparePreset("uboot_space",0,7000),"U-Boot preset prepares without a keyword or automatic deadline");
     Expect(boot.Poll(7000).empty(),"No key can precede an accepted reboot");
     boot.RestartSubmitted(7001);
-    Expect(boot.Poll(7001)==" ","First space is immediate after reboot submission");
-    Expect(boot.Poll(7300).empty(),"Default cadence cannot submit faster than 300ms");
-    for(unsigned i=1;i<=20;++i) Expect(boot.Poll(7001+i*300)==" ","Continuous preset is not limited to three bursts");
+    Expect(boot.Poll(7001)==" stop","First stop sequence is immediate after reboot submission");
+    Expect(boot.Poll(7300).empty(),"Default cadence cannot submit faster than 500ms");
+    for(unsigned i=1;i<=10;++i) Expect(boot.Poll(7001+i*500)==" stop","Continuous preset is not limited to three bursts");
     Expect(!boot.PreparePreset("phytium_uefi_f2",0,13002),"Another active preset cannot interleave a second reboot");
     boot.Feed("\r\n=> ",5,13003);
-    Expect(boot.Status(13003).entered && boot.Poll(13100).empty(),"Actual U-Boot prompt stops continuous spaces");
+    Expect(boot.Status(13003).entered && boot.Poll(13100).empty(),"Actual U-Boot prompt stops continuous stop sequences");
     Expect(boot.PreparePreset("phytium_uefi_f2",0,14000,500),"Phytium UEFI preset supports 500ms cadence");
     boot.RestartSubmitted(14000);
     Expect(boot.Poll(14000)=="\x1bOQ","F2 uses the VT100 key sequence rather than literal F2");
@@ -127,7 +127,7 @@ void TestLocalBootInterrupt() {
     boot.PreparePreset("uboot_space",1,16000); boot.RestartSubmitted(16000);
     Expect(boot.Poll(17000).empty() && boot.Status(17000).state=="timed_out","Explicit timeout is still supported");
     boot.PreparePreset("uboot_space",0,18000); boot.RestartSubmitted(18000);boot.Poll(18000);
-    Expect(boot.Poll(18000+24*60*60*1000ull)==" " && boot.Status(18000+24*60*60*1000ull).untilStopped,"Default continuous mode has no hidden count or 90/120-second cutoff");
+    Expect(boot.Poll(18000+24*60*60*1000ull)==" stop" && boot.Status(18000+24*60*60*1000ull).untilStopped,"Default continuous mode has no hidden count or 90/120-second cutoff");
     boot.Cancel();Expect(boot.Poll(18001+24*60*60*1000ull).empty(),"Cancel stops continuous output immediately");
     Expect(!boot.PreparePreset("uboot_space",0,100000000,80),"Unsupported cadence cannot be silently substituted");
 
@@ -448,6 +448,18 @@ void TestCmdEditor() {
 } // namespace
 
 int main() {
+    {
+        serialctl::TerminalModel boundary(8,3);
+        boundary.Feed(L"OLD_HISTORY\r\n\x1b[",L"old");
+        boundary.BeginConnection();
+        boundary.Feed(L"NEW_OUTPUT\r\n",L"new");
+        const auto text=boundary.PlainText(true);
+        Expect(text.find(L"OLD_HISTORY")!=std::wstring::npos,"reconnect retains historical text");
+        Expect(text.find(L"NEW_OUTPUT")!=std::wstring::npos,"reconnect clears half CSI parser before new output");
+        Expect(text.find(L"old ")==text.rfind(L"old ")&&text.find(L"new ")==text.rfind(L"new "),"soft wrapped lines carry one timestamp per logical line");
+        boundary.Resize(3,2);boundary.Resize(80,24);
+        Expect(boundary.PlainText(true).find(L"OLD_HISTORY")!=std::wstring::npos,"reconnect history survives subsequent reflow");
+    }
     {
         // Incremental projection must match a fresh, single-pass VT replay.
         for (const size_t history : {size_t(120), size_t(20000)}) {

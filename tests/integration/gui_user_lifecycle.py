@@ -503,14 +503,20 @@ def run(c):
     c.input(resource,b'ping -n 100 127.0.0.1 >nul\r\n')
     time.sleep(.1)
     started=time.monotonic()
+    retained_cards=u.SendMessageW(listing,0x18b,0,0)
     click(302)
     wait(lambda:not [r for r in c.resources()['resources'] if r['kind']=='cmd'])
-    wait(lambda:u.SendMessageW(listing,0x18b,0,0)==0)
     wait(lambda:not children())
+    assert u.SendMessageW(listing,0x18b,0,0)==retained_cards, 'Disconnect must retain all cards'
+    wait(lambda:control_text(u.GetDlgItem(window,302))=='全部关闭')
+    disconnect_duration=time.monotonic()-started
+    close_started=time.monotonic()
+    click(302)
+    wait(lambda:u.SendMessageW(listing,0x18b,0,0)==0)
     wait(lambda:all(creation(p)!=created for p,created in known_processes.items()))
     duration=time.monotonic()-started
     report={'created_real_cmd_sessions':baseline+33,'child_processes_before':live,'children_after':children(),
-            'disconnect_seconds':duration,'top_anchor':top,'selection_anchor':selection,
+            'retained_cards_after_disconnect':retained_cards,'second_click_closed_cards':True,'disconnect_seconds':disconnect_duration,'close_cards_seconds':time.monotonic()-close_started,'overall_seconds':duration,'top_anchor':top,'selection_anchor':selection,
             'top_after_mouse_drag':0,'desktop_frames':images,
             'known_child_creation_times':known_processes,'known_children_all_exited':True,
             'checks':['stable refresh fixture','system mouse creation of 33 CMD sessions','system mouse wheel',

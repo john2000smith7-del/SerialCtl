@@ -56,11 +56,21 @@ check → clean build → test → PE compatibility check → package → extrac
 gh workflow run windows-build.yml --repo john2000smith7-del/SerialCtl --ref main
 gh run list --repo john2000smith7-del/SerialCtl --workflow windows-build.yml --branch main --limit 10 --json databaseId,event,headSha,status,conclusion,url
 gh run view <本次构建ID> --repo john2000smith7-del/SerialCtl --json headSha,event,status,conclusion,jobs,url
-gh run download <本次构建ID> --repo john2000smith7-del/SerialCtl --name SerialCtl-Win7-portable --dir <仓库外新目录>
+# 当前主流程由本地复合 action 自动恢复精确 run 的候选与收据，见下一节。
 gh workflow run desktop-interaction.yml --repo john2000smith7-del/SerialCtl --ref main -f build_run=<同一成功构建ID>
 ```
 
 main 成功构建也会触发 workflow_run 桌面审核；核对存在匹配证据后避免重复启动。实际构建在 Windows 托管虚拟机运行，截图和操作夹具也在其桌面执行；Linux 下载和检查 PNG／JSON／录像，不能把 Linux 查看图片写成 Windows／Win7 实测。下载便携包仅供匹配验证，检查来源提交和完整 ZIP 哈希后再选定。
+
+### Actions 附件配额受限时的证据传递
+
+Windows主流程给release.ps1传入TestFixtureDirectory，将已通过PE检查的Xfer原生辅助程序及源码／哈希收据保留到仓库外RUNNER_TEMP，供后续真实打包程序UI验收使用。release.ps1仍清理整个build目录；辅助程序不进入bin或用户ZIP。普通本地发布不指定该参数即可，实际UI验证仍按当次环境执行。
+
+V2.0.19 主流程使用固定版本的官方 actions/cache save/restore，通过 .github/actions/ci-evidence 和 tools/ci_evidence.py 传递候选 ZIP、原始截图、录像及收据，不扩删历史附件、不增加付费预算。缓存与 artifact 使用不同存储机制；这项调整不是测试跳过或失败豁免。
+
+键绑定运行 ID、完整源码 SHA、逻辑资料名和执行 attempt；仅恢复同仓库、同 ref、同来源运行的精确缓存。容器内清单再次核对身份、大小和每个文件 SHA-256，拒绝路径穿越、重复名称、篡改和覆盖不同文件。应用 ZIP 保持原字节，不重新压缩应用内容。发布器仍要求所有实际测试与完整工作流成功，并验证原公钥签名和两个真实旧客户端的六种升级场景。
+
+缓存会因 GitHub 的容量／闲置策略被自动淘汰，不承诺原 artifact 的14／30／90天保留期，更不是正式档案。缺失时明确失败并重新验证构建，不借用其他源码／旧包。正式发布后重新下载并核对两个 Release 文件，必要测试报告另存仓库；历史 artifact 的读取与保留规则不变。
 
 ### 原私钥签名与正式发布
 
@@ -83,17 +93,19 @@ python tools/new_update_feed.py --verify-archive <同一个最终完整ZIP> --me
 gh workflow run verify-release-upgrade.yml --repo john2000smith7-del/SerialCtl --ref main --json < /path/to/upgrade-inputs.json
 ```
 
-当前升级工作流固定下载 V2.0.17 与 V2.0.6，只能作历史基线；下一版正式发布前必须将真实上一正式版选择、下载与测试结果标记同步核对（当前上一正式版为 V2.0.18）。不要把性能比较的固定基线一起替换。升级验证通过后，发布 JSON 输入为：
+升级工作流自动从最新正式Release选择previous，显式previous_tag也必须等于最新，较老原身份客户端保留V2.0.6。测试从实际ZIP的VERSION读取并记录版本，要求older < previous < candidate；不要把性能比较的固定V2.0.17基线一起替换。桌面和六个真实旧客户端场景均成功后生成与当前main、build_run_id和ZIP绑定的收据，升级收据还绑定原始update.json字节SHA-256。升级验证通过后，发布 JSON 输入为：
 
 ```json
-{"version":"Vx.y.z","release_tag":"vx.y.z","archive_sha256":"<最终完整ZIP的SHA-256>","source_commit":"<成功main构建的完整40位SHA>","build_run_id":"<同一构建ID>","metadata_base64":"<旧客户端实测的同一个update.json的Base64>"}
+{"version":"Vx.y.z","release_tag":"vx.y.z","archive_sha256":"<最终完整ZIP的SHA-256>","source_commit":"<成功main构建的完整40位SHA>","build_run_id":"<同一构建ID>","desktop_run_id":"<匹配桌面成功run>","upgrade_run_id":"<匹配真实旧版升级成功run>","metadata_base64":"<旧客户端实测的同一个update.json的Base64>"}
 ```
 
 ```bash
 gh workflow run publish-release.yml --repo john2000smith7-del/SerialCtl --ref main --json < /path/to/publish-inputs.json
 ```
 
-发布前完整 Windows 工作流、匹配桌面审核和真实旧客户端升级均须成功；参数准确不等于测试已通过。发布后重新下载两个资产，核对版本、原签名、完整 ZIP／运行文件清单及构建来源，再提供真实下载链接。V2.0.18 历史发布与后来的维护提交分别追溯，不为精简包覆盖旧版本。
+发布只允许拥有者身份从main手动触发，串行执行，不再支持release/**请求文件自动发版。tools/release_gate.py核对全部必需Windows作业和完整工作流、精确当前main、桌面／升级收据、ZIP与JSON字节哈希、真实上一正式版；失败或跳过不发布。参数准确不等于测试已通过，收据门槛回归也不等于实际执行了Windows升级。后续仍由原工具复核原公钥签名及完整ZIP，再创建更高版本Release；发布后重新下载两个资产核对。V2.0.18历史发布与维护提交分别追溯，不覆盖旧版本。
+
+分支／标签保护和PR流程的实际状态及拥有者启用入口见 [仓库保护说明](../maintenance/REPOSITORY-PROTECTION.md)。当前管理权限／套餐阻碍未因提交JSON消失，不宣称服务端保护或第三人审批已启用。
 
 ## V2.0.3 已审核的系统依赖
 
@@ -102,3 +114,9 @@ gh workflow run publish-release.yml --repo john2000smith7-del/SerialCtl --ref ma
 接口最低系统说明可查 [AlphaBlend](https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-alphablend) 和 [SetupDiGetClassDevsW](https://learn.microsoft.com/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw)。静态接口核对不替代 Windows 7 实机验收。
 
 V2.0.12 的 `ui_dialog_viewport_test` 新增实际下拉列表测试，使用共享图标资源装载器的 OLE32!CreateStreamOnHGlobal（Windows 2000 起支持）。仅该测试目标补充显式 OLE32 链接及精确导入清单，和既有 `ui_combo_paint_test` 一致；生产程序原本已使用此系统库，生产依赖清单不变，Win7 禁止导入与子系统检查继续执行。
+
+### 当前候选到更高版本的隔离升级验证
+
+`forward-update-verification.yml`在main上分prepare/verify两阶段执行。prepare从同一main源码隔离克隆，只将VERSION增加一个补丁号，编译生产目标并检查PE，再生成带FORWARD-TEST标记的四运行文件测试ZIP；没有自动测试通过的正式MANIFEST，正式签名工具必须拒绝它。它不是下一个正式版本，不上传Release。公开payload仍由授权本地环境用原身份签名，CI从不接收私钥。
+
+verify核对当前已验证main ZIP、测试来源和精确payload，再运行真实当前候选及上一正式客户端的签名拒绝、损坏ZIP拒绝和成功安装/健康重启。当前候选先创建并断开真实CMD，确认保留卡片后才返回升级清单，验证保留断开卡片不阻塞用户确认后的空闲安装。此测试不替代正式旧客户端到最终候选的verify-release-upgrade，也不承诺尚不存在的未来功能版本；原始收据和测试范围保留在专用证据缓存。发布仍只使用正式候选ZIP及其对应的update.json。

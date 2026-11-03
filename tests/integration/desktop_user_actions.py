@@ -423,17 +423,35 @@ class DesktopActions:
 
     def drag(self, name, start, end, steps=8):
         first_frame = len(self.frames)
+        observation = {"name": name, "start": list(start), "end": list(end), "native_input_states": []}
+        self.report.setdefault("native_drag_observations", []).append(observation)
+
+        def observe(phase):
+            sampler = getattr(self, "sample_drag_native_state", None)
+            if sampler:
+                try:
+                    state = {"phase": phase, **sampler()}
+                except Exception as error:
+                    state = {"phase": phase, "observation_error": repr(error)}
+                observation["native_input_states"].append(state)
+
         self.move_mouse(start)
+        observe("before_mouse_down")
         self.button(True)
         try:
+            observe("after_mouse_down_before_first_move")
             for index in range(1, steps + 1):
                 point = (round(start[0] + (end[0] - start[0]) * index / steps),
                          round(start[1] + (end[1] - start[1]) * index / steps))
                 self.move_mouse(point)
                 time.sleep(.018)
+                capture_started = time.perf_counter()
                 self.capture(f"{name}-held-{index:02d}")
+                self.frames[-1]["capture_elapsed_ms"] = round((time.perf_counter() - capture_started) * 1000, 3)
+            observe("before_mouse_up")
         finally:
             self.button(False)
+            observe("after_mouse_up")
         held = self.frames[first_frame:]
         evidence = {
             "name": name, "held_frames": [frame["path"] for frame in held],
@@ -532,7 +550,7 @@ class DesktopActions:
                         "Sidebar drag did not resize terminal")
                 entry["assertions"] = self.check_layout()
 
-    def sidebar_toggle(self, observation_budget=.06):
+    def sidebar_toggle(self, observation_budget=.06, *, capture_rapid_frames=True):
         initial_toggle_bounds = self.rect(self.control(125))
 
         def check_anchor(bounds, phase):
@@ -567,6 +585,8 @@ class DesktopActions:
                 entry["stationary_pointer"] = stationary
                 entry["caption_observation_budget_ms"] = observation_budget*1000
                 entry["single_click_observations"] = click_observations
+                entry["rapid_frame_capture"] = ("synchronous desktop snapshots" if capture_rapid_frames
+                                                  else "caller-owned independent screen recording")
                 entry["double_click_ambiguity"] = (
                     "This sequence uses one fixed point and verifies the target caption after every "
                     "released click, including input eligible for native double-click handling. "
@@ -630,7 +650,11 @@ class DesktopActions:
                             "see down/up bounds and hit targets before attributing message delivery")
                     previous_point = point
                     time.sleep(.033)
-                    capture_frame(f"{frame_prefix}-{index:02d}")
+                    # Endurance already records the same actual desktop on an
+                    # independent sampler. A second full-screen BitBlt here
+                    # can consume the 200ms input interval being tested.
+                    if capture_rapid_frames:
+                        capture_frame(f"{frame_prefix}-{index:02d}")
                 time.sleep(.3)
                 intervals = [round((b - a) * 1000, 3) for a, b in zip(clicks, clicks[1:])]
                 entry["click_intervals_ms"] = intervals

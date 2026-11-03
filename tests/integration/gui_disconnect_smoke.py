@@ -134,10 +134,18 @@ with Client('127.0.0.1') as c:
     c.input(resource,b'ping -n 100 127.0.0.1 >nul\r\n')
     time.sleep(.1)
     started=time.monotonic()
+    retained_cards=u.SendMessageW(listing,0x18b,0,0)
     assert u.PostMessageW(window,0x111,302,0)
     wait(lambda:not [r for r in c.resources()['resources'] if r['kind']=='cmd'])
-    wait(lambda:u.SendMessageW(listing,0x18b,0,0)==0)
     wait(lambda:not children())
+    assert u.SendMessageW(listing,0x18b,0,0)==retained_cards, 'Disconnect retains all cards'
+    def ready_to_close():
+        text=ctypes.create_unicode_buffer(32)
+        u.GetWindowTextW(u.GetDlgItem(window,302),text,len(text))
+        return text.value=='全部关闭'
+    wait(ready_to_close)
+    assert u.PostMessageW(window,0x111,302,0)
+    wait(lambda:u.SendMessageW(listing,0x18b,0,0)==0)
     wait(lambda:all(creation(p)!=created for p,created in known_processes.items()))
     duration=time.monotonic()-started
     report={'created_real_cmd_sessions':baseline+33,'child_processes_before':live,'children_after':children(),

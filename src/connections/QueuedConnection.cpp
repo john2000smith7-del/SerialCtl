@@ -5,10 +5,15 @@
 namespace serialctl {
 bool QueuedConnection::Start(DataCallback data, StatusCallback status, std::wstring &error) {
     status_ = status;
-    if (!inner_->Start(std::move(data), status, error))
+    {std::lock_guard<std::mutex> lock(receiveMutex_);normalData_=std::move(data);transferData_={};transferDrain_={};}
+    if (!inner_->Start([this](const Bytes& bytes) {
+            std::lock_guard<std::mutex> lock(receiveMutex_);
+            if(transferData_)transferData_(bytes);else if(normalData_)normalData_(bytes);
+        }, status, error))
         return false;
     stopping_ = false;
     resizePending_ = false;
+    transferOwner_.clear();writeInFlight_=false;
     connected_ = true;
     worker_ = std::thread(&QueuedConnection::Run, this);
     return true;
@@ -36,12 +41,20 @@ void QueuedConnection::Stop() {
 bool QueuedConnection::Send(const Bytes &data, std::wstring &error) {
     return SendObserved(data, error, {});
 }
-bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std::function<void()> accepted) {
+bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std::function<void()> accepted, std::function<bool()> allowed) {
+    return Enqueue(data,error,std::move(accepted),std::move(allowed));
+}
+bool QueuedConnection::SendConditional(const Bytes& data,std::wstring& error,std::function<bool()> allowed) {
+    return Enqueue(data,error,{},std::move(allowed));
+}
+bool QueuedConnection::Enqueue(const Bytes &data,std::wstring& error,std::function<void()> accepted,std::function<bool()> allowed) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (stopping_ || !IsConnected()) {
         error = L"连接已断开";
         return false;
     }
+    if(!transferOwner_.empty()) {error=L"该串口正在传输文件，其他输入暂时禁用";return false;}
+    if(allowed&&!allowed())return true;
     if (data.size() > 8 * 1024 * 1024) {
         error = L"发送队列已满，请稍后重试";
         return false;
@@ -61,8 +74,8 @@ bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std:
     if (!data.empty()) {
         if (accepted)
             accepted();
-        queue_.push_back(std::move(prepared));
-        queued_ += queue_.back().size();
+        queue_.push_back({std::move(prepared),std::move(allowed)});
+        queued_ += queue_.back().bytes.size();
         wake_.notify_one();
     }
     return true;
@@ -88,6 +101,7 @@ void QueuedConnection::ResizeTerminal(int columns, int rows) {
 void QueuedConnection::Run() {
     for (;;) {
         Bytes bytes;
+        std::function<bool()> allowed;
         bool resize = false, hasData = false;
         int columns = 0, rows = 0;
         {
@@ -103,15 +117,20 @@ void QueuedConnection::Run() {
             // repeated layout cannot create an unbounded queue or starve input.
             hasData = !queue_.empty();
             if (hasData) {
-                bytes = std::move(queue_.front());
+                bytes = std::move(queue_.front().bytes);
+                allowed = std::move(queue_.front().allowed);
                 queue_.pop_front();
                 queued_ -= bytes.size();
+                writeInFlight_=true;
             }
         }
         if (resize) inner_->ResizeTerminal(columns, rows);
         if (!hasData) continue;
+        if(allowed&&!allowed()) {std::lock_guard<std::mutex> lock(mutex_);writeInFlight_=false;continue;}
         std::wstring error;
-        if (!inner_->SendPrepared(bytes, error)) {
+        const bool sent=inner_->SendPrepared(bytes,error);
+        {std::lock_guard<std::mutex> lock(mutex_);writeInFlight_=false;}
+        if (!sent) {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 queue_.clear();
@@ -125,4 +144,49 @@ void QueuedConnection::Run() {
         }
     }
 }
+void QueuedConnection::ReleaseCapture() {
+    std::lock_guard<std::mutex> lock(receiveMutex_);
+    Bytes remainder=transferDrain_?transferDrain_():Bytes{};
+    transferData_={};transferDrain_={};
+    if(!remainder.empty()&&normalData_)normalData_(remainder);
+}
+void QueuedConnection::CancelTransfer(const std::string& owner) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(!owner.empty()&&transferOwner_==owner)inner_->CancelTransferWire(owner);
+}
+void QueuedConnection::AbortTransfer(const std::string& owner) {
+    std::lock_guard<std::mutex> writer(transferWriteMutex_);
+    {std::lock_guard<std::mutex> lock(mutex_);if(stopping_||owner.empty()||transferOwner_!=owner)return;}
+    inner_->AbortTransferWire(owner);
+}
+bool QueuedConnection::BeginTransfer(const std::string& owner,DataCallback capture,std::wstring& error,std::function<Bytes()> drain) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if(owner.empty()||stopping_||!IsConnected()){error=L"串口已断开或传输标识无效";return false;}
+        if(!transferOwner_.empty()||writeInFlight_||!queue_.empty()){error=L"该串口仍有发送任务，请等待完成后再传输文件";return false;}
+        transferOwner_=owner;
+    }
+    {std::lock_guard<std::mutex> lock(receiveMutex_);transferData_=std::move(capture);transferDrain_=std::move(drain);}
+    if(inner_->BeginTransferWire(owner,error))return true;
+    ReleaseCapture();
+    {std::lock_guard<std::mutex> lock(mutex_);transferOwner_.clear();}
+    return false;
+}
+bool QueuedConnection::SendTransfer(const std::string& owner,const Bytes& bytes,std::wstring& error) {
+    std::lock_guard<std::mutex> writer(transferWriteMutex_);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if(stopping_||!IsConnected()||transferOwner_!=owner||owner.empty()) {error=L"传输已停止或串口所有权已变化";return false;}
+    }
+    return inner_->SendTransferWire(owner,bytes,error);
+}
+bool QueuedConnection::EndTransfer(const std::string& owner,std::wstring& error) {
+    std::lock_guard<std::mutex> writer(transferWriteMutex_);
+    {std::lock_guard<std::mutex> lock(mutex_);if(owner.empty()||transferOwner_!=owner){error=L"传输所有权已变化";return false;}}
+    const bool released=inner_->EndTransferWire(owner,error);
+    ReleaseCapture();
+    {std::lock_guard<std::mutex> lock(mutex_);transferOwner_.clear();}
+    return released;
+}
+
 } // namespace serialctl

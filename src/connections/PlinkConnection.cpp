@@ -366,8 +366,12 @@ bool PlinkConnection::CreatePuttySession() {
     }
     const DWORD width = static_cast<DWORD>(terminalColumns_);
     const DWORD height = static_cast<DWORD>(terminalRows_);
+    const DWORD keepalive=1, pingInterval=0;
     static const wchar_t terminalType[] = L"xterm-256color";
     const bool success =
+        RegSetValueExW(key, L"TCPKeepalives", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&keepalive), sizeof(keepalive)) == ERROR_SUCCESS &&
+        RegSetValueExW(key, L"PingInterval", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&pingInterval), sizeof(pingInterval)) == ERROR_SUCCESS &&
+        RegSetValueExW(key, L"PingIntervalSecs", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&pingInterval), sizeof(pingInterval)) == ERROR_SUCCESS &&
         RegSetValueExW(key, L"TermWidth", 0, REG_DWORD,
             reinterpret_cast<const BYTE*>(&width), sizeof(width)) == ERROR_SUCCESS &&
         RegSetValueExW(key, L"TermHeight", 0, REG_DWORD,

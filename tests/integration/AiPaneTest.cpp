@@ -96,6 +96,7 @@ struct AiPaneTestAccess {
     static void CheckModelCapsules(AiPane &pane) {
         const auto check = [](bool value, const char *why) { if (!value) throw std::runtime_error(why); };
         const auto savedModel = pane.serverDefaultModel_;
+        const auto savedWorkspace = pane.workspaceDirectory_;
         const bool savedDark = pane.dark_;
         wchar_t savedText[1024]{}; GetWindowTextW(pane.Control(12), savedText, 1024);
         RECT saved{}; GetWindowRect(pane.window_, &saved);
@@ -132,9 +133,25 @@ struct AiPaneTestAccess {
                     ui_test::SaveUiEvidence(pane.window_, image);
                     ++cases;
                 }
+                int shortWidth=0,longWidth=0;
+                for(bool longName:{false,true}) {
+                    pane.workspaceDirectory_=L"/srv/"+(longName?std::wstring(200,L'x'):std::wstring(L"m"));
+                    pane.UpdateActions();
+                    RECT workspace{},pet{};
+                    GetWindowRect(pane.Control(31),&workspace);GetWindowRect(pane.Control(30),&pet);
+                    check(workspace.bottom-workspace.top==pane.D(28)&&workspace.right<=pet.left-pane.D(12),
+                          "Workspace capsule overlaps header actions or changed row height");
+                    check(pane.workspaceTooltip_.find(pane.workspaceDirectory_)==0,
+                          "Adaptive workspace capsule lost its full-path tooltip");
+                    (longName?longWidth:shortWidth)=workspace.right-workspace.left;
+                    ui_test::SaveUiEvidence(pane.window_,L"v219-workspace-capsule-"+std::wstring(dark?L"dark-":L"light-")+
+                        std::to_wstring(width)+(longName?L"-long.png":L"-short.png"));
+                }
+                check(shortWidth<longWidth,"Short workspace capsule still consumes the full available width");
             }
         }
         pane.serverDefaultModel_ = savedModel;
+        pane.workspaceDirectory_ = savedWorkspace;
         SetWindowTextW(pane.Control(12), savedText);
         pane.Theme(savedDark);
         MoveWindow(pane.window_, saved.left, saved.top, saved.right - saved.left, saved.bottom - saved.top, TRUE);
@@ -249,10 +266,14 @@ struct AiPaneTestAccess {
             if(std::wstring(leaf).find(L'/')!=std::wstring::npos)
                 throw std::runtime_error("Directory choices repeat full parent paths instead of child names");
             if(!GetDlgItem(dialog,213)) throw std::runtime_error("Workspace lacks full-path disclosure and horizontal viewing");
-            RECT field{},up{},refresh{},client{};
+            RECT field{},path{},up{},refresh{},client{};
             GetWindowRect(combo,&field);GetWindowRect(GetDlgItem(dialog,211),&up);GetWindowRect(GetDlgItem(dialog,212),&refresh);
+            GetWindowRect(GetDlgItem(dialog,213),&path);
             if(field.right>=up.left || up.right>=refresh.left || field.bottom-field.top < MulDiv(24,p->dpi,96))
                 throw std::runtime_error("Workspace directory/up/refresh controls overlap or clip");
+            if(field.bottom-field.top!=path.bottom-path.top || field.bottom-field.top!=up.bottom-up.top ||
+                field.bottom-field.top!=refresh.bottom-refresh.top)
+                throw std::runtime_error("Workspace visible path/combo/button heights are inconsistent");
             if (reinterpret_cast<UINT_PTR>(GetPropW(GetDlgItem(dialog,212),UiButtonGlyphProperty)) !=
                     static_cast<UINT_PTR>(UiGlyph::Refresh) + 1)
                 throw std::runtime_error("Workspace refresh lost shared icon or its native command control");
@@ -507,16 +528,26 @@ struct AiPaneTestAccess {
         pane.busy_ = true;
         pane.stopRequested_ = false;
         pane.Layout();
-        RECT sendArea{}, stopArea{};
+        RECT sendArea{};
         GetWindowRect(pane.Control(11), &sendArea);
-        GetWindowRect(pane.Control(21), &stopArea);
-        RECT overlap{};
-        require(IsWindowVisible(pane.Control(21)) && !IntersectRect(&overlap, &sendArea, &stopArea),
-                "Busy Stop must have a separate hit rectangle from Send");
+        require(IsWindowVisible(pane.Control(11)) && !IsWindowVisible(pane.Control(21)) &&
+                    sendArea.right > sendArea.left && sendArea.bottom > sendArea.top,
+                "Busy Stop must reuse the visible Send button; legacy Stop remains hidden");
+        pane.sendGesture_ = 0; // A press that started as Send must not cancel a just-started turn.
+        pane.Action(11);
+        require(!pane.stopRequested_, "Send press crossed into Stop after the task started");
+        SendMessageW(pane.Control(11), WM_LBUTTONDBLCLK, MK_LBUTTON, MAKELPARAM(5,5));
+        pane.Action(11);
+        require(!pane.stopRequested_, "Send double-click cancelled the active task");
+        SendMessageW(pane.Control(11), WM_LBUTTONUP, 0, MAKELPARAM(5,5));
+        require(pane.sendGesture_ == -1, "Double-click suppression leaked into the next gesture");
+        pane.sendGesture_ = 1; // A fresh press while busy is the explicit Stop action.
+        pane.Action(11);
+        require(pane.stopRequested_, "Shared Send/Stop button did not request cancellation");
+        require(!IsWindowEnabled(pane.Control(11)), "Stopping button must reject repeated cancellation");
         for (int i = 0; i < 5; ++i) pane.Action(11);
-        require(!pane.stopRequested_, "Repeated Send clicks stopped the active task");
-        pane.Action(21);
-        require(pane.stopRequested_, "Explicit Stop did not request cancellation");
+        require(pane.stopRequested_, "Repeated Stop lost the active cancellation state");
+        pane.sendGesture_ = -1;
         pane.busy_ = pane.stopRequested_ = false;
         pane.NewConversation();
         pane.displayGroup_ = "process-fixture";

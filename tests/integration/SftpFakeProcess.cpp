@@ -63,16 +63,27 @@ int wmain(int argc, wchar_t **argv) {
     }
     if (flood || endless) {
         wchar_t eventName[160]{};
+        HANDLE ready = nullptr;
         if (GetEnvironmentVariableW(L"SERIALCTL_TEST_OUTPUT_READY", eventName, 160)) {
-            HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, eventName);
-            if (ready) { SetEvent(ready); CloseHandle(ready); }
+            ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, eventName);
         }
         std::array<char, 4096> bytes{};
         bytes.fill('x');
         for (size_t i = 0; endless || i < 10000; ++i) {
             DWORD written = 0;
             if (!WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr)) break;
+            if (ready && i == 15) {
+                // The real reader has drained pipe output by this point.
+                // Signal after 64KiB, not before the first write; keep the
+                // subsequent stream unthrottled so cancellation is tested
+                // while output remains available. The overflow case remains
+                // independently unbounded and must still hit the 32MiB guard.
+                SetEvent(ready);
+                CloseHandle(ready); ready = nullptr;
+                SwitchToThread();
+            }
         }
+        if (ready) CloseHandle(ready);
     }
     return 0;
 }

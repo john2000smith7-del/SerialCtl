@@ -15,7 +15,7 @@ jobs:
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Build both versions with the same benchmark drivers
@@ -106,10 +106,10 @@ jobs:
           }
           python tests/performance/summarize.py $evidence
           if ($LASTEXITCODE -ne 0) { throw 'Performance result validation failed' }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: SerialCtl-performance-comparison
           path: ${{ runner.temp }}/serialctl-performance-evidence/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 14

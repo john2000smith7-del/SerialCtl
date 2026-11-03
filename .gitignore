@@ -39,6 +39,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .venv/
+/.ci-evidence/
 venv/
 
 # Editor and operating-system state

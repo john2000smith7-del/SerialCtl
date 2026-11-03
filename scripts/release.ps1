@@ -1,5 +1,7 @@
 ﻿[CmdletBinding()]
-param()
+param(
+    [string]$TestFixtureDirectory
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -42,6 +44,29 @@ $archiveTest = Join-Path (Get-SerialCtlBuildOutputDirectory -Architecture x64 -C
 python (Join-Path $repositoryRoot 'tests/integration/test_full_update_archive.py') $candidateArchive $archiveTest
 if ($LASTEXITCODE -ne 0) {
     throw 'The full release ZIP failed native update extraction verification'
+}
+
+if ($TestFixtureDirectory) {
+    # Keep verified test-only tools outside the disposable build tree for later
+    # packaged GUI acceptance. They are never added to bin or the user ZIP.
+    $fixtureRoot = [IO.Path]::GetFullPath($TestFixtureDirectory)
+    if ((Test-SerialCtlPathWithin -Path $fixtureRoot -Parent $repositoryRoot) -or
+        (Test-Path -LiteralPath $fixtureRoot)) {
+        throw 'Test fixture output must be a new directory outside the repository'
+    }
+    $fixture = Join-Path (Get-SerialCtlBuildOutputDirectory -Architecture x64 -Configuration Release -RepositoryRoot $repositoryRoot) 'xfer_gateway_fixture.exe'
+    if (-not (Test-Path -LiteralPath $fixture -PathType Leaf)) { throw 'Verified native Xfer fixture is missing' }
+    New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
+    $copy = Join-Path $fixtureRoot 'xfer_gateway_fixture.exe'
+    Copy-Item -LiteralPath $fixture -Destination $copy
+    $hash = (Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash) {
+        throw 'Native test fixture changed while being preserved'
+    }
+    $sourceCommit = (git -C $repositoryRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'Cannot bind native test fixture source' }
+    [ordered]@{source_commit=$sourceCommit; fixture='xfer_gateway_fixture.exe'; sha256=$hash; scope='Test-only native gateway, never packaged'} |
+        ConvertTo-Json | Set-Content (Join-Path $fixtureRoot 'fixture-source.json') -Encoding UTF8
 }
 
 if (-not (Test-Path -LiteralPath $binRoot -PathType Container)) {

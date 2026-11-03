@@ -55,6 +55,7 @@ public:
     bool Next(std::uint64_t currentSession, bool connected, std::wstring& text) const;
     void Accept() { if (Running() && accepted_ < Total()) ++accepted_; }
     bool Complete() const { return Running() && accepted_ == Total(); }
+    void RestartRound() { if (Complete()) accepted_ = 0; }
     Completion Stop(End end, std::wstring detail = {});
 private:
     std::vector<CommandItem> items_;

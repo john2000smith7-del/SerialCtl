@@ -22,6 +22,19 @@ class IConnection {
     virtual void CancelStart() {}
     virtual void Stop() = 0;
     virtual bool Send(const Bytes &data, std::wstring &error) = 0;
+    virtual bool SendConditional(const Bytes& data,std::wstring& error,std::function<bool()> allowed) {
+        return !allowed||allowed()?Send(data,error):true;
+    }
+    virtual bool BeginTransferWire(const std::string&,std::wstring& error) {
+        error=L"当前连接不支持独占文件传输";return false;
+    }
+    virtual bool SupportsTransfer() const {return false;}
+    virtual bool SendTransferWire(const std::string&,const Bytes& bytes,std::wstring& error) {return SendPrepared(bytes,error);}
+    virtual bool EndTransferWire(const std::string&,std::wstring&) {return true;}
+    virtual void CancelTransferWire(const std::string&) {}
+    virtual void AbortTransferWire(const std::string& owner) {
+        std::wstring ignored;SendTransferWire(owner,Bytes{24,24,24,24,24,24,24,24,8,8,8,8,8,8,8,8},ignored);
+    }
     virtual Bytes PrepareInput(const Bytes &data) {
         return data;
     }

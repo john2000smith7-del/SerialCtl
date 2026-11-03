@@ -8,6 +8,7 @@
 #include "UiDialogViewport.h"
 #include "UiMetrics.h"
 #include "UiPathField.h"
+#include "UiPopupMenu.h"
 #include "PlatformConnection.h"
 #include <chrono>
 #include <sstream>
@@ -177,16 +178,20 @@ struct HistoryPopup {
                 if (row.bottom < 0 || row.top > r.bottom)
                     continue;
                 const bool active = static_cast<int>(i) == p->selected;
-                UiBox(dc, row, active ? c.accent : c.field, active ? c.accent : c.border, p->D(8));
+                if(active)UiBox(dc,row,c.accentSoft,c.accentSoft,p->D(8));
                 row.left += p->D(12);
                 row.right -= p->D(12);
                 RECT title = row;
                 title.bottom = title.top + p->D(24);
                 Draw(dc, Wide(p->entries[p->filtered[i]].value("title", std::string("AI 会话"))), title, p->font,
-                     active ? RGB(255, 255, 255) : c.text);
+                     c.text);
                 row.top += p->D(24);
                 const auto cwd = ai::StoredWorkspace(p->entries[p->filtered[i]]);
-                Draw(dc, cwd.empty() ? L"服务器默认目录" : Wide(cwd), row, p->font, active ? RGB(255,255,255) : c.muted);
+                Draw(dc, cwd.empty() ? L"服务器默认目录" : Wide(cwd), row, p->font, c.muted);
+                if(!active) {
+                    RECT separator{row.left,row.bottom-1,row.right,row.bottom};
+                    const auto brush=CreateSolidBrush(UiPanelBorder(p->dark));FillRect(dc,&separator,brush);DeleteObject(brush);
+                }
             }
             const int content = static_cast<int>(p->filtered.size()) * p->D(48);
             if (content > r.bottom) {
@@ -275,7 +280,7 @@ struct HistoryPopup {
                                         p->D(16), p->D(404), p->D(28), h, reinterpret_cast<HMENU>(300),
                                         GetModuleHandleW(nullptr), nullptr);
             SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(p->font), TRUE);
-            SendMessageW(edit, EM_SETCUEBANNER, 0, reinterpret_cast<LPARAM>(L"搜索当前服务器会话…"));
+            SendMessageW(edit, EM_SETCUEBANNER, 0, reinterpret_cast<LPARAM>(L"搜索会话标题或工作空间…"));
             UiStyleField(edit, &p->style);
             WNDCLASSW wc{};
             wc.style = CS_DBLCLKS;
@@ -435,12 +440,15 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     SetPropW(Control(Target), L"SerialCtl.CompactLabel", reinterpret_cast<HANDLE>(&compactTargetLabel_));
     Child(L"STATIC", L"模型未获取", Model, SS_OWNERDRAW | SS_NOTIFY);
     Child(L"BUTTON", L"发送", Send, BS_OWNERDRAW | WS_TABSTOP);
+    SetWindowSubclass(Control(Send),SendButtonProc,219,reinterpret_cast<DWORD_PTR>(this));
     Child(L"BUTTON", L"分析日志", Analyze, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON",L"更多日志操作",QuickMenu,BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON",L"工作空间",WorkspaceButton,BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"持续观察", Observe, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"返回最新消息", Bottom, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"停止", StopTurn, BS_OWNERDRAW | WS_TABSTOP);
+    ShowWindow(Control(StopTurn),SW_HIDE);
+    UiSetButtonGlyph(Control(Bottom),UiGlyph::ChevronDown,L"返回最新回答");
     TOOLINFOW sendTip{sizeof(sendTip)};
     sendTip.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
     sendTip.hwnd = window_;
@@ -489,6 +497,18 @@ bool AiPane::PreTranslate(MSG &m) {
     if (m.hwnd == Control(Input) && m.message == WM_KEYDOWN && m.wParam == VK_TAB)
         return false;
     return false;
+}
+LRESULT CALLBACK AiPane::SendButtonProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR reference) {
+    auto* self=reinterpret_cast<AiPane*>(reference);
+    if(m==WM_LBUTTONDBLCLK) {self->sendGesture_=-2;SendMessageW(h,BM_SETSTATE,FALSE,0);return 0;}
+    if(m==WM_LBUTTONDOWN || (m==WM_KEYDOWN&&(w==VK_SPACE||w==VK_RETURN)&&!(l&(1LL<<30))))
+        self->sendGesture_=self->busy_?1:0;
+    if(m==WM_LBUTTONUP&&self->sendGesture_==-2) {self->sendGesture_=-1;return 0;}
+    const auto result=DefSubclassProc(h,m,w,l);
+    if(m==WM_LBUTTONUP||m==WM_KEYUP||m==WM_CANCELMODE||
+       (m==WM_CAPTURECHANGED&&(GetKeyState(VK_LBUTTON)&0x8000)))self->sendGesture_=-1;
+    if(m==WM_NCDESTROY)RemoveWindowSubclass(h,SendButtonProc,id);
+    return result;
 }
 LRESULT CALLBACK AiPane::InputProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR reference) {
     auto self = reinterpret_cast<AiPane *>(reference);
@@ -602,7 +622,7 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const auto c = UiAiTheme(self->dark_);
         FillRect(dc, &item.rcItem, item.CtlID == Send ? self->fieldBrush_ : self->surfaceBrush_);
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
-        const bool primary = item.CtlID == Send || item.CtlID == IDOK;
+        const bool primary = (item.CtlID == Send && !self->busy_) || item.CtlID == IDOK;
         const bool hover = GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr;
         const bool pressed = enabled && (item.itemState & ODS_SELECTED);
         const auto visual = UiButtonVisual(c, enabled, pressed, hover, primary);
@@ -616,7 +636,7 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         const bool headerIcon = item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
-        const bool quiet = headerIcon || item.CtlID == WorkspaceButton || item.CtlID == QuickMenu || item.CtlID == Analyze || item.CtlID == Observe || (item.CtlID == Send && !enabled);
+        const bool quiet = headerIcon || item.CtlID == QuickMenu || item.CtlID == Analyze || item.CtlID == Observe || (item.CtlID == Send && !enabled);
         auto button = visual;
         if (quiet) {
             const COLORREF base = item.CtlID == Send ? c.field : c.surface;
@@ -652,7 +672,8 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (item.CtlID == Connect)
                 self->icons_.Draw(dc, ToolbarIcon::Settings, icon, self->dark_);
             else
-                UiDrawGlyph(dc, icon, button.ink, item.CtlID == Send ? UiGlyph::Send : item.CtlID == PetButton ? UiGlyph::Pet : item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
+                UiDrawGlyph(dc, icon, item.CtlID == Send && self->busy_ && enabled && !pressed ? c.danger : button.ink,
+                            item.CtlID == Send ? (self->busy_ ? UiGlyph::Stop : UiGlyph::Send) : item.CtlID == PetButton ? UiGlyph::Pet : item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
         } else
             Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
                  item.CtlID == StopTurn && enabled && !pressed ? c.danger : button.ink,
@@ -692,13 +713,22 @@ void AiPane::Layout() {
     b.Move(Control(HistoryButton), historyLeft + D(40), 0, D(28), D(28));
     b.Move(Control(New), historyLeft + D(80), 0, D(28), D(28));
     b.Move(transcript_, 0, top, width, std::max(D(24), contextTop - top - gap));
-    b.Move(Control(WorkspaceButton),D(width<D(320)?48:76),0,std::max(D(24),historyLeft-D(52)-D(width<D(320)?48:76)),D(28));
+    auto workspaceLabel=workspaceDirectory_;
+    while(workspaceLabel.size()>1 && workspaceLabel.back()==L'/')workspaceLabel.pop_back();
+    const auto slash=workspaceLabel.rfind(L'/');
+    if(slash!=std::wstring::npos && slash+1<workspaceLabel.size())workspaceLabel=workspaceLabel.substr(slash+1);
+    if(workspaceLabel.empty())workspaceLabel=L"工作空间";
+    SIZE workspaceText{};
+    if(HDC dc=GetDC(window_)) {const auto old=SelectObject(dc,smallFont_);GetTextExtentPoint32W(dc,workspaceLabel.c_str(),static_cast<int>(workspaceLabel.size()),&workspaceText);SelectObject(dc,old);ReleaseDC(window_,dc);}
+    const int workspaceLeft=D(width<D(320)?48:76);
+    const int workspaceAvailable=std::max(D(28),historyLeft-D(52)-workspaceLeft);
+    b.Move(Control(WorkspaceButton),workspaceLeft,0,std::min(workspaceAvailable,std::max(D(36),static_cast<int>(workspaceText.cx)+D(34))),D(28));
     b.Move(Control(Analyze), 0, contextTop, D(80), D(28));
     b.Move(Control(QuickMenu), D(80), contextTop, D(28), D(28));
     b.Show(Control(Observe),SW_HIDE);
-    const int bottomWidth=D(width<D(320)?64:88);
+    const int bottomWidth=D(28);
     b.Move(Control(Bottom),width-bottomWidth,contextTop,bottomWidth,D(28));
-    b.Move(Control(StopTurn),width-bottomWidth-D(36),contextTop,D(28),D(28));
+    b.Show(Control(StopTurn),SW_HIDE);
     b.Move(Control(Input), D(12), composerTop + D(8), std::max(D(80), width - D(24)), D(40));
     b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(136), std::max(D(88), width/3)), D(220));
     b.ComboVisibleHeight(Control(Target), D(28));
@@ -894,11 +924,11 @@ void AiPane::Reflow(bool appended) {
 }
 void AiPane::UpdateTranscriptActions() {
     ShowWindow(Control(Bottom), scroll_.offset<scroll_.Maximum() ? SW_SHOWNA : SW_HIDE);
-    SetWindowTextW(Control(Bottom),scroll_.unread?L"最新 ·":L"最新");
+    SetWindowTextW(Control(Bottom),L"返回最新回答");
     ShowWindow(Control(Analyze),SW_SHOWNA);
     ShowWindow(Control(QuickMenu),SW_SHOWNA);
     ShowWindow(Control(Observe),SW_HIDE);
-    ShowWindow(Control(StopTurn), busy_ ? SW_SHOWNA : SW_HIDE);
+    ShowWindow(Control(StopTurn),SW_HIDE);
     if (scroll_.unread) SetWindowPos(Control(Bottom), HWND_TOP, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
@@ -1396,8 +1426,9 @@ void AiPane::UpdateActions() {
     const bool ready = client_.Ready();
     if (!busy_ && companionActivity_ != pet::Activity::Done && companionActivity_ != pet::Activity::Failed && companionActivity_ != pet::Activity::Stopped)
         SetCompanionActivity(ready ? pet::Activity::Idle : client_.Running() ? pet::Activity::Connecting : pet::Activity::Offline);
-    SetWindowTextW(Control(Send), L"发送");
-    EnableWindow(Control(Send), ready && !busy_ && !directoryPending_);
+    SetWindowTextW(Control(Send), busy_ ? (stopRequested_ ? L"正在停止" : L"停止") : L"发送");
+    updateTip(Send,busy_ ? (stopRequested_ ? L"正在停止当前任务" : L"停止当前任务（已提交的命令可能继续执行）") : L"发送消息",sendTooltip_);
+    EnableWindow(Control(Send), ready && !directoryPending_ && (!busy_ || !stopRequested_));
     EnableWindow(Control(StopTurn), busy_ && !stopRequested_);
     for (int id : {Analyze, Observe, QuickMenu, HistoryButton, New, WorkspaceButton})
         EnableWindow(Control(id), ready && !busy_ && !directoryPending_);
@@ -1681,7 +1712,9 @@ void AiPane::Action(int id) {
         return;
     }
     if (id == Send) {
-        if (!busy_) SendPrompt();
+        if (sendGesture_ == -2) return;
+        if (busy_) {if(sendGesture_ != 0 && !stopRequested_)Stop();}
+        else if(sendGesture_ != 1) SendPrompt();
     } else if (id == StopTurn) {
         if (busy_ && !stopRequested_) Stop();
     } else if (id == Connect)
@@ -1692,13 +1725,31 @@ void AiPane::Action(int id) {
             BeginWorkspaceConversation(directoryPath_);
     } else if(id==QuickMenu) {
         HMENU menu=CreatePopupMenu();
-        AppendMenuW(menu,MF_STRING,1,L"分析当前日志");AppendMenuW(menu,MF_STRING,2,L"持续观察");AppendMenuW(menu,MF_STRING,3,L"附加终端选中内容");
+        AppendMenuW(menu,MF_STRING,1,L"分析当前日志\n引用实际输出，说明事实与可能原因");
+        AppendMenuW(menu,MF_STRING,2,L"持续观察\n有界观察新输出，可随时停止");
+        AppendMenuW(menu,MF_STRING,3,L"附加终端选中内容\n将实际选区附加到当前提问");
+        AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+        AppendMenuW(menu,MF_STRING,4,L"定位报错原因\n填写提示词，检查后发送");
+        AppendMenuW(menu,MF_STRING,5,L"梳理启动过程\n按实际日志整理启动阶段");
+        AppendMenuW(menu,MF_STRING,6,L"对比前后变化\n需要两段日志，不推断缺失证据");
+        AppendMenuW(menu,MF_STRING,7,L"生成诊断清单\n先给只读检查建议与预期现象");
         RECT r{};GetWindowRect(Control(QuickMenu),&r);
-        const auto choice=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,r.left,r.bottom,0,window_,nullptr);DestroyMenu(menu);
+        const auto choice=UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,r.left,r.bottom,window_,style_);DestroyMenu(menu);
         if(choice==3) {
             const auto selection=devices_("selection",{{"sessionId",target_}});
             if(selection.contains("error"))SetStatus(Wide(selection["error"].get<std::string>()));
             else AttachSelection(Wide(selection.value("text",std::string())),target_);
+        } else if(choice>=4&&choice<=7) {
+            const wchar_t* prompts[]={
+                L"请定位关联终端实际日志中的报错，引用证据，区分事实、可能原因与待验证项；先建议只读检查。",
+                L"请按时间顺序梳理实际启动日志，标出启动阶段、异常和最后进展；没有证据的阶段明确说明未知。",
+                L"请对比前后两段日志的变化。缺少任一段时先向我索取，引用原文说明差异及可能影响。",
+                L"请根据关联终端的实际系统和日志生成诊断清单，说明只读检查命令、预期现象和证据；先不要执行或上下电。"};
+            const auto existing=Text(Control(Input));
+            const auto draft=std::wstring(prompts[choice-4])+(existing.empty()?L"":L"\r\n\r\n"+existing);
+            SetWindowTextW(Control(Input),draft.c_str());
+            SendMessageW(Control(Input),EM_SETSEL,draft.size(),draft.size());
+            SetStatus(L"已填入提示词，检查后发送；分析应以实际日志为准");FocusInput();
         } else if(choice) {quickObserve_=choice==2;SetWindowTextW(Control(Analyze),quickObserve_?L"持续观察":L"分析日志");}
     }
     else if (id == HistoryButton)
@@ -2729,7 +2780,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         self->workspaceDialog_ = h;
         self->workspaceAccept_ = false;
         SetWindowTextW(h, L"选择 AI 工作空间");
-        UiResizeDialog(h, self->dpi_, 436, 268);
+        UiResizeDialog(h, self->dpi_, 436, 256);
         auto add = [&](const wchar_t *type, const wchar_t *text, int id, int x, int y, int width, int height, DWORD extra) {
             auto c = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | extra, self->D(x), self->D(y), self->D(width), self->D(height),
                 h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
@@ -2739,16 +2790,16 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return c;
         };
         add(L"STATIC",L"服务器项目目录 · 单击查看，双击编辑",-1,16,16,404,24,0);
-        UiPathField::Create(h,PathDisplay,self->D(16),self->D(40),self->D(404),self->D(40),&self->style_);
-        auto combo = add(L"COMBOBOX",L"",Directory,16,92,252,240,CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
-        SendMessageW(combo,CB_SETITEMHEIGHT,static_cast<WPARAM>(-1),self->D(24));
+        UiPathField::Create(h,PathDisplay,self->D(16),self->D(40),self->D(404),self->D(28),&self->style_);
+        auto combo = add(L"COMBOBOX",L"",Directory,16,80,252,240,CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
+        {UiLayoutBatch fields;fields.ComboVisibleHeight(combo,self->D(28));fields.Commit();}
         SendMessageW(combo,CB_SETDROPPEDWIDTH,self->D(404),0);
         SendMessageW(combo,CB_LIMITTEXT,4096,0);
-        add(L"BUTTON",L"上一级",DirectoryUp,280,92,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        UiSetButtonGlyph(add(L"BUTTON",L"刷新",DirectoryRefresh,356,92,64,28,BS_OWNERDRAW | WS_TABSTOP), UiGlyph::Refresh, L"刷新目录");
-        add(L"STATIC",L"单击路径查看完整内容；双击编辑。下拉选择子目录。",Note,16,136,404,56,0);
-        add(L"BUTTON",L"取消",IDCANCEL,216,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON",L"切换",IDOK,324,216,96,36,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"上一级",DirectoryUp,280,80,64,28,BS_OWNERDRAW | WS_TABSTOP);
+        UiSetButtonGlyph(add(L"BUTTON",L"刷新",DirectoryRefresh,356,80,64,28,BS_OWNERDRAW | WS_TABSTOP), UiGlyph::Refresh, L"刷新目录");
+        add(L"STATIC",L"单击查看完整路径，双击编辑。切换成功后新建会话，失败保留原会话。",Note,16,124,404,56,0);
+        add(L"BUTTON",L"取消",IDCANCEL,216,204,96,36,BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON",L"切换",IDOK,324,204,96,36,BS_OWNERDRAW | WS_TABSTOP);
         auto path = self->workspaceDirectory_.empty() ? self->settings_.workingDirectory : self->workspaceDirectory_;
         if (path.empty()) path = L"/home/linux/workspace";
         SetDlgItemTextW(h,PathDisplay,path.c_str());

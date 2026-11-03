@@ -6,7 +6,11 @@ param(
     [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]
     [string]$Configuration = 'Release',
 
-    [switch]$Clean
+    [switch]$Clean,
+
+    # Optional production-only compilation. The default still builds all targets.
+    [ValidateSet('serialctl')]
+    [string]$Target
 )
 
 Set-StrictMode -Version Latest
@@ -32,11 +36,13 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         '-A', $platform,
         '-DBUILD_TESTING=ON'
     )
-    Invoke-SerialCtlExternalCommand -FilePath $cmakePath -Description "Build $item $Configuration" -Arguments @(
+    $buildArguments = @(
         '--build', $buildDirectory,
-        '--config', $Configuration,
-        '--parallel'
+        '--config', $Configuration
     )
+    if ($Target) { $buildArguments += @('--target', $Target) }
+    $buildArguments += '--parallel'
+    Invoke-SerialCtlExternalCommand -FilePath $cmakePath -Description "Build $item $Configuration" -Arguments $buildArguments
 }
 
 Write-Host "[PASS] SerialCtl build completed: $Architecture / $Configuration"

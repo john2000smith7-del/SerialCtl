@@ -23,6 +23,7 @@
 #include "AiDeviceBridge.h"
 #include "UiSettingsWriter.h"
 #include "SshConnectionHistory.h"
+#include "XferPane.h"
 #include "ToolbarIcons.h"
 #include <deque>
 #include <functional>
@@ -95,6 +96,11 @@ private:
         LONGLONG arrival = 0;
     };
     struct SessionState : AiDeviceBridge::State, TerminalViewport::State, SftpController::Session {
+        bool disconnected = false, disconnecting = false, closeAfterStop = false;
+        std::shared_ptr<std::atomic_bool> cleanupDone;
+        std::wstring disconnectCommandOutcome;
+        SerialSettings serialSettings;
+        std::string remoteInstance;
         std::wstring lastStatus;
         bool lastStatusIsError = false, unreadStatus = false;
         SYSTEMTIME statusTime{};
@@ -107,6 +113,7 @@ private:
         UINT codePage = CP_UTF8;
         bool rawTrace = false;
         bool saveSshHistory = false;
+        bool rememberSshPassword = false;
         std::wstring employeeNumber;
         std::wstring host;
         std::wstring remoteCom;
@@ -175,13 +182,19 @@ private:
     void ConnectFromDialog();
     void CompleteConnection(bool success, const std::wstring& error);
     void Disconnect();
+    void BeginDisconnect(SessionState&);
+    void CloseSession(std::uint64_t);
+    void PollSessionCleanup();
+    void Reconnect();
+    void RefreshConnectionActions();
+    std::uint64_t pendingReconnectId_ = 0;
     void DisconnectAll();
     void SwitchSession(size_t index, SessionFocus focus = SessionFocus::Terminal);
     void ShowPowerPage();
     void ShowAiPage(bool connect = true);
     Json AiDeviceRequest(const std::string&, const Json&);
     SessionState* FindSession(std::uint64_t id);
-    bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {});
+    bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {}, std::function<bool()> allowed = {});
     void SendTerminalCharacter(wchar_t character);
     void SendTerminalKey(WPARAM key, bool shift, bool control, bool alt);
     void PasteToTerminal();
@@ -244,7 +257,9 @@ private:
     void SyncPowerTerminal();
     bool LiveMonitorPage() const { return aiVisible_ || powerVisible_; }
 
-    void ShowSftpPanel(bool show);
+    void ShowSftpPanel(bool show,bool preserveXfer=false);
+    void ShowXferPanel();
+    XferPane::Target XferTarget();
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
     void RefreshSftp(const std::wstring& directory = {});
     static SftpController::Endpoint SftpEndpoint(const SessionState&);
@@ -367,6 +382,7 @@ private:
     HWND themeButton_ = nullptr;
     HWND settingsButton_ = nullptr;
     HWND disconnectButton_ = nullptr;
+    HWND reconnectButton_ = nullptr;
     HWND connectionHeader_ = nullptr;
     HWND connectionList_ = nullptr;
     HWND disconnectAllButton_ = nullptr;
@@ -380,10 +396,14 @@ private:
     int statusHeight_ = 0;
     HWND commandHeader_ = nullptr;
     HWND sftpTabButton_ = nullptr;
+    HWND xferTabButton_ = nullptr;
     HWND rightPanelToggleButton_ = nullptr;
     CommandNotebook notebook_;
     HWND commandHint_ = nullptr;
     HWND commandList_ = nullptr;
+    bool notebookRepeating_ = false;
+    std::uint64_t notebookRound_ = 0;
+    std::shared_ptr<std::atomic_bool> commandSendPermit_;
     void RunNotebook(std::vector<std::wstring> commands);
     std::wstring NotebookPath() const;
     std::wstring lastNotebookPlan_;
@@ -454,6 +474,9 @@ private:
     int rightPanelAnimatedWidth_ = -1, rightPanelAnimationFrom_ = 0, rightPanelAnimationTo_ = 0;
     ULONGLONG rightPanelAnimationAt_ = 0;
     SftpController sftp_;
+    xfer::TransferController xfer_;
+    XferPane xferPane_;
+    bool xferPanelVisible_ = false;
     bool sftpPanelVisible_ = false;
     std::vector<SftpBreadcrumbHit> sftpBreadcrumbHits_;
     int sftpNameWidth_ = 180;
@@ -500,6 +523,8 @@ private:
     int pendingMode_ = 0;
     bool pendingHostKeyReverify_ = false;
     bool pendingSaveSshHistory_ = false;
+    bool pendingRememberSshPassword_ = false;
+    std::wstring loadedSshCredentialTarget_;
     std::wstring pendingEmployeeNumber_;
     Json sshHistory_ = Json::array();
     bool initializingConnectionDialog_ = false;

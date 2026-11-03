@@ -109,7 +109,7 @@ void SerialDevice::Close() {
     onStatus_ = {};
 }
 
-bool SerialDevice::Write(const Bytes &data, std::wstring &error) {
+bool SerialDevice::Write(const Bytes &data, std::wstring &error,HANDLE operationCancel) {
     std::lock_guard<std::mutex> lock(writeMutex_);
     if (!IsOpen()) {
         error = L"串口尚未打开";
@@ -119,10 +119,14 @@ bool SerialDevice::Write(const Bytes &data, std::wstring &error) {
         return true;
     }
     size_t offset = 0;
+    const auto deadline=operationCancel?GetTickCount64()+10000:0;
     while (offset < data.size()) {
+        const auto now=GetTickCount64();
+        if(deadline&&now>=deadline) {error=L"串口文件写入超时，已写出的字节不可撤回";return false;}
         DWORD written = 0;
         if (!writeIo_.Transfer(handle_, const_cast<std::uint8_t*>(data.data() + offset),
-                static_cast<DWORD>(data.size() - offset), true, stopEvent_, written)) {
+                static_cast<DWORD>(data.size() - offset), true, stopEvent_, written,operationCancel,
+                deadline?static_cast<DWORD>(deadline-now):INFINITE)) {
             error = L"串口写入失败，执行状态未知：" + Win32ErrorMessage();
             return false;
         }
@@ -144,6 +148,8 @@ bool SerialDevice::IsOpen() const {
 
 void SerialDevice::ReadLoop() {
     std::array<std::uint8_t, 16 * 1024> buffer{};
+    ULONGLONG lastWarning = 0, warningCount = 0;
+    DWORD pendingErrors = 0;
     while (!stopping_) {
         DWORD read = 0;
         if (!readIo_.Transfer(handle_, buffer.data(), static_cast<DWORD>(buffer.size()), false, stopEvent_, read)) {
@@ -163,19 +169,22 @@ void SerialDevice::ReadLoop() {
                     onStatus_(L"读取串口队列失败：" + Win32ErrorMessage(), true);
                 return;
             }
-            if (errors && onStatus_) {
-                std::wstring message = L"串口驱动错误：";
-                if (errors & CE_FRAME)
-                    message += L" framing";
-                if (errors & CE_RXPARITY)
-                    message += L" parity";
-                if (errors & CE_OVERRUN)
-                    message += L" overrun";
-                if (errors & CE_RXOVER)
-                    message += L" rx-buffer-overflow";
-                if (errors & CE_BREAK)
-                    message += L" break";
-                onStatus_(message + L" · flags=" + std::to_wstring(errors), true);
+            if (errors) {
+                pendingErrors |= errors;
+                if (warningCount != ~ULONGLONG(0)) ++warningCount;
+            }
+            const auto now=GetTickCount64();
+            if (pendingErrors && onStatus_ && (!lastWarning || now-lastWarning>=2000)) {
+                std::wstring message=L"串口通信告警：";
+                if(pendingErrors&CE_FRAME) message+=L" 帧错误";
+                if(pendingErrors&CE_RXPARITY) message+=L" 校验错误";
+                if(pendingErrors&CE_OVERRUN) message+=L" 接收溢出";
+                if(pendingErrors&CE_RXOVER) message+=L" 接收缓冲区溢出";
+                if(pendingErrors&CE_BREAK) message+=L" BREAK 信号";
+                wchar_t flags[32]{}; swprintf_s(flags,L"0x%04lX",pendingErrors);
+                message+=L" · flags="+std::wstring(flags)+L" · 累计 "+std::to_wstring(warningCount)+L" 次";
+                message+=L"；连接可继续，但个别字节可能损坏或丢失，请检查波特率、帧格式及线路";
+                onStatus_(message,true); lastWarning=now; pendingErrors=0;
             }
             if (status.cbInQue == 0)
                 break;

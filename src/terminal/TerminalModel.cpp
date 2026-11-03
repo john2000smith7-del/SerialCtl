@@ -275,7 +275,10 @@ void TerminalModel::ControlCharacter(
     case L'\n':
     case L'\v':
     case L'\f':
-        EnsureTimestamp(screen.lines[static_cast<size_t>(screen.cursorRow)], timestamp);
+        // A soft continuation belongs to the same logical line. Giving it a
+        // timestamp here would inject a second prefix into copied long lines.
+        if (screen.lines[static_cast<size_t>(screen.cursorRow)].logicalOffset == 0)
+            EnsureTimestamp(screen.lines[static_cast<size_t>(screen.cursorRow)], timestamp);
         screen.lines[static_cast<size_t>(screen.cursorRow)].hardBreak = true;
         screen.lines[static_cast<size_t>(screen.cursorRow)].wrapped = false;
         LineFeed(result);
@@ -1055,6 +1058,17 @@ TerminalModel TerminalModel::PreviewInput(const std::wstring &text, size_t curso
     model.primary_.cursorColumn = caret.second;
     model.primary_.wrapPending = pending;
     return model;
+}
+
+void TerminalModel::BeginConnection() {
+    auto previous=std::move(history_);
+    for(size_t i=0;i<primary_.lines.size();++i) {
+        if(i>static_cast<size_t>(primary_.cursorRow) && primary_.lines[i].used==0) break;
+        previous.push_back(std::make_shared<const TerminalLine>(primary_.lines[i]));
+    }
+    if(!previous.empty()) {auto last=*previous.back();last.wrapped=false;last.hardBreak=true;previous.back()=std::make_shared<const TerminalLine>(std::move(last));}
+    Reset(); history_=std::move(previous); RecountHistory(); TrimHistory(); projectionDirty_=true;
+    Feed(L"── 重新连接 ──\r\n", L"");
 }
 
 void TerminalModel::Reset() {

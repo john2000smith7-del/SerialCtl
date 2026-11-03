@@ -1,0 +1,86 @@
+name: Repository development policy
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  protocol-reference:
+    name: Independent serial protocol interoperability
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Fetch hash-pinned independent test-only reference
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, os, pathlib, urllib.request
+          data=urllib.request.urlopen('https://deb.debian.org/debian/pool/main/l/lrzsz/lrzsz_0.12.21-10+b1_amd64.deb',timeout=60).read()
+          assert hashlib.sha256(data).hexdigest()=='60c15258a977b837671f99f60a7876b1dfa7cebd9ed1a7dcd16d922b6e1b9cfe'
+          (pathlib.Path(os.environ['RUNNER_TEMP'])/'lrzsz.deb').write_bytes(data)
+          PY
+          dpkg-deb -x "$RUNNER_TEMP/lrzsz.deb" "$RUNNER_TEMP/serialctl-reference"
+      - name: Compare production engine with independent X/Y/ZMODEM implementations
+        shell: bash
+        run: |
+          g++ -std=c++17 -O2 -pthread -Isrc/xfer tests/integration/XferInteropProbePosix.cpp src/xfer/TransferProtocol.cpp -o "$RUNNER_TEMP/xfer-interop-probe"
+          python tests/integration/protocol_interop_posix.py --probe "$RUNNER_TEMP/xfer-interop-probe" --reference-dir "$RUNNER_TEMP/serialctl-reference/usr/bin" --output "$RUNNER_TEMP/xfer-interop"
+      - name: Preserve bounded reference result in workflow log
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/xfer-interop/interop-results.json" ]]; then
+            cat "$RUNNER_TEMP/xfer-interop/interop-results.json"
+          fi
+  policy:
+    name: Repository policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Validate versioned branch, structured commits, PR and basic secret patterns
+        env:
+          POLICY_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: python tools/repository_policy.py
+      - name: Exercise negative and positive release-gate cases
+        run: python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v
+      - name: Keep test-only future archives isolated from formal signing
+        run: python -m unittest discover -s tests/integration -p 'test_forward_update_fixture.py' -v
+      - name: Verify CI transport integrity without artifact quota assumptions
+        run: python -m unittest discover -s tests/integration -p 'test_ci_evidence.py' -v
+      - name: Reproduce desktop observation overhead without Windows claims
+        run: python -m unittest discover -s tests/integration -p 'test_desktop_observation.py' -v
+  windows-tools:
+    name: Workflow tools on Windows
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Test release evidence helpers and parse PowerShell without publishing
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests/integration -p 'test_ci_evidence.py' -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests/integration -p 'test_desktop_observation.py' -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($path in @(Get-ChildItem scripts,tools -Filter '*.ps1' -Recurse -File)) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][Management.Automation.Language.Parser]::ParseFile($path.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count) { throw "PowerShell syntax check failed: $($path.Name)" }
+          }

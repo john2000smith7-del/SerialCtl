@@ -5,6 +5,21 @@ on:
     paths: [.github/workflows/windows-native-diagnostics.yml]
   workflow_dispatch:
     inputs:
+      lifecycle:
+        description: Focused real native command, connection lifecycle and SSH regressions; never release evidence
+        required: false
+        type: boolean
+        default: false
+      compile_only:
+        description: Compile only; do not execute tests, GUI, packaging or release
+        required: false
+        type: boolean
+        default: false
+      rebuild_helpers:
+        description: Rebuild pinned Plink helpers and commit them to this temporary branch before compiling
+        required: false
+        type: boolean
+        default: false
       ui_run:
         description: Optional native-verified Windows build to inspect with current GUI tests
         required: false
@@ -14,18 +29,222 @@ on:
         required: false
         type: boolean
         default: false
+      ui_endurance:
+        description: Only inspect actual endurance using independent screen recording
+        required: false
+        type: boolean
+        default: false
+      xfer_ui:
+        description: Focused current-source Xfer native and actual GUI diagnostics; never formal release evidence
+        required: false
+        type: boolean
+        default: false
+      inspect_run:
+        description: Read-only exact-run cached diagnostics inspection; never test or release qualification
+        required: false
+        default: ''
+      inspect_name:
+        description: Exact logical evidence name for read-only inspection
+        required: false
+        default: SerialCtl-Xfer-native-diagnostics
+      inspect_images:
+        description: Optional comma-separated exact PNG basenames, at most three; no image rewriting
+        required: false
+        default: ''
 permissions:
   contents: read
   actions: read
 jobs:
+  inspect:
+    if: ${{ inputs.inspect_run }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: ${{ inputs.inspect_name }}
+          run-id: ${{ inputs.inspect_run }}
+          path: inspection
+      - name: Export bounded original reports or explicitly selected PNGs without rerunning tests
+        shell: python
+        env:
+          INSPECT_IMAGES: ${{ inputs.inspect_images }}
+        run: |
+          import base64, hashlib, json, os, pathlib, sys, zipfile
+          root=pathlib.Path('inspection')
+          print('INSPECTION_ONLY: cached evidence; a successful extraction is not a passing test')
+          for path in sorted(root.rglob('*.json')):
+              if path.stat().st_size>8*1024*1024: raise ValueError('Report exceeds bounded inspection size')
+              data=json.loads(path.read_text(encoding='utf-8-sig'))
+              if not isinstance(data,dict): continue
+              if path.name=='dialog-summary.json':
+                  encoded=base64.b64encode(path.read_bytes()).decode('ascii')
+                  for offset in range(0,len(encoded),4096):print('INSPECT_DIALOG_JSON_CHUNK='+encoded[offset:offset+4096])
+                  continue
+              row={key:data[key] for key in ('status','error','failure','cleanup_error','source_commit','archive_sha256','metadata_sha256','build_run_id','previous_version','older_version','scope','cases','checks','macro_observations','retained_cards_after_disconnect') if key in data}
+              for key in ('actual_click_count','modal_cycles','exit_code','close_seconds','response_samples_ms','resource_samples'):
+                  if key in data:row[key]=data[key]
+              if 'dialog_operations' in data:
+                  row['dialog_operations']=[{key:item[key] for key in ('control','theme','observed_ready_ms','response_ms','background_burst') if key in item} for item in data['dialog_operations']]
+              print('INSPECT_REPORT',path.name,json.dumps(row,ensure_ascii=True)[:20000])
+          for path in sorted(root.rglob('*-traffic.log')):
+              if path.name not in ('baseline-traffic.log','candidate-traffic.log') or path.stat().st_size>65536: continue
+              print('INSPECT_DIALOG_TRAFFIC',path.name,base64.b64encode(path.read_bytes()).decode('ascii'))
+          archives=list(root.rglob('SerialCtl-V*-Win7-x64.zip'))
+          if archives:
+              if len(archives)!=1:raise ValueError('Ambiguous production archive')
+              sys.path.insert(0,'tools')
+              import new_update_feed as feed
+              descriptor=feed.describe_archive(archives[0])
+              encoded=base64.b64encode(json.dumps(descriptor,ensure_ascii=False,separators=(',',':')).encode()).decode()
+              for offset in range(0,len(encoded),2048):print('SERIALCTL_UPDATE_PAYLOAD_CHUNK='+encoded[offset:offset+2048])
+              with zipfile.ZipFile(archives[0]) as bundle:
+                  manifest=json.loads(bundle.read('MANIFEST.json').decode('utf-8-sig'))
+              print('INSPECT_PACKAGE_SOURCE',json.dumps(manifest['source']))
+          names=[name.strip() for name in os.environ.get('INSPECT_IMAGES','').split(',') if name.strip()]
+          if len(names)>3 or len(names)!=len(set(names)): raise ValueError('Select at most three distinct PNG basenames')
+          total=0
+          for name in names:
+              if pathlib.PurePath(name).name!=name or not name.endswith('.png') or '\\' in name: raise ValueError('Invalid image basename')
+              matches=list(root.rglob(name))
+              if len(matches)!=1: raise ValueError('Expected one exact PNG: '+name)
+              data=matches[0].read_bytes();total+=len(data)
+              if total>2*1024*1024: raise ValueError('Selected PNGs exceed bounded log size')
+              print('INSPECT_IMAGE_SHA256',name,hashlib.sha256(data).hexdigest())
+              print('SERIALCTL_UI_REVIEW_BEGIN '+name)
+              encoded=base64.b64encode(data).decode('ascii')
+              for offset in range(0,len(encoded),4096):print('SERIALCTL_UI_REVIEW_DATA '+encoded[offset:offset+4096])
+              print('SERIALCTL_UI_REVIEW_END '+name)
+          print('INSPECT_PNG_NAMES',json.dumps([p.name for p in sorted(root.rglob('*.png'))]))
+  compile-helpers:
+    if: ${{ inputs.compile_only && inputs.rebuild_helpers && startsWith(github.ref, 'refs/heads/feat/') }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    outputs:
+      source: ${{ steps.helpers.outputs.source }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Compile pinned PuTTY 0.85 with existing patches and TCP keepalive patch
+        id: helpers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          $root = Get-SerialCtlRepositoryRoot
+          $source = Join-Path $env:RUNNER_TEMP 'serialctl-putty-source'
+          Expand-Archive -LiteralPath "$root/third_party/putty/source/putty-src-0.85.zip" -DestinationPath $source
+          git -C $source init --quiet
+          if ($LASTEXITCODE) { throw 'Cannot isolate PuTTY patch directory' }
+          foreach ($patch in @('serialctl-resize','serialctl-sftp-list','serialctl-sftp-exact-rename','serialctl-sftp-utf8-local','serialctl-tcp-keepalive')) {
+            git -C $source apply "$root/third_party/putty/patches/$patch.patch"
+            if ($LASTEXITCODE) { throw "Cannot apply $patch" }
+          }
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          foreach ($arch in @('x64','x86')) {
+            $platform = if ($arch -eq 'x64') { 'x64' } else { 'Win32' }
+            $directory = Join-Path $env:RUNNER_TEMP "serialctl-putty-$arch"
+            Invoke-SerialCtlExternalCommand -FilePath $cmake -Description "Configure PuTTY $arch" -Arguments @('-S',$source,'-B',$directory,'-G',$generator,'-A',$platform,'-DPUTTY_GSSAPI=OFF','-DPUTTY_SUBSYSTEM_VERSION=6.01','-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+            Invoke-SerialCtlExternalCommand -FilePath $cmake -Description "Compile Plink $arch" -Arguments @('--build',$directory,'--config','Release','--target','plink','--parallel','2')
+            $program = Join-Path $directory 'Release/plink.exe'
+            ./tools/verify_win7_binary.ps1 -Path $program -Architecture $arch -Subsystem CUI -AllowedDll @('ADVAPI32.dll','KERNEL32.dll','USER32.dll')
+            Copy-Item -LiteralPath $program -Destination "$root/third_party/putty/prebuilt/$arch/plink.exe" -Force
+          }
+          python -c "import hashlib,json,pathlib; p=pathlib.Path('third_party/manifest.json'); d=json.loads(p.read_text()); [(f.update(sha256=hashlib.sha256(pathlib.Path(f['path']).read_bytes()).hexdigest())) for f in d['dependencies'][0]['files']]; p.write_bytes((json.dumps(d,indent=2)+'\n').encode('utf-8'))"
+          if ($LASTEXITCODE) { throw 'Cannot record helper identities' }
+          git add -- third_party/putty/prebuilt/x64/plink.exe third_party/putty/prebuilt/x86/plink.exe third_party/manifest.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 1) {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            $body = "build(V2.0.19): 同步 TCP 保活补丁对应的 Plink [skip ci]`n`n修改内容：`n- 重建固定 PuTTY 0.85 的 x64/x86 Plink 并同步哈希。`n`n验证情况：`n- 仅编译和静态 PE 检查；未运行测试。`n`n兼容性：`n- 保持 /MT 和子系统 6.01；Win7 实机及板卡未测试，自动更新签名身份不变。"
+            $message = Join-Path $env:RUNNER_TEMP 'helper-commit.txt'
+            [IO.File]::WriteAllText($message,$body,(New-Object Text.UTF8Encoding($false)))
+            git commit -F $message
+            if ($LASTEXITCODE) { throw 'Cannot commit compiled helpers' }
+            git push origin "HEAD:refs/heads/$env:GITHUB_REF_NAME"
+            if ($LASTEXITCODE) { throw 'Temporary branch changed or helper push was rejected' }
+          } elseif ($LASTEXITCODE -ne 0) { throw 'Cannot inspect staged helper changes' }
+          "source=$(git rev-parse HEAD)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+  compile-only:
+    needs: compile-helpers
+    if: ${{ always() && inputs.compile_only && !cancelled() && (!inputs.rebuild_helpers || needs.compile-helpers.result == 'success') }}
+    runs-on: windows-2022
+    timeout-minutes: 40
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.compile-helpers.outputs.source || github.sha }}
+          fetch-depth: 0
+      - name: Compile x64 Release using build.ps1; no tests or application execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          Write-Host "SERIALCTL_COMPILE_SOURCE=$(git rev-parse HEAD)"
+          ./scripts/build.ps1 -Architecture x64 -Configuration Release -Clean -Target serialctl
+          $output = Get-SerialCtlBuildOutputDirectory -Architecture x64 -Configuration Release -RepositoryRoot (Get-SerialCtlRepositoryRoot)
+          $program = Join-Path $output 'serialctl.exe'
+          Write-Host "SERIALCTL_COMPILE_EXE_SHA256=$((Get-FileHash $program -Algorithm SHA256).Hash)"
+          Write-Host 'SERIALCTL_COMPILE_SCOPE=Compilation only; tests, GUI, packaging, signing and publication were not run.'
+  lifecycle:
+    if: ${{ inputs.lifecycle && !inputs.compile_only && !inputs.xfer_ui && !inputs.ui_run }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build and execute native command and connection regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/serialctl-lifecycle"
+          New-Item -ItemType Directory $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64 -RepositoryRoot (Get-SerialCtlRepositoryRoot)
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure focused native regressions' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Compile command and connection regressions' -Arguments @('--build',$directory,'--config','Release','--target','ai_device_test','ssh_lifecycle_test','queued_transfer_test','terminal_model_test','sftp_client_test','ai_pet_pane_test','--parallel','2')
+          $ctest = Get-RequiredCommandPath -Name ctest.exe
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Repeat exact native command and connection regressions' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(ai_device|ssh_lifecycle|queued_transfer|terminal_model|sftp_client|ai_pet_pane)$','--repeat','until-fail:3')
+      - name: Retain native failure and bounded structured diagnostics
+        if: always()
+        shell: python
+        run: |
+          import json, os, pathlib, shutil
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'serialctl-lifecycle'
+          root.mkdir(exist_ok=True)
+          log=pathlib.Path('build/windows/x64/cmake/Testing/Temporary/LastTest.log')
+          if log.exists():
+              shutil.copy2(log,root/'ctest.txt')
+              print(log.read_text(encoding='utf-8',errors='replace')[-16000:].encode('ascii','backslashreplace').decode())
+          for p in root.glob('*.json'):
+              print(p.name,json.dumps(json.loads(p.read_text(encoding='utf-8-sig')),ensure_ascii=True))
+      - uses: ./.github/actions/ci-evidence
+        if: always()
+        with:
+          mode: save
+          name: SerialCtl-lifecycle-diagnostics
+          path: ${{ runner.temp }}/serialctl-lifecycle/
   native:
-    if: ${{ !inputs.ui_run }}
+    if: ${{ !inputs.inspect_run && !inputs.lifecycle && !inputs.compile_only && !inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 30
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build and execute the new native regression targets first
         shell: powershell
         run: |
@@ -85,20 +304,27 @@ jobs:
               }
             }
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
+          retention-days: 14
           name: SerialCtl-native-regression-diagnostics
           path: ${{ runner.temp }}/native-evidence/
           if-no-files-found: warn
   gui:
-    if: ${{ inputs.ui_run }}
+    if: ${{ !inputs.lifecycle && !inputs.compile_only && inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-Win7-portable
+          path: bin
+          run-id: ${{ inputs.ui_run }}
       - name: Load exact native-verified program with unchanged production source
         id: source
         env:
@@ -115,25 +341,25 @@ jobs:
           if ($verified.Count -ne 1) { throw 'Source did not complete native tests, PE and archive checks' }
           git diff --exit-code $run.head_sha HEAD -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Production source changed; select its matching build' }
-          gh run download $env:BUILD_RUN --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir bin
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot download the verified program' }
+          $archives = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archives.Count -ne 1) { throw 'Exact verified program cache is missing or ambiguous' }
           python -m pip install imageio-ffmpeg==0.6.0
           if ($LASTEXITCODE -ne 0) { throw 'Cannot install the test-only encoder' }
           New-Item -ItemType Directory "$env:RUNNER_TEMP/gui-evidence" -Force | Out-Null
           [ordered]@{buildRun=$env:BUILD_RUN;programSource=$run.head_sha;testSource=(git rev-parse HEAD);scope='Diagnostics only; formal release still requires the complete exact-main workflow'} | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/gui-evidence/source.json"
       - name: Inspect packaged main window and dialogs
-        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_focus }}
+        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_focus && !inputs.ui_endurance }}
         shell: powershell
         run: ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/smoke"
       - name: Inspect approved controls and continuous power scroll
-        if: ${{ always() && steps.source.outcome == 'success' }}
+        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_endurance }}
         shell: powershell
         run: |
           $archive = @(Get-ChildItem bin -Filter '*.zip')
           python tests/integration/optimization_fixture.py --archive $archive[0].FullName --output "$env:RUNNER_TEMP/gui-evidence/optimization"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compare unchanged UI against accepted baseline
-        if: ${{ always() && steps.source.outcome == 'success' }}
+        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_endurance }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: powershell
@@ -146,9 +372,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/integration/ui_freeze_compare.py --baseline $old[0].FullName --candidate $new[0].FullName --output "$env:RUNNER_TEMP/gui-evidence/freeze"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v4
+      - name: Inspect actual packaged endurance with current observation fixture
+        if: ${{ always() && steps.source.outcome == 'success' && inputs.ui_endurance }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = @(Get-ChildItem bin -Filter '*.zip')
+          if ($archive.Count -ne 1) { throw 'Expected one exact native-verified package' }
+          python tests/integration/gui_command_drag_fixture.py --scenario endurance --archive $archive[0].FullName --output "$env:RUNNER_TEMP/gui-evidence/endurance"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: ./.github/actions/ci-evidence
         if: always()
         with:
+          mode: save
           name: SerialCtl-GUI-diagnostics
           path: |
             ${{ runner.temp }}/gui-evidence/**/*.png
@@ -156,10 +392,11 @@ jobs:
             ${{ runner.temp }}/gui-evidence/**/*.mkv
             ${{ runner.temp }}/gui-evidence/**/*.jsonl
             ${{ runner.temp }}/gui-evidence/**/*.log
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
-        if: always()
+            ${{ runner.temp }}/gui-evidence/**/*.txt
+      - uses: ./.github/actions/ci-evidence
+        if: ${{ always() && !inputs.ui_endurance }}
         with:
+          mode: save
           name: SerialCtl-approved-ui-review
           path: |
             ${{ runner.temp }}/gui-evidence/optimization/*.png
@@ -168,4 +405,122 @@ jobs:
             ${{ runner.temp }}/gui-evidence/smoke/x64-*-ssh-dialog.png
             ${{ runner.temp }}/gui-evidence/smoke/x64-*-sftp.png
             ${{ runner.temp }}/gui-evidence/freeze/comparison.json
-          if-no-files-found: warn
+  xfer:
+    if: ${{ !inputs.lifecycle && !inputs.compile_only && inputs.xfer_ui }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Compile current production program and focused native regressions
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:SERIALCTL_EVIDENCE_DIR = "$env:RUNNER_TEMP/xfer-diagnostic-evidence"
+          "SERIALCTL_EVIDENCE_DIR=$env:SERIALCTL_EVIDENCE_DIR" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          . ./scripts/common.ps1
+          $cmake = Get-RequiredCommandPath -Name cmake.exe
+          $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmake
+          $directory = Get-SerialCtlBuildDirectory -Architecture x64
+          New-Item -ItemType Directory $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Configure focused Xfer diagnostics' -Arguments @('-S','.', '-B',$directory,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
+          Invoke-SerialCtlExternalCommand -FilePath $cmake -Description 'Build actual program and Xfer tests' -Arguments @('--build',$directory,'--config','Release','--target','serialctl','transfer_controller_test','ui_popup_menu_test','boot_interrupt_test','queued_transfer_test','xfer_gateway_fixture','--parallel','2')
+          $ctest = Get-RequiredCommandPath -Name ctest.exe
+          Invoke-SerialCtlExternalCommand -FilePath $ctest -Description 'Run focused native checks without weakening formal suite' -Arguments @('--test-dir',$directory,'-C','Release','--output-on-failure','-R','^(transfer_controller|ui_popup_menu|boot_interrupt|queued_transfer)$')
+      - name: Run actual current-source Xfer GUI with controlled peer
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/common.ps1
+          # Same native hosted display preparation as smoke-ui, so subsequent
+          # existing GUI fixtures also receive enough real desktop area.
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class DiagnosticDisplay {
+            [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern bool EnumDisplaySettings(string d,int n,byte[] m);
+            [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int ChangeDisplaySettings(byte[] m,int f);
+            public static void Prepare() {
+              byte[] m=new byte[220];BitConverter.GetBytes((short)220).CopyTo(m,68);
+              if(!EnumDisplaySettings(null,-1,m))throw new Exception("Cannot inspect hosted display");
+              BitConverter.GetBytes(0x00180000).CopyTo(m,72);
+              BitConverter.GetBytes(1920).CopyTo(m,172);BitConverter.GetBytes(1080).CopyTo(m,176);
+              if(ChangeDisplaySettings(m,0)!=0)throw new Exception("Cannot prepare actual hosted display");
+            }
+          }
+          '@
+          [DiagnosticDisplay]::Prepare()
+          $native = Get-SerialCtlBuildOutputDirectory -Architecture x64 -Configuration Release
+          $fixture = Join-Path $native 'xfer_gateway_fixture.exe'
+          [ordered]@{source_commit=(git rev-parse HEAD); fixture='xfer_gateway_fixture.exe'; sha256=(Get-FileHash $fixture -Algorithm SHA256).Hash.ToLowerInvariant();scope='Diagnostic only, current source, never formal evidence'} | ConvertTo-Json | Set-Content (Join-Path $native 'fixture-source.json') -Encoding UTF8
+          $zip = "$env:RUNNER_TEMP/SerialCtl-Xfer-UI-Diagnostic.zip"
+          $stage = "$env:RUNNER_TEMP/xfer-diagnostic-stage"
+          New-Item -ItemType Directory $stage | Out-Null
+          foreach ($name in @('serialctl.exe','plink.exe','psftp.exe')) { Copy-Item (Join-Path $native $name) (Join-Path $stage $name) }
+          Copy-Item VERSION (Join-Path $stage 'VERSION')
+          Copy-Item docs/package/update.ini (Join-Path $stage 'update.ini')
+          foreach ($name in @('serialctl_client.py','serialctl_api.py','serialctl_ws.py')) {
+            Copy-Item (Join-Path 'tools' $name) (Join-Path $stage $name)
+          }
+          Compress-Archive -Path "$stage/*" -DestinationPath $zip
+          python tests/integration/xfer_ui_fixture.py --archive $zip --gateway $fixture --output "$env:RUNNER_TEMP/xfer-diagnostic-ui"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Inspect notebook and approved controls using current production executable
+        shell: powershell
+        run: |
+          python -m pip install imageio-ffmpeg==0.6.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/integration/gui_command_drag_fixture.py --archive "$env:RUNNER_TEMP/SerialCtl-Xfer-UI-Diagnostic.zip" --output "$env:RUNNER_TEMP/xfer-diagnostic-command"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/integration/optimization_fixture.py --archive "$env:RUNNER_TEMP/SerialCtl-Xfer-UI-Diagnostic.zip" --output "$env:RUNNER_TEMP/xfer-diagnostic-optimization"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check unchanged UI and the explicitly approved SSH layout contract
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh run download 40631971674 --repo $env:GITHUB_REPOSITORY --name SerialCtl-Win7-portable --dir "$env:RUNNER_TEMP/xfer-diagnostic-baseline"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $baseline = @(Get-ChildItem "$env:RUNNER_TEMP/xfer-diagnostic-baseline" -Filter '*.zip')
+          if ($baseline.Count -ne 1) { throw 'Expected the single pinned accepted baseline' }
+          python tests/integration/ui_freeze_compare.py --baseline $baseline[0].FullName --candidate "$env:RUNNER_TEMP/SerialCtl-Xfer-UI-Diagnostic.zip" --output "$env:RUNNER_TEMP/xfer-diagnostic-freeze"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Export bounded actual diagnostic results and images
+        if: always()
+        shell: python
+        run: |
+          import base64, json, os, pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'xfer-diagnostic-ui'
+          for directory in (root,root.with_name('xfer-diagnostic-command'),root.with_name('xfer-diagnostic-optimization'),root.with_name('xfer-diagnostic-freeze')):
+              for path in directory.glob('*.json'):
+                  if path.name.endswith('result.json') or path.name=='comparison.json':
+                      print(path.name,json.dumps(json.loads(path.read_text(encoding='utf-8-sig')),ensure_ascii=True))
+          # Keep all original PNGs in the exact-run cache, but bound this job's
+          # log. Additional originals can be read with inspect_run/images.
+          selected=[p for p in sorted(root.glob('*.png')) if any(part in p.name for part in ('failure','narrow','in-progress','disabled'))]
+          for path in selected[:3]:
+              print('SERIALCTL_UI_REVIEW_BEGIN '+path.name)
+              encoded=base64.b64encode(path.read_bytes()).decode('ascii')
+              for offset in range(0,len(encoded),4096): print('SERIALCTL_UI_REVIEW_DATA '+encoded[offset:offset+4096])
+              print('SERIALCTL_UI_REVIEW_END '+path.name)
+      - uses: ./.github/actions/ci-evidence
+        if: always()
+        with:
+          mode: save
+          name: SerialCtl-Xfer-native-diagnostics
+          path: |
+            ${{ runner.temp }}/xfer-diagnostic-evidence/*.png
+            ${{ runner.temp }}/xfer-diagnostic-ui/*.png
+            ${{ runner.temp }}/xfer-diagnostic-ui/*.json
+            ${{ runner.temp }}/xfer-diagnostic-ui/*.log
+            ${{ runner.temp }}/xfer-diagnostic-command/*.json
+            ${{ runner.temp }}/xfer-diagnostic-command/*.png
+            ${{ runner.temp }}/xfer-diagnostic-command/*.txt
+            ${{ runner.temp }}/xfer-diagnostic-optimization/*.json
+            ${{ runner.temp }}/xfer-diagnostic-optimization/*.png
+            ${{ runner.temp }}/xfer-diagnostic-optimization/*.mkv
+            ${{ runner.temp }}/xfer-diagnostic-optimization/*.jsonl
+            ${{ runner.temp }}/xfer-diagnostic-freeze/*.json
+            ${{ runner.temp }}/xfer-diagnostic-freeze/*.png
