@@ -60,7 +60,7 @@ jobs:
           git -C $scratch config core.autocrlf false
           git -C $scratch checkout --detach $head
           if ($LASTEXITCODE) { throw 'Cannot checkout exact source' }
-          $base = Get-SerialCtlVersionInfo -RepositoryRoot $root
+          $base = Get-SerialCtlVersion -RepositoryRoot $root
           $parts = $base.FileVersion.Split('.')
           $future = "$($parts[0]).$($parts[1]).$([int]$parts[2]+1)"
           [IO.File]::WriteAllText((Join-Path $scratch 'VERSION'),"PROJECT_VERSION=V$future`nCPP_VERSION=V$future`n",(New-Object Text.UTF8Encoding($false)))
