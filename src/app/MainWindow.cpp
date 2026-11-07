@@ -4077,11 +4077,11 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         } else if (share) {
             SetDlgItemTextW(dialog, IDC_HOST_LABEL, L"远端 IP");
             MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, 174, 14);
-            MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 22, 32, 14);
             SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"远端串口");
-            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 42, 64, 10);
+            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 44, columnWidth, 10);
             MoveDialogItemDlu(dialog, IdSharedAdvancedPort, 144, 40, 82, 14);
             MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 56, fullWidth, 154);
+            MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 22, 32, 14);
         }
     }
 
@@ -4113,15 +4113,15 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         buttonY = 186;
         dialogHeight = 212;
     } else if (share) {
-        errorY = 74;
-        buttonY = 94;
-        dialogHeight = 120;
+        errorY = 72;
+        buttonY = 84;
+        dialogHeight = 110;
     } else if (!serial && !share) {
         errorY = 38;
         buttonY = 50;
         dialogHeight = 76;
     }
-    MoveDialogItemDlu(dialog, IDC_DIALOG_ERROR, margin, errorY, fullWidth, share ? 16 : 12);
+    MoveDialogItemDlu(dialog, IDC_DIALOG_ERROR, margin, errorY, fullWidth, 12);
     MoveDialogItemDlu(dialog, IDCANCEL, dialogWidth - 156, buttonY, 68, 18);
     MoveDialogItemDlu(dialog, IDOK, dialogWidth - 80, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight);

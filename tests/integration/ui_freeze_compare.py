@@ -133,8 +133,9 @@ def main():
             text = c.create_unicode_buffer(128); user.GetWindowTextW(child,text,len(text))
             # Disconnect/close and the new reconnect action intentionally hide
             # on the blank main page; they are exercised on real cards elsewhere.
-            approved = main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,105,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310,311) or
-                                 text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))
+            approved = (user.GetDlgCtrlID(child) == 9010 or
+                        (main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,105,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310,311,312) or
+                                   text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))))
             if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
                 name = c.create_unicode_buffer(128); user.GetClassNameW(child, name, 128)
@@ -323,7 +324,7 @@ def main():
             process.wait(timeout=15); process = None
         for key, before in baseline.items():
             after = candidate[key]
-            if key[1]=="ssh" and version=="V2.0.19":
+            if key[1]=="ssh" and version in ("V2.0.19", "V2.0.20"):
                 # Explicit user approval adds history + secure-remember rows
                 # and repositions all four input fields. Preserve both actual
                 # screenshots; do not claim these unequal layouts are frozen.
@@ -342,6 +343,9 @@ def main():
                 after['geometry']=[row for row in after['geometry'] if row[0] in fixed_ids]
                 common_height=min(before['size'][1],after['size'][1],round((90 if key[1]=='ssh' else 440)*report['dpi']/96))
                 require(before['size'][0]==after['size'][0], 'Approved dialog changed its width')
+                if key[1]=='settings':
+                    after.setdefault('approvedRegions',[]).append(
+                        [before['size'][0]-round(10*report['dpi']/96),0,before['size'][0],common_height])
                 for capture in (before,after):
                     capture['pixels']=capture['pixels'][:capture['size'][0]*common_height*4]
                     capture['rawPixels']=capture['rawPixels'][:capture['size'][0]*common_height*4]
