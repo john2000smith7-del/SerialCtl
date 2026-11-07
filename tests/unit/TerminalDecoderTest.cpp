@@ -35,6 +35,55 @@ int main() {
     if (!transition.Decode({0xe4}, CP_UTF8).empty() || transition.Decode({'A'}, 936) != L"\xfffd"
                                                                                         L"A")
         return 4;
+
+    // Issue #59: ZMODEM rz hex frame normalization
+    {
+        // 1. Full ZMODEM rz handshake frame
+        const std::vector<std::uint8_t> zmodemFrame = {
+            '*', '*', 0x18, 'B', '0', '1', '0', '0', '0', '0', '0', '0', '2', '3', 'b', 'e', '5', '0', '\r', 0x8a, 0x11
+        };
+        serialctl::TerminalDecoder zdec;
+        auto decoded = zdec.Decode(zmodemFrame, CP_UTF8);
+        if (decoded.find(L"\xfffd") != std::wstring::npos) {
+            std::cerr << "ZMODEM frame produced unexpected U+FFFD\n";
+            return 5;
+        }
+        if (decoded.find(L"\r\n\x11") == std::wstring::npos) {
+            std::cerr << "ZMODEM frame missing expected \\r\\n\\x11 ending\n";
+            return 6;
+        }
+
+        // 2. Split frame across arbitrary packet boundaries
+        for (size_t split = 1; split < zmodemFrame.size(); ++split) {
+            serialctl::TerminalDecoder splitDec;
+            std::vector<std::uint8_t> p1(zmodemFrame.begin(), zmodemFrame.begin() + split);
+            std::vector<std::uint8_t> p2(zmodemFrame.begin() + split, zmodemFrame.end());
+            auto actual = splitDec.Decode(p1, CP_UTF8);
+            actual += splitDec.Decode(p2, CP_UTF8);
+            if (actual.find(L"\xfffd") != std::wstring::npos || actual.find(L"\r\n") == std::wstring::npos) {
+                std::cerr << "ZMODEM split at " << split << " failed\n";
+                return 7;
+            }
+        }
+
+        // 3. Negative guard: isolated 0x8A in non-ZMODEM context must retain U+FFFD
+        serialctl::TerminalDecoder guardDec;
+        std::vector<std::uint8_t> plainText = {'h', 'e', 'l', 'l', 'o', 0x8a, 'w', 'o', 'r', 'l', 'd'};
+        auto plainDecoded = guardDec.Decode(plainText, CP_UTF8);
+        if (plainDecoded.find(L"\xfffd") == std::wstring::npos) {
+            std::cerr << "Isolated 0x8A failed to produce U+FFFD\n";
+            return 8;
+        }
+
+        // 4. Negative guard: isolated \r\x8a without ZMODEM header must retain U+FFFD
+        guardDec.Reset();
+        std::vector<std::uint8_t> crNoise = {'t', 'e', 's', 't', '\r', 0x8a};
+        auto crDecoded = guardDec.Decode(crNoise, CP_UTF8);
+        if (crDecoded.find(L"\xfffd") == std::wstring::npos) {
+            std::cerr << "Isolated \\r\\x8a without ZMODEM header failed to produce U+FFFD\n";
+            return 9;
+        }
+    }
 #endif
-    std::cout << "Terminal decoder split UTF-8/GBK/OEM tests passed\n";
+    std::cout << "Terminal decoder split UTF-8/GBK/OEM & ZMODEM tests passed\n";
 }

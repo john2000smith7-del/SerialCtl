@@ -428,4 +428,95 @@ int ParsePsftpProgressPercent(std::wstring_view output) {
     return latest;
 }
 
+bool TryExtractPromptDirectory(const std::wstring& line, std::wstring& directory) {
+    std::wstring s = line;
+    while (!s.empty() && (s.back() == L' ' || s.back() == L'\t' || s.back() == L'\r' || s.back() == L'\n')) {
+        s.pop_back();
+    }
+    if (s.empty()) return false;
+
+    // Prompt line must end with '$' or '#'
+    if (s.back() != L'$' && s.back() != L'#') return false;
+    s.pop_back();
+
+    while (!s.empty() && (s.back() == L' ' || s.back() == L'\t')) s.pop_back();
+    if (s.empty()) return false;
+
+    // Handle possible trailing ']' (e.g. "[user@host /path]")
+    bool hasClosingBracket = false;
+    if (s.back() == L']') {
+        hasClosingBracket = true;
+        s.pop_back();
+        while (!s.empty() && (s.back() == L' ' || s.back() == L'\t')) s.pop_back();
+    }
+
+    // Strip leading env/venv tags, e.g. "(venv)", "(base)", "[tag]"
+    while (!s.empty()) {
+        while (!s.empty() && (s.front() == L' ' || s.front() == L'\t')) s.erase(s.begin());
+        if (!s.empty() && s.front() == L'(') {
+            size_t closeParen = s.find(L')');
+            if (closeParen != std::wstring::npos) {
+                s.erase(0, closeParen + 1);
+                continue;
+            }
+        }
+        if (!s.empty() && s.front() == L'[' && hasClosingBracket) {
+            s.erase(s.begin());
+            hasClosingBracket = false;
+            continue;
+        }
+        break;
+    }
+    while (!s.empty() && (s.front() == L' ' || s.front() == L'\t')) s.erase(s.begin());
+    if (s.empty()) return false;
+
+    std::wstring ident;
+    std::wstring candidatePath;
+
+    size_t colon = s.find(L':');
+    if (colon != std::wstring::npos) {
+        ident = s.substr(0, colon);
+        candidatePath = s.substr(colon + 1);
+    } else {
+        // In bracketed prompt [user@host /var/log], the delimiter may be a space
+        size_t lastSpace = s.find_last_of(L" \t");
+        if (lastSpace != std::wstring::npos) {
+            ident = s.substr(0, lastSpace);
+            candidatePath = s.substr(lastSpace + 1);
+        } else {
+            return false;
+        }
+    }
+
+    while (!ident.empty() && (ident.front() == L' ' || ident.front() == L'\t')) ident.erase(ident.begin());
+    while (!ident.empty() && (ident.back() == L' ' || ident.back() == L'\t')) ident.pop_back();
+    while (!candidatePath.empty() && (candidatePath.front() == L' ' || candidatePath.front() == L'\t')) candidatePath.erase(candidatePath.begin());
+    while (!candidatePath.empty() && (candidatePath.back() == L' ' || candidatePath.back() == L'\t')) candidatePath.pop_back();
+
+    if (ident.empty()) return false;
+    bool hasLetter = false;
+    for (wchar_t c : ident) {
+        if ((c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z')) {
+            hasLetter = true;
+        } else if ((c >= L'0' && c <= L'9') || c == L'_' || c == L'.' || c == L'-' || c == L'@') {
+            // allowed
+        } else {
+            return false;
+        }
+    }
+    if (!hasLetter) return false;
+
+    if (candidatePath != L"~" && candidatePath.rfind(L"~/", 0) != 0 && candidatePath.front() != L'/') {
+        return false;
+    }
+    for (wchar_t c : candidatePath) {
+        if (c < 32 || c == 127 || c == L' ' || c == L'\t' || c == L'"' || c == L'\'') {
+            return false;
+        }
+    }
+
+    directory = candidatePath;
+    return true;
+}
+
 } // namespace serialctl

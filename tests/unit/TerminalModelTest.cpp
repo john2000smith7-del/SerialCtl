@@ -447,6 +447,148 @@ void TestCmdEditor() {
 
 } // namespace
 
+void TestBackgroundColorErase() {
+    using namespace serialctl;
+    TerminalModel model(40, 10);
+
+    // 1. SGR 47 (White background) + CSI 2J (Erase entire display)
+    model.Feed(L"\x1b[47m\x1b[2J", L"");
+    for (size_t row = 0; row < 10; ++row) {
+        const auto& line = model.DisplayLine(row);
+        Expect(line.used == 0, "BCE erase display preserves used=0");
+        Expect(line.cells[0].attributes.background.kind == TerminalColor::Kind::Indexed,
+            "BCE cell background is indexed");
+        Expect(line.cells[0].attributes.background.index == 7,
+            "BCE cell background index is 7");
+        Expect(model.LineText(row).empty(), "BCE blank line trims to empty");
+    }
+
+    // 2. EraseLine CSI 0K
+    model.Feed(L"\x1b[0m\x1b[1;1HABCDE", L"");
+    model.Feed(L"\x1b[1;3H\x1b[44m\x1b[0K", L""); // cursor at col 2 ('C'), blue bg, erase to EOL
+    {
+        const auto& line = model.DisplayLine(0);
+        Expect(line.cells[0].character == L'A', "col 0 char intact");
+        Expect(line.cells[0].attributes.background.kind == TerminalColor::Kind::Default, "col 0 default bg");
+        Expect(line.cells[1].character == L'B', "col 1 char intact");
+        Expect(line.cells[2].attributes.background.index == 4, "col 2 erased with blue bg");
+        Expect(line.cells[39].attributes.background.index == 4, "col 39 erased with blue bg");
+        Expect(model.LineText(0) == L"AB", "LineText only returns text up to erase point");
+    }
+
+    // 3. EraseCharacters CSI X
+    model.Feed(L"\x1b[1;1H\x1b[42m\x1b[2X", L""); // green bg, erase 2 chars
+    {
+        const auto& line = model.DisplayLine(0);
+        Expect(line.cells[0].attributes.background.index == 2, "col 0 erased with green bg");
+        Expect(line.cells[1].attributes.background.index == 2, "col 1 erased with green bg");
+    }
+
+    // 4. EraseLine CSI 1K and CSI 2K, SGR 7 inverse + SGR 47, char insert/delete (@/P), line insert/delete/scroll (L/M/S/T/LF)
+    model.Feed(L"\x1b[0m\x1b[1;1HHELLO\x1b[1;3H\x1b[46m\x1b[1K", L""); // cyan bg, erase start to col 2
+    {
+        const auto& line = model.DisplayLine(0);
+        Expect(line.cells[0].attributes.background.index == 6, "CSI 1K col 0 cyan bg");
+        Expect(line.cells[2].attributes.background.index == 6, "CSI 1K col 2 cyan bg");
+        Expect(line.cells[3].character == L'L', "CSI 1K col 3 preserved");
+    }
+    model.Feed(L"\x1b[45m\x1b[2K", L""); // magenta bg, erase full line
+    {
+        const auto& line = model.DisplayLine(0);
+        Expect(line.used == 0, "CSI 2K resets used to 0");
+        Expect(line.cells[0].attributes.background.index == 5, "CSI 2K col 0 magenta bg");
+        Expect(line.cells[39].attributes.background.index == 5, "CSI 2K col 39 magenta bg");
+    }
+    model.Feed(L"\x1b[30;47;7m\x1b[1;1HTEXT\x1b[0K", L""); // inverse + white bg
+    {
+        const auto& line = model.DisplayLine(0);
+        Expect(line.cells[0].attributes.inverse, "printed cell under SGR 7 has inverse=true");
+        Expect(!line.cells[4].attributes.inverse && line.cells[4].attributes.background.index == 7,
+            "BCE erased cell under SGR 7;47 keeps bg=7 and resets inverse=false");
+    }
+    model.Feed(L"\x1b[0m\x1b[1;1HABCD\x1b[1;2H\x1b[43m\x1b[2@", L""); // yellow bg, insert 2 chars at col 1
+    {
+        const auto& line = model.DisplayLine(0);
+        Expect(line.cells[0].character == L'A', "ICH col 0 is A");
+        Expect(line.cells[1].attributes.background.index == 3, "ICH inserted col 1 has yellow bg");
+        Expect(line.cells[2].attributes.background.index == 3, "ICH inserted col 2 has yellow bg");
+        Expect(line.cells[3].character == L'B', "ICH shifted col 3 is B");
+    }
+    model.Feed(L"\x1b[1;2H\x1b[41m\x1b[2P", L""); // red bg, delete 2 chars at col 1
+    {
+        const auto& line = model.DisplayLine(0);
+        Expect(line.cells[1].character == L'B', "DCH shifted col 1 back to B");
+        Expect(line.cells[38].attributes.background.index == 1, "DCH vacated tail col 38 has red bg");
+        Expect(line.cells[39].attributes.background.index == 1, "DCH vacated tail col 39 has red bg");
+    }
+    model.Feed(L"\x1b[44m\x1b[1;1H\x1b[1L", L""); // blue bg, insert 1 line at row 0
+    Expect(model.DisplayLine(0).cells[0].attributes.background.index == 4, "IL inserted line has blue bg");
+    model.Feed(L"\x1b[42m\x1b[1;1H\x1b[1M", L""); // green bg, delete 1 line at row 0
+    Expect(model.DisplayLine(9).cells[0].attributes.background.index == 2, "DL bottom vacated line has green bg");
+    model.Feed(L"\x1b[46m\x1b[1S", L""); // cyan bg, ScrollUp 1
+    {
+        const auto lastIdx = model.DisplayLineCount() - 1;
+        Expect(model.DisplayLine(lastIdx).cells[0].attributes.background.index == 6, "ScrollUp new bottom line has cyan bg");
+    }
+
+    // 5. SGR 0 restores default background erase
+    model.Feed(L"\x1b[0m\x1b[2J", L"");
+    Expect(model.DisplayLine(model.DisplayLineCount() - 1).cells[0].attributes.background.kind == TerminalColor::Kind::Default,
+        "SGR 0 restores default erase background");
+
+    // 6. Alternate screen menuconfig flow (\x1b[?1049h\x1b[37;44m\x1b[2J)
+    model.Feed(L"\x1b[?1049h\x1b[37;44m\x1b[2J", L"");
+    for (size_t row = 0; row < 10; ++row) {
+        const auto& line = model.DisplayLine(row);
+        Expect(line.cells[0].attributes.background.index == 4, "menuconfig alternate screen all blue");
+        Expect(line.cells[39].attributes.background.index == 4, "menuconfig last col all blue");
+    }
+    model.Feed(L"\x1b[?1049l", L""); // exit alternate screen
+}
+
+void TestPetaLinuxRebootUartGlitchRecovery() {
+    using namespace serialctl;
+    for (bool withTimestamp : {true, false}) {
+        TerminalModel model(80, 24);
+        const std::wstring ts = withTimestamp ? L"12:00:00.123" : L"";
+
+        // 1. Unclosed OSC noise byte (0x9D) interrupted by \r\n
+        std::wstring oscGlitch = std::wstring(1, wchar_t(0x9d)) + L"some_glitch_text_here\r\nINIT: 2.88booting\r\n";
+        auto res1 = model.Feed(oscGlitch, ts);
+        Expect(model.PlainText(false).find(L"INIT: 2.88booting") != std::wstring::npos,
+            "unclosed OSC glitch byte recovered on newline without swallowing INIT log");
+        Expect(res1.logText.find(L"INIT: 2.88booting\n") != std::wstring::npos,
+            "logText preserves INIT line after unclosed OSC recovery");
+
+        // 2. Unclosed StringIgnore noise byte (0x90/0x98/0x9E/0x9F) interrupted by \r\n
+        std::wstring dcsGlitch = std::wstring(1, wchar_t(0x90)) + L"garbage\r\nStopping OpenBSD Secure Shell server...\r\n";
+        auto res2 = model.Feed(dcsGlitch, ts);
+        Expect(model.PlainText(false).find(L"Stopping OpenBSD Secure Shell server...") != std::wstring::npos,
+            "unclosed DCS glitch byte recovered on newline without swallowing Stopping SSH log");
+        Expect(res2.logText.find(L"Stopping OpenBSD Secure Shell server...\n") != std::wstring::npos,
+            "logText preserves Stopping SSH line");
+
+        // 3. Unclosed CSI noise byte (0x9B) + isolated U+FFFD + ANSI + \b\t + \r overwrite
+        std::wstring csiGlitch = std::wstring(1, wchar_t(0x9b)) + L"9999\r\n\xfffdroot@jmrootfs:~# reboot\r\n";
+        auto res3 = model.Feed(csiGlitch, ts);
+        Expect(model.PlainText(false).find(L"\xfffdroot@jmrootfs:~# reboot") != std::wstring::npos,
+            "unclosed CSI glitch byte recovered and retains diagnostic U+FFFD");
+
+        // 4. Overwrite line with \r (Carriage return without LF) and \b backspace
+        auto res4 = model.Feed(L"Starting syslogd...               \r[OK] Starting syslogd\b!\r\n\x1b[32mRebooting...\x1b[0m\r\n", ts);
+        const auto plain = model.PlainText(withTimestamp);
+        Expect(plain.find(L"[OK] Starting syslog!") != std::wstring::npos,
+            "carriage return \\r overwrite and \\b backspace verified");
+        Expect(plain.find(L"Rebooting...") != std::wstring::npos,
+            "ANSI colored Rebooting... line verified");
+        if (withTimestamp) {
+            Expect(plain.find(L"12:00:00.123") != std::wstring::npos &&
+                   res4.logText.find(L"[12:00:00.123]") != std::wstring::npos,
+                "millisecond timestamps preserved in both terminal and logText");
+        }
+    }
+}
+
 int main() {
     {
         serialctl::TerminalModel boundary(8,3);
@@ -561,6 +703,8 @@ int main() {
     TestEditingAndModes();
     TestWideCharactersAndColor();
     TestFullScreenCompatibilitySequences();
+    TestBackgroundColorErase();
+    TestPetaLinuxRebootUartGlitchRecovery();
     if (failures == 0) std::cout << "Terminal model tests passed\n";
     return failures == 0 ? 0 : 1;
 }

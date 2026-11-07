@@ -21,6 +21,8 @@ public:
     struct Session {
         bool sftpFollowTerminal = true;
         std::wstring terminalDirectory;
+        std::wstring lastPromptDirectory;
+        std::wstring failedSftpFollowDirectory;
         bool terminalDirectoryFromOsc = false;
         std::wstring sftpDirectory = L".";
         std::wstring sftpHomeDirectory;

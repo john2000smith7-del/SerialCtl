@@ -5,7 +5,11 @@
 - **TFTP 固件发布服务（#55）**：右侧边栏在“命令／SFTP／Xfer”旁新增 `TFTP` 页签。内置只读 UDP TFTP 服务端（RFC 1350 + RFC 2347/2348/2349 `blksize`、`tsize`、`timeout` 协商，16 位块号回绕兼容），拒绝 `WRQ` 写入与路径穿越。支持发布本地文件及远程 SSH/SFTP 文件（通过一次性加密密码管道调用 `plink.exe` 建立最多 2 MiB 有界滑动窗口流式转发，不在 Windows 本地产生临时镜像落盘，支持同一文件多客户端并发独立流式下载），并提供 `tftp.*` 工具供 GUI、内置 AI 与外部 MCP 协同控制。
 - **全功能 MCP 控制接口与电源硬边界（#50）**：提供覆盖应用生命周期、会话、SSH 历史、终端、U-Boot 打断、宏与命令笔记、SFTP、Xfer、TFTP、日志诊断、界面主题、内置 AI 与受控电源的 83 个 MCP 工具（完整规范见 `docs/architecture/MCP-CAPABILITY-MATRIX.md`）。服务端实施受控电源硬白名单：仅允许 `power.get`、已解锁且限 GUI 当前勾选通道的 `power.output`、`power.action` 与预绑定 `power.recover`；任何试图修改电压、电流、OVP/OCP、串并联/跟踪模式、篡改通道列表、预设、校准、复位或发送原始 SCPI 的请求均在服务端硬拦截并返回 `POWER_PARAMETER_CHANGE_FORBIDDEN`（`-32001`），对电源硬件零副作用。SSH 历史与审计日志自动脱敏明文密码，内置 AI 调用具备递归深度保护。
 - **常驻开机自启 IP 直连免认证 MCP 服务（#52）**：支持 Windows SCM 服务（`--mcp-service`）、用户登录常驻后台守护（`--mcp-agent`）与本地 STDIO 桥接（`--mcp-stdio`），使用独立互斥量 `Global\SerialCtl.McpService.v1` 与本地命名管道 `\\.\pipe\SerialCtl.McpBridge.v1` 同 GUI 解耦。启用后关闭 GUI 窗口仍保持 `http://0.0.0.0:7080/mcp` 在线；处于 Session 0 无交互登录会话时调用 `app.launch` 返回 `LOGIN_REQUIRED`（`-32003`），交互会话下并发调用保持单实例幂等拉起。
-- **连接、终端、SFTP 与 Xfer 体验改进（#38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #14, #24, #49, #25）**：
+- **终端、SFTP、连接与 Xfer 体验及协议改进（#38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #14, #24, #49, #25, #58, #59, #60, #61）**：
+  - 终端实现标准 **BCE（Background Color Erase）** 背景色擦除语义（`CSI J`、`CSI K`、`CSI X`、`CSI @`、`CSI P`、`CSI L`、`CSI M`、滚屏新行），修复 Linux `make menuconfig` 等全屏 ncurses 界面背景黑白断块问题；
+  - 终端显示解码层精准识别 ZMODEM 十六进制握手帧（`**\x18B...`）帧尾控制序列 `\r\x8a` / `\x8d\x8a` 并安全归一化为标准换行，消除 `rz` 握手时出现的 ``（`U+FFFD`）方框问号，且不修改原始接收流、Xfer 协议流或非 ZMODEM 上下文中的非法 UTF-8 检错；
+  - SFTP 跟随终端目录支持无 `@` 提示符（如 `renhongyujie2866:~$`）、虚拟环境前缀（如 `(venv)`、`(base)`）及方括号提示符（如 `[user@host /path]$`），支持从已收到 OSC 7 的 Shell 切换到无 OSC 7 的子 Shell/容器后继续跟随、传输忙碌期间自动排队最新待跟随目录，并在容器内路径对 SFTP 不可访问时给出明确提示且不死循环重试；
+  - 终端状态机增加未闭合 8-bit C1 控制序列（`0x9D` OSC、`0x90`/`0x98`/`0x9E`/`0x9F` DCS/PM/APC、`0x9B` CSI）在换行/回车或超长时的自愈复位与 RFC 3629 UTF-8 尾字节边界校验，解决 PetaLinux 等板卡串口重启毛刺导致后续正常日志被吞噬或错位的问题；
   - SSH 连接弹窗历史连接下拉旁新增“删除”按钮，一键同步清除 `state.ini` 历史记录与 Windows 凭据管理器对应密码；
   - SFTP 传输任务在原 SSH 会话关闭后支持重连并在当前在线 SSH 会话上确认重建传输任务；
   - 左侧切换会话时保持右侧 `Xfer` 页签打开并自动刷新新会话的传输可用状态；

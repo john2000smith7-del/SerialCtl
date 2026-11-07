@@ -57,6 +57,22 @@ TerminalLine TerminalModel::BlankLine() const {
     return line;
 }
 
+TerminalCell TerminalModel::EraseCell() const {
+    TerminalCell cell;
+    cell.character = L' ';
+    if (attributes_.background.kind != TerminalColor::Kind::Default) {
+        cell.attributes.background = attributes_.background;
+    }
+    return cell;
+}
+
+TerminalLine TerminalModel::EraseBlankLine() const {
+    TerminalLine line;
+    line.logicalId = nextLogicalId_++;
+    line.cells.resize(static_cast<size_t>(columns_), EraseCell());
+    return line;
+}
+
 TerminalModel::Screen TerminalModel::BlankScreen() const {
     Screen screen;
     screen.lines.reserve(static_cast<size_t>(rows_));
@@ -170,8 +186,15 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
                 parserState_ = ParserState::Ground;
             } else if (character == 0x1b) {
                 parserState_ = ParserState::Escape;
+            } else if (character == L'\r' || character == L'\n' || character == L'\b') {
+                csiBuffer_.clear();
+                parserState_ = ParserState::Ground;
+                ControlCharacter(character, timestamp, result);
             } else if (csiBuffer_.size() < 128) {
                 csiBuffer_ += character;
+            } else {
+                csiBuffer_.clear();
+                parserState_ = ParserState::Ground;
             }
             break;
         case ParserState::Osc:
@@ -181,27 +204,49 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
                 parserState_ = ParserState::Ground;
             } else if (character == 0x1b) {
                 parserState_ = ParserState::OscEscape;
+            } else if (character == L'\r' || character == L'\n') {
+                oscBuffer_.clear(); oscOverflow_ = false;
+                parserState_ = ParserState::Ground;
+                ControlCharacter(character, timestamp, result);
             } else if (oscBuffer_.size() < 1024) {
                 oscBuffer_ += character;
-            } else { oscOverflow_ = true; }
+            } else {
+                oscBuffer_.clear(); oscOverflow_ = false;
+                parserState_ = ParserState::Ground;
+            }
             break;
         case ParserState::OscEscape:
             if (character == L'\\') {
                 HandleOsc(result);
                 oscBuffer_.clear(); oscOverflow_ = false;
                 parserState_ = ParserState::Ground;
+            } else if (character == L'\r' || character == L'\n') {
+                oscBuffer_.clear(); oscOverflow_ = false;
+                parserState_ = ParserState::Ground;
+                ControlCharacter(character, timestamp, result);
             } else {
                 parserState_ = ParserState::Osc;
             }
             break;
         case ParserState::StringIgnore:
-            if (character == 0x1b)
+            if (character == 0x1b) {
                 parserState_ = ParserState::StringIgnoreEscape;
-            else if (character == 0x9c)
+            } else if (character == 0x9c) {
                 parserState_ = ParserState::Ground;
+            } else if (character == L'\r' || character == L'\n') {
+                parserState_ = ParserState::Ground;
+                ControlCharacter(character, timestamp, result);
+            }
             break;
         case ParserState::StringIgnoreEscape:
-            parserState_ = character == L'\\' ? ParserState::Ground : ParserState::StringIgnore;
+            if (character == L'\\') {
+                parserState_ = ParserState::Ground;
+            } else if (character == L'\r' || character == L'\n') {
+                parserState_ = ParserState::Ground;
+                ControlCharacter(character, timestamp, result);
+            } else {
+                parserState_ = ParserState::StringIgnore;
+            }
             break;
         }
     }
@@ -332,7 +377,7 @@ void TerminalModel::ScrollUp(int count, TerminalFeedResult* result) {
             if (result) ++result->scrollbackAdded;
         }
         screen.lines.erase(screen.lines.begin() + screen.scrollTop);
-        screen.lines.insert(screen.lines.begin() + screen.scrollBottom, BlankLine());
+        screen.lines.insert(screen.lines.begin() + screen.scrollBottom, EraseBlankLine());
     }
 }
 
@@ -374,14 +419,14 @@ void TerminalModel::ScrollDown(int count) {
     count = std::max(1, std::min(count, screen.scrollBottom - screen.scrollTop + 1));
     for (int iteration = 0; iteration < count; ++iteration) {
         screen.lines.erase(screen.lines.begin() + screen.scrollBottom);
-        screen.lines.insert(screen.lines.begin() + screen.scrollTop, BlankLine());
+        screen.lines.insert(screen.lines.begin() + screen.scrollTop, EraseBlankLine());
     }
 }
 
 void TerminalModel::EraseDisplay(int mode) {
     Screen& screen = ActiveScreen();
     if (mode == 2 || mode == 3) {
-        for (TerminalLine& line : screen.lines) line = BlankLine();
+        for (TerminalLine& line : screen.lines) line = EraseBlankLine();
         if (mode == 3)
             ClearHistory();
         return;
@@ -389,11 +434,11 @@ void TerminalModel::EraseDisplay(int mode) {
     if (mode == 0) {
         EraseLine(0);
         for (int row = screen.cursorRow + 1; row < rows_; ++row)
-            screen.lines[static_cast<size_t>(row)] = BlankLine();
+            screen.lines[static_cast<size_t>(row)] = EraseBlankLine();
     } else if (mode == 1) {
         EraseLine(1);
         for (int row = 0; row < screen.cursorRow; ++row)
-            screen.lines[static_cast<size_t>(row)] = BlankLine();
+            screen.lines[static_cast<size_t>(row)] = EraseBlankLine();
     }
 }
 
@@ -405,12 +450,14 @@ void TerminalModel::EraseLine(int mode) {
     if (mode == 0) first = screen.cursorColumn;
     else if (mode == 1) last = screen.cursorColumn;
     for (int column = first; column <= last; ++column)
-        line.cells[static_cast<size_t>(column)] = TerminalCell{};
-    if (mode == 0)
+        line.cells[static_cast<size_t>(column)] = EraseCell();
+    if (mode == 0) {
         line.used = std::min(line.used, static_cast<size_t>(first));
-    if (mode == 2) {
+    } else if (mode == 2) {
         line.used = 0;
         line.wrapped = false;
+    } else if (mode == 1 && static_cast<size_t>(last + 1) >= line.used) {
+        line.used = 0;
     }
 }
 
@@ -419,7 +466,9 @@ void TerminalModel::EraseCharacters(int count) {
     TerminalLine& line = screen.lines[static_cast<size_t>(screen.cursorRow)];
     const int last = std::min(columns_, screen.cursorColumn + std::max(1, count));
     for (int column = screen.cursorColumn; column < last; ++column)
-        line.cells[static_cast<size_t>(column)] = TerminalCell{};
+        line.cells[static_cast<size_t>(column)] = EraseCell();
+    if (static_cast<size_t>(last) >= line.used)
+        line.used = std::min(line.used, static_cast<size_t>(screen.cursorColumn));
 }
 
 void TerminalModel::InsertCharacters(int count) {
@@ -431,7 +480,7 @@ void TerminalModel::InsertCharacters(int count) {
     std::move_backward(line.cells.begin() + screen.cursorColumn,
         line.cells.end() - count, line.cells.end());
     std::fill(line.cells.begin() + screen.cursorColumn,
-        line.cells.begin() + screen.cursorColumn + count, TerminalCell{});
+        line.cells.begin() + screen.cursorColumn + count, EraseCell());
 }
 
 void TerminalModel::DeleteCharacters(int count) {
@@ -442,7 +491,7 @@ void TerminalModel::DeleteCharacters(int count) {
         line.used -= std::min(static_cast<size_t>(count), line.used - static_cast<size_t>(screen.cursorColumn));
     std::move(line.cells.begin() + screen.cursorColumn + count,
         line.cells.end(), line.cells.begin() + screen.cursorColumn);
-    std::fill(line.cells.end() - count, line.cells.end(), TerminalCell{});
+    std::fill(line.cells.end() - count, line.cells.end(), EraseCell());
 }
 
 void TerminalModel::InsertLines(int count) {
@@ -451,7 +500,7 @@ void TerminalModel::InsertLines(int count) {
     count = std::max(1, std::min(count, screen.scrollBottom - screen.cursorRow + 1));
     for (int iteration = 0; iteration < count; ++iteration) {
         screen.lines.erase(screen.lines.begin() + screen.scrollBottom);
-        screen.lines.insert(screen.lines.begin() + screen.cursorRow, BlankLine());
+        screen.lines.insert(screen.lines.begin() + screen.cursorRow, EraseBlankLine());
     }
 }
 
@@ -461,7 +510,7 @@ void TerminalModel::DeleteLines(int count) {
     count = std::max(1, std::min(count, screen.scrollBottom - screen.cursorRow + 1));
     for (int iteration = 0; iteration < count; ++iteration) {
         screen.lines.erase(screen.lines.begin() + screen.cursorRow);
-        screen.lines.insert(screen.lines.begin() + screen.scrollBottom, BlankLine());
+        screen.lines.insert(screen.lines.begin() + screen.scrollBottom, EraseBlankLine());
     }
 }
 

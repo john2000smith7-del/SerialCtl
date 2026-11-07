@@ -145,6 +145,8 @@ private:
     };
 
     TerminalLine BlankLine() const;
+    TerminalCell EraseCell() const;
+    TerminalLine EraseBlankLine() const;
     Screen BlankScreen() const;
     Screen& ActiveScreen();
     const Screen& ActiveScreen() const;

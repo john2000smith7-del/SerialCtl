@@ -2,7 +2,7 @@
 
 ## V2.0.20
 
-新增右侧 `TFTP` 页（与命令、SFTP、Xfer 并列），支持本地文件发布与远程 SSH/SFTP 无落盘有界流式发布（RFC 1350 / 2347 / 2348 / 2349），供板卡 U-Boot/Linux `tftp` 下载及 GUI/AI/MCP 协同控制。新增全功能 MCP 控制接口（83 个工具，见 `docs/architecture/MCP-CAPABILITY-MATRIX.md`）与常驻开机自启 IP 直连免认证 MCP 服务（`--mcp-service` / `--mcp-agent` / `--mcp-stdio`），服务端硬性禁止外部修改电源电压、电流、保护、模式、通道或发送原始 SCPI。统一修复第一轮体验细节、AI 工作区自定义指令注入与实时权限回显、跨登录会话单实例提示、电源异常降级与防抖、WebSocket Origin 与 16 MiB 全局缓冲上限、分会话接收分片防饿死及日志磁盘满熔断恢复。保持原签名身份与 Windows 7 SP1 x64 兼容目标。范围与限制见 RELEASE-NOTES-V2.0.20。
+新增右侧 `TFTP` 页（与命令、SFTP、Xfer 并列），支持本地文件发布与远程 SSH/SFTP 无落盘有界流式发布（RFC 1350 / 2347 / 2348 / 2349），供板卡 U-Boot/Linux `tftp` 下载及 GUI/AI/MCP 协同控制。新增全功能 MCP 控制接口（83 个工具，见 `docs/architecture/MCP-CAPABILITY-MATRIX.md`）与常驻开机自启 IP 直连免认证 MCP 服务（`--mcp-service` / `--mcp-agent` / `--mcp-stdio`），服务端硬性禁止外部修改电源电压、电流、保护、模式、通道或发送原始 SCPI。统一修复第一轮体验细节、终端全屏 BCE 背景色擦除（`menuconfig`）、ZMODEM `rz` 十六进制帧尾 `0x8A` 换行解码、SFTP 跟随自定义提示符与跨 Shell 目录恢复、PetaLinux 重启串口毛刺与未闭合 C1 序列自愈、AI 工作区自定义指令注入与实时权限回显、跨登录会话单实例提示、电源异常降级与防抖、WebSocket Origin 与 16 MiB 全局缓冲上限、分会话接收分片防饿死及日志磁盘满熔断恢复。保持原签名身份与 Windows 7 SP1 x64 兼容目标。范围与限制见 RELEASE-NOTES-V2.0.20。
 
 ## V2.0.19
 

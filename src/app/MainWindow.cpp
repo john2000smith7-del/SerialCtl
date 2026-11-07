@@ -5411,7 +5411,13 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
         }
     }
     if (result.titleChanged) session->terminalTitle = result.title;
-    if (!result.workingDirectory.empty()) { session->terminalDirectory = result.workingDirectory; session->terminalDirectoryFromOsc = true; }
+    if (!result.workingDirectory.empty()) {
+        if (result.workingDirectory != session->terminalDirectory)
+            session->failedSftpFollowDirectory.clear();
+        session->terminalDirectory = result.workingDirectory;
+        session->lastPromptDirectory = result.workingDirectory;
+        session->terminalDirectoryFromOsc = true;
+    }
     if (session->logger && !session->logger->Error().empty() && loggerErrorsShown_.insert(sessionId).second)
         AppendStatus(session->logger->Error(), true);
     SyncSftpDirectoryFromTerminal(*session);
@@ -5435,44 +5441,41 @@ std::wstring MainWindow::DecodeTerminalData(SessionState& session, const Bytes& 
 
 void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
     if (session.mode != 0 || session.username.empty() || !session.sftpFollowTerminal) return;
-    if (!session.terminalDirectory.empty()) {
-        if (session.terminalDirectory != session.sftpDirectory && session.terminalDirectory != session.pendingSftpDirectory) {
-            session.pendingSftpDirectory = session.terminalDirectory;
-            if (&session == activeSession_ && !sftp_.Busy()) RefreshSftp(session.terminalDirectory);
-        }
-        if (session.terminalDirectoryFromOsc) return;
-    }
+
+    // Check terminal current line for shell prompt path as fallback or when subshell changes directory
     std::wstring line = Trim(session.terminal.CurrentLineText());
-    if (line.empty()) return;
+    std::wstring extractedPromptPath;
+    if (!line.empty() && TryExtractPromptDirectory(line, extractedPromptPath)) {
+        std::wstring resolved = extractedPromptPath;
+        if (resolved == L"~") {
+            if (session.sftpHomeDirectory.empty()) resolved.clear();
+            else resolved = session.sftpHomeDirectory;
+        } else if (resolved.rfind(L"~/", 0) == 0) {
+            if (session.sftpHomeDirectory.empty()) resolved.clear();
+            else resolved = JoinSftpRemotePath(session.sftpHomeDirectory, resolved.substr(2));
+        }
+        while (resolved.size() > 1 && resolved.back() == L'/') resolved.pop_back();
 
-    const size_t prompt = line.find_last_of(L"$#");
-    if (prompt == std::wstring::npos || !Trim(line.substr(prompt + 1)).empty()) return;
-    const std::wstring identity = session.username + L"@";
-    const size_t identityAt = line.rfind(identity, prompt);
-    if (identityAt == std::wstring::npos) return;
-    const size_t colon = line.find(L':', identityAt + identity.size());
-    if (colon == std::wstring::npos || colon >= prompt) return;
-
-    std::wstring directory = Trim(line.substr(colon + 1, prompt - colon - 1));
-    if (!directory.empty() && directory.back() == L']') {
-        directory.pop_back();
-        directory = Trim(std::move(directory));
+        if (!resolved.empty() && resolved.front() == L'/' && resolved != session.lastPromptDirectory) {
+            session.lastPromptDirectory = resolved;
+            if (resolved != session.terminalDirectory) {
+                session.terminalDirectory = resolved;
+                session.terminalDirectoryFromOsc = false;
+                session.failedSftpFollowDirectory.clear();
+            }
+        }
     }
-    if (directory == L"~") {
-        directory = session.sftpHomeDirectory;
-    } else if (directory.rfind(L"~/", 0) == 0) {
-        if (session.sftpHomeDirectory.empty()) return;
-        directory = JoinSftpRemotePath(session.sftpHomeDirectory, directory.substr(2));
-    } else if (directory.empty() || directory.front() != L'/') {
-        return;
-    }
-    while (directory.size() > 1 && directory.back() == L'/') directory.pop_back();
-    if (directory.empty() || directory == session.sftpDirectory ||
-        directory == session.pendingSftpDirectory) return;
 
-    session.pendingSftpDirectory = directory;
-    session.terminalDirectory = directory;
-    if (&session == activeSession_ && !sftp_.Busy()) RefreshSftp(directory);
+    if (!session.terminalDirectory.empty() && session.terminalDirectory.front() == L'/') {
+        if (session.terminalDirectory != session.sftpDirectory &&
+            session.terminalDirectory != session.pendingSftpDirectory &&
+            session.terminalDirectory != session.failedSftpFollowDirectory) {
+            session.pendingSftpDirectory = session.terminalDirectory;
+            if (&session == activeSession_ && !sftp_.Busy()) {
+                RefreshSftp(session.terminalDirectory);
+            }
+        }
+    }
 }
 
 void MainWindow::ShowClipboardNotice(const std::wstring& notice) {
@@ -7499,6 +7502,11 @@ void MainWindow::HandleSftpMessage(LPARAM) {
         }
         RefreshSftpTransferList();
         StartNextSftpTransfer();
+        if (!sftp_.Busy() && activeSession_ && activeSession_->sftpFollowTerminal &&
+            !activeSession_->pendingSftpDirectory.empty() &&
+            activeSession_->pendingSftpDirectory != activeSession_->sftpDirectory) {
+            RefreshSftp(activeSession_->pendingSftpDirectory);
+        }
         return;
     }
 
@@ -7513,15 +7521,25 @@ void MainWindow::HandleSftpMessage(LPARAM) {
     const bool active = session == activeSession_;
     if (!result->success) {
         const std::wstring message = result->error.empty() ? L"SFTP 操作失败" : result->error;
+        if (result->kind == SftpMessageKind::List && session->sftpFollowTerminal &&
+            !session->terminalDirectory.empty() && session->terminalDirectory != session->sftpDirectory) {
+            session->failedSftpFollowDirectory = session->terminalDirectory;
+        }
+        session->pendingSftpDirectory.clear();
         if (active) {
             if (sftpPanelVisible_) SetWindowTextW(sftpPath_, sftp_.Directory().c_str());
-            AppendStatus(message, true);
+            if (session->sftpFollowTerminal && result->kind == SftpMessageKind::List) {
+                AppendStatus(L"终端目录在当前 SFTP 会话中不可访问：" + message, true);
+            } else {
+                AppendStatus(message, true);
+            }
             if (result->kind == SftpMessageKind::Mutation)
                 RefreshSftp(sftp_.Directory());
         } else if (session->logger) session->logger->WriteStatus(message);
         return;
     }
     if (result->kind == SftpMessageKind::List) {
+        session->failedSftpFollowDirectory.clear();
         if (active) {
             RefreshSftpList();
             AppendStatus(L"SFTP 目录已刷新", false);
