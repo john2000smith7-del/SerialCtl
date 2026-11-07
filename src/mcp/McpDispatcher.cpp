@@ -93,9 +93,10 @@ Json McpDispatcher::CallTool(const std::string& clientIp, const std::string& too
 
     // 1. Power Security Boundary Check
     const bool isPowerTool = (toolName.rfind("power.", 0) == 0 ||
+        toolName == "boot.enter" || toolName == "power.recover" ||
         (arguments.is_object() && (arguments.contains("voltage") || arguments.contains("current") ||
                                    arguments.contains("scpi") || arguments.contains("ovp") ||
-                                   arguments.contains("ocp") || arguments.contains("mode"))));
+                                   arguments.contains("ocp"))));
     Json currentGuiChannels = Json::array();
     bool currentTestUnlocked = false;
     if (isPowerTool) {
@@ -193,13 +194,29 @@ Json McpDispatcher::CallTool(const std::string& clientIp, const std::string& too
     }
     if (toolName == "app.service_configure") {
         Json res = HandleServiceConfigure(arguments);
+        if (res.contains("error")) {
+            int code = ErrInternalError;
+            std::string msg = "Service configurator not bound";
+            if (res["error"].is_object()) {
+                code = res["error"].value("code", ErrInternalError);
+                msg = res["error"].value("message", msg);
+            }
+            McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId, code, msg, arguments);
+            return {
+                {"error", {
+                    {"code", code},
+                    {"message", msg}
+                }}
+            };
+        }
         McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId, 0, "", arguments);
         return McpProtocol::MakeToolResult(res);
     }
 
-    // 4. Device and UI Tools (require GUI running)
+    // 4. Device and UI Tools (require GUI running, except offline local TFTP tools handled by McpService)
     const bool isGuiRunning = guiStatusChecker_ ? guiStatusChecker_() : false;
-    if (!isGuiRunning) {
+    const bool isOfflineCapableTftp = (toolName.rfind("tftp.", 0) == 0 && toolName != "tftp.publish_remote");
+    if (!isGuiRunning && !isOfflineCapableTftp) {
         std::string err = "APP_NOT_RUNNING: SerialCtl GUI is not running. Call app.launch first to start the application.";
         McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId, ErrAppNotRunning, err, arguments);
         return {
@@ -345,7 +362,12 @@ Json McpDispatcher::HandleServiceConfigure(const Json& arguments) {
     if (serviceConfigurator_) {
         return serviceConfigurator_(arguments);
     }
-    return {{"ok", true}};
+    return {
+        {"error", {
+            {"code", ErrInternalError},
+            {"message", "Service configurator not bound"}
+        }}
+    };
 }
 
 } // namespace serialctl::mcp

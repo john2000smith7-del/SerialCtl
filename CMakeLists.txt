@@ -603,6 +603,11 @@ if(BUILD_TESTING)
         src/mcp/McpHttpServer.cpp
         src/mcp/McpDispatcher.cpp
         src/mcp/McpService.cpp
+        src/tftp/TftpServer.cpp
+        src/tftp/TftpFileSource.cpp
+        src/connections/PasswordPipe.cpp
+        src/connections/ChildProcess.cpp
+        src/connections/PuttyHostKey.cpp
         src/power/PowerService.cpp
         src/logging/SessionLogger.cpp
     )

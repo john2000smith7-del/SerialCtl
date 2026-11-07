@@ -39,11 +39,20 @@ LocalTftpFileSource::LocalTftpFileSource(std::wstring path)
         info_.error = L"路径是目录，不是常规文件";
         return;
     }
+    if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
+        info_.error = L"安全限制：拒绝发布符号链接或重解析点 (Symlink / Reparse Point)";
+        return;
+    }
 
     HANDLE h = CreateFileW(path_.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) {
         info_.error = L"无法读取文件（可能被独占或权限不足）";
+        return;
+    }
+    if (GetFileType(h) != FILE_TYPE_DISK) {
+        CloseHandle(h);
+        info_.error = L"安全限制：不支持非常规磁盘文件";
         return;
     }
 
@@ -83,11 +92,23 @@ bool LocalTftpFileSource::Open(std::wstring& error) {
         return true;
     }
 
+    DWORD attr = GetFileAttributesW(path_.c_str());
+    if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY) || (attr & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        error = L"安全限制：文件不存在、是目录或属于符号链接/重解析点";
+        return false;
+    }
+
     file_ = CreateFileW(path_.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
                         nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file_ == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
         error = L"无法打开本地文件: 错误代码 " + std::to_wstring(err);
+        return false;
+    }
+    if (GetFileType(file_) != FILE_TYPE_DISK) {
+        CloseHandle(file_);
+        file_ = INVALID_HANDLE_VALUE;
+        error = L"安全限制：不支持非常规磁盘文件";
         return false;
     }
 
@@ -195,6 +216,12 @@ std::shared_ptr<ITftpFileSource> RemoteSshTftpFileSource::CreateSessionSource() 
 }
 
 bool RemoteSshTftpFileSource::QueryRemoteAttributes(std::wstring& error) {
+    if (config_.remotePath.empty() || config_.remotePath[0] != L'/' ||
+        config_.remotePath.find_first_of(L"\r\n") != std::wstring::npos) {
+        error = L"远程路径必须是以 '/' 开头的绝对 POSIX 路径，且不能包含换行或控制字符";
+        return false;
+    }
+
     // If a custom launcher was provided and no production plink is needed:
     if (launcher_) {
         info_.size = 10485760; // 10 MiB default if launcher mocked
@@ -512,6 +539,10 @@ bool RemoteSshTftpFileSource::Read(uint64_t offset, void* buffer, size_t length,
 
     size_t rel = static_cast<size_t>(offset - bufferStartOffset_);
     size_t avail = (buffer_.size() > rel) ? (buffer_.size() - rel) : 0;
+    if (!ready && !streamEnded_ && avail < length) {
+        error = L"Remote stream read timeout (incomplete block)";
+        return false;
+    }
     size_t count = std::min(length, avail);
 
     if (count > 0) {

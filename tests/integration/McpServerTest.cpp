@@ -1,5 +1,3 @@
-#undef NDEBUG
-#include <cassert>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
@@ -8,6 +6,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <atomic>
 
 #include "McpProtocol.h"
 #include "McpSecurity.h"
@@ -23,14 +22,16 @@ namespace {
 
 void Expect(bool condition, const char* message) {
     if (!condition) {
-        std::cerr << "Assertion failed: " << message << std::endl;
-        assert(false);
+        std::cerr << "REQUIRE FAILED: " << message << std::endl;
+        std::exit(1);
     }
 }
 
-std::string HttpPost(uint16_t port, const std::string& path, const std::string& body) {
+std::string HttpPostWithOrigin(uint16_t port, const std::string& path, const std::string& body,
+                              const std::string& origin, std::string& outHeaders) {
+    outHeaders.clear();
     SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    assert(s != INVALID_SOCKET);
+    if (s == INVALID_SOCKET) return "";
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -46,7 +47,11 @@ std::string HttpPost(uint16_t port, const std::string& path, const std::string& 
     std::string req = "POST " + path + " HTTP/1.1\r\n"
                       "Host: 127.0.0.1:" + std::to_string(port) + "\r\n"
                       "Content-Type: application/json\r\n"
-                      "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
+                      "Content-Length: " + std::to_string(body.size()) + "\r\n";
+    if (!origin.empty()) {
+        req += "Origin: " + origin + "\r\n";
+    }
+    req += "\r\n" + body;
 
     send(s, req.data(), static_cast<int>(req.size()), 0);
 
@@ -59,13 +64,21 @@ std::string HttpPost(uint16_t port, const std::string& path, const std::string& 
     closesocket(s);
 
     size_t pos = resp.find("\r\n\r\n");
-    if (pos != std::string::npos) return resp.substr(pos + 4);
+    if (pos != std::string::npos) {
+        outHeaders = resp.substr(0, pos);
+        return resp.substr(pos + 4);
+    }
     return resp;
+}
+
+std::string HttpPost(uint16_t port, const std::string& path, const std::string& body) {
+    std::string headers;
+    return HttpPostWithOrigin(port, path, body, "", headers);
 }
 
 std::string HttpGet(uint16_t port, const std::string& path) {
     SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    assert(s != INVALID_SOCKET);
+    if (s == INVALID_SOCKET) return "";
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -156,7 +169,6 @@ void TestProtocolAndDiscovery() {
         Expect(t["inputSchema"]["type"] == "object", "Every tool must have an object inputSchema");
     }
 
-    // Verify key categories exist
     auto hasTool = [&](const std::string& name) {
         return std::find(toolNames.begin(), toolNames.end(), name) != toolNames.end();
     };
@@ -172,6 +184,7 @@ void TestProtocolAndDiscovery() {
     Expect(hasTool("boot.enter"), "Must contain boot.enter");
     Expect(hasTool("macro.list"), "Must contain macro.list");
     Expect(hasTool("sftp.list"), "Must contain sftp.list");
+    Expect(hasTool("sftp.chmod"), "Must contain sftp.chmod");
     Expect(hasTool("xfer.start"), "Must contain xfer.start");
     Expect(hasTool("tftp.publish_local"), "Must contain tftp.publish_local");
     Expect(hasTool("power.get"), "Must contain power.get");
@@ -181,6 +194,31 @@ void TestProtocolAndDiscovery() {
     Expect(hasTool("log.export"), "Must contain log.export");
     Expect(hasTool("ui.theme"), "Must contain ui.theme");
     Expect(hasTool("ai.send"), "Must contain ai.send");
+
+    // B03: Verify sftp.chmod with mode: 493 is NOT blocked by power blacklist
+    dispatcher.SetGuiStatusChecker([] { return true; });
+    dispatcher.SetGuiExecutor([](const std::string& method, const Json& params) -> Json {
+        if (method == "sftp.chmod") {
+            return {{"ok", true}, {"mode", params.value("mode", 0)}};
+        }
+        return {{"ok", true}};
+    });
+    Json chmodRes = dispatcher.CallTool("127.0.0.1", "sftp.chmod", {{"path", "/tmp/run.sh"}, {"mode", 493}});
+    Expect(!chmodRes.value("isError", false), "sftp.chmod with mode 493 must NOT be blocked by power security blacklist");
+
+    // B09: Verify app.service_configure returns error when configurator not bound, and succeeds when bound
+    Json unconfigured = dispatcher.CallTool("127.0.0.1", "app.service_configure", {{"port", 7088}});
+    Expect(unconfigured.contains("error") && unconfigured["error"]["code"] == ErrInternalError,
+           "app.service_configure without configurator must return ErrInternalError");
+
+    bool configuredCalled = false;
+    dispatcher.SetServiceConfigurator([&configuredCalled](const Json& p) -> Json {
+        configuredCalled = true;
+        return {{"ok", true}, {"port", p.value("port", 0)}};
+    });
+    Json configuredRes = dispatcher.CallTool("127.0.0.1", "app.service_configure", {{"port", 7088}});
+    Expect(!configuredRes.value("isError", false), "app.service_configure with bound configurator must succeed");
+    Expect(configuredCalled, "Configurator callback must be executed");
 
     // 4. GET /health
     std::string healthRespStr = HttpGet(testPort, "/health");
@@ -200,7 +238,8 @@ void TestPowerWhitelistAndRejections() {
     std::cout << "[Test 2] Testing Power Whitelist and Hard Blacklist Rejections..." << std::endl;
 
     PowerService power;
-    power.AuthorizeTest(L"test");
+    bool authOk = power.AuthorizeTest(L"jj123123");
+    Expect(authOk && PowerService::ConnectionAvailable(), "Test unlock must succeed with valid password");
 
     // Connect simulation backend
     auto connectAction = power.Submit({{"type", "connect"}, {"backend", "simulation"}});
@@ -215,19 +254,42 @@ void TestPowerWhitelistAndRejections() {
     dispatcher.SetGuiSelectedChannels(Json::array({1})); // Channel 1 selected in GUI
 
     dispatcher.SetGuiStatusChecker([] { return true; });
-    dispatcher.SetGuiExecutor([&power](const std::string& method, const Json& params) -> Json {
+
+    // B02: Real E2E contract bridging simulation mimicking MainWindow::McpExecute
+    uint64_t mcpSeq = 0;
+    dispatcher.SetGuiExecutor([&power, &mcpSeq](const std::string& method, const Json& params) -> Json {
         if (method == "power.get") {
             return power.State();
         }
         if (method == "power.output") {
+            if (!PowerService::ConnectionAvailable()) {
+                return {{"error", "Power supply operations require local test unlock"}};
+            }
+            auto state = power.State();
+            if (!state.value("connected", false)) {
+                return {{"error", "Power supply is not connected"}};
+            }
+            Json effectiveParams = params;
+            // Inject protected state
+            effectiveParams["channels"] = Json::array({1});
+            effectiveParams["identity"] = state.value("identity", std::string());
+            effectiveParams["mode"] = state.value("mode", std::string());
+            effectiveParams["requestId"] = "mcp-" + std::to_string(++mcpSeq);
+
+            // Submit with required contract keys
             return power.Submit({
                 {"type", "output"},
-                {"channels", params.value("channels", Json::array({1}))},
-                {"enabled", params.value("enabled", false)}
+                {"source", "ai:desktop"},
+                {"channels", effectiveParams["channels"]},
+                {"enabled", effectiveParams["enabled"]},
+                {"requestId", effectiveParams["requestId"]}
             });
         }
         if (method == "power.action") {
             return power.Action(params.at("id").get<std::string>());
+        }
+        if (method == "boot.enter") {
+            return {{"ok", true}, {"preset", params.value("preset", "")}};
         }
         return {{"error", "Unknown"}};
     });
@@ -237,7 +299,7 @@ void TestPowerWhitelistAndRejections() {
     Expect(getResult.contains("content"), "power.get must return content");
     Expect(!getResult.value("isError", false), "power.get must not be error");
 
-    // 2. Positive: power.output enabled=true on checked channel 1
+    // 2. Positive: power.output enabled=true on checked channel 1 (contract bridged)
     Json outResult = dispatcher.CallTool("127.0.0.1", "power.output", {
         {"enabled", true},
         {"reason", "Test energize"}
@@ -245,7 +307,21 @@ void TestPowerWhitelistAndRejections() {
     Expect(outResult.contains("content"), "power.output must return content");
     Expect(!outResult.value("isError", false), "power.output on selected channels must succeed");
 
-    // 3. Negative: Attempt to set voltage -> Hard rejection
+    // 3. Locked Test rejection: when test is locked, power.output and boot.enter(autoPowerCycle=true) must be rejected
+    power.DisableTest();
+    dispatcher.SetTestUnlocked(false);
+    Json lockedOut = dispatcher.CallTool("127.0.0.1", "power.output", {{"enabled", true}});
+    Expect(lockedOut.contains("error"), "power.output must be rejected when test is locked");
+    Json bootNoPower = dispatcher.CallTool("127.0.0.1", "boot.enter", {{"preset", "U-Boot (stop)"}});
+    Expect(!bootNoPower.contains("error"), "boot.enter without autoPowerCycle must not be blocked by power security");
+    Json bootWithPowerLocked = dispatcher.CallTool("127.0.0.1", "boot.enter", {{"preset", "U-Boot (stop)"}, {"autoPowerCycle", true}});
+    Expect(bootWithPowerLocked.contains("error") && bootWithPowerLocked["error"]["code"] == ErrPermissionDenied,
+           "boot.enter with autoPowerCycle=true must be rejected when test is locked");
+    // Restore unlocked state
+    power.AuthorizeTest(L"jj123123");
+    dispatcher.SetTestUnlocked(true);
+
+    // 4. Negative: Attempt to set voltage -> Hard rejection
     Json voltCall = dispatcher.CallTool("127.0.0.1", "power.output", {
         {"enabled", true},
         {"voltage", 5.0}
@@ -255,52 +331,51 @@ void TestPowerWhitelistAndRejections() {
     Expect(voltCall["error"]["message"].get<std::string>().find("POWER_PARAMETER_CHANGE_FORBIDDEN") != std::string::npos,
            "Must contain POWER_PARAMETER_CHANGE_FORBIDDEN in message");
 
-    // 4. Negative: Attempt to set current -> Hard rejection
+    // 5. Negative: Attempt to set current -> Hard rejection
     Json currCall = dispatcher.CallTool("127.0.0.1", "power.output", {
         {"enabled", true},
         {"current", 2.0}
     });
     Expect(currCall["error"]["code"] == ErrPowerParameterForbidden, "current modification must be rejected");
 
-    // 5. Negative: Attempt to set OVP / OCP -> Hard rejection
+    // 6. Negative: Attempt to set OVP / OCP -> Hard rejection
     Json ovpCall = dispatcher.CallTool("127.0.0.1", "power.output", {
         {"enabled", true},
         {"ovp", 6.5}
     });
     Expect(ovpCall["error"]["code"] == ErrPowerParameterForbidden, "ovp modification must be rejected");
 
-    // 6. Negative: Attempt to set mode (series/parallel) -> Hard rejection
+    // 7. Negative: Attempt to set mode (series/parallel) -> Hard rejection
     Json modeCall = dispatcher.CallTool("127.0.0.1", "power.output", {
         {"enabled", true},
         {"mode", "parallel"}
     });
     Expect(modeCall["error"]["code"] == ErrPowerParameterForbidden, "mode modification must be rejected");
 
-    // 7. Negative: Attempt to override channels (tamper GUI selection) -> Hard rejection
+    // 8. Negative: Attempt to override channels (tamper GUI selection) -> Hard rejection
     Json chanCall = dispatcher.CallTool("127.0.0.1", "power.output", {
         {"enabled", true},
         {"channels", Json::array({1, 2, 3})} // GUI has only [1]
     });
     Expect(chanCall["error"]["code"] == ErrPowerParameterForbidden, "channel tampering must be rejected");
 
-    // 8. Negative: Attempt to send raw SCPI -> Hard rejection
+    // 9. Negative: Attempt to send raw SCPI -> Hard rejection
     Json scpiCall = dispatcher.CallTool("127.0.0.1", "power.output", {
         {"enabled", true},
         {"scpi", "*IDN?\nVOLT 10"}
     });
     Expect(scpiCall["error"]["code"] == ErrPowerParameterForbidden, "SCPI modification must be rejected");
 
-    // 9. Negative: Calling unexposed tools -> Hard rejection
+    // 10. Negative: Calling unexposed tools -> Hard rejection
     for (const char* unexposed : {"power.set", "power.calibrate", "power.reset", "power.preset", "power.voltage"}) {
         Json unexpCall = dispatcher.CallTool("127.0.0.1", unexposed, Json::object());
         Expect(unexpCall.contains("error") && unexpCall["error"]["code"] == ErrPowerParameterForbidden,
                "Unexposed power tools must be hard rejected");
     }
 
-    // 10. Verify zero side-effects on power supply state
+    // 11. Verify zero side-effects on power supply state
     auto finalState = power.State();
     Expect(finalState.value("connected", false), "Power supply remains connected");
-    // Verify default voltage was not modified to 5.0 or 10.0
     Expect(finalState["channels"][0]["setVoltage"].get<double>() < 1.0, "Voltage must remain unmodified");
 
     std::cout << "[Test 2] PASS: Power whitelist and 100% hard blacklist rejection verified with zero side-effects." << std::endl;
@@ -411,9 +486,7 @@ void TestResidentLifecycle() {
     std::atomic<int> launchCount{0};
 
     dispatcher.SetGuiStatusChecker([&guiRunning] { return guiRunning; });
-    dispatcher.SetGuiLauncher([&guiRunning, &launchCount](bool, std::string& err) {
-        if (McpService::Instance().IsRunning() && false) {} // dummy use
-        if (serialctl::mcp::McpSecurity::ValidateAiRecursion(Json::object()).errorCode != 0) {}
+    dispatcher.SetGuiLauncher([&guiRunning, &launchCount](bool, std::string&) {
         launchCount++;
         guiRunning = true;
         return true;
@@ -435,6 +508,19 @@ void TestResidentLifecycle() {
     Json sessionRes = dispatcher.CallTool("127.0.0.1", "session.list", Json::object());
     Expect(sessionRes.contains("error") && sessionRes["error"]["code"] == ErrAppNotRunning,
            "Calling device tools when GUI is offline must return ErrAppNotRunning (-32002)");
+
+    // B08: Verify McpService has offline TFTP server instance and serves tftp.status / tftp.list when GUI is offline
+    TftpServer& srvTftp = McpService::Instance().Tftp();
+    Expect(srvTftp.State() == "stopped" || srvTftp.State() == "listening", "Offline TFTP server must be valid in McpService");
+    if (!McpService::Instance().IsGuiRunning()) {
+        Json offlineTftpStatus = McpService::Instance().Dispatcher().CallTool("127.0.0.1", "tftp.status", Json::object());
+        Expect(!offlineTftpStatus.contains("error") && !offlineTftpStatus.value("isError", false),
+               "tftp.status must succeed via McpService offline TFTP handler when GUI is offline");
+        Json offlineTftpRemote = McpService::Instance().Dispatcher().CallTool("127.0.0.1", "tftp.publish_remote",
+                                                                              {{"tftpName", "Image"}, {"remotePath", "/boot/Image"}});
+        Expect(offlineTftpRemote.contains("error") && offlineTftpRemote["error"]["code"] == ErrAppNotRunning,
+               "tftp.publish_remote must require GUI when GUI is offline");
+    }
 
     // 2. Simulate Session 0 / no interactive login
     McpService::SetSimulateSession0ForTest(true);
@@ -477,7 +563,7 @@ void TestResidentLifecycle() {
     Json sessionResAfter = dispatcher.CallTool("127.0.0.1", "session.list", Json::object());
     Expect(!sessionResAfter.value("isError", false), "Device tools must succeed after GUI is running");
 
-    // 5. Test service stop closes HTTP port
+    // 5. Test service stop closes HTTP port & B12 CORS lock-down
     McpHttpServer httpSrv;
     std::wstring err;
     const uint16_t testPort = 7182;
@@ -490,6 +576,20 @@ void TestResidentLifecycle() {
 
     std::string testPing = HttpGet(testPort, "/health");
     Expect(!testPing.empty(), "Port must be open while server is running");
+
+    // Test CORS: Localhost origin is allowed
+    std::string headersLocal;
+    HttpPostWithOrigin(testPort, "/mcp", "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"ping\"}",
+                       "http://localhost:3000", headersLocal);
+    Expect(headersLocal.find("Access-Control-Allow-Origin: http://localhost:3000") != std::string::npos,
+           "Localhost origin must be permitted in CORS");
+
+    // Test CORS: Non-local external origin must NOT receive wildcard '*'
+    std::string headersEvil;
+    HttpPostWithOrigin(testPort, "/mcp", "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"ping\"}",
+                       "https://evil-attacker.com", headersEvil);
+    Expect(headersEvil.find("Access-Control-Allow-Origin: *") == std::string::npos,
+           "Non-local origin must NEVER receive wildcard '*' CORS header");
 
     httpSrv.Stop();
 
@@ -567,7 +667,5 @@ int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "All 4 MCP Server Test Suites PASSED 100%!" << std::endl;
     std::cout << "========================================" << std::endl;
-
-    WSACleanup();
     return 0;
 }

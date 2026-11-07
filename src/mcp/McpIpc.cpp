@@ -206,7 +206,7 @@ void McpIpcServer::RunServer() {
     PSECURITY_DESCRIPTOR pSd = nullptr;
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, FALSE};
     if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGWGX;;;WD)(A;;GRGWGX;;;RC)",
+            L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGWGX;;;IU)(A;;GA;;;OW)",
             SDDL_REVISION_1, &pSd, nullptr)) {
         sa.lpSecurityDescriptor = pSd;
     }

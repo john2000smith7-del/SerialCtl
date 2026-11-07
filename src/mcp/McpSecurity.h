@@ -39,15 +39,25 @@ public:
         // Hard blacklist for any forbidden power parameter or command
         static const char* const kForbiddenKeys[] = {
             "voltage", "current", "ovp", "ocp", "powerLimit", "power_limit",
-            "mode", "series", "parallel", "tracking", "preset", "calibration",
-            "reset", "scpi", "raw", "line", "voltageStep", "currentStep"
+            "series", "parallel", "tracking", "calibration",
+            "scpi", "raw", "line", "voltageStep", "currentStep"
         };
 
         for (const auto* key : kForbiddenKeys) {
             if (arguments.is_object() && arguments.contains(key)) {
                 return {false, ErrPowerParameterForbidden,
                     "POWER_PARAMETER_CHANGE_FORBIDDEN: Modifying power parameter '" + std::string(key) +
-                    "' (voltage, current, OVP/OCP, mode, SCPI, or calibration) is strictly forbidden on the server."};
+                    "' (voltage, current, OVP/OCP, SCPI, or calibration) is strictly forbidden on the server."};
+            }
+        }
+
+        // For power tools, modifying power output mode/preset/reset is also strictly forbidden
+        if (toolName.rfind("power.", 0) == 0 && arguments.is_object()) {
+            for (const auto* pkey : {"mode", "preset", "reset"}) {
+                if (arguments.contains(pkey)) {
+                    return {false, ErrPowerParameterForbidden,
+                        "POWER_PARAMETER_CHANGE_FORBIDDEN: Modifying power '" + std::string(pkey) + "' is strictly forbidden on the server."};
+                }
             }
         }
 
@@ -65,6 +75,18 @@ public:
         if (toolName == "power.recover") {
             if (!testUnlocked) {
                 return {false, ErrPermissionDenied, "PERMISSION_DENIED: Power recovery requires local password unlock."};
+            }
+            return {true, 0, ""};
+        }
+
+        if (toolName == "boot.enter") {
+            if (arguments.is_object() && arguments.value("autoPowerCycle", false)) {
+                if (!testUnlocked) {
+                    return {false, ErrPermissionDenied, "PERMISSION_DENIED: boot.enter with autoPowerCycle requires local password unlock."};
+                }
+                if (guiSelectedChannels.empty()) {
+                    return {false, ErrPermissionDenied, "PERMISSION_DENIED: No power channels are currently checked in the GUI."};
+                }
             }
             return {true, 0, ""};
         }

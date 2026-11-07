@@ -40,6 +40,8 @@ class TftpTransferSession;
 
 class TftpServer {
 public:
+    static constexpr size_t kMaxConcurrentTftpSessions = 16;
+
     TftpServer();
     ~TftpServer();
 

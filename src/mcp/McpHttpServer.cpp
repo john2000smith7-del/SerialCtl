@@ -7,23 +7,29 @@ namespace serialctl::mcp {
 
 namespace {
 std::string BuildHttpResponse(int statusCode, const std::string& statusText,
-                             const std::string& contentType, const std::string& body) {
+                             const std::string& contentType, const std::string& body,
+                             const std::string& allowedOrigin = "") {
     std::ostringstream ss;
     ss << "HTTP/1.1 " << statusCode << " " << statusText << "\r\n"
        << "Content-Type: " << contentType << "\r\n"
-       << "Content-Length: " << body.size() << "\r\n"
-       << "Access-Control-Allow-Origin: *\r\n"
-       << "Access-Control-Allow-Methods: POST, GET, OPTIONS\r\n"
-       << "Access-Control-Allow-Headers: Content-Type, Authorization, X-MCP-Recursion-Depth\r\n"
-       << "Connection: close\r\n\r\n"
+       << "Content-Length: " << body.size() << "\r\n";
+    if (!allowedOrigin.empty()) {
+        ss << "Access-Control-Allow-Origin: " << allowedOrigin << "\r\n"
+           << "Access-Control-Allow-Methods: POST, GET, OPTIONS\r\n"
+           << "Access-Control-Allow-Headers: Content-Type, Authorization, X-MCP-Recursion-Depth\r\n";
+    }
+    ss << "Connection: close\r\n\r\n"
        << body;
     return ss.str();
 }
 
-std::string BuildCorsPreflightResponse() {
+std::string BuildCorsPreflightResponse(const std::string& allowedOrigin) {
+    if (allowedOrigin.empty()) {
+        return "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    }
     std::ostringstream ss;
     ss << "HTTP/1.1 204 No Content\r\n"
-       << "Access-Control-Allow-Origin: *\r\n"
+       << "Access-Control-Allow-Origin: " << allowedOrigin << "\r\n"
        << "Access-Control-Allow-Methods: POST, GET, OPTIONS\r\n"
        << "Access-Control-Allow-Headers: Content-Type, Authorization, X-MCP-Recursion-Depth\r\n"
        << "Access-Control-Max-Age: 86400\r\n"
@@ -65,7 +71,10 @@ bool McpHttpServer::Start(const std::string& bindIp, uint16_t port,
         sin.sin_addr.s_addr = INADDR_ANY;
     } else {
         if (inet_pton(AF_INET, bindIp_.c_str(), &sin.sin_addr) <= 0) {
-            sin.sin_addr.s_addr = INADDR_ANY;
+            error = L"Invalid bind IP address: " + std::wstring(bindIp_.begin(), bindIp_.end());
+            closesocket(listenSocket_);
+            listenSocket_ = INVALID_SOCKET;
+            return false;
         }
     }
 
@@ -101,13 +110,13 @@ void McpHttpServer::Stop() {
         acceptThread_.join();
     }
 
-    std::vector<std::thread> threadsToJoin;
+    std::vector<ClientThread> threadsToJoin;
     {
         std::lock_guard<std::mutex> lock(clientThreadsMutex_);
         threadsToJoin = std::move(clientThreads_);
     }
-    for (auto& t : threadsToJoin) {
-        if (t.joinable()) t.join();
+    for (auto& ct : threadsToJoin) {
+        if (ct.thread.joinable()) ct.thread.join();
     }
 }
 
@@ -127,18 +136,30 @@ void McpHttpServer::AcceptLoop() {
         std::string clientIp = ipStr;
 
         std::lock_guard<std::mutex> lock(clientThreadsMutex_);
-        // Clean up finished threads
-        clientThreads_.erase(
-            std::remove_if(clientThreads_.begin(), clientThreads_.end(),
-                           [](std::thread& t) {
-                               if (!t.joinable()) return true;
-                               // We join active finished threads in HandleClient detached or managed
-                               return false;
-                           }),
-            clientThreads_.end());
+        // Clean up done threads
+        for (auto it = clientThreads_.begin(); it != clientThreads_.end();) {
+            if (it->done && it->done->load()) {
+                if (it->thread.joinable()) it->thread.join();
+                it = clientThreads_.erase(it);
+            } else {
+                ++it;
+            }
+        }
 
-        clientThreads_.emplace_back([this, clientSocket, clientIp] {
-            HandleClient(clientSocket, clientIp);
+        if (clientThreads_.size() >= kMaxConcurrentHttpClients) {
+            std::string resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            send(clientSocket, resp.data(), static_cast<int>(resp.size()), 0);
+            closesocket(clientSocket);
+            continue;
+        }
+
+        auto doneFlag = std::make_shared<std::atomic<bool>>(false);
+        clientThreads_.push_back({
+            std::thread([this, clientSocket, clientIp, doneFlag] {
+                HandleClient(clientSocket, clientIp);
+                doneFlag->store(true);
+            }),
+            doneFlag
         });
     }
 }
@@ -154,6 +175,7 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
     size_t headerEnd = std::string::npos;
     size_t contentLength = 0;
     bool hasContentLength = false;
+    std::string origin;
 
     while (running_.load()) {
         int bytes = recv(clientSocket, buffer, sizeof(buffer), 0);
@@ -181,6 +203,9 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
                             contentLength = std::stoul(line.substr(15));
                             hasContentLength = true;
                         } catch (...) {}
+                    } else if (lowerLine.rfind("origin:", 0) == 0) {
+                        origin = line.substr(7);
+                        while (!origin.empty() && origin.front() == ' ') origin.erase(origin.begin());
                     }
                 }
             }
@@ -214,22 +239,35 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
             stream >> method >> uri >> version;
         }
 
+        std::string allowedOrigin;
+        if (!origin.empty()) {
+            std::string lowerOrigin = origin;
+            std::transform(lowerOrigin.begin(), lowerOrigin.end(), lowerOrigin.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (lowerOrigin.rfind("http://localhost", 0) == 0 ||
+                lowerOrigin.rfind("https://localhost", 0) == 0 ||
+                lowerOrigin.rfind("http://127.0.0.1", 0) == 0 ||
+                lowerOrigin.rfind("https://127.0.0.1", 0) == 0) {
+                allowedOrigin = origin;
+            }
+        }
+
         std::string response;
         if (method == "OPTIONS") {
-            response = BuildCorsPreflightResponse();
+            response = BuildCorsPreflightResponse(allowedOrigin);
         } else if (method == "GET" && (uri == "/mcp" || uri == "/health" || uri == "/")) {
             std::string healthBody = healthHandler_ ? healthHandler_() : "{\"status\":\"ok\"}";
-            response = BuildHttpResponse(200, "OK", "application/json", healthBody);
+            response = BuildHttpResponse(200, "OK", "application/json", healthBody, allowedOrigin);
         } else if (method == "POST" && (uri == "/mcp" || uri == "/")) {
             size_t headerLength = (requestData.find("\r\n\r\n") != std::string::npos) ? 4 : 2;
             size_t bodyStart = headerEnd + headerLength;
             std::string body = requestData.substr(bodyStart, contentLength);
 
             std::string resultJson = requestHandler_ ? requestHandler_(clientIp, body) : "{}";
-            response = BuildHttpResponse(200, "OK", "application/json", resultJson);
+            response = BuildHttpResponse(200, "OK", "application/json", resultJson, allowedOrigin);
         } else {
             response = BuildHttpResponse(404, "Not Found", "application/json",
-                "{\"error\": \"Not Found\", \"message\": \"Use POST /mcp or GET /health\"}");
+                "{\"error\": \"Not Found\", \"message\": \"Use POST /mcp or GET /health\"}", allowedOrigin);
         }
 
         send(clientSocket, response.data(), static_cast<int>(response.size()), 0);

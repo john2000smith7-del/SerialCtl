@@ -250,6 +250,7 @@ private:
 
     void LoadUiState();
     void SaveUiState();
+    void LoadTftpState();
     void SetRightPanelCollapsed(bool collapsed);
     void SetLeftPanelCollapsed(bool collapsed);
     int LeftWidth() const;
@@ -579,6 +580,8 @@ private:
     void StopEmbeddedMcpServer();
     void ApplyMcpSettings(bool enabled, bool autoStart, uint16_t port);
     Json McpExecute(const std::string& method, const Json& params);
+    SessionState* ResolveTargetSession(const Json& params, std::string& err);
+    uint64_t mcpRequestSeq_ = 0;
 };
 
 } // namespace serialctl

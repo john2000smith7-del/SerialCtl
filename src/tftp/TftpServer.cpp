@@ -58,6 +58,7 @@ public:
     }
 
     bool IsActive() const {
+        std::lock_guard<std::mutex> lock(statusMutex_);
         return phase_ == "connecting" || phase_ == "transferring";
     }
 
@@ -212,86 +213,93 @@ private:
                     sentBytes_ = currentOffset + bytesRead;
                 }
 
-                fd_set fds;
-                FD_ZERO(&fds);
-                FD_SET(socket_, &fds);
-                timeval tv{};
-                tv.tv_sec = timeoutSec_ ? timeoutSec_ : 2;
-                tv.tv_usec = 0;
+                while (!cancelled_ && !blockAcked) {
+                    fd_set fds;
+                    FD_ZERO(&fds);
+                    FD_SET(socket_, &fds);
+                    timeval tv{};
+                    tv.tv_sec = timeoutSec_ ? timeoutSec_ : 2;
+                    tv.tv_usec = 0;
 
-                int sel = select(0, &fds, nullptr, nullptr, &tv);
-                if (sel <= 0) {
-                    retries++;
-                    {
-                        std::lock_guard<std::mutex> lock(statusMutex_);
-                        retransmits_++;
-                    }
-                    if (retries > 5) {
-                        std::lock_guard<std::mutex> lock(statusMutex_);
-                        phase_ = "failed";
-                        error_ = L"等待 ACK 超时 (超过5次重试)";
-                        finishTimeMs_ = GetTickCount64();
-                        source_->Close();
-                        return;
-                    }
-                    continue;
-                }
-
-                sockaddr_in from{};
-                int fromLen = sizeof(from);
-                uint8_t reply[512];
-                int recvd = recvfrom(socket_, reinterpret_cast<char*>(reply), sizeof(reply), 0,
-                                     reinterpret_cast<sockaddr*>(&from), &fromLen);
-                if (recvd >= 4) {
-                    if (from.sin_addr.s_addr != clientAddr_.sin_addr.s_addr ||
-                        from.sin_port != clientAddr_.sin_port) {
-                        SendTftpError(socket_, from, 5, "Unknown transfer ID");
-                        continue;
-                    }
-
-                    uint16_t op = (reply[0] << 8) | reply[1];
-                    if (op == 4) { // ACK
-                        uint16_t ackBlk = (reply[2] << 8) | reply[3];
-                        // Support wrap-around: 65535 -> 0 or 65535 -> 1
-                        bool match = (ackBlk == blk16);
-                        if (!match && blk16 == 0 && ackBlk == 1) {
-                            match = true;
-                            blockCount++;
+                    int sel = select(0, &fds, nullptr, nullptr, &tv);
+                    if (sel <= 0) {
+                        retries++;
+                        {
+                            std::lock_guard<std::mutex> lock(statusMutex_);
+                            retransmits_++;
                         }
+                        if (retries > 5) {
+                            std::lock_guard<std::mutex> lock(statusMutex_);
+                            phase_ = "failed";
+                            error_ = L"等待 ACK 超时 (超过5次重试)";
+                            finishTimeMs_ = GetTickCount64();
+                            source_->Close();
+                            return;
+                        }
+                        break; // Timeout: retransmit data block
+                    }
 
-                        if (match) {
-                            blockAcked = true;
-                            currentOffset += bytesRead;
-                            {
-                                std::lock_guard<std::mutex> lock(statusMutex_);
-                                ackedBytes_ = currentOffset;
-                            }
-                            blockCount++;
-
-                            // If payload was less than blksize, this was the final block!
-                            if (bytesRead < blksize_) {
-                                finished = true;
-                                std::lock_guard<std::mutex> lock(statusMutex_);
-                                phase_ = "completed";
-                                finishTimeMs_ = GetTickCount64();
-                            }
-                            break;
-                        } else {
-                            // Duplicate or previous ACK: ignore per RFC 1350
+                    sockaddr_in from{};
+                    int fromLen = sizeof(from);
+                    uint8_t reply[512];
+                    int recvd = recvfrom(socket_, reinterpret_cast<char*>(reply), sizeof(reply), 0,
+                                         reinterpret_cast<sockaddr*>(&from), &fromLen);
+                    if (recvd >= 4) {
+                        if (from.sin_addr.s_addr != clientAddr_.sin_addr.s_addr ||
+                            from.sin_port != clientAddr_.sin_port) {
+                            SendTftpError(socket_, from, 5, "Unknown transfer ID");
                             continue;
                         }
-                    } else if (op == 5) { // ERROR
-                        std::string errMsg;
-                        if (recvd > 4) {
-                            errMsg = std::string(reinterpret_cast<char*>(reply + 4), recvd - 4);
+
+                        uint16_t op = (reply[0] << 8) | reply[1];
+                        if (op == 4) { // ACK
+                            uint16_t ackBlk = (reply[2] << 8) | reply[3];
+                            // Support wrap-around: 16-bit block numbers wrap around naturally
+                            bool match = (ackBlk == blk16);
+
+                            if (match) {
+                                blockAcked = true;
+                                currentOffset += bytesRead;
+                                {
+                                    std::lock_guard<std::mutex> lock(statusMutex_);
+                                    ackedBytes_ = currentOffset;
+                                }
+                                blockCount++;
+
+                                // If payload was less than blksize, this was the final block!
+                                if (bytesRead < blksize_) {
+                                    if (totalBytes_ > 0 && currentOffset != totalBytes_) {
+                                        std::lock_guard<std::mutex> lock(statusMutex_);
+                                        phase_ = "failed";
+                                        error_ = L"传输提前中断：读取字节数未达到文件总大小 (premature EOF)";
+                                        finishTimeMs_ = GetTickCount64();
+                                        SendTftpError(socket_, clientAddr_, 0, "Premature EOF: incomplete file transfer");
+                                        source_->Close();
+                                        return;
+                                    }
+                                    finished = true;
+                                    std::lock_guard<std::mutex> lock(statusMutex_);
+                                    phase_ = "completed";
+                                    finishTimeMs_ = GetTickCount64();
+                                }
+                                break;
+                            } else {
+                                // Duplicate or previous ACK: ignore per RFC 1350 and keep waiting without retransmitting
+                                continue;
+                            }
+                        } else if (op == 5) { // ERROR
+                            std::string errMsg;
+                            if (recvd > 4) {
+                                errMsg = std::string(reinterpret_cast<char*>(reply + 4), recvd - 4);
+                            }
+                            std::lock_guard<std::mutex> lock(statusMutex_);
+                            phase_ = "cancelled";
+                            error_ = errMsg.empty() ? L"客户端发送 ERROR 取消" :
+                                std::wstring(errMsg.begin(), errMsg.end());
+                            finishTimeMs_ = GetTickCount64();
+                            source_->Close();
+                            return;
                         }
-                        std::lock_guard<std::mutex> lock(statusMutex_);
-                        phase_ = "cancelled";
-                        error_ = errMsg.empty() ? L"客户端发送 ERROR 取消" :
-                            std::wstring(errMsg.begin(), errMsg.end());
-                        finishTimeMs_ = GetTickCount64();
-                        source_->Close();
-                        return;
                     }
                 }
             }
@@ -589,12 +597,12 @@ size_t TftpServer::ActiveTransferCount() const {
 }
 
 void TftpServer::CleanCompletedSessions() {
-    // Keep up to 20 recent completed sessions for history/diagnostics
+    // Keep up to 64 recent completed sessions for history/diagnostics
     size_t activeCount = 0;
     for (const auto& s : sessions_) {
         if (s->IsActive()) activeCount++;
     }
-    if (sessions_.size() > activeCount + 20) {
+    if (sessions_.size() > activeCount + 64) {
         auto it = std::remove_if(sessions_.begin(), sessions_.end(),
             [](const std::shared_ptr<TftpTransferSession>& s) {
                 return !s->IsActive();
@@ -722,6 +730,20 @@ void TftpServer::ListenerThread() {
                         oackOptions.emplace_back("timeout", std::to_string(timeoutSec));
                     }
                 } catch (...) {}
+            }
+        }
+
+        // Enforce maximum concurrent active sessions
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            CleanCompletedSessions();
+            size_t activeCount = 0;
+            for (const auto& s : sessions_) {
+                if (s->IsActive()) activeCount++;
+            }
+            if (activeCount >= kMaxConcurrentTftpSessions) {
+                SendTftpError(listener_, clientAddr, 0, "Server busy: too many concurrent transfers");
+                continue;
             }
         }
 

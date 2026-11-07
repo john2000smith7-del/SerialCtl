@@ -38,9 +38,14 @@ private:
     uint16_t port_ = 7080;
     RequestHandler requestHandler_;
     HealthHandler healthHandler_;
+    struct ClientThread {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> done;
+    };
     std::thread acceptThread_;
     std::mutex clientThreadsMutex_;
-    std::vector<std::thread> clientThreads_;
+    std::vector<ClientThread> clientThreads_;
+    static constexpr size_t kMaxConcurrentHttpClients = 32;
 };
 
 } // namespace serialctl::mcp

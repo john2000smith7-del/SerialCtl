@@ -280,6 +280,10 @@ inline Json DecodeNotification(const Json &wire) {
         event["appendStream"] = p["item"].value("type", "") == "commandExecution" &&
             (!p["item"].contains("aggregatedOutput") || !p["item"]["aggregatedOutput"].is_string());
         event["text"] = NativeItemText(p["item"], method == "item/completed");
+        if (p["item"].value("type", "") == "commandExecution") {
+            event["command"] = p["item"].value("command", std::string());
+            if (p["item"].contains("exitCode")) event["exitCode"] = p["item"]["exitCode"];
+        }
     } else if (method == "item/commandExecution/outputDelta") {
         event["event"] = "serverToolDelta";
         event["messageId"] = "server:" + p.value("itemId", std::string());

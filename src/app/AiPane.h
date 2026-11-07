@@ -139,7 +139,8 @@ class AiPane {
     int currentInputHeight_ = 0;
     bool keepDirectoryDropdownOpen_ = false;
     std::wstring requestedAccess_ = L"Full Access", effectiveAccess_ = L"待验证";
-    std::string workspacePractices_, previousAgentsMdContent_;
+    std::string workspacePractices_, currentAgentsMdContent_, rollbackAgentsMdSnapshot_;
+    bool hasRollbackSnapshot_ = false;
     bool autoWorkspacePractices_ = true;
     RECT composerBounds_{}, waitingBounds_{};
     std::string displayGroup_;

@@ -2736,7 +2736,13 @@ void MainWindow::CreateControls() {
     tftpServer_ = std::make_shared<TftpServer>();
     if(!tftpPane_.Create(window_,tftpServer_,[this]{return GetTftpSshSessions();},smallFont_,darkMode_,Ui::Dpi))
         throw std::runtime_error("Cannot create TFTP pane");
-    tftpPane_.stateChanged=[this]{if(!closing_)UpdateCommandActions();};
+    tftpPane_.stateChanged=[this]{
+        if(!closing_) {
+            UpdateCommandActions();
+            SaveUiState();
+        }
+    };
+    LoadTftpState();
     rightPanelToggleButton_ = CreateChild(L"BUTTON",
         rightPanelCollapsed_ ? L"展开侧栏" : L"折叠侧栏", BS_OWNERDRAW, IdRightPanelToggle);
     if (!notebook_.Create(window_, IdCommandList)) throw std::runtime_error("Cannot create command text editor");
@@ -4812,6 +4818,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
                 return error(WideToMultiByte(err, CP_UTF8));
             }
             if (tftpPane_.Handle()) tftpPane_.Refresh();
+            SaveUiState();
             return {
                 {"ok", true},
                 {"status", tftpServer_->State()},
@@ -4823,6 +4830,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
         if (method == "tftp.stop") {
             tftpServer_->Stop();
             if (tftpPane_.Handle()) tftpPane_.Refresh();
+            SaveUiState();
             return {{"ok", true}, {"status", "stopped"}};
         }
         if (method == "tftp.publish_local") {
@@ -4838,6 +4846,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
                 return error(WideToMultiByte(err, CP_UTF8));
             }
             if (tftpPane_.Handle()) tftpPane_.Refresh();
+            SaveUiState();
             return {
                 {"ok", true},
                 {"tftpName", tftpName},
@@ -4892,6 +4901,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
             if (tftpName.empty()) return error("tftpName is required");
             bool ok = tftpServer_->Unpublish(tftpName);
             if (tftpPane_.Handle()) tftpPane_.Refresh();
+            SaveUiState();
             return {{"ok", ok}, {"tftpName", tftpName}};
         }
         if (method == "tftp.list") {
@@ -6561,12 +6571,58 @@ void MainWindow::SaveUiState() {
     add(L"Mcp", L"Enabled", mcpEnabled_ ? 1 : 0);
     add(L"Mcp", L"AutoStart", mcpAutoStart_ ? 1 : 0);
     add(L"Mcp", L"Port", mcpPort_);
+    if (tftpServer_) {
+        add(L"Tftp", L"Enabled", tftpServer_->IsListening() ? 1 : 0);
+        add(L"Tftp", L"Port", tftpServer_->Port());
+        const auto bindIp = MultiByteToWide(reinterpret_cast<const uint8_t*>(tftpServer_->BindIp().data()), tftpServer_->BindIp().size(), CP_UTF8);
+        snapshot.entries.push_back({L"Tftp", L"BindIp", bindIp.empty() ? L"0.0.0.0" : bindIp});
+        auto published = tftpServer_->ListPublished();
+        int localCount = 0;
+        for (const auto& item : published) {
+            auto info = item.source->Info();
+            if (info.type == "local" && !info.displayPath.empty()) {
+                std::wstring key = L"LocalItem_" + std::to_wstring(localCount++);
+                std::wstring val = MultiByteToWide(reinterpret_cast<const uint8_t*>(item.tftpName.data()), item.tftpName.size(), CP_UTF8) + L"|" + info.displayPath;
+                snapshot.entries.push_back({L"Tftp", key, val});
+            }
+        }
+        add(L"Tftp", L"LocalCount", localCount);
+    }
     for(const auto& preset:bootPresets_) {
         const auto value=preset.second.first+"|"+std::to_string(preset.second.second);
         snapshot.entries.push_back({L"BootPresets",preset.first,MultiByteToWide(reinterpret_cast<const uint8_t*>(value.data()),value.size(),CP_UTF8)});
     }
     uiSettingsWriter_.Submit(std::move(snapshot));
     SetTimer(window_,SettingsWriteTimerId,250,nullptr);
+}
+
+void MainWindow::LoadTftpState() {
+    if (!tftpServer_ || uiSettingsPath_.empty()) return;
+    const std::wstring& path = uiSettingsPath_;
+    bool tftpEnabled = GetPrivateProfileIntW(L"Tftp", L"Enabled", 0, path.c_str()) != 0;
+    uint16_t tftpPort = static_cast<uint16_t>(GetPrivateProfileIntW(L"Tftp", L"Port", 69, path.c_str()));
+    wchar_t bindIpBuf[64]{};
+    GetPrivateProfileStringW(L"Tftp", L"BindIp", L"0.0.0.0", bindIpBuf, 64, path.c_str());
+    std::string bindIp = WideToMultiByte(bindIpBuf, CP_UTF8);
+    int localCount = GetPrivateProfileIntW(L"Tftp", L"LocalCount", 0, path.c_str());
+    for (int i = 0; i < localCount; ++i) {
+        std::wstring key = L"LocalItem_" + std::to_wstring(i);
+        wchar_t itemBuf[1024]{};
+        GetPrivateProfileStringW(L"Tftp", key.c_str(), L"", itemBuf, 1024, path.c_str());
+        std::wstring row(itemBuf);
+        auto sep = row.find(L'|');
+        if (sep != std::wstring::npos && sep > 0) {
+            std::string tftpName = WideToMultiByte(row.substr(0, sep), CP_UTF8);
+            std::wstring localPath = row.substr(sep + 1);
+            std::wstring err;
+            tftpServer_->PublishLocal(tftpName, localPath, true, err);
+        }
+    }
+    if (tftpEnabled) {
+        std::wstring err;
+        tftpServer_->Start(bindIp, tftpPort, err);
+    }
+    if (tftpPane_.Handle()) tftpPane_.Refresh();
 }
 
 int MainWindow::LeftWidth() const {
@@ -8355,6 +8411,54 @@ void MainWindow::StartEmbeddedMcpServer() {
         });
         mcpDispatcher_->SetTestUnlocked(PowerService::ConnectionAvailable());
         mcpDispatcher_->SetGuiSelectedChannels(powerPane_.SelectedChannels());
+        mcpDispatcher_->SetServiceConfigurator([this](const Json& args) -> Json {
+            uint16_t newPort = mcpPort_;
+            std::string newBindIp = mcpBindIp_;
+            bool newAutoStart = mcpAutoStart_;
+            if (args.contains("port")) {
+                int p = args["port"].get<int>();
+                if (p < 1 || p > 65535) return {{"error", "Invalid port: must be 1..65535"}};
+                newPort = static_cast<uint16_t>(p);
+            }
+            if (args.contains("bindIp")) {
+                std::string ip = args["bindIp"].get<std::string>();
+                sockaddr_in sa{};
+                if (ip != "0.0.0.0" && InetPtonA(AF_INET, ip.c_str(), &sa.sin_addr) <= 0) {
+                    return {{"error", "Invalid bindIp: must be valid IPv4 address"}};
+                }
+                newBindIp = ip;
+            }
+            if (args.contains("autoStart")) {
+                newAutoStart = args["autoStart"].get<bool>();
+            }
+            mcpPort_ = newPort;
+            mcpBindIp_ = newBindIp;
+            mcpAutoStart_ = newAutoStart;
+            SaveUiState();
+            wchar_t exe[MAX_PATH]{};
+            GetModuleFileNameW(nullptr, exe, MAX_PATH);
+            mcp::McpService::SetUserAutoStart(newAutoStart, exe);
+            if (mcpEmbeddedServer_) {
+                mcpEmbeddedServer_->Stop();
+                std::wstring sErr;
+                if (!mcpEmbeddedServer_->Start(mcpBindIp_, mcpPort_,
+                        [this](const std::string& ip, const std::string& body) {
+                            return mcpDispatcher_->Dispatch(ip, body);
+                        },
+                        [this]() {
+                            return mcpDispatcher_->CallTool("127.0.0.1", "app.health", Json::object()).dump();
+                        },
+                        sErr)) {
+                    return {{"error", "Failed to restart server on new port/IP: " + WideToMultiByte(sErr, CP_UTF8)}};
+                }
+            }
+            return {
+                {"ok", true},
+                {"port", mcpPort_},
+                {"bindIp", mcpBindIp_},
+                {"autoStart", mcpAutoStart_}
+            };
+        });
     }
 
     mcpEmbeddedServer_ = std::make_unique<mcp::McpHttpServer>();
@@ -8395,6 +8499,36 @@ void MainWindow::ApplyMcpSettings(bool enabled, bool autoStart, uint16_t port) {
     }
 }
 
+MainWindow::SessionState* MainWindow::ResolveTargetSession(const Json& params, std::string& err) {
+    if (params.is_object()) {
+        std::string sidStr;
+        if (params.contains("sessionId") && params["sessionId"].is_string()) {
+            sidStr = params["sessionId"].get<std::string>();
+        } else if (params.contains("session_id") && params["session_id"].is_string()) {
+            sidStr = params["session_id"].get<std::string>();
+        } else if (params.contains("sessionId") && params["sessionId"].is_number()) {
+            sidStr = std::to_string(params["sessionId"].get<uint64_t>());
+        } else if (params.contains("session_id") && params["session_id"].is_number()) {
+            sidStr = std::to_string(params["session_id"].get<uint64_t>());
+        }
+
+        if (!sidStr.empty()) {
+            for (const auto& s : sessions_) {
+                if (("session-" + std::to_string(s->id)) == sidStr || std::to_string(s->id) == sidStr) {
+                    return s.get();
+                }
+            }
+            err = "Session not found: " + sidStr;
+            return nullptr;
+        }
+    }
+    if (!activeSession_) {
+        err = "No active session";
+        return nullptr;
+    }
+    return activeSession_;
+}
+
 Json MainWindow::McpExecute(const std::string& method, const Json& params) {
     auto error = [](const std::string& text) -> Json { return {{"error", text}}; };
     if (closing_ && method != "app.quit") return error("Application closing");
@@ -8404,6 +8538,23 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
             {"testUnlocked", PowerService::ConnectionAvailable()},
             {"selectedChannels", powerPane_.SelectedChannels()}
         };
+    }
+
+    // UI-thread security enforcement for both IPC and embedded HTTP callers
+    if (method.rfind("power.", 0) == 0 || method == "boot.enter" || method == "power.recover" ||
+        (params.is_object() && (params.contains("voltage") || params.contains("current") ||
+                                params.contains("scpi") || params.contains("ovp") ||
+                                params.contains("ocp")))) {
+        auto check = mcp::McpSecurity::ValidatePowerCall(method, params, powerPane_.SelectedChannels(), PowerService::ConnectionAvailable());
+        if (!check.allowed) {
+            return error(check.errorMessage);
+        }
+    }
+    if (method == "ai.send") {
+        auto check = mcp::McpSecurity::ValidateAiRecursion(params);
+        if (!check.allowed) {
+            return error(check.errorMessage);
+        }
     }
 
     if (method == "app.quit") {
@@ -8562,18 +8713,20 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}, {"deleted", host}};
     }
     if (method == "terminal.clear") {
-        std::string sid = params.value("sessionId", "");
-        for (const auto& s : sessions_) {
-            if (("session-" + std::to_string(s->id)) == sid) {
-                s->terminal.Clear();
-                if (s.get() == activeSession_) InvalidateRect(terminal_, nullptr, FALSE);
-                return {{"ok", true}};
-            }
-        }
-        return error("Session not found");
+        std::string resErr;
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr);
+        target->terminal.Clear();
+        if (target == activeSession_) InvalidateRect(terminal_, nullptr, FALSE);
+        return {{"ok", true}};
     }
     if (method == "terminal.send_bytes") {
-        std::string sid = params.value("sessionId", "");
+        std::string resErr;
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr);
+        if (xfer_.State().busy && xfer_.State().session == target->id) {
+            return error("Session is busy with active file transfer (Xfer)");
+        }
         std::string hexStr = params.value("hex", "");
         if (hexStr.empty()) return error("hex string is required");
         Bytes bytes;
@@ -8581,30 +8734,22 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
             std::string byteString = hexStr.substr(i, 2);
             bytes.push_back(static_cast<uint8_t>(std::strtoul(byteString.c_str(), nullptr, 16)));
         }
-        for (const auto& s : sessions_) {
-            if (("session-" + std::to_string(s->id)) == sid) {
-                if (!s->connection || !s->connection->IsConnected()) return error("Session disconnected");
-                std::wstring err;
-                if (!s->connection->Send(bytes, err)) return error(WideToMultiByte(err, CP_UTF8));
-                return {{"ok", true}, {"sentBytes", bytes.size()}};
-            }
-        }
-        return error("Session not found");
+        if (!target->connection || !target->connection->IsConnected()) return error("Session disconnected");
+        std::wstring err;
+        if (!target->connection->Send(bytes, err)) return error(WideToMultiByte(err, CP_UTF8));
+        return {{"ok", true}, {"sentBytes", bytes.size()}};
     }
     if (method == "terminal.settings") {
-        std::string sid = params.value("sessionId", "");
-        for (const auto& s : sessions_) {
-            if (("session-" + std::to_string(s->id)) == sid) {
-                if (params.contains("codePage")) s->codePage = params["codePage"].get<UINT>();
-                if (params.contains("lineEnding")) s->lineEndingIndex = params["lineEnding"].get<int>();
-                if (params.contains("echo")) localEchoEnabled_ = params["echo"].get<bool>();
-                if (params.contains("timestamp")) timestampEnabled_ = params["timestamp"].get<bool>();
-                if (params.contains("rawTrace")) s->rawTrace = params["rawTrace"].get<bool>();
-                SaveUiState();
-                return {{"ok", true}};
-            }
-        }
-        return error("Session not found");
+        std::string resErr;
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr);
+        if (params.contains("codePage")) target->codePage = params["codePage"].get<UINT>();
+        if (params.contains("lineEnding")) target->lineEndingIndex = params["lineEnding"].get<int>();
+        if (params.contains("echo")) localEchoEnabled_ = params["echo"].get<bool>();
+        if (params.contains("timestamp")) timestampEnabled_ = params["timestamp"].get<bool>();
+        if (params.contains("rawTrace")) target->rawTrace = params["rawTrace"].get<bool>();
+        SaveUiState();
+        return {{"ok", true}};
     }
     if (method == "macro.list") {
         Json arr = Json::array();
@@ -8675,6 +8820,20 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}};
     }
     if (method == "macro.run") {
+        std::string resErr;
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr);
+        if (xfer_.State().busy && xfer_.State().session == target->id) {
+            return error("Session is busy with active file transfer (Xfer)");
+        }
+        if (target != activeSession_) {
+            for (size_t i = 0; i < sessions_.size(); ++i) {
+                if (sessions_[i].get() == target) {
+                    SwitchSession(i);
+                    break;
+                }
+            }
+        }
         if (params.contains("index")) {
             size_t index = params["index"];
             if (index < macro_.Items().size()) SendCommand(index);
@@ -8713,6 +8872,17 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}, {"exported", path}};
     }
     if (method == "sftp.list") {
+        std::string resErr;
+        auto* targetSession = ResolveTargetSession(params, resErr);
+        if (!targetSession) return error(resErr);
+        if (targetSession != activeSession_) {
+            for (size_t i = 0; i < sessions_.size(); ++i) {
+                if (sessions_[i].get() == targetSession) {
+                    SwitchSession(i);
+                    break;
+                }
+            }
+        }
         Json arr = Json::array();
         for (const auto& f : sftp_.Entries()) {
             arr.push_back({
@@ -8726,6 +8896,17 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}, {"path", WideToMultiByte(sftp_.Directory(), CP_UTF8)}, {"files", arr}};
     }
     if (method == "sftp.cd") {
+        std::string resErr;
+        auto* targetSession = ResolveTargetSession(params, resErr);
+        if (!targetSession) return error(resErr);
+        if (targetSession != activeSession_) {
+            for (size_t i = 0; i < sessions_.size(); ++i) {
+                if (sessions_[i].get() == targetSession) {
+                    SwitchSession(i);
+                    break;
+                }
+            }
+        }
         std::string path = params.value("path", "");
         auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(path.data()), path.size(), CP_UTF8);
         RefreshSftp(pathW);
@@ -8734,9 +8915,11 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
     if (method == "sftp.mkdir") {
         std::string remotePath = params.value("remotePath", "");
         if (remotePath.empty()) return error("remotePath is required");
-        if (!activeSession_) return error("No active session");
+        std::string resErr;
+        auto* targetSession = ResolveTargetSession(params, resErr);
+        if (!targetSession) return error(resErr);
         auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
-        bool ok = sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_),
+        bool ok = sftp_.Mutate(targetSession->id, SftpEndpoint(*targetSession),
                                SftpMutationKind::CreateDirectory, {pathW}, L"", {});
         return {{"ok", ok}, {"created", remotePath}};
     }
@@ -8744,10 +8927,12 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         std::string oldPath = params.value("oldPath", "");
         std::string newPath = params.value("newPath", "");
         if (oldPath.empty() || newPath.empty()) return error("oldPath and newPath are required");
-        if (!activeSession_) return error("No active session");
+        std::string resErr;
+        auto* targetSession = ResolveTargetSession(params, resErr);
+        if (!targetSession) return error(resErr);
         auto oldW = MultiByteToWide(reinterpret_cast<const uint8_t*>(oldPath.data()), oldPath.size(), CP_UTF8);
         auto newW = MultiByteToWide(reinterpret_cast<const uint8_t*>(newPath.data()), newPath.size(), CP_UTF8);
-        bool ok = sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_),
+        bool ok = sftp_.Mutate(targetSession->id, SftpEndpoint(*targetSession),
                                SftpMutationKind::Rename, {oldW, newW}, L"", {});
         return {{"ok", ok}, {"oldPath", oldPath}, {"newPath", newPath}};
     }
@@ -8755,11 +8940,13 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         std::string remotePath = params.value("remotePath", "");
         int modeVal = params.value("mode", 0755);
         if (remotePath.empty()) return error("remotePath is required");
-        if (!activeSession_) return error("No active session");
+        std::string resErr;
+        auto* targetSession = ResolveTargetSession(params, resErr);
+        if (!targetSession) return error(resErr);
         auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
         wchar_t modeBuf[16]{};
         swprintf_s(modeBuf, L"%o", static_cast<unsigned>(modeVal));
-        bool ok = sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_),
+        bool ok = sftp_.Mutate(targetSession->id, SftpEndpoint(*targetSession),
                                SftpMutationKind::ChangeMode, {pathW}, modeBuf, {});
         return {{"ok", ok}, {"remotePath", remotePath}};
     }
@@ -8767,7 +8954,17 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         std::string localPath = params.value("localPath", "");
         std::string remotePath = params.value("remotePath", "");
         if (localPath.empty() || remotePath.empty()) return error("localPath and remotePath are required");
-        if (!activeSession_) return error("No active session");
+        std::string resErr;
+        auto* targetSession = ResolveTargetSession(params, resErr);
+        if (!targetSession) return error(resErr);
+        if (targetSession != activeSession_) {
+            for (size_t i = 0; i < sessions_.size(); ++i) {
+                if (sessions_[i].get() == targetSession) {
+                    SwitchSession(i);
+                    break;
+                }
+            }
+        }
         auto localW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
         auto remoteW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
         bool ok = StartSftpUpload(localW, remoteW);
@@ -8778,7 +8975,17 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         std::string localPath = params.value("localPath", "");
         bool allowOverwrite = params.value("allowOverwrite", false);
         if (remotePath.empty() || localPath.empty()) return error("remotePath and localPath are required");
-        if (!activeSession_) return error("No active session");
+        std::string resErr;
+        auto* targetSession = ResolveTargetSession(params, resErr);
+        if (!targetSession) return error(resErr);
+        if (targetSession != activeSession_) {
+            for (size_t i = 0; i < sessions_.size(); ++i) {
+                if (sessions_[i].get() == targetSession) {
+                    SwitchSession(i);
+                    break;
+                }
+            }
+        }
         auto remoteW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
         auto localW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
         StartSftpDownload(remoteW, localW, 0, allowOverwrite);
@@ -8796,10 +9003,12 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         }
         std::string remotePath = params.value("remotePath", "");
         if (remotePath.empty()) return error("remotePath is required");
-        if (!activeSession_) return error("No active session");
+        std::string resErr;
+        auto* targetSession = ResolveTargetSession(params, resErr);
+        if (!targetSession) return error(resErr);
         auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
         bool isDir = params.value("directory", false);
-        bool ok = sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_),
+        bool ok = sftp_.Mutate(targetSession->id, SftpEndpoint(*targetSession),
                                SftpController::Mutation::Delete, {pathW}, L"", {isDir});
         return {{"ok", ok}, {"deleted", remotePath}};
     }
@@ -8920,21 +9129,30 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}, {"panel", panel}};
     }
     if (method == "log.status") {
+        std::string resErr;
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target && (params.contains("sessionId") || params.contains("session_id"))) {
+            return error(resErr);
+        }
+        SessionLogger* logger = target ? target->logger.get() : (activeSession_ ? activeSession_->logger.get() : logger_);
         return {
             {"ok", true},
-            {"logging", logger_ && !logger_->Path().empty()},
-            {"path", logger_ ? WideToMultiByte(logger_->Path(), CP_UTF8) : ""}
+            {"logging", logger && !logger->Path().empty()},
+            {"path", logger ? WideToMultiByte(logger->Path(), CP_UTF8) : ""}
         };
     }
     if (method == "log.export") {
         std::string path = params.value("path", "");
         if (path.empty()) return error("path is required");
-        if (!activeSession_ || !logger_ || logger_->Path().empty()) return error("No active session log to export");
+        std::string resErr;
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr.empty() ? "No session found to export" : resErr);
+        auto logger = target->logger;
+        if (!logger || logger->Path().empty()) return error("No session log to export");
         if (logExportJob_) return error("Another log export is already in progress");
         auto destination = MultiByteToWide(reinterpret_cast<const uint8_t*>(path.data()), path.size(), CP_UTF8);
-        auto logger = activeSession_->logger;
         const auto point = logger->CaptureExportPoint();
-        StartLogExport(L"会话日志 · " + activeSession_->name, destination, point.bytes,
+        StartLogExport(L"会话日志 · " + target->name, destination, point.bytes,
             [logger, point, destination](std::wstring& err, const std::atomic<bool>* cancel,
                                          const SessionLogger::ExportProgress& progress) {
                 return logger->SaveCopy(destination, point, err, cancel, progress);
@@ -8974,20 +9192,63 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         aiPane_.Stop();
         return {{"ok", true}, {"stopped", true}};
     }
+    if (method == "power.output") {
+        if (!PowerService::ConnectionAvailable()) {
+            return error("Power supply operations require local test unlock");
+        }
+        auto state = powerService_.State();
+        if (!state.value("connected", false)) {
+            return error("Power supply is not connected");
+        }
+        Json effectiveParams = params;
+        effectiveParams["channels"] = powerPane_.SelectedChannels();
+        effectiveParams["identity"] = state.value("identity", std::string());
+        effectiveParams["mode"] = state.value("mode", std::string());
+        effectiveParams["requestId"] = "mcp-" + std::to_string(++mcpRequestSeq_);
+        return AiDeviceRequest("power.output", effectiveParams);
+    }
+    if (method == "terminal.send_text" || method == "terminal.send_key" || method == "terminal.command") {
+        std::string resErr;
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr.empty() ? "Target session not found" : resErr);
+        if (xfer_.State().busy && xfer_.State().session == target->id) {
+            return error("Target session is busy with file transfer (Xfer)");
+        }
+        Json effectiveParams = params;
+        if (!effectiveParams.contains("sessionId")) {
+            effectiveParams["sessionId"] = "session-" + std::to_string(target->id);
+        }
+        std::string delegated = (method == "terminal.send_text") ? "text" :
+                                (method == "terminal.send_key") ? "key" : "command";
+        return AiDeviceRequest(delegated, effectiveParams);
+    }
+    if (method == "app.service_configure") {
+        if (!mcpDispatcher_) return error("MCP dispatcher not initialized");
+        return mcpDispatcher_->CallTool("127.0.0.1", "app.service_configure", params);
+    }
 
-    // Fall back to AiDeviceRequest for terminal.read, terminal.screen, terminal.command, tftp.*, power.*, etc.
+    // Fall back to AiDeviceRequest for terminal.read, terminal.screen, tftp.*, power.*, etc.
     std::string delegated = method;
     if (method == "terminal.read") delegated = "read";
     else if (method == "terminal.screen") delegated = "screen";
-    else if (method == "terminal.send_text") delegated = "text";
-    else if (method == "terminal.send_key") delegated = "key";
-    else if (method == "terminal.command") delegated = "command";
     else if (method == "terminal.observe") delegated = "read";
     else if (method == "boot.enter") delegated = "boot_enter";
     else if (method == "boot.stop") delegated = "boot_stop";
     else if (method == "boot.status") delegated = "boot_status";
     else if (method == "power.recover") delegated = "recover";
 
-    return AiDeviceRequest(delegated, params);
+    Json effectiveParams = params;
+    if ((delegated == "read" || delegated == "screen" || delegated == "boot_enter" ||
+         delegated == "boot_stop" || delegated == "boot_status" || delegated == "recover") &&
+        !effectiveParams.contains("sessionId")) {
+        std::string resErr;
+        if (auto* target = ResolveTargetSession(params, resErr)) {
+            effectiveParams["sessionId"] = "session-" + std::to_string(target->id);
+        } else {
+            return error(resErr.empty() ? "Target session not found" : resErr);
+        }
+    }
+
+    return AiDeviceRequest(delegated, effectiveParams);
 }
 } // namespace serialctl

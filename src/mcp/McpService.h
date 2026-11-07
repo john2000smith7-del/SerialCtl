@@ -7,6 +7,7 @@
 #include "McpHttpServer.h"
 #include "McpDispatcher.h"
 #include "McpIpc.h"
+#include "TftpServer.h"
 
 namespace serialctl::mcp {
 
@@ -53,6 +54,7 @@ public:
 
     McpDispatcher& Dispatcher() { return dispatcher_; }
     McpHttpServer& HttpServer() { return httpServer_; }
+    TftpServer& Tftp() { return tftpServer_; }
 
     uint16_t Port() const { return port_; }
     std::string BindIp() const { return bindIp_; }
@@ -67,6 +69,10 @@ private:
     static void WINAPI ServiceMain(DWORD argc, LPWSTR* argv);
     static DWORD WINAPI ServiceCtrlHandler(DWORD ctrl, DWORD eventType, LPVOID eventData, LPVOID context);
 
+    Json HandleOfflineTftp(const std::string& method, const Json& params);
+    void LoadTftpConfig();
+    void PersistTftpConfig();
+
     std::string bindIp_ = "0.0.0.0";
     uint16_t port_ = 7080;
     std::atomic<bool> running_{false};
@@ -75,6 +81,7 @@ private:
 
     McpDispatcher dispatcher_;
     McpHttpServer httpServer_;
+    TftpServer tftpServer_;
 
     static inline bool s_simulateSession0_ = false;
 };
