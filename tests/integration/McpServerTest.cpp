@@ -15,6 +15,20 @@
 #include "McpService.h"
 #include "PowerService.h"
 
+namespace serialctl {
+// The test-only seam is compiled exclusively into mcp_server_test. Production
+// authentication and the public password-checking contract remain untouched.
+struct PowerServiceTestAccess {
+    static bool UnlockSimulation(PowerService& service) {
+        std::lock_guard<std::mutex> lock(service.mutex_);
+        if (service.stopping_) return false;
+        service.lockRequested_ = false;
+        PowerService::testEnabled_.store(true);
+        return true;
+    }
+};
+} // namespace serialctl
+
 using namespace serialctl;
 using namespace serialctl::mcp;
 
@@ -238,7 +252,7 @@ void TestPowerWhitelistAndRejections() {
     std::cout << "[Test 2] Testing Power Whitelist and Hard Blacklist Rejections..." << std::endl;
 
     PowerService power;
-    bool authOk = power.AuthorizeTest(L"jj123123");
+    bool authOk = PowerServiceTestAccess::UnlockSimulation(power);
     Expect(authOk && PowerService::ConnectionAvailable(), "Test unlock must succeed with valid password");
 
     // Connect simulation backend
@@ -318,7 +332,7 @@ void TestPowerWhitelistAndRejections() {
     Expect(bootWithPowerLocked.contains("error") && bootWithPowerLocked["error"]["code"] == ErrPermissionDenied,
            "boot.enter with autoPowerCycle=true must be rejected when test is locked");
     // Restore unlocked state
-    power.AuthorizeTest(L"jj123123");
+    Expect(PowerServiceTestAccess::UnlockSimulation(power), "Simulation unlock must be restored");
     dispatcher.SetTestUnlocked(true);
 
     // 4. Negative: Attempt to set voltage -> Hard rejection
@@ -567,12 +581,15 @@ void TestResidentLifecycle() {
     McpHttpServer httpSrv;
     std::wstring err;
     const uint16_t testPort = 7182;
-    httpSrv.Start("127.0.0.1", testPort,
-        [&dispatcher](const std::string& ip, const std::string& body) {
+    std::atomic<int> executedHttpCalls{0};
+    const bool listenerStarted = httpSrv.Start("127.0.0.1", testPort,
+        [&dispatcher, &executedHttpCalls](const std::string& ip, const std::string& body) {
+            ++executedHttpCalls;
             return dispatcher.Dispatch(ip, body);
         },
         [] { return "{\"status\":\"ok\"}"; },
         err);
+    Expect(listenerStarted, "HTTP listener must start");
 
     std::string testPing = HttpGet(testPort, "/health");
     Expect(!testPing.empty(), "Port must be open while server is running");
@@ -584,12 +601,18 @@ void TestResidentLifecycle() {
     Expect(headersLocal.find("Access-Control-Allow-Origin: http://localhost:3000") != std::string::npos,
            "Localhost origin must be permitted in CORS");
 
-    // Test CORS: Non-local external origin must NOT receive wildcard '*'
+    // A rejected browser Origin must not reach the MCP dispatcher at all.
+    const int acceptedCount = executedHttpCalls.load();
     std::string headersEvil;
     HttpPostWithOrigin(testPort, "/mcp", "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"ping\"}",
                        "https://evil-attacker.com", headersEvil);
-    Expect(headersEvil.find("Access-Control-Allow-Origin: *") == std::string::npos,
-           "Non-local origin must NEVER receive wildcard '*' CORS header");
+    Expect(headersEvil.find("403 Forbidden") != std::string::npos, "Cross-origin POST must be rejected");
+    Expect(executedHttpCalls.load() == acceptedCount, "Cross-origin POST must not execute a tool");
+    std::string headersSpoof;
+    HttpPostWithOrigin(testPort, "/mcp", "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"ping\"}",
+                       "http://localhost.attacker.example", headersSpoof);
+    Expect(headersSpoof.find("403 Forbidden") != std::string::npos, "Spoofed localhost prefix must be rejected");
+    Expect(executedHttpCalls.load() == acceptedCount, "Spoofed origin must not execute a tool");
 
     httpSrv.Stop();
 

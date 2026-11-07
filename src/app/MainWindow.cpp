@@ -5819,10 +5819,11 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         auto testNote=add(L"STATIC",L"仅本次运行 · 验证后立即生效",IdSettingsTestNote,128,468,292,28,SS_CENTERIMAGE);
         SendMessageW(testNote,WM_SETFONT,reinterpret_cast<WPARAM>(self->smallFont_),FALSE);
         add(L"STATIC", L"MCP 服务 · 远程 IP 直连免认证", -1, 16, 502, 404, 22);
-        add(L"BUTTON", L"启用后台 MCP 服务（IP 直连免认证，关闭窗口后保持在线）", IdSettingsMcpEnabled, 16, 526, 404, 28, check);
-        add(L"BUTTON", L"随 Windows 开机/登录自动启动 MCP 服务", IdSettingsMcpAutoStart, 16, 554, 404, 28, check);
+        add(L"BUTTON", L"启用 MCP 网络访问（仅当前程序运行期间，退出即停止）", IdSettingsMcpEnabled, 16, 526, 404, 28, check);
+        HWND legacyAuto = add(L"BUTTON", L"开机自启已取消，SerialCtl 需手动启动", IdSettingsMcpAutoStart, 16, 554, 404, 28, check);
+        EnableWindow(legacyAuto, FALSE); // Preserve control ID for existing UI layout contracts.
         CheckDlgButton(dialog, IdSettingsMcpEnabled, self->mcpEnabled_ ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(dialog, IdSettingsMcpAutoStart, self->mcpAutoStart_ ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(dialog, IdSettingsMcpAutoStart, BST_UNCHECKED);
 
         const std::wstring mcpUrlText = L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp" +
             ((self->mcpEmbeddedServer_ && self->mcpEmbeddedServer_->IsRunning()) || mcp::McpService::IsAnyServiceProcessRunning() ? L"（运行中）" : L"（已停止）");
@@ -5834,7 +5835,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
 
         add(L"BUTTON", L"停止服务", IdSettingsMcpStop, 16, 642, 96, 30, button);
         add(L"BUTTON", L"启动服务", IdSettingsMcpStart, 120, 642, 96, 30, button);
-        add(L"BUTTON", L"卸载自启", IdSettingsMcpUninstall, 224, 642, 96, 30, button);
+        add(L"BUTTON", L"清理旧自启", IdSettingsMcpUninstall, 224, 642, 96, 30, button);
 
         add(L"BUTTON", L"取消", IDCANCEL, 216, 688, 96, 36, button);
         add(L"BUTTON", L"保存", IDOK, 324, 688, 96, 36, button);
@@ -5956,8 +5957,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             if (self->localEchoEnabled_ != echo) self->ExecuteTerminalAction(IdMenuLocalEcho);
             if (self->timestampEnabled_ != timestamps) self->ExecuteTerminalAction(IdMenuTimestamp);
             const bool mcpEn = IsDlgButtonChecked(dialog, IdSettingsMcpEnabled) == BST_CHECKED;
-            const bool mcpAuto = IsDlgButtonChecked(dialog, IdSettingsMcpAutoStart) == BST_CHECKED;
-            self->ApplyMcpSettings(mcpEn, mcpAuto, self->mcpPort_);
+            self->ApplyMcpSettings(mcpEn, false, self->mcpPort_);
             if (hasSession) {
                 self->activeSession_->rawTrace = IsDlgButtonChecked(dialog, IdSettingsRawTrace) == BST_CHECKED;
                 const auto encoding = SendDlgItemMessageW(dialog, IdSettingsEncoding, CB_GETCURSEL, 0, 0);
@@ -6524,8 +6524,11 @@ void MainWindow::LoadUiState() {
     rightPanelCollapsed_ = GetPrivateProfileIntW(
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
     mcpEnabled_ = GetPrivateProfileIntW(L"Mcp", L"Enabled", 0, path.c_str()) != 0;
-    mcpAutoStart_ = GetPrivateProfileIntW(L"Mcp", L"AutoStart", 0, path.c_str()) != 0;
+    mcpAutoStart_ = false; // Legacy AutoStart is no longer honored.
     mcpPort_ = static_cast<uint16_t>(GetPrivateProfileIntW(L"Mcp", L"Port", 7080, path.c_str()));
+    wchar_t mcpBindBuf[64]{};
+    GetPrivateProfileStringW(L"Mcp", L"BindIp", L"0.0.0.0", mcpBindBuf, 64, path.c_str());
+    mcpBindIp_ = WideToMultiByte(mcpBindBuf, CP_UTF8);
 }
 
 void MainWindow::SaveUiState() {
@@ -6569,8 +6572,9 @@ void MainWindow::SaveUiState() {
     add(L"Commands", L"DoubleClickRun", notebook_.DoubleClick());
     add(L"Commands", L"IntervalMs", notebook_.Interval());
     add(L"Mcp", L"Enabled", mcpEnabled_ ? 1 : 0);
-    add(L"Mcp", L"AutoStart", mcpAutoStart_ ? 1 : 0);
+    add(L"Mcp", L"AutoStart", 0);
     add(L"Mcp", L"Port", mcpPort_);
+    snapshot.entries.push_back({L"Mcp", L"BindIp", MultiByteToWide(reinterpret_cast<const uint8_t*>(mcpBindIp_.data()), mcpBindIp_.size(), CP_UTF8)});
     if (tftpServer_) {
         add(L"Tftp", L"Enabled", tftpServer_->IsListening() ? 1 : 0);
         add(L"Tftp", L"Port", tftpServer_->Port());
@@ -8374,7 +8378,6 @@ void MainWindow::StopMcpIpc() {
 
 void MainWindow::StartEmbeddedMcpServer() {
     if (mcpEmbeddedServer_ && mcpEmbeddedServer_->IsRunning()) return;
-    if (mcp::McpService::IsAnyServiceProcessRunning()) return;
 
     if (!mcpDispatcher_) {
         mcpDispatcher_ = std::make_unique<mcp::McpDispatcher>();
@@ -8412,65 +8415,59 @@ void MainWindow::StartEmbeddedMcpServer() {
         mcpDispatcher_->SetTestUnlocked(PowerService::ConnectionAvailable());
         mcpDispatcher_->SetGuiSelectedChannels(powerPane_.SelectedChannels());
         mcpDispatcher_->SetServiceConfigurator([this](const Json& args) -> Json {
+            if (!args.is_object()) return {{"error", "Configuration must be an object"}};
+            if (args.contains("autoStart")) {
+                return {{"error", "MCP auto-start is discontinued; start SerialCtl manually"}};
+            }
             uint16_t newPort = mcpPort_;
             std::string newBindIp = mcpBindIp_;
-            bool newAutoStart = mcpAutoStart_;
             if (args.contains("port")) {
+                if (!args["port"].is_number_integer()) return {{"error", "Invalid port type"}};
                 int p = args["port"].get<int>();
-                if (p < 1 || p > 65535) return {{"error", "Invalid port: must be 1..65535"}};
+                if (p < 1 || p > 65535) return {{"error", "Port must be 1..65535"}};
                 newPort = static_cast<uint16_t>(p);
             }
             if (args.contains("bindIp")) {
+                if (!args["bindIp"].is_string()) return {{"error", "Invalid bindIp type"}};
                 std::string ip = args["bindIp"].get<std::string>();
                 sockaddr_in sa{};
                 if (ip != "0.0.0.0" && InetPtonA(AF_INET, ip.c_str(), &sa.sin_addr) <= 0) {
-                    return {{"error", "Invalid bindIp: must be valid IPv4 address"}};
+                    return {{"error", "bindIp must be a valid IPv4 address"}};
                 }
                 newBindIp = ip;
             }
-            if (args.contains("autoStart")) {
-                newAutoStart = args["autoStart"].get<bool>();
-            }
+            // Never call Stop()/join() from a worker serving this HTTP request, nor
+            // from the UI thread while an HTTP worker waits synchronously for it.
+            // Stage network changes and apply on the next manual GUI launch.
+            const uint16_t effectivePort = mcpPort_;
+            const std::string effectiveBindIp = mcpBindIp_;
+            const bool needsRestart = mcpEmbeddedServer_ && mcpEmbeddedServer_->IsRunning() &&
+                (newPort != effectivePort || newBindIp != effectiveBindIp);
             mcpPort_ = newPort;
             mcpBindIp_ = newBindIp;
-            mcpAutoStart_ = newAutoStart;
+            mcpAutoStart_ = false;
             SaveUiState();
-            wchar_t exe[MAX_PATH]{};
-            GetModuleFileNameW(nullptr, exe, MAX_PATH);
-            mcp::McpService::SetUserAutoStart(newAutoStart, exe);
-            if (mcpEmbeddedServer_) {
-                mcpEmbeddedServer_->Stop();
-                std::wstring sErr;
-                if (!mcpEmbeddedServer_->Start(mcpBindIp_, mcpPort_,
-                        [this](const std::string& ip, const std::string& body) {
-                            return mcpDispatcher_->Dispatch(ip, body);
-                        },
-                        [this]() {
-                            return mcpDispatcher_->CallTool("127.0.0.1", "app.health", Json::object()).dump();
-                        },
-                        sErr)) {
-                    return {{"error", "Failed to restart server on new port/IP: " + WideToMultiByte(sErr, CP_UTF8)}};
-                }
-            }
             return {
-                {"ok", true},
-                {"port", mcpPort_},
-                {"bindIp", mcpBindIp_},
-                {"autoStart", mcpAutoStart_}
+                {"ok", true}, {"port", newPort}, {"bindIp", newBindIp},
+                {"effectivePort", effectivePort}, {"effectiveBindIp", effectiveBindIp},
+                {"restartRequired", needsRestart}, {"autoStart", false}
             };
         });
     }
 
     mcpEmbeddedServer_ = std::make_unique<mcp::McpHttpServer>();
     std::wstring err;
-    mcpEmbeddedServer_->Start(mcpBindIp_, mcpPort_,
+    if (!mcpEmbeddedServer_->Start(mcpBindIp_, mcpPort_,
         [this](const std::string& ip, const std::string& body) {
             return mcpDispatcher_->Dispatch(ip, body);
         },
         [this]() {
             return mcpDispatcher_->CallTool("127.0.0.1", "app.health", Json::object()).dump();
         },
-        err);
+        err)) {
+        mcpEmbeddedServer_.reset();
+        AppendStatus(L"MCP HTTP 监听失败：" + err, true);
+    }
 }
 
 void MainWindow::StopEmbeddedMcpServer() {
@@ -8478,25 +8475,19 @@ void MainWindow::StopEmbeddedMcpServer() {
         mcpEmbeddedServer_->Stop();
         mcpEmbeddedServer_.reset();
     }
-    if (closing_.load() && mcpEnabled_ && !mcp::McpService::IsAnyServiceProcessRunning()) {
-        mcp::McpService::SpawnUserAgentProcess();
-    }
 }
 
-void MainWindow::ApplyMcpSettings(bool enabled, bool autoStart, uint16_t port) {
+void MainWindow::ApplyMcpSettings(bool enabled, bool /*autoStart*/, uint16_t port) {
     mcpEnabled_ = enabled;
-    mcpAutoStart_ = autoStart;
+    mcpAutoStart_ = false;
     mcpPort_ = port ? port : 7080;
     SaveUiState();
     wchar_t exe[MAX_PATH]{};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    mcp::McpService::SetUserAutoStart(autoStart, exe);
-    if (mcpEnabled_) {
-        StartEmbeddedMcpServer();
-    } else {
-        StopEmbeddedMcpServer();
-        mcp::McpService::SignalUserAgentStop();
-    }
+    mcp::McpService::SetUserAutoStart(false, exe);
+    mcp::McpService::SignalUserAgentStop();
+    if (mcpEnabled_) StartEmbeddedMcpServer();
+    else StopEmbeddedMcpServer();
 }
 
 MainWindow::SessionState* MainWindow::ResolveTargetSession(const Json& params, std::string& err) {
@@ -8701,16 +8692,23 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         auto hostW = MultiByteToWide(reinterpret_cast<const uint8_t*>(host.data()), host.size(), CP_UTF8);
         auto userW = MultiByteToWide(reinterpret_cast<const uint8_t*>(username.data()), username.size(), CP_UTF8);
         DWORD credErr = ERROR_SUCCESS;
-        ForgetSshCredential(SshCredentialTarget(hostW, port, userW), credErr);
+        bool found = false;
+        for (const auto& item : sshHistory_) {
+            if (item.value("host", "") == host && item.value("username", "") == username &&
+                item.value("port", 22u) == port) { found = true; break; }
+        }
+        if (!found) return error("SSH history entry not found");
+        if (!ForgetSshCredential(SshCredentialTarget(hostW, port, userW), credErr) && credErr != ERROR_NOT_FOUND) {
+            return error("Failed to remove saved SSH credential (Windows error " + std::to_string(credErr) + ")");
+        }
         Json filtered = Json::array();
         for (const auto& item : sshHistory_) {
-            if (item.value("host", "") != host || item.value("username", "") != username) {
-                filtered.push_back(item);
-            }
+            if (item.value("host", "") != host || item.value("username", "") != username ||
+                item.value("port", 22u) != port) filtered.push_back(item);
         }
         sshHistory_ = filtered;
         SaveUiState();
-        return {{"ok", true}, {"deleted", host}};
+        return {{"ok", true}, {"deleted", host}, {"port", port}};
     }
     if (method == "terminal.clear") {
         std::string resErr;
@@ -8728,10 +8726,13 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
             return error("Session is busy with active file transfer (Xfer)");
         }
         std::string hexStr = params.value("hex", "");
-        if (hexStr.empty()) return error("hex string is required");
+        if (hexStr.empty() || hexStr.size() % 2 != 0 || hexStr.size() > 131072 ||
+            !std::all_of(hexStr.begin(), hexStr.end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
+            return error("hex must contain 2..131072 hexadecimal characters and have even length");
+        }
         Bytes bytes;
-        for (size_t i = 0; i + 1 < hexStr.size(); i += 2) {
-            std::string byteString = hexStr.substr(i, 2);
+        for (size_t i = 0; i < hexStr.size(); i += 2) {
+            const std::string byteString = hexStr.substr(i, 2);
             bytes.push_back(static_cast<uint8_t>(std::strtoul(byteString.c_str(), nullptr, 16)));
         }
         if (!target->connection || !target->connection->IsConnected()) return error("Session disconnected");
@@ -8938,16 +8939,32 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
     }
     if (method == "sftp.chmod") {
         std::string remotePath = params.value("remotePath", "");
-        int modeVal = params.value("mode", 0755);
         if (remotePath.empty()) return error("remotePath is required");
+        if (!params.contains("mode")) return error("mode is required");
+        std::wstring modeText;
+        const auto& mode = params["mode"];
+        if (mode.is_string()) {
+            const std::string digits = mode.get<std::string>();
+            if ((digits.size() != 3 && digits.size() != 4) ||
+                !std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '7'; })) {
+                return error("mode must be an octal string such as \"755\" or \"0755\"");
+            }
+            modeText.assign(digits.begin(), digits.end());
+        } else if (mode.is_number_integer()) {
+            const int bits = mode.get<int>();
+            if (bits < 0 || bits > 511) return error("numeric mode is decimal POSIX bits (0..511); for octal use string \"0755\"");
+            wchar_t digits[16]{};
+            swprintf_s(digits, L"%o", static_cast<unsigned>(bits));
+            modeText = digits;
+        } else {
+            return error("mode must be an octal string or integer POSIX permission bits");
+        }
         std::string resErr;
         auto* targetSession = ResolveTargetSession(params, resErr);
         if (!targetSession) return error(resErr);
         auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
-        wchar_t modeBuf[16]{};
-        swprintf_s(modeBuf, L"%o", static_cast<unsigned>(modeVal));
         bool ok = sftp_.Mutate(targetSession->id, SftpEndpoint(*targetSession),
-                               SftpMutationKind::ChangeMode, {pathW}, modeBuf, {});
+                               SftpMutationKind::ChangeMode, {pathW}, modeText, {});
         return {{"ok", ok}, {"remotePath", remotePath}};
     }
     if (method == "sftp.upload") {

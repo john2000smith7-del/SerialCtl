@@ -30,13 +30,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
         return serialctl::RunCmdConsoleBridge();
     if (std::wstring(parameters) == L"--mcp-stdio")
         return serialctl::mcp::RunMcpStdioBridge();
-    if (std::wstring(parameters) == L"--mcp-service")
-        return serialctl::mcp::McpService::RunAsScmService();
-    if (std::wstring(parameters) == L"--mcp-agent")
-        return serialctl::mcp::McpService::RunAsUserAgent();
+    // Legacy resident-service entrypoints are intentionally disabled: the user starts
+    // the GUI manually and MCP/TFTP end when the GUI exits.
+    if (std::wstring(parameters) == L"--mcp-service" ||
+        std::wstring(parameters) == L"--mcp-agent") return 1;
     int updateExitCode = 0;
     if (serialctl::update::HandleUpdateCommandLine(parameters, updateExitCode))
         return updateExitCode;
+    // Remove a legacy per-user Run entry on the first manual launch after upgrade.
+    wchar_t executable[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, executable, MAX_PATH);
+    serialctl::mcp::McpService::SetUserAutoStart(false, executable);
+    serialctl::mcp::McpService::SignalUserAgentStop();
     serialctl::GuiInstance guiInstance;
     const auto instanceResult = guiInstance.Begin();
     if (instanceResult == serialctl::GuiInstance::Result::Existing) return 0;

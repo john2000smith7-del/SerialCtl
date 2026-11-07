@@ -6,6 +6,39 @@
 namespace serialctl::mcp {
 
 namespace {
+bool ValidHostPort(const std::string& authority, bool localOnly) {
+    if (authority.empty() || authority.size() > 255 ||
+        authority.find_first_of("/?#@ \t\r\n") != std::string::npos) return false;
+    const auto colon = authority.find(':');
+    if (colon != std::string::npos) {
+        if (authority.find(':', colon + 1) != std::string::npos) return false;
+        int port = 0;
+        const std::string digits = authority.substr(colon + 1);
+        if (digits.empty() || digits.size() > 5) return false;
+        for (unsigned char c : digits) {
+            if (!std::isdigit(c)) return false;
+            port = port * 10 + (c - '0');
+        }
+        if (port == 0 || port > 65535) return false;
+    }
+    std::string host = authority.substr(0, colon);
+    std::transform(host.begin(), host.end(), host.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (host == "localhost" || host == "127.0.0.1") return true;
+    if (localOnly) return false;
+    in_addr ip{};
+    return inet_pton(AF_INET, host.c_str(), &ip) == 1;
+}
+
+bool AllowedBrowserOrigin(const std::string& origin) {
+    std::string lower = origin;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lower.rfind("http://", 0) == 0) return ValidHostPort(lower.substr(7), true);
+    if (lower.rfind("https://", 0) == 0) return ValidHostPort(lower.substr(8), true);
+    return false;
+}
+
 std::string BuildHttpResponse(int statusCode, const std::string& statusText,
                              const std::string& contentType, const std::string& body,
                              const std::string& allowedOrigin = "") {
@@ -176,6 +209,7 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
     size_t contentLength = 0;
     bool hasContentLength = false;
     std::string origin;
+    std::string host;
 
     while (running_.load()) {
         int bytes = recv(clientSocket, buffer, sizeof(buffer), 0);
@@ -206,6 +240,9 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
                     } else if (lowerLine.rfind("origin:", 0) == 0) {
                         origin = line.substr(7);
                         while (!origin.empty() && origin.front() == ' ') origin.erase(origin.begin());
+                    } else if (lowerLine.rfind("host:", 0) == 0) {
+                        host = line.substr(5);
+                        while (!host.empty() && host.front() == ' ') host.erase(host.begin());
                     }
                 }
             }
@@ -239,18 +276,17 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
             stream >> method >> uri >> version;
         }
 
-        std::string allowedOrigin;
-        if (!origin.empty()) {
-            std::string lowerOrigin = origin;
-            std::transform(lowerOrigin.begin(), lowerOrigin.end(), lowerOrigin.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (lowerOrigin.rfind("http://localhost", 0) == 0 ||
-                lowerOrigin.rfind("https://localhost", 0) == 0 ||
-                lowerOrigin.rfind("http://127.0.0.1", 0) == 0 ||
-                lowerOrigin.rfind("https://127.0.0.1", 0) == 0) {
-                allowedOrigin = origin;
-            }
+        // A CORS header alone is not access control. Reject hostile browser
+        // origins and DNS-rebinding Host values BEFORE dispatching any tool.
+        if ((!origin.empty() && !AllowedBrowserOrigin(origin)) ||
+            (!host.empty() && !ValidHostPort(host, false))) {
+            const std::string rejected =
+                "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            send(clientSocket, rejected.data(), static_cast<int>(rejected.size()), 0);
+            closesocket(clientSocket);
+            return;
         }
+        const std::string allowedOrigin = origin;
 
         std::string response;
         if (method == "OPTIONS") {

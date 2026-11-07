@@ -5,10 +5,10 @@ namespace serialctl::mcp {
 const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
     static const std::vector<McpToolDefinition> s_tools = {
         // --- App & Lifecycle ---
-        {"app.status", "Get SerialCtl application and service status", {
+        {"app.status", "Get SerialCtl application status", {
             {"type", "object"}, {"properties", Json::object()}
         }},
-        {"app.health", "Check health of SerialCtl background MCP service", {
+        {"app.health", "Check health of the MCP listener while SerialCtl is running", {
             {"type", "object"}, {"properties", Json::object()}
         }},
         {"app.launch", "Launch or activate the single SerialCtl GUI instance", {
@@ -24,13 +24,13 @@ const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
                 {"confirm", {{"type", "boolean"}, {"description", "Explicit confirmation to quit"}}}
             }}, {"required", {"confirm"}}
         }},
-        {"app.service_status", "Query resident MCP background service configuration and state", {
+        {"app.service_status", "Query MCP listener settings in the current SerialCtl process", {
             {"type", "object"}, {"properties", Json::object()}
         }},
-        {"app.service_configure", "Configure resident MCP background service settings", {
+        {"app.service_configure", "Stage MCP HTTP binding settings; restart SerialCtl manually to apply changes", {
             {"type", "object"}, {"properties", {
-                {"autoStart", {{"type", "boolean"}, {"description", "Enable auto-start on Windows boot/login"}}},
-                {"port", {{"type", "integer"}, {"description", "MCP HTTP port (default 7080)"}}}
+                {"port", {{"type", "integer"}, {"minimum", 1}, {"maximum", 65535}, {"description", "MCP HTTP port"}}},
+                {"bindIp", {{"type", "string"}, {"description", "IPv4 listening address"}}}
             }}
         }},
 
@@ -280,7 +280,10 @@ const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
             {"type", "object"}, {"properties", {
                 {"sessionId", {{"type", "string"}, {"description", "Optional SSH session ID"}}},
                 {"remotePath", {{"type", "string"}, {"description", "Target file path"}}},
-                {"mode", {{"type", "integer"}, {"description", "Octal file mode, e.g. 0755"}}}
+                {"mode", {{"oneOf", Json::array({
+                    Json{{"type", "string"}, {"pattern", "^[0-7]{3,4}$"}},
+                    Json{{"type", "integer"}, {"minimum", 0}, {"maximum", 511}}
+                })}, {"description", "Octal string \"755\"/\"0755\" or decimal POSIX bits 493 (0755)"}}}
             }}, {"required", {"remotePath", "mode"}}
         }},
         {"sftp.upload", "Upload local file to remote server", {

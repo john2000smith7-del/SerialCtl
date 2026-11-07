@@ -103,60 +103,46 @@ void McpService::ConfigureDispatcher() {
         };
     });
     dispatcher_.SetServiceConfigurator([this](const Json& args) -> Json {
+        if (!args.is_object()) return {{"error", "Configuration must be an object"}};
+        if (args.contains("autoStart")) {
+            return {{"error", "MCP auto-start has been discontinued"}};
+        }
         uint16_t newPort = port_;
         std::string newBindIp = bindIp_;
-        bool newAutoStart = IsUserAutoStartEnabled();
-
         if (args.contains("port")) {
-            int p = args["port"].get<int>();
-            if (p < 1 || p > 65535) return {{"error", "Invalid port: must be 1..65535"}};
+            if (!args["port"].is_number_integer()) return {{"error", "Invalid port type"}};
+            const int p = args["port"].get<int>();
+            if (p < 1 || p > 65535) return {{"error", "Port must be 1..65535"}};
             newPort = static_cast<uint16_t>(p);
         }
         if (args.contains("bindIp")) {
-            std::string ip = args["bindIp"].get<std::string>();
+            if (!args["bindIp"].is_string()) return {{"error", "Invalid bindIp type"}};
+            newBindIp = args["bindIp"].get<std::string>();
             sockaddr_in sa{};
-            if (ip != "0.0.0.0" && InetPtonA(AF_INET, ip.c_str(), &sa.sin_addr) <= 0) {
-                return {{"error", "Invalid bindIp: must be valid IPv4 address"}};
+            if (newBindIp != "0.0.0.0" && InetPtonA(AF_INET, newBindIp.c_str(), &sa.sin_addr) <= 0) {
+                return {{"error", "bindIp must be a valid IPv4 address"}};
             }
-            newBindIp = ip;
-        }
-        if (args.contains("autoStart")) {
-            newAutoStart = args["autoStart"].get<bool>();
-            wchar_t modPath[MAX_PATH]{};
-            GetModuleFileNameW(nullptr, modPath, MAX_PATH);
-            SetUserAutoStart(newAutoStart, modPath);
         }
 
-        std::wstring iniPath = GetSettingsIniPath();
+        // Stopping the HTTP server inside its own request worker causes a
+        // self-join. Stage settings; an explicit process restart applies them.
+        const uint16_t effectivePort = port_;
+        const std::string effectiveBindIp = bindIp_;
+        const bool restartRequired = IsRunning() &&
+            (newPort != effectivePort || newBindIp != effectiveBindIp);
+
+        const std::wstring iniPath = GetSettingsIniPath();
         WritePrivateProfileStringW(L"Mcp", L"Port", std::to_wstring(newPort).c_str(), iniPath.c_str());
         WritePrivateProfileStringW(L"Mcp", L"BindIp", Utf8ToWide(newBindIp).c_str(), iniPath.c_str());
-        WritePrivateProfileStringW(L"Mcp", L"AutoStart", newAutoStart ? L"1" : L"0", iniPath.c_str());
-
-        if ((newPort != port_ || newBindIp != bindIp_) && IsRunning()) {
-            httpServer_.Stop();
-            std::wstring err;
-            auto reqHandler = [this](const std::string& ip, const std::string& body) {
-                return dispatcher_.Dispatch(ip, body);
-            };
-            auto healthHandler = [this]() {
-                return dispatcher_.CallTool("127.0.0.1", "app.health", Json::object()).dump();
-            };
-            if (!httpServer_.Start(newBindIp, newPort, reqHandler, healthHandler, err)) {
-                httpServer_.Start(bindIp_, port_, reqHandler, healthHandler, err);
-                return {{"error", "Failed to bind new address: " + WideToUtf8(err)}};
-            }
-            port_ = newPort;
-            bindIp_ = newBindIp;
-        } else {
+        WritePrivateProfileStringW(L"Mcp", L"AutoStart", L"0", iniPath.c_str());
+        if (!restartRequired) {
             port_ = newPort;
             bindIp_ = newBindIp;
         }
-
         return {
-            {"ok", true},
-            {"port", port_},
-            {"bindIp", bindIp_},
-            {"autoStart", newAutoStart}
+            {"ok", true}, {"port", newPort}, {"bindIp", newBindIp},
+            {"effectivePort", effectivePort}, {"effectiveBindIp", effectiveBindIp},
+            {"restartRequired", restartRequired}, {"autoStart", false}
         };
     });
 }
