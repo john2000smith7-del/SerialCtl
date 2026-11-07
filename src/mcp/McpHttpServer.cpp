@@ -323,7 +323,8 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
             } else {
                 const std::string body = requestData.substr(bodyStart, contentLength);
                 const auto request = nlohmann::json::parse(body, nullptr, false);
-                if (!request.is_object() || request.value("jsonrpc", std::string()) != "2.0" ||
+                if (!request.is_object() || !request.contains("jsonrpc") ||
+                    !request["jsonrpc"].is_string() || request["jsonrpc"] != "2.0" ||
                     !request.contains("method") || !request["method"].is_string()) {
                     response = BuildHttpResponse(400, "Bad Request", "application/json",
                         "{\"error\":\"Expected a single JSON-RPC 2.0 request or notification\"}", allowedOrigin);
