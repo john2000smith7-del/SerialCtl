@@ -28,7 +28,7 @@ int main() {
             "-----BEGIN PRIVATE KEY-----",
             "运行 sshpass -p example ssh host",
             "sample key\n- unauthorized second practice",
-            "foo\x01bar"
+            std::string("foo") + static_cast<char>(1) + "bar"
         };
         for (const auto& item : blocked) {
             Check(SanitizePracticeEntry(item).empty(),
