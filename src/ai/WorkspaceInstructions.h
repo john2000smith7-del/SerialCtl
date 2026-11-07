@@ -68,37 +68,53 @@ inline std::string SanitizePracticeEntry(std::string_view rawEntry) {
     if (start >= end) return {};
 
     std::string entry(rawEntry.substr(start, end - start));
+    // A single practice entry must never add additional Markdown lines or
+    // contain a hidden NUL/control character.
+    for (unsigned char c : entry) {
+        if (c == '\n' || c == '\r' || c == 0 || (c < 0x20 && c != '\t')) return {};
+    }
     const auto lower = ToLowerAscii(entry);
 
-    // Reject entries containing sensitive credential patterns or private keys
-    const char *sensitiveTokens[] = {
-        "begin private key",
-        "begin rsa private key",
-        "begin openssh private key",
-        "private key-----",
-        "password=",
-        "password:",
-        "passwd=",
-        "passwd:",
-        "apikey=",
-        "apikey:",
-        "api_key=",
-        "api_key:",
-        "api-key=",
-        "api-key:",
-        "secret=",
-        "secret:",
-        "bearer ",
-        "token=",
-        "token:",
-        "sk-",
-        "明文口令",
-        "密码="
-    };
-    for (const auto *token : sensitiveTokens) {
-        if (lower.find(token) != std::string::npos) {
-            return {};
+    // Reject credentials even when there are spaces before '=' or ':',
+    // or a bare value follows the name (e.g. "密码 123456").
+    // Recognize identifier boundaries so "passwordless" is not mistaken for
+    // an actual password assignment.
+    auto hasSensitiveWord = [&](std::string_view token) {
+        size_t at = lower.find(token);
+        while (at != std::string::npos) {
+            const auto isAlphaNum = [](unsigned char c) { return std::isalnum(c) != 0; };
+            const bool left = at == 0 || !isAlphaNum(static_cast<unsigned char>(lower[at - 1]));
+            const size_t after = at + token.size();
+            const bool right = after == lower.size() || !isAlphaNum(static_cast<unsigned char>(lower[after]));
+            if (left && right) return true;
+            at = lower.find(token, at + 1);
         }
+        return false;
+    };
+    const char* sensitiveWords[] = {
+        "password", "passwd", "passphrase", "pwd", "api_key", "api-key", "api key",
+        "apikey", "secret", "client_secret", "access_key", "access_token",
+        "refresh_token", "auth_token", "token", "bearer", "authorization",
+        "credential", "sshpass", "private_key", "private key", "cookie"
+    };
+    for (const auto* word : sensitiveWords) {
+        if (hasSensitiveWord(word)) return {};
+    }
+    const char* sensitiveFragments[] = {
+        "-----begin", "private key-----", "sk-", "ghp_", "github_pat_",
+        "xoxb-", "xoxp-", "akia", "明文口令", "密码", "口令", "私钥", "密钥", "令牌"
+    };
+    for (const auto* fragment : sensitiveFragments) {
+        if (lower.find(fragment) != std::string::npos) return {};
+    }
+    // Never persist credentials embedded in a URI such as scheme://user:pass@host.
+    const size_t scheme = lower.find("://");
+    if (scheme != std::string::npos) {
+        const size_t userInfoStart = scheme + 3;
+        const size_t authorityEnd = lower.find_first_of("/?#", userInfoStart);
+        const auto userInfo = lower.substr(userInfoStart,
+            authorityEnd == std::string::npos ? std::string::npos : authorityEnd - userInfoStart);
+        if (userInfo.find('@') != std::string::npos) return {};
     }
 
     // Strip bullet prefix if user typed one (we normalize bullets on formatting)
