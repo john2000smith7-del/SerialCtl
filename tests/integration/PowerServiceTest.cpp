@@ -270,7 +270,31 @@ void TestSafetyReadbackFailureAtCapacity() {
            "failed OFF readback remains failed/unknown, never confirmed off");
 }
 
+void TestDisconnectOffFailureLeavesUnknownAndFailedAction() {
+    PowerService power;
+    Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}})).value("state", "") == "completed",
+           "Connected simulation for disconnect test");
+    const auto ready = power.State();
+    auto recovery = power.Submit({{"type", "recover"}, {"channels", {1}}, {"identity", ready["identity"]}, {"mode", ready["mode"]}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const bool paused = PowerServiceTestAccess::Pause(power);
+    Expect(paused, "paused worker for disconnect fault injection");
+    if (!paused) return;
+    PowerServiceTestAccess::FailNextOutputReadback(power);
+    PowerServiceTestAccess::Resume(power);
+
+    auto disconnect = power.Submit({{"type", "disconnect"}, {"source", "local"}});
+    auto result = Wait(power, disconnect);
+    Expect(result.value("state", "") == "failed", "Disconnect action state is failed on output OFF failure");
+    Expect(result.value("offConfirmation", "") == "failed", "offConfirmation reports failed");
+    Expect(result.value("transportDisconnected", false) == true, "transportDisconnected is true");
+    Expect(power.State().value("connected", false) == false, "power transport disconnected");
+    Expect(power.State().value("unconfirmedPowerOff", false) == true, "unconfirmedPowerOff persistent flag set");
+    Expect(power.State()["channels"][0]["output"].is_null(), "unconfirmed channel output is null/unknown");
+}
+
 int main() {
+    TestDisconnectOffFailureLeavesUnknownAndFailedAction();
     TestNativeRecoveryTimingAndCancel();
     TestStopDuringRecoveryReadback();
     TestQueuedRecoveryCanceledBeforeStart();

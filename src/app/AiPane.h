@@ -43,6 +43,9 @@ class AiPane {
     const std::string& AssociatedTarget() const { return busy_ ? turnTarget_ : target_; }
     void AttachSelection(const std::wstring &text, const std::string &sessionId);
     bool PreTranslate(MSG &);
+    void SendPrompt(std::wstring text = {});
+    void Stop();
+    std::string WorkspacePractices() const { return workspacePractices_; }
 
   private:
 #ifdef SERIALCTL_AI_TESTING
@@ -100,9 +103,7 @@ class AiPane {
     void ServerRequest(const Json &);
     bool Request(ai::Operation, Json, const std::string &purpose);
     void Reply(const Json &, Json, bool success = true);
-    void SendPrompt(std::wstring text = {});
     void StartTurn();
-    void Stop();
     void NewConversation();
     bool ChooseWorkspace();
     void BeginWorkspaceConversation(const std::wstring&);
@@ -124,13 +125,22 @@ class AiPane {
     void ShowHistory();
     void RememberThread(const std::string &, const std::wstring &);
     Json History() const;
-    void Copy(const std::wstring &);
+    bool Copy(const std::wstring &, const wchar_t *successNotice = L"已复制选中文字");
     TextPoint HitText(POINT) const;
     std::wstring SelectedText() const;
     void ClearTextSelection();
+    int MeasureInputHeight(int textWidth) const;
+    void LoadWorkspacePractices(bool forceReload = false);
+    bool SaveWorkspacePractice(const std::wstring &entry);
+    bool RollbackWorkspacePractices();
     bool waitingReply_ = false, needsPassword_ = false, quickObserve_ = false;
     bool deferReflow_ = false, reflowPending_ = false, appendPending_ = false;
     bool polling_ = false;
+    int currentInputHeight_ = 0;
+    bool keepDirectoryDropdownOpen_ = false;
+    std::wstring requestedAccess_ = L"Full Access", effectiveAccess_ = L"待验证";
+    std::string workspacePractices_, previousAgentsMdContent_;
+    bool autoWorkspacePractices_ = true;
     RECT composerBounds_{}, waitingBounds_{};
     std::string displayGroup_;
     std::set<std::string> collapsedGroups_;
@@ -147,7 +157,6 @@ class AiPane {
     ToolbarIcons icons_;
     TextPoint selectionStart_{SIZE_MAX, 0, 0}, selectionEnd_{SIZE_MAX, 0, 0};
     bool selecting_ = false;
-    ULONGLONG copiedUntil_ = 0;
     bool PromptValue(const std::wstring &, std::wstring &);
     HWND Control(int id) const {
         return GetDlgItem(window_, id);

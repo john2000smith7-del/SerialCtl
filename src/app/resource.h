@@ -39,6 +39,7 @@
 #define IDC_SSH_REMEMBER_PASSWORD 1031
 #define IDC_SSH_CREDENTIAL_NOTE 1032
 #define IDC_SSH_HISTORY_LABEL 1033
+#define IDC_SSH_HISTORY_DELETE 1034
 
 #define IDC_COMMAND_NAME 1101
 #define IDC_COMMAND_TEXT 1102
@@ -52,3 +53,16 @@
 #define IDC_SFTP_INPUT_LABEL 1401
 #define IDC_SFTP_INPUT 1402
 #define IDC_SFTP_INPUT_ERROR 1403
+
+#define IdTftpTab 312
+
+#define IdSettingsMcpEnabled 1501
+#define IdSettingsMcpAutoStart 1502
+#define IdSettingsMcpUrl 1503
+#define IdSettingsMcpStatus 1504
+#define IdSettingsMcpPort 1505
+#define IdSettingsMcpStop 1506
+#define IdSettingsMcpStart 1507
+#define IdSettingsMcpUninstall 1508
+#define IdSettingsMcpRiskNote 1509
+

@@ -17,12 +17,18 @@ void Child(const std::filesystem::path &exe, const wchar_t *mode) {
 int wmain(int argc, wchar_t **argv) {
     try {
         if (argc == 2) {
+            if (std::wstring(argv[1]) == L"--cross") {
+                GuiInstance instance(L"", L"simulated-other-session");
+                const auto result = instance.Begin();
+                return result == GuiInstance::Result::CrossSessionExisting ? 0 : 4;
+            }
             GuiInstance instance;
             const auto result = instance.Begin();
             if (std::wstring(argv[1]) == L"--second") return result == GuiInstance::Result::Existing ? 0 : 2;
             if (result != GuiInstance::Result::Primary) return 3;
             ExitProcess(0); // Crash-style lifetime: no guard destructor.
         }
+        SetEnvironmentVariableW(L"SERIALCTL_GUI_INSTANCE_PREFIX", (L"test-" + std::to_wstring(GetCurrentProcessId()) + L"-").c_str());
         wchar_t path[32768]{}; GetModuleFileNameW(nullptr, path, 32768);
         const auto copyRoot = std::filesystem::temp_directory_path() / (L"serialctl-instance-" + std::to_wstring(GetCurrentProcessId()));
         std::filesystem::create_directories(copyRoot);
@@ -35,6 +41,7 @@ int wmain(int argc, wchar_t **argv) {
             Check(WaitForSingleObject(first.Activation(), 0) == WAIT_OBJECT_0, "Second launch failed to request activation");
             Child(copy, L"--second");
             Check(WaitForSingleObject(first.Activation(), 0) == WAIT_OBJECT_0, "Installation path bypassed single instance");
+            Child(path, L"--cross");
         }
         Child(path, L"--crash");
         {

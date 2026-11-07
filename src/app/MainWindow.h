@@ -24,7 +24,14 @@
 #include "UiSettingsWriter.h"
 #include "SshConnectionHistory.h"
 #include "XferPane.h"
+#include "TftpServer.h"
+#include "TftpPane.h"
 #include "ToolbarIcons.h"
+#include "SessionReceiveDispatcher.h"
+#include "McpIpc.h"
+#include "McpHttpServer.h"
+#include "McpDispatcher.h"
+#include "McpService.h"
 #include <deque>
 #include <functional>
 #include <future>
@@ -70,6 +77,9 @@ private:
         std::uint64_t sessionId = 0;
         int initialEncoding = 0;
         wchar_t exportTip[2048]{};
+        bool mcpEnabled = false;
+        bool mcpAutoStart = false;
+        uint16_t mcpPort = 7080;
     };
 
     struct LogExportJob {
@@ -88,13 +98,7 @@ private:
         std::wstring path;
     };
 
-    struct ReceivedItem {
-        std::uint64_t sessionId = 0;
-        Bytes data;
-        UINT codePage = 0;
-        std::string source; // empty for output, nonempty for accepted input
-        LONGLONG arrival = 0;
-    };
+    using ReceivedItem = serialctl::ReceivedItem;
     struct SessionState : AiDeviceBridge::State, TerminalViewport::State, SftpController::Session {
         bool disconnected = false, disconnecting = false, closeAfterStop = false;
         std::shared_ptr<std::atomic_bool> cleanupDone;
@@ -174,6 +178,7 @@ private:
     void ApplyTheme();
     void OpenConnectionDialog(int mode);
     void ConfigureConnectionDialog(HWND dialog);
+    bool DeleteSshHistoryEntry(HWND dialog, size_t historyIndex);
     void RefreshConnectionHostIdentity(HWND dialog);
     void RefreshSerialPorts(HWND dialog);
     void CompleteSerialPortScan(HWND dialog);
@@ -259,6 +264,8 @@ private:
 
     void ShowSftpPanel(bool show,bool preserveXfer=false);
     void ShowXferPanel();
+    void ShowTftpPanel(bool show=true);
+    std::vector<TftpSshSessionInfo> GetTftpSshSessions() const;
     XferPane::Target XferTarget();
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
     void RefreshSftp(const std::wstring& directory = {});
@@ -388,6 +395,8 @@ private:
     HWND disconnectAllButton_ = nullptr;
     bool windowResizing_ = false;
     bool disconnectAllPending_ = false;
+    std::string powerDisconnectActionId_;
+    std::wstring powerAlert_;
     bool disconnectAllInProgress_ = false;
     HWND terminal_ = nullptr;
     HWND status_ = nullptr;
@@ -397,6 +406,7 @@ private:
     HWND commandHeader_ = nullptr;
     HWND sftpTabButton_ = nullptr;
     HWND xferTabButton_ = nullptr;
+    HWND tftpTabButton_ = nullptr;
     HWND rightPanelToggleButton_ = nullptr;
     CommandNotebook notebook_;
     HWND commandHint_ = nullptr;
@@ -478,6 +488,9 @@ private:
     XferPane xferPane_;
     bool xferPanelVisible_ = false;
     bool sftpPanelVisible_ = false;
+    std::shared_ptr<TftpServer> tftpServer_;
+    TftpPane tftpPane_;
+    bool tftpPanelVisible_ = false;
     std::vector<SftpBreadcrumbHit> sftpBreadcrumbHits_;
     int sftpNameWidth_ = 180;
     int sftpColumnDragging_ = 0;
@@ -504,14 +517,13 @@ private:
     std::thread updateThread_;
     std::atomic<bool> updateCancel_{false};
     bool startupUpdateDeferred_ = false;
-    std::mutex receivedMutex_;
-    std::deque<ReceivedItem> received_;
-    std::map<std::uint64_t, size_t> receivedBytes_;
+    SessionReceiveDispatcher receiveDispatcher_;
+    std::deque<ReceivedItem> &received_ = receiveDispatcher_.DirectItems();
+    std::mutex &receivedMutex_ = receiveDispatcher_.DirectMutex();
+    unsigned &receiveFairness_ = receiveDispatcher_.DirectFairness();
     bool measurePaint_ = false;
-    std::set<std::uint64_t> receiveOverflow_;
     bool receivePosted_ = false;
     bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.
-    unsigned receiveFairness_ = 0;
     std::set<std::uint64_t> loggerErrorsShown_;
 
     std::thread discoveryThread_;
@@ -552,6 +564,21 @@ private:
     int editingCommandIndex_ = -1;
     std::vector<HWND> commandDialogStepEdits_;
     std::vector<HWND> commandDialogRemoveButtons_;
+
+    std::unique_ptr<mcp::McpIpcServer> mcpIpcServer_;
+    std::unique_ptr<mcp::McpHttpServer> mcpEmbeddedServer_;
+    std::unique_ptr<mcp::McpDispatcher> mcpDispatcher_;
+    bool mcpEnabled_ = false;
+    bool mcpAutoStart_ = false;
+    uint16_t mcpPort_ = 7080;
+    std::string mcpBindIp_ = "0.0.0.0";
+
+    void StartMcpIpc();
+    void StopMcpIpc();
+    void StartEmbeddedMcpServer();
+    void StopEmbeddedMcpServer();
+    void ApplyMcpSettings(bool enabled, bool autoStart, uint16_t port);
+    Json McpExecute(const std::string& method, const Json& params);
 };
 
 } // namespace serialctl

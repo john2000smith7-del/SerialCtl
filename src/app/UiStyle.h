@@ -756,6 +756,7 @@ inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, U
     }
     if (message == WM_NCDESTROY) {
         RemovePropW(h, L"SerialCtl.PowerHover");
+        RemovePropW(h, L"SerialCtl.FlatIconVisual");
         RemoveWindowSubclass(h, UiButtonProc, id);
     }
     const auto result = DefSubclassProc(h, message, w, l);
@@ -770,6 +771,10 @@ inline void UiStyleButton(HWND h) {
 }
 inline constexpr wchar_t UiButtonGlyphProperty[] = L"SerialCtl.ButtonGlyph";
 inline constexpr wchar_t UiControlTipsProperty[] = L"SerialCtl.ControlTips";
+inline constexpr wchar_t UiFlatIconProperty[] = L"SerialCtl.FlatIconVisual";
+inline void UiSetFlatIconButton(HWND button) {
+    if (button) SetPropW(button, UiFlatIconProperty, reinterpret_cast<HANDLE>(1));
+}
 inline LRESULT CALLBACK UiControlTipsProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR data) {
     if (message == WM_NCDESTROY) {
         RemoveWindowSubclass(h, UiControlTipsProc, id);
@@ -778,6 +783,30 @@ inline LRESULT CALLBACK UiControlTipsProc(HWND h, UINT message, WPARAM w, LPARAM
         if (IsWindow(tips)) DestroyWindow(tips);
     }
     return DefSubclassProc(h, message, w, l);
+}
+inline void UiSetControlTooltip(HWND control, const wchar_t *tooltip) {
+    if (!control || !IsWindow(control)) return;
+    const HWND owner = GetParent(control);
+    HWND tips = reinterpret_cast<HWND>(GetPropW(owner, UiControlTipsProperty));
+    if (!IsWindow(tips)) {
+        tips = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+                              CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                              owner, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!tips) return;
+        if (!SetWindowSubclass(owner, UiControlTipsProc, 95, reinterpret_cast<DWORD_PTR>(tips)) ||
+            !SetPropW(owner, UiControlTipsProperty, tips)) {
+            RemoveWindowSubclass(owner, UiControlTipsProc, 95);
+            DestroyWindow(tips);
+            return;
+        }
+    }
+    TOOLINFOW tool{sizeof(tool)};
+    tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    tool.hwnd = owner;
+    tool.uId = reinterpret_cast<UINT_PTR>(control);
+    tool.lpszText = const_cast<wchar_t *>(tooltip ? tooltip : L"");
+    if (!SendMessageW(tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool)))
+        SendMessageW(tips, TTM_UPDATETIPTEXTW, 0, reinterpret_cast<LPARAM>(&tool));
 }
 inline void UiSetButtonGlyph(HWND button, UiGlyph glyph, const wchar_t *tooltip) {
     // The native caption remains the accessible name; only its painting changes.

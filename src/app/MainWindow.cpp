@@ -62,6 +62,13 @@ struct UpdatePrompt {
 };
 constexpr UINT MessageLogExport = WM_APP + 21;
 constexpr UINT MessageSessionCleanup = WM_APP + 25;
+constexpr UINT MessageMcpDispatch = WM_APP + 26;
+
+struct McpDispatchContext {
+    const std::string* method = nullptr;
+    const Json* params = nullptr;
+    Json response;
+};
 
 void DiscardUpdate(update::UpdateResult& result) {
     if (!result.stagingDirectory.empty()) {
@@ -852,6 +859,9 @@ void MainWindow::RequestShutdown() {
     aiPane_.BeginShutdown(); // Release its device binding while still on the UI thread.
     powerPane_.BeginShutdown();
     powerService_.RequestShutdown();
+    if (tftpServer_) tftpServer_->Stop();
+    StopEmbeddedMcpServer();
+    StopMcpIpc();
     apiServer_.RequestStop();
     sftp_.ClearCallbacks();
     sftp_.CancelIo();
@@ -1286,6 +1296,7 @@ LRESULT CALLBACK MainWindow::ButtonSubclassProc(HWND window, UINT message, WPARA
         }
     } else if (message == WM_NCDESTROY) {
         RemovePropW(window, Ui::HoverProperty);
+        RemovePropW(window, UiFlatIconProperty);
         RemoveWindowSubclass(window, ButtonSubclassProc, subclassId);
     }
     const auto result = DefSubclassProc(window, message, wParam, lParam);
@@ -1809,7 +1820,7 @@ LRESULT CALLBACK MainWindow::SftpPathSubclassProc(HWND window, UINT message, WPA
 bool MainWindow::PreTranslate(MSG& message) {
     if (message.message == WM_KEYDOWN && message.wParam == VK_F6 && (GetKeyState(VK_CONTROL) & 0x8000)) {
         std::vector<HWND> panes{connectionList_, aiVisible_ ? aiPane_.Handle() : powerVisible_ ? powerPane_.Handle() : terminal_,
-                                LiveMonitorPage() ? terminal_ : xferPanelVisible_ ? xferPane_.Handle() : sftpPanelVisible_ ? sftpList_ : commandList_};
+                                LiveMonitorPage() ? terminal_ : tftpPanelVisible_ ? tftpPane_.Handle() : xferPanelVisible_ ? xferPane_.Handle() : sftpPanelVisible_ ? sftpList_ : commandList_};
         panes.erase(std::remove_if(panes.begin(), panes.end(), [](HWND h) {
             return !h || !IsWindowVisible(h) || !IsWindowEnabled(h);
         }), panes.end());
@@ -1987,7 +1998,19 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case PowerStateChanged:
-        if (disconnectAllPending_ && !powerService_.State().value("connected", false)) {
+        if (!powerDisconnectActionId_.empty()) {
+            auto action = powerService_.Action(powerDisconnectActionId_);
+            auto state = action.value("state", std::string());
+            if (state == "completed" || state == "failed" || state == "canceled") {
+                if (state == "failed" || action.value("offConfirmation", "") == "failed" ||
+                    powerService_.State().value("unconfirmedPowerOff", false)) {
+                    powerAlert_ = L"警告：电源已断开，但关闭输出未得到确认（状态未知）；请人工核查电源输出！";
+                    AppendStatus(powerAlert_, true);
+                }
+                powerDisconnectActionId_.clear();
+            }
+        }
+        if (disconnectAllPending_ && !powerService_.State().value("connected", false) && powerDisconnectActionId_.empty()) {
             disconnectAllPending_ = false;
             RefreshConnectionActions();
             RECT r{};
@@ -2324,6 +2347,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             else if (id == IdDeleteCommand) DeleteSelectedCommand();
             else if (id == IdCommandTab) ShowSftpPanel(false);
             else if (id == IdXferTab) ShowXferPanel();
+            else if (id == IdTftpTab) ShowTftpPanel(true);
             else if (id == IdSftpTab) {
                 ShowSftpPanel(true);
                 RefreshSftp();
@@ -2388,41 +2412,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageData: {
         if (closing_) return 0;
-        std::set<std::uint64_t> overflow;
-        {
-            std::lock_guard<std::mutex> lock(receivedMutex_);
-            overflow.swap(receiveOverflow_);
-        }
-        const auto started = std::chrono::steady_clock::now();
-        for (unsigned count = 0; count < 32 && (count == 0 ||
-             std::chrono::steady_clock::now() - started < std::chrono::milliseconds(2)); ++count) {
-            ReceivedItem item;
-            {
-                std::lock_guard<std::mutex> lock(receivedMutex_);
-                if (received_.empty()) break;
-                auto next = received_.begin();
-                // Preserve order within each session while giving the visible
-                // terminal three of every four opportunities during overload.
-                // Background sessions still progress; they cannot bury a key's
-                // echo behind megabytes of unrelated output.
-                if (activeSession_ && (++receiveFairness_ % 4) != 0) {
-                    const auto visible = std::find_if(received_.begin(), received_.end(),
-                        [this](const ReceivedItem& entry) { return entry.sessionId == activeSession_->id; });
-                    if (visible != received_.end()) next = visible;
-                }
-                item = std::move(*next);
-                received_.erase(next);
-                auto found = receivedBytes_.find(item.sessionId);
-                if (found != receivedBytes_.end()) {
-                    found->second -= std::min(found->second, item.data.size());
-                    if (!found->second) receivedBytes_.erase(found);
-                }
-            }
+        const auto overflow = receiveDispatcher_.TakeOverflow();
+        const auto items = receiveDispatcher_.PopBatch(activeSession_ ? activeSession_->id : 0, 32, std::chrono::milliseconds(2));
+        for (const auto &item : items) {
             if (pendingSession_ && item.sessionId == pendingSession_->id) {
                 if (cancelledConnectionPending_) continue;
                 if (pendingConnectionBytes_ + item.data.size() <= 4 * 1024 * 1024) {
                     pendingConnectionBytes_ += item.data.size();
-                    pendingConnectionData_.push_back(std::move(item));
+                    pendingConnectionData_.push_back(item);
                 } else {
                     connectionCancel_ = true;
                     pendingSession_->connection->CancelStart();
@@ -2433,9 +2430,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 AppendInput(item);
         }
         {
-            std::lock_guard<std::mutex> lock(receivedMutex_);
             receivePosted_ = false;
-            if (!received_.empty() || !receiveOverflow_.empty()) {
+            if (receiveDispatcher_.HasPending()) {
                 if (IsWindowVisible(window_) && !IsIconic(window_)) {
                     // Request a normal low-priority paint opportunity without
                     // invalidating/repainting the whole main-window chrome for
@@ -2462,6 +2458,13 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case MessageSessionCleanup:
         if(!closing_) PollSessionCleanup();
         return 0;
+    case MessageMcpDispatch: {
+        auto* ctx = reinterpret_cast<McpDispatchContext*>(lParam);
+        if (ctx && ctx->method && ctx->params) {
+            ctx->response = McpExecute(*ctx->method, *ctx->params);
+        }
+        return 0;
+    }
     case MessageStatus: {
         std::unique_ptr<StatusMessage> status(reinterpret_cast<StatusMessage*>(lParam));
         if (closing_) return 0;
@@ -2509,9 +2512,13 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         pendingRemoteInstance_ = result->success ? result->instance : std::string();
         if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
+        const bool multiple = !result->success && (result->error.find(L"发现多个 SerialCtl 实例") != std::wstring::npos || result->error.find(L"指定端口") != std::wstring::npos);
+        std::wstring errorDisplay = result->error;
+        if (multiple && errorDisplay.find(L"“指定端口…”") == std::wstring::npos) errorDisplay += L"（请点击“指定端口…”）";
         SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR,
                         result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str()
-                                          : result->error.c_str());
+                                          : errorDisplay.c_str());
+        if (multiple) SetFocus(GetDlgItem(result->dialog, IdSharedAdvancedPort));
         EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
         InvalidateRect(result->dialog, nullptr, TRUE); return 0;
     }
@@ -2722,6 +2729,14 @@ void MainWindow::CreateControls() {
     if(!xferPane_.Create(window_,xfer_,[this]{return XferTarget();},smallFont_,darkMode_,Ui::Dpi))
         throw std::runtime_error("Cannot create serial transfer pane");
     xferPane_.stateChanged=[this]{if(!closing_)UpdateCommandActions();};
+    tftpTabButton_ = CreateChild(L"BUTTON", L"TFTP", BS_OWNERDRAW, IdTftpTab);
+    {TOOLINFOW tip{sizeof(tip)};tip.uFlags=TTF_IDISHWND|TTF_SUBCLASS;tip.hwnd=window_;
+     tip.uId=reinterpret_cast<UINT_PTR>(tftpTabButton_);tip.lpszText=const_cast<wchar_t*>(L"TFTP 文件发布服务");
+     SendMessageW(navigationTooltip_,TTM_ADDTOOLW,0,reinterpret_cast<LPARAM>(&tip));}
+    tftpServer_ = std::make_shared<TftpServer>();
+    if(!tftpPane_.Create(window_,tftpServer_,[this]{return GetTftpSshSessions();},smallFont_,darkMode_,Ui::Dpi))
+        throw std::runtime_error("Cannot create TFTP pane");
+    tftpPane_.stateChanged=[this]{if(!closing_)UpdateCommandActions();};
     rightPanelToggleButton_ = CreateChild(L"BUTTON",
         rightPanelCollapsed_ ? L"展开侧栏" : L"折叠侧栏", BS_OWNERDRAW, IdRightPanelToggle);
     if (!notebook_.Create(window_, IdCommandList)) throw std::runtime_error("Cannot create command text editor");
@@ -2784,6 +2799,9 @@ void MainWindow::CreateControls() {
     UiSetButtonGlyph(sftpUploadButton_, UiGlyph::Export, L"上传文件");
     UiSetButtonGlyph(sftpDownloadButton_, UiGlyph::Import, L"下载文件");
     UiSetButtonGlyph(sftpClearTransfersButton_, UiGlyph::Trash, L"清理已结束记录");
+    for (HWND btn : {sftpUpButton_, sftpRefreshButton_, sftpUploadButton_, sftpDownloadButton_, sftpClearTransfersButton_}) {
+        UiSetFlatIconButton(btn);
+    }
     RefreshSftpTransferList();
     ShowSftpPanel(false);
     SetConnectedUi(false);
@@ -2796,6 +2814,10 @@ void MainWindow::CreateControls() {
     sftp_.SetCallbacks([target = window_] { PostMessageW(target, MessageSftp, 0, 0); },
                        [target = window_] { PostMessageW(target, MessageSftpProgress, 0, 0); });
 
+    StartMcpIpc();
+    if (mcpEnabled_) {
+        StartEmbeddedMcpServer();
+    }
 }
 
 void MainWindow::LayoutControls(int width, int height) {
@@ -2923,16 +2945,20 @@ void MainWindow::LayoutControls(int width, int height) {
     const int toggleLeft = width - Ui::Gap - Ui::CollapsedRightWidth +
         (Ui::CollapsedRightWidth - Ui::IconButtonSize) / 2;
     batch.Move(rightPanelToggleButton_, toggleLeft, headerTop + 2, Ui::IconButtonSize, Ui::IconButtonSize, TRUE);
-    const int tabWidth=std::max(Ui::Scale(48),std::min(Ui::SegmentWidth,(rightInnerRight-rightInnerLeft-Ui::CollapsedRightWidth-Ui::Scale(16))/3));
+    const int tabGap = Ui::Scale(3);
+    const int tabWidth = std::max(Ui::Scale(36), std::min(Ui::SegmentWidth, (rightInnerRight - rightInnerLeft - Ui::CollapsedRightWidth - tabGap * 5) / 4));
     batch.Move(commandHeader_, rightInnerLeft, headerTop + Ui::Scale(2), tabWidth, Ui::SegmentHeight, TRUE);
-    batch.Move(sftpTabButton_, rightInnerLeft + tabWidth + Ui::Scale(4), headerTop + Ui::Scale(2), tabWidth,
+    batch.Move(sftpTabButton_, rightInnerLeft + tabWidth + tabGap, headerTop + Ui::Scale(2), tabWidth,
                Ui::SegmentHeight, TRUE);
-    batch.Move(xferTabButton_,rightInnerLeft+(tabWidth+Ui::Scale(4))*2,headerTop+Ui::Scale(2),tabWidth,Ui::SegmentHeight,TRUE);
+    batch.Move(xferTabButton_, rightInnerLeft + (tabWidth + tabGap) * 2, headerTop + Ui::Scale(2), tabWidth, Ui::SegmentHeight, TRUE);
+    batch.Move(tftpTabButton_, rightInnerLeft + (tabWidth + tabGap) * 3, headerTop + Ui::Scale(2), tabWidth, Ui::SegmentHeight, TRUE);
     const int footerTop = sideCardBottom - Ui::PanelPadding - Ui::CompactHeight;
     batch.Move(commandList_, rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
                std::max(Ui::Scale(160), sideCardBottom - Ui::PanelPadding - rightListTop), TRUE);
-    batch.Move(xferPane_.Handle(),rightInnerLeft,rightListTop,rightInnerRight-rightInnerLeft,
-               std::max(Ui::Scale(160),sideCardBottom-Ui::PanelPadding-rightListTop),TRUE);
+    batch.Move(xferPane_.Handle(), rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
+               std::max(Ui::Scale(160), sideCardBottom - Ui::PanelPadding - rightListTop), TRUE);
+    batch.Move(tftpPane_.Handle(), rightInnerLeft, rightListTop, rightInnerRight - rightInnerLeft,
+               std::max(Ui::Scale(160), sideCardBottom - Ui::PanelPadding - rightListTop), TRUE);
     const int sftpContentWidth = std::max(1, rightInnerRight - rightInnerLeft);
     batch.Move(sftpPath_, rightInnerLeft, rightListTop, sftpContentWidth, Ui::CompactHeight, TRUE);
     const int sftpHeaderTop = rightListTop + Ui::CompactHeight + Ui::Space;
@@ -3154,7 +3180,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         COLORREF outside = (id == IdTheme || id == IdSettings) ? colors.window : colors.panel;
         if (LiveMonitorPage() && (id == IdAiWrap || id == IdRightPanelToggle))
             outside = colors.terminal;
-        if (id == IdCommandTab || id == IdSftpTab || id == IdXferTab) outside = colors.panel;
+        if (id == IdCommandTab || id == IdSftpTab || id == IdXferTab || id == IdTftpTab) outside = colors.panel;
         if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) outside = colors.panel;
         HBRUSH outsideBrush = CreateSolidBrush(outside);
         FillRect(dc, &rect, outsideBrush);
@@ -3249,8 +3275,11 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                            smallFont_, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             return;
         }
-        if (id == IdCommandTab || id == IdSftpTab || id == IdXferTab) {
-            const bool active = id==IdXferTab?xferPanelVisible_:id==IdSftpTab?sftpPanelVisible_:!xferPanelVisible_&&!sftpPanelVisible_;
+        if (id == IdCommandTab || id == IdSftpTab || id == IdXferTab || id == IdTftpTab) {
+            const bool active = (id == IdTftpTab) ? tftpPanelVisible_
+                              : (id == IdXferTab) ? xferPanelVisible_
+                              : (id == IdSftpTab) ? sftpPanelVisible_
+                              : (!xferPanelVisible_ && !sftpPanelVisible_ && !tftpPanelVisible_);
             const auto visual = UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered);
             const auto tabFill = pressed ? visual.fill : (active || hovered) ? colors.panelAlt : colors.panel;
             if (tabFill != colors.panel)
@@ -3337,11 +3366,13 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             return;
         }
 
-        const auto visual = id == IdAiWrap
-            ? UiFlatIconVisual(UiTheme(darkMode_), outside, enabled, pressed, hovered)
+        const bool flatIcon = GetPropW(item.hwndItem, L"SerialCtl.FlatIconVisual") != nullptr;
+        const auto visual = (id == IdAiWrap || flatIcon)
+            ? UiFlatIconVisual(UiTheme(darkMode_), (id == IdAiWrap ? outside : colors.panel), enabled, pressed, hovered)
             : UiButtonVisual(UiTheme(darkMode_), enabled, pressed, hovered, id == IDOK);
-        if (id != IdAiWrap || visual.fill != outside)
-            DrawRoundedBox(dc, rect, UiCapsuleRadius(rect), visual.fill, id == IdAiWrap ? visual.fill : visual.border);
+        const COLORREF baseFill = (id == IdAiWrap ? outside : colors.panel);
+        if ((!flatIcon && id != IdAiWrap) || visual.fill != baseFill)
+            DrawRoundedBox(dc, rect, UiCapsuleRadius(rect), visual.fill, (flatIcon || id == IdAiWrap) ? visual.fill : visual.border);
         UiButtonKeyboardFocus(dc, rect, item.itemState, GetDeviceCaps(dc, LOGPIXELSX),
                 UiFocusInk(darkMode_, enabled && (pressed || id == IDOK || id == IdSend)));
         if (id == IdAiWrap && rect.right - rect.left <= Ui::CompactHeight) {
@@ -3420,12 +3451,15 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
                        title, active ? RGB(255, 255, 255) : colors.text, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         std::wstring state = connected ? L"已连接" : L"已断开";
+        if (power && !connected && (powerService_.State().value("unconfirmedPowerOff", false) || !powerAlert_.empty())) {
+            state = L"断开 · 输出未确认(未知)";
+        }
         if (session && session->disconnecting) state=L"正在断开…";
         if (session && pendingReconnectId_==session->id) state=L"正在重连…";
         if (session && session->udpRaw && connected)
             state = session->udpReceived ? L"已接收数据" : L"等待 UDP 数据";
         if (connected && session && session->mode == 1)
-            state = session->port ? L"共享 · TCP " + std::to_wstring(session->port) : L"本地可用";
+            state = session->port ? L"共享 · WebSocket " + std::to_wstring(session->port) : L"本地可用";
         if (session && !session->host.empty())
             state = session->host + L" · " + state;
         else if (session && session->mode == 4)
@@ -3433,7 +3467,8 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if (session && session->unreadStatus)
             state = (session->lastStatusIsError ? L"新错误 · " : L"新状态 · ") + state;
         RECT dot{textLeft, subtitle.top + Ui::Scale(6), textLeft + Ui::Scale(5), subtitle.top + Ui::Scale(11)};
-        const bool unreadError = session && session->unreadStatus && session->lastStatusIsError;
+        const bool powerWarning = power && !connected && (powerService_.State().value("unconfirmedPowerOff", false) || !powerAlert_.empty());
+        const bool unreadError = (session && session->unreadStatus && session->lastStatusIsError) || powerWarning;
         DrawStatusDot(dc, dot, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted);
         subtitle.left += Ui::Scale(12);
         DrawTextSimple(dc, state, subtitle, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted, smallFont_,
@@ -3441,9 +3476,9 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
     } else if (item.CtlID == IdCommandList && item.itemID < macro_.Items().size()) {
         const bool ghost = source.itemData == ~ULONG_PTR(0);
         const bool sourceDragging = !ghost && draggingCommandIndex_ == static_cast<int>(item.itemID);
-        HBRUSH background = CreateSolidBrush(colors.panel);
-        FillRect(dc, &rect, background);
-        DeleteObject(background);
+        HBRUSH bg = CreateSolidBrush(colors.panel);
+        FillRect(dc, &rect, bg);
+        DeleteObject(bg);
         const CommandItem& command = macro_.Items()[item.itemID];
         OverlayScrollMetrics scrollMetrics;
         const int rightInset = GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ?
@@ -3631,6 +3666,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
 
 void MainWindow::ApplyTheme() {
     xferPane_.Theme(darkMode_,Ui::Dpi,smallFont_);
+    tftpPane_.Theme(darkMode_,Ui::Dpi,smallFont_);
     notebook_.Style(darkMode_, Ui::Dpi, smallFont_, terminalFont_);
     powerPane_.Theme(darkMode_);
     aiPane_.Theme(darkMode_);
@@ -3742,11 +3778,16 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                 auto c=CreateWindowExW(0,cls,label,WS_CHILD|WS_VISIBLE|style,0,0,1,1,dialog,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),self->instance_,nullptr);
                 SendMessageW(c,WM_SETFONT,reinterpret_cast<WPARAM>(self->uiFont_),FALSE);
                 if(id==IDC_SSH_HISTORY)UiStyleField(c,&self->dialogFieldStyle_);
-                else if (_wcsicmp(cls,L"BUTTON")==0) UiStyleCheckBox(c,&self->dialogFieldStyle_,true);
+                else if (_wcsicmp(cls,L"BUTTON")==0 && (style & BS_TYPEMASK) == BS_AUTOCHECKBOX) UiStyleCheckBox(c,&self->dialogFieldStyle_,true);
+                else if (_wcsicmp(cls,L"BUTTON")==0) SetWindowSubclass(c, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
                 return c;
             };
             add(WC_COMBOBOXW,L"",IDC_SSH_HISTORY,CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS|WS_VSCROLL|WS_TABSTOP);
             add(L"STATIC",L"历史连接",IDC_SSH_HISTORY_LABEL,0);
+            auto delBtn = add(L"BUTTON",L"删除",IDC_SSH_HISTORY_DELETE,BS_OWNERDRAW|WS_TABSTOP);
+            UiSetFlatIconButton(delBtn);
+            UiSetButtonGlyph(delBtn,UiGlyph::Trash,L"删除选中的历史连接");
+            EnableWindow(delBtn,FALSE);
             add(L"BUTTON",L"成功后保存连接",IDC_SSH_SAVE,BS_AUTOCHECKBOX|WS_TABSTOP);
             add(L"BUTTON",L"记住密码",IDC_SSH_REMEMBER_PASSWORD,BS_AUTOCHECKBOX|WS_TABSTOP);
             add(L"STATIC",L"密码仅在勾选后保存到当前 Windows 用户凭据",IDC_SSH_CREDENTIAL_NOTE,0);
@@ -3848,20 +3889,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             if(point.x==-1)GetCursorPos(&point);
             const auto choice=UiPopupMenu::Track(menu,TPM_RETURNCMD,point.x,point.y,dialog,UiFieldStyle{&self->darkMode_,self->uiFont_,Ui::Dpi});DestroyMenu(menu);
             if(choice) {
-                const auto& row=self->sshHistory_[selected-1];
-                const auto wide=[](const std::string& v) {return MultiByteToWide(reinterpret_cast<const uint8_t*>(v.data()),v.size(),CP_UTF8);};
-                DWORD credentialError=ERROR_SUCCESS;
-                if (!ForgetSshCredential(SshCredentialTarget(wide(row["host"].get<std::string>()),row["port"].get<unsigned>(),wide(row["username"].get<std::string>())),credentialError)) {
-                    SetDlgItemTextW(dialog,IDC_DIALOG_ERROR,L"无法清除该连接的已存密码，请稍后重试");
-                    return TRUE;
-                }
-                self->sshHistory_.erase(self->sshHistory_.begin()+selected-1);
-                SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_DELETESTRING,selected,0);
-                SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_SETCURSEL,0,0);
-                self->loadedSshCredentialTarget_.clear();
-                SetDlgItemTextW(dialog,IDC_PASSWORD,L"");
-                CheckDlgButton(dialog,IDC_SSH_REMEMBER_PASSWORD,BST_UNCHECKED);
-                self->SaveUiState();
+                self->DeleteSshHistoryEntry(dialog, selected - 1);
             }
         }
         return TRUE;
@@ -3888,9 +3916,18 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                 CheckDlgButton(dialog,IDC_SSH_REMEMBER_PASSWORD,BST_UNCHECKED);
             }
         }
-        if(self->pendingMode_==0 && LOWORD(wParam)==IDC_SSH_HISTORY && HIWORD(wParam)==CBN_SELENDOK) {
+        if (self->pendingMode_ == 0 && LOWORD(wParam) == IDC_SSH_HISTORY_DELETE && HIWORD(wParam) == BN_CLICKED) {
+            const auto selected = SendDlgItemMessageW(dialog, IDC_SSH_HISTORY, CB_GETCURSEL, 0, 0);
+            if (selected > 0 && static_cast<size_t>(selected) <= self->sshHistory_.size()) {
+                self->DeleteSshHistoryEntry(dialog, selected - 1);
+            }
+            return TRUE;
+        }
+        if(self->pendingMode_==0 && LOWORD(wParam)==IDC_SSH_HISTORY && (HIWORD(wParam)==CBN_SELENDOK || HIWORD(wParam)==CBN_SELCHANGE)) {
             const auto i=SendDlgItemMessageW(dialog,IDC_SSH_HISTORY,CB_GETCURSEL,0,0);
-            if(i>0)PostMessageW(dialog,WM_APP+210,i-1,0);return TRUE;
+            const bool valid=(i>0 && static_cast<size_t>(i)<=self->sshHistory_.size());
+            EnableWindow(GetDlgItem(dialog,IDC_SSH_HISTORY_DELETE),valid);
+            if(HIWORD(wParam)==CBN_SELENDOK && i>0)PostMessageW(dialog,WM_APP+210,i-1,0);return TRUE;
         }
         if (self->pendingMode_ == 0 &&
             (LOWORD(wParam) == IDC_HOST || LOWORD(wParam) == IDC_PORT) && HIWORD(wParam) == EN_CHANGE) {
@@ -3903,6 +3940,10 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                 if (!self->PromptSftpValue(L"高级共享端口", L"服务端口（通常使用自动发现）", std::to_wstring(self->discoveryExplicitPort_ ? self->discoveryExplicitPort_ : DefaultSharePort), SftpInputPurpose::Port, value, dialog)) return TRUE;
                 self->discoveryExplicitPort_ = static_cast<std::uint16_t>(ParsePositive(value));
             } else self->discoveryExplicitPort_ = 0;
+            HWND portBtn = GetDlgItem(dialog, IdSharedAdvancedPort);
+            if (portBtn) {
+                SetWindowTextW(portBtn, self->discoveryExplicitPort_ ? (L"端口: " + std::to_wstring(self->discoveryExplicitPort_)).c_str() : L"指定端口…");
+            }
             ++self->discoveryGeneration_; self->discoveryCancel_ = true;
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE); SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return TRUE;
         }
@@ -3946,10 +3987,45 @@ void MainWindow::RefreshConnectionHostIdentity(HWND dialog) {
     SetDlgItemTextW(dialog, IDC_HOST_IDENTITY, saved ? L"主机身份已保存" : L"连接时核验主机身份");
 }
 
+bool MainWindow::DeleteSshHistoryEntry(HWND dialog, size_t historyIndex) {
+    if (historyIndex >= sshHistory_.size()) return false;
+    if (MessageBoxW(dialog, L"确定要删除此 SSH 历史连接及其保存的密码吗？", L"删除历史连接", MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2) != IDYES) {
+        return false;
+    }
+    const auto& row = sshHistory_[historyIndex];
+    const auto wide = [](const std::string& v) { return MultiByteToWide(reinterpret_cast<const uint8_t*>(v.data()), v.size(), CP_UTF8); };
+    DWORD credentialError = ERROR_SUCCESS;
+    if (!ForgetSshCredential(SshCredentialTarget(wide(row["host"].get<std::string>()), row["port"].get<unsigned>(), wide(row["username"].get<std::string>())), credentialError)) {
+        SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"无法清除该连接的已存密码，请稍后重试");
+        return false;
+    }
+    sshHistory_.erase(sshHistory_.begin() + historyIndex);
+    SendDlgItemMessageW(dialog, IDC_SSH_HISTORY, CB_DELETESTRING, historyIndex + 1, 0);
+    SendDlgItemMessageW(dialog, IDC_SSH_HISTORY, CB_SETCURSEL, 0, 0);
+    EnableWindow(GetDlgItem(dialog, IDC_SSH_HISTORY_DELETE), FALSE);
+    loadedSshCredentialTarget_.clear();
+    SetDlgItemTextW(dialog, IDC_PASSWORD, L"");
+    CheckDlgButton(dialog, IDC_SSH_REMEMBER_PASSWORD, BST_UNCHECKED);
+    SaveUiState();
+    return true;
+}
+
 void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     const bool serial = pendingMode_ == 1;
     const bool ssh = pendingMode_ == 0;
     const bool share = pendingMode_ == 3;
+    HWND portBtn = GetDlgItem(dialog, IdSharedAdvancedPort);
+    if (!portBtn) {
+        portBtn = CreateWindowExW(0, L"BUTTON", L"指定端口…", WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+            0, 0, 10, 10, dialog, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IdSharedAdvancedPort)),
+            instance_, nullptr);
+        SendMessageW(portBtn, WM_SETFONT, reinterpret_cast<WPARAM>(uiFont_), FALSE);
+        SetWindowSubclass(portBtn, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
+    }
+    ShowDialogItem(dialog, IdSharedAdvancedPort, share);
+    if (share && portBtn) {
+        SetWindowTextW(portBtn, discoveryExplicitPort_ ? (L"端口: " + std::to_wstring(discoveryExplicitPort_)).c_str() : L"指定端口…");
+    }
     ShowDialogItem(dialog, IDC_HOST_IDENTITY, ssh);
     ShowDialogItem(dialog, IDC_HOST_REVERIFY, ssh);
     discoveryExplicitPort_ = 0;
@@ -4001,10 +4077,11 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         } else if (share) {
             SetDlgItemTextW(dialog, IDC_HOST_LABEL, L"远端 IP");
             MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, 174, 14);
-            SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"远端串口");
-            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 44, columnWidth, 10);
-            MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 56, fullWidth, 154);
             MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 22, 32, 14);
+            SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"远端串口");
+            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 42, 64, 10);
+            MoveDialogItemDlu(dialog, IdSharedAdvancedPort, 144, 40, 82, 14);
+            MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 56, fullWidth, 154);
         }
     }
 
@@ -4017,7 +4094,8 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         dialogHeight = 178;
     } else if (ssh) {
         MoveDialogItemDlu(dialog,IDC_SSH_HISTORY_LABEL,margin,10,fullWidth,10);
-        MoveDialogItemDlu(dialog,IDC_SSH_HISTORY,margin,22,fullWidth,114);
+        MoveDialogItemDlu(dialog,IDC_SSH_HISTORY,margin,22,174,114);
+        MoveDialogItemDlu(dialog,IDC_SSH_HISTORY_DELETE,194,22,32,14);
         MoveDialogItemDlu(dialog,IDC_HOST_LABEL,margin,44,columnWidth,10);
         MoveDialogItemDlu(dialog,IDC_HOST,margin,56,columnWidth,14);
         MoveDialogItemDlu(dialog,IDC_PORT_LABEL,rightColumn,44,columnWidth,10);
@@ -4035,15 +4113,15 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         buttonY = 186;
         dialogHeight = 212;
     } else if (share) {
-        errorY = 72;
-        buttonY = 84;
-        dialogHeight = 110;
+        errorY = 74;
+        buttonY = 94;
+        dialogHeight = 120;
     } else if (!serial && !share) {
         errorY = 38;
         buttonY = 50;
         dialogHeight = 76;
     }
-    MoveDialogItemDlu(dialog, IDC_DIALOG_ERROR, margin, errorY, fullWidth, 12);
+    MoveDialogItemDlu(dialog, IDC_DIALOG_ERROR, margin, errorY, fullWidth, share ? 16 : 12);
     MoveDialogItemDlu(dialog, IDCANCEL, dialogWidth - 156, buttonY, 68, 18);
     MoveDialogItemDlu(dialog, IDOK, dialogWidth - 80, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight);
@@ -4102,8 +4180,10 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         fields.Commit();
         MatchDialogControlHeight(dialog, share ? IDC_HOST : IDC_SERIAL, IDC_SERIAL_REFRESH);
     }
-    if (ssh)
+    if (ssh) {
+        MatchDialogControlHeight(dialog, IDC_SSH_HISTORY, IDC_SSH_HISTORY_DELETE);
         RefreshConnectionHostIdentity(dialog);
+    }
 }
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {
@@ -4448,12 +4528,9 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
         // A remote subscription may replay a full history during startup.
         // Transfer those older batches in front of live output, instead of
         // parsing the whole replay synchronously in connection completion.
-        std::lock_guard<std::mutex> lock(receivedMutex_);
-        for (auto item = pendingConnectionData_.rbegin(); item != pendingConnectionData_.rend(); ++item) {
-            receivedBytes_[item->sessionId] += item->data.size();
-            received_.push_front(std::move(*item));
-        }
-        if (!received_.empty() && !receivePosted_)
+        bool needsPost = false;
+        receiveDispatcher_.PrependBatch(std::move(pendingConnectionData_), needsPost);
+        if (needsPost && !receivePosted_)
             receivePosted_ = PostMessageW(window_, MessageData, 0, 0) != FALSE;
     }
     pendingConnectionData_.clear();
@@ -4518,6 +4595,7 @@ void MainWindow::Disconnect() {
 }
 
 void MainWindow::CloseSession(std::uint64_t id) {
+    receiveDispatcher_.RemoveSession(id);
     auto* session = FindSession(id);
     if (!session) return;
     if (!session->disconnected) { session->closeAfterStop = true; BeginDisconnect(*session); return; }
@@ -4616,8 +4694,11 @@ void MainWindow::DisconnectAll() {
     for(const auto& session:sessions_) BeginDisconnect(*session);
     if(powerService_.State().value("connected",false)) {
         const auto action=powerService_.Submit({{"type","disconnect"},{"source","local"}});
-        if(action.contains("error")) AppendStatus(L"电源断开请求失败；输出状态未知",true);
-        else disconnectAllPending_=true;
+        powerDisconnectActionId_ = action.value("id", std::string());
+        if(action.contains("error")) {
+            powerAlert_ = L"电源断开请求失败；输出状态未知";
+            AppendStatus(powerAlert_, true);
+        } else disconnectAllPending_=true;
     }
     RefreshConnectionActions(); RefreshConnectionList();
     AppendStatus(commandOutcome.empty() ? L"正在断开全部连接，卡片将保留；完成后可点击全部关闭" :
@@ -4690,6 +4771,12 @@ void MainWindow::ShowAiPage(bool connect) {
 Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) {
     auto error = [](const std::string& text) -> Json { return {{"error", text}}; };
     if (closing_ && method != "release") return error("Application closing");
+    if (method == "clipboardNotice") {
+        const std::string text = params.value("text", std::string(u8"已复制选中文字"));
+        const auto wide = MultiByteToWide(reinterpret_cast<const uint8_t*>(text.data()), text.size(), CP_UTF8);
+        ShowClipboardNotice(wide.empty() ? L"已复制选中文字" : wide);
+        return Json::object();
+    }
     if (method == "selection") {
         const auto id=params.value("sessionId",std::string());
         if (!activeSession_ || id!="session-"+std::to_string(activeSession_->id) || !HasTerminalSelection())
@@ -4702,6 +4789,155 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
         OpenConnectionDialog(3);
         if (!pendingSession_) aiRemoteConnect_ = false;
         return {{"pending", pendingSession_ != nullptr}};
+    }
+    if (method.rfind("tftp.", 0) == 0) {
+        if (!tftpServer_) return error("TFTP server not initialized");
+        if (method == "tftp.status") {
+            Json res = Json::object();
+            res["ok"] = true;
+            res["status"] = tftpServer_->State();
+            res["listening"] = tftpServer_->IsListening();
+            res["bindIp"] = tftpServer_->BindIp();
+            res["port"] = tftpServer_->Port();
+            res["serverIps"] = tftpServer_->LocalIps();
+            res["publishedCount"] = tftpServer_->PublishedCount();
+            res["activeTransfers"] = tftpServer_->ActiveTransferCount();
+            return res;
+        }
+        if (method == "tftp.start") {
+            std::string bindIp = params.value("bindIp", std::string("0.0.0.0"));
+            uint16_t port = static_cast<uint16_t>(params.value("port", 69));
+            std::wstring err;
+            if (!tftpServer_->Start(bindIp, port, err)) {
+                return error(WideToMultiByte(err, CP_UTF8));
+            }
+            if (tftpPane_.Handle()) tftpPane_.Refresh();
+            return {
+                {"ok", true},
+                {"status", tftpServer_->State()},
+                {"bindIp", tftpServer_->BindIp()},
+                {"port", tftpServer_->Port()},
+                {"serverIps", tftpServer_->LocalIps()}
+            };
+        }
+        if (method == "tftp.stop") {
+            tftpServer_->Stop();
+            if (tftpPane_.Handle()) tftpPane_.Refresh();
+            return {{"ok", true}, {"status", "stopped"}};
+        }
+        if (method == "tftp.publish_local") {
+            std::string tftpName = params.value("tftpName", std::string());
+            std::string localPath = params.value("localPath", std::string());
+            bool overwrite = params.value("allowOverwrite", false);
+            if (tftpName.empty() || localPath.empty()) {
+                return error("tftpName and localPath are required");
+            }
+            std::wstring pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
+            std::wstring err;
+            if (!tftpServer_->PublishLocal(tftpName, pathW, overwrite, err)) {
+                return error(WideToMultiByte(err, CP_UTF8));
+            }
+            if (tftpPane_.Handle()) tftpPane_.Refresh();
+            return {
+                {"ok", true},
+                {"tftpName", tftpName},
+                {"type", "local"},
+                {"path", localPath},
+                {"status", "Ready"}
+            };
+        }
+        if (method == "tftp.publish_remote") {
+            std::string tftpName = params.value("tftpName", std::string());
+            std::string remotePath = params.value("remotePath", std::string());
+            std::string sessionId = params.value("sessionId", std::string());
+            bool overwrite = params.value("allowOverwrite", false);
+            if (tftpName.empty() || remotePath.empty()) {
+                return error("tftpName and remotePath are required");
+            }
+            SessionState* targetSession = nullptr;
+            for (const auto& s : sessions_) {
+                if (s->mode == 0) {
+                    if (sessionId.empty() || sessionId == ("session-" + std::to_string(s->id))) {
+                        targetSession = s.get();
+                        break;
+                    }
+                }
+            }
+            if (!targetSession) {
+                return error("No matching SSH session found");
+            }
+            SshRemoteConfig cfg;
+            cfg.host = targetSession->host;
+            cfg.port = targetSession->port ? targetSession->port : 22;
+            cfg.username = targetSession->username;
+            cfg.password = targetSession->password;
+            cfg.remotePath = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+
+            std::wstring err;
+            if (!tftpServer_->PublishRemote(tftpName, cfg, overwrite, err)) {
+                return error(WideToMultiByte(err, CP_UTF8));
+            }
+            if (tftpPane_.Handle()) tftpPane_.Refresh();
+            return {
+                {"ok", true},
+                {"tftpName", tftpName},
+                {"type", "remote"},
+                {"host", WideToMultiByte(cfg.host, CP_UTF8)},
+                {"path", remotePath},
+                {"status", "Ready"}
+            };
+        }
+        if (method == "tftp.unpublish") {
+            std::string tftpName = params.value("tftpName", std::string());
+            if (tftpName.empty()) return error("tftpName is required");
+            bool ok = tftpServer_->Unpublish(tftpName);
+            if (tftpPane_.Handle()) tftpPane_.Refresh();
+            return {{"ok", ok}, {"tftpName", tftpName}};
+        }
+        if (method == "tftp.list") {
+            auto items = tftpServer_->ListPublished();
+            auto arr = Json::array();
+            for (const auto& item : items) {
+                auto info = item.source->Info();
+                arr.push_back({
+                    {"tftpName", item.tftpName},
+                    {"type", info.type},
+                    {"path", WideToMultiByte(info.displayPath, CP_UTF8)},
+                    {"host", WideToMultiByte(info.host, CP_UTF8)},
+                    {"size", info.size},
+                    {"sizeKnown", info.sizeKnown},
+                    {"status", info.status},
+                    {"error", WideToMultiByte(info.error, CP_UTF8)}
+                });
+            }
+            return {{"ok", true}, {"published", arr}};
+        }
+        if (method == "tftp.transfers") {
+            auto trans = tftpServer_->ListTransfers();
+            auto arr = Json::array();
+            for (const auto& t : trans) {
+                arr.push_back({
+                    {"transferId", t.transferId},
+                    {"clientIp", t.clientIp},
+                    {"clientPort", t.clientPort},
+                    {"tftpName", t.tftpName},
+                    {"phase", t.phase},
+                    {"sentBytes", t.sentBytes},
+                    {"ackedBytes", t.ackedBytes},
+                    {"totalBytes", t.totalBytes},
+                    {"retransmits", t.retransmits},
+                    {"speedBps", t.speedBps},
+                    {"error", WideToMultiByte(t.error, CP_UTF8)}
+                });
+            }
+            return {{"ok", true}, {"transfers", arr}};
+        }
+        if (method == "tftp.cancel_transfer") {
+            uint64_t tid = params.value("transferId", static_cast<uint64_t>(0));
+            bool ok = tftpServer_->CancelTransfer(tid);
+            if (tftpPane_.Handle()) tftpPane_.Refresh();
+            return {{"ok", ok}};
+        }
     }
     for(const auto& session:sessions_) if(!session->bootPresetLoaded) {
         const auto saved=bootPresets_.find(BootProfileKey(*session));
@@ -5063,34 +5299,12 @@ void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data, UINT codeP
 void MainWindow::QueueReceived(ReceivedItem item) {
     if (closing_)
         return;
-    if (item.source.empty() && item.data.size() > 16384) {
-        for (size_t offset = 0; offset < item.data.size(); offset += 16384) {
-            const auto end = std::min(offset + 16384, item.data.size());
-            QueueReceived({item.sessionId, Bytes(item.data.begin() + offset, item.data.begin() + end),
-                           item.codePage, {}, item.arrival});
-        }
-        return;
-    }
-    const auto id = item.sessionId;
-    std::lock_guard<std::mutex> lock(receivedMutex_);
-    auto &bytes = receivedBytes_[id];
-    if (bytes + item.data.size() > 4 * 1024 * 1024 || receivedBytes_.size() > 64 || received_.size() >= 4096)
-        receiveOverflow_.insert(id);
-    else {
-        bytes += item.data.size();
-        if (!received_.empty() && item.source.empty() && received_.back().source.empty() &&
-            received_.back().sessionId == id && received_.back().codePage == item.codePage &&
-            received_.back().data.size() + item.data.size() <= 16384)
-            received_.back().data.insert(received_.back().data.end(), item.data.begin(), item.data.end());
-        else
-            received_.push_back(std::move(item));
-    }
-    if (!receivePosted_) {
+    bool needsPost = false;
+    receiveDispatcher_.Enqueue(std::move(item), needsPost);
+    if (needsPost && !receivePosted_) {
         receivePosted_ = PostMessageW(window_, MessageData, 0, 0) != FALSE;
         if (!receivePosted_) {
-            received_.clear();
-            receivedBytes_.clear();
-            receiveOverflow_.insert(id);
+            receiveDispatcher_.Clear();
         }
     }
 }
@@ -5518,7 +5732,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
     if (message == WM_INITDIALOG) {
         SetWindowTextW(dialog, L"设置");
         ApplyDarkTitleBar(dialog, self->darkMode_);
-        UiResizeDialog(dialog, Ui::Dpi, 436, 600);
+        UiResizeDialog(dialog, Ui::Dpi, 436, 780);
         auto add = [&](const wchar_t* type, const wchar_t* text, int id, int x, int y,
                        int width, int height, DWORD style = 0) {
             HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
@@ -5591,10 +5805,28 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         CheckDlgButton(dialog,IdSettingsTest,PowerService::ConnectionAvailable()?BST_CHECKED:BST_UNCHECKED);
         auto testNote=add(L"STATIC",L"仅本次运行 · 验证后立即生效",IdSettingsTestNote,128,468,292,28,SS_CENTERIMAGE);
         SendMessageW(testNote,WM_SETFONT,reinterpret_cast<WPARAM>(self->smallFont_),FALSE);
-        add(L"BUTTON", L"取消", IDCANCEL, 216, 512, 96, 36, button);
-        add(L"BUTTON", L"保存", IDOK, 324, 512, 96, 36, button);
-        HWND version = add(L"STATIC", L"SerialCtl " SERIALCTL_VERSION, -1, 16, 564, 136, 20, SS_LEFT);
-        HWND credit = add(L"STATIC", L"Application design by jiojio", -1, 152, 564, 268, 20, SS_RIGHT);
+        add(L"STATIC", L"MCP 服务 · 远程 IP 直连免认证", -1, 16, 502, 404, 22);
+        add(L"BUTTON", L"启用后台 MCP 服务（IP 直连免认证，关闭窗口后保持在线）", IdSettingsMcpEnabled, 16, 526, 404, 28, check);
+        add(L"BUTTON", L"随 Windows 开机/登录自动启动 MCP 服务", IdSettingsMcpAutoStart, 16, 554, 404, 28, check);
+        CheckDlgButton(dialog, IdSettingsMcpEnabled, self->mcpEnabled_ ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(dialog, IdSettingsMcpAutoStart, self->mcpAutoStart_ ? BST_CHECKED : BST_UNCHECKED);
+
+        const std::wstring mcpUrlText = L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp" +
+            ((self->mcpEmbeddedServer_ && self->mcpEmbeddedServer_->IsRunning()) || mcp::McpService::IsAnyServiceProcessRunning() ? L"（运行中）" : L"（已停止）");
+        HWND urlStatic = add(L"STATIC", mcpUrlText.c_str(), IdSettingsMcpUrl, 16, 582, 404, 20);
+        SendMessageW(urlStatic, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
+
+        HWND riskStatic = add(L"STATIC", L"开启后同一可达网络内的设备可直接通过 IP 调用 MCP 工具，电源参数修改仍被服务端硬禁止。", IdSettingsMcpRiskNote, 16, 604, 404, 34);
+        SendMessageW(riskStatic, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
+
+        add(L"BUTTON", L"停止服务", IdSettingsMcpStop, 16, 642, 96, 30, button);
+        add(L"BUTTON", L"启动服务", IdSettingsMcpStart, 120, 642, 96, 30, button);
+        add(L"BUTTON", L"卸载自启", IdSettingsMcpUninstall, 224, 642, 96, 30, button);
+
+        add(L"BUTTON", L"取消", IDCANCEL, 216, 688, 96, 36, button);
+        add(L"BUTTON", L"保存", IDOK, 324, 688, 96, 36, button);
+        HWND version = add(L"STATIC", L"SerialCtl " SERIALCTL_VERSION, -1, 16, 736, 136, 20, SS_LEFT);
+        HWND credit = add(L"STATIC", L"Application design by jiojio", -1, 152, 736, 268, 20, SS_RIGHT);
         SetPropW(version, L"SerialCtl.Secondary", reinterpret_cast<HANDLE>(1));
         SetPropW(credit, L"SerialCtl.Secondary", reinterpret_cast<HANDLE>(1));
         SendMessageW(version, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
@@ -5681,11 +5913,38 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             self->powerPane_.RefreshAvailability();
             return TRUE;
         }
+        if (id == IdSettingsMcpStop) {
+            self->StopEmbeddedMcpServer();
+            mcp::McpService::SignalUserAgentStop();
+            std::wstring err;
+            mcp::McpService::StopScmService(err);
+            SetDlgItemTextW(dialog, IdSettingsMcpUrl, (L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp（已停止）").c_str());
+            return TRUE;
+        }
+        if (id == IdSettingsMcpStart) {
+            self->StartEmbeddedMcpServer();
+            SetDlgItemTextW(dialog, IdSettingsMcpUrl, (L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp（运行中）").c_str());
+            return TRUE;
+        }
+        if (id == IdSettingsMcpUninstall) {
+            mcp::McpService::SignalUserAgentStop();
+            std::wstring err;
+            mcp::McpService::UninstallScmService(err);
+            wchar_t exe[MAX_PATH]{};
+            GetModuleFileNameW(nullptr, exe, MAX_PATH);
+            mcp::McpService::SetUserAutoStart(false, exe);
+            CheckDlgButton(dialog, IdSettingsMcpAutoStart, BST_UNCHECKED);
+            SetDlgItemTextW(dialog, IdSettingsMcpUrl, (L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp（自启已卸载）").c_str());
+            return TRUE;
+        }
         if (id == IDOK) {
             const bool echo = IsDlgButtonChecked(dialog, IdSettingsEcho) == BST_CHECKED;
             const bool timestamps = IsDlgButtonChecked(dialog, IdSettingsTimestamp) == BST_CHECKED;
             if (self->localEchoEnabled_ != echo) self->ExecuteTerminalAction(IdMenuLocalEcho);
             if (self->timestampEnabled_ != timestamps) self->ExecuteTerminalAction(IdMenuTimestamp);
+            const bool mcpEn = IsDlgButtonChecked(dialog, IdSettingsMcpEnabled) == BST_CHECKED;
+            const bool mcpAuto = IsDlgButtonChecked(dialog, IdSettingsMcpAutoStart) == BST_CHECKED;
+            self->ApplyMcpSettings(mcpEn, mcpAuto, self->mcpPort_);
             if (hasSession) {
                 self->activeSession_->rawTrace = IsDlgButtonChecked(dialog, IdSettingsRawTrace) == BST_CHECKED;
                 const auto encoding = SendDlgItemMessageW(dialog, IdSettingsEncoding, CB_GETCURSEL, 0, 0);
@@ -6251,6 +6510,9 @@ void MainWindow::LoadUiState() {
     leftPanelCollapsed_ = GetPrivateProfileIntW(L"Layout", L"LeftPanelCollapsed", 0, path.c_str()) != 0;
     rightPanelCollapsed_ = GetPrivateProfileIntW(
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
+    mcpEnabled_ = GetPrivateProfileIntW(L"Mcp", L"Enabled", 0, path.c_str()) != 0;
+    mcpAutoStart_ = GetPrivateProfileIntW(L"Mcp", L"AutoStart", 0, path.c_str()) != 0;
+    mcpPort_ = static_cast<uint16_t>(GetPrivateProfileIntW(L"Mcp", L"Port", 7080, path.c_str()));
 }
 
 void MainWindow::SaveUiState() {
@@ -6293,6 +6555,9 @@ void MainWindow::SaveUiState() {
     snapshot.entries.push_back({L"SSH",L"History",MultiByteToWide(reinterpret_cast<const uint8_t*>(history.data()),history.size(),CP_UTF8)});
     add(L"Commands", L"DoubleClickRun", notebook_.DoubleClick());
     add(L"Commands", L"IntervalMs", notebook_.Interval());
+    add(L"Mcp", L"Enabled", mcpEnabled_ ? 1 : 0);
+    add(L"Mcp", L"AutoStart", mcpAutoStart_ ? 1 : 0);
+    add(L"Mcp", L"Port", mcpPort_);
     for(const auto& preset:bootPresets_) {
         const auto value=preset.second.first+"|"+std::to_string(preset.second.second);
         snapshot.entries.push_back({L"BootPresets",preset.first,MultiByteToWide(reinterpret_cast<const uint8_t*>(value.data()),value.size(),CP_UTF8)});
@@ -6375,16 +6640,16 @@ XferPane::Target MainWindow::XferTarget() {
 void MainWindow::ShowXferPanel() {
     if(!activeSession_||!connection_||!connection_->IsConnected()||
        (selectedMode_!=1&&selectedMode_!=3)||!connection_->SupportsTransfer())return;
-    xferPanelVisible_=true;sftpPanelVisible_=false;
+    xferPanelVisible_=true;sftpPanelVisible_=false;tftpPanelVisible_=false;
     RECT r{};GetClientRect(sftpList_,&r);UiLayoutBatch batch;QueueSidebarVisibility(batch,r.right);batch.Commit();
     xferPane_.Refresh();
-    for(HWND h:{commandHeader_,sftpTabButton_,xferTabButton_})InvalidateRect(h,nullptr,FALSE);
+    for(HWND h:{commandHeader_,sftpTabButton_,xferTabButton_,tftpTabButton_})InvalidateRect(h,nullptr,FALSE);
 }
 
 void MainWindow::ShowSftpPanel(bool show,bool preserveXfer) {
     if (show && (!connection_ || selectedMode_ != 0 || !SftpClient::IsAvailable())) show = false;
     sftpPanelVisible_ = show;
-    if(!preserveXfer||show)xferPanelVisible_=false;
+    if(!preserveXfer||show){xferPanelVisible_=false;tftpPanelVisible_=false;}
     RECT listRect{};
     GetClientRect(sftpList_, &listRect);
     UiLayoutBatch batch;
@@ -6393,7 +6658,42 @@ void MainWindow::ShowSftpPanel(bool show,bool preserveXfer) {
     InvalidateRect(commandHeader_, nullptr, FALSE);
     InvalidateRect(sftpTabButton_, nullptr, FALSE);
     InvalidateRect(xferTabButton_,nullptr,FALSE);
+    InvalidateRect(tftpTabButton_,nullptr,FALSE);
     InvalidateRect(window_, nullptr, FALSE);
+}
+
+void MainWindow::ShowTftpPanel(bool show) {
+    tftpPanelVisible_ = show;
+    if (show) {
+        xferPanelVisible_ = false;
+        sftpPanelVisible_ = false;
+    }
+    RECT r{};
+    GetClientRect(commandList_, &r);
+    UiLayoutBatch batch;
+    QueueSidebarVisibility(batch, r.right);
+    batch.Commit();
+    tftpPane_.Refresh();
+    for (HWND h : {commandHeader_, sftpTabButton_, xferTabButton_, tftpTabButton_})
+        InvalidateRect(h, nullptr, FALSE);
+}
+
+std::vector<TftpSshSessionInfo> MainWindow::GetTftpSshSessions() const {
+    std::vector<TftpSshSessionInfo> list;
+    for (const auto& s : sessions_) {
+        if (s->mode == 0 && !s->host.empty()) {
+            TftpSshSessionInfo info;
+            info.sessionId = "session-" + std::to_string(s->id);
+            info.displayName = s->name.empty() ? (s->username + L"@" + s->host) : s->name;
+            info.host = s->host;
+            info.port = s->port ? s->port : 22;
+            info.username = s->username;
+            info.password = s->password;
+            info.connected = s->connection && s->connection->IsConnected();
+            list.push_back(std::move(info));
+        }
+    }
+    return list;
 }
 
 void MainWindow::QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth) {
@@ -6403,9 +6703,11 @@ void MainWindow::QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth) 
     batch.Show(commandHeader_, expanded ? SW_SHOW : SW_HIDE);
     batch.Show(sftpTabButton_, expanded ? SW_SHOW : SW_HIDE);
     batch.Show(xferTabButton_,expanded?SW_SHOW:SW_HIDE);
+    batch.Show(tftpTabButton_, expanded ? SW_SHOW : SW_HIDE);
     batch.Show(xferPane_.Handle(),expanded&&xferPanelVisible_?SW_SHOW:SW_HIDE);
+    batch.Show(tftpPane_.Handle(), expanded && tftpPanelVisible_ ? SW_SHOW : SW_HIDE);
     for (HWND control : {commandList_})
-        batch.Show(control, expanded && !show && !xferPanelVisible_ ? SW_SHOW : SW_HIDE);
+        batch.Show(control, expanded && !show && !xferPanelVisible_ && !tftpPanelVisible_ ? SW_SHOW : SW_HIDE);
     for (HWND control : {sftpPath_, sftpNameHeader_, sftpSizeHeader_, sftpList_,
              sftpTransferToggleButton_, sftpClearTransfersButton_, sftpUpButton_, sftpRefreshButton_,
              sftpUploadButton_, sftpDownloadButton_})
@@ -6951,8 +7253,69 @@ void MainWindow::RetrySftpTransfer(std::uint64_t transferId) {
     const auto& items = sftp_.Transfers();
     const auto found = std::find_if(items.begin(), items.end(), [transferId](const auto& item) { return item.id == transferId; });
     if (found == items.end() || (found->state != SftpTransferState::Failed && found->state != SftpTransferState::Canceled)) return;
-    sftp_.Retry(transferId, FindSession(found->sessionId) != nullptr);
-    RefreshSftpTransferList(); StartNextSftpTransfer();
+    const auto oldTask = *found;
+
+    const auto* originalSession = FindSession(oldTask.sessionId);
+    const bool originalOnline = originalSession && originalSession->connection && originalSession->connection->IsConnected() &&
+                                !originalSession->disconnecting && !originalSession->disconnected;
+    if (originalOnline) {
+        sftp_.Retry(transferId, true);
+        RefreshSftpTransferList();
+        StartNextSftpTransfer();
+        return;
+    }
+
+    const SessionState* candidateSession = nullptr;
+    if (activeSession_ && activeSession_->mode == 0 && activeSession_->connection && activeSession_->connection->IsConnected() &&
+        !activeSession_->disconnecting && !activeSession_->disconnected) {
+        candidateSession = activeSession_;
+    } else {
+        for (const auto& s : sessions_) {
+            if (s && s->mode == 0 && s->connection && s->connection->IsConnected() && !s->disconnecting && !s->disconnected) {
+                candidateSession = s.get();
+                break;
+            }
+        }
+    }
+
+    if (!candidateSession) {
+        AppendStatus(L"原 SSH 会话已关闭，请先连接目标 SSH 会话后再重试。", true);
+        MessageBoxW(window_, L"原 SSH 会话已关闭，请先连接目标 SSH 会话后再重试。", L"SFTP 传输重试", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+
+    const bool isUpload = oldTask.direction == SftpTransferDirection::Upload;
+    const std::wstring targetInfo = candidateSession->username + L"@" + candidateSession->host + L":" + std::to_wstring(candidateSession->port);
+    std::wstring message = L"原 SSH 会话已关闭。\n是否在当前 SSH 连接上重新创建一条新传输任务？\n\n";
+    message += L"目标会话: " + targetInfo + L"\n";
+    message += L"传输方向: " + std::wstring(isUpload ? L"上传至远端" : L"下载至本地") + L"\n";
+    message += L"本地路径: " + oldTask.localPath + L"\n";
+    message += L"远端路径: " + oldTask.remotePath + (isUpload ? (L"/" + oldTask.name) : L"") + L"\n";
+    message += L"覆盖策略: " + std::wstring(oldTask.replaceExisting ? L"覆盖已有文件" : L"不覆盖");
+
+    if (MessageBoxW(window_, message.c_str(), L"重新创建 SFTP 传输", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) {
+        return;
+    }
+
+    std::wstring error;
+    std::uint64_t newId = 0;
+    if (isUpload) {
+        newId = sftp_.EnqueueUpload(candidateSession->id, oldTask.localPath, oldTask.remotePath, error);
+    } else {
+        newId = sftp_.EnqueueDownload(candidateSession->id, oldTask.remotePath, oldTask.localPath, oldTask.total, oldTask.replaceExisting, error);
+    }
+
+    if (!newId) {
+        AppendStatus(error.empty() ? L"无法重新创建 SFTP 传输任务。" : error, true);
+        return;
+    }
+
+    sftpTransferExpanded_ = true;
+    RefreshSftpTransferList();
+    RECT client{};
+    GetClientRect(window_, &client);
+    LayoutControls(client.right, client.bottom);
+    StartNextSftpTransfer();
 }
 
 void MainWindow::ClearFinishedSftpTransfers() { sftp_.ClearFinished(); RefreshSftpTransferList(); }
@@ -7894,5 +8257,719 @@ Json MainWindow::ExecuteApiRequest(const std::string &op, const std::string &res
         return powerService_.Submit(command);
     }
     return {{"error", {{"code", "OPERATION_DENIED"}}}};
+}
+
+void MainWindow::StartMcpIpc() {
+    if (mcpIpcServer_ && mcpIpcServer_->IsRunning()) return;
+    mcpIpcServer_ = std::make_unique<mcp::McpIpcServer>(mcp::DefaultMcpPipeName);
+    mcpIpcServer_->Start([this](const std::string& requestStr) -> std::string {
+        try {
+            Json req = Json::parse(requestStr);
+            std::string method = req.value("method", "");
+            Json params = req.value("params", Json::object());
+
+            if (method == "ping") {
+                return "{\"status\":\"ok\"}";
+            }
+            if (method == "app.activate") {
+                PostMessageW(window_, WM_SYSCOMMAND, SC_RESTORE, 0);
+                SetForegroundWindow(window_);
+                return "{\"ok\":true}";
+            }
+
+            struct McpDispatchContext {
+                const std::string* method;
+                const Json* params;
+                Json response;
+            } ctx{&method, &params, Json::object()};
+
+            SendMessageW(window_, MessageMcpDispatch, 0, reinterpret_cast<LPARAM>(&ctx));
+            return ctx.response.dump();
+        } catch (...) {
+            return "{\"error\":\"IPC dispatch error\"}";
+        }
+    });
+}
+
+void MainWindow::StopMcpIpc() {
+    if (mcpIpcServer_) {
+        mcpIpcServer_->Stop();
+        mcpIpcServer_.reset();
+    }
+}
+
+void MainWindow::StartEmbeddedMcpServer() {
+    if (mcpEmbeddedServer_ && mcpEmbeddedServer_->IsRunning()) return;
+    if (mcp::McpService::IsAnyServiceProcessRunning()) return;
+
+    if (!mcpDispatcher_) {
+        mcpDispatcher_ = std::make_unique<mcp::McpDispatcher>();
+        mcpDispatcher_->SetGuiStatusChecker([this] { return !closing_.load(); });
+        mcpDispatcher_->SetGuiLauncher([](bool, std::string&) { return true; });
+        mcpDispatcher_->SetPowerContextProvider([this](bool& testUnlocked, Json& selectedChannels) {
+            if (closing_.load() || !window_ || !IsWindow(window_)) return;
+            if (GetCurrentThreadId() == GetWindowThreadProcessId(window_, nullptr)) {
+                testUnlocked = PowerService::ConnectionAvailable();
+                selectedChannels = powerPane_.SelectedChannels();
+                return;
+            }
+            const std::string method = "internal.power_context";
+            const Json params = Json::object();
+            McpDispatchContext ctx{&method, &params, Json::object()};
+            SendMessageW(window_, MessageMcpDispatch, 0, reinterpret_cast<LPARAM>(&ctx));
+            if (ctx.response.is_object()) {
+                testUnlocked = ctx.response.value("testUnlocked", false);
+                if (ctx.response.contains("selectedChannels") && ctx.response["selectedChannels"].is_array()) {
+                    selectedChannels = ctx.response["selectedChannels"];
+                }
+            }
+        });
+        mcpDispatcher_->SetGuiExecutor([this](const std::string& method, const Json& params) {
+            if (closing_.load() || !window_ || !IsWindow(window_)) {
+                return Json{{"error", "Application closing"}};
+            }
+            if (GetCurrentThreadId() == GetWindowThreadProcessId(window_, nullptr)) {
+                return McpExecute(method, params);
+            }
+            McpDispatchContext ctx{&method, &params, Json::object()};
+            SendMessageW(window_, MessageMcpDispatch, 0, reinterpret_cast<LPARAM>(&ctx));
+            return ctx.response;
+        });
+        mcpDispatcher_->SetTestUnlocked(PowerService::ConnectionAvailable());
+        mcpDispatcher_->SetGuiSelectedChannels(powerPane_.SelectedChannels());
+    }
+
+    mcpEmbeddedServer_ = std::make_unique<mcp::McpHttpServer>();
+    std::wstring err;
+    mcpEmbeddedServer_->Start(mcpBindIp_, mcpPort_,
+        [this](const std::string& ip, const std::string& body) {
+            return mcpDispatcher_->Dispatch(ip, body);
+        },
+        [this]() {
+            return mcpDispatcher_->CallTool("127.0.0.1", "app.health", Json::object()).dump();
+        },
+        err);
+}
+
+void MainWindow::StopEmbeddedMcpServer() {
+    if (mcpEmbeddedServer_) {
+        mcpEmbeddedServer_->Stop();
+        mcpEmbeddedServer_.reset();
+    }
+    if (closing_.load() && mcpEnabled_ && !mcp::McpService::IsAnyServiceProcessRunning()) {
+        mcp::McpService::SpawnUserAgentProcess();
+    }
+}
+
+void MainWindow::ApplyMcpSettings(bool enabled, bool autoStart, uint16_t port) {
+    mcpEnabled_ = enabled;
+    mcpAutoStart_ = autoStart;
+    mcpPort_ = port ? port : 7080;
+    SaveUiState();
+    wchar_t exe[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    mcp::McpService::SetUserAutoStart(autoStart, exe);
+    if (mcpEnabled_) {
+        StartEmbeddedMcpServer();
+    } else {
+        StopEmbeddedMcpServer();
+        mcp::McpService::SignalUserAgentStop();
+    }
+}
+
+Json MainWindow::McpExecute(const std::string& method, const Json& params) {
+    auto error = [](const std::string& text) -> Json { return {{"error", text}}; };
+    if (closing_ && method != "app.quit") return error("Application closing");
+
+    if (method == "internal.power_context") {
+        return {
+            {"testUnlocked", PowerService::ConnectionAvailable()},
+            {"selectedChannels", powerPane_.SelectedChannels()}
+        };
+    }
+
+    if (method == "app.quit") {
+        PostMessageW(window_, WM_CLOSE, 0, 0);
+        return {{"ok", true}, {"quitted", true}};
+    }
+    if (method == "session.list") {
+        Json arr = Json::array();
+        for (const auto& s : sessions_) {
+            const bool conn = s->connection && s->connection->IsConnected();
+            arr.push_back({
+                {"id", "session-" + std::to_string(s->id)},
+                {"name", WideToMultiByte(s->name, CP_UTF8)},
+                {"mode", s->mode},
+                {"kind", ai::TerminalKind(s->mode)},
+                {"connected", conn},
+                {"remoteCom", WideToMultiByte(s->remoteCom, CP_UTF8)},
+                {"host", WideToMultiByte(s->host, CP_UTF8)},
+                {"port", s->port},
+                {"codePage", s->codePage}
+            });
+        }
+        return {{"ok", true}, {"sessions", arr}};
+    }
+    if (method == "session.ports") {
+        Json ports = Json::array();
+        try {
+            auto list = EnumerateSerialPorts();
+            for (const auto& p : list) {
+                ports.push_back({
+                    {"port", WideToMultiByte(p.port, CP_UTF8)},
+                    {"friendlyName", WideToMultiByte(p.friendlyName, CP_UTF8)}
+                });
+            }
+        } catch (...) {}
+        return {{"ok", true}, {"ports", ports}};
+    }
+    if (method == "session.switch") {
+        std::string sid = params.value("sessionId", "");
+        for (size_t i = 0; i < sessions_.size(); ++i) {
+            if (("session-" + std::to_string(sessions_[i]->id)) == sid) {
+                SwitchSession(i);
+                return {{"ok", true}, {"switched", sid}};
+            }
+        }
+        return error("Session not found");
+    }
+    if (method == "session.reconnect") {
+        std::string sid = params.value("sessionId", "");
+        for (size_t i = 0; i < sessions_.size(); ++i) {
+            if (("session-" + std::to_string(sessions_[i]->id)) == sid) {
+                SwitchSession(i);
+                Reconnect();
+                return {{"ok", true}, {"reconnecting", sid}};
+            }
+        }
+        return error("Session not found");
+    }
+    if (method == "session.disconnect") {
+        std::string sid = params.value("sessionId", "");
+        for (const auto& s : sessions_) {
+            if (("session-" + std::to_string(s->id)) == sid) {
+                if (!s->disconnected && !s->disconnecting) {
+                    BeginDisconnect(*s);
+                }
+                return {{"ok", true}, {"disconnected", sid}};
+            }
+        }
+        return error("Session not found");
+    }
+    if (method == "session.close") {
+        std::string sid = params.value("sessionId", "");
+        for (const auto& s : sessions_) {
+            if (("session-" + std::to_string(s->id)) == sid) {
+                CloseSession(s->id);
+                return {{"ok", true}, {"closed", sid}};
+            }
+        }
+        return error("Session not found");
+    }
+    if (method == "session.disconnect_all") {
+        DisconnectAll();
+        return {{"ok", true}};
+    }
+    if (method == "session.connect_serial") {
+        std::string port = params.value("port", "");
+        if (port.empty()) return error("port is required");
+        pendingMode_ = 1;
+        pendingSerial_.portName = MultiByteToWide(reinterpret_cast<const uint8_t*>(port.data()), port.size(), CP_UTF8);
+        pendingSerial_.baudRate = params.value("baudRate", 115200);
+        pendingSerial_.dataBits = static_cast<BYTE>(params.value("dataBits", 8));
+        pendingSerial_.parity = static_cast<BYTE>(params.value("parity", 0));
+        pendingSerial_.stopBits = static_cast<BYTE>(params.value("stopBits", 0));
+        ConnectFromDialog();
+        return {{"ok", true}, {"connecting", port}};
+    }
+    if (method == "session.connect_shared_serial") {
+        std::string host = params.value("host", "");
+        uint16_t port = static_cast<uint16_t>(params.value("port", 0));
+        std::string remoteCom = params.value("remoteCom", "");
+        if (host.empty() || port == 0 || remoteCom.empty()) return error("host, port, and remoteCom are required");
+        pendingMode_ = 3;
+        pendingHost_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(host.data()), host.size(), CP_UTF8);
+        pendingPort_ = port;
+        pendingRemoteSerial_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(remoteCom.data()), remoteCom.size(), CP_UTF8);
+        pendingRemoteInstance_ = params.value("instance", "");
+        ConnectFromDialog();
+        return {{"ok", true}, {"connecting", host}};
+    }
+    if (method == "session.connect_ssh") {
+        std::string host = params.value("host", "");
+        std::string username = params.value("username", "");
+        if (host.empty() || username.empty()) return error("host and username are required");
+        pendingMode_ = 0;
+        pendingHost_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(host.data()), host.size(), CP_UTF8);
+        pendingUsername_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(username.data()), username.size(), CP_UTF8);
+        std::string password = params.value("password", "");
+        pendingPassword_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(password.data()), password.size(), CP_UTF8);
+        pendingPort_ = static_cast<uint16_t>(params.value("port", 22));
+        ConnectFromDialog();
+        return {{"ok", true}, {"connecting", host}};
+    }
+    if (method == "session.connect_telnet") {
+        std::string host = params.value("host", "");
+        if (host.empty()) return error("host is required");
+        pendingMode_ = 2;
+        pendingHost_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(host.data()), host.size(), CP_UTF8);
+        pendingPort_ = static_cast<uint16_t>(params.value("port", 23));
+        ConnectFromDialog();
+        return {{"ok", true}, {"connecting", host}};
+    }
+    if (method == "session.connect_cmd") {
+        pendingMode_ = 4;
+        ConnectFromDialog();
+        return {{"ok", true}, {"connecting", "cmd"}};
+    }
+    if (method == "ssh_history.list") {
+        return {{"ok", true}, {"history", mcp::McpSecurity::SanitizeJson(sshHistory_)}};
+    }
+    if (method == "ssh_history.delete") {
+        std::string host = params.value("host", "");
+        std::string username = params.value("username", "");
+        uint16_t port = static_cast<uint16_t>(params.value("port", 22));
+        auto hostW = MultiByteToWide(reinterpret_cast<const uint8_t*>(host.data()), host.size(), CP_UTF8);
+        auto userW = MultiByteToWide(reinterpret_cast<const uint8_t*>(username.data()), username.size(), CP_UTF8);
+        DWORD credErr = ERROR_SUCCESS;
+        ForgetSshCredential(SshCredentialTarget(hostW, port, userW), credErr);
+        Json filtered = Json::array();
+        for (const auto& item : sshHistory_) {
+            if (item.value("host", "") != host || item.value("username", "") != username) {
+                filtered.push_back(item);
+            }
+        }
+        sshHistory_ = filtered;
+        SaveUiState();
+        return {{"ok", true}, {"deleted", host}};
+    }
+    if (method == "terminal.clear") {
+        std::string sid = params.value("sessionId", "");
+        for (const auto& s : sessions_) {
+            if (("session-" + std::to_string(s->id)) == sid) {
+                s->terminal.Clear();
+                if (s.get() == activeSession_) InvalidateRect(terminal_, nullptr, FALSE);
+                return {{"ok", true}};
+            }
+        }
+        return error("Session not found");
+    }
+    if (method == "terminal.send_bytes") {
+        std::string sid = params.value("sessionId", "");
+        std::string hexStr = params.value("hex", "");
+        if (hexStr.empty()) return error("hex string is required");
+        Bytes bytes;
+        for (size_t i = 0; i + 1 < hexStr.size(); i += 2) {
+            std::string byteString = hexStr.substr(i, 2);
+            bytes.push_back(static_cast<uint8_t>(std::strtoul(byteString.c_str(), nullptr, 16)));
+        }
+        for (const auto& s : sessions_) {
+            if (("session-" + std::to_string(s->id)) == sid) {
+                if (!s->connection || !s->connection->IsConnected()) return error("Session disconnected");
+                std::wstring err;
+                if (!s->connection->Send(bytes, err)) return error(WideToMultiByte(err, CP_UTF8));
+                return {{"ok", true}, {"sentBytes", bytes.size()}};
+            }
+        }
+        return error("Session not found");
+    }
+    if (method == "terminal.settings") {
+        std::string sid = params.value("sessionId", "");
+        for (const auto& s : sessions_) {
+            if (("session-" + std::to_string(s->id)) == sid) {
+                if (params.contains("codePage")) s->codePage = params["codePage"].get<UINT>();
+                if (params.contains("lineEnding")) s->lineEndingIndex = params["lineEnding"].get<int>();
+                if (params.contains("echo")) localEchoEnabled_ = params["echo"].get<bool>();
+                if (params.contains("timestamp")) timestampEnabled_ = params["timestamp"].get<bool>();
+                if (params.contains("rawTrace")) s->rawTrace = params["rawTrace"].get<bool>();
+                SaveUiState();
+                return {{"ok", true}};
+            }
+        }
+        return error("Session not found");
+    }
+    if (method == "macro.list") {
+        Json arr = Json::array();
+        const auto& items = macro_.Items();
+        for (size_t i = 0; i < items.size(); ++i) {
+            Json cmdArr = Json::array();
+            for (const auto& c : items[i].commands) cmdArr.push_back(WideToMultiByte(c, CP_UTF8));
+            arr.push_back({
+                {"index", i},
+                {"name", WideToMultiByte(items[i].name, CP_UTF8)},
+                {"commands", cmdArr},
+                {"intervalMs", items[i].intervalMs}
+            });
+        }
+        return {{"ok", true}, {"macros", arr}, {"document", WideToMultiByte(notebook_.Text(), CP_UTF8)}};
+    }
+    if (method == "macro.set_document") {
+        std::string text = params.value("text", "");
+        auto wide = MultiByteToWide(reinterpret_cast<const uint8_t*>(text.data()), text.size(), CP_UTF8);
+        notebook_.SetText(wide, true);
+        SaveCommands();
+        return {{"ok", true}};
+    }
+    if (method == "macro.add") {
+        std::string name = params.value("name", "");
+        CommandItem item;
+        item.name = MultiByteToWide(reinterpret_cast<const uint8_t*>(name.data()), name.size(), CP_UTF8);
+        item.intervalMs = params.value("intervalMs", params.value("delayMs", 500));
+        if (params.contains("commands") && params["commands"].is_array()) {
+            for (const auto& c : params["commands"]) {
+                std::string s = c.get<std::string>();
+                item.commands.push_back(MultiByteToWide(reinterpret_cast<const uint8_t*>(s.data()), s.size(), CP_UTF8));
+            }
+        }
+        macro_.Append(item);
+        SaveCommands();
+        RefreshCommandList();
+        return {{"ok", true}, {"index", macro_.Items().size() - 1}};
+    }
+    if (method == "macro.update") {
+        size_t index = params.value("index", static_cast<size_t>(0));
+        if (index >= macro_.Items().size()) return error("Index out of bounds");
+        CommandItem item = macro_.Items()[index];
+        if (params.contains("name")) {
+            std::string name = params["name"];
+            item.name = MultiByteToWide(reinterpret_cast<const uint8_t*>(name.data()), name.size(), CP_UTF8);
+        }
+        if (params.contains("intervalMs")) item.intervalMs = params["intervalMs"];
+        else if (params.contains("delayMs")) item.intervalMs = params["delayMs"];
+        if (params.contains("commands") && params["commands"].is_array()) {
+            item.commands.clear();
+            for (const auto& c : params["commands"]) {
+                std::string s = c.get<std::string>();
+                item.commands.push_back(MultiByteToWide(reinterpret_cast<const uint8_t*>(s.data()), s.size(), CP_UTF8));
+            }
+        }
+        macro_.Update(index, item);
+        SaveCommands();
+        RefreshCommandList();
+        return {{"ok", true}};
+    }
+    if (method == "macro.delete") {
+        size_t index = params.value("index", static_cast<size_t>(0));
+        if (index >= macro_.Items().size()) return error("Index out of bounds");
+        macro_.Erase(index);
+        SaveCommands();
+        RefreshCommandList();
+        return {{"ok", true}};
+    }
+    if (method == "macro.run") {
+        if (params.contains("index")) {
+            size_t index = params["index"];
+            if (index < macro_.Items().size()) SendCommand(index);
+        } else {
+            RunNotebook(notebook_.SelectedCommands());
+        }
+        return {{"ok", true}, {"running", true}};
+    }
+    if (method == "macro.stop") {
+        StopCommandSequence(CommandSequenceEnd::UserStopped);
+        return {{"ok", true}, {"stopped", true}};
+    }
+    if (method == "macro.status") {
+        return {
+            {"ok", true},
+            {"running", macro_.Running()},
+            {"index", macro_.RunningIndex()}
+        };
+    }
+    if (method == "macro.import_file") {
+        std::string path = params.value("path", "");
+        if (path.empty()) return error("path is required");
+        auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(path.data()), path.size(), CP_UTF8);
+        std::wstring err;
+        if (!LoadCommandsFromFile(pathW, err)) return error(WideToMultiByte(err, CP_UTF8));
+        SaveCommands();
+        RefreshCommandList();
+        return {{"ok", true}, {"imported", path}};
+    }
+    if (method == "macro.export_file") {
+        std::string path = params.value("path", "");
+        if (path.empty()) return error("path is required");
+        auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(path.data()), path.size(), CP_UTF8);
+        std::wstring err;
+        if (!SaveCommandsToFile(pathW, err)) return error(WideToMultiByte(err, CP_UTF8));
+        return {{"ok", true}, {"exported", path}};
+    }
+    if (method == "sftp.list") {
+        Json arr = Json::array();
+        for (const auto& f : sftp_.Entries()) {
+            arr.push_back({
+                {"name", WideToMultiByte(f.name, CP_UTF8)},
+                {"directory", f.directory},
+                {"size", f.size},
+                {"permissions", WideToMultiByte(f.permissions, CP_UTF8)},
+                {"modified", WideToMultiByte(f.modifiedText, CP_UTF8)}
+            });
+        }
+        return {{"ok", true}, {"path", WideToMultiByte(sftp_.Directory(), CP_UTF8)}, {"files", arr}};
+    }
+    if (method == "sftp.cd") {
+        std::string path = params.value("path", "");
+        auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(path.data()), path.size(), CP_UTF8);
+        RefreshSftp(pathW);
+        return {{"ok", true}, {"path", path}};
+    }
+    if (method == "sftp.mkdir") {
+        std::string remotePath = params.value("remotePath", "");
+        if (remotePath.empty()) return error("remotePath is required");
+        if (!activeSession_) return error("No active session");
+        auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+        bool ok = sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_),
+                               SftpMutationKind::CreateDirectory, {pathW}, L"", {});
+        return {{"ok", ok}, {"created", remotePath}};
+    }
+    if (method == "sftp.rename") {
+        std::string oldPath = params.value("oldPath", "");
+        std::string newPath = params.value("newPath", "");
+        if (oldPath.empty() || newPath.empty()) return error("oldPath and newPath are required");
+        if (!activeSession_) return error("No active session");
+        auto oldW = MultiByteToWide(reinterpret_cast<const uint8_t*>(oldPath.data()), oldPath.size(), CP_UTF8);
+        auto newW = MultiByteToWide(reinterpret_cast<const uint8_t*>(newPath.data()), newPath.size(), CP_UTF8);
+        bool ok = sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_),
+                               SftpMutationKind::Rename, {oldW, newW}, L"", {});
+        return {{"ok", ok}, {"oldPath", oldPath}, {"newPath", newPath}};
+    }
+    if (method == "sftp.chmod") {
+        std::string remotePath = params.value("remotePath", "");
+        int modeVal = params.value("mode", 0755);
+        if (remotePath.empty()) return error("remotePath is required");
+        if (!activeSession_) return error("No active session");
+        auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+        wchar_t modeBuf[16]{};
+        swprintf_s(modeBuf, L"%o", static_cast<unsigned>(modeVal));
+        bool ok = sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_),
+                               SftpMutationKind::ChangeMode, {pathW}, modeBuf, {});
+        return {{"ok", ok}, {"remotePath", remotePath}};
+    }
+    if (method == "sftp.upload") {
+        std::string localPath = params.value("localPath", "");
+        std::string remotePath = params.value("remotePath", "");
+        if (localPath.empty() || remotePath.empty()) return error("localPath and remotePath are required");
+        if (!activeSession_) return error("No active session");
+        auto localW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
+        auto remoteW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+        bool ok = StartSftpUpload(localW, remoteW);
+        return {{"ok", ok}, {"localPath", localPath}, {"remotePath", remotePath}};
+    }
+    if (method == "sftp.download") {
+        std::string remotePath = params.value("remotePath", "");
+        std::string localPath = params.value("localPath", "");
+        bool allowOverwrite = params.value("allowOverwrite", false);
+        if (remotePath.empty() || localPath.empty()) return error("remotePath and localPath are required");
+        if (!activeSession_) return error("No active session");
+        auto remoteW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+        auto localW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
+        StartSftpDownload(remoteW, localW, 0, allowOverwrite);
+        return {{"ok", true}, {"remotePath", remotePath}, {"localPath", localPath}};
+    }
+    if (method == "sftp.delete") {
+        bool confirm = params.value("confirm", false);
+        if (!confirm) {
+            return {
+                {"error", {
+                    {"code", mcp::ErrConfirmationRequired},
+                    {"message", "CONFIRMATION_REQUIRED: sftp.delete requires 'confirm: true' parameter."}
+                }}
+            };
+        }
+        std::string remotePath = params.value("remotePath", "");
+        if (remotePath.empty()) return error("remotePath is required");
+        if (!activeSession_) return error("No active session");
+        auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+        bool isDir = params.value("directory", false);
+        bool ok = sftp_.Mutate(activeSession_->id, SftpEndpoint(*activeSession_),
+                               SftpController::Mutation::Delete, {pathW}, L"", {isDir});
+        return {{"ok", ok}, {"deleted", remotePath}};
+    }
+    if (method == "sftp.transfers") {
+        Json arr = Json::array();
+        for (const auto& t : sftp_.Transfers()) {
+            arr.push_back({
+                {"id", t.id},
+                {"name", WideToMultiByte(t.name, CP_UTF8)},
+                {"localPath", WideToMultiByte(t.localPath, CP_UTF8)},
+                {"remotePath", WideToMultiByte(t.remotePath, CP_UTF8)},
+                {"direction", t.direction == SftpController::Direction::Upload ? "upload" : "download"},
+                {"state", static_cast<int>(t.state)},
+                {"transferred", t.transferred},
+                {"total", t.total},
+                {"percent", t.percent},
+                {"error", WideToMultiByte(t.error, CP_UTF8)}
+            });
+        }
+        return {{"ok", true}, {"transfers", arr}};
+    }
+    if (method == "sftp.cancel_transfer") {
+        uint64_t transferId = params.value("transferId", params.value("id", static_cast<uint64_t>(0)));
+        if (transferId != 0) {
+            CancelSftpTransfer(transferId);
+        } else {
+            CancelSftpTransfer(sftp_.ActiveTransfer());
+        }
+        return {{"ok", true}};
+    }
+    if (method == "sftp.retry_transfer") {
+        uint64_t transferId = params.value("transferId", params.value("id", static_cast<uint64_t>(0)));
+        if (transferId == 0) return error("transferId is required");
+        RetrySftpTransfer(transferId);
+        return {{"ok", true}, {"transferId", transferId}};
+    }
+    if (method == "sftp.clear_transfers") {
+        ClearFinishedSftpTransfers();
+        return {{"ok", true}};
+    }
+    if (method == "xfer.status") {
+        auto snap = xfer_.State();
+        return {
+            {"ok", true},
+            {"busy", snap.busy},
+            {"session", snap.session},
+            {"bytes", snap.bytes},
+            {"total", snap.total},
+            {"success", snap.success},
+            {"cancelled", snap.cancelled},
+            {"path", WideToMultiByte(snap.path, CP_UTF8)},
+            {"note", WideToMultiByte(snap.note, CP_UTF8)}
+        };
+    }
+    if (method == "xfer.start") {
+        std::string proto = params.value("protocol", "raw");
+        std::string dir = params.value("direction", "send");
+        std::string filePath = params.value("filePath", "");
+        if (filePath.empty()) return error("filePath is required");
+        auto pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(filePath.data()), filePath.size(), CP_UTF8);
+        xfer::Protocol p = xfer::Protocol::Raw;
+        if (proto == "xmodem") p = xfer::Protocol::Xmodem;
+        else if (proto == "ymodem") p = xfer::Protocol::Ymodem;
+        else if (proto == "zmodem") p = xfer::Protocol::Zmodem;
+        bool send = (dir != "receive");
+        uint64_t expected = params.value("expectedSize", static_cast<uint64_t>(0));
+
+        XferPane::Target target = XferTarget();
+        if (!target.unavailable.empty()) return error(WideToMultiByte(target.unavailable, CP_UTF8));
+
+        xfer::TransferController::Request request;
+        request.session = target.id;
+        request.source = target.name;
+        request.path = pathW;
+        request.connection = target.connection;
+        request.options.protocol = p;
+        request.options.direction = send ? xfer::Direction::Send : xfer::Direction::Receive;
+        request.options.expectedReceiveBytes = expected;
+
+        std::wstring err;
+        bool ok = xfer_.Start(request, err);
+        if (!ok) return error(WideToMultiByte(err, CP_UTF8));
+        return {{"ok", true}, {"started", true}};
+    }
+    if (method == "xfer.finish_raw") {
+        xfer_.FinishRawReceive();
+        return {{"ok", true}};
+    }
+    if (method == "xfer.cancel") {
+        xfer_.Cancel();
+        return {{"ok", true}, {"canceled", true}};
+    }
+    if (method == "ui.status") {
+        return {
+            {"ok", true},
+            {"darkMode", darkMode_},
+            {"leftCollapsed", leftPanelCollapsed_},
+            {"rightCollapsed", rightPanelCollapsed_},
+            {"tftpVisible", tftpPanelVisible_},
+            {"sftpVisible", sftpPanelVisible_},
+            {"xferVisible", xferPanelVisible_}
+        };
+    }
+    if (method == "ui.theme") {
+        bool dark = params.value("dark", true);
+        darkMode_ = dark;
+        ApplyTheme();
+        return {{"ok", true}, {"darkMode", darkMode_}};
+    }
+    if (method == "ui.panel") {
+        std::string panel = params.value("name", "commands");
+        if (panel == "tftp") ShowTftpPanel(true);
+        else if (panel == "sftp") ShowSftpPanel(true);
+        else if (panel == "xfer") ShowXferPanel();
+        else {
+            ShowSftpPanel(false);
+        }
+        return {{"ok", true}, {"panel", panel}};
+    }
+    if (method == "log.status") {
+        return {
+            {"ok", true},
+            {"logging", logger_ && !logger_->Path().empty()},
+            {"path", logger_ ? WideToMultiByte(logger_->Path(), CP_UTF8) : ""}
+        };
+    }
+    if (method == "log.export") {
+        std::string path = params.value("path", "");
+        if (path.empty()) return error("path is required");
+        if (!activeSession_ || !logger_ || logger_->Path().empty()) return error("No active session log to export");
+        if (logExportJob_) return error("Another log export is already in progress");
+        auto destination = MultiByteToWide(reinterpret_cast<const uint8_t*>(path.data()), path.size(), CP_UTF8);
+        auto logger = activeSession_->logger;
+        const auto point = logger->CaptureExportPoint();
+        StartLogExport(L"会话日志 · " + activeSession_->name, destination, point.bytes,
+            [logger, point, destination](std::wstring& err, const std::atomic<bool>* cancel,
+                                         const SessionLogger::ExportProgress& progress) {
+                return logger->SaveCopy(destination, point, err, cancel, progress);
+            });
+        return {{"ok", true}, {"exporting", path}, {"bytes", point.bytes}};
+    }
+    if (method == "log.cancel_export") {
+        CancelLogExport();
+        return {{"ok", true}};
+    }
+    if (method == "log.network_diagnostics") {
+        return {
+            {"ok", true},
+            {"diagnostics", apiServer_.Diagnostics()},
+            {"metrics", apiServer_.Metrics()}
+        };
+    }
+    if (method == "ai.status") {
+        return {
+            {"ok", true},
+            {"connected", aiPane_.Connected()},
+            {"visible", aiVisible_}
+        };
+    }
+    if (method == "ai.workspace") {
+        return {
+            {"ok", true},
+            {"instructions", aiPane_.WorkspacePractices()}
+        };
+    }
+    if (method == "ai.send") {
+        std::string prompt = params.value("prompt", "");
+        aiPane_.SendPrompt(MultiByteToWide(reinterpret_cast<const uint8_t*>(prompt.data()), prompt.size(), CP_UTF8));
+        return {{"ok", true}, {"sent", true}};
+    }
+    if (method == "ai.stop") {
+        aiPane_.Stop();
+        return {{"ok", true}, {"stopped", true}};
+    }
+
+    // Fall back to AiDeviceRequest for terminal.read, terminal.screen, terminal.command, tftp.*, power.*, etc.
+    std::string delegated = method;
+    if (method == "terminal.read") delegated = "read";
+    else if (method == "terminal.screen") delegated = "screen";
+    else if (method == "terminal.send_text") delegated = "text";
+    else if (method == "terminal.send_key") delegated = "key";
+    else if (method == "terminal.command") delegated = "command";
+    else if (method == "terminal.observe") delegated = "read";
+    else if (method == "boot.enter") delegated = "boot_enter";
+    else if (method == "boot.stop") delegated = "boot_stop";
+    else if (method == "boot.status") delegated = "boot_status";
+    else if (method == "power.recover") delegated = "recover";
+
+    return AiDeviceRequest(delegated, params);
 }
 } // namespace serialctl

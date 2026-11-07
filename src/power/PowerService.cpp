@@ -813,18 +813,24 @@ void PowerService::StopTask() {
         state_["ownedChannels"] = owned_;
     }
 }
-void PowerService::Disconnect(bool preserveOutputs) {
+void PowerService::Disconnect(bool preserveOutputs, Json *action) {
+    bool stopFailed = false;
+    std::string stopError;
     if(preserveOutputs) {
         owned_=Json::array();task_=Json();
         std::lock_guard<std::mutex> lock(mutex_);
         state_["task"]={{"running",false}};state_["ownedChannels"]=owned_;
         for(auto& item:actions_)if(item.second.value("state",std::string())=="running")item.second["state"]="canceled";
-    }
-    try {
-        StopTask();
-    } catch (const std::exception &e) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_["error"] = e.what();
+    } else {
+        try {
+            StopTask();
+        } catch (const std::exception &e) {
+            stopFailed = true;
+            stopError = e.what();
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["error"] = e.what();
+            state_["unconfirmedPowerOff"] = true;
+        }
     }
     transport_.reset();
     log_.Stop();
@@ -836,6 +842,30 @@ void PowerService::Disconnect(bool preserveOutputs) {
     owned_ = Json::array();
     state_["ownedChannels"] = owned_;
     state_["readbackStale"] = preserveOutputs && std::any_of(state_["channels"].begin(),state_["channels"].end(),[](const Json& channel){return channel["output"].is_boolean();});
+
+    if (action) {
+        (*action)["transportDisconnected"] = true;
+        if (preserveOutputs) {
+            (*action)["offConfirmation"] = "preserved";
+            (*action)["state"] = "completed";
+        } else if (stopFailed) {
+            (*action)["offConfirmation"] = "failed";
+            (*action)["state"] = "failed";
+            (*action)["error"] = stopError;
+            Json unconfirmed = Json::array();
+            for (size_t i = 0; i < state_["channels"].size(); ++i) {
+                if (state_["channels"][i]["output"].is_null()) {
+                    unconfirmed.push_back(i + 1);
+                }
+            }
+            (*action)["unconfirmedChannels"] = unconfirmed;
+        } else {
+            (*action)["offConfirmation"] = "confirmed";
+            (*action)["state"] = "completed";
+            state_["unconfirmedPowerOff"] = false;
+        }
+    }
+
     if (preserveOutputs) return;
     for (auto &channel : state_["channels"]) {
         channel["output"] = nullptr;
@@ -925,6 +955,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 state_["backend"] = backend;
                 state_["simulation"] = backend == "simulation";
                 state_.erase("error");
+                state_["unconfirmedPowerOff"] = false;
                 state_.erase("logError");
                 state_["csvPath"] = WideToMultiByte(measurements_.Path(), CP_UTF8);
                 if (!csvError.empty())
@@ -936,7 +967,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             Poll();
             pollAt_ = GetTickCount64() + pollInterval_;
         } else if (type == "disconnect")
-            Disconnect(command.value("preserveOutputs",false));
+            Disconnect(command.value("preserveOutputs", false), &action);
         else if (type == "stop")
             StopTask();
         else if (type == "recover") {
@@ -1044,7 +1075,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             communication = type != "interval";
             Extended(command, action);
         }
-        if (type != "recover") action["state"] = "completed";
+        if (type != "recover" && (!action.contains("state") || action["state"] != "failed")) action["state"] = "completed";
     } catch (const std::exception &e) {
         action["state"] = "failed";
         if(command.value("type",std::string()) == "recover" && command.contains("_recoveryEpoch") &&

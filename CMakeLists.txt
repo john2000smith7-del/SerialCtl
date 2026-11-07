@@ -118,6 +118,8 @@ set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/network"
     "${SERIALCTL_SOURCE_DIR}/update"
     "${SERIALCTL_SOURCE_DIR}/xfer"
+    "${SERIALCTL_SOURCE_DIR}/tftp"
+    "${SERIALCTL_SOURCE_DIR}/mcp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json"
 )
 
@@ -166,8 +168,17 @@ add_executable(serialctl WIN32
     src/app/CommandDocument.cpp
     src/app/CommandNotebook.cpp
     src/app/XferPane.cpp
+    src/app/TftpPane.cpp
+    src/tftp/TftpServer.cpp
+    src/tftp/TftpFileSource.cpp
     src/xfer/TransferController.cpp
     src/xfer/TransferProtocol.cpp
+    src/mcp/McpProtocol.cpp
+    src/mcp/McpIpc.cpp
+    src/mcp/McpHttpServer.cpp
+    src/mcp/McpDispatcher.cpp
+    src/mcp/McpService.cpp
+    src/mcp/McpStdioBridge.cpp
     src/app/MainWindow.cpp
     src/app/TerminalViewport.cpp
     src/app/CommandMacroController.cpp
@@ -274,6 +285,10 @@ if(BUILD_TESTING)
     add_executable(boot_interrupt_test tests/unit/BootInterruptTest.cpp)
     serialctl_configure_native_target(boot_interrupt_test CONSOLE)
     add_test(NAME boot_interrupt COMMAND boot_interrupt_test)
+    add_executable(session_receive_dispatcher_test tests/unit/SessionReceiveDispatcherTest.cpp)
+    serialctl_configure_native_target(session_receive_dispatcher_test CONSOLE)
+    target_include_directories(session_receive_dispatcher_test PRIVATE src/app src/connections)
+    add_test(NAME session_receive_dispatcher COMMAND session_receive_dispatcher_test)
     add_executable(queued_transfer_test tests/integration/QueuedTransferTest.cpp src/connections/QueuedConnection.cpp
         src/connections/SerialConnection.cpp src/connections/SerialDevice.cpp)
     serialctl_configure_native_target(queued_transfer_test CONSOLE)
@@ -567,6 +582,35 @@ if(BUILD_TESTING)
     target_link_libraries(terminal_preview_test PRIVATE psapi)
     add_test(NAME terminal_preview COMMAND terminal_preview_test)
     set_tests_properties(terminal_preview PROPERTIES TIMEOUT 30)
+
+    add_executable(tftp_server_test
+        tests/integration/TftpServerTest.cpp
+        src/tftp/TftpServer.cpp
+        src/tftp/TftpFileSource.cpp
+        src/connections/PasswordPipe.cpp
+        src/connections/ChildProcess.cpp
+        src/connections/PuttyHostKey.cpp
+    )
+    serialctl_configure_native_target(tftp_server_test CONSOLE)
+    target_link_libraries(tftp_server_test PRIVATE ws2_32 advapi32 ole32)
+    add_test(NAME tftp_server COMMAND tftp_server_test)
+    set_tests_properties(tftp_server PROPERTIES TIMEOUT 40)
+
+    add_executable(mcp_server_test
+        tests/integration/McpServerTest.cpp
+        src/mcp/McpProtocol.cpp
+        src/mcp/McpIpc.cpp
+        src/mcp/McpHttpServer.cpp
+        src/mcp/McpDispatcher.cpp
+        src/mcp/McpService.cpp
+        src/power/PowerService.cpp
+        src/logging/SessionLogger.cpp
+    )
+    serialctl_configure_native_target(mcp_server_test CONSOLE)
+    target_compile_definitions(mcp_server_test PRIVATE SERIALCTL_POWER_TESTING)
+    target_link_libraries(mcp_server_test PRIVATE shell32 ws2_32 advapi32 ole32)
+    add_test(NAME mcp_server COMMAND mcp_server_test)
+    set_tests_properties(mcp_server PROPERTIES TIMEOUT 40)
 endif()
 
 if(BUILD_TESTING)

@@ -7,6 +7,7 @@ namespace {
 std::wstring Text(HWND h){const int n=GetWindowTextLengthW(h);std::wstring s(n+1,L'\0');GetWindowTextW(h,s.data(),n+1);s.resize(n);return s;}
 bool Label(HWND h,const std::wstring& value){if(Text(h)==value)return false;SetWindowTextW(h,value.c_str());return true;}
 int Measure(HWND h,HFONT font,const std::wstring& text,int width){
+    if (text.empty()) return 0;
     HDC dc=GetDC(h);auto old=SelectObject(dc,font);RECT r{0,0,std::max(1,width),0};
     DrawTextW(dc,text.c_str(),-1,&r,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX|DT_EDITCONTROL);
     SelectObject(dc,old);ReleaseDC(h,dc);return r.bottom;
@@ -27,23 +28,31 @@ bool XferPane::Create(HWND parent,xfer::TransferController& controller,std::func
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),wc.hInstance,nullptr);
         SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(font_),FALSE);
         if(_wcsicmp(cls,L"BUTTON")==0)UiStyleButton(h);
-        if(_wcsicmp(cls,L"EDIT")==0||_wcsicmp(cls,L"COMBOBOX")==0)UiStyleField(h,&style_);
+        if(_wcsicmp(cls,L"EDIT")==0||_wcsicmp(cls,L"COMBOBOX")==0) {
+            UiStyleField(h,&style_);
+            SetPropW(h,L"SerialCtl.FieldSurface",reinterpret_cast<HANDLE>(1));
+        }
         if(extra&WS_TABSTOP)SetWindowSubclass(h,FocusProc,219,reinterpret_cast<DWORD_PTR>(this));
         return h;
     };
-    add(Source,L"STATIC",L"未选择串口",SS_ENDELLIPSIS);
-    add(DirectionLabel,L"STATIC",L"方向",0);add(ModeLabel,L"STATIC",L"协议",0);
+    add(Source,L"STATIC",L"未选择串口",SS_ENDELLIPSIS|SS_NOPREFIX);
+    add(DirectionLabel,L"STATIC",L"方向",SS_NOPREFIX);add(ModeLabel,L"STATIC",L"协议",SS_NOPREFIX);
     for(int id:{Direction,Mode})add(id,WC_COMBOBOXW,L"",CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS|WS_VSCROLL|WS_TABSTOP);
     for(const auto* s:{L"发送文件",L"接收文件"})SendMessageW(Control(Direction),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(s));
     for(const auto* s:{L"原始二进制",L"XMODEM",L"YMODEM",L"ZMODEM"})SendMessageW(Control(Mode),CB_ADDSTRING,0,reinterpret_cast<LPARAM>(s));
     SendMessageW(Control(Direction),CB_SETCURSEL,0,0);SendMessageW(Control(Mode),CB_SETCURSEL,2,0);
-    add(FileLabel,L"STATIC",L"发送文件",0);add(File,L"EDIT",L"",ES_AUTOHSCROLL|WS_TABSTOP);
-    UiSetButtonGlyph(add(Browse,L"BUTTON",L"选择文件",BS_OWNERDRAW|WS_TABSTOP),UiGlyph::Folder,L"选择文件");
-    add(LengthLabel,L"STATIC",L"接收长度（字节，0 表示未知）",0);add(Length,L"EDIT",L"0",ES_AUTOHSCROLL|ES_NUMBER|WS_TABSTOP);
-    add(Help,L"STATIC",L"",SS_EDITCONTROL);add(Status,L"STATIC",L"",SS_EDITCONTROL);
-    add(Count,L"STATIC",L"",SS_ENDELLIPSIS);
-    add(Start,L"BUTTON",L"开始发送",BS_OWNERDRAW|WS_TABSTOP);
-    add(Cancel,L"BUTTON",L"取消传输",BS_OWNERDRAW|WS_TABSTOP);
+    add(FileLabel,L"STATIC",L"发送文件",SS_NOPREFIX);add(File,L"EDIT",L"",ES_AUTOHSCROLL|WS_TABSTOP);
+    auto browseBtn = add(Browse,L"BUTTON",L"选择文件",BS_OWNERDRAW|WS_TABSTOP);
+    UiSetFlatIconButton(browseBtn);
+    UiSetButtonGlyph(browseBtn,UiGlyph::Folder,L"选择文件");
+    add(LengthLabel,L"STATIC",L"接收长度（字节，0 表示未知）",SS_NOPREFIX);add(Length,L"EDIT",L"0",ES_AUTOHSCROLL|ES_NUMBER|WS_TABSTOP);
+    add(Help,L"STATIC",L"",SS_EDITCONTROL|SS_NOPREFIX);add(Status,L"STATIC",L"",SS_EDITCONTROL|SS_NOPREFIX);
+    add(Count,L"STATIC",L"",SS_ENDELLIPSIS|SS_NOPREFIX);
+    auto startBtn = add(Start,L"BUTTON",L"开始发送",BS_OWNERDRAW|WS_TABSTOP);
+    auto cancelBtn = add(Cancel,L"BUTTON",L"取消传输",BS_OWNERDRAW|WS_TABSTOP);
+    UiSetFlatIconButton(startBtn);
+    UiSetFlatIconButton(cancelBtn);
+    UiSetButtonGlyph(cancelBtn,UiGlyph::Stop,L"停止当前传输");
     Theme(dark,dpi,font);Refresh();return true;
 }
 void XferPane::Theme(bool dark,int dpi,HFONT font) {
@@ -54,7 +63,10 @@ void XferPane::Theme(bool dark,int dpi,HFONT font) {
     for(int id=Direction;id<=LengthLabel;++id) {
         auto h=Control(id);SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(font_),FALSE);
         wchar_t cls[24]{};GetClassNameW(h,cls,24);
-        if(_wcsicmp(cls,L"EDIT")==0||_wcsicmp(cls,L"COMBOBOX")==0)UiStyleField(h,&style_);
+        if(_wcsicmp(cls,L"EDIT")==0||_wcsicmp(cls,L"COMBOBOX")==0) {
+            UiStyleField(h,&style_);
+            SetPropW(h,L"SerialCtl.FieldSurface",reinterpret_cast<HANDLE>(1));
+        }
     }
     Layout();RedrawWindow(window_,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN);
 }
@@ -66,21 +78,31 @@ void XferPane::Layout() {
     MoveWindow(body_,0,0,width,bodyHeight_,TRUE);
     const int lane=D(16),contentWidth=std::max(D(80),width-lane);
     const int half=std::max(1,(contentWidth-D(12))/2);
-    const int helpHeight=std::max(D(40),Measure(body_,font_,Text(Control(Help)),contentWidth));
-    const int statusHeight=std::max(D(40),Measure(body_,font_,Text(Control(Status)),contentWidth));
-    progressTop_=D(232)+helpHeight+D(16);
-    const int countTop=progressTop_+D(16),statusTop=countTop+D(32);
-    contentHeight_=statusTop+statusHeight+D(12);
-    offset_=std::clamp(offset_,0,std::max(0,contentHeight_-bodyHeight_));
+    const int helpHeight=std::max(D(28),Measure(body_,font_,Text(Control(Help)),contentWidth));
+    const int countHeight=std::max(D(20),Measure(body_,font_,Text(Control(Count)),contentWidth));
+    const int statusHeight=std::max(D(28),Measure(body_,font_,Text(Control(Status)),contentWidth));
+    const int ySource = 0;
+    const int yDirLabel = ySource + D(32);
+    const int yDir = yDirLabel + D(22);
+    const int yFileLabel = yDir + D(36);
+    const int yFile = yFileLabel + D(22);
+    const int yLengthLabel = yFile + D(36);
+    const int yLength = yLengthLabel + D(22);
+    const int yHelp = yLength + D(36);
+    progressTop_ = yHelp + helpHeight + D(12);
+    const int countTop = progressTop_ + D(6) + D(10);
+    const int statusTop = countTop + countHeight + D(8);
+    contentHeight_ = statusTop + statusHeight + D(16);
+    offset_ = std::clamp(offset_,0,std::max(0,contentHeight_-bodyHeight_));
     const auto move=[&](int id,int x,int y,int w,int h){MoveWindow(Control(id),x,y-offset_,std::max(1,w),h,TRUE);};
-    move(Source,0,0,contentWidth,D(28));
-    move(DirectionLabel,0,D(40),half,D(20));move(ModeLabel,half+D(12),D(40),half,D(20));
-    move(Direction,0,D(64),half,D(180));move(Mode,half+D(12),D(64),half,D(200));
+    move(Source,0,ySource,contentWidth,D(28));
+    move(DirectionLabel,0,yDirLabel,half,D(20));move(ModeLabel,half+D(12),yDirLabel,half,D(20));
+    move(Direction,0,yDir,half,D(180));move(Mode,half+D(12),yDir,half,D(200));
     {UiLayoutBatch b;b.ComboVisibleHeight(Control(Direction),D(28));b.ComboVisibleHeight(Control(Mode),D(28));b.Commit();}
-    move(FileLabel,0,D(104),contentWidth,D(20));move(File,0,D(128),contentWidth-D(40),D(28));move(Browse,contentWidth-D(28),D(128),D(28),D(28));
-    move(LengthLabel,0,D(168),contentWidth,D(20));move(Length,0,D(192),contentWidth,D(28));
-    move(Help,0,D(232),contentWidth,helpHeight);
-    move(Count,0,countTop,contentWidth,D(24));move(Status,0,statusTop,contentWidth,statusHeight);
+    move(FileLabel,0,yFileLabel,contentWidth,D(20));move(File,0,yFile,contentWidth-D(40),D(28));move(Browse,contentWidth-D(28),yFile,D(28),D(28));
+    move(LengthLabel,0,yLengthLabel,contentWidth,D(20));move(Length,0,yLength,contentWidth,D(28));
+    move(Help,0,yHelp,contentWidth,helpHeight);
+    move(Count,0,countTop,contentWidth,countHeight);move(Status,0,statusTop,contentWidth,statusHeight);
     const int buttonWidth=std::max(1,(width-D(12))/2),top=std::max(0,static_cast<int>(client.bottom)-D(36));
     MoveWindow(Control(Start),0,top,buttonWidth,D(36),TRUE);MoveWindow(Control(Cancel),buttonWidth+D(12),top,buttonWidth,D(36),TRUE);
     InvalidateRect(body_,nullptr,FALSE);
@@ -90,13 +112,20 @@ void XferPane::Refresh() {
     if(!window_||!controller_)return;
     if(SendMessageW(Control(Direction),CB_GETDROPPEDSTATE,0,0)||SendMessageW(Control(Mode),CB_GETDROPPEDSTATE,0,0))return;
     const auto target=target_();const auto state=controller_->State();
+    if(target.id!=lastSessionId_) {
+        lastSessionId_=target.id;
+        localNotice_.clear();
+    }
     const bool receive=SendMessageW(Control(Direction),CB_GETCURSEL,0,0)==1;
-    UiSetButtonGlyph(Control(Start), receive ? UiGlyph::Import : UiGlyph::Export, receive ? L"开始接收文件" : L"开始发送文件");
     const int protocol=static_cast<int>(SendMessageW(Control(Mode),CB_GETCURSEL,0,0));
     const bool supported=target.connection&&target.connection->IsConnected()&&target.connection->SupportsTransfer()&&target.unavailable.empty();
-    bool layout=false;
-    layout|=Label(Control(Source),state.busy?L"任务："+state.source:target.name.empty()?L"未选择串口":target.name);
-    layout|=Label(Control(FileLabel),receive?L"接收保存到（新文件）":L"发送文件");
+    const bool relevant=(target.id!=0)&&(state.session==target.id);
+    const bool targetActive=state.busy&&relevant;
+    targetActive_=targetActive;
+    const bool showPartial=!state.partial.empty()&&relevant;
+
+    const std::wstring sourceText=state.busy?L"任务："+state.source:target.name.empty()?L"未选择串口":target.name;
+    const std::wstring fileLabelText=receive?L"接收保存到（新文件）":L"发送文件";
     const wchar_t* hints[]={
         L"原始模式没有协议校验。接收长度为0时需手动完成；发送完成只说明写出，不证明设备已保存。",
         L"XMODEM 支持CRC/校验和。接收长度为0时保留块补齐字节；Linux常用rx/sx，按设备实际命令操作。",
@@ -104,28 +133,114 @@ void XferPane::Refresh() {
         L"ZMODEM 支持CRC16/CRC32与重传；Linux常用rz/sz。每次接收单个文件，文件小于4GiB。"};
     auto help=std::wstring(hints[std::clamp(protocol,0,3)]);
     if(receive)help+=L" 接收使用新文件名，不覆盖原文件；本版接收上限4GiB。";
-    layout|=Label(Control(Help),help);
+
     const auto note=!state.busy&&!localNotice_.empty()?localNotice_:
-        state.busy||(!state.note.empty()&&state.session==target.id)?state.note:
+        targetActive||(!state.note.empty()&&relevant)?state.note:
         target.unavailable.empty()?(receive&&protocol==0?
             L"请先开始接收，再触发设备发送原始字节；原始模式不会补收开始前的数据。":
             L"请先在设备端进入匹配的收发模式，再开始传输。"):target.unavailable;
-    layout|=Label(Control(Status),note+(state.partial.empty()?L"":L"\r\n部分文件："+state.partial));
-    const bool relevant=state.session&&(state.busy||state.session==target.id);
-    displayBytes_=relevant?state.bytes:0;displayTotal_=relevant?state.total:0;
-    const auto count=relevant?std::to_wstring(state.bytes)+L" / "+(state.total?std::to_wstring(state.total):L"未知")+L" 字节":L"等待开始";
-    Label(Control(Count),count);
-    for(int id:{Direction,Mode,File,Browse})EnableWindow(Control(id),!state.busy);
-    EnableWindow(Control(Length),!state.busy&&receive&&protocol<2);
+    const std::wstring statusText=note+(showPartial?L"\r\n部分文件："+state.partial:L"");
+
+    std::wstring countText;
+    if(targetActive) {
+        if(state.total>0) countText=std::to_wstring(state.bytes)+L" / "+std::to_wstring(state.total)+L" 字节";
+        else if(state.bytes==0) countText=L"等待数据…";
+        else countText=L"已接收 "+std::to_wstring(state.bytes)+L" 字节（总长度未知）";
+    } else if(relevant) {
+        if(state.success) countText=L"传输完成 ("+std::to_wstring(state.bytes)+L" 字节)";
+        else if(state.cancelled) countText=L"传输已停止 ("+std::to_wstring(state.bytes)+L" 字节)";
+        else if(state.bytes>0) countText=std::to_wstring(state.bytes)+L" 字节";
+        else countText=L"等待开始";
+    } else {
+        countText=L"等待开始";
+    }
+
+    bool layoutNeeded=false;
+    layoutNeeded|=Label(Control(Source),sourceText);
+    layoutNeeded|=Label(Control(FileLabel),fileLabelText);
+    layoutNeeded|=Label(Control(Help),help);
+    layoutNeeded|=Label(Control(Status),statusText);
+    layoutNeeded|=Label(Control(Count),countText);
+
+    displayBytes_=targetActive?state.bytes:(relevant?state.bytes:0);
+    displayTotal_=targetActive?state.total:(relevant?state.total:0);
+
+    if((IsWindowEnabled(Control(File))!=FALSE)!=true)EnableWindow(Control(File),TRUE);
+    if(((GetWindowLongPtrW(Control(File),GWL_STYLE)&ES_READONLY)!=0)!=state.busy)
+        SendMessageW(Control(File),EM_SETREADONLY,state.busy?TRUE:FALSE,0);
+    for(int id:{Direction,Mode,Browse}) {
+        if((IsWindowEnabled(Control(id))!=FALSE)!=(!state.busy))
+            EnableWindow(Control(id),!state.busy);
+    }
+    const bool lengthEnabled=!state.busy&&receive&&protocol<2;
+    if((IsWindowEnabled(Control(Length))!=FALSE)!=lengthEnabled)
+        EnableWindow(Control(Length),lengthEnabled);
+    if(((GetWindowLongPtrW(Control(Length),GWL_STYLE)&ES_READONLY)!=0)!=state.busy)
+        SendMessageW(Control(Length),EM_SETREADONLY,state.busy?TRUE:FALSE,0);
+
     const bool rawFinish=state.busy&&state.protocol==xfer::Protocol::Raw&&state.direction==xfer::Direction::Receive&&
         state.expectedReceiveBytes==0&&!state.stopping&&!state.finishing;
-    Label(Control(Start),rawFinish?L"完成接收":state.busy?(state.stopping?L"正在取消":state.finishing?L"正在保存":L"传输中"):receive?L"开始接收":L"开始发送");
-    EnableWindow(Control(Start),rawFinish||(!state.busy&&supported&&!Text(Control(File)).empty()));
-    EnableWindow(Control(Cancel),state.busy&&!state.stopping);
+    UiGlyph startGlyph=UiGlyph::Run;
+    std::wstring startTip,startText;
+    if(rawFinish) {
+        startGlyph=UiGlyph::Check;
+        startTip=L"完成接收并保存当前已收数据";
+        startText=L"完成接收";
+    } else if(state.busy) {
+        startGlyph=state.stopping?UiGlyph::Stop:(receive?UiGlyph::Import:UiGlyph::Export);
+        startTip=state.stopping?L"正在取消传输…":state.finishing?L"正在保存文件…":(receive?L"正在接收文件…":L"正在发送文件…");
+        startText=state.stopping?L"正在取消":state.finishing?L"正在保存":L"传输中";
+    } else {
+        startGlyph=receive?UiGlyph::Import:UiGlyph::Export;
+        startTip=receive?L"开始接收文件":L"开始发送文件";
+        startText=receive?L"开始接收":L"开始发送";
+    }
+    Label(Control(Start),startText);
+    if(lastRender_.startGlyph!=startGlyph||lastRender_.startTip!=startTip) {
+        UiSetButtonGlyph(Control(Start),startGlyph,startTip.c_str());
+        lastRender_.startGlyph=startGlyph;
+        lastRender_.startTip=startTip;
+    }
+    const std::wstring cancelTip=L"停止当前传输";
+    if(lastRender_.cancelTip!=cancelTip) {
+        UiSetButtonGlyph(Control(Cancel),UiGlyph::Stop,cancelTip.c_str());
+        lastRender_.cancelTip=cancelTip;
+    }
+    const bool startEnabled=rawFinish||(!state.busy&&supported&&!Text(Control(File)).empty());
+    const bool cancelEnabled=state.busy&&!state.stopping;
+    if((IsWindowEnabled(Control(Start))!=FALSE)!=startEnabled) {
+        EnableWindow(Control(Start),startEnabled);
+    }
+    if((IsWindowEnabled(Control(Cancel))!=FALSE)!=cancelEnabled) {
+        EnableWindow(Control(Cancel),cancelEnabled);
+    }
+    lastRender_.startEnabled=startEnabled;
+    lastRender_.cancelEnabled=cancelEnabled;
+
+    const auto filePath=Text(Control(File));
+    if(filePath!=lastRender_.filePath) {
+        UiSetControlTooltip(Control(File),filePath.c_str());
+        lastRender_.filePath=filePath;
+    }
+    const auto srcVal=Text(Control(Source));
+    if(srcVal!=lastRender_.sourceText) {
+        UiSetControlTooltip(Control(Source),srcVal.c_str());
+        lastRender_.sourceText=srcVal;
+    }
+
     if(state.busy!=wasBusy_){wasBusy_=state.busy;if(stateChanged)stateChanged();}
-    if(layout)Layout();
-    InvalidateRect(body_,nullptr,FALSE);
-    if(state.busy||IsWindowVisible(window_))SetTimer(window_,1,100,nullptr);else KillTimer(window_,1);
+    if(layoutNeeded) {
+        Layout();
+    } else if(state.busy||targetActive_!=lastRender_.busy||displayBytes_!=lastRender_.bytes||displayTotal_!=lastRender_.total) {
+        RECT client{};GetClientRect(body_,&client);
+        const int right=std::max(D(16),static_cast<int>(client.right)-D(16)),top=progressTop_-offset_;
+        RECT progressRect{0,top,right,top+D(8)};
+        InvalidateRect(body_,&progressRect,FALSE);
+    }
+    lastRender_.busy=targetActive_;
+    lastRender_.bytes=displayBytes_;
+    lastRender_.total=displayTotal_;
+    if(state.busy)SetTimer(window_,1,100,nullptr);else KillTimer(window_,1);
 }
 void XferPane::BrowseFile() {
     const bool receive=SendMessageW(Control(Direction),CB_GETCURSEL,0,0)==1;
@@ -158,9 +273,18 @@ void XferPane::Paint(HDC target) {
     FillRect(dc,&r,surface_);const auto c=UiTheme(dark_);
     const int right=std::max(D(16),static_cast<int>(r.right)-D(16)),top=progressTop_-offset_;
     UiBox(dc,{0,top,right,top+D(6)},c.raised,c.raised,D(3));
-    if(displayTotal_&&displayBytes_) {
+    if(displayTotal_>0&&displayBytes_>0) {
         const auto fraction=static_cast<long double>(std::min(displayBytes_,displayTotal_))/displayTotal_;
         UiBox(dc,{0,top,static_cast<LONG>(right*fraction),top+D(6)},c.accent,c.accent,D(3));
+    } else if(targetActive_&&displayTotal_==0) {
+        const int blockWidth=std::max(D(28),right/4);
+        const int travel=std::max(1,right+blockWidth);
+        const int tick=static_cast<int>(displayBytes_==0?((GetTickCount64()/12)%travel):((displayBytes_*13+(GetTickCount64()/15))%travel))-blockWidth;
+        const int bLeft=std::clamp(tick,0,right);
+        const int bRight=std::clamp(tick+blockWidth,0,right);
+        if(bRight>bLeft) {
+            UiBox(dc,{bLeft,top,bRight,top+D(6)},c.accent,c.accent,D(3));
+        }
     }
     if(contentHeight_>bodyHeight_) {
         const int thumb=std::max(D(28),bodyHeight_*bodyHeight_/std::max(1,contentHeight_));
@@ -219,8 +343,18 @@ LRESULT CALLBACK XferPane::Proc(HWND h,UINT m,WPARAM w,LPARAM l) {
     }
     if(m==WM_ERASEBKGND){RECT r{};GetClientRect(h,&r);if(self->surface_)FillRect(reinterpret_cast<HDC>(w),&r,self->surface_);return 1;}
     if(m==WM_CTLCOLORSTATIC||m==WM_CTLCOLOREDIT||m==WM_CTLCOLORLISTBOX) {
-        const auto c=UiTheme(self->dark_);auto dc=reinterpret_cast<HDC>(w);SetTextColor(dc,c.text);SetBkColor(dc,m==WM_CTLCOLOREDIT?c.field:c.surface);
-        return reinterpret_cast<LRESULT>(m==WM_CTLCOLOREDIT?self->field_:self->surface_);
+        const auto c=UiTheme(self->dark_);auto dc=reinterpret_cast<HDC>(w);
+        HWND controlHwnd=reinterpret_cast<HWND>(l);
+        const bool isEdit=(m==WM_CTLCOLOREDIT)||(controlHwnd==self->Control(File))||(controlHwnd==self->Control(Length));
+        if(isEdit) {
+            const bool enabled=IsWindowEnabled(controlHwnd)!=FALSE;
+            const bool readOnly=(GetWindowLongPtrW(controlHwnd,GWL_STYLE)&ES_READONLY)!=0;
+            SetTextColor(dc,(!enabled||readOnly)?c.muted:c.text);
+            SetBkColor(dc,c.field);
+            return reinterpret_cast<LRESULT>(self->field_);
+        }
+        SetTextColor(dc,c.text);SetBkColor(dc,c.surface);
+        return reinterpret_cast<LRESULT>(self->surface_);
     }
     if(m==WM_COMMAND) {
         const int id=LOWORD(w),note=HIWORD(w);
@@ -235,10 +369,14 @@ LRESULT CALLBACK XferPane::Proc(HWND h,UINT m,WPARAM w,LPARAM l) {
         if(item.CtlType==ODT_BUTTON) {
             UiBufferedPaint paint(item.hDC,item.rcItem);auto dc=paint.Dc();const auto c=UiTheme(self->dark_);
             FillRect(dc,&item.rcItem,self->surface_);const bool enabled=IsWindowEnabled(item.hwndItem)!=FALSE;
-            const auto v=UiButtonVisual(c,enabled,item.itemState&ODS_SELECTED,GetPropW(item.hwndItem,L"SerialCtl.PowerHover")!=nullptr,item.CtlID==Start);
-            UiBox(dc,item.rcItem,v.fill,v.border,UiCapsuleRadius(item.rcItem));
-            UiButtonKeyboardFocus(dc,item.rcItem,item.itemState,self->dpi_,v.ink);
-            if(!UiDrawButtonGlyph(dc,item,v.ink,self->dpi_)) {
+            const bool flat=GetPropW(item.hwndItem,L"SerialCtl.FlatIconVisual")!=nullptr;
+            const bool pressed=(item.itemState&ODS_SELECTED)!=0;
+            const bool hovered=GetPropW(item.hwndItem,L"SerialCtl.PowerHover")!=nullptr;
+            const auto v=flat?UiFlatIconVisual(c,c.surface,enabled,pressed,hovered):UiButtonVisual(c,enabled,pressed,hovered,item.CtlID==Start);
+            if(!flat||v.fill!=c.surface)
+                UiBox(dc,item.rcItem,v.fill,flat?v.fill:v.border,UiCapsuleRadius(item.rcItem));
+            UiButtonKeyboardFocus(dc,item.rcItem,item.itemState,self->dpi_,flat?UiFocusInk(self->dark_):v.ink);
+            if(!UiDrawButtonGlyph(dc,item,item.CtlID==Cancel&&enabled?c.danger:v.ink,self->dpi_)) {
                 const auto old=SelectObject(dc,self->font_);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,item.CtlID==Cancel&&enabled?c.danger:v.ink);
                 auto r=item.rcItem;DrawTextW(dc,Text(item.hwndItem).c_str(),-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);SelectObject(dc,old);
             }
@@ -250,4 +388,3 @@ LRESULT CALLBACK XferPane::Proc(HWND h,UINT m,WPARAM w,LPARAM l) {
     return DefWindowProcW(h,m,w,l);
 }
 } // namespace serialctl
-

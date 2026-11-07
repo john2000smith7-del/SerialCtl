@@ -3,6 +3,8 @@
 #include "UpdateInstaller.h"
 #include "GuiInstance.h"
 #include "NetworkConnect.h"
+#include "McpStdioBridge.h"
+#include "McpService.h"
 
 // Windows SDK GDI+ declarations require the COM/property types first.
 // clang-format off
@@ -26,12 +28,22 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
     }
     if (std::wstring(parameters) == L"--serialctl-cmd-bridge")
         return serialctl::RunCmdConsoleBridge();
+    if (std::wstring(parameters) == L"--mcp-stdio")
+        return serialctl::mcp::RunMcpStdioBridge();
+    if (std::wstring(parameters) == L"--mcp-service")
+        return serialctl::mcp::McpService::RunAsScmService();
+    if (std::wstring(parameters) == L"--mcp-agent")
+        return serialctl::mcp::McpService::RunAsUserAgent();
     int updateExitCode = 0;
     if (serialctl::update::HandleUpdateCommandLine(parameters, updateExitCode))
         return updateExitCode;
     serialctl::GuiInstance guiInstance;
     const auto instanceResult = guiInstance.Begin();
     if (instanceResult == serialctl::GuiInstance::Result::Existing) return 0;
+    if (instanceResult == serialctl::GuiInstance::Result::CrossSessionExisting) {
+        MessageBoxW(nullptr, L"SerialCtl 已在此计算机的其他登录会话中运行，请先返回原会话或关闭原实例。", L"SerialCtl", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
     if (instanceResult == serialctl::GuiInstance::Result::Failed) {
         MessageBoxW(nullptr, L"无法建立应用实例，请稍后重新打开。", L"SerialCtl", MB_OK | MB_ICONERROR);
         return 1;

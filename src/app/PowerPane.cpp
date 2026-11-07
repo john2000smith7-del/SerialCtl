@@ -1007,9 +1007,14 @@ void PowerPane::Paint(HDC dc) {
     const bool narrow = r.right < d(400);
     icons_.Draw(dc, ToolbarIcon::Power, {0, d(8), d(18), d(26)}, dark_);
     text(L"IT6332A", {d(28),0,r.right-d(108),d(36)}, titleFont_,c.text);
-    const auto connectionLabel=std::wstring(state_.value("connected",false)?L"已连接":L"未连接")+(state_.value("readbackStale",false)?L" · 上次读回":L"");
+    std::wstring connectionLabel=std::wstring(state_.value("connected",false)?L"已连接":L"未连接")+(state_.value("readbackStale",false)?L" · 上次读回":L"");
+    COLORREF statusColor = c.muted;
+    if (!state_.value("connected", false) && state_.value("unconfirmedPowerOff", false)) {
+        connectionLabel = L"已断开 · 输出未确认掉电(状态未知)";
+        statusColor = c.danger;
+    }
     text(connectionLabel,
-        {narrow ? 0 : d(144), narrow ? d(28) : 0, r.right-d(108), narrow ? d(52) : d(36)}, smallFont_,c.muted);
+        {narrow ? 0 : d(144), narrow ? d(28) : 0, r.right-d(108), narrow ? d(52) : d(36)}, smallFont_, statusColor);
     UiSeparator(dc, 0, r.right, bodyTop_ - d(8), c.border);
     UiSeparator(dc, 0, r.right, footerTop_ - d(8), c.border);
     if (tab_ != 1) {

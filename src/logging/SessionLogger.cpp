@@ -191,6 +191,8 @@ bool IsLogFamily(const std::wstring &name, const std::wstring &root) {
 
 #ifdef SERIALCTL_LOGGER_TESTING
 std::atomic<std::int64_t> SessionLogger::testCopyFailureAfter_{-1};
+std::atomic<bool> SessionLogger::testFailFlushCopy_{false};
+std::atomic<bool> SessionLogger::testFailFlushStop_{false};
 #endif
 
 SessionLogger::ExportPoint SessionLogger::CaptureExportPoint() {
@@ -330,7 +332,11 @@ bool SessionLogger::CopySnapshot(const Snapshot &snapshot, const std::wstring &d
             }
         }
         if (ExportCancelled(cancel)) return CancelExport(error);
-        if (!FlushFileBuffers(output.value)) {
+        bool flushOk = FlushFileBuffers(output.value) != FALSE;
+#ifdef SERIALCTL_LOGGER_TESTING
+        if (testFailFlushCopy_.load()) flushOk = false;
+#endif
+        if (!flushOk) {
             const auto code = GetLastError();
             if (ExportCancelled(cancel)) return CancelExport(error);
             error = L"日志副本刷新失败：" + Win32ErrorMessage(code);
@@ -381,7 +387,11 @@ void SessionLogger::Stop()
     }
     std::wstring failure;
     if (file != INVALID_HANDLE_VALUE) {
-        if (!FlushFileBuffers(file)) failure = L"日志刷新失败：" + Win32ErrorMessage();
+        bool flushOk = FlushFileBuffers(file) != FALSE;
+#ifdef SERIALCTL_LOGGER_TESTING
+        if (testFailFlushStop_.load()) flushOk = false;
+#endif
+        if (!flushOk) failure = L"日志刷新失败：" + Win32ErrorMessage();
         CloseHandle(file);
     }
     if (!failure.empty()) {

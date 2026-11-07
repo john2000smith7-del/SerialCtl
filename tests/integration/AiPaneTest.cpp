@@ -105,7 +105,7 @@ struct AiPaneTestAccess {
         for (bool dark : {false, true}) {
             pane.Theme(dark);
             for (int width : {260, 420}) {
-                MoveWindow(pane.window_, saved.left, saved.top, width, 600, TRUE);
+                MoveWindow(pane.window_, saved.left, saved.top, pane.D(width), 600, TRUE);
                 for (const auto &name : {std::string(), std::string("m"), std::string("fixture-") + std::string(200, 'x')}) {
                     pane.serverDefaultModel_ = name;
                     const std::wstring label = name.empty() ? L"模型未获取" : L"默认 · " + std::wstring(name.begin(), name.end());
@@ -265,6 +265,23 @@ struct AiPaneTestAccess {
             wchar_t leaf[256]{};SendMessageW(combo,CB_GETLBTEXT,1,reinterpret_cast<LPARAM>(leaf));
             if(std::wstring(leaf).find(L'/')!=std::wstring::npos)
                 throw std::runtime_error("Directory choices repeat full parent paths instead of child names");
+            // Issue #53: Selecting a subdirectory navigates into that level and keeps the dropdown open for continuous multi-level navigation.
+            SendMessageW(combo,CB_SETCURSEL,1,0);
+            SendMessageW(dialog,WM_COMMAND,MAKEWPARAM(208,CBN_SELENDOK),reinterpret_cast<LPARAM>(combo));
+            MSG dirMsg{};
+            while(PeekMessageW(&dirMsg,dialog,WM_APP + 196,WM_APP + 196,PM_REMOVE)) DispatchMessageW(&dirMsg);
+            auto subPending=std::find_if(pane.requests_.begin(),pane.requests_.end(),[](const auto &r){return r.second.purpose=="directory";});
+            if(subPending==pane.requests_.end()) throw std::runtime_error("Selecting a subdirectory did not initiate next-level directory query");
+            pane.Event({{"event","response"},{"token",subPending->first},{"result",{{"entries",ai::Json::array({
+                {{"fileName","module"},{"isDirectory",true}},{{"fileName","util"},{"isDirectory",true}}})}}}});
+            wchar_t updatedPath[512]{};GetDlgItemTextW(dialog,213,updatedPath,512);
+            const std::wstring expectedSuffix = L"/" + std::wstring(leaf);
+            if(std::wstring(updatedPath).size() < expectedSuffix.size() ||
+               std::wstring(updatedPath).rfind(expectedSuffix) != std::wstring(updatedPath).size() - expectedSuffix.size())
+                throw std::runtime_error("Multi-level navigation did not update full path display");
+            if(!SendMessageW(combo,CB_GETDROPPEDSTATE,0,0) || SendMessageW(combo,CB_GETCOUNT,0,0)!=3)
+                throw std::runtime_error("Directory selector collapsed instead of staying expanded for continuous multi-level navigation");
+            SendMessageW(combo,CB_SHOWDROPDOWN,FALSE,0);
             if(!GetDlgItem(dialog,213)) throw std::runtime_error("Workspace lacks full-path disclosure and horizontal viewing");
             RECT field{},path{},up{},refresh{},client{};
             GetWindowRect(combo,&field);GetWindowRect(GetDlgItem(dialog,211),&up);GetWindowRect(GetDlgItem(dialog,212),&refresh);
@@ -480,7 +497,7 @@ struct AiPaneTestAccess {
         for (bool dark : {false, true}) {
             pane.Theme(dark);
             for (int width : {228, 260, 368, 400, 900}) {
-                SetWindowPos(pane.Handle(), nullptr, 0, 0, width, 600, SWP_NOZORDER);
+                SetWindowPos(pane.Handle(), nullptr, 0, 0, pane.D(width), 600, SWP_NOZORDER);
                 pane.Layout();
                 RECT input{}, outer{}, canvas{}, target{}, send{};
                 GetWindowRect(pane.Control(10), &input);
@@ -496,6 +513,43 @@ struct AiPaneTestAccess {
                 UpdateWindow(pane.Handle());
                 UpdateWindow(pane.transcript_);
             }
+        }
+        // Issue #48: Auto-expanding input height upward, clamped to maxInputHeight, shrinking back on clear.
+        {
+            SetWindowPos(pane.Handle(), nullptr, 0, 0, pane.D(600), 600, SWP_NOZORDER);
+            SetWindowTextW(pane.Control(10), L"");
+            pane.Layout();
+            RECT baseInput{}, baseSend{}, baseCanvas{};
+            GetWindowRect(pane.Control(10), &baseInput);
+            GetWindowRect(pane.Control(11), &baseSend);
+            GetWindowRect(pane.transcript_, &baseCanvas);
+            require(baseInput.bottom - baseInput.top == pane.D(40), "Empty input must start at baseline D(40) height");
+
+            SetWindowTextW(pane.Control(10), L"第1行日志\r\n第2行日志\r\n第3行日志\r\n第4行日志\r\n第5行日志");
+            RECT midInput{}, midSend{}, midCanvas{};
+            GetWindowRect(pane.Control(10), &midInput);
+            GetWindowRect(pane.Control(11), &midSend);
+            GetWindowRect(pane.transcript_, &midCanvas);
+            require(midInput.bottom - midInput.top > pane.D(40) && midInput.top < baseInput.top,
+                    "Multi-line input did not expand upward");
+            require(midSend.top == baseSend.top && midSend.bottom == baseSend.bottom,
+                    "Expanding input moved the bottom action row");
+            require(midCanvas.bottom <= midInput.top,
+                    "Transcript overlapped the expanded composer");
+
+            std::wstring thirtyLines;
+            for (int i = 0; i < 30; ++i) thirtyLines += L"异常堆栈行 " + std::to_wstring(i) + L"\r\n";
+            SetWindowTextW(pane.Control(10), thirtyLines.c_str());
+            RECT maxInput{};
+            GetWindowRect(pane.Control(10), &maxInput);
+            require(maxInput.bottom - maxInput.top <= pane.D(200) && maxInput.bottom - maxInput.top >= midInput.bottom - midInput.top,
+                    "Long input exceeded maxInputHeight cap");
+
+            SetWindowTextW(pane.Control(10), L"");
+            RECT clearedInput{};
+            GetWindowRect(pane.Control(10), &clearedInput);
+            require(clearedInput.bottom - clearedInput.top == pane.D(40) && clearedInput.top == baseInput.top,
+                    "Clearing input did not shrink composer back to baseline height");
         }
         pane.Action(20);
         require(pane.scroll_.offset == pane.scroll_.Maximum(), "Return-to-latest button failed");
@@ -679,8 +733,8 @@ struct AiPaneTestAccess {
                 require(ink > 3,
                         "User prose and code must visibly render light ink on their blue surfaces in both themes");
                 if (paragraph.style == 2) {
-                    const auto background = GetPixel(dc, message.bounds.left + paragraph.rect.right - 8,
-                                                     message.bounds.top + paragraph.rect.top + 8 - pane.scroll_.offset);
+                    const auto background = GetPixel(dc, message.bounds.left + paragraph.rect.right - pane.D(8),
+                                                     message.bounds.top + paragraph.rect.top + pane.D(8) - pane.scroll_.offset);
                     auto linear = [](unsigned v) {
                         const double c = v / 255.0;
                         return c <= .04045 ? c / 12.92 : std::pow((c + .055) / 1.055, 2.4);

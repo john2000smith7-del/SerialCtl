@@ -71,6 +71,8 @@ class SessionLogger
 #ifdef SERIALCTL_LOGGER_TESTING
     friend struct SessionLoggerTestAccess;
     static std::atomic<std::int64_t> testCopyFailureAfter_;
+    static std::atomic<bool> testFailFlushCopy_;
+    static std::atomic<bool> testFailFlushStop_;
 #endif
 };
 

@@ -54,7 +54,7 @@ class PowerService {
     void Select(int channel);
     void Outputs(const Json &channels, bool enabled, Json &result);
     void StopTask();
-    void Disconnect(bool preserveOutputs = false);
+    void Disconnect(bool preserveOutputs = false, Json *action = nullptr);
     void Command(const std::string &command);
     std::string Query(const std::string &command);
     double Number(const std::string &command);

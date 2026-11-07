@@ -14,13 +14,24 @@ enum class Operation {
     CompactConversation,
     ServerHome,
     ReadDirectory,
-    DirectoryFallback
+    DirectoryFallback,
+    RunCommand
 };
 inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &data) {
     Json params = Json::object();
     const char *method = "";
     const Json policy = {{"features.shell_tool", true}, {"features.multi_agent", false}, {"web_search", "disabled"}};
     switch (operation) {
+    case Operation::RunCommand:
+        method = "command/exec";
+        params = {{"command", data.at("command")},
+                  {"timeoutMs", data.value("timeoutMs", 5000)},
+                  {"outputBytesCap", data.value("outputBytesCap", 65536)},
+                  {"sandbox", "danger-full-access"},
+                  {"sandboxPolicy", {{"type", "dangerFullAccess"}}},
+                  {"approvalPolicy", "never"}};
+        if (data.contains("cwd")) params["cwd"] = data["cwd"];
+        break;
     case Operation::ServerHome:
         method = "command/exec";
         params = {{"command", Json::array({"printenv", "HOME"})}, {"timeoutMs", 3000}, {"outputBytesCap", 4096}};
@@ -50,6 +61,7 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
             {"baseInstructions", EngineerInstructions()},
             {"developerInstructions", u8"可使用 Codex 原生工具读取、修改服务器项目代码并执行服务器命令，权限限于 SSH 登录用户。Windows 内的终端和电源只通过 serialctl_ 工具访问；显示实际路径、命令、输出和文件修改结果，不混淆服务器与板端。"},
             {"sandbox", "danger-full-access"},
+            {"sandboxPolicy", {{"type", "dangerFullAccess"}}},
             {"approvalPolicy", "never"},
             {"dynamicTools", SerialTools()},
             {"config", policy}};
@@ -57,6 +69,7 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
     case Operation::StartTask:
         method = "turn/start";
         params = {{"threadId", data.at("conversationId")},
+                  {"approvalPolicy", "never"},
                   {"input", Json::array({{{"type", "text"}, {"text", data.at("text")}}})}};
         params["sandboxPolicy"] = {{"type", "dangerFullAccess"}};
         break;
@@ -72,6 +85,7 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
         method = "thread/resume";
         params = {{"threadId", data.at("conversationId")},
                   {"sandbox", "danger-full-access"},
+                  {"sandboxPolicy", {{"type", "dangerFullAccess"}}},
                   {"approvalPolicy", "never"},
                   {"baseInstructions", EngineerInstructions()},
                   {"developerInstructions", u8"服务器项目可用 Codex 原生文件及命令工具；终端和电源仍用已注册的 serialctl_ 工具。权限沿用 SSH 用户，不将容器命令误当成板端命令。"},
@@ -105,23 +119,59 @@ inline std::string NativeItemText(const Json& item, bool completed) {
     }
     return text;
 }
+inline std::string ExtractSandbox(const Json &obj) {
+    if (!obj.is_object()) return {};
+    if (obj.contains("sandbox") && obj["sandbox"].is_string()) return obj["sandbox"].get<std::string>();
+    if (obj.contains("effectiveSandbox") && obj["effectiveSandbox"].is_string()) return obj["effectiveSandbox"].get<std::string>();
+    if (obj.contains("sandboxPolicy")) {
+        const auto &sp = obj["sandboxPolicy"];
+        if (sp.is_string()) return sp.get<std::string>();
+        if (sp.is_object() && sp.contains("type") && sp["type"].is_string()) return sp["type"].get<std::string>();
+    }
+    for (const char *sub : {"thread", "turn", "config"}) {
+        if (obj.contains(sub) && obj[sub].is_object()) {
+            auto s = ExtractSandbox(obj[sub]);
+            if (!s.empty()) return s;
+        }
+    }
+    return {};
+}
+
+inline std::string ExtractApprovalPolicy(const Json &obj) {
+    if (!obj.is_object()) return {};
+    if (obj.contains("approvalPolicy") && obj["approvalPolicy"].is_string()) return obj["approvalPolicy"].get<std::string>();
+    if (obj.contains("effectiveApprovalPolicy") && obj["effectiveApprovalPolicy"].is_string()) return obj["effectiveApprovalPolicy"].get<std::string>();
+    for (const char *sub : {"thread", "turn", "config"}) {
+        if (obj.contains(sub) && obj[sub].is_object()) {
+            auto p = ExtractApprovalPolicy(obj[sub]);
+            if (!p.empty()) return p;
+        }
+    }
+    return {};
+}
+
 inline Json DecodeResponse(Operation operation, const Json &result) {
+    Json decoded = Json::object();
     switch (operation) {
     case Operation::ServerHome:
     case Operation::ReadDirectory:
     case Operation::DirectoryFallback:
+    case Operation::RunCommand:
         return result;
     case Operation::NewConversation:
-        return {{"conversationId", result.at("thread").at("id")},
+        decoded = {{"conversationId", result.at("thread").at("id")},
             {"cwd", result.at("thread").contains("cwd") && result.at("thread")["cwd"].is_string() ? result.at("thread")["cwd"] : Json("")}};
+        break;
     case Operation::StartTask:
-        return {{"taskId", result.at("turn").at("id")}};
+        decoded = {{"taskId", result.at("turn").at("id")}};
+        break;
     case Operation::StopTask:
     case Operation::CompactConversation:
         return Json::object();
     case Operation::Defaults: {
         const auto config = result.value("config", Json::object());
-        return {{"defaultModel", config.contains("model") && config["model"].is_string() ? config["model"] : Json("")}};
+        decoded = {{"defaultModel", config.contains("model") && config["model"].is_string() ? config["model"] : Json("")}};
+        break;
     }
     case Operation::Models: {
         Json models = Json::array();
@@ -172,11 +222,21 @@ inline Json DecodeResponse(Operation operation, const Json &result) {
                 messages[i]["failedStep"] = failedStep;
             }
         }
-        return {{"conversationId", thread.at("id")}, {"messages", messages},
+        decoded = {{"conversationId", thread.at("id")}, {"messages", messages},
             {"cwd", thread.contains("cwd") && thread["cwd"].is_string() ? thread["cwd"] : Json("")}};
+        break;
     }
+    default:
+        return Json::object();
     }
-    return Json::object();
+    if (operation == Operation::Defaults || operation == Operation::NewConversation ||
+        operation == Operation::RestoreConversation || operation == Operation::StartTask) {
+        auto sbox = ExtractSandbox(result);
+        if (!sbox.empty()) decoded["effectiveSandbox"] = sbox;
+        auto apprv = ExtractApprovalPolicy(result);
+        if (!apprv.empty()) decoded["effectiveApprovalPolicy"] = apprv;
+    }
+    return decoded;
 }
 inline Json DecodeNotification(const Json &wire) {
     if (wire.contains("event"))

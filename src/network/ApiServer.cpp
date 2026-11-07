@@ -46,17 +46,30 @@ bool Text(const Json &j, const char *key, size_t max = 128) {
            j[key].get_ref<const std::string &>().size() <= max;
 }
 } // namespace
-bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsigned last) {
+bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsigned last,
+                      const std::string &bindAddress,
+                      const std::vector<std::string> &allowedClients) {
     Stop();
     if (first == 0 || first > last || last > 65535) {
         error = L"无效端口范围";
         return false;
     }
+    bindAddress_ = bindAddress.empty() ? "0.0.0.0" : bindAddress;
+    allowedClients_ = allowedClients;
     try {
         instance_ = ws::RandomHex();
     } catch (...) {
         error = L"无法初始化网络实例";
         return false;
+    }
+    unsigned long bindIp = INADDR_ANY;
+    if (bindAddress_ != "0.0.0.0" && bindAddress_ != "*") {
+        IN_ADDR addr{};
+        if (InetPtonA(AF_INET, bindAddress_.c_str(), &addr) != 1) {
+            error = L"无效监听绑定地址";
+            return false;
+        }
+        bindIp = addr.s_addr;
     }
     for (unsigned port = first; port <= last; ++port) {
         SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -66,7 +79,7 @@ bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsi
         setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<char *>(&yes), sizeof(yes));
         sockaddr_in a{};
         a.sin_family = AF_INET;
-        a.sin_addr.s_addr = INADDR_ANY;
+        a.sin_addr.s_addr = bindIp;
         a.sin_port = htons(u_short(port));
         if (bind(s, reinterpret_cast<sockaddr *>(&a), sizeof(a)) == 0 && listen(s, SOMAXCONN) == 0) {
             listen_ = s;
@@ -154,6 +167,26 @@ Json ApiServer::Diagnostics() {
     std::lock_guard<std::mutex> l(mutex_);
     return diagnostics_;
 }
+Json ApiServer::Metrics() const {
+    std::lock_guard<std::mutex> l(mutex_);
+    size_t totalHistoryEvents = 0;
+    for (const auto &pair : histories_) {
+        totalHistoryEvents += pair.second.events.size();
+    }
+    return Json{
+        {"bindAddress", bindAddress_},
+        {"port", port_},
+        {"activeClients", clients_.size()},
+        {"publishedEvents", totalPublishedEvents_.load()},
+        {"historyTrims", historyTrimsCount_.load()},
+        {"publicationGaps", publicationGapCount_.load()},
+        {"publicationHighWaterMark", publicationHighWaterMark_.load()},
+        {"rejectedClients", rejectedClientsCount_.load()},
+        {"rejectedOrigins", rejectedOriginsCount_.load()},
+        {"historyBytes", historyBytes_},
+        {"historyEvents", totalHistoryEvents}
+    };
+}
 void ApiServer::Accept() {
     WSAEVENT waits[] = {stopEvent_, acceptEvent_};
     while (running_) {
@@ -188,13 +221,41 @@ void ApiServer::Accept() {
             WSAEventSelect(s, nullptr, 0);
             u_long blocking = 0;
             ioctlsocket(s, FIONBIO, &blocking);
-            std::vector<std::shared_ptr<ClientState>> retired;
+
+            char peer[INET_ADDRSTRLEN]{};
+            inet_ntop(AF_INET, &a.sin_addr, peer, sizeof(peer));
+            std::string peerIpStr = peer;
+
+            bool ipAllowed = true;
+            {
+                std::lock_guard<std::mutex> l(mutex_);
+                if (!allowedClients_.empty()) {
+                    ipAllowed = false;
+                    for (const auto &allowed : allowedClients_) {
+                        if (allowed == peerIpStr || allowed == "0.0.0.0" || allowed == "*") {
+                            ipAllowed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!ipAllowed) {
+                rejectedClientsCount_++;
+                const std::string forbidden =
+                    "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 18\r\n\r\nCLIENT_NOT_ALLOWED";
+                ws::SendAll(s, forbidden.data(), forbidden.size());
+                ws::FinishSend(s, 1500);
+                closesocket(s);
+                continue;
+            }
+
+            std::vector<std::shared_ptr<ClientState>> finishedClients;
             std::shared_ptr<ClientState> c;
             {
                 std::lock_guard<std::mutex> l(mutex_);
                 for (auto it = clients_.begin(); it != clients_.end();)
                     if ((*it)->finished) {
-                        retired.push_back(*it);
+                        finishedClients.push_back(*it);
                         it = clients_.erase(it);
                     } else
                         ++it;
@@ -202,13 +263,11 @@ void ApiServer::Accept() {
                     c = std::make_shared<ClientState>();
                     c->socket = s;
                     c->id = nextClient_++;
-                    char peer[INET_ADDRSTRLEN]{};
-                    inet_ntop(AF_INET, &a.sin_addr, peer, sizeof(peer));
-                    c->peer = std::string(peer) + ":" + std::to_string(ntohs(a.sin_port));
+                    c->peer = peerIpStr + ":" + std::to_string(ntohs(a.sin_port));
                     clients_.push_back(c);
                 }
             }
-            for (auto &old : retired)
+            for (auto &old : finishedClients)
                 old->reader.join();
             ws::SocketOptions(s, 1500);
             if (!c) {
@@ -318,6 +377,29 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
             !ws::Token(h.fields["sec-websocket-protocol"], ws::Protocol) || h.fields.count("transfer-encoding") ||
             (h.fields.count("content-length") && h.fields["content-length"] != "0"))
             throw ws::Error(1002, "UPGRADE_REQUIRED_SERIALCTL_V1");
+        if (h.fields.count("origin")) {
+            std::string origin = ws::Lower(h.fields["origin"]);
+            auto isLocalHostOrigin = [](const std::string &o) {
+                size_t pos = std::string::npos;
+                if (o.rfind("http://", 0) == 0) pos = 7;
+                else if (o.rfind("https://", 0) == 0) pos = 8;
+                else return false;
+                const char *hosts[] = {"localhost", "127.0.0.1", "[::1]"};
+                for (const char *host : hosts) {
+                    const size_t len = std::strlen(host);
+                    if (o.compare(pos, len, host) == 0) {
+                        const size_t end = pos + len;
+                        if (end == o.size() || o[end] == ':' || o[end] == '/')
+                            return true;
+                    }
+                }
+                return false;
+            };
+            if (!isLocalHostOrigin(origin)) {
+                rejectedOriginsCount_++;
+                throw ws::Error(1008, "ORIGIN_NOT_ALLOWED");
+            }
+        }
         auto response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: "
                         "Upgrade\r\nSec-WebSocket-Protocol: " +
                         std::string(ws::Protocol) +
@@ -372,7 +454,11 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
         Trace(c, "rejected", e.what());
         if (upgraded)
             Close(c, e.code, e.what(), false);
-        else {
+        else if (e.code == 1008 || std::string(e.what()) == "ORIGIN_NOT_ALLOWED") {
+            const std::string reply = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 18\r\n\r\nORIGIN_NOT_ALLOWED";
+            ws::SendAll(c->socket, reply.data(), reply.size());
+            ws::FinishSend(c->socket);
+        } else {
             const std::string reply = "HTTP/1.1 426 Upgrade Required\r\nUpgrade: websocket\r\nSec-WebSocket-Protocol: "
                                       "serialctl.v1\r\nConnection: close\r\nContent-Length: 51\r\n\r\nUpgrade "
                                       "required: SerialCtl WebSocket serialctl.v1\n";
@@ -580,6 +666,8 @@ bool ApiServer::EnqueuePublish(const std::string& target, const Bytes& data, con
     }
     publications_.push_back({target, source, kind, data, codePage, {}, data.size()});
     publicationBytes_ += data.size();
+    if (publicationBytes_ > publicationHighWaterMark_)
+        publicationHighWaterMark_ = publicationBytes_;
     publicationWake_.notify_one();
     return true;
 }
@@ -605,6 +693,8 @@ bool ApiServer::EnqueueSessions(std::vector<std::string> sessions) {
         Publication update;
         update.sessions = std::move(snapshot); update.charge = charge;
         publications_.push_back(std::move(update)); publicationBytes_ += charge;
+        if (publicationBytes_ > publicationHighWaterMark_)
+            publicationHighWaterMark_ = publicationBytes_;
     }
     publicationWake_.notify_one();
     return true;
@@ -642,6 +732,7 @@ void ApiServer::PublishPending() {
     }
 }
 void ApiServer::PublicationGap() {
+    publicationGapCount_++;
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto& target : sessions_) {
         auto& history = histories_[target];
@@ -674,31 +765,39 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
         }
         return;
     }
+    const auto tick = GetTickCount64();
+    std::vector<std::string> encodedChunks;
+    encodedChunks.reserve((data.size() + 16383) / 16384);
+    for (size_t offset = 0; offset < data.size(); offset += 16384) {
+        Bytes b(data.begin() + offset, data.begin() + std::min(data.size(), offset + 16384));
+        encodedChunks.push_back(Encode64(b));
+    }
     std::lock_guard<std::mutex> l(mutex_);
     if (!sessions_.count(target))
         return;
     auto &h = histories_[target];
-    for (size_t offset = 0; offset < data.size(); offset += 16384) {
-        Bytes b(data.begin() + offset, data.begin() + std::min(data.size(), offset + 16384));
-        Json event = {{"type", "event"},    {"version", 1},        {"instance", instance_},
-                      {"resource", target}, {"seq", ++h.seq},      {"kind", kind},
-                      {"source", source},   {"data", Encode64(b)}, {"tick", GetTickCount64()}};
+    for (auto &encoded : encodedChunks) {
+        Json event = {{"type", "event"},    {"version", 1},             {"instance", instance_},
+                      {"resource", target}, {"seq", ++h.seq},           {"kind", kind},
+                      {"source", source},   {"data", std::move(encoded)}, {"tick", tick}};
         if (codePage)
             event["codePage"] = codePage;
         auto serialized = event.dump();
         Bytes payload(serialized.begin(), serialized.end());
         auto bytes = payload.size();
-        h.events.push_back(event);
+        h.events.push_back({std::move(event), bytes});
         h.bytes += bytes;
         historyBytes_ += bytes;
+        totalPublishedEvents_++;
         for (auto &c : clients_)
             if (c->subscriptions.count(target))
                 Queue(c, 1, payload);
         while (h.bytes > MaxHistoryBytes || h.events.size() > 1024) {
-            auto n = h.events.front().dump().size();
+            auto n = h.events.front().bytes;
             h.bytes -= n;
             historyBytes_ -= n;
             h.events.pop_front();
+            historyTrimsCount_++;
         }
         while (historyBytes_ > 16 * 1024 * 1024) {
             // Fairness: trim the session holding the most history first instead of
@@ -709,10 +808,11 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
                     largest = &old.second;
             if (!largest)
                 break;
-            auto n = largest->events.front().dump().size();
+            auto n = largest->events.front().bytes;
             largest->bytes -= n;
             historyBytes_ -= n;
             largest->events.pop_front();
+            historyTrimsCount_++;
         }
     }
 }
@@ -722,12 +822,12 @@ Json ApiServer::EventsLocked(const std::string &target, std::uint64_t after) {
         return {{"events", Json::array()}, {"cursor", 0}, {"gap", after != 0}};
     auto &h = it->second;
     bool gap =
-        after > h.seq || (h.events.empty() ? after < h.seq : after + 1 < h.events.front()["seq"].get<std::uint64_t>());
+        after > h.seq || (h.events.empty() ? after < h.seq : after + 1 < h.events.front().event["seq"].get<std::uint64_t>());
     Json events = Json::array();
     if (!gap)
         for (auto &e : h.events)
-            if (e["seq"].get<std::uint64_t>() > after)
-                events.push_back(e);
+            if (e.event["seq"].get<std::uint64_t>() > after)
+                events.push_back(e.event);
     // History retrieval is bounded by the message limit; subscription streams individual frames.
     return {{"events", events}, {"cursor", h.seq}, {"gap", gap}};
 }
