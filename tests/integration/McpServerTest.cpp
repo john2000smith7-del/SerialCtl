@@ -687,6 +687,34 @@ void TestResidentLifecycle() {
     std::cout << "[Test 4] PASS: Resident lifecycle, Session 0 isolation, IPC bridge, and idempotent launch verified." << std::endl;
 }
 
+void TestStatelessHttpResponseIntegrity() {
+    std::cout << "[Test 5] Testing large stateless MCP JSON responses and input validation..." << std::endl;
+    McpHttpServer server;
+    std::wstring err;
+    constexpr uint16_t testPort = 7189;
+    const Json body = {{"jsonrpc", "2.0"}, {"id", 1},
+                       {"result", {{"payload", std::string(512 * 1024, 'X')}}}};
+    const std::string expected = body.dump();
+    const bool started = server.Start("127.0.0.1", testPort,
+        [&expected](const std::string&, const std::string&) { return expected; },
+        [] { return std::string("{\"status\":\"ok\"}"); }, err);
+    Expect(started, "Large MCP HTTP response server should start");
+    const std::string actual = HttpPost(testPort, "/mcp",
+        R"({"jsonrpc":"2.0","id":1,"method":"ping"})");
+    Expect(actual == expected, "Entire HTTP body must arrive without partial send truncation");
+
+    std::string headers;
+    HttpPostWithOrigin(testPort, "/mcp",
+        R"({"jsonrpc":42,"id":1,"method":"ping"})", "", headers);
+    Expect(headers.find("400 Bad Request") != std::string::npos,
+           "JSON-RPC with numeric protocol marker must return 400 instead of crashing");
+    // The HTTP service must continue accepting good messages after an invalid request.
+    Expect(HttpPost(testPort, "/mcp",
+        R"({"jsonrpc":"2.0","id":2,"method":"ping"})") == expected,
+        "HTTP request worker survives malformed JSON-RPC type");
+    server.Stop();
+}
+
 } // namespace
 
 int main() {
@@ -701,9 +729,10 @@ int main() {
     TestPowerWhitelistAndRejections();
     TestBusinessFlowAndPasswordMasking();
     TestResidentLifecycle();
+    TestStatelessHttpResponseIntegrity();
 
     std::cout << "========================================" << std::endl;
-    std::cout << "All 4 MCP Server Test Suites PASSED 100%!" << std::endl;
+    std::cout << "All 5 MCP Server Test Suites PASSED 100%!" << std::endl;
     std::cout << "========================================" << std::endl;
     return 0;
 }

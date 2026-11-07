@@ -7,6 +7,18 @@
 namespace serialctl::mcp {
 
 namespace {
+bool SendHttpAll(SOCKET socket, const std::string& response) {
+    size_t written = 0;
+    while (written < response.size()) {
+        const size_t remaining = response.size() - written;
+        const int count = send(socket, response.data() + written,
+                               static_cast<int>(std::min<size_t>(remaining, 64 * 1024)), 0);
+        if (count <= 0) return false;
+        written += static_cast<size_t>(count);
+    }
+    return true;
+}
+
 bool ValidHostPort(const std::string& authority, bool localOnly) {
     if (authority.empty() || authority.size() > 255 ||
         authority.find_first_of("/?#@ \t\r\n") != std::string::npos) return false;
@@ -182,7 +194,7 @@ void McpHttpServer::AcceptLoop() {
 
         if (clientThreads_.size() >= kMaxConcurrentHttpClients) {
             std::string resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(clientSocket, resp.data(), static_cast<int>(resp.size()), 0);
+            SendHttpAll(clientSocket, resp);
             closesocket(clientSocket);
             continue;
         }
@@ -289,10 +301,10 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
         // A CORS header alone is not access control. Reject hostile browser
         // origins and DNS-rebinding Host values BEFORE dispatching any tool.
         if ((!origin.empty() && !AllowedBrowserOrigin(origin)) ||
-            (!host.empty() && !ValidHostPort(host, false))) {
+            !ValidHostPort(host, false)) {
             const std::string rejected =
                 "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(clientSocket, rejected.data(), static_cast<int>(rejected.size()), 0);
+            SendHttpAll(clientSocket, rejected);
             closesocket(clientSocket);
             return;
         }
@@ -350,7 +362,7 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
                 "{\"error\":\"Not Found\",\"message\":\"Use POST /mcp or GET /health\"}", allowedOrigin);
         }
 
-        send(clientSocket, response.data(), static_cast<int>(response.size()), 0);
+        SendHttpAll(clientSocket, response);
     }
 
     closesocket(clientSocket);
