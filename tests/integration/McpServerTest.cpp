@@ -156,9 +156,24 @@ void TestProtocolAndDiscovery() {
     Json initResp = Json::parse(initRespStr);
     Expect(initResp["jsonrpc"] == "2.0", "JSON-RPC version must be 2.0");
     Expect(initResp["id"] == 1, "ID must match");
-    Expect(initResp["result"]["protocolVersion"] == "2024-11-05", "protocolVersion must be 2024-11-05");
+    Expect(initResp["result"]["protocolVersion"] == "2025-03-26", "protocolVersion must be 2025-03-26");
     Expect(initResp["result"]["serverInfo"]["name"] == "serialctl-mcp", "Server name must match");
     Expect(initResp["result"]["capabilities"].contains("tools"), "Must declare tools capability");
+
+    // Stateless Streamable HTTP notification: 202 and no response body.
+    std::string notificationHeaders;
+    const std::string notificationBody = HttpPostWithOrigin(
+        testPort, "/mcp", R"({"jsonrpc":"2.0","method":"notifications/initialized"})",
+        "", notificationHeaders);
+    Expect(notificationHeaders.find("202 Accepted") != std::string::npos,
+           "initialized notification must return HTTP 202 Accepted");
+    Expect(notificationBody.empty(), "accepted notification must have no JSON body");
+    // Reject a missing JSON-RPC id rather than executing an untracked tool call.
+    std::string badHeaders;
+    HttpPostWithOrigin(testPort, "/mcp", R"({"jsonrpc":"2.0","method":"tools/call","params":{}})",
+                       "", badHeaders);
+    Expect(badHeaders.find("400 Bad Request") != std::string::npos,
+           "untracked tools/call notification must not execute");
 
     // 2. ping
     Json pingReq = {{"jsonrpc", "2.0"}, {"id", 2}, {"method", "ping"}};

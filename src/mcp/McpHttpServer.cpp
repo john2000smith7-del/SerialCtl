@@ -1,4 +1,5 @@
 #include "McpHttpServer.h"
+#include "json.hpp"
 #include <sstream>
 #include <algorithm>
 #include <cctype>
@@ -210,6 +211,8 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
     bool hasContentLength = false;
     std::string origin;
     std::string host;
+    std::string contentType;
+    std::string protocolVersion;
 
     while (running_.load()) {
         int bytes = recv(clientSocket, buffer, sizeof(buffer), 0);
@@ -243,6 +246,13 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
                     } else if (lowerLine.rfind("host:", 0) == 0) {
                         host = line.substr(5);
                         while (!host.empty() && host.front() == ' ') host.erase(host.begin());
+                    } else if (lowerLine.rfind("content-type:", 0) == 0) {
+                        contentType = lowerLine.substr(13);
+                        while (!contentType.empty() && contentType.front() == ' ') contentType.erase(contentType.begin());
+                    } else if (lowerLine.rfind("mcp-protocol-version:", 0) == 0) {
+                        protocolVersion = line.substr(21);
+                        while (!protocolVersion.empty() && protocolVersion.front() == ' ') protocolVersion.erase(protocolVersion.begin());
+                        while (!protocolVersion.empty() && protocolVersion.back() == ' ') protocolVersion.pop_back();
                     }
                 }
             }
@@ -288,22 +298,55 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
         }
         const std::string allowedOrigin = origin;
 
+        // Stateless MCP Streamable HTTP (2025-03-26): each request is one POST;
+        // server-to-client SSE and sessions are intentionally not advertised.
         std::string response;
-        if (method == "OPTIONS") {
+        if (!protocolVersion.empty() && protocolVersion != "2025-03-26") {
+            response = BuildHttpResponse(400, "Bad Request", "application/json",
+                "{\"error\":\"Unsupported MCP-Protocol-Version\"}", allowedOrigin);
+        } else if (method == "OPTIONS") {
             response = BuildCorsPreflightResponse(allowedOrigin);
-        } else if (method == "GET" && (uri == "/mcp" || uri == "/health" || uri == "/")) {
+        } else if (method == "GET" && uri == "/mcp") {
+            response = BuildHttpResponse(405, "Method Not Allowed", "application/json",
+                "{\"error\":\"SSE stream not supported by this stateless MCP endpoint\"}", allowedOrigin);
+        } else if (method == "GET" && (uri == "/health" || uri == "/")) {
             std::string healthBody = healthHandler_ ? healthHandler_() : "{\"status\":\"ok\"}";
             response = BuildHttpResponse(200, "OK", "application/json", healthBody, allowedOrigin);
         } else if (method == "POST" && (uri == "/mcp" || uri == "/")) {
-            size_t headerLength = (requestData.find("\r\n\r\n") != std::string::npos) ? 4 : 2;
-            size_t bodyStart = headerEnd + headerLength;
-            std::string body = requestData.substr(bodyStart, contentLength);
-
-            std::string resultJson = requestHandler_ ? requestHandler_(clientIp, body) : "{}";
-            response = BuildHttpResponse(200, "OK", "application/json", resultJson, allowedOrigin);
+            const size_t headerLength = (requestData.find("\r\n\r\n") != std::string::npos) ? 4 : 2;
+            const size_t bodyStart = headerEnd + headerLength;
+            if (!hasContentLength || contentLength > 16 * 1024 * 1024 ||
+                requestData.size() - bodyStart < contentLength ||
+                contentType.rfind("application/json", 0) != 0) {
+                response = BuildHttpResponse(400, "Bad Request", "application/json",
+                    "{\"error\":\"Complete application/json request and Content-Length required\"}", allowedOrigin);
+            } else {
+                const std::string body = requestData.substr(bodyStart, contentLength);
+                const auto request = nlohmann::json::parse(body, nullptr, false);
+                if (!request.is_object() || request.value("jsonrpc", std::string()) != "2.0" ||
+                    !request.contains("method") || !request["method"].is_string()) {
+                    response = BuildHttpResponse(400, "Bad Request", "application/json",
+                        "{\"error\":\"Expected a single JSON-RPC 2.0 request or notification\"}", allowedOrigin);
+                } else if (!request.contains("id")) {
+                    const auto messageMethod = request["method"].get<std::string>();
+                    if (messageMethod.rfind("notifications/", 0) == 0) {
+                        // Notifications must never produce a JSON-RPC response.
+                        response = "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    } else {
+                        response = BuildHttpResponse(400, "Bad Request", "application/json",
+                            "{\"error\":\"Request id missing\"}", allowedOrigin);
+                    }
+                } else {
+                    const std::string resultJson = requestHandler_ ? requestHandler_(clientIp, body) : "{}";
+                    response = BuildHttpResponse(200, "OK", "application/json", resultJson, allowedOrigin);
+                }
+            }
+        } else if (method == "DELETE" && uri == "/mcp") {
+            response = BuildHttpResponse(405, "Method Not Allowed", "application/json",
+                "{\"error\":\"Session deletion not supported by stateless transport\"}", allowedOrigin);
         } else {
             response = BuildHttpResponse(404, "Not Found", "application/json",
-                "{\"error\": \"Not Found\", \"message\": \"Use POST /mcp or GET /health\"}", allowedOrigin);
+                "{\"error\":\"Not Found\",\"message\":\"Use POST /mcp or GET /health\"}", allowedOrigin);
         }
 
         send(clientSocket, response.data(), static_cast<int>(response.size()), 0);

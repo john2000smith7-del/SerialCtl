@@ -461,7 +461,7 @@ const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
 
 Json McpProtocol::HandleInitialize(const Json& id) {
     return MakeSuccessResponse(id, {
-        {"protocolVersion", "2024-11-05"},
+        {"protocolVersion", "2025-03-26"},
         {"capabilities", {
             {"tools", Json::object()}
         }},
