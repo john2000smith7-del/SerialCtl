@@ -7287,7 +7287,7 @@ void MainWindow::StartNextSftpTransfer() {
         const auto* session = FindSession(task.sessionId);
         if (!session) { sftp_.Cancel(task.id, L"连接已断开"); continue; }
         const auto endpoint = SftpEndpoint(*session);
-        if (task.replaceExisting) {
+        if (task.replaceExisting && !task.skipOverwritePrompt) {
             const bool upload = task.direction == SftpTransferDirection::Upload;
             const auto target = upload ? JoinSftpRemotePath(task.remotePath, task.name) : task.localPath;
             const auto prompt = (upload ? L"远端文件已存在，是否安全替换？\n\n" : L"本地文件已存在，是否覆盖？\n\n") + target;
@@ -8968,45 +8968,49 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", ok}, {"remotePath", remotePath}};
     }
     if (method == "sftp.upload") {
-        std::string localPath = params.value("localPath", "");
-        std::string remotePath = params.value("remotePath", "");
+        const std::string localPath = params.value("localPath", "");
+        const std::string remotePath = params.value("remotePath", "");
+        const bool allowOverwrite = params.value("allowOverwrite", false);
         if (localPath.empty() || remotePath.empty()) return error("localPath and remotePath are required");
         std::string resErr;
-        auto* targetSession = ResolveTargetSession(params, resErr);
-        if (!targetSession) return error(resErr);
-        if (targetSession != activeSession_) {
-            for (size_t i = 0; i < sessions_.size(); ++i) {
-                if (sessions_[i].get() == targetSession) {
-                    SwitchSession(i);
-                    break;
-                }
-            }
-        }
-        auto localW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
-        auto remoteW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
-        bool ok = StartSftpUpload(localW, remoteW);
-        return {{"ok", ok}, {"localPath", localPath}, {"remotePath", remotePath}};
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr);
+        if (target->mode != 0 || !target->connection || !target->connection->IsConnected())
+            return error("Target SSH session is not connected");
+        const auto localW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
+        const auto remoteW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+        std::wstring submitError;
+        const auto id = sftp_.EnqueueUpload(target->id, localW, remoteW, submitError, allowOverwrite);
+        if (!id) return error(submitError.empty() ? "Upload was not queued" : WideToMultiByte(submitError, CP_UTF8));
+        sftpTransferExpanded_ = true;
+        RefreshSftpTransferList();
+        StartNextSftpTransfer();
+        return {{"ok", true}, {"accepted", true}, {"completed", false}, {"transferId", id},
+                {"localPath", localPath}, {"remotePath", remotePath}};
     }
     if (method == "sftp.download") {
-        std::string remotePath = params.value("remotePath", "");
-        std::string localPath = params.value("localPath", "");
-        bool allowOverwrite = params.value("allowOverwrite", false);
+        const std::string remotePath = params.value("remotePath", "");
+        const std::string localPath = params.value("localPath", "");
+        const bool allowOverwrite = params.value("allowOverwrite", false);
         if (remotePath.empty() || localPath.empty()) return error("remotePath and localPath are required");
         std::string resErr;
-        auto* targetSession = ResolveTargetSession(params, resErr);
-        if (!targetSession) return error(resErr);
-        if (targetSession != activeSession_) {
-            for (size_t i = 0; i < sessions_.size(); ++i) {
-                if (sessions_[i].get() == targetSession) {
-                    SwitchSession(i);
-                    break;
-                }
-            }
-        }
-        auto remoteW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
-        auto localW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
-        StartSftpDownload(remoteW, localW, 0, allowOverwrite);
-        return {{"ok", true}, {"remotePath", remotePath}, {"localPath", localPath}};
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr);
+        if (target->mode != 0 || !target->connection || !target->connection->IsConnected())
+            return error("Target SSH session is not connected");
+        const auto remoteW = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+        const auto localW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
+        if (!allowOverwrite && GetFileAttributesW(localW.c_str()) != INVALID_FILE_ATTRIBUTES)
+            return error("Local destination exists; set allowOverwrite=true to authorize replacement");
+        std::wstring submitError;
+        const auto id = sftp_.EnqueueDownload(target->id, remoteW, localW, 0, allowOverwrite,
+                                               submitError, allowOverwrite);
+        if (!id) return error(submitError.empty() ? "Download was not queued" : WideToMultiByte(submitError, CP_UTF8));
+        sftpTransferExpanded_ = true;
+        RefreshSftpTransferList();
+        StartNextSftpTransfer();
+        return {{"ok", true}, {"accepted", true}, {"completed", false}, {"transferId", id},
+                {"remotePath", remotePath}, {"localPath", localPath}};
     }
     if (method == "sftp.delete") {
         bool confirm = params.value("confirm", false);
@@ -9057,10 +9061,46 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}};
     }
     if (method == "sftp.retry_transfer") {
-        uint64_t transferId = params.value("transferId", params.value("id", static_cast<uint64_t>(0)));
-        if (transferId == 0) return error("transferId is required");
-        RetrySftpTransfer(transferId);
-        return {{"ok", true}, {"transferId", transferId}};
+        const uint64_t id = params.value("transferId", params.value("id", static_cast<uint64_t>(0)));
+        if (!id) return error("transferId is required");
+        const auto& jobs = sftp_.Transfers();
+        const auto it = std::find_if(jobs.begin(), jobs.end(), [id](const auto& t) { return t.id == id; });
+        if (it == jobs.end() || (it->state != SftpTransferState::Failed && it->state != SftpTransferState::Canceled))
+            return error("Transfer not found or not retryable");
+        const auto old = *it;
+        const bool confirm = params.value("confirm", false);
+        auto* original = FindSession(old.sessionId);
+        if (original && original->connection && original->connection->IsConnected() &&
+            !original->disconnecting && !original->disconnected) {
+            if (old.replaceExisting && !old.skipOverwritePrompt && !confirm)
+                return {{"error", {{"code", mcp::ErrConfirmationRequired},
+                                    {"message", "confirm=true required for overwrite retry"}}}};
+            sftp_.Retry(id, true, confirm);
+            RefreshSftpTransferList();
+            StartNextSftpTransfer();
+            return {{"ok", true}, {"accepted", true}, {"completed", false}, {"transferId", id}};
+        }
+        if (!confirm || !params.contains("sessionId"))
+            return {{"error", {{"code", mcp::ErrConfirmationRequired},
+                                {"message", "Original SSH session is offline; explicit sessionId and confirm=true are required"}}}};
+        std::string resErr;
+        auto* target = ResolveTargetSession(params, resErr);
+        if (!target) return error(resErr);
+        if (target->mode != 0 || !target->connection || !target->connection->IsConnected())
+            return error("Replacement SSH session is not connected");
+        std::wstring submitError;
+        uint64_t nextId = 0;
+        if (old.direction == SftpTransferDirection::Upload)
+            nextId = sftp_.EnqueueUpload(target->id, old.localPath, old.remotePath, submitError, old.replaceExisting);
+        else
+            nextId = sftp_.EnqueueDownload(target->id, old.remotePath, old.localPath, old.total,
+                                          old.replaceExisting, submitError, old.replaceExisting);
+        if (!nextId) return error(submitError.empty() ? "Retry was not queued" : WideToMultiByte(submitError, CP_UTF8));
+        sftpTransferExpanded_ = true;
+        RefreshSftpTransferList();
+        StartNextSftpTransfer();
+        return {{"ok", true}, {"accepted", true}, {"completed", false},
+                {"transferId", nextId}, {"previousTransferId", id}};
     }
     if (method == "sftp.clear_transfers") {
         ClearFinishedSftpTransfers();

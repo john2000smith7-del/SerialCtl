@@ -310,9 +310,11 @@ const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
                 {"transferId", {{"type", "integer"}, {"description", "Transfer job ID"}}}
             }}, {"required", {"transferId"}}
         }},
-        {"sftp.retry_transfer", "Retry a failed SFTP transfer job", {
+        {"sftp.retry_transfer", "Retry a failed transfer without GUI dialogs; confirmation required for overwrite or new SSH session", {
             {"type", "object"}, {"properties", {
-                {"transferId", {{"type", "integer"}, {"description", "Transfer job ID"}}}
+                {"transferId", {{"type", "integer"}, {"description", "Transfer job ID"}}},
+                {"sessionId", {{"type", "string"}, {"description", "Explicit replacement SSH session if original is offline"}}},
+                {"confirm", {{"type", "boolean"}, {"description", "Explicitly confirm overwrite or target change"}}}
             }}, {"required", {"transferId"}}
         }},
         {"sftp.clear_transfers", "Clear completed SFTP transfers from queue", {
