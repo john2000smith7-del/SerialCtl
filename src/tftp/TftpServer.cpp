@@ -388,7 +388,15 @@ bool TftpServer::Start(const std::string& bindIp, uint16_t port, std::wstring& e
         return false;
     }
 
-    bindIp_ = bindIp.empty() ? "0.0.0.0" : bindIp;
+    const auto requestedIp = bindIp.empty() ? "0.0.0.0" : bindIp;
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    if (InetPtonA(AF_INET, requestedIp.c_str(), &addr.sin_addr) != 1) {
+        error = L"无效的 TFTP 监听 IPv4 地址。";
+        return false;
+    }
+
+    bindIp_ = requestedIp;
     port_ = port ? port : 69;
 
     listener_ = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -397,9 +405,6 @@ bool TftpServer::Start(const std::string& bindIp, uint16_t port, std::wstring& e
         return false;
     }
 
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    InetPtonA(AF_INET, bindIp_.c_str(), &addr.sin_addr);
     addr.sin_port = htons(port_);
 
     if (bind(listener_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {

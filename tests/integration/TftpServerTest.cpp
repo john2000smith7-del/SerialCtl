@@ -810,6 +810,16 @@ void TestLocalSourceIdentity() {
     std::cout << "[PASS] Local source write exclusion and file identity verification\n";
 }
 
+void TestBindAddressValidation(uint16_t testPort) {
+    TftpServer server;
+    std::wstring error;
+    Require(!server.Start("invalid-bind-address", testPort, error) && !server.IsListening() && !error.empty(),
+            "Invalid IPv4 must be rejected without falling back to all interfaces");
+    Require(server.Start("127.0.0.1", testPort, error) && server.BindIp() == "127.0.0.1",
+            "Loopback listen works on the same server after invalid input");
+    server.Stop();
+}
+
 int main() {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -819,6 +829,7 @@ int main() {
 
     std::cout << "=== Running TFTP Server Integration Tests ===" << std::endl;
 
+    TestBindAddressValidation(6981);
     TestSecurityBoundaries(6970);
     TestStandard512Transfer(6971);
     TestOptionNegotiation(6972);
