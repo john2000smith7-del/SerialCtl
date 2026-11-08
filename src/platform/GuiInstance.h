@@ -12,14 +12,7 @@ class GuiInstance {
   public:
     enum class Result { Primary, Existing, CrossSessionExisting, Failed };
     explicit GuiInstance(const std::wstring &customPrefix = L"", const std::wstring &customSessionSuffix = L"")
-        : prefix_(customPrefix), sessionSuffix_(customSessionSuffix) {
-        if (prefix_.empty()) {
-            wchar_t env[256]{};
-            if (GetEnvironmentVariableW(L"SERIALCTL_GUI_INSTANCE_PREFIX", env, 256) > 0) {
-                prefix_ = env;
-            }
-        }
-    }
+        : prefix_(customPrefix), sessionSuffix_(customSessionSuffix) {}
     GuiInstance(const GuiInstance &) = delete;
     GuiInstance &operator=(const GuiInstance &) = delete;
     ~GuiInstance() {
