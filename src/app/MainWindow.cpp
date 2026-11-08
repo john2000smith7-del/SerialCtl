@@ -2552,12 +2552,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         pendingRemoteInstance_ = result->success ? result->instance : std::string();
         if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
-        const bool multiple = !result->success && (result->error.find(L"发现多个 SerialCtl 实例") != std::wstring::npos || result->error.find(L"指定端口") != std::wstring::npos);
-        std::wstring errorDisplay = result->error;
-        if (multiple && errorDisplay.find(L"“指定端口…”") == std::wstring::npos) errorDisplay += L"（请点击“指定端口…”）";
+        const bool multiple = !result->success && result->error.find(L"发现多个实例") == 0;
         SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR,
                         result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str()
-                                          : errorDisplay.c_str());
+                                          : result->error.c_str());
         if (multiple) SetFocus(GetDlgItem(result->dialog, IdSharedAdvancedPort));
         EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
         InvalidateRect(result->dialog, nullptr, TRUE); return 0;
@@ -4355,6 +4353,10 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
         return false;
     }
     if (pendingMode_ == 3) {
+        if (pendingRemoteInstance_.empty() || !IsWindowEnabled(GetDlgItem(dialog, IDOK))) {
+            error = L"请先查询并选择远端串口。";
+            return false;
+        }
         pendingRemoteSerial_ = text(IDC_SERIAL);
         pendingRemoteLabel_ = pendingRemoteSerial_;
         const auto description = pendingRemoteSerial_.find(L" · ");

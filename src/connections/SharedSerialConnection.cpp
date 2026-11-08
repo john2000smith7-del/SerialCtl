@@ -97,8 +97,12 @@ bool SharedSerialConnection::DiscoverAuto(const std::wstring &host, std::uint16_
         return false;
     }
     if (found.size() != 1) {
-        error = found.empty() ? L"未发现 SerialCtl WebSocket 服务（7000–7015）"
-                              : L"发现多个 SerialCtl 实例，请明确指定端口：";
+        if (found.empty()) {
+            const auto ports = explicitPort ? std::to_wstring(explicitPort) : L"7000–7015";
+            error = L"未发现 SerialCtl WebSocket 服务（" + ports + L"）";
+        } else {
+            error = L"发现多个实例，请指定端口：";
+        }
         for (auto &p : found)
             error += L" " + std::to_wstring(p.port);
         return false;
