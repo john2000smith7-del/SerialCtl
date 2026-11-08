@@ -293,12 +293,13 @@ void TftpPane::Refresh() {
 
     // 1. Service state
     bool listening = server_->IsListening();
+    const auto listeningIp = listening ? Utf8ToWide(server_->BindIp()) : std::wstring{};
     std::string state = server_->State();
     std::wstring statusText = L"服务状态：";
     if (state == "transferring") {
         statusText += L"正在传输 · " + std::to_wstring(server_->ActiveTransferCount()) + L" 个活动任务";
     } else if (listening) {
-        statusText += L"监听中 (" + Utf8ToWide(server_->BindIp()) + L":" + std::to_wstring(server_->Port()) + L")";
+        statusText += L"监听中 (" + listeningIp + L":" + std::to_wstring(server_->Port()) + L")";
     } else {
         statusText += L"未启动";
     }
@@ -322,11 +323,20 @@ void TftpPane::Refresh() {
         }
         SendMessageW(ipCombo, CB_SETCURSEL, 0, 0);
     }
+    if (listening) {
+        LRESULT index = 0;
+        if (listeningIp != L"0.0.0.0") {
+            const auto address = reinterpret_cast<LPARAM>(listeningIp.c_str());
+            index = SendMessageW(ipCombo, CB_FINDSTRINGEXACT, -1, address);
+            if (index == CB_ERR) index = SendMessageW(ipCombo, CB_ADDSTRING, 0, address);
+        }
+        if (index >= 0 && SendMessageW(ipCombo, CB_GETCURSEL, 0, 0) != index)
+            SendMessageW(ipCombo, CB_SETCURSEL, index, 0);
+        SetTextIfChanged(Control(Port), std::to_wstring(server_->Port()));
+    }
 
     // Update board guide tip
-    wchar_t selIp[128]{};
-    GetWindowTextW(ipCombo, selIp, 128);
-    std::wstring displayIp = selIp;
+    auto displayIp = listening ? listeningIp : ControlText(ipCombo);
     if (displayIp.find(L"0.0.0.0") != std::wstring::npos) {
         auto ips = server_->LocalIps();
         displayIp = ips.empty() ? L"127.0.0.1" : Utf8ToWide(ips.front());
@@ -334,8 +344,9 @@ void TftpPane::Refresh() {
     wchar_t nameBuf[128]{};
     GetWindowTextW(Control(TftpName), nameBuf, 128);
     std::wstring targetName = (nameBuf[0] != L'\0') ? nameBuf : L"Image";
-    std::wstring boardTip = L"开发板设置参考：\r\nsetenv serverip " + displayIp +
-                            L"\r\ntftpboot ${loadaddr} " + targetName;
+    std::wstring boardTip = displayIp.rfind(L"127.", 0) == 0
+        ? L"当前地址为本机回环，外部开发板无法连接。"
+        : L"开发板设置参考：\r\nsetenv serverip " + displayIp + L"\r\ntftpboot ${loadaddr} " + targetName;
     SetTextIfChanged(Control(BoardTip), boardTip);
 
     // 2. Populate SSH sessions combo
