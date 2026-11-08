@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <vector>
 #ifdef _WIN32
+#include "TransferProtocol.h"
 #include "Win32Helpers.h"
+#include <array>
 #endif
 namespace serialctl {
 // Walk from a known boundary: DBCS trail bytes may look like lead bytes.
@@ -91,10 +93,12 @@ class TerminalDecoder {
                 }
                 break;
             case ZmodemScan::Hex:
-                if ((b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')) {
+                if (const int digit = HexDigit(b); digit >= 0 && zmodemHexCount_ < 2 * zmodemHeader_.size()) {
+                    auto &byte = zmodemHeader_[zmodemHexCount_ / 2];
+                    byte = static_cast<std::uint8_t>(zmodemHexCount_ % 2 ? byte | digit : digit << 4);
                     ++zmodemHexCount_;
-                    if (zmodemHexCount_ > 32) zmodemScanState_ = ZmodemScan::Idle;
-                } else if (zmodemHexCount_ >= 4 && (b == 0x0d || b == 0x8d)) {
+                } else if (zmodemHexCount_ == 2 * zmodemHeader_.size() && (b == 0x0d || b == 0x8d) &&
+                           xfer::Crc16(zmodemHeader_.data(), zmodemHeader_.size()) == 0) {
                     if (b == 0x8d) pending_[i] = 0x0d;
                     zmodemScanState_ = ZmodemScan::SawCr;
                 } else {
@@ -134,8 +138,16 @@ class TerminalDecoder {
     }
 
   private:
+    static int HexDigit(std::uint8_t byte) {
+        if (byte >= '0' && byte <= '9') return byte - '0';
+        if (byte >= 'a' && byte <= 'f') return byte - 'a' + 10;
+        if (byte >= 'A' && byte <= 'F') return byte - 'A' + 10;
+        return -1;
+    }
     enum class ZmodemScan { Idle, Star1, Star2, Zdle, Hex, SawCr };
     ZmodemScan zmodemScanState_ = ZmodemScan::Idle;
+    // ZHEX has five header bytes followed by a big-endian CRC-16.
+    std::array<std::uint8_t, 7> zmodemHeader_{};
     size_t zmodemHexCount_ = 0;
     std::vector<std::uint8_t> pending_;
     UINT page_ = 0;

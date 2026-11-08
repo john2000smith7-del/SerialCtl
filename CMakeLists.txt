@@ -543,7 +543,8 @@ if(BUILD_TESTING)
         "$<TARGET_FILE:multi_serial_test>")
     set_tests_properties(linux_gateway_client PROPERTIES TIMEOUT 30)
 
-    add_executable(terminal_decoder_test tests/unit/TerminalDecoderTest.cpp)
+    add_executable(terminal_decoder_test tests/unit/TerminalDecoderTest.cpp src/xfer/TransferProtocol.cpp
+        src/terminal/TerminalModel.cpp)
     serialctl_configure_native_target(terminal_decoder_test CONSOLE)
     add_test(NAME terminal_decoder COMMAND terminal_decoder_test)
 

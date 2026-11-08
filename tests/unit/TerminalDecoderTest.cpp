@@ -1,4 +1,5 @@
 #include "TerminalDecoder.h"
+#include "TerminalModel.h"
 #include <iostream>
 int main() {
     const auto lead = [](std::uint8_t b) { return b >= 0x81 && b <= 0xfe; };
@@ -82,6 +83,52 @@ int main() {
         if (crDecoded.find(L"\xfffd") == std::wstring::npos) {
             std::cerr << "Isolated \\r\\x8a without ZMODEM header failed to produce U+FFFD\n";
             return 9;
+        }
+
+        auto badCrc = zmodemFrame;
+        badCrc[17] = '1';
+        auto shortHeader = zmodemFrame;
+        shortHeader.erase(shortHeader.begin() + 8, shortHeader.begin() + 18);
+        auto longHeader = zmodemFrame;
+        longHeader.insert(longHeader.begin() + 18, '0');
+        for (const auto &invalid : {badCrc, shortHeader, longHeader}) {
+            serialctl::TerminalDecoder decoder;
+            std::wstring display;
+            for (auto byte : invalid) display += decoder.Decode({byte}, CP_UTF8);
+            if (display.find(L'\xfffd') == std::wstring::npos) {
+                std::cerr << "Malformed ZHEX swallowed diagnostic byte\n";
+                return 10;
+            }
+        }
+    }
+
+    const std::wstring reboot = L"\x009dnoise\r\nINIT: 正在重启\r\n"
+                                 L"stopping\tssh\r[OK] stopping ssh\b!\r\n"
+                                 L"\x1b[32mRebooting...\x1b[0m\r\n";
+    const auto encodedReboot = serialctl::WideToMultiByte(reboot, CP_UTF8);
+    std::vector<std::uint8_t> rebootBytes(encodedReboot.begin(), encodedReboot.end());
+    rebootBytes.push_back(0xff);
+    const auto prompt = serialctl::WideToMultiByte(L"root@petalinux:~#\r\n", CP_UTF8);
+    rebootBytes.insert(rebootBytes.end(), prompt.begin(), prompt.end());
+    for (const bool timestamps : {false, true}) {
+        const std::wstring timestamp = timestamps ? L"12:34:56.789" : L"";
+        serialctl::TerminalDecoder wholeDecoder;
+        serialctl::TerminalModel whole;
+        const auto expectedLog = whole.Feed(wholeDecoder.Decode(rebootBytes, CP_UTF8), timestamp).logText;
+        for (size_t split = 0; split <= rebootBytes.size(); ++split) {
+            serialctl::TerminalDecoder decoder;
+            serialctl::TerminalModel model;
+            const auto first = model.Feed(decoder.Decode({rebootBytes.begin(), rebootBytes.begin() + split}, CP_UTF8), timestamp);
+            const auto second = model.Feed(decoder.Decode({rebootBytes.begin() + split, rebootBytes.end()}, CP_UTF8), timestamp);
+            const auto screen = model.PlainText(timestamps);
+            if (screen != whole.PlainText(timestamps) || first.logText + second.logText != expectedLog ||
+                screen.find(L"INIT: 正在重启") == std::wstring::npos ||
+                screen.find(L"\xfffdroot@petalinux:~#") == std::wstring::npos ||
+                expectedLog.find(L"Rebooting...") == std::wstring::npos ||
+                (expectedLog.find(L"12:34:56.789") != std::wstring::npos) != timestamps) {
+                std::cerr << "Controlled reboot replay differs at byte boundary " << split << '\n';
+                return 11;
+            }
         }
     }
 #endif
