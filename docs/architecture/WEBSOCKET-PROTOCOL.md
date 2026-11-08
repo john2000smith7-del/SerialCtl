@@ -28,7 +28,7 @@ events完整响应超限时返回小型HISTORY_TOO_LARGE错误，提示使用sub
 | power.output | power-1 | {enabled:bool} | 仅操作 GUI 当时勾选通道；requestId 用于原有 action 幂等，应使用全局唯一 UUID |
 | action.get | 省略 | {id:string} | 电源异步 queued/running/completed/failed/canceled 状态 |
 
-不开放创建/断开连接、参数、SSH/SFTP、通道勾选、电压电流、保护、预设、模式、复位、SCPI、任务。服务无授权 UI/token，仅适合可信内网；`ApiServer::Start` 支持指定监听绑定地址（默认 `0.0.0.0`，可限制为 `127.0.0.1`）与来源 IP 白名单 `allowedClients`（非白名单 IP 在握手前返回 `HTTP/1.1 403 Forbidden` / `CLIENT_NOT_ALLOWED`）。握手阶段内置浏览器跨站 WebSocket 劫持（CSWSH）防护：若请求携带 `Origin` 头，仅放行本机来源（`http(s)://localhost`、`http(s)://127.0.0.1`、`http(s)://[::1]`），其余网页来源一律拒绝并返回 `HTTP/1.1 403 Forbidden` / `ORIGIN_NOT_ALLOWED`；不携带 `Origin` 头的原生客户端（SerialCtl、CLI、Python 脚本）完全兼容。GUI 不通过网络回连，直接调用相同 SessionService 和同一个 QueuedConnection。
+不开放创建/断开连接、参数、SSH/SFTP、通道勾选、电压电流、保护、预设、模式、复位、SCPI、任务。服务无授权 UI/token，仅适合可信内网；`ApiServer::Start` 支持指定监听绑定地址（默认 `0.0.0.0`，可限制为 `127.0.0.1`）与来源 IP 白名单 `allowedClients`（非白名单 IP 在握手前返回 `HTTP/1.1 403 Forbidden` / `CLIENT_NOT_ALLOWED`）。GUI 从现有 `settings.ini` 的 `[SerialShare]` 读取 `BindIp` 与逗号分隔的 `AllowedClients`，并在启动状态报告实际端口和来源限制。现有未配置安装继续沿用原监听行为。带 `Origin` 的浏览器请求必须使用本机来源、回环 TCP 连接以及匹配监听端口的回环 `Host`，失败返回 `HTTP/1.1 403 Forbidden` / `ORIGIN_NOT_ALLOWED`。原生客户端通常不发送 `Origin`，仍受绑定地址和来源白名单约束。GUI 不通过网络回连，直接调用相同 SessionService 和同一个 QueuedConnection。
 
 每个 COM 只有一个本机驱动与内部会话 ID。完整输入批次 FIFO 原子入队，8 MiB 有界写队列；无写租约、无任务级互斥，多写入者的多步任务仍可能互相影响。input accepted 表示接收/排队，不保证执行完成。连接关闭不关闭本机设备、不取消已经入队的写入。超时/断线后执行状态未知，不自动重试可能已经执行的输入。
 
