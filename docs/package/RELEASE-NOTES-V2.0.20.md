@@ -4,7 +4,7 @@
 
 - **TFTP 固件发布服务（#55）**：右侧边栏在“命令／SFTP／Xfer”旁新增 `TFTP` 页签。内置只读 UDP TFTP 服务端（RFC 1350 + RFC 2347/2348/2349 `blksize`、`tsize`、`timeout` 协商，16 位块号回绕兼容），拒绝 `WRQ` 写入与路径穿越。支持发布本地文件及远程 SSH/SFTP 文件（通过一次性加密密码管道调用 `plink.exe` 建立最多 2 MiB 有界滑动窗口流式转发，不在 Windows 本地产生临时镜像落盘，支持同一文件多客户端并发独立流式下载），并提供 `tftp.*` 工具供 GUI、内置 AI 与外部 MCP 协同控制。
 - **MCP 控制接口与电源硬边界（#50）**：提供覆盖应用生命周期、会话、SSH 历史、终端、U-Boot 打断、宏与命令笔记、SFTP、Xfer、TFTP、日志诊断、界面主题、内置 AI 与受控电源的 83 个 MCP 工具（完整规范见 `docs/architecture/MCP-CAPABILITY-MATRIX.md`）。服务端实施受控电源硬白名单：仅允许 `power.get`、已解锁且限 GUI 当前勾选通道的 `power.output`、`power.action` 与预绑定 `power.recover`；任何试图修改电压、电流、OVP/OCP、串并联/跟踪模式、篡改通道列表、预设、校准、复位或发送原始 SCPI 的请求均在服务端硬拦截并返回 `POWER_PARAMETER_CHANGE_FORBIDDEN`（`-32001`），对电源硬件拒绝执行。SSH 历史与审计日志自动脱敏明文密码，内置 AI 调用具备递归深度保护。
-- **生命周期（#52 已取消）**：SerialCtl 由用户手动启动。MCP 默认关闭，本机启用后随 GUI 退出停止。`--mcp-service` / `--mcp-agent` 已停用，不提供开机自启或 GUI 退出后的后台驻留；`--mcp-stdio` 仅桥接正在运行的 GUI。
+- **生命周期（#52 已取消）**：SerialCtl 由用户手动启动。IP 直连 MCP 默认关闭，本机启用后随 GUI 退出停止。`--mcp-service` / `--mcp-agent` 已停用。`--mcp-stdio` 通过同用户 IPC 转交给正在运行的 GUI，绑定该进程的生命周期。GUI 退出时 stdio 桥接同时结束。
 - **终端、SFTP、连接与 Xfer 体验及协议改进（#38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #14, #24, #49, #25, #58, #59, #60, #61）**：
   - 终端实现标准 **BCE（Background Color Erase）** 背景色擦除语义（`CSI J`、`CSI K`、`CSI X`、`CSI @`、`CSI P`、`CSI L`、`CSI M`、滚屏新行），修复 Linux `make menuconfig` 等全屏 ncurses 界面背景黑白断块问题；
   - 终端显示解码层精准识别 ZMODEM 十六进制握手帧（`**\x18B...`）帧尾控制序列 `\r\x8a` / `\x8d\x8a` 并安全归一化为标准换行，消除 `rz` 握手时出现的 ``（`U+FFFD`）方框问号，且不修改原始接收流、Xfer 协议流或非 ZMODEM 上下文中的非法 UTF-8 检错；

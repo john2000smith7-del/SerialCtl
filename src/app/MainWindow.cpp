@@ -8414,7 +8414,8 @@ Json MainWindow::DispatchMcpToUi(const std::string& method, const Json& params, 
 void MainWindow::StartMcpIpc() {
     if (mcpIpcServer_ && mcpIpcServer_->IsRunning()) return;
     mcpIpcServer_ = std::make_unique<mcp::McpIpcServer>(mcp::DefaultMcpPipeName);
-    mcpIpcServer_->Start([this](const std::string& requestStr) -> std::string {
+    std::shared_ptr<mcp::McpDispatcher> dispatcher(CreateMcpDispatcher(false));
+    mcpIpcServer_->Start([this, dispatcher](const std::string& requestStr) -> std::string {
         try {
             Json req = Json::parse(requestStr);
             std::string method = req.value("method", "");
@@ -8429,6 +8430,8 @@ void MainWindow::StartMcpIpc() {
                 return "{\"ok\":true}";
             }
 
+            if (method == "internal.mcp_stdio" && !closing_.load())
+                return dispatcher->Dispatch("127.0.0.1", params.at("request").get<std::string>());
             return DispatchMcpToUi(method, params, false).dump();
         } catch (...) {
             return "{\"error\":\"IPC dispatch error\"}";
@@ -8443,78 +8446,53 @@ void MainWindow::StopMcpIpc() {
     }
 }
 
+std::unique_ptr<mcp::McpDispatcher> MainWindow::CreateMcpDispatcher(bool http) {
+    auto dispatcher = std::make_unique<mcp::McpDispatcher>();
+    dispatcher->SetGuiStatusChecker([this] { return !closing_.load(); });
+    dispatcher->SetGuiLauncher([this](bool focus, std::string& error) {
+        if (closing_.load()) {
+            error = "SerialCtl is closing";
+            return false;
+        }
+        if (focus) PostMessageW(window_, WM_SYSCOMMAND, SC_RESTORE, 0);
+        return true;
+    });
+    dispatcher->SetPowerContextProvider([this, http](bool& testUnlocked, Json& selectedChannels) {
+        if (closing_.load() || !window_ || !IsWindow(window_)) return;
+        if (GetCurrentThreadId() == GetWindowThreadProcessId(window_, nullptr)) {
+            testUnlocked = PowerService::ConnectionAvailable();
+            selectedChannels = powerPane_.SelectedChannels();
+            return;
+        }
+        const auto response = DispatchMcpToUi("internal.power_context", Json::object(), http);
+        if (response.is_object()) {
+            testUnlocked = response.value("testUnlocked", false);
+            if (response.contains("selectedChannels") && response["selectedChannels"].is_array())
+                selectedChannels = response["selectedChannels"];
+        }
+    });
+    dispatcher->SetGuiExecutor([this, http](const std::string& method, const Json& params) {
+        if (closing_.load() || !window_ || !IsWindow(window_)) {
+            return Json{{"error", "Application closing"}};
+        }
+        if (GetCurrentThreadId() == GetWindowThreadProcessId(window_, nullptr)) {
+            return McpExecute(method, params);
+        }
+        return DispatchMcpToUi(method, params, http);
+    });
+    dispatcher->SetTestUnlocked(PowerService::ConnectionAvailable());
+    dispatcher->SetGuiSelectedChannels(powerPane_.SelectedChannels());
+    dispatcher->SetServiceConfigurator([this, http](const Json& args) {
+        if (GetCurrentThreadId() == GetWindowThreadProcessId(window_, nullptr))
+            return McpExecute("app.service_configure", args);
+        return DispatchMcpToUi("app.service_configure", args, http);
+    });
+    return dispatcher;
+}
+
 void MainWindow::StartEmbeddedMcpServer() {
     if (mcpEmbeddedServer_ && mcpEmbeddedServer_->IsRunning()) return;
-
-    if (!mcpDispatcher_) {
-        mcpDispatcher_ = std::make_unique<mcp::McpDispatcher>();
-        mcpDispatcher_->SetGuiStatusChecker([this] { return !closing_.load(); });
-        mcpDispatcher_->SetGuiLauncher([](bool, std::string&) { return true; });
-        mcpDispatcher_->SetPowerContextProvider([this](bool& testUnlocked, Json& selectedChannels) {
-            if (closing_.load() || !window_ || !IsWindow(window_)) return;
-            if (GetCurrentThreadId() == GetWindowThreadProcessId(window_, nullptr)) {
-                testUnlocked = PowerService::ConnectionAvailable();
-                selectedChannels = powerPane_.SelectedChannels();
-                return;
-            }
-            const auto response = DispatchMcpToUi("internal.power_context", Json::object(), true);
-            if (response.is_object()) {
-                testUnlocked = response.value("testUnlocked", false);
-                if (response.contains("selectedChannels") && response["selectedChannels"].is_array())
-                    selectedChannels = response["selectedChannels"];
-            }
-        });
-        mcpDispatcher_->SetGuiExecutor([this](const std::string& method, const Json& params) {
-            if (closing_.load() || !window_ || !IsWindow(window_)) {
-                return Json{{"error", "Application closing"}};
-            }
-            if (GetCurrentThreadId() == GetWindowThreadProcessId(window_, nullptr)) {
-                return McpExecute(method, params);
-            }
-            return DispatchMcpToUi(method, params, true);
-        });
-        mcpDispatcher_->SetTestUnlocked(PowerService::ConnectionAvailable());
-        mcpDispatcher_->SetGuiSelectedChannels(powerPane_.SelectedChannels());
-        mcpDispatcher_->SetServiceConfigurator([this](const Json& args) -> Json {
-            if (!args.is_object()) return {{"error", "Configuration must be an object"}};
-            if (args.contains("autoStart")) {
-                return {{"error", "MCP auto-start is discontinued; start SerialCtl manually"}};
-            }
-            uint16_t newPort = mcpPort_;
-            std::string newBindIp = mcpBindIp_;
-            if (args.contains("port")) {
-                if (!args["port"].is_number_integer()) return {{"error", "Invalid port type"}};
-                int p = args["port"].get<int>();
-                if (p < 1 || p > 65535) return {{"error", "Port must be 1..65535"}};
-                newPort = static_cast<uint16_t>(p);
-            }
-            if (args.contains("bindIp")) {
-                if (!args["bindIp"].is_string()) return {{"error", "Invalid bindIp type"}};
-                std::string ip = args["bindIp"].get<std::string>();
-                sockaddr_in sa{};
-                if (ip != "0.0.0.0" && InetPtonA(AF_INET, ip.c_str(), &sa.sin_addr) <= 0) {
-                    return {{"error", "bindIp must be a valid IPv4 address"}};
-                }
-                newBindIp = ip;
-            }
-            // Never call Stop()/join() from a worker serving this HTTP request, nor
-            // from the UI thread while an HTTP worker waits synchronously for it.
-            // Stage network changes and apply on the next manual GUI launch.
-            const uint16_t effectivePort = mcpPort_;
-            const std::string effectiveBindIp = mcpBindIp_;
-            const bool needsRestart = mcpEmbeddedServer_ && mcpEmbeddedServer_->IsRunning() &&
-                (newPort != effectivePort || newBindIp != effectiveBindIp);
-            mcpPort_ = newPort;
-            mcpBindIp_ = newBindIp;
-            mcpAutoStart_ = false;
-            SaveUiState();
-            return {
-                {"ok", true}, {"port", newPort}, {"bindIp", newBindIp},
-                {"effectivePort", effectivePort}, {"effectiveBindIp", effectiveBindIp},
-                {"restartRequired", needsRestart}, {"autoStart", false}
-            };
-        });
-    }
+    if (!mcpDispatcher_) mcpDispatcher_ = CreateMcpDispatcher(true);
 
     mcpStopping_.store(false);
     mcpEmbeddedServer_ = std::make_unique<mcp::McpHttpServer>();
@@ -9346,8 +9324,43 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return AiDeviceRequest(delegated, effectiveParams);
     }
     if (method == "app.service_configure") {
-        if (!mcpDispatcher_) return error("MCP dispatcher not initialized");
-        return mcpDispatcher_->CallTool("127.0.0.1", "app.service_configure", params);
+        if (!params.is_object()) return {{"error", "Configuration must be an object"}};
+        if (params.contains("autoStart")) {
+            return {{"error", "MCP auto-start is discontinued; start SerialCtl manually"}};
+        }
+        uint16_t newPort = mcpPort_;
+        std::string newBindIp = mcpBindIp_;
+        if (params.contains("port")) {
+            if (!params["port"].is_number_integer()) return {{"error", "Invalid port type"}};
+            int p = params["port"].get<int>();
+            if (p < 1 || p > 65535) return {{"error", "Port must be 1..65535"}};
+            newPort = static_cast<uint16_t>(p);
+        }
+        if (params.contains("bindIp")) {
+            if (!params["bindIp"].is_string()) return {{"error", "Invalid bindIp type"}};
+            std::string ip = params["bindIp"].get<std::string>();
+            sockaddr_in sa{};
+            if (ip != "0.0.0.0" && InetPtonA(AF_INET, ip.c_str(), &sa.sin_addr) <= 0) {
+                return {{"error", "bindIp must be a valid IPv4 address"}};
+            }
+            newBindIp = ip;
+        }
+        // Never call Stop()/join() from a worker serving this HTTP request, nor
+        // from the UI thread while an HTTP worker waits synchronously for it.
+        // Stage network changes and apply on the next manual GUI launch.
+        const uint16_t effectivePort = mcpPort_;
+        const std::string effectiveBindIp = mcpBindIp_;
+        const bool needsRestart = mcpEmbeddedServer_ && mcpEmbeddedServer_->IsRunning() &&
+            (newPort != effectivePort || newBindIp != effectiveBindIp);
+        mcpPort_ = newPort;
+        mcpBindIp_ = newBindIp;
+        mcpAutoStart_ = false;
+        SaveUiState();
+        return {
+            {"ok", true}, {"port", newPort}, {"bindIp", newBindIp},
+            {"effectivePort", effectivePort}, {"effectiveBindIp", effectiveBindIp},
+            {"restartRequired", needsRestart}, {"autoStart", false}
+        };
     }
 
     // Fall back to AiDeviceRequest for terminal.read, terminal.screen, tftp.*, power.*, etc.

@@ -66,6 +66,7 @@ def main():
     backup = config.with_name('SerialCtl.mcp-sdk-backup-' + uuid.uuid4().hex)
     moved = False
     process = None
+    bridge = None
     user = c.WinDLL('user32', use_last_error=True)
     user.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
     user.GetWindowThreadProcessId.argtypes = [w.HWND, c.POINTER(w.DWORD)]
@@ -115,6 +116,31 @@ def main():
             time.sleep(.05)
         require(handles, 'Actual packaged GUI did not open')
         report.update(asyncio.run(exercise(f'http://127.0.0.1:{port}/mcp')))
+        bridge_output = args.output / 'mcp-stdio.jsonl'
+        with bridge_output.open('wb') as pipe_log:
+            bridge = subprocess.Popen([str((app / 'serialctl.exe').resolve()), '--mcp-stdio'],
+                                      cwd=app, stdin=subprocess.PIPE, stdout=pipe_log, stderr=subprocess.PIPE)
+        requests = [
+            {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
+             'params': {'protocolVersion': '2025-03-26', 'capabilities': {},
+                        'clientInfo': {'name': 'lifecycle-fixture', 'version': '1'}}},
+            {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call',
+             'params': {'name': 'tftp.status', 'arguments': {}}},
+        ]
+        bridge.stdin.write(('\n'.join(json.dumps(item) for item in requests) + '\n').encode('utf-8'))
+        bridge.stdin.flush()
+        deadline = time.monotonic() + 10
+        lines = []
+        while time.monotonic() < deadline:
+            lines = bridge_output.read_text(encoding='utf-8').splitlines()
+            if len(lines) == len(requests):
+                break
+            require(bridge.poll() is None, 'GUI-bound stdio bridge exited during handshake')
+            time.sleep(.05)
+        replies = [json.loads(line) for line in lines]
+        require([reply['id'] for reply in replies] == [1, 2], 'Missing or misordered stdio replies')
+        require(replies[0]['result']['protocolVersion'] == '2025-03-26' and
+                not replies[1]['result']['isError'], 'Stdio did not reach the GUI dispatcher')
         desktop = DesktopActions(SimpleNamespace(window=handles[0], pid=process.pid,
             output=str(args.output), mode='desktop', prefix='mcp-sdk'))
         desktop.capture('mcp-sdk-actual-package')
@@ -123,11 +149,27 @@ def main():
         user.PostMessageW(handles[0], 0x10, 0, 0)
         process.wait(timeout=15)
         require(process.returncode == 0, 'Packaged GUI exit failed')
+        require(bridge.wait(timeout=5) == 0, 'The idle stdio bridge survived GUI exit')
+        bridge.stdin.close()
+        bridge.stderr.close()
+        bridge = None
         with socket.socket() as client:
             require(client.connect_ex(('127.0.0.1', port)) != 0, 'MCP listener survived GUI exit')
+        offline = {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call',
+                   'params': {'name': 'tftp.start', 'arguments': {'bindIp': '127.0.0.1', 'port': port}}}
+        refused = subprocess.run([str((app / 'serialctl.exe').resolve()), '--mcp-stdio'], cwd=app,
+                                 input=(json.dumps(offline) + '\n').encode(), capture_output=True, timeout=5)
+        require(refused.returncode != 0 and not refused.stdout, 'Offline stdio accepted a TFTP request')
+        report['stdio'] = {'gui_bound': True, 'terminated_with_open_stdin': True, 'offline_refused': True}
         require(hashlib.sha256(args.archive.read_bytes()).hexdigest() == report['archive_sha256'], 'Candidate ZIP changed')
         report['status'] = 'PASS'
     finally:
+        if bridge:
+            if bridge.poll() is None:
+                bridge.kill()
+                bridge.wait()
+            bridge.stdin.close()
+            bridge.stderr.close()
         if process and process.poll() is None:
             process.kill()
             process.wait()

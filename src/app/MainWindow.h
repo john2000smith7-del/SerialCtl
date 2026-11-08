@@ -577,6 +577,7 @@ private:
 
     void StartMcpIpc();
     void StopMcpIpc();
+    std::unique_ptr<mcp::McpDispatcher> CreateMcpDispatcher(bool http);
     void StartEmbeddedMcpServer();
     void StopEmbeddedMcpServer();
     void ApplyMcpSettings(bool enabled, bool autoStart, uint16_t port);
