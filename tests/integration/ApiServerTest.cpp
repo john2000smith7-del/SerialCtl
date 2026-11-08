@@ -1,20 +1,151 @@
 #include "GatewayFixture.h"
 #include "GatewayHistoryBoundary.h"
 #include "SharedSerialConnection.h"
+#include <algorithm>
 #include <future>
+#include <psapi.h>
 namespace serialctl {
 struct ApiServerTestAccess {
+    struct Retained {
+        size_t bytes, count, lastBytes;
+        std::uint64_t first, last;
+    };
+    static std::map<std::string, Retained> RetainedHistory(ApiServer& server, bool verifyAccounting = false) {
+        std::lock_guard<std::mutex> lock(server.mutex_);
+        std::map<std::string, Retained> result;
+        size_t total = 0;
+        for (const auto& [id, history] : server.histories_) {
+            if (verifyAccounting) {
+                size_t bytes = 0;
+                auto sequence = history.events.empty() ? history.seq : history.seq - history.events.size();
+                for (const auto& event : history.events) {
+                    const auto actual = event.event.dump().size();
+                    test::Expect(actual == event.bytes && event.event["seq"] == ++sequence,
+                                 "retained history charge and sequence match serialized events");
+                    bytes += actual;
+                }
+                test::Expect(bytes == history.bytes, "per-resource accounting matches retained events");
+            }
+            total += history.bytes;
+            result.emplace(id, Retained{history.bytes, history.events.size(),
+                history.events.empty() ? 0 : history.events.back().bytes,
+                history.events.empty() ? 0 : history.events.front().event["seq"].get<std::uint64_t>(),
+                history.seq});
+        }
+        test::Expect(total == server.historyBytes_, "global accounting matches all retained histories");
+        return result;
+    }
     static std::unique_lock<std::mutex> HoldPublication(ApiServer& server) {
         return std::unique_lock<std::mutex>(server.mutex_);
     }
 };
 }
 using namespace test;
+namespace {
+Json SampleHistoryMemory() {
+    PROCESS_MEMORY_COUNTERS_EX memory{};
+    Expect(GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory),
+                                sizeof(memory)) != FALSE, "sample Windows process memory");
+    return {{"privateBytes", memory.PrivateUsage}, {"workingSetBytes", memory.WorkingSetSize}};
+}
+
+void TestHistoryFairness() {
+    constexpr size_t budget = 16 * 1024 * 1024;
+    const Bytes hot(16384, 'H');
+    for (int count : {1, 4, 16, 32}) {
+        Fixture fixture(19120, 19135);
+        auto& server = fixture.server;
+        std::vector<std::string> resources;
+        for (int i = 0; i < count; ++i)
+            resources.push_back("session-budget-" + std::to_string(100 + i));
+        const auto& cold = resources.front();
+        const auto& local = resources.back();
+        server.SetSessions(resources);
+        const auto beforeMemory = SampleHistoryMemory();
+        server.Publish(cold, Bytes{'c'});
+        const auto low = server.Events(cold, 0);
+        Expect(low["gap"] == false && low["cursor"] == 1 &&
+               Decode64(low["events"][0]["data"]) == Bytes{'c'}, "low-load history preserves the first event");
+
+        for (int i = 0; i < 1100; ++i) server.Publish(local, Bytes{'n'});
+        auto retained = ApiServerTestAccess::RetainedHistory(server, true).at(local);
+        Expect(retained.count == 1024 && retained.bytes < ApiServer::MaxHistoryBytes &&
+               retained.first == retained.last - 1023, "event cap retains the latest 1024 contiguous events");
+        for (int i = 0; i < 64; ++i) server.Publish(local, hot);
+        retained = ApiServerTestAccess::RetainedHistory(server, true).at(local);
+        Expect(retained.bytes <= ApiServer::MaxHistoryBytes && retained.count < 64 &&
+               server.Events(local, 0)["gap"] == true, "byte cap trims oldest events and reports a stale cursor");
+
+        size_t beforeCrossing = 0;
+        size_t proposed = 0;
+        std::string evicted;
+        for (int i = 1; i < count - 1 && evicted.empty(); ++i) {
+            const auto& target = resources[i];
+            for (int j = 0; j < 46 && evicted.empty(); ++j) {
+                const auto before = server.Metrics();
+                auto candidates = ApiServerTestAccess::RetainedHistory(server);
+                server.Publish(target, hot);
+                const auto after = server.Metrics();
+                if (after["historyTrims"] == before["historyTrims"]) continue;
+                const auto state = ApiServerTestAccess::RetainedHistory(server, true);
+                const auto incoming = state.at(target).lastBytes;
+                beforeCrossing = before["historyBytes"].get<size_t>();
+                proposed = beforeCrossing + incoming;
+                candidates[target].bytes += incoming;
+                Expect(candidates[target].bytes <= ApiServer::MaxHistoryBytes && beforeCrossing <= budget &&
+                       proposed > budget && after["historyBytes"].get<size_t>() <= budget,
+                       "global trim crosses the budget without a per-resource overflow");
+                const auto largest = std::max_element(candidates.begin(), candidates.end(),
+                    [](const auto& a, const auto& b) { return a.second.bytes < b.second.bytes; });
+                evicted = largest->first;
+                Expect(evicted != cold && state.at(evicted).first == largest->second.first + 1 &&
+                       after["historyTrims"].get<size_t>() == before["historyTrims"].get<size_t>() + 1,
+                       "only the oldest event from the largest retained history is trimmed");
+                Peer subscriber(server.Port());
+                Expect(subscriber.Request("subscribe", evicted, {{"after", largest->second.first - 1}}, "old")
+                           ["error"]["code"] == "HISTORY_GAP", "wire subscriber receives explicit HISTORY_GAP");
+                const auto latest = server.Events(evicted, state.at(evicted).last - 1);
+                Expect(latest["gap"] == false && latest["events"].size() == 1 &&
+                       latest["events"][0]["seq"] == state.at(evicted).last,
+                       "latest cursor resumes without skipping or renumbering events");
+            }
+        }
+        Expect((count == 32) == !evicted.empty(), "only the 32-resource fixture crosses the global budget");
+        if (count > 1)
+            Expect(server.Events(cold, 0) == low, "hot sessions do not evict the cold session");
+        const auto filledMemory = SampleHistoryMemory();
+        const auto filledBytes = server.Metrics()["historyBytes"];
+        server.SetSessions({});
+        const auto removedMemory = SampleHistoryMemory();
+        for (unsigned cycle = 0; cycle < 32; ++cycle) {
+            server.SetSessions(resources);
+            for (const auto& id : resources) {
+                server.Publish(id, Bytes{static_cast<std::uint8_t>(cycle)});
+                const auto fresh = server.Events(id, 0);
+                Expect(fresh["cursor"] == 1 && fresh["gap"] == false && fresh["events"].size() == 1 &&
+                       Decode64(fresh["events"][0]["data"]) == Bytes{static_cast<std::uint8_t>(cycle)},
+                       "recreated history has fresh sequence and payload");
+            }
+            ApiServerTestAccess::RetainedHistory(server, true);
+            server.SetSessions({});
+            Expect(ApiServerTestAccess::RetainedHistory(server, true).empty() &&
+                   server.Metrics()["historyBytes"] == 0, "resource removal clears retained data and its charge");
+        }
+        const Json evidence{{"resources", count}, {"chargedBytesBeforeCrossing", beforeCrossing},
+            {"proposedBytes", proposed}, {"chargedBytesAfterFill", filledBytes}, {"evictedResource", evicted},
+            {"before", beforeMemory}, {"filled", filledMemory}, {"removed", removedMemory},
+            {"after32ChurnCycles", SampleHistoryMemory()}};
+        std::cout << "HISTORY_FAIRNESS " << evidence.dump() << '\n';
+    }
+}
+}
+
 int stage = 0;
 int main() {
     Wsa wsa;
     try {
         TestHistoryMessageBoundaries();
+        TestHistoryFairness();
         Fixture f;
         {
             const auto before = f.server.Events("session-3", 0)["cursor"].get<std::uint64_t>();
