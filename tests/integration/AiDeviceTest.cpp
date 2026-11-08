@@ -739,29 +739,49 @@ struct AiDeviceTestAccess {
             return MAKELPARAM(left + column * cell + cell / 2, top + line * row + row / 2);
         };
         const auto copied = [&] {
-            Require(OpenClipboard(main.terminal_) != FALSE, "Cannot inspect terminal release clipboard");
+            const auto deadline = GetTickCount64() + 100;
+            bool opened = OpenClipboard(main.terminal_) != FALSE;
+            if (!opened) {
+                const auto error = GetLastError();
+                const auto blocker = GetOpenClipboardWindow();
+                do {
+                    Sleep(1);
+                    opened = OpenClipboard(main.terminal_) != FALSE;
+                } while (!opened && GetTickCount64() < deadline);
+                std::cerr << "Clipboard observation contention: error=" << error << " blocker=" << blocker
+                          << " opened=" << opened << '\n';
+            }
+            Require(opened, "Cannot inspect terminal release clipboard");
+            const auto owner = GetClipboardOwner();
             const auto data = GetClipboardData(CF_UNICODETEXT);
             const auto text = data ? static_cast<const wchar_t*>(GlobalLock(data)) : nullptr;
             const std::wstring value = text ? text : L"";
             if (text) GlobalUnlock(data);
             CloseClipboard();
+            Require(owner == main.terminal_, "Clipboard was not written by the terminal under test");
             return value;
         };
         for (const bool finalMoveDelivered : {false, true}) {
+            const auto beforeCopy = GetClipboardSequenceNumber();
             SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(0, 0));
             if (finalMoveDelivered)
                 SendMessageW(main.terminal_, WM_MOUSEMOVE, MK_LBUTTON, point(7, 1));
             SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(8, 1));
+            Require(GetClipboardSequenceNumber() != beforeCopy, "Terminal selection release did not write the clipboard");
             Require(main.TerminalSelectionText(false) == L"COPY_HEAD  \r\nHARD_LINE" &&
                         copied() == L"COPY_HEAD  \r\nHARD_LINE",
                     "Terminal mouse release omitted its final character after a coalesced move");
         }
+        const auto beforeReverse = GetClipboardSequenceNumber();
         SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(8, 1));
         SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(0, 0));
+        Require(GetClipboardSequenceNumber() != beforeReverse, "Reverse terminal selection did not write the clipboard");
         Require(copied() == L"COPY_HEAD  \r\nHARD_LINE", "Reverse terminal release lost hard line breaks");
+        const auto beforeClick = GetClipboardSequenceNumber();
         SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(0, 0));
         SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(0, 0));
-        Require(copied() == L"COPY_HEAD  \r\nHARD_LINE", "Ordinary click replaced the selection clipboard");
+        Require(GetClipboardSequenceNumber() == beforeClick && copied() == L"COPY_HEAD  \r\nHARD_LINE",
+                "Ordinary click replaced the selection clipboard");
         main.ClearTerminalSelection();
         const auto before = transports[4]->sent;
         Require(main.AiDeviceRequest("command", {{"sessionId", "session-5"}, {"command", "a\nb"}}).contains("error"), "Multiline command bypassed validation");
