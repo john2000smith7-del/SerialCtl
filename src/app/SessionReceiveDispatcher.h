@@ -123,12 +123,10 @@ public:
         return received_.size();
     }
 
-    std::deque<ReceivedItem> &DirectItems() { return received_; }
-    const std::deque<ReceivedItem> &DirectItems() const { return received_; }
-    std::mutex &DirectMutex() { return mutex_; }
-    unsigned &DirectFairness() { return fairness_; }
-
 private:
+#ifdef SERIALCTL_AI_TESTING
+    friend struct AiDeviceTestAccess;
+#endif
     void EnqueueInternal(ReceivedItem item, bool &needsPost) {
         const auto id = item.sessionId;
         std::lock_guard<std::mutex> lock(mutex_);

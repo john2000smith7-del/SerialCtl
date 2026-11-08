@@ -520,9 +520,6 @@ private:
     std::atomic<bool> updateCancel_{false};
     bool startupUpdateDeferred_ = false;
     SessionReceiveDispatcher receiveDispatcher_;
-    std::deque<ReceivedItem> &received_ = receiveDispatcher_.DirectItems();
-    std::mutex &receivedMutex_ = receiveDispatcher_.DirectMutex();
-    unsigned &receiveFairness_ = receiveDispatcher_.DirectFairness();
     bool measurePaint_ = false;
     bool receivePosted_ = false;
     bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.
