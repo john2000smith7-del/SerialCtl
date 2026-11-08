@@ -3504,14 +3504,17 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if (session && pendingReconnectId_==session->id) state=L"正在重连…";
         if (session && session->udpRaw && connected)
             state = session->udpReceived ? L"已接收数据" : L"等待 UDP 数据";
+        const bool sharedSerial = connected && session && session->mode == 1 && session->port;
         if (connected && session && session->mode == 1)
-            state = session->port ? L"共享 · WebSocket " + std::to_wstring(session->port) : L"本地可用";
+            state = sharedSerial ? L"WS " + std::to_wstring(session->port) + L" · 共享" : L"本地可用";
         if (session && !session->host.empty())
             state = session->host + L" · " + state;
         else if (session && session->mode == 4)
             state = L"本机 · " + state;
-        if (session && session->unreadStatus)
-            state = (session->lastStatusIsError ? L"新错误 · " : L"新状态 · ") + state;
+        if (session && session->unreadStatus) {
+            const auto notice = session->lastStatusIsError ? L"新错误" : L"新状态";
+            state = sharedSerial ? state + L" · " + notice : std::wstring(notice) + L" · " + state;
+        }
         RECT dot{textLeft, subtitle.top + Ui::Scale(6), textLeft + Ui::Scale(5), subtitle.top + Ui::Scale(11)};
         const bool powerWarning = power && !connected && (powerService_.State().value("unconfirmedPowerOff", false) || !powerAlert_.empty());
         const bool unreadError = (session && session->unreadStatus && session->lastStatusIsError) || powerWarning;
