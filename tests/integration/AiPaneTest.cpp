@@ -26,6 +26,13 @@ struct HostDialogProbe {
             auto require = [](bool ok, const char* why) { if (!ok) throw std::runtime_error(why); };
             require(IsDlgButtonChecked(h, 4100) == BST_UNCHECKED && !IsWindowEnabled(GetDlgItem(h, IDOK)),
                     "Host identity approval is preselected or enabled without verification");
+            MONITORINFO monitor{sizeof(monitor)};
+            RECT dialog{};
+            require(GetMonitorInfoW(MonitorFromWindow(GetWindow(h, GW_OWNER), MONITOR_DEFAULTTONEAREST), &monitor) &&
+                        GetWindowRect(h, &dialog) && dialog.left >= monitor.rcWork.left &&
+                        dialog.top >= monitor.rcWork.top && dialog.right <= monitor.rcWork.right &&
+                        dialog.bottom <= monitor.rcWork.bottom,
+                    "Host identity dialog escaped its owner's monitor work area");
             RECT check{}, action{}, client{};
             GetWindowRect(GetDlgItem(h, 4100), &check); GetWindowRect(GetDlgItem(h, IDOK), &action);
             require(check.bottom < action.top, "Consent overlaps the fixed action row on a small work area");
