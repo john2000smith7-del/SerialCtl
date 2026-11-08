@@ -134,7 +134,8 @@ void XferPane::Refresh() {
     auto help=std::wstring(hints[std::clamp(protocol,0,3)]);
     if(receive)help+=L" 接收使用新文件名，不覆盖原文件；本版接收上限4GiB。";
 
-    const auto note=!state.busy&&!localNotice_.empty()?localNotice_:
+    const auto note=state.busy&&!relevant?L"其他连接正在传输，切回任务来源可查看或停止。":
+        !state.busy&&!localNotice_.empty()?localNotice_:
         targetActive||(!state.note.empty()&&relevant)?state.note:
         target.unavailable.empty()?(receive&&protocol==0?
             L"请先开始接收，再触发设备发送原始字节；原始模式不会补收开始前的数据。":
@@ -178,7 +179,7 @@ void XferPane::Refresh() {
     if(((GetWindowLongPtrW(Control(Length),GWL_STYLE)&ES_READONLY)!=0)!=state.busy)
         SendMessageW(Control(Length),EM_SETREADONLY,state.busy?TRUE:FALSE,0);
 
-    const bool rawFinish=state.busy&&state.protocol==xfer::Protocol::Raw&&state.direction==xfer::Direction::Receive&&
+    const bool rawFinish=targetActive&&state.protocol==xfer::Protocol::Raw&&state.direction==xfer::Direction::Receive&&
         state.expectedReceiveBytes==0&&!state.stopping&&!state.finishing;
     lastRender_.rawFinish=rawFinish;
     UiGlyph startGlyph=UiGlyph::Run;
@@ -208,7 +209,7 @@ void XferPane::Refresh() {
         lastRender_.cancelTip=cancelTip;
     }
     const bool startEnabled=rawFinish||(!state.busy&&supported&&!Text(Control(File)).empty());
-    const bool cancelEnabled=state.busy&&!state.stopping;
+    const bool cancelEnabled=targetActive&&!state.stopping;
     if((IsWindowEnabled(Control(Start))!=FALSE)!=startEnabled) {
         EnableWindow(Control(Start),startEnabled);
     }
@@ -252,17 +253,17 @@ void XferPane::BrowseFile() {
 }
 void XferPane::Begin() {
     const auto state=controller_->State();
+    const auto target=target_();
     // A click queued while the button showed Finish must never start another
     // receive after the worker completes but before the next UI refresh.
     if(lastRender_.rawFinish) {
-        if(state.busy&&!state.stopping&&!state.finishing&&state.protocol==xfer::Protocol::Raw&&
+        if(state.busy&&state.session==target.id&&!state.stopping&&!state.finishing&&state.protocol==xfer::Protocol::Raw&&
             state.direction==xfer::Direction::Receive&&state.expectedReceiveBytes==0)
             controller_->FinishRawReceive();
         else Refresh();
         return;
     }
     if(state.busy)return;
-    const auto target=target_();
     if(!target.unavailable.empty()){localNotice_=target.unavailable;Refresh();return;}
     xfer::TransferController::Request request;request.session=target.id;request.source=target.name;request.path=Text(Control(File));request.connection=target.connection;
     request.options.protocol=static_cast<xfer::Protocol>(std::clamp<LRESULT>(SendMessageW(Control(Mode),CB_GETCURSEL,0,0),0,3));
@@ -368,7 +369,14 @@ LRESULT CALLBACK XferPane::Proc(HWND h,UINT m,WPARAM w,LPARAM l) {
     }
     if(m==WM_COMMAND) {
         const int id=LOWORD(w),note=HIWORD(w);
-        if(note==BN_CLICKED) {if(id==Start)self->Begin();else if(id==Cancel){self->controller_->Cancel();self->Refresh();}else if(id==Browse)self->BrowseFile();}
+        if(note==BN_CLICKED) {
+            if(id==Start)self->Begin();
+            else if(id==Cancel) {
+                const auto state=self->controller_->State();
+                if(state.busy&&state.session==self->target_().id)self->controller_->Cancel();
+                self->Refresh();
+            } else if(id==Browse)self->BrowseFile();
+        }
         else if(note==CBN_SELENDOK||note==CBN_CLOSEUP) {if(id==Direction&&note==CBN_SELENDOK)self->directionChanged_=true;PostMessageW(h,WM_APP+219,0,0);}
         else if(note==EN_CHANGE){self->localNotice_.clear();self->Refresh();}
         return 0;
