@@ -252,6 +252,8 @@ void TestPromptDirectoryExtraction() {
         "extract bracketed [user@host ~]$");
     Expect(TryExtractPromptDirectory(L"[user@host /etc/nginx]#", dir) && dir == L"/etc/nginx",
         "extract bracketed [user@host /etc/nginx]#");
+    Expect(TryExtractPromptDirectory(L"[user@zsh /var/tmp]% ", dir) && dir == L"/var/tmp",
+        "extract Zsh prompt with percent terminator");
     Expect(TryExtractPromptDirectory(L"(venv) [renhongyujie2866:/tmp]$", dir) && dir == L"/tmp",
         "extract (venv) [renhongyujie2866:/tmp]$");
 
@@ -263,7 +265,9 @@ void TestPromptDirectoryExtraction() {
     Expect(!TryExtractPromptDirectory(L"echo Hello World", dir),
         "reject normal output line");
     Expect(!TryExtractPromptDirectory(L"user@host:/path", dir),
-        "reject line not ending in $ or #");
+        "reject line without a prompt terminator");
+    Expect(!TryExtractPromptDirectory(L"user@host:  %", dir),
+        "reject an empty directory after the delimiter");
     Expect(!TryExtractPromptDirectory(L"[invalid=ident:/tmp]$", dir),
         "reject identity with illegal punctuation");
 }

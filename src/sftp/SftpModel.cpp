@@ -435,8 +435,8 @@ bool TryExtractPromptDirectory(const std::wstring& line, std::wstring& directory
     }
     if (s.empty()) return false;
 
-    // Prompt line must end with '$' or '#'
-    if (s.back() != L'$' && s.back() != L'#') return false;
+    // Common Bash and Zsh prompt terminators.
+    if (s.back() != L'$' && s.back() != L'#' && s.back() != L'%') return false;
     s.pop_back();
 
     while (!s.empty() && (s.back() == L' ' || s.back() == L'\t')) s.pop_back();
@@ -506,7 +506,8 @@ bool TryExtractPromptDirectory(const std::wstring& line, std::wstring& directory
     }
     if (!hasLetter) return false;
 
-    if (candidatePath != L"~" && candidatePath.rfind(L"~/", 0) != 0 && candidatePath.front() != L'/') {
+    if (candidatePath.empty() ||
+        (candidatePath != L"~" && candidatePath.rfind(L"~/", 0) != 0 && candidatePath.front() != L'/')) {
         return false;
     }
     for (wchar_t c : candidatePath) {

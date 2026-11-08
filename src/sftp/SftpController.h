@@ -23,10 +23,10 @@ public:
         std::wstring terminalDirectory;
         std::wstring lastPromptDirectory;
         std::wstring failedSftpFollowDirectory;
-        bool terminalDirectoryFromOsc = false;
         std::wstring sftpDirectory = L".";
         std::wstring sftpHomeDirectory;
         std::wstring pendingSftpDirectory;
+        std::wstring sftpFollowInFlight;
         std::vector<SftpEntry> sftpEntries;
     };
     struct Transfer {

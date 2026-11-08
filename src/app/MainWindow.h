@@ -226,7 +226,7 @@ private:
     void QueueReceived(ReceivedItem);
     void AppendInput(const ReceivedItem &);
     std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
-    void SyncSftpDirectoryFromTerminal(SessionState& session);
+    void SyncSftpDirectoryFromTerminal(SessionState& session, bool receivedOscDirectory = false);
     void AppendStatus(const std::wstring& text, bool isError);
     void RefreshStatusDisplay();
     void SaveCurrentLog(HWND owner = nullptr);
@@ -270,7 +270,8 @@ private:
     std::vector<TftpSshSessionInfo> GetTftpSshSessions() const;
     XferPane::Target XferTarget();
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
-    void RefreshSftp(const std::wstring& directory = {});
+    void RefreshSftp(const std::wstring& directory = {}, bool followTerminal = false);
+    bool RefreshPendingSftpDirectory();
     static SftpController::Endpoint SftpEndpoint(const SessionState&);
     void EditSftpPath();
     void QueryTerminalDirectory(bool installHook);
