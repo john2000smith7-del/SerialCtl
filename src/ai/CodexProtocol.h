@@ -121,12 +121,14 @@ inline std::string NativeItemText(const Json& item, bool completed) {
 }
 inline std::string ExtractSandbox(const Json &obj) {
     if (!obj.is_object()) return {};
-    if (obj.contains("sandbox") && obj["sandbox"].is_string()) return obj["sandbox"].get<std::string>();
-    if (obj.contains("effectiveSandbox") && obj["effectiveSandbox"].is_string()) return obj["effectiveSandbox"].get<std::string>();
-    if (obj.contains("sandboxPolicy")) {
-        const auto &sp = obj["sandboxPolicy"];
-        if (sp.is_string()) return sp.get<std::string>();
-        if (sp.is_object() && sp.contains("type") && sp["type"].is_string()) return sp["type"].get<std::string>();
+    for (const char *key : {"effectiveSandbox", "sandbox", "sandboxPolicy"}) {
+        const auto policy = obj.find(key);
+        if (policy == obj.end()) continue;
+        if (policy->is_string()) return policy->get<std::string>();
+        if (policy->is_object()) {
+            const auto type = policy->find("type");
+            if (type != policy->end() && type->is_string()) return type->get<std::string>();
+        }
     }
     for (const char *sub : {"thread", "turn", "config"}) {
         if (obj.contains(sub) && obj[sub].is_object()) {

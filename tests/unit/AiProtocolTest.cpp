@@ -243,6 +243,18 @@ int main() {
         Require(decodedPerm["effectiveSandbox"] == "danger-full-access" &&
                 decodedPerm["effectiveApprovalPolicy"] == "never",
                 "Effective permissions must be decoded from thread response");
+        const auto appServerPerm = DecodeResponse(Operation::NewConversation, {
+            {"thread", {{"id", "thread-native"}}}, {"sandbox", {{"type", "dangerFullAccess"}}},
+            {"approvalPolicy", "never"}, {"activePermissionProfile", nullptr}});
+        Require(appServerPerm["effectiveSandbox"] == "dangerFullAccess" && appServerPerm["effectiveApprovalPolicy"] == "never",
+                "App Server thread/start returns a sandbox policy object");
+        const auto restrictedPerm = DecodeResponse(Operation::RestoreConversation, {
+            {"thread", {{"id", "thread-native"}}}, {"sandbox", {{"type", "readOnly"}, {"networkAccess", false}}},
+            {"approvalPolicy", "never"}});
+        Require(restrictedPerm["effectiveSandbox"] == "readOnly",
+                "App Server thread/resume can return an effective read-only sandbox object");
+        Require(ExtractSandbox({{"sandbox", "danger-full-access"}, {"effectiveSandbox", "workspace-write"}}) == "workspace-write",
+                "An explicit effective restriction takes precedence over the legacy value");
 
         // Issue #57: WorkspaceInstructions pure functions validation
         const std::string sampleAgentsMd =
