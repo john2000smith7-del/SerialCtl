@@ -10,6 +10,7 @@
 #include <fstream>
 #include <atomic>
 #include <windows.h>
+#include <wincrypt.h>
 
 #define Require(cond, msg) do { \
     if (!(cond)) { \
@@ -548,6 +549,44 @@ void TestRemoteStreamingBoundedMemory(uint16_t testPort) {
     std::cout << "[PASS] Remote streaming, bounded memory, and error handling verified." << std::endl;
 }
 
+void TestComplete500MiB(uint16_t testPort) {
+    TftpServer server; std::wstring error;
+    Require(server.Start("127.0.0.1", testPort, error), "500 MiB server starts");
+    constexpr uint64_t total = 500ULL * 1024 * 1024;
+    Require(server.PublishCustom("complete-500MiB.bin", std::make_shared<MockStreamTftpFileSource>(total), true, error), "500 MiB source published");
+    HCRYPTPROV provider = 0; HCRYPTHASH hash = 0;
+    Require(CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT), "SHA256 provider");
+    Require(CryptCreateHash(provider, CALG_SHA_256, 0, 0, &hash), "SHA256 state");
+    TftpClientSimulator client;
+    client.SendRrq(testPort, "complete-500MiB.bin", {{"blksize", "65464"}, {"tsize", "0"}});
+    sockaddr_in tid{}; std::vector<uint8_t> packet;
+    Require(client.RecvPacket(packet, tid) >= 4 && packet[1] == 6, "500 MiB option ACK");
+    client.SendAck(tid, 0);
+    uint64_t received = 0; uint32_t block = 1;
+    while (true) {
+        const int count = client.RecvPacket(packet, tid);
+        Require(count >= 4 && packet[1] == 3, "500 MiB DATA packet");
+        Require(((packet[2] << 8) | packet[3]) == static_cast<uint16_t>(block), "500 MiB block ordering");
+        const DWORD bytes = static_cast<DWORD>(count - 4);
+        Require(received + bytes <= total, "500 MiB exact upper bound");
+        Require(CryptHashData(hash, packet.data() + 4, bytes, 0), "Hash every received byte");
+        received += bytes;
+        client.SendAck(tid, static_cast<uint16_t>(block++));
+        if (bytes < 65464) break;
+    }
+    Require(received == total, "The ENTIRE 500 MiB must arrive before success");
+    BYTE digest[32]{}; DWORD length = sizeof(digest);
+    Require(CryptGetHashParam(hash, HP_HASHVAL, digest, &length, 0), "Read final SHA256");
+    CryptDestroyHash(hash); CryptReleaseContext(provider, 0);
+    static const char digits[] = "0123456789abcdef";
+    std::string hexadecimal;
+    for (BYTE byte : digest) { hexadecimal += digits[byte >> 4]; hexadecimal += digits[byte & 15]; }
+    Require(hexadecimal == "411fd088435f42d23961db92a0c245b2f946aab0b98ab356649503680410a4dc", "500 MiB full SHA256 mismatch");
+    server.Stop();
+    std::cout << "PASS: full TFTP loopback received=" << received << " SHA256=" << hexadecimal
+              << " source=deterministic-generator (not real SSH)\n";
+}
+
 // B06: RFC 1350 block number wrap-around 65535 -> 0 -> 1 -> 2
 void TestWrapAround65535(uint16_t testPort) {
     std::cout << "[RUN] Testing TFTP block 65535 wrap-around (65535 -> 0 -> 1 -> 2)..." << std::endl;
@@ -757,6 +796,7 @@ int main() {
     TestRetransmissionAndDupAck(6974);
     TestConcurrentClients(6975);
     TestRemoteStreamingBoundedMemory(6976);
+    TestComplete500MiB(6980);
     TestWrapAround65535(6977);
     TestSlowStreamAndPrematureEof(6978);
     TestConcurrencyLimitAndPathBoundary(6979);

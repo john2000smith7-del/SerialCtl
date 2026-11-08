@@ -22,10 +22,10 @@
    - `ssh_history.list` 严禁读取或回显已保存的 SSH 明文密码。
    - 首次/变更 SSH host key 若未信任则结构化返回指纹并要求显式 `confirmHostKey=true`，不无条件盲信。
    - `ai.send` 包含调用深度限制（`recursionDepth >= 2` 拦截），防止“外部 MCP 调内置 AI → 内置 AI 又调外部 MCP”的无限递归。
-4. **GUI 离线与常驻服务生命周期**：
-   - GUI 未运行时，常驻服务保持在线，`app.health` / `app.status` 报告 `serviceRunning: true, guiRunning: false`；
-   - GUI 未运行时调用设备工具返回 `APP_NOT_RUNNING`；
-   - `app.launch` 在 Windows 无交互桌面 (Session 0) 时返回 `LOGIN_REQUIRED`；在交互会话中并发调用保持幂等（至多拉起 1 个 GUI）。
+4. **GUI 生命周期（#52 已取消）**：
+   - SerialCtl 仅手动启动；MCP 默认关闭，用户本机启用后在 GUI 存活期间提供服务。
+   - GUI 退出后 HTTP/TFTP 停止，无开机自启或独立常驻后台服务。STDIO 只桥接现有 GUI。
+   - 下表为源码接口映射，不是全部业务已经端到端验证的证明。尤其 TestBusinessFlow 使用模拟 executor；验收结果以本轮精确 SHA 的原始证据和逐 Issue 报告为准。
 
 ---
 
@@ -35,11 +35,11 @@
 |---|---|---|---|---|---|---|
 | **应用与服务** | 主窗口标题栏 / 运行状态 | `MainWindow::State`, `GuiInstance` | `app.status` | 无 | 允许（公开只读） | `McpServerTest::TestResidentLifecycle` |
 | **应用与服务** | 进程健康心跳 | `McpService::Health` | `app.health` | 无 | 允许（公开只读） | `McpServerTest::TestResidentLifecycle` |
-| **应用与服务** | 远程唤起唯一 GUI | `McpService::LaunchGui`, `GuiInstance` | `app.launch` | `forceFocus` (bool, 可选) | 允许（受 Session 0 隔离保护） | `McpServerTest::TestResidentLifecycle` |
+| **应用与服务** | 激活已运行 GUI（不恢复常驻） | `McpService::LaunchGui`, `GuiInstance` | `app.launch` | `forceFocus` (bool, 可选) | 允许（受 Session 0 隔离保护） | `McpServerTest::TestResidentLifecycle` |
 | **应用与服务** | 激活主窗口至前台 | `GuiInstance::Activate` | `app.activate` | 无 | 允许 | `McpServerTest::TestResidentLifecycle` |
 | **应用与服务** | 退出主界面 | `MainWindow::Close` | `app.quit` | `confirm: true` (必须显式确认) | 允许（需确认） | `McpServerTest::TestResidentLifecycle` |
 | **应用与服务** | MCP 服务配置状态 | `McpService::Status` | `app.service_status` | 无 | 允许（只读） | `McpServerTest::TestResidentLifecycle` |
-| **应用与服务** | 配置自启与端口 | `McpService::Configure` | `app.service_configure` | `autoStart` (bool), `port` (int) | 允许 | `McpServerTest::TestResidentLifecycle` |
+| **应用与服务** | 配置下次启动的监听地址与端口 | `McpService::Configure` | `app.service_configure` | `port` (int), `bindIp` (IPv4)；autoStart 拒绝 | 允许，需手动重启生效 | `McpServerTest::TestResidentLifecycle` |
 | **会话管理** | 左侧会话卡片列表 | `MainWindow::sessions_` | `session.list` | 无 | 允许（只读） | `McpServerTest::TestBusinessFlow` |
 | **会话管理** | 串口下拉框与网络发现 | `EnumComPorts`, `NetworkConnect` | `session.ports` | 无 | 允许（只读） | `McpServerTest::TestBusinessFlow` |
 | **会话管理** | 新建串口连接 | `MainWindow::ConnectSerial` | `session.connect_serial` | `port` (str), `baudRate` (int), `parity`, `dataBits`, `stopBits` | 允许 | `McpServerTest::TestBusinessFlow` |

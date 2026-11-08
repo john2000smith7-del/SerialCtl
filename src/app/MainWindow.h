@@ -569,6 +569,7 @@ private:
     std::unique_ptr<mcp::McpIpcServer> mcpIpcServer_;
     std::unique_ptr<mcp::McpHttpServer> mcpEmbeddedServer_;
     std::unique_ptr<mcp::McpDispatcher> mcpDispatcher_;
+    std::atomic<bool> mcpStopping_{false};
     bool mcpEnabled_ = false;
     bool mcpAutoStart_ = false;
     uint16_t mcpPort_ = 7080;
@@ -579,6 +580,7 @@ private:
     void StartEmbeddedMcpServer();
     void StopEmbeddedMcpServer();
     void ApplyMcpSettings(bool enabled, bool autoStart, uint16_t port);
+    Json DispatchMcpToUi(const std::string& method, const Json& params, bool http);
     Json McpExecute(const std::string& method, const Json& params);
     SessionState* ResolveTargetSession(const Json& params, std::string& err);
     uint64_t mcpRequestSeq_ = 0;

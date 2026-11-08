@@ -807,11 +807,33 @@ struct AiDeviceTestAccess {
         Require(channels[0]["output"] == true && channels[1]["output"] == false && channels[2]["output"] == true, "Power affected an unchecked channel");
         SendMessageW(PowerControl(main.powerPane_.Handle(), 20), BM_SETCHECK, BST_UNCHECKED, 0);
         Require(main.AiDeviceRequest("power.output", args).contains("error"), "Changed channel selection was silently redirected");
+        Require(main.McpExecute("power.output", {{"enabled", true}, {"channels", Json::array({1,3})}}).contains("error"),
+                "MCP must reject a changed GUI selection instead of silently substituting channels");
         SendMessageW(PowerControl(main.powerPane_.Handle(), 20), BM_SETCHECK, BST_CHECKED, 0);
         args["enabled"] = false; args["requestId"] = "ai-device-fixture-off";
         Require(Wait(main.powerService_, main.AiDeviceRequest("power.output", args))["state"] == "completed", "Power OFF failed");
         Require(main.powerService_.State()["channels"][0]["output"] == false && main.powerService_.State()["channels"][2]["output"] == false, "Power OFF readback incorrect");
         Require(main.AiDeviceRequest("power.parameters", {{"voltage", 30}}).contains("error"), "AI gained unrequested parameter operation");
+        {
+            main.mcpStopping_.store(false);
+            auto pending = std::async(std::launch::async, [&] {
+                return main.DispatchMcpToUi("session.list", Json::object(), true);
+            });
+            MSG queued{};
+            const auto deadline = GetTickCount64() + 2000;
+            while (!PeekMessageW(&queued, parent, WM_APP + 26, WM_APP + 26, PM_NOREMOVE) && GetTickCount64() < deadline) Sleep(1);
+            Require(queued.message == WM_APP + 26, "MCP worker failed to queue its UI request");
+            const auto started = GetTickCount64();
+            main.StopEmbeddedMcpServer();
+            Require(pending.wait_for(std::chrono::milliseconds(500)) == std::future_status::ready,
+                    "Stopping MCP while UI request pending deadlocked the worker");
+            Require(pending.get().contains("error"), "Canceled MCP request reported success");
+            Require(GetTickCount64() - started < 500, "MCP stop waited for UI dispatch timeout");
+            while (PeekMessageW(&queued, parent, WM_APP + 26, WM_APP + 26, PM_REMOVE)) DispatchMessageW(&queued);
+            main.mcpStopping_.store(false);
+            std::cout << "PASS: pending MCP UI dispatch cancels without blocking server stop\n";
+        }
+
         {
             main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
             main.LayoutControls(viewport.right, viewport.bottom);

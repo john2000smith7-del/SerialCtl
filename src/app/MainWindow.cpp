@@ -65,9 +65,10 @@ constexpr UINT MessageSessionCleanup = WM_APP + 25;
 constexpr UINT MessageMcpDispatch = WM_APP + 26;
 
 struct McpDispatchContext {
-    const std::string* method = nullptr;
-    const Json* params = nullptr;
-    Json response;
+    std::string method;
+    Json params;
+    std::promise<Json> response;
+    std::atomic<int> state{0}; // pending, executing, canceled
 };
 
 void DiscardUpdate(update::UpdateResult& result) {
@@ -925,6 +926,8 @@ void MainWindow::DrainShutdownMessages() {
     while (PeekMessageW(&pending, window_, MessageHostKey, MessageHostKey, PM_REMOVE)) delete reinterpret_cast<HostKeyMessage*>(pending.lParam);
     while (PeekMessageW(&pending, window_, MessageData, MessageData, PM_REMOVE)) delete reinterpret_cast<DataMessage*>(pending.lParam);
     while (PeekMessageW(&pending, window_, MessageStatus, MessageStatus, PM_REMOVE)) delete reinterpret_cast<StatusMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageMcpDispatch, MessageMcpDispatch, PM_REMOVE))
+        delete reinterpret_cast<std::shared_ptr<McpDispatchContext>*>(pending.lParam);
     while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE)) {}
     while (PeekMessageW(&pending, window_, MessageSftpProgress, MessageSftpProgress, PM_REMOVE)) {}
 }
@@ -2459,9 +2462,13 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if(!closing_) PollSessionCleanup();
         return 0;
     case MessageMcpDispatch: {
-        auto* ctx = reinterpret_cast<McpDispatchContext*>(lParam);
-        if (ctx && ctx->method && ctx->params) {
-            ctx->response = McpExecute(*ctx->method, *ctx->params);
+        std::unique_ptr<std::shared_ptr<McpDispatchContext>> holder(
+            reinterpret_cast<std::shared_ptr<McpDispatchContext>*>(lParam));
+        auto ctx = *holder;
+        int expected = 0;
+        if (ctx->state.compare_exchange_strong(expected, 1)) {
+            try { ctx->response.set_value(McpExecute(ctx->method, ctx->params)); }
+            catch (const std::exception&) { ctx->response.set_value(Json{{"error", "MCP execution failed"}}); }
         }
         return 0;
     }
@@ -8337,6 +8344,30 @@ Json MainWindow::ExecuteApiRequest(const std::string &op, const std::string &res
     return {{"error", {{"code", "OPERATION_DENIED"}}}};
 }
 
+Json MainWindow::DispatchMcpToUi(const std::string& method, const Json& params, bool http) {
+    if (closing_.load() || (http && mcpStopping_.load())) return {{"error", "Application or MCP server stopping"}};
+    auto ctx = std::make_shared<McpDispatchContext>();
+    ctx->method = method;
+    ctx->params = params;
+    auto future = ctx->response.get_future();
+    auto holder = new std::shared_ptr<McpDispatchContext>(ctx);
+    if (!PostMessageW(window_, MessageMcpDispatch, 0, reinterpret_cast<LPARAM>(holder))) {
+        delete holder;
+        return {{"error", "MCP UI dispatch unavailable"}};
+    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (future.wait_for(std::chrono::milliseconds(25)) != std::future_status::ready) {
+        if (closing_.load() || (http && mcpStopping_.load()) || std::chrono::steady_clock::now() >= deadline) {
+            int expected = 0;
+            if (ctx->state.compare_exchange_strong(expected, 2))
+                return {{"error", "MCP request canceled before execution"}};
+            // Execution already started on the UI thread. Preserve its actual
+            // result; never report a canceled command that may change a device.
+        }
+    }
+    return future.get();
+}
+
 void MainWindow::StartMcpIpc() {
     if (mcpIpcServer_ && mcpIpcServer_->IsRunning()) return;
     mcpIpcServer_ = std::make_unique<mcp::McpIpcServer>(mcp::DefaultMcpPipeName);
@@ -8355,14 +8386,7 @@ void MainWindow::StartMcpIpc() {
                 return "{\"ok\":true}";
             }
 
-            struct McpDispatchContext {
-                const std::string* method;
-                const Json* params;
-                Json response;
-            } ctx{&method, &params, Json::object()};
-
-            SendMessageW(window_, MessageMcpDispatch, 0, reinterpret_cast<LPARAM>(&ctx));
-            return ctx.response.dump();
+            return DispatchMcpToUi(method, params, false).dump();
         } catch (...) {
             return "{\"error\":\"IPC dispatch error\"}";
         }
@@ -8390,15 +8414,11 @@ void MainWindow::StartEmbeddedMcpServer() {
                 selectedChannels = powerPane_.SelectedChannels();
                 return;
             }
-            const std::string method = "internal.power_context";
-            const Json params = Json::object();
-            McpDispatchContext ctx{&method, &params, Json::object()};
-            SendMessageW(window_, MessageMcpDispatch, 0, reinterpret_cast<LPARAM>(&ctx));
-            if (ctx.response.is_object()) {
-                testUnlocked = ctx.response.value("testUnlocked", false);
-                if (ctx.response.contains("selectedChannels") && ctx.response["selectedChannels"].is_array()) {
-                    selectedChannels = ctx.response["selectedChannels"];
-                }
+            const auto response = DispatchMcpToUi("internal.power_context", Json::object(), true);
+            if (response.is_object()) {
+                testUnlocked = response.value("testUnlocked", false);
+                if (response.contains("selectedChannels") && response["selectedChannels"].is_array())
+                    selectedChannels = response["selectedChannels"];
             }
         });
         mcpDispatcher_->SetGuiExecutor([this](const std::string& method, const Json& params) {
@@ -8408,9 +8428,7 @@ void MainWindow::StartEmbeddedMcpServer() {
             if (GetCurrentThreadId() == GetWindowThreadProcessId(window_, nullptr)) {
                 return McpExecute(method, params);
             }
-            McpDispatchContext ctx{&method, &params, Json::object()};
-            SendMessageW(window_, MessageMcpDispatch, 0, reinterpret_cast<LPARAM>(&ctx));
-            return ctx.response;
+            return DispatchMcpToUi(method, params, true);
         });
         mcpDispatcher_->SetTestUnlocked(PowerService::ConnectionAvailable());
         mcpDispatcher_->SetGuiSelectedChannels(powerPane_.SelectedChannels());
@@ -8455,6 +8473,7 @@ void MainWindow::StartEmbeddedMcpServer() {
         });
     }
 
+    mcpStopping_.store(false);
     mcpEmbeddedServer_ = std::make_unique<mcp::McpHttpServer>();
     std::wstring err;
     if (!mcpEmbeddedServer_->Start(mcpBindIp_, mcpPort_,
@@ -8471,6 +8490,7 @@ void MainWindow::StartEmbeddedMcpServer() {
 }
 
 void MainWindow::StopEmbeddedMcpServer() {
+    mcpStopping_.store(true);
     if (mcpEmbeddedServer_) {
         mcpEmbeddedServer_->Stop();
         mcpEmbeddedServer_.reset();
@@ -9257,8 +9277,11 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         if (!state.value("connected", false)) {
             return error("Power supply is not connected");
         }
+        const auto selected = powerPane_.SelectedChannels();
+        if (!params.contains("channels") || params["channels"] != selected)
+            return error("Power channel selection changed; request rejected before execution");
         Json effectiveParams = params;
-        effectiveParams["channels"] = powerPane_.SelectedChannels();
+        effectiveParams["channels"] = selected;
         effectiveParams["identity"] = state.value("identity", std::string());
         effectiveParams["mode"] = state.value("mode", std::string());
         effectiveParams["requestId"] = "mcp-" + std::to_string(++mcpRequestSeq_);

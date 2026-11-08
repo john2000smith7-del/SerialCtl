@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 namespace serialctl::mcp {
 
@@ -149,12 +150,12 @@ void McpHttpServer::Stop() {
 
     if (listenSocket_ != INVALID_SOCKET) {
         closesocket(listenSocket_);
-        listenSocket_ = INVALID_SOCKET;
     }
 
     if (acceptThread_.joinable()) {
         acceptThread_.join();
     }
+    listenSocket_ = INVALID_SOCKET;
 
     std::vector<ClientThread> threadsToJoin;
     {
@@ -202,7 +203,8 @@ void McpHttpServer::AcceptLoop() {
         auto doneFlag = std::make_shared<std::atomic<bool>>(false);
         clientThreads_.push_back({
             std::thread([this, clientSocket, clientIp, doneFlag] {
-                HandleClient(clientSocket, clientIp);
+                try { HandleClient(clientSocket, clientIp); }
+                catch (...) { closesocket(clientSocket); }
                 doneFlag->store(true);
             }),
             doneFlag
@@ -221,12 +223,15 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
     size_t headerEnd = std::string::npos;
     size_t contentLength = 0;
     bool hasContentLength = false;
+    bool invalidHeaders = false;
+    const auto deadline = GetTickCount64() + 10000;
     std::string origin;
     std::string host;
     std::string contentType;
     std::string protocolVersion;
 
     while (running_.load()) {
+        if (GetTickCount64() >= deadline) { invalidHeaders = true; break; }
         int bytes = recv(clientSocket, buffer, sizeof(buffer), 0);
         if (bytes <= 0) break;
         requestData.append(buffer, bytes);
@@ -238,20 +243,37 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
             }
 
             if (headerEnd != std::string::npos) {
-                // Parse headers
+                if (headerEnd > 65536) { invalidHeaders = true; break; }
+                // Parse headers, rejecting ambiguous framing before dispatch.
                 std::string headers = requestData.substr(0, headerEnd);
                 std::istringstream stream(headers);
                 std::string line;
+                std::set<std::string> seenHeaders;
+                std::getline(stream, line); // request line
                 while (std::getline(stream, line)) {
                     if (!line.empty() && line.back() == '\r') line.pop_back();
                     std::string lowerLine = line;
                     std::transform(lowerLine.begin(), lowerLine.end(), lowerLine.begin(),
                                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-                    if (lowerLine.rfind("content-length:", 0) == 0) {
-                        try {
-                            contentLength = std::stoul(line.substr(15));
-                            hasContentLength = true;
-                        } catch (...) {}
+                    const auto colon = lowerLine.find(':');
+                    if (colon == std::string::npos || colon == 0 || line.front() == ' ' || line.front() == '\t') {
+                        invalidHeaders = true; break;
+                    }
+                    const auto name = lowerLine.substr(0, colon);
+                    if (!seenHeaders.insert(name).second || name == "transfer-encoding") {
+                        invalidHeaders = true; break;
+                    }
+                    if (name == "content-length") {
+                        std::string digits = line.substr(colon + 1);
+                        while (!digits.empty() && (digits.front() == ' ' || digits.front() == '\t')) digits.erase(digits.begin());
+                        while (!digits.empty() && (digits.back() == ' ' || digits.back() == '\t')) digits.pop_back();
+                        if (digits.empty() || digits.size() > 8) { invalidHeaders = true; break; }
+                        for (unsigned char c : digits) {
+                            if (!std::isdigit(c)) { invalidHeaders = true; break; }
+                            contentLength = contentLength * 10 + c - '0';
+                        }
+                        hasContentLength = !invalidHeaders;
+                        if (contentLength > 16 * 1024 * 1024) invalidHeaders = true;
                     } else if (lowerLine.rfind("origin:", 0) == 0) {
                         origin = line.substr(7);
                         while (!origin.empty() && origin.front() == ' ') origin.erase(origin.begin());
@@ -270,6 +292,8 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
             }
         }
 
+        if (invalidHeaders) break;
+        if (headerEnd == std::string::npos && requestData.size() > 65536) { invalidHeaders = true; break; }
         if (headerEnd != std::string::npos) {
             size_t headerLength = (requestData.find("\r\n\r\n") != std::string::npos) ? 4 : 2;
             size_t bodyStart = headerEnd + headerLength;
@@ -284,6 +308,11 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
         }
     }
 
+    if (invalidHeaders) {
+        SendHttpAll(clientSocket, BuildHttpResponse(400, "Bad Request", "application/json", "{\"error\":\"Invalid HTTP framing\"}"));
+        closesocket(clientSocket);
+        return;
+    }
     if (!requestData.empty() && headerEnd != std::string::npos) {
         std::string requestLine;
         {
@@ -329,7 +358,7 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
             const size_t bodyStart = headerEnd + headerLength;
             if (!hasContentLength || contentLength > 16 * 1024 * 1024 ||
                 requestData.size() - bodyStart < contentLength ||
-                contentType.rfind("application/json", 0) != 0) {
+                (contentType != "application/json" && contentType.rfind("application/json;", 0) != 0)) {
                 response = BuildHttpResponse(400, "Bad Request", "application/json",
                     "{\"error\":\"Complete application/json request and Content-Length required\"}", allowedOrigin);
             } else {

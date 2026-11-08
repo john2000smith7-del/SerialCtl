@@ -1,10 +1,10 @@
 # SerialCtl V2.0.20
 
-本版新增右侧 TFTP 服务页（本地文件与远程 SSH/SFTP 无落盘有界流式发布）、全功能 MCP 控制接口与常驻开机自启 IP 直连免认证 MCP 服务，并完成界面体验、AI 交互、电源保护、网络缓冲与日志可靠性的系统加固。
+本版新增右侧 TFTP 服务页（本地文件与远程 SSH/SFTP 无落盘有界流式发布）、MCP 控制接口与手动启用的 IP 直连免认证 MCP 服务，并改进界面体验、AI 交互、电源保护、网络缓冲与日志可靠性的系统加固。
 
 - **TFTP 固件发布服务（#55）**：右侧边栏在“命令／SFTP／Xfer”旁新增 `TFTP` 页签。内置只读 UDP TFTP 服务端（RFC 1350 + RFC 2347/2348/2349 `blksize`、`tsize`、`timeout` 协商，16 位块号回绕兼容），拒绝 `WRQ` 写入与路径穿越。支持发布本地文件及远程 SSH/SFTP 文件（通过一次性加密密码管道调用 `plink.exe` 建立最多 2 MiB 有界滑动窗口流式转发，不在 Windows 本地产生临时镜像落盘，支持同一文件多客户端并发独立流式下载），并提供 `tftp.*` 工具供 GUI、内置 AI 与外部 MCP 协同控制。
-- **全功能 MCP 控制接口与电源硬边界（#50）**：提供覆盖应用生命周期、会话、SSH 历史、终端、U-Boot 打断、宏与命令笔记、SFTP、Xfer、TFTP、日志诊断、界面主题、内置 AI 与受控电源的 83 个 MCP 工具（完整规范见 `docs/architecture/MCP-CAPABILITY-MATRIX.md`）。服务端实施受控电源硬白名单：仅允许 `power.get`、已解锁且限 GUI 当前勾选通道的 `power.output`、`power.action` 与预绑定 `power.recover`；任何试图修改电压、电流、OVP/OCP、串并联/跟踪模式、篡改通道列表、预设、校准、复位或发送原始 SCPI 的请求均在服务端硬拦截并返回 `POWER_PARAMETER_CHANGE_FORBIDDEN`（`-32001`），对电源硬件零副作用。SSH 历史与审计日志自动脱敏明文密码，内置 AI 调用具备递归深度保护。
-- **常驻开机自启 IP 直连免认证 MCP 服务（#52）**：支持 Windows SCM 服务（`--mcp-service`）、用户登录常驻后台守护（`--mcp-agent`）与本地 STDIO 桥接（`--mcp-stdio`），使用独立互斥量 `Global\SerialCtl.McpService.v1` 与本地命名管道 `\\.\pipe\SerialCtl.McpBridge.v1` 同 GUI 解耦。启用后关闭 GUI 窗口仍保持 `http://0.0.0.0:7080/mcp` 在线；处于 Session 0 无交互登录会话时调用 `app.launch` 返回 `LOGIN_REQUIRED`（`-32003`），交互会话下并发调用保持单实例幂等拉起。
+- **MCP 控制接口与电源硬边界（#50）**：提供覆盖应用生命周期、会话、SSH 历史、终端、U-Boot 打断、宏与命令笔记、SFTP、Xfer、TFTP、日志诊断、界面主题、内置 AI 与受控电源的 83 个 MCP 工具（完整规范见 `docs/architecture/MCP-CAPABILITY-MATRIX.md`）。服务端实施受控电源硬白名单：仅允许 `power.get`、已解锁且限 GUI 当前勾选通道的 `power.output`、`power.action` 与预绑定 `power.recover`；任何试图修改电压、电流、OVP/OCP、串并联/跟踪模式、篡改通道列表、预设、校准、复位或发送原始 SCPI 的请求均在服务端硬拦截并返回 `POWER_PARAMETER_CHANGE_FORBIDDEN`（`-32001`），对电源硬件拒绝执行。SSH 历史与审计日志自动脱敏明文密码，内置 AI 调用具备递归深度保护。
+- **生命周期（#52 已取消）**：SerialCtl 由用户手动启动。MCP 默认关闭，本机启用后随 GUI 退出停止。`--mcp-service` / `--mcp-agent` 已停用，不提供开机自启或 GUI 退出后的后台驻留；`--mcp-stdio` 仅桥接正在运行的 GUI。
 - **终端、SFTP、连接与 Xfer 体验及协议改进（#38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #14, #24, #49, #25, #58, #59, #60, #61）**：
   - 终端实现标准 **BCE（Background Color Erase）** 背景色擦除语义（`CSI J`、`CSI K`、`CSI X`、`CSI @`、`CSI P`、`CSI L`、`CSI M`、滚屏新行），修复 Linux `make menuconfig` 等全屏 ncurses 界面背景黑白断块问题；
   - 终端显示解码层精准识别 ZMODEM 十六进制握手帧（`**\x18B...`）帧尾控制序列 `\r\x8a` / `\x8d\x8a` 并安全归一化为标准换行，消除 `rz` 握手时出现的 ``（`U+FFFD`）方框问号，且不修改原始接收流、Xfer 协议流或非 ZMODEM 上下文中的非法 UTF-8 检错；
@@ -33,3 +33,5 @@
 保留 C++17／Win32、x64、`/MT`、PE 子系统 `6.01`、原更新签名身份和旧版升级兼容。
 
 验证结果以对应正式 Release 关联的源码与 Windows、桌面、签名升级记录为准。受控进程、回环网络及模拟夹具测试不等于现场设备验收；真实 Win7 物理机、现场 SSH／模型网关、物理串口板卡和实体 IT6332A 电源未运行项不宣称通过。
+
+本次为指定开发分支上的隔离测试候选，不是正式 Release。功能覆盖以最终逐 Issue 验收报告为准，不以工具数量、既有矩阵或局部测试替代完整验收。新增官方 MCP SDK 互通、HTTP 歧义请求、退出取消、电源通道快照、IPC 权限和工作空间事务回归。原身份签名、真实 Win7/硬件及未覆盖范围须查最终交付记录。

@@ -12,7 +12,17 @@ void Check(bool ok, const char* message) {
 }
 }
 
-int main() {
+int main(int argc, char** argv) {
+    // Exercise the exact production POSIX command on the remote-side OS.
+    if (argc == 2 && std::string(argv[1]) == "--read-script") {
+        std::cout << WorkspaceReadCommand();
+        return 0;
+    }
+    if (argc == 6 && std::string(argv[1]) == "--replace-script") {
+        std::cout << WorkspaceReplaceCommand(argv[2], std::string(argv[3]) == "1",
+                                             argv[4], std::string(argv[5]) == "1");
+        return 0;
+    }
     try {
         const std::vector<std::string> blocked = {
             "API_KEY = test-placeholder",

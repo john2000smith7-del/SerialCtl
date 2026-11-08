@@ -141,6 +141,10 @@ class AiPane {
     std::wstring requestedAccess_ = L"Full Access", effectiveAccess_ = L"待验证";
     std::string workspacePractices_, currentAgentsMdContent_, rollbackAgentsMdSnapshot_;
     bool hasRollbackSnapshot_ = false;
+    bool agentsSnapshotValid_ = false, agentsFileExists_ = false, rollbackAgentsFileExists_ = false;
+    bool agentsWritePending_ = false, pendingAgentsExists_ = false;
+    std::string pendingAgentsContent_;
+    std::vector<std::string> verifiedPractices_;
     bool autoWorkspacePractices_ = true;
     RECT composerBounds_{}, waitingBounds_{};
     std::string displayGroup_;
@@ -196,6 +200,7 @@ class AiPane {
     std::uint64_t nextRequest_ = 1;
     struct PendingRequest {
         std::string purpose, turn;
+        std::wstring workspace;
     };
     std::map<std::uint64_t, PendingRequest> requests_;
     std::set<std::string> seenToolCalls_;

@@ -26,6 +26,8 @@ bool OverlappedReadExact(HANDLE pipe, void* buffer, DWORD length, HANDLE stopEve
             DWORD wait = WaitForMultipleObjects(2, events, FALSE, 5000);
             if (wait != WAIT_OBJECT_0 + 1) {
                 CancelIo(pipe);
+                DWORD ignored = 0;
+                GetOverlappedResult(pipe, &ov, &ignored, TRUE);
                 CloseHandle(ov.hEvent);
                 return false;
             }
@@ -63,6 +65,8 @@ bool OverlappedWriteExact(HANDLE pipe, const void* buffer, DWORD length, HANDLE 
             DWORD wait = WaitForMultipleObjects(2, events, FALSE, 5000);
             if (wait != WAIT_OBJECT_0 + 1) {
                 CancelIo(pipe);
+                DWORD ignored = 0;
+                GetOverlappedResult(pipe, &ov, &ignored, TRUE);
                 CloseHandle(ov.hEvent);
                 return false;
             }
@@ -153,6 +157,8 @@ bool SendIpcRequest(const std::wstring& pipeName, const std::string& request,
         totalRead += chunk;
     }
 
+    const unsigned char consumed = 1;
+    WriteFile(pipe, &consumed, 1, &bytesWritten, nullptr);
     CloseHandle(pipe);
     return true;
 }
@@ -205,17 +211,28 @@ void McpIpcServer::Stop() {
 void McpIpcServer::RunServer() {
     PSECURITY_DESCRIPTOR pSd = nullptr;
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, FALSE};
-    if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGWGX;;;IU)(A;;GA;;;OW)",
-            SDDL_REVISION_1, &pSd, nullptr)) {
-        sa.lpSecurityDescriptor = pSd;
-    }
+    // The GUI bridge grants access only to its user and LocalSystem. An
+    // Interactive Users ACE would let an unrelated logged-in account execute
+    // every GUI tool, including commands using saved connection credentials.
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return;
+    DWORD tokenBytes = 0;
+    GetTokenInformation(token, TokenUser, nullptr, 0, &tokenBytes);
+    std::vector<unsigned char> tokenData(tokenBytes);
+    const bool queried = GetTokenInformation(token, TokenUser, tokenData.data(), tokenBytes, &tokenBytes) != FALSE;
+    CloseHandle(token);
+    LPWSTR userSid = nullptr;
+    if (!queried || !ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(tokenData.data())->User.Sid, &userSid)) return;
+    const std::wstring sddl = L"D:P(A;;GA;;;SY)(A;;GA;;;" + std::wstring(userSid) + L")";
+    LocalFree(userSid);
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &pSd, nullptr)) return;
+    sa.lpSecurityDescriptor = pSd;
 
     auto createPipeInstance = [&]() -> HANDLE {
         return CreateNamedPipeW(
             pipeName_.c_str(),
             PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             PIPE_UNLIMITED_INSTANCES,
             65536,
             65536,
@@ -245,6 +262,8 @@ void McpIpcServer::RunServer() {
                 const DWORD wait = WaitForMultipleObjects(2, events, FALSE, INFINITE);
                 if (wait == WAIT_OBJECT_0) { // Stop
                     CancelIo(pipe);
+                    DWORD ignored = 0;
+                    GetOverlappedResult(pipe, &connectOverlapped, &ignored, TRUE);
                     CloseHandle(connectOverlapped.hEvent);
                     CloseHandle(pipe);
                     break;
@@ -276,7 +295,10 @@ void McpIpcServer::RunServer() {
                         if (OverlappedWriteExact(pipe, &respLen, sizeof(respLen), stopEvent_) && respLen > 0) {
                             OverlappedWriteExact(pipe, resp.data(), respLen, stopEvent_);
                         }
-                        FlushFileBuffers(pipe);
+                        // Wait for the reader to consume the reply. Unlike
+                        // FlushFileBuffers, this wait is bounded and cancelable.
+                        unsigned char consumed = 0;
+                        OverlappedReadExact(pipe, &consumed, 1, stopEvent_);
                     }
                 }
             }

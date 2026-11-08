@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 #include <atomic>
+#include <sddl.h>
+#include <aclapi.h>
 
 #include "McpProtocol.h"
 #include "McpSecurity.h"
@@ -687,6 +689,54 @@ void TestResidentLifecycle() {
     std::cout << "[Test 4] PASS: Resident lifecycle, Session 0 isolation, IPC bridge, and idempotent launch verified." << std::endl;
 }
 
+std::string HttpRaw(uint16_t port, const std::string& request) {
+    SOCKET socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sockaddr_in address{}; address.sin_family = AF_INET; address.sin_port = htons(port);
+    inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
+    Expect(connect(socket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0, "Raw HTTP connect");
+    DWORD timeout = 5000;
+    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+    Expect(send(socket, request.data(), static_cast<int>(request.size()), 0) == static_cast<int>(request.size()), "Raw HTTP send");
+    shutdown(socket, SD_SEND);
+    std::string response; char data[4096]; int size;
+    while ((size = recv(socket, data, sizeof(data), 0)) > 0) response.append(data, size);
+    closesocket(socket);
+    return response;
+}
+
+void TestIpcAccessAndCancellation() {
+    const auto name = L"\\\\.\\pipe\\SerialCtl.SecurityTest." + std::to_wstring(GetCurrentProcessId());
+    McpIpcServer server(name);
+    Expect(server.Start([](const std::string&) { return std::string("reply"); }), "IPC security server starts");
+    std::string reply;
+    Expect(SendIpcRequest(name, "request", reply, 3000) && reply == "reply", "Same-user IPC round trip");
+    HANDLE pipe = INVALID_HANDLE_VALUE;
+    const auto deadline = GetTickCount64() + 3000;
+    while (pipe == INVALID_HANDLE_VALUE && GetTickCount64() < deadline) {
+        pipe = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE | READ_CONTROL, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (pipe == INVALID_HANDLE_VALUE) Sleep(10);
+    }
+    Expect(pipe != INVALID_HANDLE_VALUE, "IPC pipe opens for its current user");
+    PACL dacl = nullptr; PSECURITY_DESCRIPTOR security = nullptr;
+    Expect(GetSecurityInfo(pipe, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, &dacl, nullptr, &security) == ERROR_SUCCESS,
+           "IPC actual DACL must be readable");
+    Expect(dacl && dacl->AceCount == 2, "IPC DACL must contain only current user and LocalSystem");
+    for (DWORD index = 0; index < dacl->AceCount; ++index) {
+        void* ace = nullptr; Expect(GetAce(dacl, index, &ace) != FALSE, "Read IPC ACE");
+        auto allowed = reinterpret_cast<ACCESS_ALLOWED_ACE*>(ace);
+        PSID sid = reinterpret_cast<PSID>(&allowed->SidStart);
+        Expect(!IsWellKnownSid(sid, WinInteractiveSid) && !IsWellKnownSid(sid, WinWorldSid) &&
+               !IsWellKnownSid(sid, WinBuiltinAdministratorsSid), "IPC grants an unrelated group access");
+    }
+    LocalFree(security);
+    // A client that never sends a complete request cannot prevent shutdown.
+    const auto start = GetTickCount64();
+    server.Stop();
+    Expect(GetTickCount64() - start < 1000, "IPC stop blocked on stalled peer");
+    CloseHandle(pipe);
+    std::cout << "PASS: actual IPC DACL and cancellation with a stalled client\n";
+}
+
 void TestStatelessHttpResponseIntegrity() {
     std::cout << "[Test 5] Testing large stateless MCP JSON responses and input validation..." << std::endl;
     McpHttpServer server;
@@ -712,6 +762,21 @@ void TestStatelessHttpResponseIntegrity() {
     Expect(HttpPost(testPort, "/mcp",
         R"({"jsonrpc":"2.0","id":2,"method":"ping"})") == expected,
         "HTTP request worker survives malformed JSON-RPC type");
+    const std::string message = R"({"jsonrpc":"2.0","id":1,"method":"ping"})";
+    for (const std::string& extra : {
+        std::string("Content-Length: 5\r\n"), std::string("Transfer-Encoding: chunked\r\n"),
+        std::string("Origin: http://attacker.invalid\r\nOrigin: http://localhost\r\n")}) {
+        auto raw = "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: " +
+            std::to_string(message.size()) + "\r\n" + extra + "\r\n" + message;
+        Expect(HttpRaw(testPort, raw).find("400 Bad Request") != std::string::npos, "Ambiguous HTTP framing must be rejected");
+    }
+    for (const std::string& length : {std::string("12junk"), std::string("-1"), std::string("16777217")}) {
+        const auto raw = "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: " + length + "\r\n\r\n" + message;
+        Expect(HttpRaw(testPort, raw).find("400 Bad Request") != std::string::npos, "Invalid Content-Length must not be parsed as a prefix");
+    }
+    Expect(HttpRaw(testPort, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/jsonp\r\nContent-Length: " +
+        std::to_string(message.size()) + "\r\n\r\n" + message).find("400 Bad Request") != std::string::npos,
+        "JSONP content type must be rejected");
     server.Stop();
 }
 
@@ -730,6 +795,7 @@ int main() {
     TestBusinessFlowAndPasswordMasking();
     TestResidentLifecycle();
     TestStatelessHttpResponseIntegrity();
+    TestIpcAccessAndCancellation();
 
     std::cout << "========================================" << std::endl;
     std::cout << "All 5 MCP Server Test Suites PASSED 100%!" << std::endl;

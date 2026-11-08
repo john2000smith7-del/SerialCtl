@@ -169,6 +169,41 @@ inline std::string Base64Encode(std::string_view data) {
     return encoded;
 }
 
+// Commands run only in the selected remote workspace. Capture absence separately
+// from an empty file, use private unique staging, and reject stale snapshots.
+inline std::string WorkspaceReadCommand() {
+    return "set -eu; test ! -L AGENTS.md || { echo 'AGENTS.md symlink rejected' >&2; exit 1; }; "
+           "if test -e AGENTS.md; then test -f AGENTS.md; "
+           "test $(wc -c < AGENTS.md) -le 65536; printf 'PRESENT\\n'; cat AGENTS.md; "
+           "else printf 'ABSENT\\n'; fi";
+}
+
+inline std::string WorkspaceReplaceCommand(std::string_view expected, bool expectedExists,
+                                            std::string_view replacement, bool replacementExists) {
+    std::string script =
+        "set -eu; umask 077; "
+        "mkdir .serialctl-agents.lock 2>/dev/null || { echo 'AGENTS.md writer busy' >&2; exit 1; }; "
+        "stage=''; trap 'test -z \"$stage\" || rm -rf -- \"$stage\"; rmdir .serialctl-agents.lock' EXIT HUP INT TERM; "
+        "stage=$(mktemp -d .serialctl-agents.XXXXXXXX); "
+        "test ! -L AGENTS.md || { echo 'AGENTS.md symlink rejected' >&2; exit 1; }; ";
+    script += "printf '%s' '" + Base64Encode(expected) + "' | base64 -d > \"$stage/expected\"; ";
+    if (expectedExists)
+        script += "test -f AGENTS.md && cmp -s AGENTS.md \"$stage/expected\" || { echo 'AGENTS.md changed; reload required' >&2; exit 1; }; ";
+    else
+        script += "test ! -e AGENTS.md || { echo 'AGENTS.md created concurrently; reload required' >&2; exit 1; }; ";
+    if (replacementExists) {
+        script += "printf '%s' '" + Base64Encode(replacement) + "' | base64 -d > \"$stage/replacement\"; ";
+        if (expectedExists)
+            script += "test -w AGENTS.md; chmod --reference=AGENTS.md \"$stage/replacement\"; "
+                      "test ! -L AGENTS.md && cmp -s AGENTS.md \"$stage/expected\" || exit 1; ";
+        else script += "test ! -e AGENTS.md && test ! -L AGENTS.md || exit 1; ";
+        script += "mv -f -- \"$stage/replacement\" AGENTS.md; ";
+    } else {
+        script += "test ! -L AGENTS.md && cmp -s AGENTS.md \"$stage/expected\" || exit 1; rm -- AGENTS.md; ";
+    }
+    return script;
+}
+
 inline std::string MergeManagedBlock(std::string_view existingFileContent,
                                     const std::vector<std::string>& newEntries,
                                     size_t maxBytes = 8192) {

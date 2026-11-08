@@ -1661,7 +1661,7 @@ bool AiPane::Request(ai::Operation operation, Json params, const std::string &pu
         SetStatus(L"AI 连接不可用或发送队列已满");
         return false;
     }
-    requests_[id] = {purpose, turn_};
+    requests_[id] = {purpose, turn_, workspaceDirectory_};
     return true;
 }
 void AiPane::Reply(const Json &id, Json result, bool success) {
@@ -2094,6 +2094,9 @@ void AiPane::Event(const Json &e) {
     const auto event = e.value("event", std::string());
     if (event == "ready") {
         workspaceVerified_ = false;
+        agentsSnapshotValid_ = false;
+        agentsWritePending_ = false;
+        verifiedPractices_.clear();
         effectiveAccess_ = L"待验证";
         SetCompanionActivity(pet::Activity::Connecting);
         taskAuthorized_ = false;
@@ -2152,6 +2155,9 @@ void AiPane::Event(const Json &e) {
         Reflow();
         turn_.clear();
         requests_.clear();
+        agentsWritePending_ = false;
+        agentsSnapshotValid_ = false;
+        verifiedPractices_.clear();
         completionDeadline_ = 0;
         pendingObservation_ = nullptr;
         nativeItems_.clear();
@@ -2176,7 +2182,12 @@ void AiPane::Event(const Json &e) {
             return;
         auto purpose = found->second.purpose;
         const auto requestTurn = found->second.turn;
+        const auto requestWorkspace = found->second.workspace;
         requests_.erase(found);
+        if (purpose.find("workspace-agents") != std::string::npos && requestWorkspace != workspaceDirectory_) {
+            agentsWritePending_ = false;
+            return; // A delayed response must never contaminate another workspace.
+        }
         if (purpose == "home" || purpose == "directory" || purpose == "directory-fallback") {
             if (purpose == "home") {
                 serverHome_.clear();
@@ -2213,48 +2224,39 @@ void AiPane::Event(const Json &e) {
             }
         }
         if (purpose == "read-workspace-agents") {
-            if (!e.contains("error") && e.contains("result")) {
-                const auto &res = e["result"];
-                if (res.value("exitCode", -1) == 0 && res.contains("stdout")) {
-                    std::string content = res["stdout"].get<std::string>();
-                    currentAgentsMdContent_ = content;
-                    auto extracted = ai::ExtractManagedBlock(content);
-                    workspacePractices_ = extracted.managedContent;
-                    SetStatus(L"已加载工作空间经验 (" + workspaceDirectory_ + L"/AGENTS.md)");
-                } else {
-                    workspacePractices_.clear();
-                    currentAgentsMdContent_.clear();
+            agentsSnapshotValid_ = false;
+            workspacePractices_.clear();
+            if (!e.contains("error") && e.contains("result") && e["result"].value("exitCode", -1) == 0) {
+                const auto content = e["result"].value("stdout", std::string());
+                if (content.rfind("PRESENT\n", 0) == 0 || content == "ABSENT\n") {
+                    agentsFileExists_ = content.rfind("PRESENT\n", 0) == 0;
+                    currentAgentsMdContent_ = agentsFileExists_ ? content.substr(8) : std::string();
+                    agentsSnapshotValid_ = true;
+                    workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+                    SetStatus(L"已读取工作空间 AGENTS.md；后续任务使用最新受管经验");
                 }
             }
+            if (!agentsSnapshotValid_) SetStatus(L"无法安全读取 AGENTS.md，自动记录已暂停；请重新加载");
             UpdateActions();
             return;
         }
-        if (purpose == "save-workspace-agents") {
+        if (purpose == "save-workspace-agents" || purpose == "rollback-workspace-agents") {
+            agentsWritePending_ = false;
             if (!e.contains("error") && e.contains("result") && e["result"].value("exitCode", -1) == 0) {
-                SetStatus(L"已成功记录经验到工作空间 AGENTS.md");
-                Add(L"状态", L"已将新经验记录到 " + workspaceDirectory_ + L"/AGENTS.md");
-                LoadWorkspacePractices(true);
+                if (purpose == "save-workspace-agents") {
+                    rollbackAgentsMdSnapshot_ = currentAgentsMdContent_;
+                    rollbackAgentsFileExists_ = agentsFileExists_;
+                    hasRollbackSnapshot_ = true;
+                } else hasRollbackSnapshot_ = false;
+                currentAgentsMdContent_ = pendingAgentsContent_;
+                agentsFileExists_ = pendingAgentsExists_;
+                workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+                SetStatus(purpose == "save-workspace-agents" ? L"已记录工作空间 AGENTS.md" : L"已撤销最近一次 AGENTS.md 更新");
             } else {
-                const auto errText = Wide(e.value("error", e.contains("result") ? e["result"].value("stderr", std::string("远程命令执行失败")) : std::string("远程命令执行失败")));
-                if (errText.find(L"read-only") != std::wstring::npos || errText.find(L"Read-only") != std::wstring::npos) {
-                    effectiveAccess_ = L"受限 (read-only)";
-                }
-                SetStatus(L"写入 AGENTS.md 失败：" + errText);
+                agentsSnapshotValid_ = false;
+                SetStatus(L"AGENTS.md 更新失败或内容已变化；原文件保留，请重新加载后重试");
             }
-            UpdateActions();
-            return;
-        }
-        if (purpose == "rollback-workspace-agents") {
-            if (!e.contains("error") && e.contains("result") && e["result"].value("exitCode", -1) == 0) {
-                currentAgentsMdContent_ = rollbackAgentsMdSnapshot_;
-                rollbackAgentsMdSnapshot_.clear();
-                hasRollbackSnapshot_ = false;
-                SetStatus(L"已成功回滚工作空间 AGENTS.md");
-                Add(L"状态", L"已成功撤销并恢复 " + workspaceDirectory_ + L"/AGENTS.md");
-                LoadWorkspacePractices(true);
-            } else {
-                SetStatus(L"回滚 AGENTS.md 失败");
-            }
+            pendingAgentsContent_.clear();
             UpdateActions();
             return;
         }
@@ -2471,7 +2473,9 @@ void AiPane::Event(const Json &e) {
         }
         observedTool_ = true;
         // B10: Auto-harvest build/deploy commands if completed successfully
-        if (completed && !e.value("failed", false) && autoWorkspacePractices_ && e.contains("command")) {
+        if (completed && !e.value("failed", false) && autoWorkspacePractices_ &&
+            e.contains("exitCode") && e["exitCode"].is_number_integer() && e["exitCode"] == 0 &&
+            e.contains("command") && e["command"].is_string()) {
             std::string cmd = e["command"].get<std::string>();
             std::string lowerCmd = cmd;
             std::transform(lowerCmd.begin(), lowerCmd.end(), lowerCmd.begin(),
@@ -2484,7 +2488,9 @@ void AiPane::Event(const Json &e) {
                                     lowerCmd.find("cargo") != std::string::npos ||
                                     lowerCmd.find("ninja") != std::string::npos);
             if (isBuildOrDeploy && workspacePractices_.find(cmd) == std::string::npos) {
-                SaveWorkspacePractice(L"常用构建/部署: " + Wide(cmd));
+                const auto safe = ai::SanitizePracticeEntry(cmd);
+                if (!safe.empty() && verifiedPractices_.size() < 16)
+                    verifiedPractices_.push_back("已执行，退出码 0；复用前核对环境：" + safe);
             }
         }
         return;
@@ -2582,6 +2588,9 @@ void AiPane::Event(const Json &e) {
                                       : L"回复完成 · 推理已响应，工具能力待实际调用验证");
         Reflow(true);
         RefreshTargets();
+        if (!stopRequested_ && state == "completed" && !failedStep && !verifiedPractices_.empty())
+            SaveWorkspacePractice(Wide(verifiedPractices_.back()));
+        verifiedPractices_.clear();
         UpdateActions();
     } else if (event == "serviceError") {
         SetCompanionActivity(e.value("willRetry", false) ? pet::Activity::Thinking : pet::Activity::Failed);
@@ -3014,54 +3023,45 @@ void AiPane::BeginWorkspaceConversation(const std::wstring& path) {
     UpdateActions();
 }
 void AiPane::LoadWorkspacePractices(bool forceReload) {
-    if (!client_.Ready() || workspaceDirectory_.empty() || (!autoWorkspacePractices_ && !forceReload)) return;
-    const std::string path = Utf8(workspaceDirectory_) + "/AGENTS.md";
+    agentsSnapshotValid_ = false;
+    workspacePractices_.clear();
+    hasRollbackSnapshot_ = false;
+    if (!client_.Ready() || workspaceDirectory_.empty() || agentsWritePending_ || (!autoWorkspacePractices_ && !forceReload)) return;
     Request(ai::Operation::RunCommand,
-        {{"command", Json::array({"cat", path})},
-         {"cwd", Utf8(workspaceDirectory_)},
-         {"timeoutMs", 3000},
-         {"outputBytesCap", 65536}},
+        {{"command", Json::array({"sh", "-c", ai::WorkspaceReadCommand()})},
+         {"cwd", Utf8(workspaceDirectory_)}, {"timeoutMs", 3000}, {"outputBytesCap", 131072}},
         "read-workspace-agents");
 }
 bool AiPane::SaveWorkspacePractice(const std::wstring& entry) {
-    if (!client_.Ready() || workspaceDirectory_.empty()) {
-        SetStatus(L"未连接服务器或未选定工作空间");
+    if (!client_.Ready() || workspaceDirectory_.empty() || !agentsSnapshotValid_ || agentsWritePending_) {
+        SetStatus(L"工作空间经验尚未读取或正在写入；本次未记录");
         return false;
     }
-    auto sanitized = ai::SanitizePracticeEntry(Utf8(entry));
+    const auto sanitized = ai::SanitizePracticeEntry(Utf8(entry));
     if (sanitized.empty()) {
         SetStatus(L"经验条目包含敏感信息或无效字符，已拒绝记录");
         return false;
     }
-    rollbackAgentsMdSnapshot_ = currentAgentsMdContent_;
-    hasRollbackSnapshot_ = true;
-    std::string merged = ai::MergeManagedBlock(currentAgentsMdContent_, {sanitized});
-    std::string b64 = ai::Base64Encode(merged);
-    std::string cmd = "test ! -L AGENTS.md && TMPFILE=\".AGENTS.md.tmp.$$.$(date +%s%N 2>/dev/null || date +%s)\" && echo '" + b64 + "' | base64 -d > \"$TMPFILE\" && mv -f \"$TMPFILE\" AGENTS.md";
-    return Request(ai::Operation::RunCommand,
-        {{"command", Json::array({"sh", "-c", cmd})},
-         {"cwd", Utf8(workspaceDirectory_)},
-         {"timeoutMs", 5000},
-         {"outputBytesCap", 4096}},
-        "save-workspace-agents");
+    pendingAgentsContent_ = ai::MergeManagedBlock(currentAgentsMdContent_, {sanitized});
+    pendingAgentsExists_ = true;
+    const auto cmd = ai::WorkspaceReplaceCommand(currentAgentsMdContent_, agentsFileExists_, pendingAgentsContent_, true);
+    agentsWritePending_ = Request(ai::Operation::RunCommand,
+        {{"command", Json::array({"sh", "-c", cmd})}, {"cwd", Utf8(workspaceDirectory_)},
+         {"timeoutMs", 5000}, {"outputBytesCap", 4096}}, "save-workspace-agents");
+    return agentsWritePending_;
 }
 bool AiPane::RollbackWorkspacePractices() {
-    if (!client_.Ready() || workspaceDirectory_.empty()) {
-        SetStatus(L"未连接服务器或未选定工作空间");
+    if (!client_.Ready() || workspaceDirectory_.empty() || !agentsSnapshotValid_ || agentsWritePending_ || !hasRollbackSnapshot_) {
+        SetStatus(L"暂无可安全回滚的 AGENTS.md 快照");
         return false;
     }
-    if (!hasRollbackSnapshot_) {
-        SetStatus(L"暂无可回滚的上一版 AGENTS.md 内容");
-        return false;
-    }
-    std::string b64 = ai::Base64Encode(rollbackAgentsMdSnapshot_);
-    std::string cmd = "test ! -L AGENTS.md && TMPFILE=\".AGENTS.md.tmp.$$.$(date +%s%N 2>/dev/null || date +%s)\" && echo '" + b64 + "' | base64 -d > \"$TMPFILE\" && mv -f \"$TMPFILE\" AGENTS.md";
-    return Request(ai::Operation::RunCommand,
-        {{"command", Json::array({"sh", "-c", cmd})},
-         {"cwd", Utf8(workspaceDirectory_)},
-         {"timeoutMs", 5000},
-         {"outputBytesCap", 4096}},
-        "rollback-workspace-agents");
+    pendingAgentsContent_ = rollbackAgentsMdSnapshot_;
+    pendingAgentsExists_ = rollbackAgentsFileExists_;
+    const auto cmd = ai::WorkspaceReplaceCommand(currentAgentsMdContent_, agentsFileExists_, pendingAgentsContent_, pendingAgentsExists_);
+    agentsWritePending_ = Request(ai::Operation::RunCommand,
+        {{"command", Json::array({"sh", "-c", cmd})}, {"cwd", Utf8(workspaceDirectory_)},
+         {"timeoutMs", 5000}, {"outputBytesCap", 4096}}, "rollback-workspace-agents");
+    return agentsWritePending_;
 }
 INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, DWLP_USER));
