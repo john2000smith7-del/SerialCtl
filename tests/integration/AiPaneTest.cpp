@@ -723,6 +723,12 @@ struct AiPaneTestAccess {
         pane.requests_[1011] = {"turn", {}};
         pane.Event({{"event", "response"}, {"token", 1011}, {"result", {{"taskId", "unknown-turn"}}}});
         require(pane.effectiveAccess_ == L"待验证", "A turn without permission metadata retained stale permission");
+        pane.effectiveAccess_ = L"Full Access";
+        pane.requests_[1012] = {"turn", {}};
+        pane.Event({{"event", "response"}, {"token", 1012}, {"error", "permission denied for requested sandbox"}});
+        require(pane.effectiveAccess_ == L"待验证" &&
+                    pane.workspaceTooltip_.find(L"实际权限：待验证") != std::wstring::npos,
+                "A rejected turn must not retain a previously confirmed Full Access label");
         pane.NewConversation();
         pane.thread_ = "fixture";
         pane.NewConversation();

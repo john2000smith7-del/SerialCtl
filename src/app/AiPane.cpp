@@ -2292,6 +2292,7 @@ void AiPane::Event(const Json &e) {
             SetStatus(Wide(ai::ExplainServiceError(e.at("error").get<std::string>())));
             Add(L"状态", status_);
             if (purpose == "start" || purpose == "turn" || purpose == "resume") {
+                effectiveAccess_ = L"待验证";
                 waitingReply_ = false;
                 Reflow();
                 taskAuthorized_ = false;
