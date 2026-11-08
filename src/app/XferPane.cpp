@@ -180,6 +180,7 @@ void XferPane::Refresh() {
 
     const bool rawFinish=state.busy&&state.protocol==xfer::Protocol::Raw&&state.direction==xfer::Direction::Receive&&
         state.expectedReceiveBytes==0&&!state.stopping&&!state.finishing;
+    lastRender_.rawFinish=rawFinish;
     UiGlyph startGlyph=UiGlyph::Run;
     std::wstring startTip,startText;
     if(rawFinish) {
@@ -251,7 +252,16 @@ void XferPane::BrowseFile() {
 }
 void XferPane::Begin() {
     const auto state=controller_->State();
-    if(state.busy) {if(state.protocol==xfer::Protocol::Raw&&state.direction==xfer::Direction::Receive&&state.expectedReceiveBytes==0)controller_->FinishRawReceive();return;}
+    // A click queued while the button showed Finish must never start another
+    // receive after the worker completes but before the next UI refresh.
+    if(lastRender_.rawFinish) {
+        if(state.busy&&!state.stopping&&!state.finishing&&state.protocol==xfer::Protocol::Raw&&
+            state.direction==xfer::Direction::Receive&&state.expectedReceiveBytes==0)
+            controller_->FinishRawReceive();
+        else Refresh();
+        return;
+    }
+    if(state.busy)return;
     const auto target=target_();
     if(!target.unavailable.empty()){localNotice_=target.unavailable;Refresh();return;}
     xfer::TransferController::Request request;request.session=target.id;request.source=target.name;request.path=Text(Control(File));request.connection=target.connection;
