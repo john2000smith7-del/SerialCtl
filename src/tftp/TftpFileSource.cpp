@@ -1,9 +1,14 @@
 #include "TftpFileSource.h"
 #include "ChildProcess.h"
 #include "PasswordPipe.h"
-#include "FilePaths.h"
+#include "PuttyHostKey.h"
+#include "Win32Helpers.h"
 #include <algorithm>
 #include <array>
+#include <charconv>
+#include <filesystem>
+#include <system_error>
+#include <utility>
 
 namespace serialctl {
 
@@ -20,56 +25,130 @@ static std::wstring EscapePosixSingleQuotes(const std::wstring& path) {
     return out;
 }
 
-// ============================================================================
-// LocalTftpFileSource
-// ============================================================================
+namespace {
+struct SourceHandle {
+    HANDLE value = INVALID_HANDLE_VALUE;
+    ~SourceHandle() { if (value != INVALID_HANDLE_VALUE) CloseHandle(value); }
+    SourceHandle() = default;
+    SourceHandle(const SourceHandle&) = delete;
+    SourceHandle& operator=(const SourceHandle&) = delete;
+};
+
+uint64_t FileSize(const BY_HANDLE_FILE_INFORMATION& snapshot) {
+    return (static_cast<uint64_t>(snapshot.nFileSizeHigh) << 32) | snapshot.nFileSizeLow;
+}
+
+bool ReadSnapshot(HANDLE file, BY_HANDLE_FILE_INFORMATION& snapshot) {
+    return GetFileType(file) == FILE_TYPE_DISK &&
+        GetFileInformationByHandle(file, &snapshot) &&
+        !(snapshot.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT));
+}
+
+bool MatchesSnapshot(HANDLE file, const BY_HANDLE_FILE_INFORMATION& expected) {
+    BY_HANDLE_FILE_INFORMATION actual{};
+    return ReadSnapshot(file, actual) &&
+        actual.dwVolumeSerialNumber == expected.dwVolumeSerialNumber &&
+        actual.nFileIndexHigh == expected.nFileIndexHigh && actual.nFileIndexLow == expected.nFileIndexLow &&
+        FileSize(actual) == FileSize(expected) &&
+        CompareFileTime(&actual.ftLastWriteTime, &expected.ftLastWriteTime) == 0;
+}
+
+HANDLE OpenLocalSource(const std::wstring& path) {
+    namespace fs = std::filesystem;
+    const fs::path file(path);
+    if (!file.is_absolute() || file.filename().empty() || path.find(L'\0') != std::wstring::npos ||
+        path.rfind(L"\\\\.\\", 0) == 0 ||
+        file.relative_path().native().find(L':') != std::wstring::npos)
+        return INVALID_HANDLE_VALUE;
+    for (const auto& part : file.relative_path()) {
+        const auto& name = part.native();
+        if (name.empty() || name.back() == L'.' || name.back() == L' ') return INVALID_HANDLE_VALUE;
+    }
+    // Open each ancestor without following a reparse point, and keep it open
+    // against replacement until the final handle has been acquired.
+    auto parent = file.root_path();
+    std::vector<std::unique_ptr<SourceHandle>> directories;
+    for (const auto& part : file.parent_path().relative_path()) {
+        parent /= part;
+        auto handle = std::make_unique<SourceHandle>();
+        handle->value = CreateFileW(parent.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+                                   nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        BY_HANDLE_FILE_INFORMATION directory{};
+        if (handle->value == INVALID_HANDLE_VALUE || !GetFileInformationByHandle(handle->value, &directory) ||
+            !(directory.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+            (directory.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+            return INVALID_HANDLE_VALUE;
+        directories.push_back(std::move(handle));
+    }
+    return CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                       FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+}
+bool LaunchPlink(const SshRemoteConfig& config, const std::wstring& passwordPipe,
+                 const std::wstring& remoteCommand, bool diagnostic,
+                 HANDLE& output, HANDLE& process, std::wstring& error) {
+    std::vector<wchar_t> module(32768);
+    const auto count = GetModuleFileNameW(nullptr, module.data(), static_cast<DWORD>(module.size()));
+    if (!count || count >= module.size()) {
+        error = L"无法定位配套 plink.exe";
+        return false;
+    }
+    const auto plink = std::filesystem::path(std::wstring(module.data(), count)).parent_path() / L"plink.exe";
+    std::wstring command = QuoteCommandLineArgument(plink.native()) +
+        L" -batch -ssh -T -no-antispoof -no-sanitise-stdout -P " + std::to_wstring(config.port) +
+        L" -l " + QuoteCommandLineArgument(config.username);
+    if (!passwordPipe.empty()) command += L" -pwfile " + QuoteCommandLineArgument(passwordPipe);
+    if (!config.hostKey.empty()) command += L" -hostkey " + QuoteCommandLineArgument(config.hostKey);
+    command += L" " + QuoteCommandLineArgument(config.host) + L" " + QuoteCommandLineArgument(remoteCommand);
+
+    SECURITY_ATTRIBUTES inherit{sizeof(inherit), nullptr, TRUE};
+    SourceHandle nullDevice;
+    nullDevice.value = CreateFileW(L"NUL", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                  &inherit, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE reader = nullptr, writer = nullptr;
+    if (nullDevice.value == INVALID_HANDLE_VALUE || !CreatePipe(&reader, &writer, &inherit, 65536)) {
+        error = L"无法创建 plink 输入输出通道";
+        return false;
+    }
+    SourceHandle readEnd, writeEnd;
+    readEnd.value = reader;
+    writeEnd.value = writer;
+    RestrictedProcessStartup startup;
+    if (!SetHandleInheritable(reader, false, L"plink 输出", error) ||
+        !startup.Initialize(nullDevice.value, writer, diagnostic ? writer : nullDevice.value, {}, error))
+        return false;
+    PROCESS_INFORMATION child{};
+    if (!CreateProcessW(plink.c_str(), command.data(), nullptr, nullptr, TRUE,
+                        CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr, startup.StartupInfo(), &child)) {
+        error = L"无法启动配套 plink.exe";
+        return false;
+    }
+    CloseHandle(child.hThread);
+    process = child.hProcess;
+    output = std::exchange(readEnd.value, INVALID_HANDLE_VALUE);
+    return true;
+}
+
+constexpr auto RemoteStat = L"LC_ALL=C stat -L -c '%s %d %i %y %z' -- ";
+} // namespace
 
 LocalTftpFileSource::LocalTftpFileSource(std::wstring path)
     : path_(std::move(path)) {
     info_.type = "local";
     info_.displayPath = path_;
     info_.status = "Failed";
-
-    DWORD attr = GetFileAttributesW(path_.c_str());
-    if (attr == INVALID_FILE_ATTRIBUTES) {
-        info_.error = L"文件不存在或无法访问";
+    SourceHandle file;
+    file.value = OpenLocalSource(path_);
+    if (file.value == INVALID_HANDLE_VALUE || !ReadSnapshot(file.value, snapshot_)) {
+        info_.error = L"无法读取常规文件，或路径包含重解析点";
         return;
     }
-    if (attr & FILE_ATTRIBUTE_DIRECTORY) {
-        info_.error = L"路径是目录，不是常规文件";
-        return;
-    }
-    if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
-        info_.error = L"安全限制：拒绝发布符号链接或重解析点 (Symlink / Reparse Point)";
-        return;
-    }
-
-    HANDLE h = CreateFileW(path_.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) {
-        info_.error = L"无法读取文件（可能被独占或权限不足）";
-        return;
-    }
-    if (GetFileType(h) != FILE_TYPE_DISK) {
-        CloseHandle(h);
-        info_.error = L"安全限制：不支持非常规磁盘文件";
-        return;
-    }
-
-    LARGE_INTEGER sz{};
-    if (GetFileSizeEx(h, &sz)) {
-        size_ = static_cast<uint64_t>(sz.QuadPart);
-        info_.size = size_;
-        info_.sizeKnown = true;
-    }
-    GetFileTime(h, nullptr, nullptr, &lastWriteTime_);
-    CloseHandle(h);
-
+    info_.size = FileSize(snapshot_);
+    info_.sizeKnown = true;
     info_.status = "Ready";
 }
 
-LocalTftpFileSource::LocalTftpFileSource(std::wstring path, FILETIME expectedWriteTime, uint64_t expectedSize, TftpSourceInfo info)
-    : path_(std::move(path)), lastWriteTime_(expectedWriteTime), size_(expectedSize), info_(std::move(info)) {
+LocalTftpFileSource::LocalTftpFileSource(std::wstring path, BY_HANDLE_FILE_INFORMATION snapshot, TftpSourceInfo info)
+    : path_(std::move(path)), snapshot_(snapshot), info_(std::move(info)) {
 }
 
 LocalTftpFileSource::~LocalTftpFileSource() {
@@ -83,7 +162,7 @@ TftpSourceInfo LocalTftpFileSource::Info() const {
 
 std::shared_ptr<ITftpFileSource> LocalTftpFileSource::CreateSessionSource() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return std::make_shared<LocalTftpFileSource>(path_, lastWriteTime_, size_, info_);
+    return std::shared_ptr<ITftpFileSource>(new LocalTftpFileSource(path_, snapshot_, info_));
 }
 
 bool LocalTftpFileSource::Open(std::wstring& error) {
@@ -92,35 +171,17 @@ bool LocalTftpFileSource::Open(std::wstring& error) {
         return true;
     }
 
-    DWORD attr = GetFileAttributesW(path_.c_str());
-    if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY) || (attr & FILE_ATTRIBUTE_REPARSE_POINT)) {
-        error = L"安全限制：文件不存在、是目录或属于符号链接/重解析点";
+    if (info_.status != "Ready") {
+        error = info_.error;
         return false;
     }
-
-    file_ = CreateFileW(path_.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file_ == INVALID_HANDLE_VALUE) {
-        DWORD err = GetLastError();
-        error = L"无法打开本地文件: 错误代码 " + std::to_wstring(err);
+    SourceHandle file;
+    file.value = OpenLocalSource(path_);
+    if (file.value == INVALID_HANDLE_VALUE || !MatchesSnapshot(file.value, snapshot_)) {
+        error = L"源文件已变化、正在被写入或无法安全打开，请重新发布";
         return false;
     }
-    if (GetFileType(file_) != FILE_TYPE_DISK) {
-        CloseHandle(file_);
-        file_ = INVALID_HANDLE_VALUE;
-        error = L"安全限制：不支持非常规磁盘文件";
-        return false;
-    }
-
-    LARGE_INTEGER curSz{};
-    FILETIME curTime{};
-    if ((GetFileTime(file_, nullptr, nullptr, &curTime) && CompareFileTime(&curTime, &lastWriteTime_) != 0) ||
-        (GetFileSizeEx(file_, &curSz) && static_cast<uint64_t>(curSz.QuadPart) != size_)) {
-        CloseHandle(file_);
-        file_ = INVALID_HANDLE_VALUE;
-        error = L"Source file modified during transfer";
-        return false;
-    }
+    file_ = std::exchange(file.value, INVALID_HANDLE_VALUE);
     return true;
 }
 
@@ -140,18 +201,12 @@ bool LocalTftpFileSource::Read(uint64_t offset, void* buffer, size_t length, siz
         return false;
     }
 
-    LARGE_INTEGER curSz{};
-    FILETIME curTime{};
-    if ((GetFileTime(file_, nullptr, nullptr, &curTime) && CompareFileTime(&curTime, &lastWriteTime_) != 0) ||
-        (GetFileSizeEx(file_, &curSz) && static_cast<uint64_t>(curSz.QuadPart) != size_)) {
-        error = L"Source file modified during transfer";
+    if (!MatchesSnapshot(file_, snapshot_)) {
+        error = L"源文件已变化或无法核对文件信息";
         return false;
     }
-
-    if (offset >= size_) {
-        bytesRead = 0;
-        return true;
-    }
+    const auto size = FileSize(snapshot_);
+    if (offset >= size) return true;
 
     LARGE_INTEGER li;
     li.QuadPart = static_cast<LONGLONG>(offset);
@@ -160,13 +215,17 @@ bool LocalTftpFileSource::Read(uint64_t offset, void* buffer, size_t length, siz
         return false;
     }
 
-    size_t toRead = std::min(static_cast<uint64_t>(length), size_ - offset);
+    const auto toRead = std::min({static_cast<uint64_t>(length), size - offset, static_cast<uint64_t>(MAXDWORD)});
     DWORD readBytes = 0;
     if (!ReadFile(file_, buffer, static_cast<DWORD>(toRead), &readBytes, nullptr)) {
         error = L"Read failed";
         return false;
     }
 
+    if (readBytes != toRead) {
+        error = L"源文件在预期长度之前结束";
+        return false;
+    }
     bytesRead = readBytes;
     return true;
 }
@@ -197,8 +256,10 @@ RemoteSshTftpFileSource::RemoteSshTftpFileSource(SshRemoteConfig config, StreamL
     }
 }
 
-RemoteSshTftpFileSource::RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher, TftpSourceInfo prequeriedInfo)
-    : config_(std::move(config)), launcher_(std::move(customLauncher)), info_(std::move(prequeriedInfo)) {
+RemoteSshTftpFileSource::RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher,
+                                               TftpSourceInfo prequeriedInfo, std::wstring snapshot)
+    : config_(std::move(config)), launcher_(std::move(customLauncher)), info_(std::move(prequeriedInfo)),
+      snapshot_(std::move(snapshot)) {
 }
 
 RemoteSshTftpFileSource::~RemoteSshTftpFileSource() {
@@ -212,142 +273,92 @@ TftpSourceInfo RemoteSshTftpFileSource::Info() const {
 
 std::shared_ptr<ITftpFileSource> RemoteSshTftpFileSource::CreateSessionSource() const {
     std::lock_guard<std::mutex> lock(bufferMutex_);
-    return std::make_shared<RemoteSshTftpFileSource>(config_, launcher_, info_);
+    return std::shared_ptr<ITftpFileSource>(new RemoteSshTftpFileSource(config_, launcher_, info_, snapshot_));
 }
 
 bool RemoteSshTftpFileSource::QueryRemoteAttributes(std::wstring& error) {
     if (config_.remotePath.empty() || config_.remotePath[0] != L'/' ||
-        config_.remotePath.find_first_of(L"\r\n") != std::wstring::npos) {
-        error = L"远程路径必须是以 '/' 开头的绝对 POSIX 路径，且不能包含换行或控制字符";
+        std::any_of(config_.remotePath.begin(), config_.remotePath.end(), [](wchar_t ch) { return ch < 32; })) {
+        error = L"远程路径必须是以 '/' 开头的绝对 POSIX 路径，且不能包含控制字符";
         return false;
     }
-
-    // If a custom launcher was provided and no production plink is needed:
     if (launcher_) {
-        info_.size = 10485760; // 10 MiB default if launcher mocked
+        info_.size = 10485760;
         info_.sizeKnown = true;
         return true;
     }
-
-    if (config_.host.empty() || config_.username.empty()) {
-        error = L"SSH 主机或用户名为空";
+    if (config_.host.empty() || config_.host.front() == L'-' || config_.username.empty()) {
+        error = L"SSH 主机或用户名无效";
+        return false;
+    }
+    if (config_.hostKey.empty()) config_.hostKey = TrustedPuttyHostKey(config_.host, config_.port);
+    if (config_.hostKey.empty()) {
+        error = L"远程发布需要先在 SerialCtl 中核验该 SSH 主机的身份";
         return false;
     }
 
-    // Production: execute remote stat via plink
-    std::wstring plinkPath;
-    std::vector<wchar_t> modPath(MAX_PATH);
-    if (GetModuleFileNameW(nullptr, modPath.data(), static_cast<DWORD>(modPath.size()))) {
-        std::wstring dir = modPath.data();
-        auto pos = dir.find_last_of(L"\\/");
-        if (pos != std::wstring::npos) dir = dir.substr(0, pos + 1);
-        plinkPath = dir + L"plink.exe";
-    }
-    if (plinkPath.empty() || GetFileAttributesW(plinkPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        error = L"未找到配套 plink.exe";
-        return false;
-    }
-
-    PasswordPipe pwPipe;
-    if (!config_.password.empty() && !pwPipe.Open(config_.password, error)) {
-        return false;
-    }
-
-    std::wstring cmd = L"\"" + plinkPath + L"\" -batch -P " + std::to_wstring(config_.port) +
-                       L" -l \"" + config_.username + L"\"";
-    if (!config_.password.empty()) {
-        cmd += L" -pwfile \"" + pwPipe.Name() + L"\"";
-    }
-    if (!config_.hostKey.empty()) {
-        cmd += L" -hostkey \"" + config_.hostKey + L"\"";
-    }
-    cmd += L" \"" + config_.host + L"\" \"stat -L -c '%s %Y' '" + EscapePosixSingleQuotes(config_.remotePath) + L"' 2>/dev/null\"";
-
-    HANDLE outRead = nullptr, outWrite = nullptr;
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    if (!CreatePipe(&outRead, &outWrite, &sa, 4096)) {
-        error = L"无法创建诊断管道";
-        return false;
-    }
-    SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
-
-    STARTUPINFOW si{sizeof(si)};
-    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-    si.hStdOutput = outWrite;
-    si.hStdError = outWrite;
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-
-    PROCESS_INFORMATION pi{};
-    std::vector<wchar_t> cmdLine(cmd.begin(), cmd.end());
-    cmdLine.push_back(L'\0');
-
-    BOOL ok = CreateProcessW(nullptr, cmdLine.data(), nullptr, nullptr, TRUE,
-                             CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-    CloseHandle(outWrite);
-
-    if (!ok) {
-        CloseHandle(outRead);
-        error = L"启动 plink 检查远程文件失败";
-        return false;
-    }
+    PasswordPipe password;
+    if (!config_.password.empty() && !password.Open(config_.password, error)) return false;
+    const auto path = L"'" + EscapePosixSingleQuotes(config_.remotePath) + L"'";
+    const auto command = L"f=" + path + L"; [ \"$(realpath -e -- \"$f\")\" = \"$f\" ] && "
+        L"[ -f \"$f\" ] && [ -r \"$f\" ] && " + RemoteStat + L"\"$f\"";
+    SourceHandle pipe, child;
+    if (!LaunchPlink(config_, password.Name(), command, true, pipe.value, child.value, error)) return false;
 
     std::string output;
-    char buf[256];
-    const ULONGLONG deadline = GetTickCount64() + 8000;
+    std::array<char, 512> buffer{};
+    const auto deadline = GetTickCount64() + 8000;
+    bool exited = false;
     while (GetTickCount64() < deadline) {
         if (!config_.password.empty()) {
-            pwPipe.Poll();
-            if (pwPipe.Failed()) {
-                TerminateProcess(pi.hProcess, 1);
+            password.Poll();
+            if (password.Failed()) break;
+        }
+        DWORD available = 0, read = 0;
+        if (PeekNamedPipe(pipe.value, nullptr, 0, nullptr, &available, nullptr) && available) {
+            if (!ReadFile(pipe.value, buffer.data(), std::min<DWORD>(available, static_cast<DWORD>(buffer.size())),
+                          &read, nullptr) || !read || output.size() + read > buffer.size())
                 break;
-            }
+            output.append(buffer.data(), read);
+            continue;
         }
-        DWORD avail = 0;
-        if (PeekNamedPipe(outRead, nullptr, 0, nullptr, &avail, nullptr) && avail > 0) {
-            DWORD read = 0;
-            if (ReadFile(outRead, buf, std::min<DWORD>(avail, sizeof(buf) - 1), &read, nullptr) && read > 0) {
-                output.append(buf, read);
-            }
-        }
-        if (WaitForSingleObject(pi.hProcess, 20) == WAIT_OBJECT_0) {
-            DWORD availRem = 0;
-            while (PeekNamedPipe(outRead, nullptr, 0, nullptr, &availRem, nullptr) && availRem > 0) {
-                DWORD read = 0;
-                if (!ReadFile(outRead, buf, std::min<DWORD>(availRem, sizeof(buf) - 1), &read, nullptr) || read == 0) break;
-                output.append(buf, read);
-            }
+        if (WaitForSingleObject(child.value, 0) == WAIT_OBJECT_0) {
+            // Drain again after observing exit, since it may have written after the peek.
+            if (PeekNamedPipe(pipe.value, nullptr, 0, nullptr, &available, nullptr) && available) continue;
+            exited = true;
             break;
         }
+        Sleep(10);
     }
-    CloseHandle(outRead);
-    if (WaitForSingleObject(pi.hProcess, 100) != WAIT_OBJECT_0) {
-        TerminateProcess(pi.hProcess, 1);
-        WaitForSingleObject(pi.hProcess, 500);
+    if (!exited) {
+        TerminateProcess(child.value, 1);
+        WaitForSingleObject(child.value, 1000);
     }
     DWORD exitCode = 1;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-
-    if (exitCode != 0 || output.empty()) {
-        error = L"远程文件不存在或无权访问";
+    if (!exited || !GetExitCodeProcess(child.value, &exitCode) || exitCode != 0) {
+        error = L"远程文件不存在、不可读、含链接或 SSH 检查失败";
         return false;
     }
-
-    uint64_t sz = 0, mtime = 0;
-    if (sscanf_s(output.c_str(), "%llu %llu", &sz, &mtime) >= 1) {
-        info_.size = sz;
-        info_.sizeKnown = true;
-        info_.lastModified = mtime;
-        return true;
+    while (!output.empty() && (output.back() == '\n' || output.back() == '\r')) output.pop_back();
+    uint64_t size = 0;
+    const auto result = std::from_chars(output.data(), output.data() + output.size(), size);
+    if (result.ec != std::errc{} || result.ptr == output.data() + output.size() || *result.ptr != ' ' ||
+        output.find_first_of("\r\n") != std::string::npos) {
+        error = L"解析远程文件信息失败";
+        return false;
     }
-
-    error = L"解析远程文件信息失败";
-    return false;
+    snapshot_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(output.data()), output.size(), CP_UTF8);
+    if (snapshot_.empty()) {
+        error = L"解析远程文件信息失败";
+        return false;
+    }
+    info_.size = size;
+    info_.sizeKnown = true;
+    return true;
 }
 
 bool RemoteSshTftpFileSource::Open(std::wstring& error) {
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex_);
     std::lock_guard<std::mutex> lock(bufferMutex_);
     if (procHandle_ != nullptr) {
         return true;
@@ -369,130 +380,108 @@ bool RemoteSshTftpFileSource::Open(std::wstring& error) {
             return false;
         }
     } else {
-        std::wstring plinkPath;
-        std::vector<wchar_t> modPath(MAX_PATH);
-        if (GetModuleFileNameW(nullptr, modPath.data(), static_cast<DWORD>(modPath.size()))) {
-            std::wstring dir = modPath.data();
-            auto pos = dir.find_last_of(L"\\/");
-            if (pos != std::wstring::npos) dir = dir.substr(0, pos + 1);
-            plinkPath = dir + L"plink.exe";
-        }
         passwordPipe_.Reset();
-        if (!config_.password.empty() && !passwordPipe_.Open(config_.password, error)) {
-            return false;
-        }
-
-        std::wstring cmd = L"\"" + plinkPath + L"\" -batch -P " + std::to_wstring(config_.port) +
-                           L" -l \"" + config_.username + L"\"";
-        if (!config_.password.empty()) cmd += L" -pwfile \"" + passwordPipe_.Name() + L"\"";
-        if (!config_.hostKey.empty()) cmd += L" -hostkey \"" + config_.hostKey + L"\"";
-        cmd += L" \"" + config_.host + L"\" \"cat -- '" + EscapePosixSingleQuotes(config_.remotePath) + L"'\"";
-
-        HANDLE outRead = nullptr, outWrite = nullptr;
-        SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-        if (!CreatePipe(&outRead, &outWrite, &sa, 65536)) {
+        if (!config_.password.empty() && !passwordPipe_.Open(config_.password, error)) return false;
+        const auto path = L"'" + EscapePosixSingleQuotes(config_.remotePath) + L"'";
+        const auto expected = L"'" + EscapePosixSingleQuotes(snapshot_) + L"'";
+        const auto command = L"f=" + path + L"; expected=" + expected + L"; "
+            L"[ \"$(realpath -e -- \"$f\")\" = \"$f\" ] && [ -f \"$f\" ] || exit 1; "
+            L"exec 3<\"$f\" || exit 1; "
+            L"[ -f /proc/self/fd/3 ] && [ \"$(" + std::wstring(RemoteStat) +
+            L"/proc/self/fd/3)\" = \"$expected\" ] && cat <&3 && "
+            L"[ \"$(" + RemoteStat + L"/proc/self/fd/3)\" = \"$expected\" ] && "
+            L"[ \"$(" + RemoteStat + L"\"$f\")\" = \"$expected\" ]";
+        if (!LaunchPlink(config_, passwordPipe_.Name(), command, false, outputRead_, procHandle_, error)) {
             passwordPipe_.Reset();
-            error = L"无法创建传输管道";
             return false;
         }
-        SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
-
-        STARTUPINFOW si{sizeof(si)};
-        si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-        si.wShowWindow = SW_HIDE;
-        si.hStdOutput = outWrite;
-        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-
-        PROCESS_INFORMATION pi{};
-        std::vector<wchar_t> cmdLine(cmd.begin(), cmd.end());
-        cmdLine.push_back(L'\0');
-
-        BOOL ok = CreateProcessW(nullptr, cmdLine.data(), nullptr, nullptr, TRUE,
-                                 CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-        CloseHandle(outWrite);
-
-        if (!ok) {
-            CloseHandle(outRead);
-            passwordPipe_.Reset();
-            error = L"启动流式 plink 失败";
-            return false;
-        }
-        CloseHandle(pi.hThread);
-        procHandle_ = pi.hProcess;
-        outputRead_ = outRead;
     }
 
-    readerThread_ = std::thread(&RemoteSshTftpFileSource::ReaderThread, this);
+    try {
+        readerThread_ = std::thread(&RemoteSshTftpFileSource::ReaderThread, this);
+    } catch (const std::system_error&) {
+        TerminateProcess(procHandle_, 1);
+        WaitForSingleObject(procHandle_, 1000);
+        CloseHandle(std::exchange(procHandle_, nullptr));
+        CloseHandle(std::exchange(outputRead_, nullptr));
+        passwordPipe_.Reset();
+        error = L"无法启动远程文件读取线程";
+        return false;
+    }
     return true;
 }
 
 void RemoteSshTftpFileSource::ReaderThread() {
-    std::array<uint8_t, 32768> chunk;
+    std::array<uint8_t, 32768> chunk{};
+    std::wstring failure;
     while (!cancelled_) {
-        if (!launcher_ && !config_.password.empty() && !passwordPipe_.Delivered() && !passwordPipe_.Failed()) {
+        if (!launcher_ && !config_.password.empty()) {
             passwordPipe_.Poll();
-            DWORD avail = 0;
-            if (!PeekNamedPipe(outputRead_, nullptr, 0, nullptr, &avail, nullptr)) {
-                std::lock_guard<std::mutex> lock(bufferMutex_);
-                streamEnded_ = true;
-                if (info_.sizeKnown && streamReadOffset_ < info_.size) {
-                    streamError_ = L"Remote stream ended prematurely before complete file was sent";
-                }
-                cvBuffer_.notify_all();
+            if (passwordPipe_.Failed()) {
+                failure = L"远程文件 SSH 认证失败";
                 break;
             }
-            if (avail == 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                continue;
-            }
         }
-        // Enforce backpressure: wait if buffer exceeds capacity
+        size_t capacity = 0;
         {
             std::unique_lock<std::mutex> lock(bufferMutex_);
-            cvBuffer_.wait(lock, [this] {
-                return cancelled_ || buffer_.size() < MaxBufferCapacity();
-            });
+            cvBuffer_.wait(lock, [this] { return cancelled_ || buffer_.size() < MaxBufferCapacity(); });
             if (cancelled_) break;
+            capacity = MaxBufferCapacity() - buffer_.size();
         }
-
-        DWORD read = 0;
-        BOOL ok = ReadFile(outputRead_, chunk.data(), static_cast<DWORD>(chunk.size()), &read, nullptr);
-        if (!ok || read == 0) {
-            // EOF or pipe broken
-            std::lock_guard<std::mutex> lock(bufferMutex_);
-            streamEnded_ = true;
-            if (info_.sizeKnown && streamReadOffset_ < info_.size) {
-                streamError_ = L"Remote stream ended prematurely before complete file was sent";
+        DWORD available = 0;
+        if (!PeekNamedPipe(outputRead_, nullptr, 0, nullptr, &available, nullptr)) {
+            if (GetLastError() != ERROR_BROKEN_PIPE) {
+                failure = L"远程文件输出通道读取失败";
+                break;
             }
-            cvBuffer_.notify_all();
+        }
+        if (!available) {
+            if (WaitForSingleObject(procHandle_, 10) == WAIT_OBJECT_0) {
+                if (PeekNamedPipe(outputRead_, nullptr, 0, nullptr, &available, nullptr) && available) continue;
+                DWORD exitCode = 1;
+                if (!GetExitCodeProcess(procHandle_, &exitCode) || exitCode != 0)
+                    failure = L"远程文件已变化或 SSH 读取失败";
+                else if (info_.sizeKnown && streamReadOffset_ != info_.size)
+                    failure = L"远程文件在预期长度之前结束";
+                break;
+            }
+            continue;
+        }
+        DWORD read = 0;
+        const auto count = std::min({static_cast<size_t>(available), chunk.size(), capacity});
+        if (!ReadFile(outputRead_, chunk.data(), static_cast<DWORD>(count), &read, nullptr) || !read) {
+            failure = L"远程文件输出通道读取失败";
             break;
         }
-
-        {
-            std::lock_guard<std::mutex> lock(bufferMutex_);
-            buffer_.insert(buffer_.end(), chunk.data(), chunk.data() + read);
-            streamReadOffset_ += read;
-            cvBuffer_.notify_all();
+        if (info_.sizeKnown && read > info_.size - streamReadOffset_) {
+            failure = L"远程文件已超过发布时的大小";
+            break;
         }
+        std::lock_guard<std::mutex> lock(bufferMutex_);
+        buffer_.insert(buffer_.end(), chunk.data(), chunk.data() + read);
+        streamReadOffset_ += read;
+        cvBuffer_.notify_all();
     }
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    streamEnded_ = true;
+    streamError_ = std::move(failure);
+    cvBuffer_.notify_all();
 }
 
 void RemoteSshTftpFileSource::Close() {
-    cancelled_ = true;
-    cvBuffer_.notify_all();
-
-    if (outputRead_ != nullptr) {
-        CloseHandle(outputRead_);
-        outputRead_ = nullptr;
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex_);
+    {
+        std::lock_guard<std::mutex> lock(bufferMutex_);
+        cancelled_ = true;
+        cvBuffer_.notify_all();
     }
-    if (procHandle_ != nullptr) {
-        TerminateProcess(procHandle_, 0);
-        CloseHandle(procHandle_);
-        procHandle_ = nullptr;
-    }
-    if (readerThread_.joinable()) {
-        readerThread_.join();
+    if (procHandle_) TerminateProcess(procHandle_, 1);
+    if (readerThread_.joinable()) readerThread_.join();
+    if (outputRead_) CloseHandle(std::exchange(outputRead_, nullptr));
+    if (procHandle_) {
+        WaitForSingleObject(procHandle_, 1000);
+        CloseHandle(std::exchange(procHandle_, nullptr));
     }
     passwordPipe_.Reset();
     std::lock_guard<std::mutex> lock(bufferMutex_);
@@ -514,9 +503,12 @@ bool RemoteSshTftpFileSource::Read(uint64_t offset, void* buffer, size_t length,
     }
 
     // Wait until requested data is in buffer or EOF or error
-    bool ready = cvBuffer_.wait_for(lock, std::chrono::seconds(15), [this, offset, length] {
-        if (cancelled_ || streamEnded_ || !streamError_.empty()) return true;
-        return (bufferStartOffset_ + buffer_.size()) >= (offset + length);
+    const bool finalRead = info_.sizeKnown && (offset >= info_.size || length >= info_.size - offset);
+    const bool ready = cvBuffer_.wait_for(lock, std::chrono::seconds(15), [this, offset, length, finalRead] {
+        if (cancelled_ || streamEnded_) return true;
+        // Do not acknowledge the last block until plink exits successfully and the
+        // remote command has verified the source snapshot after streaming.
+        return !finalRead && bufferStartOffset_ + buffer_.size() >= offset + length;
     });
 
     if (cancelled_) {
@@ -527,7 +519,7 @@ bool RemoteSshTftpFileSource::Read(uint64_t offset, void* buffer, size_t length,
         error = streamError_;
         return false;
     }
-    if (!ready && bufferStartOffset_ + buffer_.size() < offset) {
+    if (!ready) {
         error = L"Remote stream read timeout";
         return false;
     }
@@ -539,10 +531,6 @@ bool RemoteSshTftpFileSource::Read(uint64_t offset, void* buffer, size_t length,
 
     size_t rel = static_cast<size_t>(offset - bufferStartOffset_);
     size_t avail = (buffer_.size() > rel) ? (buffer_.size() - rel) : 0;
-    if (!ready && !streamEnded_ && avail < length) {
-        error = L"Remote stream read timeout (incomplete block)";
-        return false;
-    }
     size_t count = std::min(length, avail);
 
     if (count > 0) {

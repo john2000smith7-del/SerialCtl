@@ -100,6 +100,7 @@ class AiPane {
     void Poll();
     void QueueEvent(Json);
     void Event(const Json &);
+    void UpdateEffectiveAccess(const Json &result);
     void ServerRequest(const Json &);
     bool Request(ai::Operation, Json, const std::string &purpose);
     void Reply(const Json &, Json, bool success = true);

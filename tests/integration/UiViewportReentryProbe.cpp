@@ -21,19 +21,26 @@ int main(int argc, char **argv) {
     InitCommonControlsEx(&controls);
     Gdiplus::GdiplusStartupInput input;
     ULONG_PTR token{}; Gdiplus::GdiplusStartup(&token, &input, nullptr);
+    RECT work{};
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0)) return 2;
+    const int workHeight = work.bottom - work.top;
+    const int naturalHeight = workHeight + 480;
     const auto root = CreateWindowExW(0, L"STATIC", L"Viewport lifetime probe", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-        20, 20, 460, 2000, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        work.left + 20, work.top + 20, 460, naturalHeight, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!root) return 2;
     HWND first = nullptr;
     for (int i=0; i<8; ++i) {
         auto field=CreateWindowExW(0,L"EDIT",L"Native field",WS_CHILD|WS_VISIBLE|WS_TABSTOP,
-            16,40+i*180,360,28,root,reinterpret_cast<HMENU>(100+i),GetModuleHandleW(nullptr),nullptr);
+            16,40+i*(workHeight+320)/8,360,28,root,reinterpret_cast<HMENU>(100+i),GetModuleHandleW(nullptr),nullptr);
         if(!first)first=field;
     }
     CreateWindowExW(0,L"BUTTON",L"Cancel",WS_CHILD|WS_VISIBLE|WS_TABSTOP,
-        250,1800,96,36,root,reinterpret_cast<HMENU>(IDCANCEL),GetModuleHandleW(nullptr),nullptr);
+        250,workHeight+360,96,36,root,reinterpret_cast<HMENU>(IDCANCEL),GetModuleHandleW(nullptr),nullptr);
     serialctl::UiDialogViewport::Fit(root,96);
     RECT bounds{};GetWindowRect(root,&bounds);
-    if(bounds.bottom-bounds.top>=1800) { std::cerr<<"No overflow viewport\n";return 2; }
+    if(bounds.bottom-bounds.top>=naturalHeight || bounds.bottom-bounds.top>workHeight) {
+        std::cerr<<"No overflow viewport\n";return 2;
+    }
     SetWindowSubclass(first,CloseOnMove,99,0);
     armed=true;
     std::cout<<"Entering native scroll; a child callback closes the owning dialog\n"<<std::flush;

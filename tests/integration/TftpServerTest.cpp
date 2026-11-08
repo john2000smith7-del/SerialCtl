@@ -780,6 +780,36 @@ void TestConcurrencyLimitAndPathBoundary(uint16_t testPort) {
     std::cout << "[PASS] Concurrency limit (16) and path boundaries verified." << std::endl;
 }
 
+void TestLocalSourceIdentity() {
+    TempTestFile original({1, 2, 3}), replacement({4, 5, 6});
+    LocalTftpFileSource source(original.Path());
+    Require(source.Info().status == "Ready", "Readable file must publish");
+    std::wstring error;
+    auto transfer = source.CreateSessionSource();
+    Require(transfer->Open(error), "Published local file opens");
+    HANDLE writer = CreateFileW(original.Path().c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (writer != INVALID_HANDLE_VALUE) CloseHandle(writer);
+    Require(writer == INVALID_HANDLE_VALUE, "An open transfer must prevent simultaneous file writes");
+    transfer->Close();
+
+    HANDLE file = CreateFileW(original.Path().c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    FILETIME stamp{};
+    Require(file != INVALID_HANDLE_VALUE && GetFileTime(file, nullptr, nullptr, &stamp),
+            "Fixture reads published timestamp");
+    CloseHandle(file);
+    file = CreateFileW(replacement.Path().c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ,
+                       nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    Require(file != INVALID_HANDLE_VALUE && SetFileTime(file, nullptr, nullptr, &stamp),
+            "Fixture matches replacement timestamp");
+    CloseHandle(file);
+    Require(MoveFileExW(replacement.Path().c_str(), original.Path().c_str(), MOVEFILE_REPLACE_EXISTING),
+            "Fixture atomically replaces published name with same size and time");
+    Require(!source.CreateSessionSource()->Open(error), "Same-size same-time replacement must be refused");
+    std::cout << "[PASS] Local source write exclusion and file identity verification\n";
+}
+
 int main() {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -800,8 +830,9 @@ int main() {
     TestWrapAround65535(6977);
     TestSlowStreamAndPrematureEof(6978);
     TestConcurrencyLimitAndPathBoundary(6979);
+    TestLocalSourceIdentity();
 
     WSACleanup();
-    std::cout << "=== All 10 TFTP Server Integration Tests PASSED ===" << std::endl;
+    std::cout << "=== TFTP Server Integration Tests PASSED ===" << std::endl;
     return 0;
 }

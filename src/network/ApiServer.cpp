@@ -2,6 +2,8 @@
 #include "ApiResponse.h"
 #include "Win32Helpers.h"
 #include <algorithm>
+#include <charconv>
+#include <string_view>
 #include <ws2tcpip.h>
 namespace serialctl {
 namespace {
@@ -44,6 +46,19 @@ bool Keys(const Json &j, std::initializer_list<const char *> keys) {
 bool Text(const Json &j, const char *key, size_t max = 128) {
     return j.contains(key) && j[key].is_string() && !j[key].get_ref<const std::string &>().empty() &&
            j[key].get_ref<const std::string &>().size() <= max;
+}
+bool LoopbackAuthority(std::string_view authority, unsigned expectedPort = 0) {
+    for (const std::string_view host : {"localhost", "127.0.0.1", "[::1]"}) {
+        if (authority.substr(0, host.size()) != host) continue;
+        if (authority.size() == host.size()) return true;
+        if (authority[host.size()] != ':') return false;
+        unsigned port = 0;
+        const auto end = authority.data() + authority.size();
+        const auto result = std::from_chars(authority.data() + host.size() + 1, end, port);
+        return result.ec == std::errc{} && result.ptr == end && port > 0 && port <= 65535 &&
+            (!expectedPort || port == expectedPort);
+    }
+    return false;
 }
 } // namespace
 bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsigned last,
@@ -378,24 +393,15 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
             (h.fields.count("content-length") && h.fields["content-length"] != "0"))
             throw ws::Error(1002, "UPGRADE_REQUIRED_SERIALCTL_V1");
         if (h.fields.count("origin")) {
-            std::string origin = ws::Lower(h.fields["origin"]);
-            auto isLocalHostOrigin = [](const std::string &o) {
-                size_t pos = std::string::npos;
-                if (o.rfind("http://", 0) == 0) pos = 7;
-                else if (o.rfind("https://", 0) == 0) pos = 8;
-                else return false;
-                const char *hosts[] = {"localhost", "127.0.0.1", "[::1]"};
-                for (const char *host : hosts) {
-                    const size_t len = std::strlen(host);
-                    if (o.compare(pos, len, host) == 0) {
-                        const size_t end = pos + len;
-                        if (end == o.size() || o[end] == ':' || o[end] == '/')
-                            return true;
-                    }
-                }
-                return false;
-            };
-            if (!isLocalHostOrigin(origin)) {
+            const auto origin = ws::Lower(h.fields["origin"]);
+            const size_t scheme = origin.rfind("http://", 0) == 0 ? 7 : origin.rfind("https://", 0) == 0 ? 8 : 0;
+            sockaddr_in destination{};
+            int size = sizeof(destination);
+            if (!scheme || !LoopbackAuthority(std::string_view(origin).substr(scheme)) ||
+                !LoopbackAuthority(ws::Lower(h.fields["host"]), port_) ||
+                c->peer.rfind("127.", 0) != 0 ||
+                getsockname(c->socket, reinterpret_cast<sockaddr*>(&destination), &size) != 0 ||
+                (ntohl(destination.sin_addr.s_addr) >> 24) != 127) {
                 rejectedOriginsCount_++;
                 throw ws::Error(1008, "ORIGIN_NOT_ALLOWED");
             }

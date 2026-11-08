@@ -45,7 +45,6 @@ public:
 class LocalTftpFileSource : public ITftpFileSource {
 public:
     explicit LocalTftpFileSource(std::wstring path);
-    LocalTftpFileSource(std::wstring path, FILETIME expectedWriteTime, uint64_t expectedSize, TftpSourceInfo info);
     ~LocalTftpFileSource() override;
 
     TftpSourceInfo Info() const override;
@@ -56,10 +55,10 @@ public:
     void Cancel() override;
 
 private:
+    LocalTftpFileSource(std::wstring path, BY_HANDLE_FILE_INFORMATION snapshot, TftpSourceInfo info);
     std::wstring path_;
     HANDLE file_ = INVALID_HANDLE_VALUE;
-    FILETIME lastWriteTime_{};
-    uint64_t size_ = 0;
+    BY_HANDLE_FILE_INFORMATION snapshot_{};
     TftpSourceInfo info_;
     mutable std::mutex mutex_;
 };
@@ -84,7 +83,6 @@ public:
         std::wstring& error)>;
 
     RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher = nullptr);
-    RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher, TftpSourceInfo prequeriedInfo);
     ~RemoteSshTftpFileSource() override;
 
     TftpSourceInfo Info() const override;
@@ -99,17 +97,21 @@ public:
     static size_t MaxBufferCapacity() { return 2 * 1024 * 1024; } // 2 MiB bounded buffer
 
 private:
+    RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher, TftpSourceInfo prequeriedInfo,
+                           std::wstring snapshot);
     void ReaderThread();
     bool QueryRemoteAttributes(std::wstring& error);
 
     SshRemoteConfig config_;
     StreamLauncher launcher_;
     TftpSourceInfo info_;
+    std::wstring snapshot_;
 
     PasswordPipe passwordPipe_;
     HANDLE procHandle_ = nullptr;
     HANDLE outputRead_ = nullptr;
     std::thread readerThread_;
+    std::mutex lifecycleMutex_;
 
     mutable std::mutex bufferMutex_;
     std::condition_variable cvBuffer_;
@@ -117,7 +119,7 @@ private:
     uint64_t bufferStartOffset_ = 0;
     uint64_t streamReadOffset_ = 0;
     std::atomic<bool> cancelled_{false};
-    std::atomic<bool> streamEnded_{false};
+    bool streamEnded_ = false;
     std::wstring streamError_;
 };
 

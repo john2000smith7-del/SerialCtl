@@ -440,6 +440,22 @@ int main() {
                        "127.0.0.1 Origin accepted");
             }
 
+            for (const auto& authority : {"rebound.example", "127.0.0.1:0", "localhost/other"}) {
+                std::wstring error;
+                auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(secServer.Port()), error);
+                Expect(s != INVALID_SOCKET, "connect for browser Host rejection");
+                ws::SocketOptions(s, 2000);
+                const std::string upgradeRequest = std::string("GET /serialctl HTTP/1.1\r\nHost: ") + authority +
+                    "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"
+                    "Sec-WebSocket-Protocol: serialctl.v1\r\nOrigin: http://localhost:8080\r\n\r\n";
+                Expect(ws::SendAll(s, upgradeRequest.data(), upgradeRequest.size()), "send browser Host probe");
+                char response[512]{};
+                const int count = recv(s, response, sizeof(response), 0);
+                closesocket(s);
+                Expect(count > 0 && std::string(response, count).find("403 Forbidden") != std::string::npos,
+                       "browser handshake must reject untrusted or invalid Host before upgrade");
+            }
             // 3. Metrics() and O(1) History Eviction Fairness across 18 sessions (> 16 MiB global cap)
             auto metrics0 = secServer.Metrics();
             Expect(metrics0.contains("publishedEvents") && metrics0.contains("historyTrims") &&

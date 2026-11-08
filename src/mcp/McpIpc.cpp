@@ -2,6 +2,7 @@
 #include <sddl.h>
 #include <vector>
 #include <cstdint>
+#include <system_error>
 
 namespace serialctl::mcp {
 
@@ -83,6 +84,35 @@ bool OverlappedWriteExact(HANDLE pipe, const void* buffer, DWORD length, HANDLE 
     CloseHandle(ov.hEvent);
     return true;
 }
+PSECURITY_DESCRIPTOR CurrentUserPipeSecurity() {
+    PSECURITY_DESCRIPTOR pSd = nullptr;
+    // The GUI bridge grants access only to its user and LocalSystem. An
+    // Interactive Users ACE would let an unrelated logged-in account execute
+    // every GUI tool, including commands using saved connection credentials.
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return nullptr;
+    DWORD tokenBytes = 0;
+    GetTokenInformation(token, TokenUser, nullptr, 0, &tokenBytes);
+    std::vector<unsigned char> tokenData(tokenBytes);
+    const bool queried = GetTokenInformation(token, TokenUser, tokenData.data(), tokenBytes, &tokenBytes) != FALSE;
+    CloseHandle(token);
+    LPWSTR userSid = nullptr;
+    if (!queried || !ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(tokenData.data())->User.Sid, &userSid)) return nullptr;
+    const std::wstring sddl = L"D:P(A;;GA;;;SY)(A;;GA;;;" + std::wstring(userSid) + L")";
+    LocalFree(userSid);
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &pSd, nullptr)) return nullptr;
+    return pSd;
+
+}
+
+HANDLE CreatePipeInstance(const std::wstring& name, PSECURITY_DESCRIPTOR descriptor, bool first = false) {
+    SECURITY_ATTRIBUTES security{sizeof(security), descriptor, FALSE};
+    return CreateNamedPipeW(name.c_str(),
+        PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | (first ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0),
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+        PIPE_UNLIMITED_INSTANCES, 65536, 65536, 3000, &security);
+}
+
 } // namespace
 
 bool SendIpcRequest(const std::wstring& pipeName, const std::string& request,
@@ -173,12 +203,32 @@ McpIpcServer::~McpIpcServer() {
 
 bool McpIpcServer::Start(Handler handler) {
     if (running_.load()) return true;
-    handler_ = std::move(handler);
+    auto descriptor = CurrentUserPipeSecurity();
+    if (!descriptor) return false;
+    const auto first = CreatePipeInstance(pipeName_, descriptor, true);
+    if (first == INVALID_HANDLE_VALUE) {
+        LocalFree(descriptor);
+        return false;
+    }
     stopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (!stopEvent_) return false;
+    if (!stopEvent_) {
+        CloseHandle(first);
+        LocalFree(descriptor);
+        return false;
+    }
 
-    running_.store(true);
-    workerThread_ = std::thread([this] { RunServer(); });
+    handler_ = std::move(handler);
+    running_ = true;
+    try {
+        workerThread_ = std::thread([this, first, descriptor] { RunServer(first, descriptor); });
+    } catch (const std::system_error&) {
+        running_ = false;
+        CloseHandle(stopEvent_);
+        stopEvent_ = nullptr;
+        CloseHandle(first);
+        LocalFree(descriptor);
+        return false;
+    }
     return true;
 }
 
@@ -187,15 +237,6 @@ void McpIpcServer::Stop() {
 
     if (stopEvent_) {
         SetEvent(stopEvent_);
-    }
-
-    // Connect to unblock ConnectNamedPipe if waiting
-    HANDLE unblock = CreateFileW(
-        pipeName_.c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        0, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (unblock != INVALID_HANDLE_VALUE) {
-        CloseHandle(unblock);
     }
 
     if (workerThread_.joinable()) {
@@ -208,42 +249,9 @@ void McpIpcServer::Stop() {
     }
 }
 
-void McpIpcServer::RunServer() {
-    PSECURITY_DESCRIPTOR pSd = nullptr;
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, FALSE};
-    // The GUI bridge grants access only to its user and LocalSystem. An
-    // Interactive Users ACE would let an unrelated logged-in account execute
-    // every GUI tool, including commands using saved connection credentials.
-    HANDLE token = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return;
-    DWORD tokenBytes = 0;
-    GetTokenInformation(token, TokenUser, nullptr, 0, &tokenBytes);
-    std::vector<unsigned char> tokenData(tokenBytes);
-    const bool queried = GetTokenInformation(token, TokenUser, tokenData.data(), tokenBytes, &tokenBytes) != FALSE;
-    CloseHandle(token);
-    LPWSTR userSid = nullptr;
-    if (!queried || !ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(tokenData.data())->User.Sid, &userSid)) return;
-    const std::wstring sddl = L"D:P(A;;GA;;;SY)(A;;GA;;;" + std::wstring(userSid) + L")";
-    LocalFree(userSid);
-    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &pSd, nullptr)) return;
-    sa.lpSecurityDescriptor = pSd;
-
-    auto createPipeInstance = [&]() -> HANDLE {
-        return CreateNamedPipeW(
-            pipeName_.c_str(),
-            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-            PIPE_UNLIMITED_INSTANCES,
-            65536,
-            65536,
-            3000,
-            &sa);
-    };
-
-    HANDLE nextPipe = createPipeInstance();
-
+void McpIpcServer::RunServer(HANDLE nextPipe, PSECURITY_DESCRIPTOR descriptor) {
     while (running_.load()) {
-        HANDLE pipe = nextPipe != INVALID_HANDLE_VALUE ? nextPipe : createPipeInstance();
+        HANDLE pipe = nextPipe != INVALID_HANDLE_VALUE ? nextPipe : CreatePipeInstance(pipeName_, descriptor);
         nextPipe = INVALID_HANDLE_VALUE;
 
         if (pipe == INVALID_HANDLE_VALUE) {
@@ -254,13 +262,17 @@ void McpIpcServer::RunServer() {
         OVERLAPPED connectOverlapped{};
         connectOverlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
+        if (!connectOverlapped.hEvent) {
+            CloseHandle(pipe);
+            break;
+        }
         BOOL connected = ConnectNamedPipe(pipe, &connectOverlapped);
         if (!connected) {
             const DWORD err = GetLastError();
             if (err == ERROR_IO_PENDING) {
                 HANDLE events[2] = {stopEvent_, connectOverlapped.hEvent};
                 const DWORD wait = WaitForMultipleObjects(2, events, FALSE, INFINITE);
-                if (wait == WAIT_OBJECT_0) { // Stop
+                if (wait != WAIT_OBJECT_0 + 1) {
                     CancelIo(pipe);
                     DWORD ignored = 0;
                     GetOverlappedResult(pipe, &connectOverlapped, &ignored, TRUE);
@@ -268,7 +280,8 @@ void McpIpcServer::RunServer() {
                     CloseHandle(pipe);
                     break;
                 }
-                connected = TRUE;
+                DWORD ignored = 0;
+                connected = GetOverlappedResult(pipe, &connectOverlapped, &ignored, FALSE);
             } else if (err == ERROR_PIPE_CONNECTED) {
                 connected = TRUE;
             }
@@ -282,7 +295,7 @@ void McpIpcServer::RunServer() {
         }
 
         // Pre-create next pipe instance BEFORE servicing/closing current pipe so clients never see ERROR_FILE_NOT_FOUND
-        nextPipe = createPipeInstance();
+        nextPipe = CreatePipeInstance(pipeName_, descriptor);
 
         if (connected) {
             uint32_t reqLen = 0;
@@ -311,9 +324,7 @@ void McpIpcServer::RunServer() {
         CloseHandle(nextPipe);
     }
 
-    if (pSd) {
-        LocalFree(pSd);
-    }
+    LocalFree(descriptor);
 }
 
 } // namespace serialctl::mcp

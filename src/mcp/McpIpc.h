@@ -28,7 +28,7 @@ public:
     const std::wstring& PipeName() const { return pipeName_; }
 
 private:
-    void RunServer();
+    void RunServer(HANDLE nextPipe, PSECURITY_DESCRIPTOR descriptor);
 
     std::wstring pipeName_;
     Handler handler_;

@@ -1527,7 +1527,7 @@ void AiPane::UpdateActions() {
     };
     updateTip(WorkspaceButton, workspaceDirectory_ + (workspaceVerified_ ? std::wstring() : std::wstring(L" · 目录待验证")) +
               (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器") +
-              (effectiveAccess_.empty() ? std::wstring() : L"\n权限：" + effectiveAccess_), workspaceTooltip_);
+              L"\n请求权限：" + requestedAccess_ + L"\n实际权限：" + effectiveAccess_, workspaceTooltip_);
     updateTip(Model, serverDefaultModel_.empty() ? L"模型未获取" : Wide(serverDefaultModel_), modelTooltip_);
     const bool ready = client_.Ready();
     if (!busy_ && companionActivity_ != pet::Activity::Done && companionActivity_ != pet::Activity::Failed && companionActivity_ != pet::Activity::Stopped)
@@ -1662,6 +1662,9 @@ bool AiPane::Request(ai::Operation operation, Json params, const std::string &pu
         return false;
     }
     requests_[id] = {purpose, turn_, workspaceDirectory_};
+    if (operation == ai::Operation::NewConversation || operation == ai::Operation::RestoreConversation ||
+        operation == ai::Operation::StartTask)
+        effectiveAccess_ = L"待验证";
     return true;
 }
 void AiPane::Reply(const Json &id, Json result, bool success) {
@@ -1796,6 +1799,7 @@ void AiPane::NewConversation() {
     restoreOnConfig_ = false;
     thread_.clear();
     turn_.clear();
+    effectiveAccess_ = L"待验证";
     finishedTurns_.clear();
     displayGroup_.clear();
     collapsedGroups_.clear();
@@ -2090,6 +2094,21 @@ void AiPane::Poll() {
         Add(L"状态", L"任务已运行超过 10 分钟，连接仍保留；可点击停止。已提交操作不会自动重发。");
     }
 }
+void AiPane::UpdateEffectiveAccess(const Json &result) {
+    const auto sandbox = result.value("effectiveSandbox", std::string());
+    if (sandbox == "danger-full-access" || sandbox == "dangerFullAccess" || sandbox == ":danger-full-access") {
+        effectiveAccess_ = L"Full Access";
+    } else if (sandbox == "read-only" || sandbox == "readOnly") {
+        effectiveAccess_ = L"受限 (read-only)";
+        SetStatus(L"AI 会话权限受限：只读沙箱 (read-only)");
+    } else if (sandbox == "workspace-write" || sandbox == "workspaceWrite") {
+        effectiveAccess_ = L"受限 (workspace-write)";
+        SetStatus(L"AI 会话权限受限：工作区读写 (workspace-write)");
+    } else {
+        effectiveAccess_ = L"待验证";
+    }
+}
+
 void AiPane::Event(const Json &e) {
     const auto event = e.value("event", std::string());
     if (event == "ready") {
@@ -2206,23 +2225,6 @@ void AiPane::Event(const Json &e) {
             UpdateActions();
             return;
         }
-        if (!e.contains("error") && e.contains("result") && e["result"].is_object()) {
-            const auto &resObj = e["result"];
-            if (resObj.contains("effectiveSandbox") && resObj["effectiveSandbox"].is_string()) {
-                const auto sbox = resObj["effectiveSandbox"].get<std::string>();
-                if (sbox == "danger-full-access" || sbox == "dangerFullAccess" || sbox == ":danger-full-access") {
-                    effectiveAccess_ = L"Full Access";
-                } else if (sbox == "read-only" || sbox == "readOnly") {
-                    effectiveAccess_ = L"受限 (read-only)";
-                    SetStatus(L"AI 会话权限受限：只读沙箱 (read-only)");
-                } else if (sbox == "workspace-write" || sbox == "workspaceWrite") {
-                    effectiveAccess_ = L"受限 (workspace-write)";
-                    SetStatus(L"AI 会话权限受限：工作区只读写 (workspace-write)");
-                } else {
-                    effectiveAccess_ = L"受限 (" + Wide(sbox) + L")";
-                }
-            }
-        }
         if (purpose == "read-workspace-agents") {
             agentsSnapshotValid_ = false;
             workspacePractices_.clear();
@@ -2279,6 +2281,7 @@ void AiPane::Event(const Json &e) {
             SaveWorkspaceDefault(path);
             RememberThread(id,L"新会话");
             SetStatus(L"已切换工作空间 · " + path);
+            UpdateEffectiveAccess(e["result"]);
             LoadWorkspacePractices();
             UpdateActions(); return;
         }
@@ -2308,6 +2311,7 @@ void AiPane::Event(const Json &e) {
                        {"status", "interrupted"}});
         } else if (purpose == "start") {
             thread_ = result.at("conversationId").get<std::string>();
+            UpdateEffectiveAccess(result);
             if (ai::ValidWorkspacePath(result.value("cwd", std::string()))) workspaceDirectory_ = Wide(result["cwd"].get<std::string>());
             RememberThread(thread_, pendingPrompt_.empty() ? L"新会话" : pendingPrompt_.substr(0, 40));
             if (stopRequested_) {
@@ -2317,6 +2321,7 @@ void AiPane::Event(const Json &e) {
                 StartTurn();
         } else if (purpose == "turn") {
             turn_ = result.at("taskId").get<std::string>();
+            UpdateEffectiveAccess(result);
             if (stopRequested_)
                 Stop();
         } else if (purpose == "compact") {
@@ -2400,6 +2405,7 @@ void AiPane::Event(const Json &e) {
             Reflow();
             busy_ = false;
             SetStatus(L"已恢复服务器历史 · 查看历史不会自动发送命令");
+            UpdateEffectiveAccess(result);
             LoadWorkspacePractices();
         }
         UpdateActions();

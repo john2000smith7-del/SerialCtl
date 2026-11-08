@@ -34,6 +34,7 @@
 #include <cstring>
 #include <cstdio>
 #include <cwctype>
+#include <filesystem>
 #include <new>
 #include <sstream>
 #include <stdexcept>
@@ -2052,10 +2053,33 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         sessionService_.ObserveTransfer([this](const std::string& id,const std::string& owner,const Bytes& bytes) {
             apiServer_.EnqueuePublish(id,bytes,owner.c_str(),"xfer_output");
         });
-        { std::wstring error;
-          if (!apiServer_.Start([this](const auto& method, const auto& path, const auto& body) {
-                  return ApiRequest(method, path, body);
-              }, error)) AppendStatus(error, true);
+        {
+            wchar_t bind[64]{}, allowed[4096]{};
+            const auto bindLength = GetPrivateProfileStringW(L"SerialShare", L"BindIp", L"0.0.0.0",
+                bind, static_cast<DWORD>(std::size(bind)), uiSettingsPath_.c_str());
+            const auto listLength = GetPrivateProfileStringW(L"SerialShare", L"AllowedClients", L"",
+                allowed, static_cast<DWORD>(std::size(allowed)), uiSettingsPath_.c_str());
+            std::vector<std::string> clients;
+            std::wstring error;
+            if (!bindLength || bindLength >= std::size(bind) - 1 || listLength >= std::size(allowed) - 1)
+                error = L"串口共享配置的绑定地址或客户端列表无效";
+            std::wistringstream entries(allowed);
+            for (std::wstring entry; error.empty() && std::getline(entries, entry, L',');) {
+                auto address = WideToMultiByte(Trim(std::move(entry)), CP_UTF8);
+                IN_ADDR parsed{};
+                if (InetPtonA(AF_INET, address.c_str(), &parsed) != 1 || parsed.s_addr == INADDR_ANY)
+                    error = L"串口共享 AllowedClients 必须是逗号分隔的 IPv4 地址";
+                else clients.push_back(std::move(address));
+            }
+            if (error.empty()) {
+                apiServer_.Start([this](const auto& method, const auto& path, const auto& body) {
+                    return ApiRequest(method, path, body);
+                }, error, 7000, 7015, WideToMultiByte(bind, CP_UTF8), clients);
+            }
+            if (!error.empty()) AppendStatus(error, true);
+            else AppendStatus(L"WebSocket " + std::wstring(bind) + L":" + std::to_wstring(apiServer_.Port()) +
+                (clients.empty() ? L" · 无来源限制" : L" · 允许来源 " + std::wstring(allowed)) +
+                L" · 可访问共享串口、CMD 和已授权电源操作", false);
         }
         return 0;
     case MessagePowerTarget:
@@ -4848,6 +4872,16 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
                 return error("tftpName and localPath are required");
             }
             std::wstring pathW = MultiByteToWide(reinterpret_cast<const uint8_t*>(localPath.data()), localPath.size(), CP_UTF8);
+            wchar_t configuredRoot[32768]{};
+            const auto count = GetPrivateProfileStringW(L"Tftp", L"LocalPublishRoot", L"", configuredRoot,
+                static_cast<DWORD>(std::size(configuredRoot)), uiSettingsPath_.c_str());
+            auto root = std::filesystem::path(configuredRoot);
+            if (!root.has_filename() && root.has_relative_path()) root = root.parent_path();
+            const std::filesystem::path file(pathW);
+            const auto prefix = std::mismatch(root.begin(), root.end(), file.begin(), file.end());
+            if (count >= std::size(configuredRoot) - 1 || !root.is_absolute() || !root.has_relative_path() ||
+                prefix.first != root.end() || prefix.second == file.end())
+                return error("Path is outside the locally configured Tftp.LocalPublishRoot");
             std::wstring err;
             if (!tftpServer_->PublishLocal(tftpName, pathW, overwrite, err)) {
                 return error(WideToMultiByte(err, CP_UTF8));
@@ -4872,7 +4906,8 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
             }
             SessionState* targetSession = nullptr;
             for (const auto& s : sessions_) {
-                if (s->mode == 0) {
+                if (s->mode == 0 && !s->disconnecting && !s->disconnected &&
+                    s->connection && s->connection->IsConnected()) {
                     if (sessionId.empty() || sessionId == ("session-" + std::to_string(s->id))) {
                         targetSession = s.get();
                         break;
@@ -4888,6 +4923,14 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
             cfg.username = targetSession->username;
             cfg.password = targetSession->password;
             cfg.remotePath = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
+            wchar_t configuredRoot[32768]{};
+            const auto count = GetPrivateProfileStringW(L"Tftp", L"RemotePublishRoot", L"", configuredRoot,
+                static_cast<DWORD>(std::size(configuredRoot)), uiSettingsPath_.c_str());
+            std::wstring root(configuredRoot);
+            while (root.size() > 1 && root.back() == L'/') root.pop_back();
+            if (count >= std::size(configuredRoot) - 1 || root.size() <= 1 || root.front() != L'/' ||
+                cfg.remotePath.rfind(root + L"/", 0) != 0)
+                return error("Path is outside the locally configured Tftp.RemotePublishRoot");
 
             std::wstring err;
             if (!tftpServer_->PublishRemote(tftpName, cfg, overwrite, err)) {

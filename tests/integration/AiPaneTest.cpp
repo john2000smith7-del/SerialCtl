@@ -690,6 +690,7 @@ struct AiPaneTestAccess {
         }
         pane.NewConversation();
         pane.stopRequested_ = false;
+        pane.effectiveAccess_ = L"Full Access";
         pane.requests_[1002] = {"resume", {}};
         pane.busy_ = true;
         pane.Event({{"event", "response"}, {"token", 1002}, {"result", {
@@ -705,6 +706,16 @@ struct AiPaneTestAccess {
                 "Restoring a completed turn reopened its process or lost failed-step information");
         require(pane.messages_[1].text == L"exit 1" && pane.messages_[1].technical.find(L"\\u001b") != std::wstring::npos,
                 "Restored native output leaked ANSI or discarded its raw technical evidence");
+        require(pane.effectiveAccess_ == L"待验证" &&
+                    pane.workspaceTooltip_.find(L"请求权限：Full Access\n实际权限：待验证") != std::wstring::npos,
+                "Resume without permission metadata retained a previous Full Access result");
+        pane.requests_[1010] = {"turn", {}};
+        pane.Event({{"event", "response"}, {"token", 1010},
+                    {"result", {{"taskId", "restricted-turn"}, {"effectiveSandbox", "readOnly"}}}});
+        require(pane.effectiveAccess_ == L"受限 (read-only)", "Server restriction was not reflected");
+        pane.requests_[1011] = {"turn", {}};
+        pane.Event({{"event", "response"}, {"token", 1011}, {"result", {{"taskId", "unknown-turn"}}}});
+        require(pane.effectiveAccess_ == L"待验证", "A turn without permission metadata retained stale permission");
         pane.NewConversation();
         pane.thread_ = "fixture";
         pane.NewConversation();

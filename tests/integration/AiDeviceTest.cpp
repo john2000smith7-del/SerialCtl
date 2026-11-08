@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "GatewayFixture.h"
 #include "UiTestEvidence.h"
+#include "UiMetrics.h"
 #include "Win32Helpers.h"
 #include "resource.h"
 #include "SshCredentials.h"
@@ -167,10 +168,11 @@ struct AiDeviceTestAccess {
                 ++visibleSelectors;
         }
         Require(visibleSelectors == 1, "Remote dialog must offer only the discovered SerialCtl port selector");
+        const int compactHeight = MulDiv(28, Ui::Dpi, 96);
         for (int id : {IDC_SERIAL}) {
             RECT field{};
             GetWindowRect(GetDlgItem(remote, id), &field);
-            Require(field.bottom - field.top == 28, "Remote dropdown must retain the 28 px field height");
+            Require(field.bottom - field.top == compactHeight, "Remote dropdown must retain the scaled 28 px field height");
         }
         RECT hostField{}, remoteRefresh{};
         auto hostFrame = reinterpret_cast<HWND>(GetPropW(GetDlgItem(remote, IDC_HOST), L"SerialCtl.FieldFrame"));
@@ -180,7 +182,7 @@ struct AiDeviceTestAccess {
         std::cout << "[REMOTE GEOMETRY] IP=" << hostField.left << ',' << hostField.top << ',' << hostField.right << ','
                   << hostField.bottom << " refresh=" << remoteRefresh.left << ',' << remoteRefresh.top << ','
                   << remoteRefresh.right << ',' << remoteRefresh.bottom << '\n';
-        Require(hostField.bottom - hostField.top == 28 && remoteRefresh.top == hostField.top &&
+        Require(hostField.bottom - hostField.top == compactHeight && remoteRefresh.top == hostField.top &&
                     remoteRefresh.bottom == hostField.bottom && remoteRefresh.left > hostField.right,
                 "Remote Refresh must align with IP field, never overlap the device dropdown");
         ShowWindow(remote, SW_SHOW);
@@ -245,7 +247,7 @@ struct AiDeviceTestAccess {
             for (const int id : {IDC_SERIAL, IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW}) {
                 RECT field{};
                 GetWindowRect(GetDlgItem(dialog, id), &field);
-                Require(field.bottom - field.top == 28, "Collapsed serial dropdown must be 28 px at test DPI");
+                Require(field.bottom - field.top == compactHeight, "Collapsed serial dropdown must be 28 px scaled to the test DPI");
                 MapWindowPoints(nullptr, dialog, reinterpret_cast<POINT *>(&field), 2);
                 Require(field.bottom <= bounds.bottom, "Serial field escapes resized dialog");
             }
