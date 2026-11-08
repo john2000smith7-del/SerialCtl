@@ -36,10 +36,12 @@ class PowerService {
   private:
 #ifdef SERIALCTL_POWER_TESTING
     friend struct PowerServiceTestAccess;
+    friend struct AiDeviceTestAccess;
     bool testPauseRequested_ = false;
     bool testWorkerPaused_ = false;
     bool testPauseRecoveryOn_ = false, testRecoveryAtOn_ = false;
     void FailNextOutputReadbackForTest();
+    void FailNextOutputOffWriteForTest();
 #endif
     struct Transport;
     void Run();
@@ -53,7 +55,7 @@ class PowerService {
     void CheckScpi();
     void Select(int channel);
     void Outputs(const Json &channels, bool enabled, Json &result);
-    void StopTask();
+    void StopTask(Json *offResults = nullptr);
     void Disconnect(bool preserveOutputs = false, Json *action = nullptr);
     void Command(const std::string &command);
     std::string Query(const std::string &command);

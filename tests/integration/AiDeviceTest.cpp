@@ -963,6 +963,84 @@ struct AiDeviceTestAccess {
         DestroyWindow(parent);
         for (auto font : {main.uiFont_, main.smallFont_, main.titleFont_, main.terminalFont_}) DeleteObject(font);
     }
+    static void RunPowerDisconnect() {
+        MainWindow main;
+        main.instance_ = GetModuleHandleW(nullptr);
+        main.window_ = CreateWindowExW(0, L"STATIC", L"Power disconnect regression", WS_OVERLAPPEDWINDOW,
+                                       0, 0, 1200, 800, nullptr, nullptr, main.instance_, nullptr);
+        Require(main.window_ != nullptr, "Create native power disconnect window");
+        Require(SetWindowSubclass(main.window_, FixtureParent, 9207, reinterpret_cast<DWORD_PTR>(&main)) != FALSE,
+                "Install native power fixture window procedure");
+        main.CreateControls();
+        ShowWindow(main.window_, SW_SHOWNOACTIVATE);
+        auto &power = main.powerService_;
+        auto until = [&](auto ready, const char *why) {
+            const auto deadline = GetTickCount64() + 5000;
+            while (!ready() && GetTickCount64() < deadline) {
+                MSG message{};
+                while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                    if (message.message == WM_QUIT) continue;
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+                Sleep(1);
+            }
+            Require(ready(), why);
+        };
+        main.ShowPowerPage();
+        Require(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
+                "Connect the controlled power backend");
+        Require(Wait(power, power.Submit({{"type", "schedule"}, {"channels", {1}}, {"startMs", 60000}, {"durationMs", 200}}))["state"] == "completed",
+                "Power task owns CH1");
+        {
+            std::unique_lock<std::mutex> lock(power.mutex_);
+            power.testPauseRequested_ = true;
+            power.wake_.notify_all();
+            Require(power.wake_.wait_for(lock, std::chrono::seconds(2), [&] { return power.testWorkerPaused_; }),
+                    "Pause controlled power backend for fault injection");
+        }
+        power.FailNextOutputReadbackForTest();
+        main.HandleMessage(WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(main.disconnectAllButton_), BN_CLICKED),
+                           reinterpret_cast<LPARAM>(main.disconnectAllButton_));
+        const auto actionId = main.powerDisconnectActionId_;
+        {
+            std::lock_guard<std::mutex> lock(power.mutex_);
+            power.testPauseRequested_ = false;
+            power.wake_.notify_all();
+        }
+        Require(!actionId.empty() && main.disconnectAllPending_, "Main window tracks the submitted disconnect action");
+        until([&] { return main.powerDisconnectActionId_.empty() && !main.disconnectAllPending_; },
+              "Power pane must notify the main window when the actual disconnect action finishes");
+        const auto action = power.Action(actionId);
+        Require(action["state"] == "failed" && action["unconfirmedChannels"] == Json::array({1}) &&
+                main.powerPageOpened_ && MainWindow::ControlText(main.disconnectAllButton_) == L"全部关闭",
+                "Failed OFF releases transport and retains the disconnected card");
+        const auto warning = MainWindow::ControlText(main.status_);
+        Require(warning.find(L"输出未知 CH1") != std::wstring::npos, "Main window displays the unknown channel");
+        ui_test::SaveUiEvidence(main.window_, L"power-disconnect-card-warning.png");
+        main.HandleMessage(WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(main.disconnectAllButton_), BN_CLICKED),
+                           reinterpret_cast<LPARAM>(main.disconnectAllButton_));
+        Require(!main.powerPageOpened_ && MainWindow::ControlText(main.status_).find(L"输出未知 CH1") != std::wstring::npos,
+                "Closing cards must leave the warning visible beside the ordinary status");
+        main.AppendStatus(L"", false);
+        Require(MainWindow::ControlText(main.status_).find(L"输出未知 CH1") != std::wstring::npos,
+                "Ordinary status timeout cannot remove the power warning");
+        ui_test::SaveUiEvidence(main.window_, L"power-disconnect-after-close.png");
+        main.ShowPowerPage();
+        SendMessageW(main.powerPane_.Handle(), WM_COMMAND, 93, 0);
+        const auto record = power.State()["records"].back();
+        Require(main.powerPageOpened_ && record["operation"] == "disconnect" &&
+                record["unconfirmedChannels"] == Json::array({1}) && record["offResults"][0]["state"] == "unknown",
+                "Reopened power pane retains the failure record and unknown channel");
+        for (int step = 0; step < 12; ++step)
+            SendMessageW(main.powerPane_.Handle(), WM_MOUSEWHEEL, MAKEWPARAM(0, -WHEEL_DELTA), 0);
+        ui_test::SaveUiEvidence(main.window_, L"power-disconnect-reopened-history.png");
+        Require(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
+                "Reconnect obtains fresh power readings");
+        until([&] { return main.powerAlert_.empty(); }, "Fresh readback clears the main window warning");
+        std::cout << "[PASS] Power disconnect action " << action.dump() << " remains visible after closing and reopening the card; fresh readback clears warning\n";
+        main.RequestShutdown();main.WaitForShutdown();main.FinishShutdown();
+    }
     static void RunConnections() {
         MainWindow main;
         Require(main.Create(GetModuleHandleW(nullptr),SW_SHOWNOACTIVATE),"Create lifecycle window");
@@ -1158,12 +1236,20 @@ struct AiDeviceTestAccess {
     }
 };
 }
-int main() {
+int main(int argc, char **argv) {
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES}; InitCommonControlsEx(&controls);
     Gdiplus::GdiplusStartupInput startup; ULONG_PTR token{}; Gdiplus::GdiplusStartup(&token, &startup, nullptr);
     HWND parent = CreateWindowExW(0,L"STATIC",L"AI device callback fixture",WS_OVERLAPPEDWINDOW,0,0,1000,700,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     int result = 0;
-    try { serialctl::AiDeviceTestAccess::Run(parent); serialctl::AiDeviceTestAccess::RunConnections(); serialctl::AiDeviceTestAccess::RunShutdown(); std::cout << "[PASS] Actual desktop AI callback and asynchronous connection/shutdown lifecycle; controlled transports, no physical devices\n"; }
+    try {
+        serialctl::AiDeviceTestAccess::RunPowerDisconnect();
+        if (argc < 2 || std::string_view(argv[1]) != "--power-disconnect") {
+            serialctl::AiDeviceTestAccess::Run(parent);
+            serialctl::AiDeviceTestAccess::RunConnections();
+            serialctl::AiDeviceTestAccess::RunShutdown();
+            std::cout << "[PASS] Actual desktop AI callback and asynchronous connection/shutdown lifecycle; controlled transports, no physical devices\n";
+        }
+    }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; result = 1; }
     DestroyWindow(parent); Gdiplus::GdiplusShutdown(token); return result;
 }

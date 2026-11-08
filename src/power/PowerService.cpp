@@ -89,6 +89,7 @@ struct PowerService::Transport {
     bool simulated = false;
 #ifdef SERIALCTL_POWER_TESTING
     bool testFailOutputReadback = false;
+    bool testFailOutputOffWrite = false;
 #endif
     int failAfter = -1;
     Json simulation =
@@ -112,6 +113,12 @@ struct PowerService::Transport {
     void Write(std::string command) {
         if (simulated) {
             writes.push_back(command);
+#ifdef SERIALCTL_POWER_TESTING
+            if (testFailOutputOffWrite && command == "CHAN:OUTP OFF") {
+                testFailOutputOffWrite = false;
+                throw std::runtime_error("Simulated OFF write failure");
+            }
+#endif
             if (command == "OUTP:PAR ON")
                 mode = "parallel";
             else if (command == "OUTP:SER ON")
@@ -783,7 +790,7 @@ void PowerService::Outputs(const Json &channels, bool enabled, Json &result) {
     if (failed)
         throw std::runtime_error("Output operation incomplete; inspect per-channel result");
 }
-void PowerService::StopTask() {
+void PowerService::StopTask(Json *offResults) {
     if (owned_.empty())
         return;
     Json channels = owned_;
@@ -805,7 +812,7 @@ void PowerService::StopTask() {
     }
     if (transport_) {
         Json result;
-        Outputs(channels, false, result);
+        Outputs(channels, false, offResults ? *offResults : result);
     }
     owned_ = Json::array();
     {
@@ -814,6 +821,8 @@ void PowerService::StopTask() {
     }
 }
 void PowerService::Disconnect(bool preserveOutputs, Json *action) {
+    const auto ownedChannels = owned_;
+    Json offResults = Json::array();
     bool stopFailed = false;
     std::string stopError;
     if(preserveOutputs) {
@@ -823,15 +832,20 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
         for(auto& item:actions_)if(item.second.value("state",std::string())=="running")item.second["state"]="canceled";
     } else {
         try {
-            StopTask();
+            StopTask(&offResults);
         } catch (const std::exception &e) {
             stopFailed = true;
             stopError = e.what();
             std::lock_guard<std::mutex> lock(mutex_);
             state_["error"] = e.what();
-            state_["unconfirmedPowerOff"] = true;
         }
     }
+#ifdef SERIALCTL_POWER_TESTING
+    if (transport_ && transport_->simulated) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        state_["testWrites"] = transport_->writes;
+    }
+#endif
     transport_.reset();
     log_.Stop();
     measurements_.Stop();
@@ -843,8 +857,21 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
     state_["ownedChannels"] = owned_;
     state_["readbackStale"] = preserveOutputs && std::any_of(state_["channels"].begin(),state_["channels"].end(),[](const Json& channel){return channel["output"].is_boolean();});
 
+    Json unconfirmed = Json::array();
+    if (stopFailed) {
+        for (const auto &channel : ownedChannels) {
+            const auto confirmed = std::any_of(offResults.begin(), offResults.end(), [&](const Json &result) {
+                return result["channel"] == channel && result["state"] == "confirmed";
+            });
+            if (!confirmed) unconfirmed.push_back(channel);
+        }
+        state_["unconfirmedPowerOff"] = true;
+        state_["unconfirmedPowerOffChannels"] = unconfirmed;
+    }
+
     if (action) {
         (*action)["transportDisconnected"] = true;
+        (*action)["offResults"] = std::move(offResults);
         if (preserveOutputs) {
             (*action)["offConfirmation"] = "preserved";
             (*action)["state"] = "completed";
@@ -852,17 +879,10 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
             (*action)["offConfirmation"] = "failed";
             (*action)["state"] = "failed";
             (*action)["error"] = stopError;
-            Json unconfirmed = Json::array();
-            for (size_t i = 0; i < state_["channels"].size(); ++i) {
-                if (state_["channels"][i]["output"].is_null()) {
-                    unconfirmed.push_back(i + 1);
-                }
-            }
             (*action)["unconfirmedChannels"] = unconfirmed;
         } else {
-            (*action)["offConfirmation"] = "confirmed";
+            (*action)["offConfirmation"] = ownedChannels.empty() ? "not_required" : "confirmed";
             (*action)["state"] = "completed";
-            state_["unconfirmedPowerOff"] = false;
         }
     }
 
@@ -955,7 +975,6 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 state_["backend"] = backend;
                 state_["simulation"] = backend == "simulation";
                 state_.erase("error");
-                state_["unconfirmedPowerOff"] = false;
                 state_.erase("logError");
                 state_["csvPath"] = WideToMultiByte(measurements_.Path(), CP_UTF8);
                 if (!csvError.empty())
@@ -1103,10 +1122,16 @@ void PowerService::Execute(const std::string &id, const Json &command) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         actions_[id] = action;
-        state_["records"].push_back({{"timestamp", action["timestamp"]},
-                                     {"source", command.value("source", std::string("local"))},
-                                     {"operation", command["type"]},
-                                     {"result", action.value("error", action.value("state", std::string()))}});
+        auto record = Json{{"timestamp", action["timestamp"]},
+                           {"source", command.value("source", std::string("local"))},
+                           {"operation", command["type"]},
+                           {"result", action.value("error", action.value("state", std::string()))}};
+        if (action.contains("unconfirmedChannels")) {
+            record["unconfirmedChannels"] = action["unconfirmedChannels"];
+            record["offResults"] = action["offResults"];
+        }
+        if (command["type"] == "disconnect") state_["lastDisconnectActionId"] = id;
+        state_["records"].push_back(std::move(record));
         if (state_["records"].size() > 200)
             state_["records"].erase(state_["records"].begin());
         if (transport_ && transport_->simulated)
@@ -1156,6 +1181,8 @@ void PowerService::Poll() {
     std::lock_guard<std::mutex> lock(mutex_);
     state_["channels"] = channels;
     state_["readbackStale"] = false;
+    state_["unconfirmedPowerOff"] = false;
+    state_.erase("unconfirmedPowerOffChannels");
     if (!measurements_.Error().empty())
         state_["logError"] = WideToMultiByte(measurements_.Error(), CP_UTF8);
     if (!log_.Error().empty())
@@ -1166,6 +1193,11 @@ void PowerService::FailNextOutputReadbackForTest() {
     std::lock_guard<std::mutex> lock(mutex_);
     Require(testWorkerPaused_ && transport_ && transport_->simulated, "Pause the simulation before fault injection");
     transport_->testFailOutputReadback = true;
+}
+void PowerService::FailNextOutputOffWriteForTest() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Require(testWorkerPaused_ && transport_ && transport_->simulated, "Pause the simulation before fault injection");
+    transport_->testFailOutputOffWrite = true;
 }
 #endif
 void PowerService::Run() {

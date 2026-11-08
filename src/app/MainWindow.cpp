@@ -2001,20 +2001,28 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         return 0;
     }
-    case PowerStateChanged:
+    case PowerStateChanged: {
+        const auto powerState = powerService_.State();
+        std::wstring warning;
+        if (powerState.value("unconfirmedPowerOff", false)) {
+            warning = L"警告：电源输出未知";
+            for (const auto &channel : powerState.value("unconfirmedPowerOffChannels", Json::array()))
+                warning += L" CH" + std::to_wstring(channel.get<int>());
+            warning += L"，请人工核查。";
+        }
+        if (warning != powerAlert_) {
+            powerAlert_ = std::move(warning);
+            RefreshStatusDisplay();
+        }
         if (!powerDisconnectActionId_.empty()) {
             auto action = powerService_.Action(powerDisconnectActionId_);
             auto state = action.value("state", std::string());
             if (state == "completed" || state == "failed" || state == "canceled") {
-                if (state == "failed" || action.value("offConfirmation", "") == "failed" ||
-                    powerService_.State().value("unconfirmedPowerOff", false)) {
-                    powerAlert_ = L"警告：电源已断开，但关闭输出未得到确认（状态未知）；请人工核查电源输出！";
-                    AppendStatus(powerAlert_, true);
-                }
+                if (state != "completed") AppendStatus(L"电源断开操作失败或已取消，请查看电源操作记录。", true);
                 powerDisconnectActionId_.clear();
             }
         }
-        if (disconnectAllPending_ && !powerService_.State().value("connected", false) && powerDisconnectActionId_.empty()) {
+        if (disconnectAllPending_ && !powerState.value("connected", false) && powerDisconnectActionId_.empty()) {
             disconnectAllPending_ = false;
             RefreshConnectionActions();
             RECT r{};
@@ -2023,6 +2031,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         RefreshConnectionList();
         return 0;
+    }
     case MessageApi: {
         std::unique_ptr<ApiRequestMessage> pointer(reinterpret_cast<ApiRequestMessage*>(lParam));
         auto request=*pointer; int expected=0;
@@ -2220,7 +2229,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (uiSettingsWriter_.TakeFailure()) AppendStatus(L"连接保持可用，但本地设置或历史保存失败，请检查配置目录权限。",true);
         if(wParam==SettingsWriteTimerId) return 0;
         if(wParam==SessionCleanupTimerId) { PollSessionCleanup(); return 0; }
-        if(wParam==ClipboardNoticeTimerId) {KillTimer(window_,ClipboardNoticeTimerId);clipboardNotice_.clear();SetWindowTextW(status_,statusText_.c_str());return 0;}
+        if(wParam==ClipboardNoticeTimerId) {KillTimer(window_,ClipboardNoticeTimerId);clipboardNotice_.clear();RefreshStatusDisplay();return 0;}
         if (wParam == PendingConnectionTimerId) {
             FinishPendingConnection();
             return 0;
@@ -4733,8 +4742,7 @@ void MainWindow::DisconnectAll() {
         const auto action=powerService_.Submit({{"type","disconnect"},{"source","local"}});
         powerDisconnectActionId_ = action.value("id", std::string());
         if(action.contains("error")) {
-            powerAlert_ = L"电源断开请求失败；输出状态未知";
-            AppendStatus(powerAlert_, true);
+            AppendStatus(L"电源断开请求失败；请检查连接和输出状态。", true);
         } else disconnectAllPending_=true;
     }
     RefreshConnectionActions(); RefreshConnectionList();
@@ -5540,19 +5548,30 @@ void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session) {
 
 void MainWindow::ShowClipboardNotice(const std::wstring& notice) {
     clipboardNotice_=notice;
-    const auto text=statusIsError_ && !statusText_.empty()?statusText_+L"\n"+notice:notice;
-    SetWindowTextW(status_,text.c_str());SetTimer(window_,ClipboardNoticeTimerId,2500,nullptr);
+    RefreshStatusDisplay();
+    SetTimer(window_,ClipboardNoticeTimerId,2500,nullptr);
+}
+
+void MainWindow::RefreshStatusDisplay() {
+    auto text = statusText_;
+    if (!clipboardNotice_.empty())
+        text = statusIsError_ && !text.empty() ? text + L"\n" + clipboardNotice_ : clipboardNotice_;
+    if (!powerAlert_.empty())
+        text = text.empty() ? powerAlert_ : powerAlert_ + L"\n" + text;
+    displayedStatusText_ = std::move(text);
+    TOOLINFOW tool{sizeof(tool)};tool.hwnd=window_;tool.uId=reinterpret_cast<UINT_PTR>(status_);
+    tool.lpszText=displayedStatusText_.data();
+    SendMessageW(statusTip_,TTM_UPDATETIPTEXTW,0,reinterpret_cast<LPARAM>(&tool));
+    SetWindowTextW(status_, displayedStatusText_.c_str());
+    ShowWindow(status_,leftPanelCollapsed_ || leftPanelAnimating_?SW_HIDE:SW_SHOW);
+    InvalidateRect(status_, nullptr, TRUE);
 }
 
 void MainWindow::AppendStatus(const std::wstring& text, bool isError) {
     statusIsError_ = isError;
     statusText_ = text;
-    TOOLINFOW tool{sizeof(tool)};tool.hwnd=window_;tool.uId=reinterpret_cast<UINT_PTR>(status_);
-    tool.lpszText=const_cast<wchar_t*>(statusText_.c_str());
-    SendMessageW(statusTip_,TTM_UPDATETIPTEXTW,0,reinterpret_cast<LPARAM>(&tool));
-    SetWindowTextW(status_, text.c_str());
-    ShowWindow(status_,leftPanelCollapsed_ || leftPanelAnimating_?SW_HIDE:SW_SHOW);
-    InvalidateRect(status_, nullptr, TRUE);
+    clipboardNotice_.clear();
+    RefreshStatusDisplay();
     KillTimer(window_, StatusTimerId);
     if (!text.empty() && !isError) SetTimer(window_, StatusTimerId, 3500, nullptr);
     if (logger_ && !text.empty()) logger_->WriteStatus(text);

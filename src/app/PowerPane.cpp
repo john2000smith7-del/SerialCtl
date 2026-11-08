@@ -510,18 +510,21 @@ void PowerPane::Refresh() {
     bool wasConnected = state_.value("connected", false);
     auto nextState=service_->State();
     if(nextState==state_ && pendingActions_.empty() && !refreshRequired_)return;
+    const bool disconnectRecorded = nextState.value("lastDisconnectActionId", "") != state_.value("lastDisconnectActionId", "");
+    const bool warningChanged = state_.value("unconfirmedPowerOff", false) != nextState.value("unconfirmedPowerOff", false);
     state_=std::move(nextState);
     refreshRequired_=false;
     bool connected = state_.value("connected", false), running = state_["task"].value("running", false);
     if (wasConnected != connected) {
         Layout();
-        PostMessageW(GetParent(window_), PowerStateChanged, 0, 0);
         populated_ = false;
         if (!connected) {
             history_.clear();
             sampleStamp_.clear();
         }
     }
+    if (wasConnected != connected || disconnectRecorded || warningChanged)
+        PostMessageW(GetParent(window_), PowerStateChanged, 0, 0);
     bool finished = false, parametersChanged = false, deviceSettingsChanged = false;
     std::vector<std::pair<std::wstring, UINT>> notices;
     Json result;
@@ -1010,7 +1013,9 @@ void PowerPane::Paint(HDC dc) {
     std::wstring connectionLabel=std::wstring(state_.value("connected",false)?L"已连接":L"未连接")+(state_.value("readbackStale",false)?L" · 上次读回":L"");
     COLORREF statusColor = c.muted;
     if (!state_.value("connected", false) && state_.value("unconfirmedPowerOff", false)) {
-        connectionLabel = L"已断开 · 输出未确认掉电(状态未知)";
+        connectionLabel = L"输出未知";
+        for (const auto &channel : state_.value("unconfirmedPowerOffChannels", Json::array()))
+            connectionLabel += L" CH" + std::to_wstring(channel.get<int>());
         statusColor = c.danger;
     }
     text(connectionLabel,
@@ -1037,6 +1042,7 @@ void PowerPane::PaintBody(HDC dc) {
         SelectObject(dc,old);
     };
     if (tab_ == 0) {
+        const auto unconfirmed = state_.value("unconfirmedPowerOffChannels", Json::array());
         text(L"工作模式",{0,0,d(72),d(28)},font_,c.text);
         for (int i=0;i<3;++i) {
             const RECT card=channelRects_[i];
@@ -1056,11 +1062,13 @@ void PowerPane::PaintBody(HDC dc) {
                 if (channel["output"]!=other["output"]) channel["output"]=nullptr;
             }
             const int left=card.left, top=card.top, width=card.right-card.left;
+            const bool offUnconfirmed = std::find(unconfirmed.begin(), unconfirmed.end(), Json(i + 1)) != unconfirmed.end() ||
+                (combined && std::find(unconfirmed.begin(), unconfirmed.end(), Json(2)) != unconfirmed.end());
             const std::wstring status=(state_.value("readbackStale",false)?std::wstring(L"上次 · "):std::wstring())+
-                (channel["output"].is_boolean() ? (channel["output"].get<bool>()?L"输出中":L"已关闭") :
+                (offUnconfirmed ? L"输出未知" : channel["output"].is_boolean() ? (channel["output"].get<bool>()?L"输出中":L"已关闭") :
                 state_.value("connected",false)?L"状态未知":L"未连接");
             RECT statusBox{left+d(combined?164:100),top+d(8),card.right-d(16),top+d(36)};
-            const auto old=SelectObject(dc,smallFont_); SetTextColor(dc,c.muted); SetBkMode(dc,TRANSPARENT);
+            const auto old=SelectObject(dc,smallFont_); SetTextColor(dc,offUnconfirmed ? c.danger : c.muted); SetBkMode(dc,TRANSPARENT);
             DrawTextW(dc,status.c_str(),-1,&statusBox,DT_RIGHT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS); SelectObject(dc,old);
             const wchar_t *labels[]{L"电压（V）",L"电流（A）",L"功率（W）"};
             const char *keys[]{"voltage","current","power"};
@@ -1139,7 +1147,14 @@ void PowerPane::PaintDetails(HDC dc,int width,int) {
             const auto &record=records[index];const int y=detailStatusTop_+static_cast<int>(index-start)*d(64);
             text(Wide(record.value("timestamp",std::string()))+L" · "+Wide(record.value("operation",std::string())),
                 {detailsInset_,y,detailsInset_+width,y+d(28)},c.text);
-            text(Wide(record.value("source",std::string()))+L" · "+Wide(record.value("result",std::string())),
+            auto outcome = Wide(record.value("result",std::string()));
+            if (record.contains("unconfirmedChannels")) {
+                outcome = L"输出未知";
+                for (const auto &channel : record["unconfirmedChannels"])
+                    outcome += L" CH" + std::to_wstring(channel.get<int>());
+                outcome += L" · " + Wide(record.value("result",std::string()));
+            }
+            text(Wide(record.value("source",std::string()))+L" · "+outcome,
                 {detailsInset_,y+d(28),detailsInset_+width,y+d(56)},c.muted);
         }
     }

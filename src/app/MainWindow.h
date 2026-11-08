@@ -228,6 +228,7 @@ private:
     std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
     void SyncSftpDirectoryFromTerminal(SessionState& session);
     void AppendStatus(const std::wstring& text, bool isError);
+    void RefreshStatusDisplay();
     void SaveCurrentLog(HWND owner = nullptr);
     void StartLogExport(const std::wstring &, const std::wstring &, std::uint64_t, LogExportTask);
     void PollLogExport();
@@ -402,7 +403,7 @@ private:
     HWND terminal_ = nullptr;
     HWND status_ = nullptr;
     HWND statusTip_ = nullptr;
-    std::wstring statusText_;
+    std::wstring statusText_, displayedStatusText_;
     int statusHeight_ = 0;
     HWND commandHeader_ = nullptr;
     HWND sftpTabButton_ = nullptr;

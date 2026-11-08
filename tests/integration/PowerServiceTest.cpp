@@ -26,6 +26,9 @@ struct PowerServiceTestAccess {
     static void FailNextOutputReadback(PowerService &power) {
         power.FailNextOutputReadbackForTest();
     }
+    static void FailNextOutputOffWrite(PowerService &power) {
+        power.FailNextOutputOffWriteForTest();
+    }
     static void PauseRecoveryOn(PowerService &power) {
         std::lock_guard<std::mutex> lock(power.mutex_);
         power.testPauseRecoveryOn_=true;power.testRecoveryAtOn_=false;
@@ -270,31 +273,74 @@ void TestSafetyReadbackFailureAtCapacity() {
            "failed OFF readback remains failed/unknown, never confirmed off");
 }
 
-void TestDisconnectOffFailureLeavesUnknownAndFailedAction() {
+void TestDisconnectOutputConfirmation(const std::string &scenario) {
     PowerService power;
     Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}})).value("state", "") == "completed",
            "Connected simulation for disconnect test");
-    const auto ready = power.State();
-    auto recovery = power.Submit({{"type", "recover"}, {"channels", {1}}, {"identity", ready["identity"]}, {"mode", ready["mode"]}});
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    Expect(Wait(power, power.Submit({{"type", "output"}, {"channels", {1, 2}}, {"enabled", true}})).value("state", "") == "completed",
+           "Both owned and unowned channel start with verified ON readback");
+    Expect(Wait(power, power.Submit({{"type", "schedule"}, {"channels", {1}}, {"startMs", 60000}, {"durationMs", 200}})).value("state", "") == "completed",
+           "Scheduled task owns CH1 only");
     const bool paused = PowerServiceTestAccess::Pause(power);
     Expect(paused, "paused worker for disconnect fault injection");
     if (!paused) return;
-    PowerServiceTestAccess::FailNextOutputReadback(power);
+    const auto before = power.State();
+    if (scenario == "write") PowerServiceTestAccess::FailNextOutputOffWrite(power);
+    if (scenario == "readback") PowerServiceTestAccess::FailNextOutputReadback(power);
+    const bool preserve = scenario == "preserved";
+    auto disconnect = power.Submit({{"type", "disconnect"}, {"source", "local"}, {"preserveOutputs", preserve}});
     PowerServiceTestAccess::Resume(power);
-
-    auto disconnect = power.Submit({{"type", "disconnect"}, {"source", "local"}});
-    auto result = Wait(power, disconnect);
-    Expect(result.value("state", "") == "failed", "Disconnect action state is failed on output OFF failure");
-    Expect(result.value("offConfirmation", "") == "failed", "offConfirmation reports failed");
+    const auto result = Wait(power, disconnect);
+    const auto state = power.State();
     Expect(result.value("transportDisconnected", false) == true, "transportDisconnected is true");
-    Expect(power.State().value("connected", false) == false, "power transport disconnected");
-    Expect(power.State().value("unconfirmedPowerOff", false) == true, "unconfirmedPowerOff persistent flag set");
-    Expect(power.State()["channels"][0]["output"].is_null(), "unconfirmed channel output is null/unknown");
+    Expect(!state.value("connected", true), "power transport disconnected");
+    const auto writes = state.value("testWrites", Json::array());
+    auto selected = std::string();
+    unsigned offWrites = 0;
+    for (size_t index = before.value("testWrites", Json::array()).size(); index < writes.size(); ++index) {
+        const auto line = writes[index].get<std::string>();
+        if (line.rfind("INST:NSEL ", 0) == 0) selected = line;
+        if (line == "CHAN:OUTP OFF") {
+            Expect(selected == "INST:NSEL 1", "Disconnect never sends OFF to an unowned channel");
+            ++offWrites;
+        }
+    }
+    const auto offResults = result.value("offResults", Json::array());
+    std::cout << "disconnect " << scenario << ": " << result.dump() << ", outputs="
+              << Json::array({state["channels"][0]["output"], state["channels"][1]["output"], state["channels"][2]["output"]}).dump()
+              << ", offWrites=" << offWrites << '\n';
+    if (scenario == "write" || scenario == "readback") {
+        Expect(result.value("state", "") == "failed" && result.value("offConfirmation", "") == "failed",
+               "OFF write and readback failures leave the disconnect action failed");
+        Expect(result.value("unconfirmedChannels", Json::array()) == Json::array({1}), "Only owned CH1 has an unconfirmed OFF");
+        Expect(offResults.size() == 1 && offResults[0]["state"] == "unknown" &&
+               offResults[0]["error"] == (scenario == "write" ? "Simulated OFF write failure" : "Simulated output readback timeout"),
+               "Disconnect action retains the actual stage and error");
+        Expect(offWrites == 2 && state["channels"][0]["output"].is_null(), "Safety retry writes OFF without claiming readback");
+        const auto repeated = Wait(power, power.Submit({{"type", "disconnect"}}));
+        Expect(repeated.value("offConfirmation", "") == "not_required" && power.State().value("unconfirmedPowerOff", false),
+               "Repeating disconnect cannot clear an unconfirmed OFF");
+        const auto unread = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}, {"testFailAfterReads", 6}}));
+        Expect(unread.value("state", "") == "failed" && power.State().value("unconfirmedPowerOff", false) &&
+               power.State()["unconfirmedPowerOffChannels"] == Json::array({1}), "Reconnect that fails readback cannot clear the warning");
+        const auto read = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}));
+        Expect(read.value("state", "") == "completed" && !power.State().value("unconfirmedPowerOff", true),
+               "Successful hardware readback clears the unconfirmed OFF warning");
+    } else if (preserve) {
+        Expect(result.value("state", "") == "completed" && result.value("offConfirmation", "") == "preserved" &&
+               offResults.empty() && offWrites == 0 && state.value("readbackStale", false) &&
+               state["channels"][0]["output"] == true && state["channels"][1]["output"] == true,
+               "Preserve outputs does not write OFF and retains both last readings");
+    } else {
+        Expect(result.value("state", "") == "completed" && result.value("offConfirmation", "") == "confirmed" &&
+               offResults.size() == 1 && offResults[0]["state"] == "confirmed" && offResults[0]["output"] == false && offWrites == 1,
+               "Successful disconnect writes and confirms OFF for owned CH1 only");
+    }
 }
 
 int main() {
-    TestDisconnectOffFailureLeavesUnknownAndFailedAction();
+    for (const auto *scenario : {"write", "readback", "confirmed", "preserved"})
+        TestDisconnectOutputConfirmation(scenario);
     TestNativeRecoveryTimingAndCancel();
     TestStopDuringRecoveryReadback();
     TestQueuedRecoveryCanceledBeforeStart();
