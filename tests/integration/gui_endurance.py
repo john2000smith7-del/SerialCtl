@@ -22,6 +22,15 @@ class GuiThreadInfo(c.Structure):
                 ('capture',w.HWND),('menuOwner',w.HWND),('moveSize',w.HWND),('caret',w.HWND),('caretRect',RECT)]
 
 
+class ProcessMemoryCountersEx(c.Structure):
+    _fields_ = [('cb',w.DWORD),('page_faults',w.DWORD),
+                ('peak_working_set',c.c_size_t),('working_set',c.c_size_t),
+                ('quota_peak_paged',c.c_size_t),('quota_paged',c.c_size_t),
+                ('quota_peak_nonpaged',c.c_size_t),('quota_nonpaged',c.c_size_t),
+                ('pagefile',c.c_size_t),('peak_pagefile',c.c_size_t),
+                ('private_bytes',c.c_size_t)]
+
+
 def wait(predicate, budget=5):
     deadline=time.perf_counter()+budget
     while not predicate():
@@ -47,6 +56,9 @@ class Endurance(DesktopActions):
         self.kernel.GetExitCodeProcess.argtypes=(w.HANDLE,c.POINTER(w.DWORD))
         self.process=self.kernel.OpenProcess(0x00100400,False,args.pid)
         require(self.process,'Cannot observe native process resources')
+        self.psapi=c.WinDLL('psapi',use_last_error=True)
+        self.psapi.GetProcessMemoryInfo.argtypes=(w.HANDLE,c.POINTER(ProcessMemoryCountersEx),w.DWORD)
+        self.psapi.GetProcessMemoryInfo.restype=w.BOOL
         self.responses=[]
         self.resources=[]
         self.dialogs=[]
@@ -76,8 +88,12 @@ class Endurance(DesktopActions):
     def sample_resources(self,label):
         count=w.DWORD()
         require(self.kernel.GetProcessHandleCount(self.process,c.byref(count)),'Cannot read process handles')
+        memory=ProcessMemoryCountersEx();memory.cb=c.sizeof(memory)
+        require(self.psapi.GetProcessMemoryInfo(self.process,c.byref(memory),memory.cb),'Cannot read process memory')
         row={**self.timestamp(),'label':label,'handles':count.value,
-             'gdi':self.user.GetGuiResources(self.process,0),'user':self.user.GetGuiResources(self.process,1)}
+             'gdi':self.user.GetGuiResources(self.process,0),'user':self.user.GetGuiResources(self.process,1),
+             'working_set_bytes':memory.working_set,'private_bytes':memory.private_bytes,
+             'peak_working_set_bytes':memory.peak_working_set}
         require(row['gdi']>0 and row['user']>0,'GUI resource counters unavailable')
         self.resources.append(row)
         return row

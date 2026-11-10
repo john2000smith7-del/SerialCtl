@@ -1,7 +1,7 @@
 name: Windows baseline performance comparison
 on:
   push:
-    branches: [feat/v2.0.10-arch-final]
+    branches: [feat/v2.0.10-arch-final, feat/tftp_mcp_issues_v2.0.20_20261107_1806]
     paths:
       - .github/workflows/windows-performance-compare.yml
       - tests/performance/**
