@@ -22,6 +22,15 @@ class SessionLogger
     void WriteRaw(const Bytes &data);
     void WriteText(const std::wstring &text);
     void WriteStatus(const std::wstring &text);
+    void WriteBatch(const std::vector<std::pair<bool, std::wstring>>& entries);
+    struct Statistics {
+        size_t pendingBytes = 0;
+        size_t highWaterBytes = 0;
+        std::uint64_t acceptedBytes = 0;
+        std::uint64_t completedBytes = 0;
+        std::uint64_t overflowEvents = 0;
+    };
+    Statistics Stats() const;
     struct ExportPoint {
         std::uint64_t generation = 0, bytes = 0;
         std::wstring root;
@@ -57,6 +66,8 @@ class SessionLogger
     void Run();
     std::deque<Bytes> queue_;
     size_t queued_ = 0;
+    size_t highWaterQueued_ = 0;
+    std::uint64_t overflowEvents_ = 0;
     bool stopping_ = true, writing_ = false, writerAlive_ = false;
     std::wstring failure_;
     std::thread worker_;
@@ -64,6 +75,7 @@ class SessionLogger
 
     HANDLE file_ = INVALID_HANDLE_VALUE;
     mutable std::mutex mutex_;
+    std::mutex encodeMutex_;
     std::wstring path_;
     std::vector<Part> parts_;
     std::uint64_t written_ = 0;

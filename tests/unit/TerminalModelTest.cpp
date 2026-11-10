@@ -335,6 +335,16 @@ void TestReflowAtScrollbackCapacity() {
     live.Resize(80, 2);
     Expect(live.PlainText(false) == std::wstring(60, L'x') + L"中Y",
            "continuous output during capacity-bound reflow preserves admitted characters");
+    serialctl::TerminalModel projection(8, 2, 8);
+    projection.SetLineWrapView(false);
+    for (int i = 0; i < 2000; ++i) {
+        projection.Feed(L"row" + std::to_wstring(i) + L"\r\n", L"");
+        const auto count = projection.DisplayLineCount();
+        Expect(count >= 2 && count <= 10, "no-wrap projection remains bounded while history trims");
+        Expect(projection.CursorDisplayLine() < count, "trimmed no-wrap cursor maps to a live display line");
+    }
+    Expect(projection.LineText(projection.DisplayLineCount() - 2).find(L"row1999") != std::wstring::npos,
+           "incremental no-wrap projection retains newest output after repeated trimming");
 }
 void TestCmdPasteBoundaryMatrix() {
     using Editor = serialctl::CmdLineEditor;

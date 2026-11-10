@@ -134,6 +134,9 @@ class ApiServer {
     std::atomic<uint64_t> historyTrimsCount_{0};
     std::atomic<uint64_t> publicationGapCount_{0};
     std::atomic<size_t> publicationHighWaterMark_{0};
+    std::atomic<size_t> publicationBacklogBytes_{0}, publicationBacklogItems_{0};
+    std::atomic<std::uint64_t> serverLockWaitUsecTotal_{0}, serverLockWaitUsecMaximum_{0},
+                               serverLockWaitSamples_{0};
     std::atomic<uint64_t> rejectedClientsCount_{0};
     std::atomic<uint64_t> rejectedOriginsCount_{0};
 };

@@ -1,6 +1,8 @@
 #include "TerminalViewport.h"
 #include "TerminalViewportGeometry.h"
+#include "PerformanceMetrics.h"
 #include <array>
+#include <chrono>
 #include <windowsx.h>
 #include <algorithm>
 namespace serialctl {
@@ -54,6 +56,16 @@ void DrawTextSimple(HDC dc, const std::wstring& text, RECT rect, COLORREF color,
 void DrawRoundedBox(HDC dc, const RECT& rect, int radius, COLORREF fill, COLORREF border) { UiBox(dc, rect, fill, border, radius); }
 }
 void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, const Options& options) {
+    const auto paintStarted = std::chrono::steady_clock::now();
+    struct RecordPaint {
+        PerformanceMetrics* metrics;
+        std::chrono::steady_clock::time_point started;
+        ~RecordPaint() {
+            if (metrics) metrics->Record(PerformanceMetrics::Timing::Paint,
+                static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - started).count()));
+        }
+    } recordPaint{options.performance, paintStarted};
     RECT client{};
     GetClientRect(terminal_, &client);
     if (client.right <= 0 || client.bottom <= 0) return;
@@ -61,10 +73,35 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
     const auto colors = theme;
     HDC buffer = paintBuffer_.Get(dc, client.right, client.bottom, Ui::Dpi);
     if (!buffer) buffer = dc;
+    const auto& input = Input();
+    const auto revision = activeSession_ ? activeSession_->terminal.Revision() : 0;
+    const std::wstring draft = activeSession_ && options.mode == 4 ? activeSession_->cmdEditor.Text() : L"";
+    const size_t draftCursor = activeSession_ && options.mode == 4 ? activeSession_->cmdEditor.Cursor() : 0;
+    const bool focused = GetFocus() == terminal_;
+    const bool reusable = buffer != dc && cache_.valid && cache_.state == activeSession_ &&
+        cache_.revision == revision && cache_.bufferGeneration == paintBuffer_.Generation() &&
+        cache_.width == client.right && cache_.height == client.bottom &&
+        cache_.scroll == (activeSession_ ? activeSession_->terminalScrollOffset : 0) &&
+        cache_.horizontal == (activeSession_ ? activeSession_->terminalHorizontalOffset : 0) &&
+        cache_.anchorLine == input.anchorLine && cache_.focusLine == input.focusLine &&
+        cache_.anchorColumn == input.anchorColumn && cache_.focusColumn == input.focusColumn &&
+        cache_.selection == input.selectionActive &&
+        cache_.newOutput == (activeSession_ && activeSession_->terminalHasNewOutput) &&
+        cache_.focused == focused && cache_.dark == options.dark && cache_.timestamps == options.timestamps &&
+        cache_.liveMonitor == options.liveMonitor && cache_.mode == options.mode &&
+        cache_.font == options.font && cache_.smallFont == options.smallFont &&
+        cache_.draft == draft && cache_.draftCursor == draftCursor;
+    if (reusable) {
+        BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
+        if (options.measure)
+            SetPropW(terminal_, L"SerialCtl.GdiCalls", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(1)));
+        return;
+    }
     const int savedBuffer = SaveDC(buffer);
-    HBRUSH background = CreateSolidBrush(colors.field);
-    FillRect(buffer, &client, background);
-    DeleteObject(background);
+    HBRUSH dcBrush = reinterpret_cast<HBRUSH>(GetStockObject(DC_BRUSH));
+    SetDCBrushColor(buffer, colors.field);
+    FillRect(buffer, &client, dcBrush);
+    std::uint64_t gdiCalls = 1;
 
     if (activeSession_) {
         const TerminalModel& model = activeSession_->terminal;
@@ -141,54 +178,81 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
                 RECT timestampRect{padding, y, textLeft - Ui::Gap, y + Metrics().lineHeight};
                 DrawTextSimple(buffer, line.timestamp, timestampRect, colors.muted,
                     options.smallFont, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+                ++gdiCalls;
             }
 
             const int availableColumns = std::max(0,
                 (static_cast<int>(client.right) - textLeft - Ui::OverlayScrollLaneWidth) /
                     Metrics().cellWidth);
-            for (int viewColumn = 0; viewColumn < availableColumns; ++viewColumn) {
+            int viewColumn = 0;
+            while (viewColumn < availableColumns) {
                 const int column = viewColumn + horizontalOffset;
                 if (column < 0 || static_cast<size_t>(column) >= line.cells.size()) break;
                 const TerminalCell& cell = line.cells[static_cast<size_t>(column)];
-                if (cell.continuation) continue;
-                const int width = static_cast<size_t>(column + 1) < line.cells.size() &&
-                    line.cells[static_cast<size_t>(column + 1)].continuation ? 2 : 1;
-                RECT cellRect{textLeft + viewColumn * Metrics().cellWidth, y,
-                    textLeft + (viewColumn + width) * Metrics().cellWidth, y + Metrics().lineHeight};
-                const bool selected = Input().selectionActive &&
+                if (cell.continuation) { ++viewColumn; continue; }
+                const auto visual = [&](const TerminalCell& value, int modelColumn) {
+                    const bool selected = Input().selectionActive &&
                     (lineIndex > selectionStartLine ||
-                        (lineIndex == selectionStartLine && column >= selectionStartColumn)) &&
+                        (lineIndex == selectionStartLine && modelColumn >= selectionStartColumn)) &&
                     (lineIndex < selectionEndLine ||
-                        (lineIndex == selectionEndLine && column <= selectionEndColumn));
-                COLORREF foreground = ResolveTerminalColor(cell.attributes.foreground,
-                    colors.text, options.dark, cell.attributes.bold);
-                COLORREF cellBackground = ResolveTerminalColor(cell.attributes.background,
-                    colors.field, options.dark, false);
-                if (cell.attributes.inverse) std::swap(foreground, cellBackground);
-                if (selected) {
-                    cellBackground = colors.accentSoft;
-                    foreground = colors.text;
+                        (lineIndex == selectionEndLine && modelColumn <= selectionEndColumn));
+                    COLORREF foreground = ResolveTerminalColor(value.attributes.foreground,
+                        colors.text, options.dark, value.attributes.bold);
+                    COLORREF background = ResolveTerminalColor(value.attributes.background,
+                        colors.field, options.dark, false);
+                    if (value.attributes.inverse) std::swap(foreground, background);
+                    if (selected) { background = colors.accentSoft; foreground = colors.text; }
+                    struct Visual { COLORREF foreground, background; bool bold, underline; };
+                    return Visual{foreground, background, value.attributes.bold, value.attributes.underline};
+                };
+                const auto runVisual = visual(cell, column);
+                const auto sameVisual = [](const auto& left, const auto& right) {
+                    return left.foreground == right.foreground && left.background == right.background &&
+                        left.bold == right.bold && left.underline == right.underline;
+                };
+                const int runStart = viewColumn;
+                std::wstring text;
+                std::vector<int> advances;
+                while (viewColumn < availableColumns) {
+                    const int runColumn = viewColumn + horizontalOffset;
+                    if (runColumn < 0 || static_cast<size_t>(runColumn) >= line.cells.size()) break;
+                    const auto& runCell = line.cells[static_cast<size_t>(runColumn)];
+                    if (runCell.continuation) { ++viewColumn; continue; }
+                    const auto currentVisual = visual(runCell, runColumn);
+                    if (!sameVisual(runVisual, currentVisual)) break;
+                    const int width = static_cast<size_t>(runColumn + 1) < line.cells.size() &&
+                        line.cells[static_cast<size_t>(runColumn + 1)].continuation ? 2 : 1;
+                    text.push_back(runCell.character);
+                    advances.push_back(width * Metrics().cellWidth);
+                    viewColumn += width;
                 }
-                if (cellBackground != colors.field) {
-                    HBRUSH cellBrush = CreateSolidBrush(cellBackground);
-                    FillRect(buffer, &cellRect, cellBrush);
-                    DeleteObject(cellBrush);
+                const int runRight = viewColumn;
+                RECT runRect{textLeft + runStart * Metrics().cellWidth, y,
+                    textLeft + runRight * Metrics().cellWidth, y + Metrics().lineHeight};
+                if (runVisual.background != colors.field) {
+                    SetDCBrushColor(buffer, runVisual.background);
+                    FillRect(buffer, &runRect, dcBrush);
+                    ++gdiCalls;
                 }
-                if (cell.character != L' ') {
-                    SetTextColor(buffer, foreground);
-                    TextOutW(buffer, cellRect.left, cellRect.top,
-                        &cell.character, 1);
-                    if (cell.attributes.bold)
-                        TextOutW(buffer, cellRect.left + 1, cellRect.top,
-                            &cell.character, 1);
+                if (!text.empty() && std::any_of(text.begin(), text.end(), [](wchar_t value) { return value != L' '; })) {
+                    SetTextColor(buffer, runVisual.foreground);
+                    ExtTextOutW(buffer, runRect.left, runRect.top, 0, nullptr, text.data(),
+                                static_cast<UINT>(text.size()), advances.data());
+                    ++gdiCalls;
+                    if (runVisual.bold) {
+                        ExtTextOutW(buffer, runRect.left + 1, runRect.top, 0, nullptr, text.data(),
+                                    static_cast<UINT>(text.size()), advances.data());
+                        ++gdiCalls;
+                    }
                 }
-                if (cell.attributes.underline) {
-                    HPEN underline = CreatePen(PS_SOLID, 1, foreground);
-                    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, underline));
-                    MoveToEx(buffer, cellRect.left, cellRect.bottom - 2, nullptr);
-                    LineTo(buffer, cellRect.right, cellRect.bottom - 2);
+                if (runVisual.underline) {
+                    HPEN dcPen = reinterpret_cast<HPEN>(GetStockObject(DC_PEN));
+                    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, dcPen));
+                    SetDCPenColor(buffer, runVisual.foreground);
+                    MoveToEx(buffer, runRect.left, runRect.bottom - 2, nullptr);
+                    LineTo(buffer, runRect.right, runRect.bottom - 2);
                     SelectObject(buffer, oldPen);
-                    DeleteObject(underline);
+                    ++gdiCalls;
                 }
             }
         }
@@ -207,35 +271,41 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
                     padding + viewRow * Metrics().lineHeight,
                     textLeft + (cursorColumn + 1) * Metrics().cellWidth,
                     padding + (viewRow + 1) * Metrics().lineHeight};
-                HPEN cursorPen = CreatePen(PS_SOLID, 2, colors.accent);
-                HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, cursorPen));
-                MoveToEx(buffer, cursor.left, cursor.bottom - 1, nullptr);
-                LineTo(buffer, cursor.right, cursor.bottom - 1);
-                SelectObject(buffer, oldPen);
-                DeleteObject(cursorPen);
+                RECT cursorLine{cursor.left, cursor.bottom - 2, cursor.right, cursor.bottom};
+                SetDCBrushColor(buffer, colors.accent);
+                FillRect(buffer, &cursorLine, dcBrush);
+                ++gdiCalls;
             }
         }
         SelectObject(buffer, previousFont);
 
         const TerminalScrollMetrics scroll = GetTerminalScrollMetrics(terminal_,
             totalLines, Metrics().rows, activeSession_->terminalScrollOffset);
-        if (scroll.visible)
+        if (scroll.visible) {
             DrawRoundedBox(buffer, scroll.thumb, Ui::Scale(3), colors.border, colors.border);
+            ++gdiCalls;
+        }
         const TerminalHorizontalScrollMetrics horizontalScroll =
             GetTerminalHorizontalScrollMetrics(terminal_, textLeft, totalColumns,
                 Metrics().columns, activeSession_->terminalHorizontalOffset);
-        if (horizontalScroll.visible)
+        if (horizontalScroll.visible) {
             DrawRoundedBox(buffer, horizontalScroll.thumb, Ui::Scale(3), colors.border, colors.border);
+            ++gdiCalls;
+        }
 
         if (activeSession_->terminalHasNewOutput && activeSession_->terminalScrollOffset > 0) {
             const RECT notification = TerminalNewOutputRect(client, horizontalScroll.visible);
             DrawRoundedBox(buffer, notification, Ui::Radius, colors.accentSoft, colors.accent);
             DrawTextSimple(buffer, L"↓  新输出", notification, UiAccentInk(options.dark),
                 options.smallFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            gdiCalls += 2;
         }
     }
 
     BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
+    ++gdiCalls;
+    if (options.measure)
+        SetPropW(terminal_, L"SerialCtl.GdiCalls", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(gdiCalls)));
     if (options.measure && activeSession_ && activeSession_->pendingProbeArrival) {
         LARGE_INTEGER now{}, frequency{};
         QueryPerformanceCounter(&now);
@@ -247,6 +317,20 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
         SetPropW(terminal_, L"SerialCtl.PaintProbe", reinterpret_cast<HANDLE>(activeSession_->paintProbe));
         activeSession_->pendingProbeArrival = 0;
     }
+    cache_.state = activeSession_;
+    cache_.revision = activeSession_ ? activeSession_->terminal.Revision() : 0;
+    cache_.bufferGeneration = paintBuffer_.Generation();
+    cache_.width = client.right; cache_.height = client.bottom;
+    cache_.scroll = activeSession_ ? activeSession_->terminalScrollOffset : 0;
+    cache_.horizontal = activeSession_ ? activeSession_->terminalHorizontalOffset : 0;
+    cache_.anchorLine = input.anchorLine; cache_.focusLine = input.focusLine;
+    cache_.anchorColumn = input.anchorColumn; cache_.focusColumn = input.focusColumn;
+    cache_.selection = input.selectionActive;
+    cache_.newOutput = activeSession_ && activeSession_->terminalHasNewOutput;
+    cache_.focused = focused; cache_.dark = options.dark; cache_.timestamps = options.timestamps;
+    cache_.liveMonitor = options.liveMonitor; cache_.mode = options.mode;
+    cache_.font = options.font; cache_.smallFont = options.smallFont;
+    cache_.draft = draft; cache_.draftCursor = draftCursor; cache_.valid = buffer != dc;
     RestoreDC(buffer, savedBuffer);
 }
 void TerminalViewport::Measure(HWND window, HFONT font, bool timestamps) {

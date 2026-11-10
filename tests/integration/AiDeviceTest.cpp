@@ -100,6 +100,7 @@ struct AiDeviceTestAccess {
             }
         } windowLifetime{parent};
         main.window_ = parent;
+        main.receiveWindow_.store(parent, std::memory_order_release);
         main.instance_ = GetModuleHandleW(nullptr);
         RECT size{0, 0, 1400, 850};
         AdjustWindowRectEx(&size, WS_OVERLAPPEDWINDOW, FALSE, 0);
@@ -873,7 +874,13 @@ struct AiDeviceTestAccess {
                 if (PeekMessageW(&next, nullptr, 0, 0, PM_REMOVE)) {
                     ++dispatched; if (next.message == WM_PAINT) ++paints;
                     TranslateMessage(&next); DispatchMessageW(&next);
-                }
+                } else
+                    MsgWaitForMultipleObjects(0, nullptr, FALSE, 1, QS_ALLINPUT);
+            };
+            const auto pumpUntil = [&](const auto& ready, DWORD timeout) {
+                const auto deadline = GetTickCount64() + timeout;
+                while (!ready() && GetTickCount64() < deadline) paintOpportunity();
+                return ready();
             };
             Json samples = Json::array();
             for (int sample = 0; sample < 16; ++sample) {
@@ -895,6 +902,9 @@ struct AiDeviceTestAccess {
                     MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_POSTMESSAGE);
                 Require(posted, "Local serial display waited for the gateway lock");
                 main.HandleMessage(notification.message, notification.wParam, notification.lParam);
+                pumpUntil([&] {
+                    return reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == sample + 1;
+                }, 1000);
                 if (reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) != sample + 1) {
                     RECT client{}; GetClientRect(main.terminal_, &client);
                     RECT clip{}; HDC surface = GetDC(main.terminal_);
@@ -923,7 +933,9 @@ struct AiDeviceTestAccess {
             const std::string visibleMarker = "SERIALCTL_PAINT_200";
             main.QueueReceived({2, Bytes(visibleMarker.begin(), visibleMarker.end()), CP_UTF8, {}, arrival.QuadPart});
             main.HandleMessage(WM_APP + 1, 0, 0);
-            Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == 201,
+            Require(pumpUntil([&] {
+                        return reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == 201;
+                    }, 1000),
                     "Background terminal backlog buried the visible serial echo");
             auto backlogDeadline = GetTickCount64() + 5000;
             while (main.receiveDispatcher_.PendingItemCount() && GetTickCount64() < backlogDeadline) paintOpportunity();
@@ -962,15 +974,20 @@ struct AiDeviceTestAccess {
             main.CompleteConnection(true, L"");
             {
                 std::lock_guard<std::mutex> lock(main.receiveDispatcher_.mutex_);
-                const auto &queued = main.receiveDispatcher_.received_;
-                Require(!queued.empty() && main.activeSession_->terminal.HistorySize() == 0,
+                const auto queued = main.receiveDispatcher_.received_.find(99);
+                Require(queued != main.receiveDispatcher_.received_.end() && !queued->second.empty() &&
+                            main.activeSession_->terminal.HistorySize() == 0,
                         "Connection completion synchronously parsed the entire startup history");
-                Require(queued.front().data.front() == 'y' && queued.back().data == Bytes(live.begin(), live.end()),
+                Require(queued->second.front().data.front() == 'y' &&
+                            queued->second.back().data == Bytes(live.begin(), live.end()),
                         "Startup history was reordered behind newer live output");
             }
             const auto replayDeadline = GetTickCount64() + 5000;
             main.HandleMessage(WM_APP + 1, 0, 0);
-            while (main.receiveDispatcher_.PendingItemCount() && GetTickCount64() < replayDeadline) paintOpportunity();
+            while ((main.receiveDispatcher_.PendingItemCount() || main.terminalParser_.Stats().pendingBytes ||
+                    main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) &&
+                   GetTickCount64() < replayDeadline)
+                paintOpportunity();
             if (main.receiveDispatcher_.PendingItemCount() || main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) {
                 const auto text = main.activeSession_->terminal.PlainText(false);
                 std::cerr << "FAILED startup replay state: remaining=" << main.receiveDispatcher_.PendingItemCount()

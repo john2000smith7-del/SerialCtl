@@ -65,10 +65,11 @@ def main(directory):
                         "Each network run checks 1000 packets/client on loopback; no physical UART.",
               "baseline": {}, "candidate": {}}
     for label in ("baseline", "candidate"):
-        previews, paints, networks = [], [], []
+        previews, paints, terminals, networks, pixel_hashes = [], [], [], [], []
         for index in (1, 2, 3):
             preview = json_run(directory / f"preview-{label}-{index}.txt", {"iterations", "samplesMs"})
             paint = json_run(directory / f"paint-{label}-{index}.txt", {"paintCount", "resizeCount"})
+            terminal = json_run(directory / f"terminal-{label}-{index}.txt", {"targetBytes", "results"})
             if (preview["iterations"] != 30 or len(preview["samplesMs"]) != 30 or
                     paint["paintCount"] != 200 or len(paint["terminalPaintSamples"]) != 200 or
                     paint["resizeCount"] != 40 or len(paint["resizeSteadySamples"]) != 80 or
@@ -85,16 +86,35 @@ def main(directory):
                           "terminalPaintP50Ms", "terminalPaintP95Ms", "resizeP50Ms", "resizeP95Ms",
                           "resizeSteadyP50Ms", "resizeSteadyP95Ms",
                           "interactiveResizeP50Ms", "interactiveResizeP95Ms", "resizeCommitMs",
-                          "inputP50Ms", "inputP95Ms", "inputWallMs", "inputCpuMs", "inputBytesPerSecond",
+                          "inputP50Ms", "inputP95Ms", "inputP99Ms", "inputWallMs", "inputCpuMs", "inputBytesPerSecond",
+                          "paintP99Ms", "terminalPaintP99Ms", "fullTerminalGdiCalls", "legacyTerminalDrawCalls",
                           "wallMs", "cpuMs", "gdiBeforeApp", "gdiWarm", "gdiAfterPaint", "gdiAfterTimedInput", "gdiAfterWork",
                           "gdiAfterApp", "peakWorkingSetBytes")})
             for round in range(3):
                 paints[-1][f"gdiResizeRound{round + 1}"] = paint["gdiResizeRounds"][round]
+            pixel_hashes.append(paint["terminalPixelHash"])
+            scenarios = {entry["name"]: entry for entry in terminal["results"]}
+            expected = {"plain", "short", "long", "ansi", "cursor", "unicode-wide"}
+            if set(scenarios) != expected or any(entry["inputBytes"] < 8 * 1024 * 1024 - 16384
+                                                  for entry in scenarios.values()):
+                raise ValueError(f"Unexpected terminal benchmark results for {label} run {index}")
+            terminals.append({name: {key: scenarios[name][key] for key in
+                              ("mibPerSecond", "chunkP50Usec", "chunkP95Usec", "chunkP99Usec", "historyRows")}
+                              for name in sorted(expected)})
             networks.append(network_run(directory / f"network-{label}-{index}.txt"))
         output[label]["preview"] = medians(previews)
         output[label]["paint"] = medians(paints)
+        output[label]["terminalPixelHashes"] = pixel_hashes
+        output[label]["terminal"] = {name: medians([run[name] for run in terminals])
+                                      for name in sorted(terminals[0])}
         output[label]["network"] = {str(count): medians([run[str(count)] for run in networks])
                                      for count in (1, 2, 8, 32)}
+    output["pixelComparison"] = {
+        "equal": set(output["baseline"]["terminalPixelHashes"]) == set(output["candidate"]["terminalPixelHashes"]),
+        "method": "Exact FNV-1a hash of captured Win32 terminal client pixels after identical seeded rendering"
+    }
+    if not output["pixelComparison"]["equal"]:
+        raise ValueError("Terminal pixels differ between baseline and candidate")
     target = directory / "comparison.json"
     target.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(target.read_text(encoding="utf-8"))

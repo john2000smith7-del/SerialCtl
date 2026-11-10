@@ -130,7 +130,7 @@ void TerminalModel::HandleOsc(TerminalFeedResult& result) {
 
 TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstring& timestamp) {
     ++revision_;
-    const auto oldDisplayCount = !lineWrapView_ && !alternateScreen_ ? DisplayLineCount() : 0;
+    const auto oldDisplayCount = !lineWrapView_ && !alternateScreen_ ? LogicalDisplayLineCount() : 0;
     projectionDirty_ = true;
     if (!text.empty()) resizeHistoryLines_ = 0;
     TerminalFeedResult result;
@@ -252,7 +252,7 @@ TerminalFeedResult TerminalModel::Feed(const std::wstring& text, const std::wstr
     }
     if (!lineWrapView_ && !alternateScreen_) {
         projectionDirty_ = true;
-        const auto count = DisplayLineCount();
+        const auto count = LogicalDisplayLineCount();
         result.scrollbackAdded = count > oldDisplayCount ? count - oldDisplayCount : 0;
     }
     return result;
@@ -384,12 +384,14 @@ void TerminalModel::ScrollUp(int count, TerminalFeedResult* result) {
 void TerminalModel::ClearHistory() {
     ++historyRevision_;
     history_.clear();
+    historyBase_ = 0;
     historyCells_ = 0;
     historyLogicalLines_ = 0;
 }
 
 void TerminalModel::RecountHistory() {
     ++historyRevision_;
+    historyBase_ = 0;
     historyCells_ = 0;
     historyLogicalLines_ = 0;
     std::uint64_t previous = 0;
@@ -408,7 +410,7 @@ void TerminalModel::TrimHistory() {
         historyCells_ -= std::max<size_t>(1, history_.front()->used);
         const auto id = history_.front()->logicalId;
         history_.pop_front();
-        ++historyRevision_;
+        ++historyBase_;
         if (history_.empty() || history_.front()->logicalId != id)
             --historyLogicalLines_;
     }
@@ -1175,8 +1177,8 @@ size_t TerminalModel::HistorySize() const {
 }
 
 void TerminalModel::SetLineWrapView(bool enabled) {
-    ++revision_;
     if (lineWrapView_ != enabled) {
+        ++revision_;
         lineWrapView_ = enabled;
         projectionDirty_ = true;
     }
@@ -1189,52 +1191,113 @@ const TerminalLine &TerminalModel::RawDisplayLine(size_t index) const {
         return ActiveScreen().lines[screenIndex];
     return ActiveScreen().lines.back();
 }
+const TerminalLine &TerminalModel::AbsoluteRawDisplayLine(size_t index) const {
+    if (alternateScreen_) return RawDisplayLine(index);
+    if (index < historyBase_) return RawDisplayLine(0);
+    return RawDisplayLine(index - historyBase_);
+}
+size_t TerminalModel::LogicalDisplayLineCount() const {
+    if (alternateScreen_) {
+        size_t count = 0;
+        std::uint64_t previous = 0;
+        size_t previousOffset = 0;
+        for (const auto& line : alternate_.lines) {
+            if (!count || !line.logicalId || line.logicalId != previous || line.logicalOffset <= previousOffset)
+                ++count;
+            previous = line.logicalId;
+            previousOffset = line.logicalOffset;
+        }
+        return count;
+    }
+    size_t count = historyLogicalLines_;
+    std::uint64_t previous = history_.empty() ? 0 : history_.back()->logicalId;
+    size_t previousOffset = history_.empty() ? 0 : history_.back()->logicalOffset;
+    for (const auto& line : primary_.lines) {
+        if (!count || !line.logicalId || line.logicalId != previous || line.logicalOffset <= previousOffset)
+            ++count;
+        previous = line.logicalId;
+        previousOffset = line.logicalOffset;
+    }
+    return count;
+}
 void TerminalModel::EnsureProjection() const {
     if (!projectionDirty_)
         return;
     // Completed history rows are immutable until trimming, clearing or resize.
     // Preserve their projections and revisit only the last historical logical
     // line plus the changed screen. A TUI repaint must not rebuild 20k rows.
-    size_t keep = 0, start = 0;
+    const size_t base = alternateScreen_ ? 0 : historyBase_;
+    const size_t count = base + HistorySize() + ActiveScreen().lines.size();
+    size_t keep = 0, start = base;
     if (!alternateScreen_ && projectedHistoryRevision_ == historyRevision_ &&
-        projectedHistorySize_ && projectedHistorySize_ <= HistorySize() && !projectionStarts_.empty()) {
-        auto boundary = std::upper_bound(projectionStarts_.begin(), projectionStarts_.end(), projectedHistorySize_ - 1);
-        if (boundary != projectionStarts_.begin()) {
+        projectedHistoryEnd_ > base && projectedHistoryEnd_ <= count &&
+        projectionFirst_ < projectionStarts_.size()) {
+        while (projectionFirst_ + 1 < projectionStarts_.size() &&
+               projectionStarts_[projectionFirst_ + 1] <= base)
+            ++projectionFirst_;
+        if (projectionStarts_[projectionFirst_] < base) {
+            projectionStarts_[projectionFirst_] = base;
+            projectionReady_[projectionFirst_] = false;
+            projectedLines_[projectionFirst_].reset();
+        }
+        const auto active = projectionStarts_.begin() + static_cast<std::ptrdiff_t>(projectionFirst_);
+        auto boundary = std::upper_bound(active, projectionStarts_.end(), projectedHistoryEnd_ - 1);
+        if (boundary != active) {
             --boundary;
             keep = static_cast<size_t>(boundary - projectionStarts_.begin());
             start = *boundary;
         }
+    } else {
+        projectionFirst_ = 0;
     }
     projectionStarts_.resize(keep);
     projectedLines_.resize(keep);
     projectionReady_.resize(keep);
     projectionMaximum_.resize(keep);
-    const size_t count = HistorySize() + ActiveScreen().lines.size();
     for (size_t i = start; i < count; ++i) {
-        const auto &line = RawDisplayLine(i);
-        if (i == start || !RawDisplayLine(i - 1).wrapped || !line.logicalId ||
-            line.logicalId != RawDisplayLine(i - 1).logicalId ||
-            line.logicalOffset <= RawDisplayLine(i - 1).logicalOffset)
+        const auto &line = AbsoluteRawDisplayLine(i);
+        if (i == start || !AbsoluteRawDisplayLine(i - 1).wrapped || !line.logicalId ||
+            line.logicalId != AbsoluteRawDisplayLine(i - 1).logicalId ||
+            line.logicalOffset <= AbsoluteRawDisplayLine(i - 1).logicalOffset)
             projectionStarts_.push_back(i);
     }
     projectedLines_.resize(projectionStarts_.size());
     projectionReady_.resize(projectionStarts_.size(), false);
     for (size_t i = keep; i < projectionStarts_.size(); ++i) {
         const size_t end = i + 1 < projectionStarts_.size() ? projectionStarts_[i + 1] : count;
-        const auto &first = RawDisplayLine(projectionStarts_[i]);
-        const auto &last = RawDisplayLine(end - 1);
+        const auto &first = AbsoluteRawDisplayLine(projectionStarts_[i]);
+        const auto &last = AbsoluteRawDisplayLine(end - 1);
         const size_t width = last.logicalOffset - first.logicalOffset + last.used;
         projectionMaximum_.push_back(std::max(i ? projectionMaximum_.back() : size_t(0), width));
     }
     projectedHistoryRevision_ = historyRevision_;
-    projectedHistorySize_ = HistorySize();
+    projectedHistoryEnd_ = historyBase_ + HistorySize();
+    // Absolute raw indexes let trimming advance without shifting 20,000
+    // entries. Compact dead prefixes occasionally to keep cache memory bounded.
+    if (projectionFirst_ >= 1024) {
+        const auto discard = static_cast<std::ptrdiff_t>(projectionFirst_);
+        projectionStarts_.erase(projectionStarts_.begin(), projectionStarts_.begin() + discard);
+        projectedLines_.erase(projectedLines_.begin(), projectedLines_.begin() + discard);
+        projectionReady_.erase(projectionReady_.begin(), projectionReady_.begin() + discard);
+        projectionMaximum_.clear();
+        projectionMaximum_.reserve(projectionStarts_.size());
+        for (size_t i = 0; i < projectionStarts_.size(); ++i) {
+            const size_t projectionEnd = i + 1 < projectionStarts_.size()
+                ? projectionStarts_[i + 1] : count;
+            const auto& first = AbsoluteRawDisplayLine(projectionStarts_[i]);
+            const auto& last = AbsoluteRawDisplayLine(projectionEnd - 1);
+            const size_t width = last.logicalOffset - first.logicalOffset + last.used;
+            projectionMaximum_.push_back((std::max)(i ? projectionMaximum_.back() : size_t(0), width));
+        }
+        projectionFirst_ = 0;
+    }
     projectionDirty_ = false;
 }
 size_t TerminalModel::DisplayLineCount() const {
     if (lineWrapView_ || alternateScreen_)
         return HistorySize() + ActiveScreen().lines.size();
     EnsureProjection();
-    return projectionStarts_.size();
+    return projectionStarts_.size() - projectionFirst_;
 }
 size_t TerminalModel::MaximumDisplayColumns() const {
     size_t maximum = static_cast<size_t>(columns_);
@@ -1250,17 +1313,18 @@ const TerminalLine& TerminalModel::DisplayLine(size_t index) const {
     if (lineWrapView_ || alternateScreen_)
         return RawDisplayLine(index);
     EnsureProjection();
-    index = std::min(index, projectionStarts_.size() - 1);
+    index = projectionFirst_ + std::min(index, projectionStarts_.size() - projectionFirst_ - 1);
     if (!projectionReady_[index]) {
         const auto start = projectionStarts_[index];
         const auto end =
-            index + 1 < projectionStarts_.size() ? projectionStarts_[index + 1] : HistorySize() + primary_.lines.size();
-        TerminalLine joined = RawDisplayLine(start);
+            index + 1 < projectionStarts_.size() ? projectionStarts_[index + 1] :
+                historyBase_ + HistorySize() + primary_.lines.size();
+        TerminalLine joined = AbsoluteRawDisplayLine(start);
         if (end > start + 1) {
             joined.cells.clear();
             joined.used = 0;
             for (size_t i = start; i < end; ++i) {
-                const auto &line = RawDisplayLine(i);
+                const auto &line = AbsoluteRawDisplayLine(i);
                 const auto offset = line.logicalOffset - joined.logicalOffset;
                 const auto used = std::min(line.used, line.cells.size());
                 joined.cells.resize(offset + used);
@@ -1276,18 +1340,19 @@ const TerminalLine& TerminalModel::DisplayLine(size_t index) const {
     return *projectedLines_[index];
 }
 size_t TerminalModel::CursorDisplayLine() const {
-    const auto raw = HistorySize() + static_cast<size_t>(ActiveScreen().cursorRow);
+    const auto relative = HistorySize() + static_cast<size_t>(ActiveScreen().cursorRow);
     if (lineWrapView_ || alternateScreen_)
-        return raw;
+        return relative;
+    const auto raw = historyBase_ + relative;
     EnsureProjection();
-    return static_cast<size_t>(std::upper_bound(projectionStarts_.begin(), projectionStarts_.end(), raw) -
-                               projectionStarts_.begin() - 1);
+    const auto active = projectionStarts_.begin() + static_cast<std::ptrdiff_t>(projectionFirst_);
+    return static_cast<size_t>(std::upper_bound(active, projectionStarts_.end(), raw) - active - 1);
 }
 int TerminalModel::CursorColumn() const {
     if (lineWrapView_ || alternateScreen_)
         return ActiveScreen().cursorColumn;
-    const auto raw = HistorySize() + static_cast<size_t>(ActiveScreen().cursorRow);
-    return static_cast<int>(RawDisplayLine(raw).logicalOffset - DisplayLine(CursorDisplayLine()).logicalOffset) +
+    const auto raw = historyBase_ + HistorySize() + static_cast<size_t>(ActiveScreen().cursorRow);
+    return static_cast<int>(AbsoluteRawDisplayLine(raw).logicalOffset - DisplayLine(CursorDisplayLine()).logicalOffset) +
            ActiveScreen().cursorColumn;
 }
 

@@ -57,9 +57,12 @@ public:
         if (closed_)
             return;
         for (auto item = items.rbegin(); item != items.rend(); ++item) {
+            auto& queue = received_[item->sessionId];
+            if (queue.empty()) readySessions_.push_front(item->sessionId);
             receivedBytes_[item->sessionId] += item->data.size();
             pendingBytes_ += item->data.size();
-            received_.push_front(std::move(*item));
+            ++pendingItems_;
+            queue.push_front(std::move(*item));
         }
         UpdateHighWaterLocked();
         needsPost = ArmNotificationLocked();
@@ -113,19 +116,25 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         for (unsigned count = 0; count < maxCount && (count == 0 ||
              std::chrono::steady_clock::now() - started < maxDuration); ++count) {
-            if (received_.empty())
+            if (readySessions_.empty())
                 break;
-            auto next = received_.begin();
-            // Preserve order within each session while giving the visible
-            // terminal three of every four opportunities during overload.
-            if (activeSessionId != 0 && (++fairness_ % 4) != 0) {
-                const auto visible = std::find_if(received_.begin(), received_.end(),
-                    [activeSessionId](const ReceivedItem &entry) { return entry.sessionId == activeSessionId; });
-                if (visible != received_.end())
-                    next = visible;
+            std::uint64_t selected = readySessions_.front();
+            const bool preferVisible = activeSessionId && (++fairness_ % 4) != 0;
+            const auto visible = received_.find(activeSessionId);
+            if (preferVisible && visible != received_.end() && !visible->second.empty()) {
+                selected = activeSessionId;
+            } else if (!preferVisible && selected == activeSessionId && readySessions_.size() > 1) {
+                const auto background = std::find_if(readySessions_.begin(), readySessions_.end(),
+                    [activeSessionId](std::uint64_t id) { return id != activeSessionId; });
+                if (background != readySessions_.end()) selected = *background;
             }
-            auto item = std::move(*next);
-            received_.erase(next);
+            const auto order = std::find(readySessions_.begin(), readySessions_.end(), selected);
+            if (order != readySessions_.end()) readySessions_.erase(order);
+            auto session = received_.find(selected);
+            if (session == received_.end() || session->second.empty()) continue;
+            auto item = std::move(session->second.front());
+            session->second.pop_front();
+            --pendingItems_;
             pendingBytes_ -= std::min(pendingBytes_, item.data.size());
             auto found = receivedBytes_.find(item.sessionId);
             if (found != receivedBytes_.end()) {
@@ -133,6 +142,10 @@ public:
                 if (!found->second)
                     receivedBytes_.erase(found);
             }
+            if (!session->second.empty())
+                readySessions_.push_back(selected);
+            else
+                received_.erase(session);
             batch.push_back(std::move(item));
         }
         return batch;
@@ -153,25 +166,28 @@ public:
             receivedBytes_.erase(it);
         }
         overflow_.erase(sessionId);
-        for (auto iter = received_.begin(); iter != received_.end();) {
-            if (iter->sessionId == sessionId)
-                iter = received_.erase(iter);
-            else
-                ++iter;
+        const auto queue = received_.find(sessionId);
+        if (queue != received_.end()) {
+            pendingItems_ -= std::min(pendingItems_, queue->second.size());
+            received_.erase(queue);
         }
+        readySessions_.erase(std::remove(readySessions_.begin(), readySessions_.end(), sessionId),
+                             readySessions_.end());
     }
 
     bool HasPending() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        return !received_.empty() || !overflow_.empty();
+        return pendingItems_ != 0 || !overflow_.empty();
     }
 
     void Clear() {
         std::lock_guard<std::mutex> lock(mutex_);
         received_.clear();
+        readySessions_.clear();
         receivedBytes_.clear();
         overflow_.clear();
         pendingBytes_ = 0;
+        pendingItems_ = 0;
         notification_ = NotificationState::Idle;
     }
 
@@ -179,15 +195,17 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         closed_ = true;
         received_.clear();
+        readySessions_.clear();
         receivedBytes_.clear();
         overflow_.clear();
         pendingBytes_ = 0;
+        pendingItems_ = 0;
         notification_ = NotificationState::Idle;
     }
 
     Statistics Stats() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        return {pendingBytes_, received_.size(), highWaterBytes_, highWaterItems_,
+        return {pendingBytes_, pendingItems_, highWaterBytes_, highWaterItems_,
                 overflowEvents_, notificationFailures_};
     }
 
@@ -199,7 +217,7 @@ public:
 
     size_t PendingItemCount() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        return received_.size();
+        return pendingItems_;
     }
 
 private:
@@ -211,20 +229,25 @@ private:
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_)
             return;
-        auto &bytes = receivedBytes_[id];
-        if (bytes + item.data.size() > MaxSessionBytes || receivedBytes_.size() > MaxSessions ||
-            received_.size() >= MaxTotalItems) {
+        const auto byteEntry = receivedBytes_.find(id);
+        const size_t bytes = byteEntry == receivedBytes_.end() ? 0 : byteEntry->second;
+        const bool newSession = byteEntry == receivedBytes_.end();
+        if (bytes + item.data.size() > MaxSessionBytes ||
+            (newSession && receivedBytes_.size() >= MaxSessions) || pendingItems_ >= MaxTotalItems) {
             overflow_.insert(id);
             ++overflowEvents_;
         } else {
-            bytes += item.data.size();
+            receivedBytes_[id] = bytes + item.data.size();
             pendingBytes_ += item.data.size();
-            if (!received_.empty() && item.source.empty() && received_.back().source.empty() &&
-                received_.back().sessionId == id && received_.back().codePage == item.codePage &&
-                received_.back().data.size() + item.data.size() <= MaxChunkSize) {
-                received_.back().data.insert(received_.back().data.end(), item.data.begin(), item.data.end());
+            auto& queue = received_[id];
+            if (!queue.empty() && item.source.empty() && queue.back().source.empty() &&
+                queue.back().codePage == item.codePage &&
+                queue.back().data.size() + item.data.size() <= MaxChunkSize) {
+                queue.back().data.insert(queue.back().data.end(), item.data.begin(), item.data.end());
             } else {
-                received_.push_back(std::move(item));
+                if (queue.empty()) readySessions_.push_back(id);
+                queue.push_back(std::move(item));
+                ++pendingItems_;
             }
         }
         UpdateHighWaterLocked();
@@ -232,7 +255,7 @@ private:
     }
 
     enum class NotificationState { Idle, Scheduled, Draining };
-    bool HasPendingLocked() const { return !received_.empty() || !overflow_.empty(); }
+    bool HasPendingLocked() const { return pendingItems_ != 0 || !overflow_.empty(); }
     bool ArmNotificationLocked() {
         if (closed_ || !HasPendingLocked() || notification_ != NotificationState::Idle)
             return false;
@@ -241,15 +264,17 @@ private:
     }
     void UpdateHighWaterLocked() {
         highWaterBytes_ = std::max(highWaterBytes_, pendingBytes_);
-        highWaterItems_ = std::max(highWaterItems_, received_.size());
+        highWaterItems_ = std::max(highWaterItems_, pendingItems_);
     }
 
     mutable std::mutex mutex_;
-    std::deque<ReceivedItem> received_;
+    std::map<std::uint64_t, std::deque<ReceivedItem>> received_;
+    std::deque<std::uint64_t> readySessions_;
     std::map<std::uint64_t, size_t> receivedBytes_;
     std::set<std::uint64_t> overflow_;
     unsigned fairness_ = 0;
     size_t pendingBytes_ = 0;
+    size_t pendingItems_ = 0;
     size_t highWaterBytes_ = 0;
     size_t highWaterItems_ = 0;
     std::uint64_t overflowEvents_ = 0;

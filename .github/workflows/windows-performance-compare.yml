@@ -23,7 +23,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           . ./scripts/common.ps1
-          $baseline = '9d70d93abb068e808b9159c5fb8a7227aaf9c7bd'
+          $baseline = '083b3be16f7564d319964cd11b12b6c7a26f40e0'
           $evidence = Join-Path $env:RUNNER_TEMP 'serialctl-performance-evidence'
           New-Item -ItemType Directory $evidence -Force | Out-Null
           git diff --exit-code $baseline $env:GITHUB_SHA -- tests/integration/SerialShareBackpressureTest.cpp tests/integration/GatewayFixture.h
@@ -62,7 +62,7 @@ jobs:
             $network = $network.Replace('Fixture load(18600, 18615);', 'Fixture load(18600 + portOffset, 18615 + portOffset);')
             [IO.File]::WriteAllText($networkFile, $network, $noBom)
             Invoke-SerialCtlExternalCommand -FilePath $cmake -Description "Configure $label" -Arguments @('-S',$source,'-B',$build,'-G',$generator,'-A','x64','-DBUILD_TESTING=ON')
-            Invoke-SerialCtlExternalCommand -FilePath $cmake -Description "Build $label benchmarks" -Arguments @('--build',$build,'--config','Release','--target','serial_share_backpressure_test','serialctl_perf_preview','serialctl_perf_paint','--parallel','2')
+            Invoke-SerialCtlExternalCommand -FilePath $cmake -Description "Build $label benchmarks" -Arguments @('--build',$build,'--config','Release','--target','serial_share_backpressure_test','serialctl_perf_preview','serialctl_perf_paint','serialctl_perf_terminal','--parallel','2')
           }
           $processor = Get-CimInstance Win32_Processor | Select-Object -First 1 Name,NumberOfCores,NumberOfLogicalProcessors
           $os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber
@@ -87,6 +87,7 @@ jobs:
               foreach ($suite in @(
                 [pscustomobject]@{ kind = 'preview'; binary = 'serialctl_perf_preview.exe' }
                 [pscustomobject]@{ kind = 'paint'; binary = 'serialctl_perf_paint.exe' }
+                [pscustomobject]@{ kind = 'terminal'; binary = 'serialctl_perf_terminal.exe' }
                 [pscustomobject]@{ kind = 'network'; binary = 'serial_share_backpressure_test.exe' }
               )) {
                 $kind = $suite.kind

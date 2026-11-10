@@ -66,8 +66,8 @@ int main() {
 
     // Test 4: Multi-session fairness (active session prioritized 3 out of 4)
     for (int i = 0; i < 20; ++i) {
-        dispatcher.Enqueue({10, {'B'}, CP_UTF8, "", 0}, needsPost); // background
-        dispatcher.Enqueue({20, {'A'}, CP_UTF8, "", 0}, needsPost); // active
+        dispatcher.Enqueue({10, {'B'}, CP_UTF8, "fairness", 0}, needsPost); // background
+        dispatcher.Enqueue({20, {'A'}, CP_UTF8, "fairness", 0}, needsPost); // active
     }
     begin();
     auto fairBatch = dispatcher.PopBatch(20, 4, std::chrono::milliseconds(10));

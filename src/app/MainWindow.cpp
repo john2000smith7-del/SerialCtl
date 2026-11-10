@@ -27,6 +27,7 @@
 #include <shlobj.h>
 #include <windowsx.h>
 #include <ws2tcpip.h>
+#include <psapi.h>
 
 #include <algorithm>
 #include <array>
@@ -64,6 +65,7 @@ struct UpdatePrompt {
 constexpr UINT MessageLogExport = WM_APP + 21;
 constexpr UINT MessageSessionCleanup = WM_APP + 25;
 constexpr UINT MessageMcpDispatch = WM_APP + 26;
+constexpr UINT MessageTerminalParse = WM_APP + 27;
 
 struct McpDispatchContext {
     std::string method;
@@ -802,6 +804,16 @@ std::wstring TransferRateText(std::uint64_t bytesPerSecond, std::uint32_t remain
 }
 } // namespace
 
+MainWindow::MainWindow() {
+    terminalParser_.SetPublish([this](std::unique_ptr<TerminalParseScheduler::Update> update) {
+        const HWND target = receiveWindow_.load(std::memory_order_acquire);
+        if (!target || closing_.load(std::memory_order_acquire) ||
+            !PostMessageW(target, MessageTerminalParse, 0, reinterpret_cast<LPARAM>(update.get())))
+            return;
+        update.release();
+    });
+}
+
 bool MainWindow::Create(HINSTANCE instance, int showCommand) {
     instance_ = instance;
     WNDCLASSEXW windowClass{};
@@ -890,15 +902,17 @@ void MainWindow::WaitForShutdown() {
     connectionCleanup_.Drain();
     for (const auto &session : sessions_) {
         if (session->connection) session->connection->Stop();
-        if (session->logger) session->logger->Stop();
     }
     apiServer_.Stop(); // Serial Stop cancels any in-flight remote transfer write first.
     xfer_.Shutdown();
     if (connectionThread_.joinable()) connectionThread_.join();
     if (pendingSession_) {
         if (pendingSession_->connection) pendingSession_->connection->Stop();
-        if (pendingSession_->logger) pendingSession_->logger->Stop();
     }
+    terminalParser_.Stop();
+    for (const auto &session : sessions_)
+        if (session->logger) session->logger->Stop();
+    if (pendingSession_ && pendingSession_->logger) pendingSession_->logger->Stop();
     sftp_.Join();
     aiPane_.WaitForShutdown();
     powerService_.Shutdown();
@@ -933,6 +947,8 @@ void MainWindow::DrainShutdownMessages() {
     while (PeekMessageW(&pending, window_, MessageHostKey, MessageHostKey, PM_REMOVE)) delete reinterpret_cast<HostKeyMessage*>(pending.lParam);
     while (PeekMessageW(&pending, window_, MessageData, MessageData, PM_REMOVE)) delete reinterpret_cast<DataMessage*>(pending.lParam);
     while (PeekMessageW(&pending, window_, MessageStatus, MessageStatus, PM_REMOVE)) delete reinterpret_cast<StatusMessage*>(pending.lParam);
+    while (PeekMessageW(&pending, window_, MessageTerminalParse, MessageTerminalParse, PM_REMOVE))
+        delete reinterpret_cast<TerminalParseScheduler::Update*>(pending.lParam);
     while (PeekMessageW(&pending, window_, MessageMcpDispatch, MessageMcpDispatch, PM_REMOVE))
         delete reinterpret_cast<std::shared_ptr<McpDispatchContext>*>(pending.lParam);
     while (PeekMessageW(&pending, window_, MessageSftp, MessageSftp, PM_REMOVE)) {}
@@ -1828,6 +1844,12 @@ LRESULT CALLBACK MainWindow::SftpPathSubclassProc(HWND window, UINT message, WPA
 }
 
 bool MainWindow::PreTranslate(MSG& message) {
+    if (message.message == WM_KEYDOWN || message.message == WM_SYSKEYDOWN ||
+        message.message == WM_LBUTTONDOWN || message.message == WM_RBUTTONDOWN ||
+        message.message == WM_MBUTTONDOWN || message.message == WM_MOUSEWHEEL) {
+        performanceMetrics_.Record(PerformanceMetrics::Timing::UiResponse,
+            static_cast<std::uint64_t>(GetTickCount() - message.time) * 1000);
+    }
     if (message.message == WM_KEYDOWN && message.wParam == VK_F6 && (GetKeyState(VK_CONTROL) & 0x8000)) {
         std::vector<HWND> panes{connectionList_, aiVisible_ ? aiPane_.Handle() : powerVisible_ ? powerPane_.Handle() : terminal_,
                                 LiveMonitorPage() ? terminal_ : tftpPanelVisible_ ? tftpPane_.Handle() : xferPanelVisible_ ? xferPane_.Handle() : sftpPanelVisible_ ? sftpList_ : commandList_};
@@ -1885,7 +1907,8 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         if (message != WM_DESTROY && message != MessageApi && message != MessageUpdatePrompt &&
             message != MessageUpdate && message != MessageConnection && message != MessageDiscovery &&
-            message != MessageHostKey && message != MessageData && message != MessageStatus)
+            message != MessageHostKey && message != MessageData && message != MessageStatus &&
+            message != MessageTerminalParse)
             return DefWindowProcW(window_, message, wParam, lParam);
     }
     // Includes direct control activation and window gestures, not just keyboard
@@ -2455,22 +2478,44 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case MessageData: {
         if (closing_) return 0;
         if (!receiveDispatcher_.BeginDrain()) return 0;
+        const auto receiveSliceDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(4);
+        constexpr size_t ReceiveSliceBytes = 1024 * 1024;
+        size_t handledBytes = 0;
         const auto overflow = receiveDispatcher_.TakeOverflow();
-        const auto items = receiveDispatcher_.PopBatch(activeSession_ ? activeSession_->id : 0, 32, std::chrono::milliseconds(2));
-        for (const auto &item : items) {
+        auto items = receiveDispatcher_.PopBatch(activeSession_ ? activeSession_->id : 0, 128, std::chrono::milliseconds(1));
+        size_t handledItems = 0;
+        for (; handledItems < items.size(); ++handledItems) {
+            auto& item = items[handledItems];
+            const auto itemBytes = item.data.size();
             if (pendingSession_ && item.sessionId == pendingSession_->id) {
-                if (cancelledConnectionPending_) continue;
-                if (pendingConnectionBytes_ + item.data.size() <= 4 * 1024 * 1024) {
+                if (cancelledConnectionPending_) {
+                    // A canceled startup replay belongs to the old connection.
+                } else if (pendingConnectionBytes_ + item.data.size() <= 4 * 1024 * 1024) {
                     pendingConnectionBytes_ += item.data.size();
-                    pendingConnectionData_.push_back(item);
+                    pendingConnectionData_.push_back(std::move(item));
                 } else {
                     connectionCancel_ = true;
                     pendingSession_->connection->CancelStart();
                 }
-            } else if (item.source.empty())
-                AppendData(item.sessionId, item.data, item.codePage, item.arrival);
-            else
+            } else if (item.source.empty()) {
+                AppendData(item.sessionId, std::move(item.data), item.codePage, item.arrival);
+            } else {
                 AppendInput(item);
+            }
+            handledBytes += itemBytes;
+            if (handledItems + 1 < items.size() &&
+                (handledBytes >= ReceiveSliceBytes || std::chrono::steady_clock::now() >= receiveSliceDeadline)) {
+                ++handledItems;
+                break;
+            }
+        }
+        if (handledItems < items.size()) {
+            std::vector<ReceivedItem> remaining;
+            remaining.reserve(items.size() - handledItems);
+            for (; handledItems < items.size(); ++handledItems)
+                remaining.push_back(std::move(items[handledItems]));
+            bool ignored = false;
+            receiveDispatcher_.PrependBatch(std::move(remaining), ignored);
         }
         {
             if (receiveDispatcher_.FinishDrain()) {
@@ -2485,9 +2530,6 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                     PostReceiveNotification();
             }
         }
-        // Present accepted output now; ordinary WM_PAINT delivery can otherwise
-        // remain behind a steady stream of data/AI/network notifications.
-        if (terminal_ && IsWindowVisible(terminal_) && !IsIconic(window_)) UpdateWindow(terminal_);
         for (auto id : overflow) {
             SessionState* session = FindSession(id);
             if (session && session->connection) {
@@ -2498,6 +2540,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         return 0;
     }
+    case MessageTerminalParse:
+        CompleteTerminalParse(std::unique_ptr<TerminalParseScheduler::Update>(
+            reinterpret_cast<TerminalParseScheduler::Update*>(lParam)));
+        return 0;
     case MessageSessionCleanup:
         if(!closing_) PollSessionCleanup();
         return 0;
@@ -4447,6 +4493,7 @@ void MainWindow::ConnectFromDialog() {
         session->lineEndingIndex=previous->lineEndingIndex; session->rawTrace=previous->rawTrace;
         session->terminal=previous->terminal; session->terminal.BeginConnection();
     }
+    session->terminalParser = CreateTerminalParser(*session);
     const std::uint64_t sessionId = session->id;
 
     session->connection = std::make_shared<QueuedConnection>(std::move(connection));
@@ -4573,6 +4620,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
             connectedIndex=static_cast<size_t>(previous-sessions_.begin());
             if(previous->get()==activeSession_) {activeSession_=nullptr;connection_=nullptr;logger_=nullptr;}
             if(!(*previous)->password.empty()) SecureZeroMemory((*previous)->password.data(),(*previous)->password.size()*sizeof(wchar_t));
+            terminalParser_.Cancel((*previous)->terminalParser);
             *previous=std::move(pendingSession_);
         }
     }
@@ -4657,6 +4705,7 @@ void MainWindow::CloseSession(std::uint64_t id) {
     auto* session = FindSession(id);
     if (!session) return;
     if (!session->disconnected) { session->closeAfterStop = true; BeginDisconnect(*session); return; }
+    terminalParser_.Cancel(session->terminalParser);
     const auto it = std::find_if(sessions_.begin(), sessions_.end(), [id](const auto& item){return item->id == id;});
     const auto index = static_cast<size_t>(it - sessions_.begin());
     const bool wasActive = session == activeSession_;
@@ -5148,17 +5197,16 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
     if (activeSession_->mode == 4)
         localEcho = false;
     if (localEcho && !echoedText.empty()) {
+        if (!activeSession_->terminalParser)
+            activeSession_->terminalParser = CreateTerminalParser(*activeSession_);
         const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
         std::wstring display=echoedText;
         if (!display.empty() && display.back()==L'\r') display+=L'\n';
         else if (!display.empty() && display.back()==L'\n' && (display.size()==1 || display[display.size()-2]!=L'\r')) display.insert(display.size()-1,1,L'\r');
-        const TerminalFeedResult result = activeSession_->terminal.Feed(display, timestamp);
-        if (logger_ && !result.logText.empty()) logger_->WriteText(result.logText);
-        if (activeSession_->terminalScrollOffset > 0) {
-            activeSession_->terminalScrollOffset += static_cast<int>(result.scrollbackAdded);
-            activeSession_->terminalHasNewOutput = true;
+        if (!terminalParser_.EnqueueText(activeSession_->terminalParser, std::move(display), timestamp)) {
+            AppendStatus(L"终端解析队列超过有界容量，本地回显存在明确缺口。", true);
+            return false;
         }
-        InvalidateRect(terminal_, nullptr, FALSE);
     }
     return true;
 }
@@ -5370,6 +5418,7 @@ void MainWindow::StopCommandSequence(CommandSequenceEnd end, const std::wstring&
 
 void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage) {
     if (closing_) return;
+    performanceMetrics_.RecordReceive(data.size());
     LARGE_INTEGER arrival{};
     if (measurePaint_)
         QueryPerformanceCounter(&arrival);
@@ -5418,6 +5467,8 @@ void MainWindow::AppendInput(const ReceivedItem &item) {
     SessionState *session = FindSession(item.sessionId);
     if (!session)
         return;
+    if (!session->terminalParser)
+        session->terminalParser = CreateTerminalParser(*session);
     if (session->rawTrace && session->logger) {
         auto raw = Encode64(item.data);
         session->logger->WriteStatus(
@@ -5426,21 +5477,18 @@ void MainWindow::AppendInput(const ReceivedItem &item) {
     if (session->mode == 4) {
         const auto text =
             MultiByteToWide(item.data.data(), item.data.size(), item.codePage ? item.codePage : session->codePage);
-        const auto result = session->terminal.Feed(text, timestampEnabled_ ? CurrentTerminalTimestamp() : L"");
-        if (session->logger)
-            session->logger->WriteText(result.logText);
-        if (session->terminalScrollOffset > 0) {
-            session->terminalScrollOffset += static_cast<int>(result.scrollbackAdded);
-            session->terminalHasNewOutput = true;
-        }
-        if (session == activeSession_)
-            InvalidateRect(terminal_, nullptr, FALSE);
-    }
-    if (session->logger)
+        const auto status = L"输入来源 " +
+            MultiByteToWide(reinterpret_cast<const std::uint8_t *>(item.source.data()), item.source.size(), CP_UTF8) +
+            L" · " + std::to_wstring(item.data.size()) + L" 字节";
+        if (!terminalParser_.EnqueueText(session->terminalParser, text,
+                timestampEnabled_ ? CurrentTerminalTimestamp() : L"", false, status))
+            PostStatus(item.sessionId, L"终端解析队列超过有界容量，CMD 输入回显存在明确缺口。", true);
+    } else if (session->logger) {
         session->logger->WriteStatus(
             L"输入来源 " +
             MultiByteToWide(reinterpret_cast<const std::uint8_t *>(item.source.data()), item.source.size(), CP_UTF8) +
             L" · " + std::to_wstring(item.data.size()) + L" 字节");
+    }
     if (measurePaint_ && session == activeSession_ && session->logger)
         SetPropW(window_, L"SerialCtl.LogAcceptedBytes", reinterpret_cast<HANDLE>(
             static_cast<UINT_PTR>(session->logger->CaptureExportPoint().bytes)));
@@ -5454,9 +5502,19 @@ void MainWindow::PostStatus(std::uint64_t sessionId, const std::wstring& text, b
     if (!PostMessageW(window_, MessageStatus, 0, reinterpret_cast<LPARAM>(status))) delete status;
 }
 
-void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage, LONGLONG arrival) {
+std::shared_ptr<TerminalParseScheduler::Context> MainWindow::CreateTerminalParser(SessionState& session) {
+    const auto logger = session.logger;
+    return terminalParser_.Create(session.id, session.terminal,
+        [logger](const std::vector<std::pair<bool, std::wstring>>& entries) {
+            if (logger) logger->WriteBatch(entries);
+        });
+}
+
+void MainWindow::AppendData(std::uint64_t sessionId, Bytes data, UINT codePage, LONGLONG arrival) {
     SessionState* session = FindSession(sessionId);
     if (!session || session->disconnecting || session->disconnected) return;
+    if (!session->terminalParser)
+        session->terminalParser = CreateTerminalParser(*session);
     if (session->udpRaw && !data.empty())
         session->udpReceived = true;
     if (session->rawTrace && session->logger) {
@@ -5469,9 +5527,30 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
         if (session == activeSession_)
             selectedCodePage_ = codePage;
     }
-    const std::wstring decoded = DecodeTerminalData(*session, data);
-    if (measurePaint_ && arrival) {
-        session->paintProbeText += decoded;
+    const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
+    if (!terminalParser_.Enqueue(session->terminalParser, std::move(data),
+                                 codePage ? codePage : session->codePage, timestamp, arrival)) {
+        if (session->connection) {
+            auto transport = session->connection;
+            connectionCleanup_.Retire([transport] { transport->Stop(); });
+        }
+        PostStatus(sessionId, L"终端解析队列超过有界容量，已停止连接；存在明确数据缺口。", true);
+    }
+}
+
+void MainWindow::CompleteTerminalParse(std::unique_ptr<TerminalParseScheduler::Update> update) {
+    if (!update || closing_) return;
+    performanceMetrics_.Record(PerformanceMetrics::Timing::Decode, update->decodeUsec);
+    performanceMetrics_.Record(PerformanceMetrics::Timing::Parse, update->parseUsec);
+    SessionState* session = FindSession(update->sessionId);
+    if (!session || session->terminalParser != update->context || !update->snapshot) return;
+    if (update->sequence >= session->terminalMinimumSequence &&
+        update->sequence > session->terminalSnapshotSequence) {
+        session->terminal = std::move(*update->snapshot);
+        session->terminalSnapshotSequence = update->sequence;
+    }
+    if (measurePaint_ && update->arrival) {
+        session->paintProbeText += update->decoded;
         static const std::wstring prefix = L"SERIALCTL_PAINT_";
         const auto marker = session->paintProbeText.rfind(prefix);
         if (marker != std::wstring::npos && marker + prefix.size() + 3 <= session->paintProbeText.size()) {
@@ -5480,19 +5559,18 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
                 const auto probe = static_cast<INT_PTR>(std::stoi(digits) + 1);
                 if (probe != session->paintProbe) {
                     session->paintProbe = probe;
-                    session->pendingProbeArrival = arrival;
+                    session->pendingProbeArrival = update->arrival;
                 }
             }
         }
         if (session->paintProbeText.size() > 96)
             session->paintProbeText.erase(0, session->paintProbeText.size() - 96);
     }
-    const std::wstring timestamp = timestampEnabled_ ? CurrentTerminalTimestamp() : std::wstring();
-    const bool wasAlternateScreen = session->terminal.AlternateScreen();
-    const TerminalFeedResult result = session->terminal.Feed(decoded, timestamp);
-    if (*ai::TerminalKind(session->mode))
-        AiDeviceBridge::Observe(*session, decoded, CurrentTerminalTimestamp(), GetTickCount64());
-    if (session->logger && !result.logText.empty()) session->logger->WriteText(result.logText);
+    const auto sessionId = update->sessionId;
+    const TerminalFeedResult& result = update->result;
+    if (*ai::TerminalKind(session->mode) && !update->observedDecoded.empty())
+        AiDeviceBridge::Observe(*session, update->observedDecoded,
+            update->timestamp.empty() ? CurrentTerminalTimestamp() : update->timestamp, GetTickCount64());
     if (!result.response.empty() && session->connection && session->connection->IsConnected()) {
         if (session->mode == 4) {
             if (!session->cmdInteractionWarning) {
@@ -5524,9 +5602,17 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
     }
     if (session->logger && !session->logger->Error().empty() && loggerErrorsShown_.insert(sessionId).second)
         AppendStatus(session->logger->Error(), true);
-    SyncSftpDirectoryFromTerminal(*session, !result.workingDirectory.empty());
+    const auto& observed = update->observedDecoded;
+    const bool promptEvent = !observed.empty() &&
+        (observed.find(L'\r') != std::wstring::npos || observed.find(L'\n') != std::wstring::npos ||
+         observed.find(L"\x1b]7;") != std::wstring::npos ||
+         (observed.size() >= 2 && observed.back() == L' ' &&
+          (observed[observed.size() - 2] == L'$' || observed[observed.size() - 2] == L'#' ||
+           observed[observed.size() - 2] == L'>' || observed[observed.size() - 2] == L'%')));
+    if (!result.workingDirectory.empty() || promptEvent)
+        SyncSftpDirectoryFromTerminal(*session, !result.workingDirectory.empty());
     if (session == activeSession_) {
-        if (wasAlternateScreen != session->terminal.AlternateScreen())
+        if (update->wasAlternateScreen != update->alternateScreen)
             UpdateTerminalDimensions();
         if (session->terminalScrollOffset > 0) {
             session->terminalScrollOffset += static_cast<int>(result.scrollbackAdded);
@@ -5537,10 +5623,6 @@ void MainWindow::AppendData(std::uint64_t sessionId, const Bytes &data, UINT cod
         session->terminalScrollOffset = std::min(session->terminalScrollOffset, maximumOffset);
         InvalidateRect(terminal_, nullptr, FALSE);
     }
-}
-
-std::wstring MainWindow::DecodeTerminalData(SessionState& session, const Bytes& data) {
-    return session.decoder.Decode(data, session.codePage);
 }
 
 void MainWindow::SyncSftpDirectoryFromTerminal(SessionState& session, bool receivedOscDirectory) {
@@ -6156,6 +6238,11 @@ void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
     case IdMenuClear:
         if (activeSession_) {
             activeSession_->terminal.Clear();
+            if (!activeSession_->terminalParser)
+                activeSession_->terminalParser = CreateTerminalParser(*activeSession_);
+            const auto sequence = terminalParser_.Clear(activeSession_->terminalParser);
+            activeSession_->terminalMinimumSequence =
+                (std::max)(activeSession_->terminalMinimumSequence, sequence);
             activeSession_->terminalScrollOffset = 0;
             activeSession_->terminalHasNewOutput = false;
         }
@@ -6273,8 +6360,14 @@ void MainWindow::UpdateTerminalDimensions() {
     const bool timestamps = timestampEnabled_ && !LiveMonitorPage() && activeSession_ && !activeSession_->terminal.AlternateScreen();
     terminalViewport_.Measure(terminal_, terminalFont_, timestamps);
     for (const auto& session : sessions_) {
-        terminalViewport_.Resize(*session, !LiveMonitorPage() || (powerVisible_ ? powerMonitorWrap_ : aiMonitorWrap_),
+        const bool wrap = !LiveMonitorPage() || (powerVisible_ ? powerMonitorWrap_ : aiMonitorWrap_);
+        terminalViewport_.Resize(*session, wrap,
                                  session.get() == activeSession_, oldRows);
+        if (!session->terminalParser)
+            session->terminalParser = CreateTerminalParser(*session);
+        const auto sequence = terminalParser_.Resize(session->terminalParser,
+            terminalViewport_.Metrics().columns, terminalViewport_.Metrics().rows, wrap);
+        session->terminalMinimumSequence = (std::max)(session->terminalMinimumSequence, sequence);
         if (session->connection && (oldColumns != terminalViewport_.Metrics().columns || oldRows != terminalViewport_.Metrics().rows))
             session->connection->ResizeTerminal(terminalViewport_.Metrics().columns, terminalViewport_.Metrics().rows);
     }
@@ -6283,7 +6376,7 @@ void MainWindow::UpdateTerminalDimensions() {
 
 TerminalViewport::Options MainWindow::TerminalViewportOptions() const {
     return {darkMode_, timestampEnabled_, LiveMonitorPage(), measurePaint_,
-            activeSession_ ? activeSession_->mode : -1, terminalFont_, smallFont_};
+            activeSession_ ? activeSession_->mode : -1, terminalFont_, smallFont_, &performanceMetrics_};
 }
 
 void MainWindow::PaintTerminal(HDC dc) {
@@ -8822,6 +8915,10 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         auto* target = ResolveTargetSession(params, resErr);
         if (!target) return error(resErr);
         target->terminal.Clear();
+        if (!target->terminalParser)
+            target->terminalParser = CreateTerminalParser(*target);
+        const auto sequence = terminalParser_.Clear(target->terminalParser);
+        target->terminalMinimumSequence = (std::max)(target->terminalMinimumSequence, sequence);
         if (target == activeSession_) InvalidateRect(terminal_, nullptr, FALSE);
         return {{"ok", true}};
     }
@@ -9328,10 +9425,57 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}};
     }
     if (method == "log.network_diagnostics") {
+        const auto performance = performanceMetrics_.Read();
+        const auto receive = receiveDispatcher_.Stats();
+        const auto parser = terminalParser_.Stats();
+        SessionLogger::Statistics logging{};
+        for (const auto& session : sessions_) {
+            if (!session->logger) continue;
+            const auto value = session->logger->Stats();
+            logging.pendingBytes += value.pendingBytes;
+            logging.highWaterBytes = (std::max)(logging.highWaterBytes, value.highWaterBytes);
+            logging.acceptedBytes += value.acceptedBytes;
+            logging.completedBytes += value.completedBytes;
+            logging.overflowEvents += value.overflowEvents;
+        }
+        PROCESS_MEMORY_COUNTERS_EX memory{};
+        memory.cb = sizeof(memory);
+        GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory));
+        const auto percentiles = [](const PerformanceMetrics::Percentiles& value) {
+            return Json{{"samples", value.samples}, {"p50Usec", value.p50Usec},
+                        {"p95Usec", value.p95Usec}, {"p99Usec", value.p99Usec}};
+        };
         return {
             {"ok", true},
             {"diagnostics", apiServer_.Diagnostics()},
-            {"metrics", apiServer_.Metrics()}
+            {"metrics", apiServer_.Metrics()},
+            {"terminalPerformance", {
+                {"enabled", performance.enabled},
+                {"receiveBytes", performance.receivedBytes},
+                {"receiveBytesPerSecond", performance.receiveBytesPerSecond},
+                {"receiveQueuePendingBytes", receive.pendingBytes},
+                {"receiveQueuePendingItems", receive.pendingItems},
+                {"receiveQueueHighWaterBytes", receive.highWaterBytes},
+                {"receiveQueueHighWaterItems", receive.highWaterItems},
+                {"parseQueuePendingBytes", parser.pendingBytes},
+                {"parseQueueHighWaterBytes", parser.highWaterBytes},
+                {"decodeLatency", percentiles(performance.decode)},
+                {"parseLatency", percentiles(performance.parse)},
+                {"paintLatency", percentiles(performance.paint)},
+                {"uiResponseLatency", percentiles(performance.uiResponse)},
+                {"gdiObjects", GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS)},
+                {"userObjects", GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS)},
+                {"workingSetBytes", memory.WorkingSetSize},
+                {"privateBytes", memory.PrivateUsage},
+                {"dropOverflowEvents", receive.overflowEvents + parser.overflowEvents + logging.overflowEvents},
+                {"receiveNotificationFailures", receive.notificationFailures},
+                {"loggerBacklogBytes", logging.pendingBytes},
+                {"loggerHighWaterBytes", logging.highWaterBytes},
+                {"loggerAcceptedBytes", logging.acceptedBytes},
+                {"loggerCompletedBytes", logging.completedBytes},
+                {"lastPaintGdiCalls", terminal_ ? reinterpret_cast<UINT_PTR>(
+                    GetPropW(terminal_, L"SerialCtl.GdiCalls")) : 0}
+            }}
         };
     }
     if (method == "ai.status") {

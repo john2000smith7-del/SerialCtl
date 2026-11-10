@@ -15,8 +15,10 @@
 #include "SftpModel.h"
 #include "TerminalDecoder.h"
 #include "TerminalModel.h"
+#include "TerminalParseScheduler.h"
 #include "TerminalViewport.h"
 #include "PaintBuffer.h"
+#include "PerformanceMetrics.h"
 #include "BackgroundCleanup.h"
 #include "CommandMacroController.h"
 #include "CommandNotebook.h"
@@ -54,6 +56,7 @@ class UiLayoutBatch;
 
 class MainWindow {
 public:
+    MainWindow();
     ~MainWindow();
     bool Create(HINSTANCE instance, int showCommand);
     void StartStartupUpdate();
@@ -113,6 +116,9 @@ private:
         std::wstring name;
         std::shared_ptr<IConnection> connection;
         std::shared_ptr<SessionLogger> logger;
+        std::shared_ptr<TerminalParseScheduler::Context> terminalParser;
+        std::uint64_t terminalSnapshotSequence = 0;
+        std::uint64_t terminalMinimumSequence = 0;
         int lineEndingIndex = 0;
         UINT codePage = CP_UTF8;
         bool rawTrace = false;
@@ -222,11 +228,12 @@ private:
     void StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail = {});
     void PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
-    void AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage = 0, LONGLONG arrival = 0);
+    void AppendData(std::uint64_t sessionId, Bytes data, UINT codePage = 0, LONGLONG arrival = 0);
+    void CompleteTerminalParse(std::unique_ptr<TerminalParseScheduler::Update>);
+    std::shared_ptr<TerminalParseScheduler::Context> CreateTerminalParser(SessionState&);
     void QueueReceived(ReceivedItem);
     bool PostReceiveNotification();
     void AppendInput(const ReceivedItem &);
-    std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
     void SyncSftpDirectoryFromTerminal(SessionState& session, bool receivedOscDirectory = false);
     void AppendStatus(const std::wstring& text, bool isError);
     void RefreshStatusDisplay();
@@ -508,6 +515,8 @@ private:
     BackgroundCleanup connectionCleanup_;
     PaintBuffer windowPaintBuffer_;
     TerminalViewport terminalViewport_;
+    mutable PerformanceMetrics performanceMetrics_;
+    TerminalParseScheduler terminalParser_;
     std::atomic_bool connectionCancel_{false};
     bool cancelledConnectionPending_ = false;
     bool connectionResultReady_ = false, connectionResultSuccess_ = false;

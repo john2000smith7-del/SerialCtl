@@ -3,6 +3,7 @@
 #include "Win32Helpers.h"
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <string_view>
 #include <ws2tcpip.h>
 namespace serialctl {
@@ -132,6 +133,7 @@ void ApiServer::Stop() {
         std::lock_guard<std::mutex> lock(publicationMutex_);
         publicationStopping_ = true;
         publications_.clear(); publicationBytes_ = 0; publicationGap_ = false;
+        publicationBacklogBytes_ = 0; publicationBacklogItems_ = 0;
         latestPublicationSessions_.reset();
         publicationWake_.notify_all();
     }
@@ -196,6 +198,12 @@ Json ApiServer::Metrics() const {
         {"historyTrims", historyTrimsCount_.load()},
         {"publicationGaps", publicationGapCount_.load()},
         {"publicationHighWaterMark", publicationHighWaterMark_.load()},
+        {"publicationBacklogBytes", publicationBacklogBytes_.load()},
+        {"publicationBacklogItems", publicationBacklogItems_.load()},
+        {"serverLockWaitSamples", serverLockWaitSamples_.load()},
+        {"serverLockWaitAverageUsec", serverLockWaitSamples_.load()
+            ? serverLockWaitUsecTotal_.load() / serverLockWaitSamples_.load() : 0},
+        {"serverLockWaitMaximumUsec", serverLockWaitUsecMaximum_.load()},
         {"rejectedClients", rejectedClientsCount_.load()},
         {"rejectedOrigins", rejectedOriginsCount_.load()},
         {"historyBytes", historyBytes_},
@@ -667,11 +675,14 @@ bool ApiServer::EnqueuePublish(const std::string& target, const Bytes& data, con
         // Local terminal/logging continue. Remote observers must reconnect and
         // receive an explicit history gap rather than silently lose output.
         publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+        publicationBacklogBytes_ = 0; publicationBacklogItems_ = 0;
         publicationWake_.notify_one();
         return false;
     }
     publications_.push_back({target, source, kind, data, codePage, {}, data.size()});
     publicationBytes_ += data.size();
+    publicationBacklogBytes_ = publicationBytes_;
+    publicationBacklogItems_ = publications_.size();
     if (publicationBytes_ > publicationHighWaterMark_)
         publicationHighWaterMark_ = publicationBytes_;
     publicationWake_.notify_one();
@@ -695,10 +706,13 @@ bool ApiServer::EnqueueSessions(std::vector<std::string> sessions) {
     latestPublicationSessions_ = snapshot;
     if (publicationGap_ || publications_.size() >= 4096 || charge > maximum - publicationBytes_) {
         publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+        publicationBacklogBytes_ = 0; publicationBacklogItems_ = 0;
     } else {
         Publication update;
         update.sessions = std::move(snapshot); update.charge = charge;
         publications_.push_back(std::move(update)); publicationBytes_ += charge;
+        publicationBacklogBytes_ = publicationBytes_;
+        publicationBacklogItems_ = publications_.size();
         if (publicationBytes_ > publicationHighWaterMark_)
             publicationHighWaterMark_ = publicationBytes_;
     }
@@ -723,6 +737,8 @@ void ApiServer::PublishPending() {
                 event = std::move(publications_.front()); publications_.pop_front();
                 publicationBytes_ -= event.charge;
             }
+            publicationBacklogBytes_ = publicationBytes_;
+            publicationBacklogItems_ = publications_.size();
         }
         try {
             if (gap) {
@@ -778,7 +794,15 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
         Bytes b(data.begin() + offset, data.begin() + std::min(data.size(), offset + 16384));
         encodedChunks.push_back(Encode64(b));
     }
+    const auto lockStarted = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> l(mutex_);
+    const auto lockUsec = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - lockStarted).count());
+    serverLockWaitUsecTotal_.fetch_add(lockUsec, std::memory_order_relaxed);
+    serverLockWaitSamples_.fetch_add(1, std::memory_order_relaxed);
+    auto maximum = serverLockWaitUsecMaximum_.load(std::memory_order_relaxed);
+    while (maximum < lockUsec && !serverLockWaitUsecMaximum_.compare_exchange_weak(
+        maximum, lockUsec, std::memory_order_relaxed)) {}
     if (!sessions_.count(target))
         return;
     auto &h = histories_[target];

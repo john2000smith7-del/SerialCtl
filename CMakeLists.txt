@@ -217,6 +217,7 @@ add_executable(serialctl WIN32
     src/sftp/SftpController.cpp
     src/sftp/SftpModel.cpp
     src/terminal/TerminalModel.cpp
+    src/terminal/TerminalParseScheduler.cpp
     "${SERIALCTL_GENERATED_DIR}/serialctl.rc"
 )
 serialctl_configure_native_target(serialctl WINDOWS)
@@ -228,7 +229,7 @@ if(MSVC)
     # resources and to ensure the Win7 compatibility declarations stay authoritative.
     target_link_options(serialctl PRIVATE /MANIFEST:NO)
 endif()
-target_link_libraries(serialctl PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
+target_link_libraries(serialctl PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp psapi)
 
 foreach(PUTTY_PROGRAM IN ITEMS plink.exe psftp.exe)
     if(NOT EXISTS "${PUTTY_ARCH_DIR}/${PUTTY_PROGRAM}")
@@ -289,6 +290,22 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(session_receive_dispatcher_test CONSOLE)
     target_include_directories(session_receive_dispatcher_test PRIVATE src/app src/connections)
     add_test(NAME session_receive_dispatcher COMMAND session_receive_dispatcher_test)
+    add_executable(performance_metrics_test tests/unit/PerformanceMetricsTest.cpp)
+    serialctl_configure_native_target(performance_metrics_test CONSOLE)
+    target_include_directories(performance_metrics_test PRIVATE src/app)
+    add_test(NAME performance_metrics COMMAND performance_metrics_test)
+    add_executable(terminal_parse_scheduler_test tests/unit/TerminalParseSchedulerTest.cpp
+        src/terminal/TerminalParseScheduler.cpp src/terminal/TerminalModel.cpp src/xfer/TransferProtocol.cpp)
+    serialctl_configure_native_target(terminal_parse_scheduler_test CONSOLE)
+    target_include_directories(terminal_parse_scheduler_test PRIVATE src/terminal src/connections src/xfer)
+    add_test(NAME terminal_parse_scheduler COMMAND terminal_parse_scheduler_test)
+    set_tests_properties(terminal_parse_scheduler PROPERTIES TIMEOUT 30)
+    add_executable(terminal_throughput_benchmark tests/performance/TerminalThroughputBenchmark.cpp
+        src/terminal/TerminalModel.cpp)
+    serialctl_configure_native_target(terminal_throughput_benchmark CONSOLE)
+    target_include_directories(terminal_throughput_benchmark PRIVATE src/terminal)
+    add_test(NAME terminal_throughput_benchmark COMMAND terminal_throughput_benchmark)
+    set_tests_properties(terminal_throughput_benchmark PROPERTIES TIMEOUT 60)
     add_executable(queued_transfer_test tests/integration/QueuedTransferTest.cpp src/connections/QueuedConnection.cpp
         src/connections/SerialConnection.cpp src/connections/SerialDevice.cpp)
     serialctl_configure_native_target(queued_transfer_test CONSOLE)
@@ -351,7 +368,7 @@ if(BUILD_TESTING)
     serialctl_configure_native_target(ai_device_test CONSOLE)
     target_compile_definitions(ai_device_test PRIVATE SERIALCTL_AI_TESTING SERIALCTL_POWER_TESTING
         SERIALCTL_VERSION=L"${SERIALCTL_CPP_VERSION}" SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
-    target_link_libraries(ai_device_test PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
+    target_link_libraries(ai_device_test PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp psapi)
     if(MSVC)
         target_link_options(ai_device_test PRIVATE /MANIFEST:NO)
     endif()

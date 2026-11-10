@@ -249,6 +249,22 @@ int main() {
         Check(logger.Error().find(L"日志刷新失败") != std::wstring::npos, "Stop flush error is observable");
         evidence["cases"].push_back({{"name", "FlushFileBuffers fault injection on Stop: bounded return and observable error"}});
 
+        Check(logger.Start(L"ordered-batch", error, true), "start ordered batch fixture");
+        const auto batchPath = fs::path(logger.Path());
+        roots.push_back(batchPath);
+        logger.WriteBatch({{false, L"first\r\n"}, {true, L"status"}, {false, L"last\r\n"}});
+        Check(SessionLoggerTestAccess::Drained(logger), "ordered batch drained");
+        const auto batchStats = logger.Stats();
+        logger.Stop();
+        const auto batchText = Read(batchPath);
+        const auto firstAt = batchText.find("first"), statusAt = batchText.find("status"), lastAt = batchText.find("last");
+        Check(firstAt != std::string::npos && statusAt != std::string::npos && lastAt != std::string::npos &&
+              firstAt < statusAt && statusAt < lastAt, "batch conversion preserves exact entry order");
+        Check(batchStats.acceptedBytes == batchStats.completedBytes && batchStats.highWaterBytes > 0 &&
+              batchStats.overflowEvents == 0, "batch logger metrics describe complete delivery");
+        evidence["cases"].push_back({{"name", "ordered batch conversion and backlog metrics"},
+            {"bytes", batchStats.completedBytes}, {"high_water_bytes", batchStats.highWaterBytes}});
+
         // Slow disk bounded queue test: WriteBytes never blocks producer thread, rejects beyond 8MB
         Check(logger.Start(L"slow-disk-bounded", error, true), "start slow disk fixture");
         roots.push_back(logger.Path());
