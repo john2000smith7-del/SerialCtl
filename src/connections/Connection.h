@@ -21,6 +21,12 @@ class IConnection {
     virtual void CancelStart() {}
     virtual void Stop() = 0;
     virtual bool Send(const Bytes &data, std::wstring &error) = 0;
+    // Out-of-band interrupt for interactive transports (e.g. local CMD).
+    // It must not be queued behind ordinary terminal input.
+    virtual bool Interrupt(std::wstring &error) {
+        error = L"当前连接不支持中断";
+        return false;
+    }
     virtual bool SendConditional(const Bytes& data,std::wstring& error,std::function<bool()> allowed) {
         return !allowed||allowed()?Send(data,error):true;
     }

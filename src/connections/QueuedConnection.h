@@ -23,6 +23,7 @@ class QueuedConnection final : public IConnection {
     }
     void Stop() override;
     bool Send(const Bytes &data, std::wstring &error) override;
+    bool Interrupt(std::wstring &error) override;
     bool SendConditional(const Bytes&,std::wstring&,std::function<bool()>) override;
     bool SupportsTransfer() const override {return inner_->SupportsTransfer();}
     bool TransferActive() const {std::lock_guard<std::mutex> lock(mutex_);return !transferOwner_.empty();}

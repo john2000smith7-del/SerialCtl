@@ -100,6 +100,35 @@ int main() {
             return fail(4);
         }
     }
+    // A genuine console control event must interrupt the running child and
+    // preserve the same CMD shell (including its environment and connection).
+    command = "echo SERIALCTL_CTRL_C_BEGIN\r\nping -n 60 127.0.0.1 >nul\r\n";
+    if (!cmd.Send(Bytes(command.begin(), command.end()), error))
+        return fail(20);
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (!ready.wait_for(lock, std::chrono::seconds(4),
+                            [&] { return output.find("SERIALCTL_CTRL_C_BEGIN") != std::string::npos; })) {
+            lock.unlock();
+            return fail(21);
+        }
+    }
+    Sleep(500); // Give ping time to enter its long-running phase.
+    if (!cmd.Interrupt(error))
+        return fail(22);
+    command = "echo SERIALCTL_AFTER_CTRL_C-%SERIALCTL_TEST%\r\n";
+    if (!cmd.Send(Bytes(command.begin(), command.end()), error))
+        return fail(23);
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (!ready.wait_for(lock, std::chrono::seconds(6),
+                            [&] { return output.find("SERIALCTL_AFTER_CTRL_C-retained") != std::string::npos; })) {
+            lock.unlock();
+            return fail(24);
+        }
+    }
+    if (!cmd.IsConnected())
+        return fail(25);
     // Cancellation of a pipe writer must terminate the real CMD process tree.
     std::string blocked = "echo SERIALCTL_BLOCK_BEGIN\r\nping -n 100 127.0.0.1 >nul\r\n";
     cmd.Send(Bytes(blocked.begin(), blocked.end()), error);

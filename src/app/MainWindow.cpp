@@ -1177,6 +1177,9 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         return 0;
     }
     if (message == WM_CHAR) {
+        // TranslateMessage may post ETX even after Ctrl+C key-down was handled
+        // for copy/interrupt; never deliver a second, accidental CMD interrupt.
+        if (self->selectedMode_ == 4 && wParam == 3) return 0;
         self->SendTerminalCharacter(static_cast<wchar_t>(wParam));
         return 0;
     }
@@ -1211,6 +1214,10 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         }
         if (control && wParam == L'C' && self->HasTerminalSelection()) {
             self->CopyTerminalSelection(false);
+            return 0;
+        }
+        if (control && !shift && !alt && wParam == L'C' && self->selectedMode_ == 4) {
+            self->SendTerminalCharacter(3);
             return 0;
         }
         const bool localHistory = !self->activeSession_ || !self->activeSession_->terminal.AlternateScreen();
@@ -5212,8 +5219,21 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
 }
 
 void MainWindow::SendTerminalCharacter(wchar_t character) {
-    if (macro_.RunningIndex() >= 0) return;
     if (!activeSession_ || !connection_ || !connection_->IsConnected()) return;
+    if (selectedMode_ == 4 && character == 3) {
+        std::wstring error;
+        if (!connection_->Interrupt(error)) {
+            AppendStatus(error.empty() ? L"CMD 中断请求发送失败" : error, true);
+            return;
+        }
+        if (macro_.RunningIndex() >= 0)
+            StopCommandSequence(CommandSequenceEnd::Interrupted, L"用户按下 Ctrl+C");
+        activeSession_->cmdEditor.Clear();
+        ScrollTerminalToBottom();
+        InvalidateRect(terminal_, nullptr, FALSE);
+        return;
+    }
+    if (macro_.RunningIndex() >= 0) return;
     ScrollTerminalToBottom();
     if (selectedMode_ == 4) {
         auto &editor = activeSession_->cmdEditor;
@@ -5224,9 +5244,7 @@ void MainWindow::SendTerminalCharacter(wchar_t character) {
                 editor.Submitted();
         } else if (character == L'\b')
             editor.Edit(CmdLineEditor::Key::Backspace);
-        else if (character == 3) {
-            AppendStatus(L"CMD 行提交模式不支持 Ctrl+C；可使用全部断开终止进程树", true);
-        } else if (character >= 32 || character == L'\t') {
+        else if (character >= 32 || character == L'\t') {
             if (!editor.Insert(std::wstring(1, character)))
                 AppendStatus(L"CMD 输入超过 8191 字符", true);
         }

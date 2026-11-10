@@ -41,6 +41,14 @@ void QueuedConnection::Stop() {
 bool QueuedConnection::Send(const Bytes &data, std::wstring &error) {
     return SendObserved(data, error, {});
 }
+bool QueuedConnection::Interrupt(std::wstring &error) {
+    if (!IsConnected()) {
+        error = L"连接已断开";
+        return false;
+    }
+    // Bypass the regular writer FIFO: a long-running CMD command must remain interruptible.
+    return inner_->Interrupt(error);
+}
 bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std::function<void()> accepted, std::function<bool()> allowed) {
     return Enqueue(data,error,std::move(accepted),std::move(allowed));
 }
