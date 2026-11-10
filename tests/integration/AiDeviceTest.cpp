@@ -560,6 +560,30 @@ struct AiDeviceTestAccess {
             std::wstring manyRows;for(int i=0;i<80;++i)manyRows+=L"echo row-"+std::to_wstring(i)+L"\r\n";
             main.notebook_.SetText(manyRows);main.notebook_.SelectLine(63);
             Require(main.notebook_.SelectedCommands()==std::vector<std::wstring>{L"echo row-63"},"Native paragraph offsets must map to the correct complete row after many CRLF lines");
+            // Wheel input must move the real RichEdit viewport even though the
+            // notebook deliberately draws its own thin scrollbar (no WS_VSCROLL).
+            main.notebook_.Selection(0, 0);
+            POINT wheelTop{0, 0};
+            SendMessageW(main.notebook_.Editor(), EM_SETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&wheelTop));
+            const auto firstVisible = SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0);
+            SendMessageW(main.notebook_.Editor(), WM_MOUSEWHEEL,
+                         MAKEWPARAM(0, static_cast<WORD>(-WHEEL_DELTA)), 0);
+            const auto afterBodyWheel = SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0);
+            Require(afterBodyWheel > firstVisible, "Notebook body mouse wheel must scroll the RichEdit viewport down");
+            SendMessageW(main.notebook_.Handle(), WM_MOUSEWHEEL,
+                         MAKEWPARAM(0, static_cast<WORD>(-WHEEL_DELTA)), 0);
+            const auto afterGutterWheel = SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0);
+            Require(afterGutterWheel > afterBodyWheel, "Notebook gutter mouse wheel must scroll the same viewport");
+            SendMessageW(main.notebook_.Editor(), WM_MOUSEWHEEL,
+                         MAKEWPARAM(0, static_cast<WORD>(WHEEL_DELTA / 2)), 0);
+            Require(SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0) == afterGutterWheel,
+                    "Half-notch wheel delta must be accumulated, not discarded or double-scrolled");
+            SendMessageW(main.notebook_.Editor(), WM_MOUSEWHEEL,
+                         MAKEWPARAM(0, static_cast<WORD>(WHEEL_DELTA / 2)), 0);
+            Require(SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0) < afterGutterWheel,
+                    "Two half-notch wheel deltas must scroll back up");
+            Require(main.notebook_.Text() == manyRows,
+                    "Scrolling the notebook must not alter the document or submit commands");
             main.notebook_.SetText(std::wstring(300,L'A')+L"\r\necho end");
             Require(SendMessageW(main.notebook_.Editor(),EM_GETLINECOUNT,0,0)==2,"Long notebook commands must not soft-wrap");
             main.notebook_.Selection(200,200);SendMessageW(main.notebook_.Editor(),EM_SCROLLCARET,0,0);
