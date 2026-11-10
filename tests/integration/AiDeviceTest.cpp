@@ -929,7 +929,8 @@ struct AiDeviceTestAccess {
             while (main.receiveDispatcher_.PendingItemCount() && GetTickCount64() < backlogDeadline) paintOpportunity();
             if (const auto pending = main.receiveDispatcher_.PendingItemCount())
                 std::cerr << "FAILED receive continuation state: remaining=" << pending
-                          << " continuation=" << main.receiveContinuation_ << " posted=" << main.receivePosted_
+                          << " continuation=" << main.receiveContinuation_
+                          << " notificationFailures=" << main.receiveDispatcher_.Stats().notificationFailures
                           << " dispatched=" << dispatched << " paints=" << paints
                           << " update=" << GetUpdateRect(parent, nullptr, FALSE)
                           << " queueStatus=" << GetQueueStatus(QS_PAINT | QS_POSTMESSAGE) << std::endl;
@@ -973,7 +974,8 @@ struct AiDeviceTestAccess {
             if (main.receiveDispatcher_.PendingItemCount() || main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) {
                 const auto text = main.activeSession_->terminal.PlainText(false);
                 std::cerr << "FAILED startup replay state: remaining=" << main.receiveDispatcher_.PendingItemCount()
-                          << " continuation=" << main.receiveContinuation_ << " posted=" << main.receivePosted_
+                          << " continuation=" << main.receiveContinuation_
+                          << " notificationFailures=" << main.receiveDispatcher_.Stats().notificationFailures
                           << " update=" << GetUpdateRect(parent, nullptr, FALSE)
                           << " active=" << main.activeSession_->id << " textLength=" << text.size()
                           << " elapsed=" << GetTickCount64() - (replayDeadline - 5000)

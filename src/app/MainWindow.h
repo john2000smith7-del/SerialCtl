@@ -224,6 +224,7 @@ private:
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
     void AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage = 0, LONGLONG arrival = 0);
     void QueueReceived(ReceivedItem);
+    bool PostReceiveNotification();
     void AppendInput(const ReceivedItem &);
     std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
     void SyncSftpDirectoryFromTerminal(SessionState& session, bool receivedOscDirectory = false);
@@ -522,8 +523,8 @@ private:
     bool startupUpdateDeferred_ = false;
     SessionReceiveDispatcher receiveDispatcher_;
     bool measurePaint_ = false;
-    bool receivePosted_ = false;
     bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.
+    std::atomic<HWND> receiveWindow_{nullptr};
     std::set<std::uint64_t> loggerErrorsShown_;
 
     std::thread discoveryThread_;

@@ -826,6 +826,7 @@ bool MainWindow::Create(HINSTANCE instance, int showCommand) {
         work.left+(work.right-work.left-width)/2,work.top+(work.bottom-work.top-height)/2,width,height,
         nullptr,nullptr,instance,this);
     if (!window_) return false;
+    receiveWindow_.store(window_, std::memory_order_release);
     ApplyDarkTitleBar(window_, darkMode_);
     ShowWindow(window_, showCommand);
     UpdateWindow(window_);
@@ -848,6 +849,11 @@ MainWindow::~MainWindow() {
 
 void MainWindow::RequestShutdown() {
     if (closing_.exchange(true)) return;
+    // Prevent a producer that passed its initial closing check from posting to
+    // an HWND after destruction.  Closing the dispatcher also wakes no new
+    // work and releases queued buffers before transport joins begin.
+    receiveWindow_.store(nullptr, std::memory_order_release);
+    receiveDispatcher_.Close();
     // Signal every independent worker before waiting for any one of them.
     discoveryCancel_ = true;
     discoveryDialog_ = nullptr;
@@ -2448,6 +2454,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageData: {
         if (closing_) return 0;
+        if (!receiveDispatcher_.BeginDrain()) return 0;
         const auto overflow = receiveDispatcher_.TakeOverflow();
         const auto items = receiveDispatcher_.PopBatch(activeSession_ ? activeSession_->id : 0, 32, std::chrono::milliseconds(2));
         for (const auto &item : items) {
@@ -2466,16 +2473,16 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 AppendInput(item);
         }
         {
-            receivePosted_ = false;
-            if (receiveDispatcher_.HasPending()) {
+            if (receiveDispatcher_.FinishDrain()) {
                 if (IsWindowVisible(window_) && !IsIconic(window_)) {
                     // Request a normal low-priority paint opportunity without
                     // invalidating/repainting the whole main-window chrome for
                     // every terminal receive slice. Terminal output paints below.
                     receiveContinuation_ = RedrawWindow(window_, nullptr, nullptr, RDW_INTERNALPAINT) != FALSE;
-                    receivePosted_ = receiveContinuation_;
                 } else
-                    receivePosted_ = SetTimer(window_, ReceivePumpTimerId, 10, nullptr) != 0;
+                    receiveContinuation_ = false;
+                if (!receiveContinuation_ && SetTimer(window_, ReceivePumpTimerId, 10, nullptr) == 0)
+                    PostReceiveNotification();
             }
         }
         // Present accepted output now; ordinary WM_PAINT delivery can otherwise
@@ -4581,8 +4588,8 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
         // parsing the whole replay synchronously in connection completion.
         bool needsPost = false;
         receiveDispatcher_.PrependBatch(std::move(pendingConnectionData_), needsPost);
-        if (needsPost && !receivePosted_)
-            receivePosted_ = PostMessageW(window_, MessageData, 0, 0) != FALSE;
+        if (needsPost)
+            PostReceiveNotification();
     }
     pendingConnectionData_.clear();
     pendingConnectionBytes_ = 0;
@@ -5375,12 +5382,37 @@ void MainWindow::QueueReceived(ReceivedItem item) {
         return;
     bool needsPost = false;
     receiveDispatcher_.Enqueue(std::move(item), needsPost);
-    if (needsPost && !receivePosted_) {
-        receivePosted_ = PostMessageW(window_, MessageData, 0, 0) != FALSE;
-        if (!receivePosted_) {
-            receiveDispatcher_.Clear();
-        }
+    if (needsPost)
+        PostReceiveNotification();
+}
+
+bool MainWindow::PostReceiveNotification() {
+    if (closing_.load(std::memory_order_acquire)) {
+        receiveDispatcher_.NotificationFailed(true);
+        return false;
     }
+    const HWND target = receiveWindow_.load(std::memory_order_acquire);
+    if (!target) {
+        receiveDispatcher_.NotificationFailed(true);
+        return false;
+    }
+    if (PostMessageW(target, MessageData, 0, 0))
+        return true;
+
+    // PostMessage can fail when the thread queue is temporarily full.  A
+    // window timer does not consume another queue slot immediately; a bounded
+    // synchronous send covers the remaining recoverable cases.  The slow path
+    // is exceptional and never holds the queue mutex.
+    if (SetTimer(target, ReceivePumpTimerId, 1, nullptr) != 0)
+        return true;
+    DWORD_PTR ignored = 0;
+    if (SendMessageTimeoutW(target, MessageData, 0, 0,
+                            SMTO_ABORTIFHUNG | SMTO_BLOCK, 50, &ignored))
+        return true;
+    // Make the next producer retry rather than leaving a permanently armed
+    // state with no corresponding Windows notification.
+    receiveDispatcher_.NotificationFailed(true);
+    return false;
 }
 void MainWindow::AppendInput(const ReceivedItem &item) {
     SessionState *session = FindSession(item.sessionId);

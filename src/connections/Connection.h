@@ -1,4 +1,5 @@
 #pragma once
+#include "ByteTypes.h"
 
 #include <windows.h>
 #include <winsock2.h>
@@ -6,11 +7,9 @@
 #include <cstdint>
 #include <functional>
 #include <string>
-#include <vector>
 
 namespace serialctl {
 
-using Bytes = std::vector<std::uint8_t>;
 using DataCallback = std::function<void(const Bytes &)>;
 using StatusCallback = std::function<void(const std::wstring &, bool)>;
 

@@ -378,7 +378,9 @@ void TestDisconnectOutputConfirmation(const std::string &scenario) {
                "OFF write and readback failures leave the disconnect action failed");
         Expect(result.value("unconfirmedChannels", Json::array()) == Json::array({1}), "Only owned CH1 has an unconfirmed OFF");
         Expect(offResults.size() == 1 && offResults[0]["state"] == "unknown" &&
-               offResults[0]["error"] == (scenario == "write" ? "Simulated OFF write failure" : "Simulated output readback timeout"),
+               offResults[0]["error"] ==
+                   (scenario == "write" ? "SCPI command 'CHAN:OUTP OFF': Simulated OFF write failure"
+                                        : "SCPI query 'CHAN:OUTP?': Simulated output readback timeout"),
                "Disconnect action retains the actual stage and error");
         Expect(offWrites == 2 && state["channels"][0]["output"].is_null(), "Safety retry writes OFF without claiming readback");
         const auto repeated = Wait(power, power.Submit({{"type", "disconnect"}}));
