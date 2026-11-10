@@ -254,6 +254,10 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(serial_ports_model_test tests/unit/SerialPortsModelTest.cpp)
+    serialctl_configure_native_target(serial_ports_model_test CONSOLE)
+    add_test(NAME serial_ports_model COMMAND serial_ports_model_test)
+    set_tests_properties(serial_ports_model PROPERTIES TIMEOUT 20)
     add_executable(ui_settings_writer_test tests/unit/UiSettingsWriterTest.cpp)
     serialctl_configure_native_target(ui_settings_writer_test CONSOLE)
     add_test(NAME ui_settings_writer COMMAND ui_settings_writer_test)

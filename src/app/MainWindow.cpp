@@ -4323,9 +4323,7 @@ void MainWindow::CompleteSerialPortScan(HWND dialog) {
     serialPorts_ = serialPortScan_->ports;
     int count = 0;
     for (const auto &port : serialPorts_) {
-        auto label = port.friendlyName;
-        if (label.find(port.port) == std::wstring::npos)
-            label += L" (" + port.port + L")";
+        const auto label = SerialPortDisplayName(port);
         SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
         ++count;
     }

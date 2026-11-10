@@ -1,4 +1,5 @@
 #include "PowerPane.h"
+#include "SerialPorts.h"
 #include "UiStyle.h"
 #include "Win32Helpers.h"
 #include <cmath>
@@ -44,7 +45,7 @@ struct ResourceScan {
     std::atomic<bool> done{false};
     int kind = 0;
     Json usb = Json::array();
-    std::vector<std::wstring> ports;
+    std::vector<SerialPortInfo> ports;
 };
 struct ConnectionDialog {
     PowerPane *pane;
@@ -53,6 +54,8 @@ struct ConnectionDialog {
     PowerService *service;
     HWND kind, resource, port, baud, bits, parity, stop, error, driver;
     Json usb;
+    std::vector<SerialPortInfo> ports; // Indexed exactly as the visible RS232 entries.
+    std::wstring preferredPort;        // Preserve the raw COM selection across a refresh.
     std::shared_ptr<ResourceScan> scan;
 };
 } // namespace
@@ -1479,10 +1482,44 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 const auto text = Wide(s);
                 SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
             }
-        } else for (const auto &text : data->scan->ports)
-            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+        } else {
+            data->ports = std::move(data->scan->ports);
+            for (const auto &port : data->ports) {
+                const auto label = SerialPortDisplayName(port);
+                SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+            }
+        }
+        if (kind == 1) {
+            // Match the detailed terminal list without truncating long USB/driver names.
+            const int minimumWidth = MulDiv(300, data->pane->dpi_, 96);
+            int droppedWidth = minimumWidth;
+            if (HDC dc = GetDC(combo)) {
+                const HGDIOBJ previous = SelectObject(dc, data->font);
+                for (const auto &port : data->ports) {
+                    const auto label = SerialPortDisplayName(port);
+                    SIZE extent{};
+                    if (GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &extent))
+                        droppedWidth = std::max(droppedWidth, static_cast<int>(extent.cx) + MulDiv(48, data->pane->dpi_, 96));
+                }
+                SelectObject(dc, previous);
+                ReleaseDC(combo, dc);
+            }
+            RECT work{};
+            if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0))
+                droppedWidth = std::min(droppedWidth, std::max(minimumWidth, static_cast<int>(work.right - work.left) - MulDiv(32, data->pane->dpi_, 96)));
+            SendMessageW(combo, CB_SETDROPPEDWIDTH, static_cast<WPARAM>(droppedWidth), 0);
+        }
         const bool any = SendMessageW(combo, CB_GETCOUNT, 0, 0) > 0;
-        SendMessageW(combo, CB_SETCURSEL, 0, 0);
+        int selected = 0;
+        if (kind == 1 && !data->preferredPort.empty()) {
+            for (size_t i = 0; i < data->ports.size(); ++i) {
+                if (data->ports[i].port == data->preferredPort) {
+                    selected = static_cast<int>(i);
+                    break;
+                }
+            }
+        }
+        SendMessageW(combo, CB_SETCURSEL, any ? selected : static_cast<WPARAM>(-1), 0);
         EnableWindow(GetDlgItem(h, IDOK), any);
         EnableWindow(GetDlgItem(h, 103), TRUE);
         SetWindowTextW(data->error, any ? L"" : kind == 0 && !PowerService::VisaAvailable()
@@ -1531,6 +1568,11 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ShowWindow(GetDlgItem(h, 103), SW_SHOW);
             ShowWindow(data->driver, driverNeeded ? SW_SHOW : SW_HIDE);
             HWND combo = kind == 0 ? data->resource : data->port;
+            if (kind == 1) {
+                const auto index = SendMessageW(data->port, CB_GETCURSEL, 0, 0);
+                if (const auto *selected = SelectedSerialPort(data->ports, index))
+                    data->preferredPort = selected->port;
+            }
             SendMessageW(combo, CB_RESETCONTENT, 0, 0);
             SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"正在查找设备…"));
             SendMessageW(combo, CB_SETCURSEL, 0, 0);
@@ -1541,11 +1583,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             data->pane->resourceScanWorkers_[kind == 0 ? 0 : 1].Retire([job] {
                 try {
                     if (job->kind == 0) job->usb = PowerService::UsbResources();
-                    else for (int index = 1; index <= 256; ++index) {
-                        const auto name = L"COM" + std::to_wstring(index);
-                        wchar_t target[1024]{};
-                        if (QueryDosDeviceW(name.c_str(), target, 1024)) job->ports.push_back(name);
-                    }
+                    else job->ports = EnumerateSerialPorts();
                 } catch (...) { }
                 job->done = true;
             });
@@ -1583,7 +1621,11 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     command["resource"] = data->usb[static_cast<size_t>(index)];
                 }
                 if (kind == 1) {
-                    command["port"] = WideToMultiByte(data->pane->Text(data->port), CP_UTF8);
+                    const auto index = SendMessageW(data->port, CB_GETCURSEL, 0, 0);
+                    const auto *selected = SelectedSerialPort(data->ports, index);
+                    if (!selected)
+                        throw std::runtime_error("请选择有效串口");
+                    command["port"] = WideToMultiByte(selected->port, CP_UTF8);
                     command["baud"] = std::stoi(data->pane->Text(data->baud));
                     command["dataBits"] = std::stoi(data->pane->Text(data->bits));
                     command["parity"] = SendMessageW(data->parity, CB_GETCURSEL, 0, 0);
