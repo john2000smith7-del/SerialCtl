@@ -1217,7 +1217,9 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
             return 0;
         }
         if (control && !shift && !alt && wParam == L'C' && self->selectedMode_ == 4) {
-            self->SendTerminalCharacter(3);
+            // Ctrl+C is a single interrupt request; key auto-repeat must not
+            // interrupt the next command if the shortcut is held down.
+            if (!(lParam & (1LL << 30))) self->SendTerminalCharacter(3);
             return 0;
         }
         const bool localHistory = !self->activeSession_ || !self->activeSession_->terminal.AlternateScreen();
