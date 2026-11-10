@@ -63,6 +63,70 @@ Json Wait(PowerService &power, Json action) {
     return {{"error", "Timeout"}};
 }
 
+void TestConnectScpiDiagnostics() {
+    const std::vector<std::pair<std::string, std::string>> scenarios = {
+        {"*IDN?", "identify"},
+        {"INST:NSEL?", "select_channel"},
+        {"OUTP:TRAC?", "read_mode"},
+        {"MEAS:VOLT?", "initial_poll"}
+    };
+    for (const auto &scenario : scenarios) {
+        PowerService power;
+        const auto result = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"},
+                                                      {"testFailQuery", scenario.first}}));
+        const auto error = result.value("error", std::string());
+        Expect(result.value("state", "") == "failed" && result.value("stage", "") == scenario.second &&
+                   error.find("Power connect [" + scenario.second + "]") != std::string::npos &&
+                   error.find(scenario.first) != std::string::npos,
+               "Failed connect identifies the precise stage and SCPI query");
+        const auto state = power.State();
+        Expect(!state.value("connected", false), "Failed connection releases transport");
+        const auto diagnostic = state.value("lastConnectDiagnostic", Json::object());
+        Expect(diagnostic.value("stage", "") == scenario.second && diagnostic.value("error", "") == error,
+               "Failed connection retains accessible diagnostics");
+        bool hasError = false;
+        for (const auto &row : result.value("scpiTrace", Json::array())) {
+            if (row.value("direction", "") == "ERROR" && row.value("command", "") == scenario.first) hasError = true;
+            Expect(row.value("command", "") != "*RST" && row.value("command", "") != "CHAN:OUTP ON",
+                   "Connection failure does not reset or enable supply");
+        }
+        Expect(hasError, "Failed query is present in SCPI trace");
+    }
+    {
+        PowerService power;
+        const auto result = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"},
+                                                      {"testFailRemoteWrite", true}}));
+        Expect(result.value("state", "") == "failed" && result.value("stage", "") == "enter_remote" &&
+                   result.value("error", std::string()).find("remote-mode write failure") != std::string::npos,
+               "Remote-control write errors are reported at the correct stage");
+        Expect(!power.State().value("connected", false), "Failed remote-mode initialization disconnects");
+    }
+    {
+        PowerService power;
+        const auto result = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}));
+        Expect(result.value("state", "") == "completed", "Simulated power connection completes");
+        const auto trace = result.value("scpiTrace", Json::array());
+        auto position = [&](const std::string &command) {
+            size_t index = 0;
+            for (const auto &row : trace) {
+                if (row.value("direction", "") == "TX" && row.value("command", "") == command) return index;
+                ++index;
+            }
+            return trace.size();
+        };
+        Expect(position("*IDN?") < position("SYST:REM") &&
+                   position("SYST:REM") < position("INST:NSEL 1") &&
+                   position("INST:NSEL 1") < position("OUTP:TRAC?"),
+               "Identity precedes remote-control request and subsequent queries");
+        Expect(power.State().value("connected", false) &&
+                   power.State().value("lastConnectDiagnostic", Json::object()).value("stage", "") == "complete",
+               "Successful connection retains diagnostics");
+        for (const auto &row : trace)
+            Expect(row.value("command", "") != "*RST" && row.value("command", "") != "CHAN:OUTP ON",
+                   "Connection neither resets nor enables the output");
+    }
+}
+
 void TestNativeRecoveryTimingAndCancel() {
     PowerService power;
     Expect(Wait(power,power.Submit({{"type","connect"},{"backend","simulation"}})).value("state","")=="completed", "Recovery fixture uses controlled device transport only");
@@ -339,6 +403,7 @@ void TestDisconnectOutputConfirmation(const std::string &scenario) {
 }
 
 int main() {
+    TestConnectScpiDiagnostics();
     for (const auto *scenario : {"write", "readback", "confirmed", "preserved"})
         TestDisconnectOutputConfirmation(scenario);
     TestNativeRecoveryTimingAndCancel();

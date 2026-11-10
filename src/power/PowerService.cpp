@@ -60,6 +60,19 @@ std::string Decimal(double value) {
     text << value;
     return text.str();
 }
+std::string ScpiHexPreview(const std::string &bytes) {
+    static constexpr char digits[] = "0123456789ABCDEF";
+    std::string hex;
+    const auto limit = std::min<size_t>(bytes.size(), 64);
+    for (size_t i = 0; i < limit; ++i) {
+        if (i) hex.push_back(' ');
+        auto ch = static_cast<unsigned char>(bytes[i]);
+        hex.push_back(digits[ch >> 4]);
+        hex.push_back(digits[ch & 15]);
+    }
+    if (bytes.size() > limit) hex += " ...";
+    return hex;
+}
 Json ValidateChannels(const Json &command) {
     Require(command.contains("channels") && command["channels"].is_array() && !command["channels"].empty() &&
                 command["channels"].size() <= 3,
@@ -90,7 +103,27 @@ struct PowerService::Transport {
 #ifdef SERIALCTL_POWER_TESTING
     bool testFailOutputReadback = false;
     bool testFailOutputOffWrite = false;
+    bool testFailRemoteWrite = false;
+    std::string testFailQuery;
 #endif
+    Json scpiTrace = Json::array();
+    void RecordScpi(const char *direction, const std::string &command, const std::string &value = "",
+                    std::uint64_t elapsedMs = 0) {
+        Json row = {{"direction", direction}, {"command", command}};
+        if (direction[0] != 'T') {
+            row["elapsedMs"] = elapsedMs;
+            if (direction[0] == 'R') {
+                row["bytes"] = value.size();
+                row["hex"] = ScpiHexPreview(value);
+                std::string printable = value.substr(0, 96);
+                for (auto &ch : printable)
+                    if (static_cast<unsigned char>(ch) < 32 || static_cast<unsigned char>(ch) > 126) ch = '.';
+                row["reply"] = std::move(printable);
+            } else row["error"] = value;
+        }
+        scpiTrace.push_back(std::move(row));
+        if (scpiTrace.size() > 64) scpiTrace.erase(scpiTrace.begin());
+    }
     int failAfter = -1;
     Json simulation =
         Json::array({Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}, {"ovp", 30.0}, {"ovpEnabled", false}},
@@ -110,7 +143,8 @@ struct PowerService::Transport {
         if (serial != INVALID_HANDLE_VALUE)
             CloseHandle(serial);
     }
-    void Write(std::string command) {
+    void Write(std::string command, bool record = true) {
+        if (record) RecordScpi("TX", command);
         if (simulated) {
             writes.push_back(command);
 #ifdef SERIALCTL_POWER_TESTING
@@ -118,6 +152,8 @@ struct PowerService::Transport {
                 testFailOutputOffWrite = false;
                 throw std::runtime_error("Simulated OFF write failure");
             }
+            if (testFailRemoteWrite && command == "SYST:REM")
+                throw std::runtime_error("Simulated remote-mode write failure");
 #endif
             if (command == "OUTP:PAR ON")
                 mode = "parallel";
@@ -204,9 +240,23 @@ struct PowerService::Transport {
                         count == command.size(),
                     "Serial write failed");
     }
-    std::string Query(std::string command) {
+    std::string Query(const std::string &command) {
+        const auto started = GetTickCount64();
+        RecordScpi("TX", command);
+        try {
+            auto reply = QueryRaw(command);
+            RecordScpi("RX", command, reply, GetTickCount64() - started);
+            return reply;
+        } catch (const std::exception &e) {
+            RecordScpi("ERROR", command, e.what(), GetTickCount64() - started);
+            throw std::runtime_error("SCPI query '" + command + "': " + e.what());
+        }
+    }
+    std::string QueryRaw(std::string command) {
         if (simulated) {
 #ifdef SERIALCTL_POWER_TESTING
+            if (!testFailQuery.empty() && command == testFailQuery)
+                throw std::runtime_error("Simulated SCPI query timeout");
             if (testFailOutputReadback && command == "CHAN:OUTP?") {
                 testFailOutputReadback = false;
                 throw std::runtime_error("Simulated output readback timeout");
@@ -267,7 +317,7 @@ struct PowerService::Transport {
                 return "0";
             return "0";
         }
-        Write(command);
+        Write(command, false);
         std::string result;
         auto end = GetTickCount64() + 2500;
         while (GetTickCount64() < end && result.size() < 4096) {
@@ -289,7 +339,8 @@ struct PowerService::Transport {
                 return result;
             }
         }
-        throw std::runtime_error("SCPI query timed out");
+        throw std::runtime_error("SCPI response timed out after 2500 ms (received " +
+                                 std::to_string(result.size()) + " bytes; hex=" + ScpiHexPreview(result) + ")");
     }
 };
 std::atomic<bool> PowerService::testEnabled_{false};
@@ -664,7 +715,11 @@ void PowerService::Command(const std::string &command) {
     Require(ConnectionAvailable(),ConnectionUnavailableMessage());
 #endif
     Require(transport_ != nullptr, "Power supply disconnected");
-    transport_->Write(command);
+    try {
+        transport_->Write(command);
+    } catch (const std::exception &e) {
+        throw std::runtime_error("SCPI command '" + command + "': " + e.what());
+    }
 }
 std::string PowerService::Query(const std::string &command) {
 #ifndef SERIALCTL_POWER_TESTING
@@ -679,9 +734,11 @@ double PowerService::Number(const std::string &command) {
     input.imbue(std::locale::classic());
     double number = 0;
     input >> number;
-    Require(!input.fail() && std::isfinite(number), "Invalid measurement response");
+    if (input.fail() || !std::isfinite(number))
+        throw std::runtime_error("Invalid numeric SCPI response to '" + command + "'; hex=" + ScpiHexPreview(value));
     input >> std::ws;
-    Require(input.eof(), "Unexpected SCPI response");
+    if (!input.eof())
+        throw std::runtime_error("Unexpected SCPI response to '" + command + "'; hex=" + ScpiHexPreview(value));
     return number;
 }
 void PowerService::Select(int channel) {
@@ -898,6 +955,8 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
 void PowerService::Execute(const std::string &id, const Json &command) {
     Json action;
     bool communication = false;
+    std::string connectStage;
+    std::unique_ptr<Transport> connectingTransport;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         actions_[id]["state"] = "running";
@@ -906,12 +965,18 @@ void PowerService::Execute(const std::string &id, const Json &command) {
     try {
         std::string type = command["type"];
         if (type == "connect") {
+            connectStage = "open_transport";
             Require(!transport_, "Already connected");
-            auto transport = std::make_unique<Transport>();
+            connectingTransport = std::make_unique<Transport>();
+            auto *transport = connectingTransport.get();
             std::string backend = command.at("backend");
             if (backend == "simulation") {
                 transport->simulated = true;
                 transport->failAfter = command.value("testFailAfterReads", -1);
+#ifdef SERIALCTL_POWER_TESTING
+                transport->testFailQuery = command.value("testFailQuery", std::string());
+                transport->testFailRemoteWrite = command.value("testFailRemoteWrite", false);
+#endif
             } else if (backend == "usb") {
                 Require(transport->visa.dll != nullptr, "Install bundled VISA runtime first");
                 Require(transport->visa.openRM(&transport->rm) >= 0, "VISA unavailable");
@@ -950,6 +1015,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 PurgeComm(transport->serial, PURGE_RXCLEAR | PURGE_TXCLEAR);
             } else
                 throw std::runtime_error("Unknown connection backend");
+            connectStage = "identify";
             std::string identity = transport->Query("*IDN?");
             auto comma = identity.find(',');
             auto nextComma = comma == std::string::npos ? std::string::npos : identity.find(',', comma + 1);
@@ -959,8 +1025,14 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 std::remove_if(model.begin(), model.end(), [](unsigned char c) { return std::isspace(c) != 0; }),
                 model.end());
             Require(model == "IT6332A", "Instrument is not IT6332A");
-            transport_ = std::move(transport);
+            // Request remote operation only after identifying the intended supply.
+            // No reset or output enable occurs during connection.
+            connectStage = "enter_remote";
+            transport->Write("SYST:REM");
+            transport_ = std::move(connectingTransport);
+            connectStage = "select_channel";
             Select(1);
+            connectStage = "read_mode";
             ReadMode();
             std::wstring error;
             log_.Start(L"IT6332A", error);
@@ -983,8 +1055,15 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 if (!error.empty())
                     state_["logError"] = WideToMultiByte(error, CP_UTF8);
             }
+            connectStage = "initial_poll";
             Poll();
             pollAt_ = GetTickCount64() + pollInterval_;
+            action["scpiTrace"] = transport_->scpiTrace;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                state_["lastConnectDiagnostic"] = {{"stage", "complete"}, {"trace", action["scpiTrace"]}};
+            }
+            connectStage.clear();
         } else if (type == "disconnect")
             Disconnect(command.value("preserveOutputs", false), &action);
         else if (type == "stop")
@@ -1099,7 +1178,14 @@ void PowerService::Execute(const std::string &id, const Json &command) {
         action["state"] = "failed";
         if(command.value("type",std::string()) == "recover" && command.contains("_recoveryEpoch") &&
             command["_recoveryEpoch"].get<std::uint64_t>() != recoveryCancelEpoch_.load()) action["state"] = "canceled";
-        action["error"] = e.what();
+        const auto failure = connectStage.empty() ? std::string(e.what()) :
+                             "Power connect [" + connectStage + "]: " + e.what();
+        action["error"] = failure;
+        if (command.value("type", std::string()) == "connect") {
+            action["stage"] = connectStage;
+            const auto *failedTransport = transport_ ? transport_.get() : connectingTransport.get();
+            action["scpiTrace"] = failedTransport ? failedTransport->scpiTrace : Json::array();
+        }
         action["timestamp"] = Timestamp();
         if (command.value("type", std::string()) == "connect" || communication) {
             Disconnect();
@@ -1113,7 +1199,10 @@ void PowerService::Execute(const std::string &id, const Json &command) {
         // is written once, after the common record below.
         if (action["state"] == "failed") {
             std::lock_guard<std::mutex> lock(mutex_);
-            state_["error"] = e.what();
+            state_["error"] = failure;
+            if (command.value("type", std::string()) == "connect")
+                state_["lastConnectDiagnostic"] = {{"stage", connectStage}, {"error", failure},
+                                                    {"trace", action["scpiTrace"]}};
         }
     }
     action["timestamp"] = Timestamp();
