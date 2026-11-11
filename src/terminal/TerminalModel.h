@@ -145,6 +145,8 @@ private:
     };
 
     TerminalLine BlankLine() const;
+    TerminalCell EraseCell() const;
+    TerminalLine EraseBlankLine() const;
     Screen BlankScreen() const;
     Screen& ActiveScreen();
     const Screen& ActiveScreen() const;
@@ -182,6 +184,8 @@ private:
     wchar_t MapSpecialGraphics(wchar_t character) const;
 
     const TerminalLine &RawDisplayLine(size_t index) const;
+    const TerminalLine &AbsoluteRawDisplayLine(size_t index) const;
+    size_t LogicalDisplayLineCount() const;
     void EnsureProjection() const;
     bool lineWrapView_ = true;
     mutable bool projectionDirty_ = true;
@@ -189,10 +193,12 @@ private:
     mutable std::vector<std::shared_ptr<const TerminalLine>> projectedLines_;
     mutable std::vector<bool> projectionReady_;
     mutable std::vector<size_t> projectionMaximum_;
+    mutable size_t projectionFirst_ = 0;
     std::uint64_t revision_ = 0;
     std::uint64_t historyRevision_ = 0;
     mutable std::uint64_t projectedHistoryRevision_ = ~std::uint64_t(0);
-    mutable size_t projectedHistorySize_ = 0;
+    mutable size_t projectedHistoryEnd_ = 0;
+    size_t historyBase_ = 0;
     mutable std::uint64_t nextLogicalId_ = 1;
     int columns_ = 80;
     int rows_ = 24;

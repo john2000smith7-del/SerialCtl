@@ -3,6 +3,9 @@
 #include "UpdateInstaller.h"
 #include "GuiInstance.h"
 #include "NetworkConnect.h"
+#include "McpStdioBridge.h"
+#include "McpService.h"
+#include "AiVoiceInput.h"
 
 // Windows SDK GDI+ declarations require the COM/property types first.
 // clang-format off
@@ -26,12 +29,33 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
     }
     if (std::wstring(parameters) == L"--serialctl-cmd-bridge")
         return serialctl::RunCmdConsoleBridge();
+    if (std::wstring(parameters) == L"--mcp-stdio")
+        return serialctl::mcp::RunMcpStdioBridge();
+    if (std::wstring_view(parameters).rfind(serialctl::ai::VoiceWorkerArgument, 0) == 0) {
+        int count = 0;
+        auto arguments = CommandLineToArgvW(GetCommandLineW(), &count);
+        const int result = arguments && count == 4 && std::wstring_view(arguments[1]) == serialctl::ai::VoiceWorkerArgument
+            ? serialctl::ai::RunVoiceWorker(arguments[2], arguments[3]) : 1;
+        if (arguments) LocalFree(arguments);
+        return result;
+    }
+    // Legacy resident-service entrypoints are intentionally disabled: the user starts
+    // the GUI manually and MCP/TFTP end when the GUI exits.
+    if (std::wstring(parameters) == L"--mcp-service" ||
+        std::wstring(parameters) == L"--mcp-agent") return 1;
     int updateExitCode = 0;
     if (serialctl::update::HandleUpdateCommandLine(parameters, updateExitCode))
         return updateExitCode;
+    // Remove a legacy per-user Run entry on the first manual launch after upgrade.
+    serialctl::mcp::McpService::RemoveLegacyUserAutoStart();
+    serialctl::mcp::McpService::SignalUserAgentStop();
     serialctl::GuiInstance guiInstance;
     const auto instanceResult = guiInstance.Begin();
     if (instanceResult == serialctl::GuiInstance::Result::Existing) return 0;
+    if (instanceResult == serialctl::GuiInstance::Result::CrossSessionExisting) {
+        MessageBoxW(nullptr, L"SerialCtl 已在此计算机的其他登录会话中运行，请先返回原会话或关闭原实例。", L"SerialCtl", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
     if (instanceResult == serialctl::GuiInstance::Result::Failed) {
         MessageBoxW(nullptr, L"无法建立应用实例，请稍后重新打开。", L"SerialCtl", MB_OK | MB_ICONERROR);
         return 1;

@@ -1,5 +1,6 @@
 #pragma once
 #include "PowerService.h"
+#include "RemotePowerClient.h"
 #include "UiStyle.h"
 #include "ToolbarIcons.h"
 #include "BackgroundCleanup.h"
@@ -24,15 +25,24 @@ class PowerPane {
     using LogExportHandler = std::function<void(bool, const std::wstring &, SessionLogger::ExportPoint)>;
     void SetLogExportHandler(LogExportHandler handler) { logExportHandler_ = std::move(handler); }
     void SetLogExportBusy(bool busy);
+    bool HasConnection();
+    Json ViewState();
+    Json DisconnectConnection(bool preserveOutputs);
     Json SelectedChannels() {
-        return Selection();
+        return remote_.Active() ? Json::array() : Selection();
     }
     void SetRecoveryTarget(const std::string&, const std::wstring&, bool eligible);
     Json RecoveryBinding();
+    using KeywordTarget = std::function<std::shared_ptr<PowerKeywordRun>(const PowerKeywordConfig &)>;
+    void SetKeywordTarget(KeywordTarget target) { keywordTarget_ = std::move(target); }
+    void ObserveKeywords(std::uint64_t session, const Bytes &bytes);
+    void KeywordTargetDisconnected(std::uint64_t session);
+    bool KeywordListening(std::uint64_t session) const;
 
   private:
     bool closing_ = false; // UI thread only.
-    BackgroundCleanup resourceScanWorkers_[2]; // A slow VISA scan must not delay RS232 enumeration.
+    BackgroundCleanup resourceScanWorkers_[3]; // Keep VISA, RS232 and network discovery independent.
+    RemotePowerClient remote_;
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK BodyProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static INT_PTR CALLBACK ConnectProc(HWND, UINT, WPARAM, LPARAM);
@@ -64,11 +74,23 @@ class PowerPane {
     void PopulateSettings();
     Json Selection();
     void Submit(Json command);
-    std::wstring Text(HWND);
+    static std::wstring Text(HWND);
     void LoadTask();
     void SaveTask();
     std::wstring TaskPath();
     void TaskFile(bool save);
+    void LoadKeywords();
+    void ConfigureKeywords();
+    void SaveKeywords(PowerKeywordConfig config);
+    std::wstring KeywordConfigPath();
+    void RefreshKeywords();
+    void LayoutKeywords(int width);
+    void ThemeKeywords();
+    static INT_PTR CALLBACK KeywordConfigProc(HWND, UINT, WPARAM, LPARAM);
+    static INT_PTR CALLBACK KeywordRuleProc(HWND, UINT, WPARAM, LPARAM);
+    static Json EncodeKeywords(const PowerKeywordConfig &config);
+    static PowerKeywordConfig DecodeKeywords(const Json &config);
+    static constexpr int KeywordMode = 5, KeywordConfigId = 138, KeywordStatsId = 139, KeywordStatusId = 140;
     HWND window_ = nullptr;
     HWND body_ = nullptr;
     HWND lastFocus_ = nullptr;
@@ -109,5 +131,10 @@ class PowerPane {
     std::string action_;
     std::deque<std::string> pendingActions_;
     Json state_ = Json::object();
+    PowerKeywordConfig keywordConfig_;
+    std::wstring keywordConfigError_;
+    KeywordTarget keywordTarget_;
+    std::shared_ptr<PowerKeywordRun> keywordRun_; // Atomic access from terminal receive workers.
+    std::atomic<std::uint64_t> keywordSession_{0};
 };
 } // namespace serialctl

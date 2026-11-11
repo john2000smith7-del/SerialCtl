@@ -2,6 +2,7 @@
 #include "AiHistory.h"
 #include "CodexProtocol.h"
 #include "Workspace.h"
+#include "WorkspaceInstructions.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -77,6 +78,11 @@ int main() {
             {{"conversationId", "t"}, {"text", "inspect"}, {"defaultModel", "server-default"}, {"cwd", "/srv/code"}});
         Require(task["params"]["model"] == "server-default" && task["params"]["cwd"] == "/srv/code" &&
             task["params"]["sandboxPolicy"]["type"] == "dangerFullAccess", "Turn lost server tool policy");
+        const auto imageTurn = MakeRequest(Operation::StartTask, 81,
+            {{"conversationId", "t"}, {"text", "inspect image"}, {"images", {"/tmp/serialctl-ai.A123456789/file-1.png"}}});
+        Require(imageTurn["params"]["input"].size() == 2 &&
+                imageTurn["params"]["input"][1] == Json{{"type", "localImage"}, {"path", "/tmp/serialctl-ai.A123456789/file-1.png"}},
+                "Turn did not carry the uploaded image as a visual input");
         Json commandItem = {{"id", "cmd-1"}, {"type", "commandExecution"}, {"command", "make test"},
             {"cwd", "/srv/code"}, {"status", "completed"}, {"exitCode", 2}, {"aggregatedOutput", "ACTUAL_FAILED_TEST"}};
         const auto commandEvent = DecodeNotification({{"method", "item/completed"},
@@ -215,6 +221,98 @@ int main() {
             migrated = RememberHistory(migrated, std::to_string(i), "title", "server-a/user");
         Require(migrated.size() == 100 && migrated[0]["id"] == "109",
                 "History must retain only the latest 100 records");
+
+        // Issue #56: Session permission persistence & full-access protocol validation
+        const auto newConvReq = MakeRequest(Operation::NewConversation, 101, {{"cwd", "/srv/test"}});
+        Require(newConvReq["params"]["sandbox"] == "danger-full-access" &&
+                newConvReq["params"]["approvalPolicy"] == "never",
+                "NewConversation must default to danger-full-access and approvalPolicy never");
+        const auto resumeReq = MakeRequest(Operation::RestoreConversation, 102, {{"conversationId", "t-1"}});
+        Require(resumeReq["params"]["sandbox"] == "danger-full-access" &&
+                resumeReq["params"]["approvalPolicy"] == "never",
+                "RestoreConversation must default to danger-full-access and approvalPolicy never");
+        const auto startTaskReq = MakeRequest(Operation::StartTask, 103, {{"conversationId", "t-1"}, {"text", "hello"}});
+        Require(startTaskReq["params"]["sandboxPolicy"]["type"] == "dangerFullAccess" &&
+                startTaskReq["params"]["approvalPolicy"] == "never",
+                "StartTask must specify dangerFullAccess and approvalPolicy never");
+        const auto runCmdReq = MakeRequest(Operation::RunCommand, 104, {{"command", Json::array({"ls", "-la"})}, {"cwd", "/srv"}});
+        Require(runCmdReq["method"] == "command/exec" &&
+                runCmdReq["params"]["command"][0] == "ls" &&
+                runCmdReq["params"]["sandbox"] == "danger-full-access" &&
+                runCmdReq["params"]["approvalPolicy"] == "never",
+                "RunCommand must enforce command/exec with danger-full-access");
+
+        // Decode effective permissions from responses
+        const auto decodedPerm = DecodeResponse(Operation::NewConversation, {
+            {"thread", {{"id", "thread-perm"}, {"effectiveSandbox", "danger-full-access"}, {"effectiveApprovalPolicy", "never"}}}});
+        Require(decodedPerm["effectiveSandbox"] == "danger-full-access" &&
+                decodedPerm["effectiveApprovalPolicy"] == "never",
+                "Effective permissions must be decoded from thread response");
+        const auto appServerPerm = DecodeResponse(Operation::NewConversation, {
+            {"thread", {{"id", "thread-native"}}}, {"sandbox", {{"type", "dangerFullAccess"}}},
+            {"approvalPolicy", "never"}, {"activePermissionProfile", nullptr}});
+        Require(appServerPerm["effectiveSandbox"] == "dangerFullAccess" && appServerPerm["effectiveApprovalPolicy"] == "never",
+                "App Server thread/start returns a sandbox policy object");
+        const auto restrictedPerm = DecodeResponse(Operation::RestoreConversation, {
+            {"thread", {{"id", "thread-native"}}}, {"sandbox", {{"type", "readOnly"}, {"networkAccess", false}}},
+            {"approvalPolicy", "never"}});
+        Require(restrictedPerm["effectiveSandbox"] == "readOnly",
+                "App Server thread/resume can return an effective read-only sandbox object");
+        Require(ExtractSandbox({{"sandbox", "danger-full-access"}, {"effectiveSandbox", "workspace-write"}}) == "workspace-write",
+                "An explicit effective restriction takes precedence over the legacy value");
+
+        // Issue #57: WorkspaceInstructions pure functions validation
+        const std::string sampleAgentsMd =
+            "# My Project\n\n"
+            "This is user content before.\n\n"
+            "<!-- SerialCtl workspace practices BEGIN -->\n"
+            "- Always run cmake with -B build\n"
+            "- Avoid deleting cache\n"
+            "<!-- SerialCtl workspace practices END -->\n\n"
+            "## Footer\n"
+            "User content after.\n";
+
+        auto extracted = ExtractManagedBlock(sampleAgentsMd);
+        Require(extracted.hasManagedBlock &&
+                extracted.managedContent.find("Always run cmake") != std::string::npos &&
+                extracted.managedContent.find("Avoid deleting cache") != std::string::npos,
+                "ExtractManagedBlock failed to extract existing block");
+
+        auto entries = ParsePracticeEntries(extracted.managedContent);
+        Require(entries.size() == 2 && entries[0] == "Always run cmake with -B build",
+                "ParsePracticeEntries failed to parse lines");
+
+        // Sanitization tests
+        Require(SanitizePracticeEntry("password=secret123").empty(), "Sanitize must reject password=");
+        Require(SanitizePracticeEntry("my api_key is sk-1234567890").empty(), "Sanitize must reject api_key");
+        Require(SanitizePracticeEntry("-----BEGIN RSA PRIVATE KEY-----").empty(), "Sanitize must reject private keys");
+        Require(SanitizePracticeEntry("Authorization: Bearer token123").empty(), "Sanitize must reject Bearer token");
+        Require(SanitizePracticeEntry("Always check git status before commit") == "Always check git status before commit",
+                "Valid entry should pass sanitization");
+        Require(SanitizePracticeEntry("- Use `ninja` build tool") == "Use ninja build tool",
+                "Sanitize should strip leading dash and backticks");
+        Require(SanitizePracticeEntry(std::string(400, 'a')).size() == 300,
+                "Sanitize should truncate to 300 characters");
+
+        // Merge tests
+        std::string merged = MergeManagedBlock(sampleAgentsMd, {"Always check git status before commit"});
+        Require(merged.find("Always check git status before commit") != std::string::npos &&
+                merged.find("Always run cmake with -B build") != std::string::npos &&
+                merged.find("This is user content before.") != std::string::npos &&
+                merged.find("User content after.") != std::string::npos,
+                "MergeManagedBlock must preserve outside content and prepend new entry");
+        Require(merged.size() <= 8192, "MergeManagedBlock must respect 8 KiB capacity");
+
+        // Context prefix test
+        std::string prefix = BuildTurnContextPrefix(sampleAgentsMd);
+        Require(prefix.find("【工作空间经验 (AGENTS.md)】") != std::string::npos &&
+                prefix.find("Always run cmake") != std::string::npos,
+                "BuildTurnContextPrefix must construct prompt prefix");
+
+        // Base64 test
+        Require(Base64Encode("hello world") == "aGVsbG8gd29ybGQ=", "Base64Encode mismatch");
+        Require(Base64Encode("") == "", "Base64Encode empty mismatch");
+
         std::cout
             << "AiProtocol: framing, UTF-8, bounds, scroll anchoring, tool output and command validation passed\n";
     } catch (const std::exception &e) {

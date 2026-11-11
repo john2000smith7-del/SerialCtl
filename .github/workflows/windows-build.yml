@@ -150,6 +150,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/integration/ui_freeze_compare.py --baseline $old[0].FullName --candidate $new[0].FullName --output "$env:RUNNER_TEMP/serialctl-ui"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify official MCP SDK against the fully extracted candidate
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          py -3.12 -m pip install "mcp==1.20.0" "pydantic==2.11.9"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot install pinned official MCP SDK test dependencies' }
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archive.Count -ne 1) { throw 'Expected one verified candidate ZIP' }
+          py -3.12 tests/integration/mcp_sdk_package_fixture.py --archive $archive[0].FullName --output "$env:RUNNER_TEMP/serialctl-mcp-sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Official MCP SDK and package lifecycle regression failed' }
       - name: Python Linux AI client protocol tests
         shell: powershell
         run: |
@@ -180,6 +190,14 @@ jobs:
           }
           $sha = (Get-FileHash $archive[0].FullName -Algorithm SHA256).Hash
           Write-Host "::notice title=Verified portable ZIP::$($archive[0].Name) SHA256=$sha"
+      - name: Export private-test candidate for user download
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: SerialCtl-V2.0.20-isolated-test
+          path: bin/SerialCtl-V2.0.20-Win7-x64.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
       - name: Export isolated UI review images through the build log
         if: always()
         shell: powershell
@@ -220,6 +238,8 @@ jobs:
             ${{ runner.temp }}/serialctl-optimization/*.mkv
             ${{ runner.temp }}/serialctl-optimization/*.jsonl
             ${{ runner.temp }}/serialctl-optimization/*.log
+            ${{ runner.temp }}/serialctl-mcp-sdk/*.json
+            ${{ runner.temp }}/serialctl-mcp-sdk/*.png
             ${{ runner.temp }}/serialctl-build.txt
             ${{ runner.temp }}/serialctl-dialog-latency/*.log
             ${{ runner.temp }}/serialctl-dialog-latency/*.json
@@ -331,7 +351,7 @@ jobs:
               if path.suffix in ('.json','.txt','.log') and path.stat().st_size<2000000:
                   shutil.copy2(path,out/path.name)
           for path in root.glob('*.png'):
-              if any(path.name.endswith('-'+part+'.png') for part in ('modal-101','modal-103','modal-303','modal-304','theme-final','pet-after-real-drag','failure-desktop')):
+              if any(path.name.endswith('-'+part+'.png') for part in ('modal-101','modal-remote-serial','modal-303','modal-304','theme-final','pet-after-real-drag','failure-desktop')):
                   shutil.copy2(path,out/path.name)
           manifest={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
           (out/'review-provenance.json').write_text(json.dumps({'source_commit':os.environ['GITHUB_SHA'],'run':os.environ['GITHUB_RUN_ID'],'files_sha256':manifest,'capture':'Unchanged selected original screenshot and result files; full recording retained in packaged-endurance artifact'},indent=2),encoding='utf-8')

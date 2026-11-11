@@ -30,7 +30,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--scenario', choices=('notebook','endurance'), default='notebook')
+    parser.add_argument('--scenario', choices=('notebook','endurance','terminal-soak'), default='notebook')
+    parser.add_argument('--soak-seconds', type=int, default=1800)
     args = parser.parse_args()
     require(os.name == 'nt', 'This fixture needs interactive Windows')
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and
@@ -107,7 +108,7 @@ def main():
     original_display = None
     failure = None
     try:
-        if args.scenario=='endurance':
+        if args.scenario in ('endurance','terminal-soak'):
             # Ephemeral hosted display only, same native mechanism as smoke-ui.
             user.EnumDisplaySettingsW.argtypes=(w.LPCWSTR,w.DWORD,c.c_void_p)
             user.EnumDisplaySettingsW.restype=w.BOOL
@@ -147,7 +148,7 @@ def main():
         if args.scenario=='notebook':profile+='[Pet]\r\nEnabled=0\r\n'
         (actual_config / 'settings.ini').write_text(profile,encoding='ascii')
         environment=dict(os.environ)
-        if args.scenario=='endurance':environment['SERIALCTL_UI_METRICS']='1'
+        if args.scenario in ('endurance','terminal-soak'):environment['SERIALCTL_UI_METRICS']='1'
         process = subprocess.Popen([str(app / 'serialctl.exe')], cwd=app,env=environment,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.monotonic() + 25
@@ -163,7 +164,7 @@ def main():
         width = user.GetSystemMetrics(0)
         height = user.GetSystemMetrics(1)
         require(width >= 980 and height >= 620, 'Interactive CI desktop is too small')
-        require(user.MoveWindow(main_window, 0, 0, min(width, 1200), min(height - 30, 760 if args.scenario=='endurance' else 850), True),
+        require(user.MoveWindow(main_window, 0, 0, min(width, 1200), min(height - 30, 760 if args.scenario in ('endurance','terminal-soak') else 850), True),
                 'Could not size production window within the visible desktop')
         user.SetForegroundWindow(main_window)
         time.sleep(.3)
@@ -174,8 +175,13 @@ def main():
         if args.scenario=='endurance':
             command=[sys.executable,str(Path(__file__).resolve().with_name('gui_endurance.py')),
                      '--window',str(main_window),'--pid',str(process.pid),'--output',str(output),'--native-dir',str(app)]
+        elif args.scenario=='terminal-soak':
+            command=[sys.executable,str(Path(__file__).resolve().with_name('gui_terminal_soak.py')),
+                     '--window',str(main_window),'--pid',str(process.pid),'--output',str(output),'--native-dir',str(app),
+                     '--soak-seconds',str(args.soak_seconds)]
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, encoding='utf-8', errors='replace', timeout=1200 if args.scenario=='endurance' else 240)
+                                text=True, encoding='utf-8', errors='replace',
+                                timeout=args.soak_seconds+600 if args.scenario=='terminal-soak' else (1200 if args.scenario=='endurance' else 240))
         (output / 'drag-test-output.txt').write_text(result.stdout, encoding='utf-8')
         print(result.stdout, flush=True)
         require(result.returncode == 0, 'Real desktop command notebook regression failed')

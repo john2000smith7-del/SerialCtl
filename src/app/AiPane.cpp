@@ -10,8 +10,11 @@
 #include "UiPathField.h"
 #include "UiPopupMenu.h"
 #include "PlatformConnection.h"
+#include "WorkspaceInstructions.h"
 #include <chrono>
 #include <sstream>
+#include <commdlg.h>
+#include <filesystem>
 #include <windowsx.h>
 
 namespace serialctl {
@@ -32,6 +35,11 @@ enum {
     PetButton = 30,
     WorkspaceButton,
     QuickMenu,
+    ComposerMenu,
+    VoiceButton,
+    VoicePreview,
+    AttachmentFirst = 900,
+    AttachmentMore = 908,
     Host = 200,
     Port,
     Username,
@@ -67,6 +75,17 @@ std::wstring Text(HWND h) {
     s.resize(length);
     return s;
 }
+std::wstring EditLineEndings(const std::wstring &source) {
+    std::wstring text;
+    for (size_t i = 0; i < source.size(); ++i) {
+        const auto ch = source[i];
+        if (ch == L'\r' || ch == L'\n') {
+            text += L"\r\n";
+            if (ch == L'\r' && i + 1 < source.size() && source[i + 1] == L'\n') ++i;
+        } else text += ch;
+    }
+    return text;
+}
 bool EditColorMessage(UINT message, LPARAM control) {
     if (message == WM_CTLCOLOREDIT) return true;
     if (message != WM_CTLCOLORSTATIC || !control) return false;
@@ -81,15 +100,6 @@ void Draw(HDC dc, const std::wstring &text, RECT r, HFONT font, COLORREF color,
     SetTextColor(dc, color);
     DrawTextW(dc, text.c_str(), static_cast<int>(text.size()), &r, format | DT_NOPREFIX);
     SelectObject(dc, old);
-}
-std::wstring Inline(std::wstring text) {
-    // Markdown is rendered as text only, never as HTML or executable content.
-    for (const auto *mark : {L"**", L"`"}) {
-        size_t p = 0;
-        while ((p = text.find(mark, p)) != std::wstring::npos)
-            text.erase(p, wcslen(mark));
-    }
-    return text;
 }
 struct EmptyDialog {
     DLGTEMPLATE dialog{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME, 0, 0, 0, 0, 270, 260};
@@ -366,6 +376,8 @@ AiPane::~AiPane() {
         DeleteObject(codeFont_);
     if (smallFont_)
         DeleteObject(smallFont_);
+    if (boldFont_)
+        DeleteObject(boldFont_);
     if (surfaceBrush_)
         DeleteObject(surfaceBrush_);
     if (fieldBrush_)
@@ -383,6 +395,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     LOGFONTW lf{};
     GetObjectW(font, sizeof(lf), &lf);
     lf.lfWeight = FW_SEMIBOLD;
+    boldFont_ = CreateFontIndirectW(&lf);
     lf.lfHeight = -D(18);
     titleFont_ = CreateFontIndirectW(&lf);
     lf.lfWeight = FW_NORMAL;
@@ -406,7 +419,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     RegisterClassW(&wc);
     transcript_ = CreateWindowExW(0, wc.lpszClassName, L"AI 对话历史", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0, 0, 100,
                                   100, window_, nullptr, wc.hInstance, this);
-    Child(L"BUTTON", L"连接", Connect, BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON", L"AI 连接设置", Connect, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"宠物", PetButton, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"历史", HistoryButton, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"新建", New, BS_OWNERDRAW | WS_TABSTOP);
@@ -423,8 +436,12 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
                                                                    : L"新建会话");
         SendMessageW(tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tip));
     }
-    auto input = Child(L"EDIT", L"", Input, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_TABSTOP);
+    auto input = Child(L"EDIT", L"", Input, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_TABSTOP | WS_VSCROLL);
+    ShowScrollBar(input, SB_VERT, FALSE);
+    DragAcceptFiles(input, TRUE);
+    DragAcceptFiles(window_, TRUE);
     SendMessageW(input, EM_SETLIMITTEXT, 32768, 0);
+    SendMessageW(input, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
     SetPropW(input, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
     // The borderless edit lives inside the one shared composer card.
     SendMessageW(input, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"输入消息…"));
@@ -443,6 +460,15 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     SetWindowSubclass(Control(Send),SendButtonProc,219,reinterpret_cast<DWORD_PTR>(this));
     Child(L"BUTTON", L"分析日志", Analyze, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON",L"更多日志操作",QuickMenu,BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON", L"添加附件与会话选项", ComposerMenu, BS_OWNERDRAW | WS_TABSTOP);
+    Child(L"BUTTON", L"语音输入", VoiceButton, BS_OWNERDRAW | WS_TABSTOP);
+    const auto voicePreview = Child(L"EDIT", L"", VoicePreview, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL);
+    SendMessageW(voicePreview, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
+    ShowWindow(voicePreview, SW_HIDE);
+    for (int id = AttachmentFirst; id <= AttachmentMore; ++id) {
+        Child(L"BUTTON", L"移除附件", id, BS_OWNERDRAW | WS_TABSTOP);
+        ShowWindow(Control(id), SW_HIDE);
+    }
     Child(L"BUTTON",L"工作空间",WorkspaceButton,BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"持续观察", Observe, BS_OWNERDRAW | WS_TABSTOP);
     Child(L"BUTTON", L"返回最新消息", Bottom, BS_OWNERDRAW | WS_TABSTOP);
@@ -512,6 +538,21 @@ LRESULT CALLBACK AiPane::SendButtonProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT
 }
 LRESULT CALLBACK AiPane::InputProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR reference) {
     auto self = reinterpret_cast<AiPane *>(reference);
+    if (m == WM_DROPFILES) {
+        self->DropAttachments(reinterpret_cast<HDROP>(w));
+        return 0;
+    }
+    if (m == WM_MOUSEWHEEL) {
+        self->inputWheelRemainder_ += GET_WHEEL_DELTA_WPARAM(w);
+        const int steps = self->inputWheelRemainder_ / WHEEL_DELTA;
+        self->inputWheelRemainder_ %= WHEEL_DELTA;
+        const int first = static_cast<int>(SendMessageW(h, EM_GETFIRSTVISIBLELINE, 0, 0));
+        const int maximum = std::max(0, static_cast<int>(SendMessageW(h, EM_GETLINECOUNT, 0, 0)) -
+                                       std::max(1, self->currentInputHeight_ / self->InputLineHeight()));
+        SendMessageW(h, EM_LINESCROLL, 0, std::clamp(first - steps * 3, 0, maximum) - first);
+        InvalidateRect(self->window_, &self->inputScrollLane_, FALSE);
+        return 0;
+    }
     if (UiEditSelectAll(h, m, w)) return 0;
     // The native disabled EDIT can substitute a system background on Windows,
     // even when WM_CTLCOLORSTATIC supplies the card brush. It is not interactive
@@ -537,13 +578,32 @@ LRESULT CALLBACK AiPane::InputProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR,
             EndPaint(h, &ps);
         return 0;
     }
+    if (m == WM_PAINT && GetWindowTextLengthW(h) == 0) {
+        const auto result = DefSubclassProc(h, m, w, l);
+        if (HDC dc = GetDC(h)) {
+            RECT bounds{};
+            GetClientRect(h, &bounds);
+            bounds.left += self->D(2);
+            Draw(dc, L"输入消息…", bounds, self->font_, UiAiTheme(self->dark_).muted,
+                 DT_LEFT | DT_TOP | DT_SINGLELINE);
+            ReleaseDC(h, dc);
+        }
+        return result;
+    }
     if (m == WM_SETFOCUS || m == WM_KILLFOCUS || m == WM_ENABLE)
         InvalidateRect(GetParent(h), nullptr, FALSE);
     if (m == WM_IME_STARTCOMPOSITION)
         SetPropW(h, L"SerialCtl.AiIme", reinterpret_cast<HANDLE>(1));
     if (m == WM_IME_ENDCOMPOSITION || m == WM_NCDESTROY)
         RemovePropW(h, L"SerialCtl.AiIme");
-    return DefSubclassProc(h, m, w, l);
+    const auto result = DefSubclassProc(h, m, w, l);
+    if (m == WM_MOUSEWHEEL || m == WM_VSCROLL || m == WM_KEYUP || m == WM_LBUTTONUP)
+        InvalidateRect(self->window_, &self->inputScrollLane_, FALSE);
+    if (self && self->window_ && !self->closing_ &&
+        (m == WM_SETTEXT || m == EM_REPLACESEL || m == WM_PASTE || m == WM_CUT || m == WM_CLEAR)) {
+        self->RefreshInputLayout();
+    }
+    return result;
 }
 LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, GWLP_USERDATA));
@@ -555,6 +615,45 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (!self)
         return DefWindowProcW(h, m, w, l);
     switch (m) {
+    case WM_DROPFILES: {
+        const auto drop = reinterpret_cast<HDROP>(w);
+        POINT point{};
+        DragQueryPoint(drop, &point);
+        if (PtInRect(&self->composerBounds_, point)) self->DropAttachments(drop);
+        else DragFinish(drop);
+        return 0;
+    }
+    case WM_LBUTTONDOWN:
+        if (PtInRect(&self->inputScrollLane_, POINT{GET_X_LPARAM(l), GET_Y_LPARAM(l)}) &&
+            self->InputScrollThumb().bottom > self->InputScrollThumb().top) {
+            self->inputScrollDragging_ = true;
+            const auto thumb = self->InputScrollThumb();
+            self->inputScrollGrab_ = (GET_Y_LPARAM(l) >= thumb.top && GET_Y_LPARAM(l) < thumb.bottom)
+                ? GET_Y_LPARAM(l) - thumb.top : (thumb.bottom - thumb.top) / 2;
+            SetCapture(h);
+            SendMessageW(h, WM_MOUSEMOVE, w, l);
+            return 0;
+        }
+        break;
+    case WM_MOUSEMOVE:
+        if (self->inputScrollDragging_) {
+            const auto thumb = self->InputScrollThumb();
+            const int range = self->inputScrollLane_.bottom - self->inputScrollLane_.top - (thumb.bottom - thumb.top);
+            const int visible = std::max(1, self->currentInputHeight_ / self->InputLineHeight());
+            const int maximum = std::max(0, static_cast<int>(SendMessageW(self->Control(Input), EM_GETLINECOUNT, 0, 0)) - visible);
+            const int desired = std::clamp(static_cast<int>(GET_Y_LPARAM(l) - self->inputScrollGrab_ - self->inputScrollLane_.top), 0, std::max(0, range));
+            const auto first = SendMessageW(self->Control(Input), EM_GETFIRSTVISIBLELINE, 0, 0);
+            SendMessageW(self->Control(Input), EM_LINESCROLL, 0, MulDiv(desired, maximum, std::max(1, range)) - first);
+            InvalidateRect(h, &self->inputScrollLane_, FALSE);
+            return 0;
+        }
+        break;
+    case WM_LBUTTONUP:
+        if (self->inputScrollDragging_) { self->inputScrollDragging_ = false; ReleaseCapture(); return 0; }
+        break;
+    case WM_CAPTURECHANGED:
+        self->inputScrollDragging_ = false;
+        break;
     case WM_SIZE:
         self->Layout();
         return 0;
@@ -585,9 +684,26 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         self->UpdateTargetLabel(); self->UpdateActions();
         PostMessageW(GetParent(h),AiTargetChanged,0,0);
         return 0;
+    case WM_SHOWWINDOW:
+        if (!w && self->VoiceBusy()) self->voice_.Cancel();
+        break;
     case WM_COMMAND:
         if (self->closing_) return 0;
-        if (HIWORD(w) == BN_CLICKED)
+        if (LOWORD(w) == Input && HIWORD(w) == EN_CHANGE) {
+            if (!self->VoiceBusy()) self->voiceNotice_.clear();
+            self->RefreshInputLayout();
+            InvalidateRect(h, &self->inputScrollLane_, FALSE);
+            return 0;
+        }
+        if (HIWORD(w) == BN_CLICKED && LOWORD(w) >= AttachmentFirst && LOWORD(w) < AttachmentMore) {
+            const auto index = static_cast<size_t>(LOWORD(w) - AttachmentFirst);
+            if (!self->busy_ && index < self->attachments_.size()) {
+                self->attachments_.erase(self->attachments_.begin() + index);
+                self->UpdateActions();
+            }
+        } else if (HIWORD(w) == BN_CLICKED && (LOWORD(w) == ComposerMenu || LOWORD(w) == AttachmentMore))
+            self->ShowComposerMenu();
+        else if (HIWORD(w) == BN_CLICKED)
             self->Action(LOWORD(w));
         else if (LOWORD(w)==Target) {
             const int note=HIWORD(w);
@@ -620,7 +736,33 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         UiBufferedPaint paint(item.hDC, item.rcItem);
         auto dc = paint.Dc();
         const auto c = UiAiTheme(self->dark_);
-        FillRect(dc, &item.rcItem, item.CtlID == Send ? self->fieldBrush_ : self->surfaceBrush_);
+        if (item.CtlID >= AttachmentFirst && item.CtlID <= AttachmentMore) {
+            FillRect(dc, &item.rcItem, self->fieldBrush_);
+            if (item.CtlID == AttachmentMore) {
+                Draw(dc, Text(item.hwndItem), item.rcItem, self->smallFont_, c.text, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                return TRUE;
+            }
+            const auto index = static_cast<size_t>(item.CtlID - AttachmentFirst);
+            if (index >= self->attachments_.size()) return TRUE;
+            const auto &file = self->attachments_[index];
+            UiBox(dc, item.rcItem, c.surface, c.border, self->D(10));
+            if (file.thumbnail) {
+                Gdiplus::Graphics graphics(dc);
+                graphics.DrawImage(file.thumbnail.get(), item.rcItem.left + self->D(8), item.rcItem.top + self->D(4),
+                                   self->D(64), self->D(42));
+            } else {
+                UiDrawGlyph(dc, {item.rcItem.left+self->D(24),item.rcItem.top+self->D(8),
+                    item.rcItem.left+self->D(48),item.rcItem.top+self->D(32)}, c.text, UiGlyph::Document);
+            }
+            auto label = item.rcItem; label.top = label.bottom - self->D(24); label.left += self->D(6); label.right -= self->D(6);
+            Draw(dc, file.name, label, self->smallFont_, c.text, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            UiDrawGlyph(dc, {item.rcItem.right-self->D(16),item.rcItem.top+self->D(4),
+                item.rcItem.right-self->D(4),item.rcItem.top+self->D(16)}, c.muted, UiGlyph::Close);
+            UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->dpi_, UiFocusInk(self->dark_));
+            return TRUE;
+        }
+        const bool composerButton = item.CtlID == Send || item.CtlID == ComposerMenu || item.CtlID == VoiceButton;
+        FillRect(dc, &item.rcItem, composerButton ? self->fieldBrush_ : self->surfaceBrush_);
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
         const bool primary = (item.CtlID == Send && !self->busy_) || item.CtlID == IDOK;
         const bool hover = GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr;
@@ -636,10 +778,10 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         const bool headerIcon = item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
-        const bool quiet = headerIcon || item.CtlID == QuickMenu || item.CtlID == Analyze || item.CtlID == Observe || (item.CtlID == Send && !enabled);
+        const bool quiet = headerIcon || item.CtlID == VoiceButton || item.CtlID == ComposerMenu || item.CtlID == QuickMenu || item.CtlID == Analyze || item.CtlID == Observe || (item.CtlID == Send && !enabled);
         auto button = visual;
         if (quiet) {
-            const COLORREF base = item.CtlID == Send ? c.field : c.surface;
+            const COLORREF base = composerButton ? c.field : c.surface;
             button = UiFlatIconVisual(c, base, enabled, pressed, hover);
             if (hover && !pressed && button.fill == base) button.fill = c.field;
             if (button.fill != base)
@@ -664,16 +806,21 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         } else if(item.CtlID==QuickMenu || item.CtlID==StopTurn) {
             const int x=(item.rcItem.left+item.rcItem.right-self->D(14))/2,y=(item.rcItem.top+item.rcItem.bottom-self->D(14))/2;
             UiDrawGlyph(dc,{x,y,x+self->D(14),y+self->D(14)},item.CtlID==StopTurn?c.danger:button.ink,item.CtlID==StopTurn?UiGlyph::Stop:UiGlyph::ChevronDown);
-        } else if (headerIcon || item.CtlID == Send) {
+        } else if (headerIcon || composerButton) {
             const int size = self->D(item.CtlID == Send ? Ui::CompactGlyphSize : Ui::UtilityGlyphSize);
             const int x = (item.rcItem.left + item.rcItem.right - size) / 2,
                       y = (item.rcItem.top + item.rcItem.bottom - size) / 2;
             RECT icon{x, y, x + size, y + size};
             if (item.CtlID == Connect)
                 self->icons_.Draw(dc, ToolbarIcon::Settings, icon, self->dark_);
-            else
+            else if (item.CtlID == VoiceButton) {
+                const auto state = self->voice_.Status();
+                UiDrawGlyph(dc, icon, state == ai::VoiceInput::State::Recording ? c.danger : button.ink,
+                            self->VoiceBusy() ? UiGlyph::Stop : UiGlyph::Microphone);
+            } else
                 UiDrawGlyph(dc, icon, item.CtlID == Send && self->busy_ && enabled && !pressed ? c.danger : button.ink,
-                            item.CtlID == Send ? (self->busy_ ? UiGlyph::Stop : UiGlyph::Send) : item.CtlID == PetButton ? UiGlyph::Pet : item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
+                            item.CtlID == Send ? (self->busy_ ? UiGlyph::Stop : UiGlyph::ArrowUp) :
+                            item.CtlID == ComposerMenu ? UiGlyph::Plus : item.CtlID == PetButton ? UiGlyph::Pet : item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
         } else
             Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
                  item.CtlID == StopTurn && enabled && !pressed ? c.danger : button.ink,
@@ -684,8 +831,9 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_CTLCOLOREDIT: {
         auto dc = reinterpret_cast<HDC>(w);
         const auto c = UiAiTheme(self->dark_);
-        const bool field = EditColorMessage(m, l) || reinterpret_cast<HWND>(l) == self->Control(Model);
-        SetTextColor(dc, field && !IsWindowEnabled(reinterpret_cast<HWND>(l)) ? c.muted : c.text);
+        const auto control = reinterpret_cast<HWND>(l);
+        const bool field = EditColorMessage(m, l) || control == self->Control(Model);
+        SetTextColor(dc, field && (GetDlgCtrlID(control) == VoicePreview || !IsWindowEnabled(control)) ? c.muted : c.text);
         SetBkColor(dc, field ? c.field : c.surface);
         return reinterpret_cast<LRESULT>(field ? self->fieldBrush_ : self->surfaceBrush_);
     }
@@ -696,57 +844,132 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     return DefWindowProcW(h, m, w, l);
 }
+int AiPane::InputLineHeight() const {
+    HDC dc = GetDC(window_);
+    if (!dc) return D(20);
+    const auto old = SelectObject(dc, font_);
+    TEXTMETRICW metrics{};
+    GetTextMetricsW(dc, &metrics);
+    SelectObject(dc, old);
+    ReleaseDC(window_, dc);
+    return std::max(D(16), static_cast<int>(metrics.tmHeight));
+}
+int AiPane::ComposerWidth() const {
+    RECT client{};
+    GetClientRect(window_, &client);
+    return std::max(1, std::min({static_cast<int>(client.right), D(Ui::AiComposerMaxWidth96),
+                               composerMaxWidth_ > 0 ? composerMaxWidth_ : static_cast<int>(client.right)}));
+}
+bool AiPane::UseExpandedComposer(int width) const {
+    return !attachments_.empty() || VoiceBusy() || !voiceNotice_.empty() ||
+        GetWindowTextLengthW(Control(VoicePreview)) > 0 ||
+        MeasureInputHeight(std::max(D(24), width - D(144))) > InputLineHeight();
+}
+void AiPane::RefreshInputLayout() {
+    if (layoutRunning_ || !window_) return;
+    const auto width = ComposerWidth();
+    const bool expanded = UseExpandedComposer(width);
+    const int textWidth = std::max(D(24), width - D(expanded ? 48 : 144));
+    if (expanded != composerExpanded_ || MeasureInputHeight(textWidth) != currentInputHeight_) Layout();
+}
+void AiPane::SetComposerWidth(int width) {
+    if (composerMaxWidth_ == width) return;
+    composerMaxWidth_ = std::max(1, width);
+    if (window_) Layout();
+}
+int AiPane::MeasureInputHeight(int textWidth) const {
+    const auto line = InputLineHeight();
+    auto text = Text(Control(Input));
+    text += L' '; // Include the last empty line after a trailing newline.
+    HDC dc = GetDC(window_);
+    if (!dc) return line;
+    const auto old = SelectObject(dc, font_);
+    RECT bounds{0, 0, std::max(D(24), textWidth), 0};
+    DrawTextW(dc, text.c_str(), -1, &bounds, DT_CALCRECT | DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX);
+    SelectObject(dc, old);
+    ReleaseDC(window_, dc);
+    return std::clamp(static_cast<int>(bounds.bottom), line, line * Ui::AiComposerMaxLines);
+}
 void AiPane::Layout() {
-    if (!transcript_)
-        return;
+    if (!transcript_ || layoutRunning_) return;
+    layoutRunning_ = true;
+    struct FinishLayout { bool &active; ~FinishLayout() { active = false; } } finish{layoutRunning_};
     RECT r{};
     GetClientRect(window_, &r);
     const int width = r.right, height = r.bottom;
-    const int top = D(44), gap = D(12);
-    const int composerTop = std::max(top + D(76), height - D(96));
-    const int contextTop = composerTop - D(36);
-    composerBounds_ = {0, composerTop, width, composerTop + D(96)};
+    const int top = D(44);
+    const int composerWidth = ComposerWidth();
+    const int left = (width - composerWidth) / 2;
+    composerExpanded_ = UseExpandedComposer(composerWidth);
+    const int textWidth = std::max(D(24), composerWidth - D(composerExpanded_ ? 48 : 144));
+    const auto line = InputLineHeight();
+    const int filesHeight = attachments_.empty() ? 0 : D(Ui::AiAttachmentHeight96 + 8);
+    const int verticalPadding = D(composerExpanded_ ? 12 + 8 + Ui::AiComposerToolbarHeight96 : 24);
+    const int textRoom = height - top - D(76) - filesHeight - verticalPadding;
+    const bool showPreview = GetWindowTextLengthW(Control(VoicePreview)) > 0;
+    const int previewHeight = showPreview ? (textRoom >= 3 * line + D(8) ? 2 * line : line) + D(8) : 0;
+    const int available = std::max(line, textRoom - previewHeight);
+    const int inputHeight = std::min(MeasureInputHeight(textWidth), available);
+    currentInputHeight_ = inputHeight;
+    const int composerHeight = std::max(D(Ui::AiComposerHeight96), inputHeight + verticalPadding) + filesHeight + previewHeight;
+    const int bottom = std::max(top + D(48), height - D(8));
+    const int composerTop = std::max(top + D(32), bottom - composerHeight);
+    composerBounds_ = {left, composerTop, left + composerWidth, bottom};
+    const int previewTop = composerTop + filesHeight + D(12);
+    const int inputTop = previewTop + previewHeight;
+    const int scrollRight = composerBounds_.right - D(composerExpanded_ ? 12 : 72);
+    inputScrollLane_ = {scrollRight - D(Ui::OverlayScrollLaneWidth96), inputTop, scrollRight, inputTop + inputHeight};
     UiLayoutBatch b;
     const int historyLeft = width - D(108);
     b.Move(Control(PetButton), historyLeft - D(40), 0, D(28), D(28));
     b.Move(Control(Connect), historyLeft, 0, D(28), D(28));
     b.Move(Control(HistoryButton), historyLeft + D(40), 0, D(28), D(28));
     b.Move(Control(New), historyLeft + D(80), 0, D(28), D(28));
-    b.Move(transcript_, 0, top, width, std::max(D(24), contextTop - top - gap));
-    auto workspaceLabel=workspaceDirectory_;
-    while(workspaceLabel.size()>1 && workspaceLabel.back()==L'/')workspaceLabel.pop_back();
-    const auto slash=workspaceLabel.rfind(L'/');
-    if(slash!=std::wstring::npos && slash+1<workspaceLabel.size())workspaceLabel=workspaceLabel.substr(slash+1);
-    if(workspaceLabel.empty())workspaceLabel=L"工作空间";
+    b.Move(transcript_, 0, top, width, std::max(D(24), composerTop - top - D(12)));
+    auto workspaceLabel = workspaceDirectory_;
+    while (workspaceLabel.size() > 1 && workspaceLabel.back() == L'/') workspaceLabel.pop_back();
+    const auto slash = workspaceLabel.rfind(L'/');
+    if (slash != std::wstring::npos && slash + 1 < workspaceLabel.size()) workspaceLabel = workspaceLabel.substr(slash + 1);
+    if (workspaceLabel.empty()) workspaceLabel = L"工作空间";
     SIZE workspaceText{};
-    if(HDC dc=GetDC(window_)) {const auto old=SelectObject(dc,smallFont_);GetTextExtentPoint32W(dc,workspaceLabel.c_str(),static_cast<int>(workspaceLabel.size()),&workspaceText);SelectObject(dc,old);ReleaseDC(window_,dc);}
-    const int workspaceLeft=D(width<D(320)?48:76);
-    const int workspaceAvailable=std::max(D(28),historyLeft-D(52)-workspaceLeft);
-    b.Move(Control(WorkspaceButton),workspaceLeft,0,std::min(workspaceAvailable,std::max(D(36),static_cast<int>(workspaceText.cx)+D(34))),D(28));
-    b.Move(Control(Analyze), 0, contextTop, D(80), D(28));
-    b.Move(Control(QuickMenu), D(80), contextTop, D(28), D(28));
-    b.Show(Control(Observe),SW_HIDE);
-    const int bottomWidth=D(28);
-    b.Move(Control(Bottom),width-bottomWidth,contextTop,bottomWidth,D(28));
-    b.Show(Control(StopTurn),SW_HIDE);
-    b.Move(Control(Input), D(12), composerTop + D(8), std::max(D(80), width - D(24)), D(40));
-    b.Move(Control(Target), D(8), composerTop + D(60), std::min(D(136), std::max(D(88), width/3)), D(220));
-    b.ComboVisibleHeight(Control(Target), D(28));
-    const int modelLeft=D(16)+std::min(D(136),std::max(D(88),width/3));
-    const int modelAvailable = std::max(D(12), width - D(52) - modelLeft);
-    SIZE modelText{};
     if (HDC dc = GetDC(window_)) {
-        const auto old = SelectObject(dc, font_);
-        const auto label = Text(Control(Model));
-        GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &modelText);
+        const auto old = SelectObject(dc, smallFont_);
+        GetTextExtentPoint32W(dc, workspaceLabel.c_str(), static_cast<int>(workspaceLabel.size()), &workspaceText);
         SelectObject(dc, old); ReleaseDC(window_, dc);
     }
-    b.Move(Control(Model), modelLeft, composerTop + D(60),
-           std::min(modelAvailable, std::max(D(28), static_cast<int>(modelText.cx) + D(16))), D(28));
-    b.Show(Control(Model),SW_SHOW);
-    b.Move(Control(Send), width - D(8 + Ui::CompactIconButtonSize), composerTop + D(60),
-           D(Ui::CompactIconButtonSize), D(Ui::CompactIconButtonSize));
+    const int workspaceLeft = D(width < D(320) ? 48 : 76);
+    const int workspaceAvailable = std::max(D(28), historyLeft - D(52) - workspaceLeft);
+    b.Move(Control(WorkspaceButton), workspaceLeft, 0,
+           std::min(workspaceAvailable, std::max(D(36), static_cast<int>(workspaceText.cx) + D(34))), D(28));
+    for (int id : {Analyze, QuickMenu, Observe, StopTurn, Target, Model}) b.Show(Control(id), SW_HIDE);
+    b.Move(Control(Bottom), width - D(28), composerTop - D(40), D(28), D(28));
+    b.Show(Control(VoicePreview), showPreview ? SW_SHOW : SW_HIDE);
+    if (showPreview)
+        b.Move(Control(VoicePreview), left + D(16), previewTop, textWidth, previewHeight - D(8));
+    b.Move(Control(Input), left + D(composerExpanded_ ? 16 : 48), inputTop, textWidth, inputHeight);
+    b.Move(Control(ComposerMenu), left + D(8), bottom - D(38), D(28), D(28));
+    b.Move(Control(Send), composerBounds_.right - D(36), bottom - D(38), D(28), D(28));
+    b.Move(Control(VoiceButton), composerBounds_.right - D(68), bottom - D(38), D(28), D(28));
+    const int slots = std::max(1, (composerWidth - D(16)) / D(Ui::AiAttachmentWidth96));
+    const bool overflow = attachments_.size() > static_cast<size_t>(slots);
+    const int visible = std::min(static_cast<int>(attachments_.size()), overflow ? slots - 1 : slots);
+    for (int i = 0; i < static_cast<int>(ai::AttachmentCountLimit); ++i) {
+        b.Show(Control(AttachmentFirst + i), i < visible ? SW_SHOW : SW_HIDE);
+        if (i < visible) {
+            b.Move(Control(AttachmentFirst + i), left + D(8 + i * Ui::AiAttachmentWidth96), composerTop + D(8),
+                   D(Ui::AiAttachmentWidth96 - 8), D(Ui::AiAttachmentHeight96));
+            SetWindowTextW(Control(AttachmentFirst + i), (L"移除附件 " + attachments_[i].name).c_str());
+            EnableWindow(Control(AttachmentFirst + i), !busy_);
+        }
+    }
+    b.Show(Control(AttachmentMore), overflow ? SW_SHOW : SW_HIDE);
+    if (overflow) {
+        b.Move(Control(AttachmentMore), left + D(8 + visible * Ui::AiAttachmentWidth96), composerTop + D(8),
+               D(Ui::AiAttachmentWidth96 - 8), D(Ui::AiAttachmentHeight96));
+        SetWindowTextW(Control(AttachmentMore), (L"还有 " + std::to_wstring(attachments_.size() - visible) + L" 项").c_str());
+    }
     b.Commit();
+    ShowScrollBar(Control(Input), SB_VERT, FALSE);
     UpdateTranscriptActions();
     layoutWidth_ = width;
     Reflow();
@@ -766,8 +989,15 @@ void AiPane::Paint(HDC target) {
     const RECT state{stateLeft,D(10),stateLeft+D(8),D(18)};
     UiBox(dc,state,client_.Ready()?UiAccentInk(dark_):c.surface,client_.Ready()?UiAccentInk(dark_):c.muted,client_.Running() && !client_.Ready()?D(1):D(4));
     UiSeparator(dc, 0, r.right, D(36), c.border);
-    UiSeparator(dc, 0, r.right, composerBounds_.top - D(44), c.border);
-    UiBox(dc, composerBounds_, c.field, UiPanelBorder(dark_), D(12));
+    UiBox(dc, composerBounds_, c.field, UiPanelBorder(dark_),
+          D(composerExpanded_ ? Ui::AiComposerExpandedRadius96 : 24));
+    const auto thumb = InputScrollThumb();
+    if (thumb.bottom > thumb.top) UiBox(dc, thumb, c.border, c.border, D(3));
+    if (composerExpanded_) {
+        const auto voice = VoicePhaseLabel();
+        if (!voice.empty()) Draw(dc, voice, {composerBounds_.left + D(44), composerBounds_.bottom - D(38),
+            composerBounds_.right - D(76), composerBounds_.bottom - D(10)}, smallFont_, c.muted);
+    }
 }
 void AiPane::CollapseCompletedProcess(const std::string &group) {
     if (group.empty())
@@ -796,7 +1026,15 @@ void AiPane::Reflow(bool appended) {
         return;
     RECT r{};
     GetClientRect(transcript_, &r);
-    const int width = std::max(D(120), static_cast<int>(r.right) - D(16));
+    const int viewportWidth = static_cast<int>(r.right);
+    const int columnWidth = std::min(viewportWidth, ComposerWidth());
+    const int columnLeft = (viewportWidth - columnWidth) / 2;
+    const int scrollLane = std::min(D(Ui::OverlayScrollLaneWidth96), columnWidth / 8);
+    const int inset = std::min(D(12), std::max(0, (columnWidth - D(240)) / 8));
+    const int leftEdge = columnLeft + inset;
+    const int rightEdge = std::max(leftEdge + 1, columnLeft + columnWidth - scrollLane - inset);
+    const int messageSpace = rightEdge - leftEdge;
+    const int replyWidth = std::min(messageSpace, D(Ui::AiReplyMaxWidth96));
     HDC dc = GetDC(transcript_);
     int y = D(8);
     std::set<std::string> seen;
@@ -811,13 +1049,13 @@ void AiPane::Reflow(bool appended) {
                     continue;
                 }
                 message.folded = true;
-                message.bounds = {0, y, width - D(16), y + D(40)};
+                message.bounds = {leftEdge, y, leftEdge + replyWidth, y + D(40)};
                 y = message.bounds.bottom + D(12);
                 continue;
             }
         }
         const bool user = message.role == L"我";
-        int w = std::min(width - D(16), D(user ? 680 : 880));
+        int w = user ? std::min(messageSpace, D(680)) : replyWidth;
         if (user && message.text.find(L'\n') == std::wstring::npos) {
             auto old = SelectObject(dc, font_);
             SIZE size{};
@@ -825,111 +1063,34 @@ void AiPane::Reflow(bool appended) {
             SelectObject(dc, old);
             w = std::min(w, std::max(D(140), static_cast<int>(size.cx) + D(32)));
         }
-        const int left = user ? width - w : 0;
+        const int left = user ? rightEdge - w : leftEdge;
         // Existing messages keep their measured paragraphs. A streaming delta
         // remeasures only its message, rather than every historical log block.
-        if (message.measuredWidth != w || message.measuredLength != message.text.size()) {
-            message.paragraphs.clear();
-            int inner = D(12) + (message.groupHeader ? D(28) : 0);
-
-            std::wistringstream stream(message.text);
-            std::wstring line;
-            bool code = false;
-            while (std::getline(stream, line)) {
-                if (!line.empty() && line.back() == L'\r')
-                    line.pop_back();
-                if (line.rfind(L"```", 0) == 0) {
-                    code = !code;
-                    continue;
-                }
-                int style = code ? 2 : 0;
-                if (!code && line.rfind(L"#", 0) == 0) {
-                    auto first = line.find_first_not_of(L"# ");
-                    line = first == std::wstring::npos ? L"" : line.substr(first);
-                    style = 1;
-                }
-                if (!code)
-                    line = Inline(line);
-                Paragraph paragraph{{D(16), inner, w - D(16), inner}, line, style, {}};
-                auto old = SelectObject(dc, ParagraphFont(style));
-                TEXTMETRICW metric{};
-                GetTextMetricsW(dc, &metric);
-                const int lineHeight = std::max(D(20), static_cast<int>(metric.tmHeight) + D(2));
-                size_t offset = 0;
-                do {
-                    const size_t remaining = line.size() - offset;
-                    SIZE size{};
-                    size_t length = 0;
-                    int used = 0;
-                    const int available = std::max(D(40), w - D(32));
-                    // Measure bounded chunks, not the complete remaining suffix
-                    // for every row of a very long log/JSON line (quadratic).
-                    while (length < remaining && used < available) {
-                        const int chunk = static_cast<int>(std::min<size_t>(256, remaining - length));
-                        int fit = 0;
-                        GetTextExtentExPointW(dc, line.data() + offset + length, chunk,
-                                             available - used, &fit, nullptr, &size);
-                        length += static_cast<size_t>(std::max(0, fit));
-                        if (fit < chunk) break;
-                        used += size.cx;
-                    }
-                    if (remaining && !length) length = 1;
-                    length = std::min(length, remaining);
-                    // Never split a UTF-16 pair. Prefer a word boundary in prose.
-                    if (length < remaining && length && line[offset + length] >= 0xdc00 &&
-                        line[offset + length] <= 0xdfff)
-                        --length;
-                    if (!length && remaining)
-                        length = std::min<size_t>(2, remaining);
-                    if (style != 2 && length < remaining) {
-                        auto space = line.find_last_of(L" \t", offset + length - 1);
-                        if (space != std::wstring::npos && space >= offset + length / 2)
-                            length = space - offset + 1;
-                    }
-                    TextLine visual{
-                        {D(16), inner, w - D(16), inner + lineHeight}, offset, length, std::vector<int>(length + 1, 0)};
-                    if (length) {
-                        std::vector<int> widths(length);
-                        GetTextExtentExPointW(dc, line.data() + offset, static_cast<int>(length), INT_MAX, nullptr,
-                                              widths.data(), &size);
-                        for (size_t k = 0; k < length; ++k)
-                            visual.advances[k + 1] = widths[k];
-                    }
-                    paragraph.lines.push_back(std::move(visual));
-                    inner += lineHeight;
-                    offset += length;
-                } while (offset < line.size());
-                inner += D(4);
-                paragraph.rect.bottom = inner;
-                message.paragraphs.push_back(std::move(paragraph));
-                SelectObject(dc, old);
-            }
-            message.measuredWidth = w;
-            message.measuredLength = message.text.size();
-            message.measuredHeight = inner + D(28);
-        }
+        if (message.measuredWidth != w || message.measuredLength != message.text.size() ||
+            message.measuredGroupHeader != message.groupHeader)
+            LayoutMessage(dc, message, w);
         message.bounds = {left, y, left + w, y + message.measuredHeight};
         y = message.bounds.bottom + D(12);
     }
     ReleaseDC(transcript_, dc);
     waitingBounds_ = {};
-    if (busy_ && waitingReply_ && std::none_of(messages_.begin(), messages_.end(),
-            [&](const Message &m) { return m.process && m.group == displayGroup_; })) {
-        waitingBounds_ = {0, y, D(72), y + D(40)};
-        y += D(52);
+    if (busy_ && showTurnProgress_ && !messages_.empty()) {
+        waitingBounds_ = {leftEdge, y, leftEdge + std::min(replyWidth, D(192)), y + D(32)};
+        y = waitingBounds_.bottom + D(12);
     }
     scroll_.Layout(y, r.bottom, appended);
     InvalidateRect(transcript_, nullptr, FALSE);
     UpdateTranscriptActions();
 }
 void AiPane::UpdateTranscriptActions() {
-    ShowWindow(Control(Bottom), scroll_.offset<scroll_.Maximum() ? SW_SHOWNA : SW_HIDE);
+    const bool showLatest = scroll_.offset < scroll_.Maximum();
+    ShowWindow(Control(Bottom), showLatest ? SW_SHOWNA : SW_HIDE);
     SetWindowTextW(Control(Bottom),L"返回最新回答");
-    ShowWindow(Control(Analyze),SW_SHOWNA);
-    ShowWindow(Control(QuickMenu),SW_SHOWNA);
+    ShowWindow(Control(Analyze),SW_HIDE);
+    ShowWindow(Control(QuickMenu),SW_HIDE);
     ShowWindow(Control(Observe),SW_HIDE);
     ShowWindow(Control(StopTurn),SW_HIDE);
-    if (scroll_.unread) SetWindowPos(Control(Bottom), HWND_TOP, 0, 0, 0, 0,
+    if (showLatest) SetWindowPos(Control(Bottom), HWND_TOP, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 RECT AiPane::ScrollThumb() const {
@@ -947,10 +1108,14 @@ RECT AiPane::ScrollThumb() const {
 void AiPane::PaintTranscript(HDC target) {
     RECT r{};
     GetClientRect(transcript_, &r);
-    UiBufferedPaint paint(target, r);
+    RECT dirty{};
+    const int clip = GetClipBox(target, &dirty);
+    if (clip == ERROR) dirty = r;
+    if (!IntersectRect(&dirty, &dirty, &r)) return;
+    UiBufferedPaint paint(target, dirty);
     auto dc = paint.Dc();
     const auto c = UiAiTheme(dark_);
-    FillRect(dc, &r, surfaceBrush_);
+    FillRect(dc, &dirty, surfaceBrush_);
     if (messages_.empty()) {
         std::wstring title = L"有什么问题需要一起排查？";
         RECT measured{0, 0, std::max(1, static_cast<int>(r.right) - D(32)), 0};
@@ -977,17 +1142,18 @@ void AiPane::PaintTranscript(HDC target) {
             continue;
         RECT box = m.bounds;
         OffsetRect(&box, 0, -scroll_.offset);
-        if (box.bottom < 0 || box.top > r.bottom)
+        RECT painted{};
+        if (!IntersectRect(&painted, &box, &dirty))
             continue;
         TranscriptBox(dc, box, r, m.role == L"我" ? c.accent : UiTheme(dark_).surface, m.role == L"我" ? c.accent : c.border,
               D(12));
         if (m.groupHeader) {
             const auto count = std::count_if(messages_.begin(), messages_.end(),
                                              [&](const Message &x) { return x.process && x.group == m.group; });
-            const auto state = busy_ && m.group == displayGroup_ ? L"正在处理" + std::wstring((GetTickCount64() / 400) % 4, L'.') :
+            const bool active = busy_ && !stopRequested_ && m.group == displayGroup_;
+            const auto state = active ? L"处理过程" :
                 groupStates_.count(m.group) ? groupStates_.at(m.group) : L"处理过程";
-            const auto duration = busy_ && m.group == displayGroup_ && turnStarted_ ? GetTickCount64()-turnStarted_ :
-                groupDurations_.count(m.group) ? groupDurations_.at(m.group) : 0;
+            const auto duration = !active && groupDurations_.count(m.group) ? groupDurations_.at(m.group) : 0;
             const auto elapsed = duration ? L" · " + std::to_wstring(duration/1000) + L" 秒" : std::wstring();
             Draw(dc, state + L" · " + std::to_wstring(count) + L" 项" + elapsed,
                  {box.left + D(12), box.top + D(6), box.right - D(36), box.top + D(32)}, smallFont_, c.muted);
@@ -1001,64 +1167,18 @@ void AiPane::PaintTranscript(HDC target) {
         if (!m.technical.empty())
             Draw(dc, L"技术详情", {box.left + D(16), box.bottom - D(32), box.left + D(96), box.bottom - D(4)},
                  smallFont_, UiAccentInk(dark_));
-        for (const auto &p : m.paragraphs) {
-            RECT b = p.rect;
-            OffsetRect(&b, box.left, box.top);
-            if (b.bottom < 0 || b.top > r.bottom)
-                continue;
-            if (p.style == 2)
-                TranscriptBox(dc, b, r, m.role == L"我" ? UiAccentInset() : c.raised, m.role == L"我" ? UiAccentInset() : c.raised,
-                      D(4));
-            auto old = SelectObject(dc, ParagraphFont(p.style));
-            SetBkMode(dc, TRANSPARENT);
-            SetTextColor(dc, m.role == L"我" ? RGB(255, 255, 255) : c.text);
-            const size_t pi = static_cast<size_t>(&p - m.paragraphs.data());
-            const auto lo = std::min(selectionStart_, selectionEnd_), hi = std::max(selectionStart_, selectionEnd_);
-            for (const auto &line : p.lines) {
-                RECT row = line.rect;
-                OffsetRect(&row, box.left, box.top);
-                if (row.bottom <= 0) continue;
-                if (row.top >= r.bottom) break;
-                const auto text = p.text.substr(line.start, line.length);
-                ExtTextOutW(dc, row.left, row.top, ETO_CLIPPED, &row, text.c_str(), static_cast<UINT>(text.size()),
-                            nullptr);
-                if (std::get<0>(lo) == SIZE_MAX || lo == hi)
-                    continue;
-                const TextPoint first{i, pi, line.start}, last{i, pi, line.start + line.length};
-                if (hi <= first || lo >= last)
-                    continue;
-                const size_t begin = std::get<0>(lo) == i && std::get<1>(lo) == pi
-                                         ? std::max(line.start, std::get<2>(lo)) - line.start
-                                         : 0;
-                const size_t end = std::get<0>(hi) == i && std::get<1>(hi) == pi
-                                       ? std::min(line.start + line.length, std::get<2>(hi)) - line.start
-                                       : line.length;
-                if (begin < end) {
-                    RECT selected{row.left + line.advances[begin], row.top, row.left + line.advances[end], row.bottom};
-                    SetBkColor(dc, m.role == L"我" ? RGB(15, 36, 102) : c.accent);
-                    SetTextColor(dc, RGB(255, 255, 255));
-                    ExtTextOutW(dc, row.left, row.top, ETO_CLIPPED | ETO_OPAQUE, &selected, text.c_str(),
-                                static_cast<UINT>(text.size()), nullptr);
-                    SetTextColor(dc, m.role == L"我" ? RGB(255, 255, 255) : c.text);
-                }
-            }
-            SelectObject(dc, old);
-        }
+        PaintMessageText(dc, m, i, box, r);
     }
-    if (busy_ && waitingReply_ && !IsRectEmpty(&waitingBounds_)) {
+    if (busy_ && showTurnProgress_ && !IsRectEmpty(&waitingBounds_)) {
         RECT box = waitingBounds_;
         OffsetRect(&box, 0, -scroll_.offset);
-        UiBox(dc, box, c.field, c.border, D(12));
-        const int phase = static_cast<int>((GetTickCount64() / 180) % 6);
-        for (int i = 0; i < 3; ++i) {
-            const COLORREF ink = phase % 3 == i ? c.muted : c.border;
-            UiBox(dc, {box.left + D(18 + i * 12), box.top + D(17), box.left + D(23 + i * 12), box.top + D(22)}, ink,
-                  ink, D(3));
-        }
+        TranscriptBox(dc, box, r, c.field, c.border, D(12));
+        const auto now = GetTickCount64();
+        std::wstring label = !sendingAttachments_.empty() && !attachmentsStaged_ ? L"正在准备附件" : L"正在处理";
+        label += std::wstring((now / 400) % 4, L'.');
+        if (turnStarted_) label += L" · " + std::to_wstring((now - turnStarted_) / 1000) + L" 秒";
+        Draw(dc, label, {box.left + D(12), box.top, box.right - D(12), box.bottom}, smallFont_, c.muted);
     }
-    if (copiedUntil_ > GetTickCount64())
-        Draw(dc, L"已复制选中文字", {D(12), r.bottom - D(28), r.right - D(20), r.bottom}, smallFont_, c.accent,
-             DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
     auto thumb = ScrollThumb();
     if (thumb.bottom > thumb.top)
         UiBox(dc, thumb, c.border, c.border, D(2));
@@ -1086,7 +1206,15 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         EndPaint(h, &p);
         return 0;
     }
+    case WM_MOUSEHWHEEL:
     case WM_MOUSEWHEEL:
+        if (m == WM_MOUSEHWHEEL || (GET_KEYSTATE_WPARAM(w) & MK_SHIFT)) {
+            POINT point{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            ScreenToClient(h, &point);
+            const int delta = GET_WHEEL_DELTA_WPARAM(w);
+            const int pixels = MulDiv(m == WM_MOUSEHWHEEL ? delta : -delta, self->D(72), WHEEL_DELTA);
+            if (self->TranscriptHorizontal(point, pixels) || m == WM_MOUSEHWHEEL) return 0;
+        }
         self->wheelRemainder_ += GET_WHEEL_DELTA_WPARAM(w);
         while (std::abs(self->wheelRemainder_) >= WHEEL_DELTA) {
             int d = self->wheelRemainder_ > 0 ? 1 : -1;
@@ -1110,6 +1238,7 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         p.y += self->scroll_.offset;
+        if (self->TranscriptBlockPress(p)) return 0;
         for (size_t i = 0; i < self->messages_.size(); ++i)
             if (!self->messages_[i].hidden && PtInRect(&self->messages_[i].bounds, p)) {
                 auto &message = self->messages_[i];
@@ -1146,6 +1275,10 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_MOUSEMOVE:
+        if (self->draggedBlock_ != SIZE_MAX && GetCapture() == h) {
+            self->DragTranscriptBlock(GET_X_LPARAM(l));
+            return 0;
+        }
         if (self->selecting_ && GetCapture() == h) {
             POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
             RECT r{};
@@ -1170,12 +1303,14 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_LBUTTONUP:
+        if (self->draggedBlock_ != SIZE_MAX)
+            self->DragTranscriptBlock(GET_X_LPARAM(l));
+        self->draggedBlock_ = self->draggedBlockMessage_ = SIZE_MAX;
         if (self->selecting_) {
             self->selectionEnd_ = self->HitText({GET_X_LPARAM(l), GET_Y_LPARAM(l)});
             const auto text = self->SelectedText();
             if (!text.empty()) {
                 self->Copy(text);
-                self->copiedUntil_ = GetTickCount64() + 1600;
             }
         }
         self->selecting_ = false;
@@ -1185,6 +1320,7 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         InvalidateRect(h, nullptr, FALSE);
         return 0;
     case WM_CAPTURECHANGED:
+        self->draggedBlock_ = self->draggedBlockMessage_ = SIZE_MAX;
         self->selecting_ = false;
         self->dragging_ = false;
         if (GetCapture() == h)
@@ -1216,14 +1352,12 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         } else if (w == VK_END) {
             self->scroll_.Bottom();
             self->Scroll(0);
-        } else if (w == 'C' && (GetKeyState(VK_CONTROL) & 0x8000) && self->selectedMessage_ < self->messages_.size())
+        } else if (w == 'C' && (GetKeyState(VK_CONTROL) & 0x8000) && self->selectedMessage_ < self->messages_.size()) {
             self->Copy(self->messages_[self->selectedMessage_].text);
+        }
         return 0;
     }
     return DefWindowProcW(h, m, w, l);
-}
-HFONT AiPane::ParagraphFont(int style) const {
-    return style == 2 ? codeFont_ : style == 1 ? titleFont_ : font_;
 }
 void AiPane::ClearTextSelection() {
     selectionStart_ = selectionEnd_ = {SIZE_MAX, 0, 0};
@@ -1241,22 +1375,36 @@ AiPane::TextPoint AiPane::HitText(POINT point) const {
             continue;
         if (point.y >= m.bounds.bottom && i + 1 < messages_.size())
             continue;
+        const auto localY = point.y - m.bounds.top;
         for (size_t pi = 0; pi < m.paragraphs.size(); ++pi) {
-            const auto &p = m.paragraphs[pi];
-            for (size_t li = 0; li < p.lines.size(); ++li) {
-                const auto &line = p.lines[li];
-                if (point.y >= m.bounds.top + line.rect.bottom &&
-                    (li + 1 < p.lines.size() || pi + 1 < m.paragraphs.size()))
-                    continue;
-                const int x = point.x - m.bounds.left - line.rect.left;
-                size_t ch = 0;
-                while (ch < line.length && x > (line.advances[ch] + line.advances[ch + 1]) / 2)
-                    ++ch;
-                size_t offset = line.start + ch;
-                if (offset < p.text.size() && offset && p.text[offset] >= 0xdc00 && p.text[offset] <= 0xdfff)
-                    ++offset;
-                return {i, pi, offset};
+            const auto &first = m.paragraphs[pi];
+            if (localY >= first.rect.bottom && pi + 1 < m.paragraphs.size()) continue;
+            const auto *block = first.block < m.blocks.size() ? &m.blocks[first.block] : nullptr;
+            auto localX = point.x - m.bounds.left;
+            if (block) localX = std::clamp(localX, block->body.left, block->body.right) + block->offset;
+            if (block && block->kind == ai::markup::Kind::Table) {
+                while (pi + 1 < m.paragraphs.size()) {
+                    const auto &current = m.paragraphs[pi];
+                    const auto &next = m.paragraphs[pi + 1];
+                    if (next.block != current.block || next.rect.top != current.rect.top ||
+                        localX <= (current.rect.right + next.rect.left) / 2) break;
+                    ++pi;
+                }
             }
+            const auto &p = m.paragraphs[pi];
+            if (p.lines.empty()) continue;
+            auto line = std::lower_bound(p.lines.begin(), p.lines.end(), localY, [](const TextLine &value, LONG y) {
+                return value.rect.bottom <= y;
+            });
+            if (line == p.lines.end()) --line;
+            const auto x = localX - line->rect.left;
+            const auto upper = std::lower_bound(line->advances.begin(), line->advances.end(), x);
+            size_t character = std::min(line->length, static_cast<size_t>(upper - line->advances.begin()));
+            if (character && x <= (line->advances[character - 1] + line->advances[character]) / 2) --character;
+            size_t offset = line->start + character;
+            if (offset < p.text.size() && offset && p.text[offset] >= 0xdc00 && p.text[offset] <= 0xdfff)
+                ++offset;
+            return {i, pi, offset};
         }
     }
     return {SIZE_MAX, 0, 0};
@@ -1273,33 +1421,46 @@ std::wstring AiPane::SelectedText() const {
         for (size_t pi = 0; pi < paragraphs.size(); ++pi) {
             if (TextPoint{i, pi, SIZE_MAX} < lo || TextPoint{i, pi, 0} > hi)
                 continue;
-            const auto &p = paragraphs[pi].text;
+            const auto &paragraph = paragraphs[pi];
+            const auto &p = paragraph.text;
             const auto begin = i == std::get<0>(lo) && pi == std::get<1>(lo) ? std::min(p.size(), std::get<2>(lo)) : 0;
             const auto end =
                 i == std::get<0>(hi) && pi == std::get<1>(hi) ? std::min(p.size(), std::get<2>(hi)) : p.size();
-            text += p.substr(begin, end - begin);
+            if (end > begin) text += p.substr(begin, end - begin);
             if (TextPoint{i, pi, p.size()} < hi)
-                text += L"\r\n";
+                text += paragraph.tabAfter ? L"\t" : L"\r\n";
         }
     }
     return text;
 }
-void AiPane::Copy(const std::wstring &text) {
-    if (!OpenClipboard(window_))
-        return;
-    auto data = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(wchar_t));
-    if (data) {
-        auto p = GlobalLock(data);
-        if (p) {
-            memcpy(p, text.c_str(), (text.size() + 1) * sizeof(wchar_t));
-            GlobalUnlock(data);
-            EmptyClipboard();
-            if (!SetClipboardData(CF_UNICODETEXT, data))
+bool AiPane::Copy(const std::wstring &text, const wchar_t *successNotice) {
+    if (text.empty())
+        return false;
+    bool success = false;
+    if (OpenClipboard(window_)) {
+        auto data = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(wchar_t));
+        if (data) {
+            auto p = GlobalLock(data);
+            if (p) {
+                memcpy(p, text.c_str(), (text.size() + 1) * sizeof(wchar_t));
+                GlobalUnlock(data);
+                EmptyClipboard();
+                if (SetClipboardData(CF_UNICODETEXT, data) != nullptr)
+                    success = true;
+                else
+                    GlobalFree(data);
+            } else
                 GlobalFree(data);
-        } else
-            GlobalFree(data);
+        }
+        CloseClipboard();
     }
-    CloseClipboard();
+    const wchar_t *notice = success ? (successNotice ? successNotice : L"已复制选中文字")
+                                    : L"复制失败，剪贴板可能被其他应用占用";
+    if (!success)
+        SetStatus(notice);
+    if (devices_)
+        devices_("clipboardNotice", {{"text", Utf8(notice)}, {"error", !success}});
+    return success;
 }
 void AiPane::ShowDisplayLimit() {
     if (displayLimitReached_)
@@ -1328,7 +1489,8 @@ void AiPane::Add(std::wstring role, std::wstring text, std::string item, std::ws
     message.technical = std::move(technical);
     message.group = displayGroup_;
     message.process = message.role == L"工具" || (busy_ && message.role == L"AI" && !displayGroup_.empty());
-    if (message.process && !message.group.empty() && initializedGroups_.insert(message.group).second)
+    if (message.process && !message.group.empty() && initializedGroups_.insert(message.group).second &&
+        (!busy_ || message.group != displayGroup_))
         collapsedGroups_.insert(message.group);
     messages_.push_back(std::move(message));
     Reflow(true);
@@ -1383,8 +1545,9 @@ void AiPane::ShowTechnicalDetails(size_t index) {
                 return TRUE;
             }
             if (m == WM_COMMAND) {
-                if (LOWORD(w) == 102) self->Copy(p->text);
-                else if (LOWORD(w) == IDCANCEL || LOWORD(w) == IDOK) UiEndOwnedDialog(h, IDCANCEL);
+                if (LOWORD(w) == 102) {
+                    self->Copy(p->text, L"已复制技术详情");
+                } else if (LOWORD(w) == IDCANCEL || LOWORD(w) == IDOK) UiEndOwnedDialog(h, IDCANCEL);
                 return TRUE;
             }
             if (m == WM_DRAWITEM || m == WM_MEASUREITEM) return AiPane::Proc(self->window_, m, w, l);
@@ -1409,6 +1572,104 @@ void AiPane::SetStatus(const std::wstring &text) {
     if (dialog_)
         SetDlgItemTextW(dialog_, Note, text.c_str());
 }
+std::wstring AiPane::VoicePhaseLabel() const {
+    using State = ai::VoiceInput::State;
+    switch (voice_.Status()) {
+    case State::Recording: return GetWindowTextLengthW(Control(VoicePreview)) > 0 ?
+        L"转写预览 · 点击麦克风结束" : L"录音中 · 点击麦克风结束";
+    case State::Transcribing:
+    case State::Done: return L"正在转写 · 点击取消";
+    case State::Canceling: return L"正在取消语音输入";
+    default: return voiceNotice_;
+    }
+}
+void AiPane::UpdateVoiceControls() {
+    using State = ai::VoiceInput::State;
+    const auto state = voice_.Status();
+    const auto button = Control(VoiceButton);
+    const wchar_t *caption = state == State::Recording ? L"结束录音" :
+        state == State::Idle ? L"语音输入" : L"取消语音转写";
+    if (Text(button) != caption) SetWindowTextW(button, caption);
+    EnableWindow(button, !closing_ && state != State::Canceling &&
+                 (state != State::Idle || (!busy_ && !directoryPending_ && !attachmentLoad_)));
+    InvalidateRect(button, nullptr, FALSE);
+}
+void AiPane::ToggleVoice() {
+    using State = ai::VoiceInput::State;
+    const auto state = voice_.Status();
+    if (state == State::Recording) voice_.FinishRecording();
+    else if (state != State::Idle) {
+        voice_.Cancel();
+        SetVoicePreview({});
+    }
+    else {
+        if (busy_ || directoryPending_ || attachmentLoad_ || closing_) return;
+        voiceNotice_.clear();
+        if (!voice_.Start(voiceNotice_)) {
+            UpdateActions();
+            return;
+        }
+        voiceThread_ = thread_;
+        voiceWorkspace_ = workspaceDirectory_;
+    }
+    voiceShown_ = voice_.Status();
+    UpdateActions();
+}
+void AiPane::SetVoicePreview(const std::wstring &transcript) {
+    const auto preview = Control(VoicePreview);
+    const bool hadPreview = GetWindowTextLengthW(preview) > 0;
+    if (!hadPreview && transcript.empty()) return;
+    const auto text = EditLineEndings(transcript);
+    if (text.empty() && GetFocus() == preview) FocusInput();
+    SetWindowTextW(preview, text.c_str());
+    if (hadPreview != !text.empty()) Layout();
+    if (!text.empty()) {
+        SendMessageW(preview, EM_SETSEL, text.size(), text.size());
+        SendMessageW(preview, EM_SCROLLCARET, 0, 0);
+    }
+}
+bool AiPane::InsertVoiceDraft(const std::wstring &transcript) {
+    const auto input = Control(Input);
+    DWORD start = 0, end = 0;
+    SendMessageW(input, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+    const auto length = static_cast<size_t>(GetWindowTextLengthW(input));
+    const auto retained = length - std::min(length, static_cast<size_t>(end - start));
+    const auto text = EditLineEndings(transcript);
+    if (retained + text.size() > 32768) return false;
+    SendMessageW(input, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(text.c_str()));
+    return true;
+}
+void AiPane::PollVoice() {
+    using State = ai::VoiceInput::State;
+    if (closing_) return;
+    const auto state = voice_.Status();
+    const bool currentDraft = !busy_ && !directoryPending_ && voiceThread_ == thread_ &&
+        voiceWorkspace_ == workspaceDirectory_ && IsWindowVisible(window_);
+    if (state == State::Done) {
+        auto result = voice_.TakeResult();
+        voiceNotice_.clear();
+        SetVoicePreview({});
+        if (result && currentDraft) {
+            voiceNotice_ = result->error;
+            if (!result->text.empty()) {
+                if (InsertVoiceDraft(result->text)) {
+                    SetStatus(L"语音转写已填入草稿");
+                    if (GetFocus() == Control(VoiceButton)) FocusInput();
+                } else voiceNotice_ = L"转写结果超出草稿长度上限";
+            }
+            if (!voiceNotice_.empty()) SetStatus(voiceNotice_);
+        }
+        voiceShown_ = State::Idle;
+        UpdateActions();
+    } else {
+        if (!currentDraft || state == State::Canceling) SetVoicePreview({});
+        else if (auto preview = voice_.TakePreview()) SetVoicePreview(*preview);
+        if (state != voiceShown_) {
+            voiceShown_ = state;
+            UpdateActions();
+        }
+    }
+}
 void AiPane::UpdateActions() {
     SetWindowTextW(window_,client_.Ready()?L"AI 已连接":client_.Running()?L"AI 连接中":L"AI 未连接");
     const auto updateTip = [&](int id, const std::wstring &next, std::wstring &current) {
@@ -1421,21 +1682,26 @@ void AiPane::UpdateActions() {
         SendMessageW(tips_,TTM_ADDTOOLW,0,reinterpret_cast<LPARAM>(&tip));
     };
     updateTip(WorkspaceButton, workspaceDirectory_ + (workspaceVerified_ ? std::wstring() : std::wstring(L" · 目录待验证")) +
-              (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器"), workspaceTooltip_);
+              (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器") +
+              L"\n请求权限：" + requestedAccess_ + L"\n实际权限：" + effectiveAccess_, workspaceTooltip_);
     updateTip(Model, serverDefaultModel_.empty() ? L"模型未获取" : Wide(serverDefaultModel_), modelTooltip_);
     const bool ready = client_.Ready();
     if (!busy_ && companionActivity_ != pet::Activity::Done && companionActivity_ != pet::Activity::Failed && companionActivity_ != pet::Activity::Stopped)
         SetCompanionActivity(ready ? pet::Activity::Idle : client_.Running() ? pet::Activity::Connecting : pet::Activity::Offline);
     SetWindowTextW(Control(Send), busy_ ? (stopRequested_ ? L"正在停止" : L"停止") : L"发送");
     updateTip(Send,busy_ ? (stopRequested_ ? L"正在停止当前任务" : L"停止当前任务（已提交的命令可能继续执行）") : L"发送消息",sendTooltip_);
-    EnableWindow(Control(Send), ready && !directoryPending_ && (!busy_ || !stopRequested_));
+    UpdateVoiceControls();
+    const auto voiceTip = VoicePhaseLabel();
+    updateTip(VoiceButton, voiceTip.empty() ? L"本机离线听写" : voiceTip, voiceTooltip_);
+    EnableWindow(Control(Send), ready && !directoryPending_ && (!busy_ || !stopRequested_) && (!attachmentLoad_ || busy_) &&
+        (!VoiceBusy() || busy_));
     EnableWindow(Control(StopTurn), busy_ && !stopRequested_);
     for (int id : {Analyze, Observe, QuickMenu, HistoryButton, New, WorkspaceButton})
-        EnableWindow(Control(id), ready && !busy_ && !directoryPending_);
+        EnableWindow(Control(id), ready && !busy_ && !directoryPending_ && !VoiceBusy());
     EnableWindow(Control(Target), !busy_);
     EnableWindow(Control(Analyze), ready && !busy_ && !target_.empty());
     EnableWindow(Control(QuickMenu),ready && !busy_ && !target_.empty());
-    EnableWindow(Control(WorkspaceButton),ready && !busy_ && !directoryPending_);
+    EnableWindow(Control(WorkspaceButton),ready && !busy_ && !directoryPending_ && !VoiceBusy());
     EnableWindow(Control(Observe), ready && !busy_ && !target_.empty());
     EnableWindow(Control(Input), !closing_);
     Layout();
@@ -1530,8 +1796,7 @@ void AiPane::SelectTarget(const std::string &id) {
     target_ = id;
     RefreshTargets();
     auto it = std::find(targets_.begin(), targets_.end(), id);
-    if (it != targets_.end())
-        SendMessageW(Control(Target), CB_SETCURSEL, it - targets_.begin() + 1, 0);
+    SendMessageW(Control(Target), CB_SETCURSEL, it != targets_.end() ? it - targets_.begin() + 1 : 0, 0);
     UpdateTargetLabel();
     PostMessageW(GetParent(window_), AiTargetChanged, 0, 0);
     UpdateActions();
@@ -1555,7 +1820,10 @@ bool AiPane::Request(ai::Operation operation, Json params, const std::string &pu
         SetStatus(L"AI 连接不可用或发送队列已满");
         return false;
     }
-    requests_[id] = {purpose, turn_};
+    requests_[id] = {purpose, turn_, workspaceDirectory_};
+    if (operation == ai::Operation::NewConversation || operation == ai::Operation::RestoreConversation ||
+        operation == ai::Operation::StartTask)
+        effectiveAccess_ = L"待验证";
     return true;
 }
 void AiPane::Reply(const Json &id, Json result, bool success) {
@@ -1581,21 +1849,30 @@ void AiPane::Reply(const Json &id, Json result, bool success) {
     }
 }
 void AiPane::SendPrompt(std::wstring text) {
+    if (VoiceBusy()) return;
     if (!client_.Ready()) {
         ShowConnection();
         return;
     }
-    if (busy_ || directoryPending_)
+    if (busy_ || directoryPending_ || attachmentLoad_)
         return;
     if (text.empty())
         text = Text(Control(Input));
-    if (text.find_first_not_of(L" \t\r\n") == std::wstring::npos)
-        return;
+    if (text.find_first_not_of(L" \t\r\n") == std::wstring::npos) {
+        if (attachments_.empty()) return;
+        text = L"请分析我添加的附件。";
+    }
     if (text.size() > 32768) {
         SetStatus(L"消息最多 32768 字符");
         return;
     }
     pendingPrompt_ = text;
+    submittedDraft_ = text;
+    sendingAttachments_ = attachments_;
+    attachmentsStaged_ = false;
+    attachmentDirectory_.clear();
+    attachmentImagePaths_ = Json::array();
+    uploadFile_ = uploadOffset_ = 0;
     taskAuthorized_ = true;
     recoveryUsed_ = false;
     powerContext_ = nullptr;
@@ -1609,25 +1886,29 @@ void AiPane::SendPrompt(std::wstring text) {
         attachment_.clear();
         attachmentTarget_.clear();
     }
+    if (autoWorkspacePractices_ && !workspacePractices_.empty()) {
+        const auto contextPrefix = ai::BuildTurnContextPrefix(workspacePractices_);
+        if (!contextPrefix.empty()) {
+            pendingPrompt_ = Wide(contextPrefix) + L"\n" + pendingPrompt_;
+        }
+    }
     displayGroup_ = "local:" + std::to_string(nextRequest_);
-    collapsedGroups_.insert(displayGroup_);
-    waitingReply_ = true;
-    Add(L"我", text);
-    SetWindowTextW(Control(Input), L"");
+    showTurnProgress_ = true;
     busy_ = true;
-    SetCompanionActivity(pet::Activity::Thinking);
-    Reflow(true);
     turn_.clear();
     completionDeadline_ = 0;
     stopRequested_ = false;
     observedTool_ = false;
     turnStarted_ = GetTickCount64();
-    groupStates_[displayGroup_] = L"正在处理";
-    Add(L"工具", L"正在分析请求；设备操作以随后实际工具记录为准。", "local:process-start");
+    SetCompanionActivity(pet::Activity::Thinking);
+    std::wstring displayed = text;
+    for (const auto &file : sendingAttachments_) displayed += L"\n附件 · " + file.name;
+    Add(L"我", displayed);
+    SetWindowTextW(Control(Input), L"");
     if (thread_.empty()) {
         if (!Request(ai::Operation::NewConversation, {{"cwd", Utf8(workspaceDirectory_)}, {"defaultModel", serverDefaultModel_}}, "start")) {
-            busy_ = false;
-            pendingPrompt_.clear();
+            if (!sendingAttachments_.empty()) FailAttachmentUpload(L"无法创建附件会话，草稿已保留");
+            else { busy_ = showTurnProgress_ = false; pendingPrompt_.clear(); }
         }
     } else {
         RememberThread(thread_,text.substr(0,40));
@@ -1637,6 +1918,10 @@ void AiPane::SendPrompt(std::wstring text) {
     UpdateActions();
 }
 void AiPane::StartTurn() {
+    if (!sendingAttachments_.empty() && !attachmentsStaged_) {
+        BeginAttachmentUpload();
+        return;
+    }
     Json params = {{"conversationId", thread_},
                    {"defaultModel", serverDefaultModel_},
                    {"cwd", Utf8(workspaceDirectory_)},
@@ -1645,9 +1930,10 @@ void AiPane::StartTurn() {
                                 "; selected session read/write enabled; no per-command confirmation. "
                                 "Power tools independently address the connected IT6332A GUI-selected channels; "
                                 "call serialctl_power_get first and only switch output when the user asks.]"}};
+    if (!attachmentImagePaths_.empty()) params["images"] = attachmentImagePaths_;
     if (!Request(ai::Operation::StartTask, params, "turn")) {
-        busy_ = false;
-        pendingPrompt_.clear();
+        if (!sendingAttachments_.empty()) FailAttachmentUpload(L"附件已上传，但消息未能发送。草稿已保留");
+        else { busy_ = showTurnProgress_ = false; pendingPrompt_.clear(); }
     } else
         pendingPrompt_.clear();
 }
@@ -1658,9 +1944,19 @@ void AiPane::Stop() {
     nativeItems_.clear();
     stopRequested_ = true;
     if(!displayGroup_.empty()) groupStates_[displayGroup_]=L"正在停止";
-    waitingReply_ = false;
+    showTurnProgress_ = false;
     Reflow();
     completionDeadline_ = 0;
+    if (attachmentUploadToken_ || (!sendingAttachments_.empty() && turn_.empty())) {
+        attachmentUploadToken_ = 0;
+        attachmentDeadline_ = 0;
+        sendingAttachments_.clear();
+        attachmentImagePaths_ = Json::array();
+        pendingPrompt_.clear();
+        busy_ = false;
+        if (Text(Control(Input)).empty()) SetWindowTextW(Control(Input), submittedDraft_.c_str());
+        if (!displayGroup_.empty()) groupStates_[displayGroup_] = L"已停止附件上传";
+    }
     if (!pendingObservation_.is_null()) {
         Reply(pendingObservation_["requestId"], {{"error", "User stopped observation"}}, false);
         pendingObservation_ = nullptr;
@@ -1677,18 +1973,21 @@ void AiPane::Stop() {
 void AiPane::NewConversation() {
     if (busy_)
         return;
+    voice_.Cancel();
+    voiceNotice_.clear();
     SetCompanionActivity(client_.Ready() ? pet::Activity::Idle : pet::Activity::Offline);
     taskAuthorized_ = false;
     restoreOnConfig_ = false;
     thread_.clear();
     turn_.clear();
+    effectiveAccess_ = L"待验证";
     finishedTurns_.clear();
     displayGroup_.clear();
     collapsedGroups_.clear();
     initializedGroups_.clear();
     groupStates_.clear();
     groupDurations_.clear();
-    waitingReply_ = false;
+    showTurnProgress_ = false;
     ClearTextSelection();
     messages_.clear();
     selectedMessage_ = SIZE_MAX;
@@ -1717,7 +2016,9 @@ void AiPane::Action(int id) {
         else if(sendGesture_ != 1) SendPrompt();
     } else if (id == StopTurn) {
         if (busy_ && !stopRequested_) Stop();
-    } else if (id == Connect)
+    } else if (id == VoiceButton)
+        ToggleVoice();
+    else if (id == Connect)
         ShowConnection();
     else if(id==New) NewConversation();
     else if(id==WorkspaceButton) {
@@ -1733,8 +2034,16 @@ void AiPane::Action(int id) {
         AppendMenuW(menu,MF_STRING,5,L"梳理启动过程\n按实际日志整理启动阶段");
         AppendMenuW(menu,MF_STRING,6,L"对比前后变化\n需要两段日志，不推断缺失证据");
         AppendMenuW(menu,MF_STRING,7,L"生成诊断清单\n先给只读检查建议与预期现象");
+        AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+        AppendMenuW(menu,MF_STRING,10,L"查看工作空间经验 (AGENTS.md)\n查看当前经验与权限状态");
+        AppendMenuW(menu,MF_STRING,11,L"记录当前有效经验到 AGENTS.md\n将已验证的构建/排障经验写入受管区块");
+        AppendMenuW(menu,MF_STRING | (!hasRollbackSnapshot_ ? MF_GRAYED : 0),12,L"撤销最近一次 AGENTS.md 更新\n一键回滚最近一次沉淀");
+        AppendMenuW(menu,MF_STRING | (autoWorkspacePractices_ ? MF_CHECKED : 0),13,L"自动加载/沉淀工作空间经验\n开启后新回合自动注入经验上下文");
         RECT r{};GetWindowRect(Control(QuickMenu),&r);
-        const auto choice=UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,r.left,r.bottom,window_,style_);DestroyMenu(menu);
+        const auto choice = composerLogChoice_ ? composerLogChoice_ :
+            UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,r.left,r.bottom,window_,style_);
+        composerLogChoice_ = 0;
+        DestroyMenu(menu);
         if(choice==3) {
             const auto selection=devices_("selection",{{"sessionId",target_}});
             if(selection.contains("error"))SetStatus(Wide(selection["error"].get<std::string>()));
@@ -1750,6 +2059,23 @@ void AiPane::Action(int id) {
             SetWindowTextW(Control(Input),draft.c_str());
             SendMessageW(Control(Input),EM_SETSEL,draft.size(),draft.size());
             SetStatus(L"已填入提示词，检查后发送；分析应以实际日志为准");FocusInput();
+        } else if(choice==10) {
+            if(workspacePractices_.empty()) {
+                Add(L"状态", L"当前工作空间（" + (workspaceDirectory_.empty() ? L"未指定" : workspaceDirectory_) + L"）暂无已加载的受管经验；权限：" + effectiveAccess_);
+            } else {
+                Add(L"AI", L"### 当前工作空间经验 (" + workspaceDirectory_ + L"/AGENTS.md)\n\n" + Wide(workspacePractices_) + L"\n\n权限状态：" + effectiveAccess_);
+            }
+            SetStatus(L"已显示工作空间经验");
+        } else if(choice==11) {
+            std::wstring entry;
+            if(PromptValue(L"记录工作空间经验到 AGENTS.md", entry)) {
+                SaveWorkspacePractice(entry);
+            }
+        } else if(choice==12) {
+            RollbackWorkspacePractices();
+        } else if(choice==13) {
+            autoWorkspacePractices_ = !autoWorkspacePractices_;
+            SetStatus(autoWorkspacePractices_ ? L"已开启自动加载/沉淀工作空间经验" : L"已暂停自动加载/沉淀工作空间经验");
         } else if(choice) {quickObserve_=choice==2;SetWindowTextW(Control(Analyze),quickObserve_?L"持续观察":L"分析日志");}
     }
     else if (id == HistoryButton)
@@ -1788,6 +2114,7 @@ void AiPane::Action(int id) {
     }
 }
 void AiPane::Disconnect() {
+    voice_.Cancel();
     Stop();
     client_.Disconnect();
     busy_ = false;
@@ -1803,6 +2130,9 @@ void AiPane::Disconnect() {
 void AiPane::BeginShutdown() {
     if (closing_.exchange(true))
         return;
+    voice_.Cancel();
+    if (attachmentLoad_) attachmentLoad_->cancel = true;
+    attachmentUploadToken_ = 0;
     client_.Disconnect();
     if (window_) KillTimer(window_, Timer);
     std::shared_ptr<HostPrompt> prompt;
@@ -1820,7 +2150,11 @@ void AiPane::BeginShutdown() {
     if (devices_)
         devices_("release", {{"sessionId", turnTarget_}});
 }
-void AiPane::WaitForShutdown() { client_.Shutdown(); }
+void AiPane::WaitForShutdown() {
+    client_.Shutdown();
+    attachmentLoader_.Drain();
+    voice_.Join();
+}
 void AiPane::Shutdown() {
     BeginShutdown();
     WaitForShutdown();
@@ -1862,13 +2196,13 @@ void AiPane::QueueEvent(Json event) {
     events_.push_back(std::move(event));
 }
 void AiPane::Poll() {
+    PollVoice();
+    PollAttachments();
+    if (attachmentUploadToken_ && GetTickCount64() >= attachmentDeadline_)
+        FailAttachmentUpload(L"附件上传超时，草稿已保留。请重新连接后再试");
     if (polling_) return;
     polling_ = true;
     struct PollGuard { bool &flag; ~PollGuard() { flag = false; } } pollGuard{polling_};
-    if (copiedUntil_ && copiedUntil_ <= GetTickCount64()) {
-        copiedUntil_ = 0;
-        InvalidateRect(transcript_, nullptr, FALSE);
-    }
     std::shared_ptr<HostPrompt> prompt;
     {
         std::lock_guard<std::mutex> l(eventsMutex_);
@@ -1890,8 +2224,11 @@ void AiPane::Poll() {
         } catch (...) {
         }
     }
-    if (busy_)
-        InvalidateRect(transcript_, nullptr, FALSE);
+    if (busy_ && showTurnProgress_ && !IsRectEmpty(&waitingBounds_)) {
+        RECT progress = waitingBounds_;
+        OffsetRect(&progress, 0, -scroll_.offset);
+        InvalidateRect(transcript_, &progress, FALSE);
+    }
     const auto sliceStarted = GetTickCount64();
     deferReflow_ = true;
     for (unsigned count = 0; count < 64 && (count == 0 || GetTickCount64() - sliceStarted < 6); ++count) {
@@ -1958,10 +2295,29 @@ void AiPane::Poll() {
         Add(L"状态", L"任务已运行超过 10 分钟，连接仍保留；可点击停止。已提交操作不会自动重发。");
     }
 }
+void AiPane::UpdateEffectiveAccess(const Json &result) {
+    const auto sandbox = result.value("effectiveSandbox", std::string());
+    if (sandbox == "danger-full-access" || sandbox == "dangerFullAccess" || sandbox == ":danger-full-access") {
+        effectiveAccess_ = L"Full Access";
+    } else if (sandbox == "read-only" || sandbox == "readOnly") {
+        effectiveAccess_ = L"受限 (read-only)";
+        SetStatus(L"AI 会话权限受限：只读沙箱 (read-only)");
+    } else if (sandbox == "workspace-write" || sandbox == "workspaceWrite") {
+        effectiveAccess_ = L"受限 (workspace-write)";
+        SetStatus(L"AI 会话权限受限：工作区读写 (workspace-write)");
+    } else {
+        effectiveAccess_ = L"待验证";
+    }
+}
+
 void AiPane::Event(const Json &e) {
     const auto event = e.value("event", std::string());
     if (event == "ready") {
         workspaceVerified_ = false;
+        agentsSnapshotValid_ = false;
+        agentsWritePending_ = false;
+        verifiedPractices_.clear();
+        effectiveAccess_ = L"待验证";
         SetCompanionActivity(pet::Activity::Connecting);
         taskAuthorized_ = false;
         restoreOnConfig_ = !thread_.empty();
@@ -2001,23 +2357,29 @@ void AiPane::Event(const Json &e) {
         return;
     }
     if (event == "disconnected") {
+        if (!sendingAttachments_.empty()) FailAttachmentUpload(L"AI 连接已断开，附件草稿已保留");
         SetCompanionActivity(pet::Activity::Offline);
         if(busy_ && !displayGroup_.empty()) {
             groupStates_[displayGroup_]=stopRequested_?L"已停止":L"连接中断";
             if(turnStarted_) groupDurations_[displayGroup_]=GetTickCount64()-turnStarted_;
+            collapsedGroups_.insert(displayGroup_);
         }
         directoryPending_ = false;
         workspaceAccept_ = false;
+        effectiveAccess_ = L"待验证";
         directoryChildren_ = Json::array();
         verifiedDirectory_.clear();
         taskAuthorized_ = false;
         restoreOnConfig_ = false;
         PostMessageW(GetParent(window_), AiStateChanged, 0, 0);
         busy_ = false;
-        waitingReply_ = false;
+        showTurnProgress_ = false;
         Reflow();
         turn_.clear();
         requests_.clear();
+        agentsWritePending_ = false;
+        agentsSnapshotValid_ = false;
+        verifiedPractices_.clear();
         completionDeadline_ = 0;
         pendingObservation_ = nullptr;
         nativeItems_.clear();
@@ -2042,7 +2404,16 @@ void AiPane::Event(const Json &e) {
             return;
         auto purpose = found->second.purpose;
         const auto requestTurn = found->second.turn;
+        const auto requestWorkspace = found->second.workspace;
         requests_.erase(found);
+        if (purpose == "attachment-directory" || purpose == "attachment-chunk") {
+            AttachmentResponse(e);
+            return;
+        }
+        if (purpose.find("workspace-agents") != std::string::npos && requestWorkspace != workspaceDirectory_) {
+            agentsWritePending_ = false;
+            return; // A delayed response must never contaminate another workspace.
+        }
         if (purpose == "home" || purpose == "directory" || purpose == "directory-fallback") {
             if (purpose == "home") {
                 serverHome_.clear();
@@ -2058,6 +2429,43 @@ void AiPane::Event(const Json &e) {
                         DirectoryFailure(L"服务器不支持目录浏览；可手动填写项目路径");
                 } else DirectoryFailure(Wide(e.at("error").get<std::string>()));
             } else DirectoryResult(e.at("result"), purpose == "directory-fallback");
+            UpdateActions();
+            return;
+        }
+        if (purpose == "read-workspace-agents") {
+            agentsSnapshotValid_ = false;
+            workspacePractices_.clear();
+            if (!e.contains("error") && e.contains("result") && e["result"].value("exitCode", -1) == 0) {
+                const auto content = e["result"].value("stdout", std::string());
+                if (content.rfind("PRESENT\n", 0) == 0 || content == "ABSENT\n") {
+                    agentsFileExists_ = content.rfind("PRESENT\n", 0) == 0;
+                    currentAgentsMdContent_ = agentsFileExists_ ? content.substr(8) : std::string();
+                    agentsSnapshotValid_ = true;
+                    workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+                    SetStatus(L"已读取工作空间 AGENTS.md；后续任务使用最新受管经验");
+                }
+            }
+            if (!agentsSnapshotValid_) SetStatus(L"无法安全读取 AGENTS.md，自动记录已暂停；请重新加载");
+            UpdateActions();
+            return;
+        }
+        if (purpose == "save-workspace-agents" || purpose == "rollback-workspace-agents") {
+            agentsWritePending_ = false;
+            if (!e.contains("error") && e.contains("result") && e["result"].value("exitCode", -1) == 0) {
+                if (purpose == "save-workspace-agents") {
+                    rollbackAgentsMdSnapshot_ = currentAgentsMdContent_;
+                    rollbackAgentsFileExists_ = agentsFileExists_;
+                    hasRollbackSnapshot_ = true;
+                } else hasRollbackSnapshot_ = false;
+                currentAgentsMdContent_ = pendingAgentsContent_;
+                agentsFileExists_ = pendingAgentsExists_;
+                workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+                SetStatus(purpose == "save-workspace-agents" ? L"已记录工作空间 AGENTS.md" : L"已撤销最近一次 AGENTS.md 更新");
+            } else {
+                agentsSnapshotValid_ = false;
+                SetStatus(L"AGENTS.md 更新失败或内容已变化；原文件保留，请重新加载后重试");
+            }
+            pendingAgentsContent_.clear();
             UpdateActions();
             return;
         }
@@ -2080,16 +2488,24 @@ void AiPane::Event(const Json &e) {
             SaveWorkspaceDefault(path);
             RememberThread(id,L"新会话");
             SetStatus(L"已切换工作空间 · " + path);
+            UpdateEffectiveAccess(e["result"]);
+            LoadWorkspacePractices();
             UpdateActions(); return;
         }
         if (e.contains("error")) {
+            if ((purpose == "start" || purpose == "turn") && !sendingAttachments_.empty()) {
+                FailAttachmentUpload(L"AI 未接受附件消息，草稿已保留。 " + Wide(ai::ExplainServiceError(e.at("error").get<std::string>())));
+                return;
+            }
             SetCompanionActivity(pet::Activity::Failed);
             if (purpose == "config") { restoreOnConfig_ = false; busy_ = false; }
             if (purpose == "resume") pendingHistoryRestore_ = false;
             SetStatus(Wide(ai::ExplainServiceError(e.at("error").get<std::string>())));
             Add(L"状态", status_);
             if (purpose == "start" || purpose == "turn" || purpose == "resume") {
-                waitingReply_ = false;
+                effectiveAccess_ = L"待验证";
+                showTurnProgress_ = false;
+                if (!displayGroup_.empty()) collapsedGroups_.insert(displayGroup_);
                 Reflow();
                 taskAuthorized_ = false;
                 busy_ = false;
@@ -2108,6 +2524,7 @@ void AiPane::Event(const Json &e) {
                        {"status", "interrupted"}});
         } else if (purpose == "start") {
             thread_ = result.at("conversationId").get<std::string>();
+            UpdateEffectiveAccess(result);
             if (ai::ValidWorkspacePath(result.value("cwd", std::string()))) workspaceDirectory_ = Wide(result["cwd"].get<std::string>());
             RememberThread(thread_, pendingPrompt_.empty() ? L"新会话" : pendingPrompt_.substr(0, 40));
             if (stopRequested_) {
@@ -2117,6 +2534,18 @@ void AiPane::Event(const Json &e) {
                 StartTurn();
         } else if (purpose == "turn") {
             turn_ = result.at("taskId").get<std::string>();
+            if (!sendingAttachments_.empty()) {
+                for (const auto &sent : sendingAttachments_) {
+                    const auto found = std::find_if(attachments_.begin(), attachments_.end(), [&](const auto &draft) {
+                        return draft.bytes == sent.bytes;
+                    });
+                    if (found != attachments_.end()) attachments_.erase(found);
+                }
+                sendingAttachments_.clear();
+                attachmentImagePaths_ = Json::array();
+                attachmentDirectory_.clear();
+            }
+            UpdateEffectiveAccess(result);
             if (stopRequested_)
                 Stop();
         } else if (purpose == "compact") {
@@ -2196,10 +2625,12 @@ void AiPane::Event(const Json &e) {
                 if (outcome == "completed") CollapseCompletedProcess(group);
             }
             displayGroup_.clear();
-            waitingReply_ = false;
+            showTurnProgress_ = false;
             Reflow();
             busy_ = false;
             SetStatus(L"已恢复服务器历史 · 查看历史不会自动发送命令");
+            UpdateEffectiveAccess(result);
+            LoadWorkspacePractices();
         }
         UpdateActions();
         return;
@@ -2220,21 +2651,26 @@ void AiPane::Event(const Json &e) {
         return;
     }
     if ((event == "serverTool" || event == "serverToolDelta") && busy_ && !stopRequested_) {
+        const bool completed = event == "serverTool" && e.value("completed", false);
         if (e.value("failed", false))
             groupStates_[displayGroup_] = L"含失败记录";
         completionDeadline_ = 0;
         const auto id = e.value("messageId", std::string());
-        if (event == "serverTool" && e.value("completed", false)) nativeItems_.erase(id);
+        if (completed) nativeItems_.erase(id);
         else nativeItems_.insert(id);
         SetCompanionActivity(nativeItems_.empty() ? pet::Activity::Thinking : pet::Activity::Working);
         const auto raw = Wide(e.value("text", std::string()));
+        if (raw.find(L"read-only file system") != std::wstring::npos ||
+            raw.find(L"Read-only file system") != std::wstring::npos) {
+            effectiveAccess_ = L"受限 (read-only)";
+            SetStatus(L"AI 工具执行权限受限：只读文件系统");
+        }
         auto message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
         if (message == messages_.end()) {
             Add(L"工具", L"", id);
             message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
         }
         if (message != messages_.end()) {
-            const bool completed = event == "serverTool" && e.value("completed", false);
             if (event == "serverToolDelta") {
                 message->streamedOutput += raw;
                 if (message->streamedOutput.size() > 65536) {
@@ -2266,6 +2702,27 @@ void AiPane::Event(const Json &e) {
             } else ShowDisplayLimit();
         }
         observedTool_ = true;
+        // B10: Auto-harvest build/deploy commands if completed successfully
+        if (completed && !e.value("failed", false) && autoWorkspacePractices_ &&
+            e.contains("exitCode") && e["exitCode"].is_number_integer() && e["exitCode"] == 0 &&
+            e.contains("command") && e["command"].is_string()) {
+            std::string cmd = e["command"].get<std::string>();
+            std::string lowerCmd = cmd;
+            std::transform(lowerCmd.begin(), lowerCmd.end(), lowerCmd.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            bool isBuildOrDeploy = (lowerCmd.find("make") != std::string::npos ||
+                                    lowerCmd.find("cmake") != std::string::npos ||
+                                    lowerCmd.find("build") != std::string::npos ||
+                                    lowerCmd.find("deploy") != std::string::npos ||
+                                    lowerCmd.find("bitbake") != std::string::npos ||
+                                    lowerCmd.find("cargo") != std::string::npos ||
+                                    lowerCmd.find("ninja") != std::string::npos);
+            if (isBuildOrDeploy && workspacePractices_.find(cmd) == std::string::npos) {
+                const auto safe = ai::SanitizePracticeEntry(cmd);
+                if (!safe.empty() && verifiedPractices_.size() < 16)
+                    verifiedPractices_.push_back("已执行，退出码 0；复用前核对环境：" + safe);
+            }
+        }
         return;
     }
     if (event == "taskActivity" || event == "serialToolRequest" || event == "textStarted" || event == "textDelta")
@@ -2283,7 +2740,6 @@ void AiPane::Event(const Json &e) {
     }
     if ((event == "textDelta" || event == "textComplete") && !stopRequested_) {
         SetCompanionActivity(pet::Activity::Replying);
-        waitingReply_ = false;
         const auto id = e.value("messageId", std::string());
         const auto text = Wide(e.value("text", std::string()));
         auto message = std::find_if(messages_.begin(), messages_.end(),
@@ -2324,7 +2780,7 @@ void AiPane::Event(const Json &e) {
                 Stop();
         }
     } else if (event == "taskFinished") {
-        waitingReply_ = false;
+        showTurnProgress_ = false;
         if(!displayGroup_.empty() && turnStarted_) groupDurations_[displayGroup_]=GetTickCount64()-turnStarted_;
         const auto outcome = e.value("status", std::string());
         SetCompanionActivity(stopRequested_ || outcome == "interrupted" ? pet::Activity::Stopped : outcome == "failed" ? pet::Activity::Failed : outcome == "completed" ? pet::Activity::Done : pet::Activity::Idle);
@@ -2337,6 +2793,8 @@ void AiPane::Event(const Json &e) {
                                                                : L"状态待确认";
         if (!stopRequested_ && outcome == "completed")
             CollapseCompletedProcess(displayGroup_);
+        else if (!displayGroup_.empty())
+            collapsedGroups_.insert(displayGroup_);
         Reflow(true);
         taskAuthorized_ = false;
         const auto state = e.value("status", std::string());
@@ -2361,6 +2819,9 @@ void AiPane::Event(const Json &e) {
                                       : L"回复完成 · 推理已响应，工具能力待实际调用验证");
         Reflow(true);
         RefreshTargets();
+        if (!stopRequested_ && state == "completed" && !failedStep && !verifiedPractices_.empty())
+            SaveWorkspacePractice(Wide(verifiedPractices_.back()));
+        verifiedPractices_.clear();
         UpdateActions();
     } else if (event == "serviceError") {
         SetCompanionActivity(e.value("willRetry", false) ? pet::Activity::Thinking : pet::Activity::Failed);
@@ -2368,7 +2829,8 @@ void AiPane::Event(const Json &e) {
         Add(L"状态", explanation);
         SetStatus(explanation);
         if (!e.value("willRetry", false)) {
-            waitingReply_ = false;
+            showTurnProgress_ = false;
+            if (!displayGroup_.empty()) collapsedGroups_.insert(displayGroup_);
             Reflow();
             taskAuthorized_ = false;
             busy_ = false;
@@ -2631,7 +3093,7 @@ void AiPane::PopulateDirectories(bool updatePath) {
         if (!h) continue;
         auto combo = GetDlgItem(h, Directory);
         if(!combo)continue;
-        if (SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0)) { deferred = true; continue; }
+        if (SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0) && !keepDirectoryDropdownOpen_) { deferred = true; continue; }
         SendMessageW(combo, CB_RESETCONTENT, 0, 0);
         SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"选择子目录…"));
         for (const auto &path : directoryChildren_) {
@@ -2659,6 +3121,7 @@ void AiPane::QueueDirectorySelection(HWND h) {
     if(!ai::ValidWorkspacePath(Utf8(parent)) || name.find(L'/')!=std::wstring::npos) return;
     if(parent.back()!=L'/') parent+=L'/';
     pendingDirectorySelection_=parent+name;
+    keepDirectoryDropdownOpen_ = true;
     PostMessageW(h,CommitDirectory,0,0);
 }
 bool AiPane::DirectoryMessage(HWND h, UINT m, WPARAM w) {
@@ -2671,6 +3134,7 @@ bool AiPane::DirectoryMessage(HWND h, UINT m, WPARAM w) {
     if(m!=WM_COMMAND) return false;
     const int id=LOWORD(w),note=HIWORD(w);
     if(id==Directory && note==CBN_CLOSEUP) {
+        if(pendingDirectorySelection_.empty() && !directoryPending_) keepDirectoryDropdownOpen_ = false;
         if(directoryRowsDirty_) PostMessageW(h,RefreshDirectoryRows,0,0);
         return true;
     }
@@ -2734,6 +3198,17 @@ void AiPane::DirectoryResult(const Json &result, bool fallback) {
     verifiedDirectory_ = directoryPath_;
     directoryChildren_ = std::move(children);
     PopulateDirectories(true);
+    for (HWND h : {dialog_, workspaceDialog_}) {
+        if (!h) continue;
+        EnableWindow(GetDlgItem(h, IDOK), client_.Ready() && !directoryPending_);
+        for (int id : {Directory, DirectoryUp, DirectoryRefresh}) {
+            EnableWindow(GetDlgItem(h, id), client_.Ready() && !directoryPending_);
+        }
+    }
+    if (workspaceDialog_ && !workspaceAccept_ && keepDirectoryDropdownOpen_) {
+        auto combo = GetDlgItem(workspaceDialog_, Directory);
+        if (combo) SendMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0);
+    }
     if (directoryInitial_ && settings_.workingDirectory.empty()) {
         SaveWorkspaceDefault(verifiedDirectory_);
         if (thread_.empty()) workspaceDirectory_ = verifiedDirectory_;
@@ -2751,7 +3226,14 @@ void AiPane::DirectoryFailure(const std::wstring &message) {
     }
     directoryPending_ = false;
     workspaceAccept_ = false;
-    for (HWND h : {dialog_, workspaceDialog_}) if (h) SetDlgItemTextW(h, Note, message.c_str());
+    for (HWND h : {dialog_, workspaceDialog_}) {
+        if (!h) continue;
+        EnableWindow(GetDlgItem(h, IDOK), client_.Ready() && !directoryPending_);
+        for (int id : {Directory, DirectoryUp, DirectoryRefresh}) {
+            EnableWindow(GetDlgItem(h, id), client_.Ready() && !directoryPending_);
+        }
+        SetDlgItemTextW(h, Note, message.c_str());
+    }
     UpdateActions();
 }
 bool AiPane::ChooseWorkspace() {
@@ -2772,6 +3254,47 @@ void AiPane::BeginWorkspaceConversation(const std::wstring& path) {
     } else pendingWorkspace_.clear();
     UpdateActions();
 }
+void AiPane::LoadWorkspacePractices(bool forceReload) {
+    agentsSnapshotValid_ = false;
+    workspacePractices_.clear();
+    hasRollbackSnapshot_ = false;
+    if (!client_.Ready() || workspaceDirectory_.empty() || agentsWritePending_ || (!autoWorkspacePractices_ && !forceReload)) return;
+    Request(ai::Operation::RunCommand,
+        {{"command", Json::array({"sh", "-c", ai::WorkspaceReadCommand()})},
+         {"cwd", Utf8(workspaceDirectory_)}, {"timeoutMs", 3000}, {"outputBytesCap", 131072}},
+        "read-workspace-agents");
+}
+bool AiPane::SaveWorkspacePractice(const std::wstring& entry) {
+    if (!client_.Ready() || workspaceDirectory_.empty() || !agentsSnapshotValid_ || agentsWritePending_) {
+        SetStatus(L"工作空间经验尚未读取或正在写入；本次未记录");
+        return false;
+    }
+    const auto sanitized = ai::SanitizePracticeEntry(Utf8(entry));
+    if (sanitized.empty()) {
+        SetStatus(L"经验条目包含敏感信息或无效字符，已拒绝记录");
+        return false;
+    }
+    pendingAgentsContent_ = ai::MergeManagedBlock(currentAgentsMdContent_, {sanitized});
+    pendingAgentsExists_ = true;
+    const auto cmd = ai::WorkspaceReplaceCommand(currentAgentsMdContent_, agentsFileExists_, pendingAgentsContent_, true);
+    agentsWritePending_ = Request(ai::Operation::RunCommand,
+        {{"command", Json::array({"sh", "-c", cmd})}, {"cwd", Utf8(workspaceDirectory_)},
+         {"timeoutMs", 5000}, {"outputBytesCap", 4096}}, "save-workspace-agents");
+    return agentsWritePending_;
+}
+bool AiPane::RollbackWorkspacePractices() {
+    if (!client_.Ready() || workspaceDirectory_.empty() || !agentsSnapshotValid_ || agentsWritePending_ || !hasRollbackSnapshot_) {
+        SetStatus(L"暂无可安全回滚的 AGENTS.md 快照");
+        return false;
+    }
+    pendingAgentsContent_ = rollbackAgentsMdSnapshot_;
+    pendingAgentsExists_ = rollbackAgentsFileExists_;
+    const auto cmd = ai::WorkspaceReplaceCommand(currentAgentsMdContent_, agentsFileExists_, pendingAgentsContent_, pendingAgentsExists_);
+    agentsWritePending_ = Request(ai::Operation::RunCommand,
+        {{"command", Json::array({"sh", "-c", cmd})}, {"cwd", Utf8(workspaceDirectory_)},
+         {"timeoutMs", 5000}, {"outputBytesCap", 4096}}, "rollback-workspace-agents");
+    return agentsWritePending_;
+}
 INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, DWLP_USER));
     if (m == WM_INITDIALOG) {
@@ -2779,6 +3302,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SetWindowLongPtrW(h, DWLP_USER, l);
         self->workspaceDialog_ = h;
         self->workspaceAccept_ = false;
+        self->keepDirectoryDropdownOpen_ = false;
         SetWindowTextW(h, L"选择 AI 工作空间");
         UiResizeDialog(h, self->dpi_, 436, 256);
         auto add = [&](const wchar_t *type, const wchar_t *text, int id, int x, int y, int width, int height, DWORD extra) {
@@ -2823,26 +3347,31 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (self->DirectoryMessage(h,m,w)) return TRUE;
     if (m == WM_COMMAND) {
         const int id = LOWORD(w);
-        if (id == IDCANCEL) { self->workspaceAccept_ = false; UiEndOwnedDialog(h,IDCANCEL); return TRUE; }
+        if (id == IDCANCEL) { self->workspaceAccept_ = false; self->keepDirectoryDropdownOpen_ = false; UiEndOwnedDialog(h,IDCANCEL); return TRUE; }
         if (self->directoryPending_) return TRUE;
         const auto path = Text(GetDlgItem(h,PathDisplay));
         if (id == IDOK) {
+            self->keepDirectoryDropdownOpen_ = false;
             if (path.empty()) { self->directoryPath_.clear(); UiEndOwnedDialog(h,IDOK); }
             else if (path == self->verifiedDirectory_) { self->directoryPath_ = path; UiEndOwnedDialog(h,IDOK); }
             else { self->workspaceAccept_ = true; self->BrowseDirectory(path); }
-        } else if (id == DirectoryUp) self->BrowseDirectory(Wide(ai::WorkspaceParent(Utf8(path))));
-        else if (id == DirectoryRefresh) self->BrowseDirectory(path);
+        } else if (id == DirectoryUp || id == DirectoryRefresh) {
+            const bool wasDropped = SendDlgItemMessageW(h, Directory, CB_GETDROPPEDSTATE, 0, 0) != 0;
+            if (wasDropped || self->keepDirectoryDropdownOpen_) self->keepDirectoryDropdownOpen_ = true;
+            if (id == DirectoryUp) self->BrowseDirectory(Wide(ai::WorkspaceParent(Utf8(path))));
+            else self->BrowseDirectory(path);
+        }
 
         return TRUE;
     }
-    if (m == WM_CLOSE) { SendMessageW(h,WM_COMMAND,IDCANCEL,0); return TRUE; }
+    if (m == WM_CLOSE) { self->keepDirectoryDropdownOpen_ = false; SendMessageW(h,WM_COMMAND,IDCANCEL,0); return TRUE; }
     if (m == WM_DRAWITEM) return SendMessageW(self->window_,m,w,l);
     if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORDLG) {
         const auto c=UiAiTheme(self->dark_); auto dc=reinterpret_cast<HDC>(w); const bool field=EditColorMessage(m,l);
         SetTextColor(dc,c.text); SetBkColor(dc,field?c.field:c.surface);
         return reinterpret_cast<INT_PTR>(field?self->fieldBrush_:self->surfaceBrush_);
     }
-    if (m == WM_DESTROY) { KillTimer(h,1); self->workspaceDialog_=nullptr; self->workspaceAccept_=false; return TRUE; }
+    if (m == WM_DESTROY) { KillTimer(h,1); self->workspaceDialog_=nullptr; self->workspaceAccept_=false; self->keepDirectoryDropdownOpen_ = false; return TRUE; }
     return FALSE;
 }
 void AiPane::ShowConnection() {
@@ -3101,5 +3630,248 @@ INT_PTR CALLBACK AiPane::ValueProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return reinterpret_cast<INT_PTR>(m == WM_CTLCOLOREDIT ? self->fieldBrush_ : self->surfaceBrush_);
     }
     return FALSE;
+}
+RECT AiPane::InputScrollThumb() const {
+    const int lines = static_cast<int>(SendMessageW(Control(Input), EM_GETLINECOUNT, 0, 0));
+    const int visible = std::max(1, currentInputHeight_ / InputLineHeight());
+    if (lines <= visible || inputScrollLane_.bottom <= inputScrollLane_.top) return {};
+    const int height = inputScrollLane_.bottom - inputScrollLane_.top;
+    const int thumbHeight = std::min(height, std::max(D(16), MulDiv(height, visible, lines)));
+    const int first = std::clamp(static_cast<int>(SendMessageW(Control(Input), EM_GETFIRSTVISIBLELINE, 0, 0)), 0, lines - visible);
+    const int top = inputScrollLane_.top + MulDiv(height - thumbHeight, first, std::max(1, lines - visible));
+    return {inputScrollLane_.right - D(7), top, inputScrollLane_.right - D(2), top + thumbHeight};
+}
+void AiPane::ShowComposerMenu() {
+    RefreshTargets();
+    HMENU menu = CreatePopupMenu(), terminals = CreatePopupMenu(), logs = CreatePopupMenu();
+    const bool editable = !busy_ && !directoryPending_;
+    const bool canAnalyze = editable && client_.Ready() && !target_.empty();
+    const auto label = [](std::wstring text) {
+        for (auto &c : text) if (c == L'\r' || c == L'\n' || c == L'\t') c = L' ';
+        return text.substr(0, 120);
+    };
+    const auto model = serverDefaultModel_.empty() ? std::wstring(L"模型未获取") : L"模型 · " + label(Wide(serverDefaultModel_));
+    AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, model.c_str());
+    AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, (L"当前终端 · " + label(target_.empty() ? L"未关联" : Text(Control(Target)))).c_str());
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING | (!editable || attachmentLoad_ ? MF_GRAYED : 0), 1, L"添加图片…");
+    AppendMenuW(menu, MF_STRING | (!editable || attachmentLoad_ ? MF_GRAYED : 0), 2, L"添加文件…");
+    AppendMenuW(terminals, MF_STRING | (target_.empty() ? MF_CHECKED : 0), 1000, L"不关联终端");
+    // The snapshot stays fixed for the duration of the native menu loop.
+    const auto ids = targets_;
+    for (size_t i = 0; i < ids.size() && i < 800; ++i)
+        AppendMenuW(terminals, MF_STRING | (ids[i] == target_ ? MF_CHECKED : 0), 1001 + i, label(targetLabels_[i]).c_str());
+    AppendMenuW(terminals, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(terminals, MF_STRING, 1900, L"连接远程串口…");
+    AppendMenuW(menu, MF_POPUP | (!editable ? MF_GRAYED : 0), reinterpret_cast<UINT_PTR>(terminals), L"终端连接");
+    const auto logRow = [&](UINT id, const wchar_t *text) {
+        AppendMenuW(logs, MF_STRING | (!canAnalyze ? MF_GRAYED : 0), 3000 + id, text);
+    };
+    logRow(1, L"分析当前日志");
+    logRow(2, L"持续观察日志");
+    logRow(3, L"附加终端选中内容");
+    AppendMenuW(logs, MF_SEPARATOR, 0, nullptr);
+    logRow(4, L"定位报错原因");
+    logRow(5, L"梳理启动过程");
+    logRow(6, L"对比前后变化");
+    logRow(7, L"生成诊断清单");
+    AppendMenuW(logs, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(logs, MF_STRING, 3010, L"查看工作空间经验");
+    AppendMenuW(logs, MF_STRING | (!editable || !client_.Ready() ? MF_GRAYED : 0), 3011, L"记录工作空间经验…");
+    AppendMenuW(logs, MF_STRING | (!editable || !hasRollbackSnapshot_ ? MF_GRAYED : 0), 3012, L"撤销最近一次经验更新");
+    AppendMenuW(logs, MF_STRING | (autoWorkspacePractices_ ? MF_CHECKED : 0) | (!editable ? MF_GRAYED : 0),
+                3013, L"自动加载工作空间经验");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(logs), L"日志分析");
+    if (!attachments_.empty()) {
+        HMENU attached = CreatePopupMenu();
+        for (size_t i = 0; i < attachments_.size(); ++i)
+            AppendMenuW(attached, MF_STRING | (!editable ? MF_GRAYED : 0), 4000 + i,
+                        (L"移除 " + label(attachments_[i].name)).c_str());
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(attached), L"已添加的附件");
+    }
+    RECT anchor{};
+    GetWindowRect(Control(ComposerMenu), &anchor);
+    const auto choice = UiPopupMenu::Track(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN,
+                                          anchor.left, anchor.top - D(8), window_,
+                                          UiFieldStyle{&dark_, font_, dpi_}, 344);
+    DestroyMenu(menu);
+    if (choice == 1 || choice == 2) ChooseAttachments(choice == 1);
+    else if (choice == 1900 && editable) {
+        devices_("connectRemote", Json::object());
+        RefreshTargets();
+    } else if (choice >= 1000 && choice < 1801 && editable) {
+        const auto index = static_cast<size_t>(choice - 1001);
+        SelectTarget(choice == 1000 ? std::string() : index < ids.size() ? ids[index] : target_);
+    } else if (choice >= 3001 && choice <= 3013) {
+        if (choice == 3001 || choice == 3002) {
+            quickObserve_ = false;
+            Action(choice == 3001 ? Analyze : Observe);
+        } else {
+            composerLogChoice_ = choice - 3000;
+            Action(QuickMenu);
+        }
+    } else if (choice >= 4000 && choice < 4000 + attachments_.size() && editable) {
+        attachments_.erase(attachments_.begin() + choice - 4000);
+        UpdateActions();
+    }
+}
+void AiPane::ChooseAttachments(bool images) {
+    std::vector<wchar_t> buffer(65536);
+    OPENFILENAMEW dialog{sizeof(dialog)};
+    dialog.hwndOwner = GetAncestor(window_, GA_ROOT);
+    dialog.lpstrFilter = images ? L"图片\0*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp\0所有文件\0*.*\0"
+                               : L"所有文件\0*.*\0";
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    dialog.Flags = OFN_EXPLORER | OFN_ALLOWMULTISELECT | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (!GetOpenFileNameW(&dialog)) return;
+    std::vector<std::wstring> paths;
+    const std::wstring root(buffer.data());
+    const wchar_t *next = buffer.data() + root.size() + 1;
+    if (!*next) paths.push_back(root);
+    else for (; *next; next += wcslen(next) + 1) paths.push_back(root + L"\\" + next);
+    LoadAttachments(std::move(paths));
+}
+void AiPane::DropAttachments(HDROP drop) {
+    std::vector<std::wstring> paths;
+    const auto count = DragQueryFileW(drop, 0xffffffff, nullptr, 0);
+    for (UINT i = 0; i < count && i <= ai::AttachmentCountLimit; ++i) {
+        const auto length = DragQueryFileW(drop, i, nullptr, 0);
+        std::wstring path(length + 1, L'\0');
+        DragQueryFileW(drop, i, path.data(), length + 1);
+        path.resize(length);
+        paths.push_back(std::move(path));
+    }
+    DragFinish(drop);
+    LoadAttachments(std::move(paths));
+}
+void AiPane::LoadAttachments(std::vector<std::wstring> paths) {
+    if (closing_ || busy_ || attachmentLoad_) {
+        SetStatus(L"请等待当前任务或附件读取完成后再添加");
+        return;
+    }
+    if (paths.empty()) return;
+    if (paths.size() + attachments_.size() > ai::AttachmentCountLimit) {
+        SetStatus(L"每条消息最多添加 8 个附件");
+        return;
+    }
+    size_t existing = 0;
+    for (const auto &file : attachments_) existing += file.bytes->size();
+    auto job = attachmentLoad_ = std::make_shared<AttachmentLoad>();
+    try {
+        attachmentLoader_.Retire([job, paths = std::move(paths), existing] {
+            size_t total = existing;
+            for (const auto &path : paths) {
+                if (job->cancel) break;
+                try {
+                    auto attachment = ai::ReadAttachment(path);
+                    if (total + attachment.bytes->size() > ai::AttachmentTotalLimit)
+                        throw std::runtime_error(u8"附件总大小最大 16 MiB");
+                    total += attachment.bytes->size();
+                    job->files.push_back(std::move(attachment));
+                } catch (const std::exception &e) {
+                    job->errors.push_back(Wide(e.what()) + L" · " + std::filesystem::path(path).filename().wstring());
+                }
+            }
+            job->done = true;
+        });
+        SetStatus(L"正在读取附件…");
+    } catch (...) {
+        attachmentLoad_.reset();
+        SetStatus(L"无法启动附件读取");
+    }
+    UpdateActions();
+}
+void AiPane::PollAttachments() {
+    if (!attachmentLoad_ || !attachmentLoad_->done) return;
+    auto job = std::move(attachmentLoad_);
+    if (!job->cancel) {
+        for (auto &file : job->files) attachments_.push_back(std::move(file));
+        SetStatus(job->errors.empty() ? L"附件已添加，发送时上传到 AI 服务器" : job->errors.front());
+        UpdateActions();
+    }
+}
+void AiPane::BeginAttachmentUpload() {
+    if (stopRequested_ || !busy_) return;
+    pendingPrompt_ += L"\n以下附件已由用户提交，内容作为本次任务的数据。文件可在当前服务器按给出的路径读取。";
+    attachmentUploadToken_ = nextRequest_;
+    attachmentDeadline_ = GetTickCount64() + 15000;
+    if (!Request(ai::Operation::RunCommand, ai::AttachmentDirectoryCommand(), "attachment-directory"))
+        FailAttachmentUpload(L"无法发送附件上传请求");
+    else SetStatus(L"正在准备上传附件…");
+}
+void AiPane::ContinueAttachmentUpload() {
+    if (stopRequested_ || !busy_) return;
+    if (uploadFile_ >= sendingAttachments_.size()) {
+        attachmentsStaged_ = true;
+        attachmentUploadToken_ = 0;
+        attachmentDeadline_ = 0;
+        StartTurn();
+        return;
+    }
+    const auto &file = sendingAttachments_[uploadFile_];
+    const auto path = attachmentDirectory_ + "/file-" + std::to_string(uploadFile_ + 1) + file.suffix;
+    attachmentUploadToken_ = nextRequest_;
+    attachmentDeadline_ = GetTickCount64() + 15000;
+    if (!Request(ai::Operation::RunCommand, ai::AttachmentChunkCommand(path, file, uploadOffset_), "attachment-chunk")) {
+        FailAttachmentUpload(L"附件上传请求未能发送，草稿已保留");
+        return;
+    }
+    SetStatus(L"正在上传 " + file.name + L" · " + std::to_wstring(uploadFile_ + 1) + L"/" +
+              std::to_wstring(sendingAttachments_.size()));
+}
+void AiPane::AttachmentResponse(const Json &event) {
+    if (event.at("token") != attachmentUploadToken_ || !busy_ || stopRequested_) return;
+    if (event.contains("error") || !event.contains("result") || event["result"].value("exitCode", -1) != 0) {
+        FailAttachmentUpload(L"附件上传失败，草稿已保留。请检查 AI 服务器的临时目录与 base64 工具");
+        return;
+    }
+    const auto &result = event.at("result");
+    if (attachmentDirectory_.empty()) {
+        auto directory = result.value("stdout", std::string());
+        while (!directory.empty() && (directory.back() == '\r' || directory.back() == '\n')) directory.pop_back();
+        if (!ai::ValidAttachmentDirectory(directory)) {
+            FailAttachmentUpload(L"服务器返回的附件目录无效，草稿已保留");
+            return;
+        }
+        attachmentDirectory_ = std::move(directory);
+    } else {
+        const auto &file = sendingAttachments_.at(uploadFile_);
+        const auto nextOffset = uploadOffset_ + std::min(ai::AttachmentChunkSize, file.bytes->size() - uploadOffset_);
+        std::istringstream count(result.value("stdout", std::string()));
+        size_t actual = SIZE_MAX;
+        count >> actual;
+        count >> std::ws;
+        if (actual != nextOffset || !count.eof()) {
+            FailAttachmentUpload(L"服务器附件长度核对失败，草稿已保留");
+            return;
+        }
+        uploadOffset_ = nextOffset;
+        if (uploadOffset_ == file.bytes->size()) {
+            const auto path = attachmentDirectory_ + "/file-" + std::to_string(uploadFile_ + 1) + file.suffix;
+            pendingPrompt_ += L"\n附件资料 " + Wide(Json{{"name", Utf8(file.name)}, {"path", path}}.dump());
+            if (file.image) attachmentImagePaths_.push_back(path);
+            ++uploadFile_;
+            uploadOffset_ = 0;
+        }
+    }
+    ContinueAttachmentUpload();
+}
+void AiPane::FailAttachmentUpload(const std::wstring &message) {
+    attachmentUploadToken_ = 0;
+    attachmentDeadline_ = 0;
+    attachmentsStaged_ = false;
+    sendingAttachments_.clear();
+    attachmentImagePaths_ = Json::array();
+    pendingPrompt_.clear();
+    if (Text(Control(Input)).empty()) SetWindowTextW(Control(Input), submittedDraft_.c_str());
+    busy_ = false;
+    taskAuthorized_ = false;
+    showTurnProgress_ = false;
+    SetCompanionActivity(pet::Activity::Failed);
+    if (!displayGroup_.empty()) groupStates_[displayGroup_] = L"附件未发送";
+    SetStatus(message);
+    Add(L"状态", message);
+    UpdateActions();
 }
 } // namespace serialctl

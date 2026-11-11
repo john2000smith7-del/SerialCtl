@@ -60,6 +60,9 @@ Url ParseUrl(const std::wstring& text) {
             parts.nScheme == INTERNET_SCHEME_HTTPS};
 }
 
+// WinHTTP session timeout relaxed to 90 seconds to tolerate weak network jitter / packet retransmission.
+constexpr int kHttpTimeoutMs = 90000;
+
 // WinHTTP asynchronous completions let the worker enforce one wall-clock deadline
 // even if a server drips headers/body forever. On cancellation the request closes;
 // its callback-owned state (including the pending read buffer) survives until the
@@ -206,7 +209,7 @@ HINTERNET Session(bool secure) {
             : handle(WinHttpOpen(L"SerialCtl updater/1", WINHTTP_ACCESS_TYPE_NO_PROXY,
                                  WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC)) {
             // The async wall-clock deadline bounds DNS as well as the response.
-            if (!WinHttpSetTimeouts(handle.value, 0, 2000, 2000, 2000))
+            if (!WinHttpSetTimeouts(handle.value, 0, kHttpTimeoutMs, kHttpTimeoutMs, kHttpTimeoutMs))
                 throw std::runtime_error("Cannot set update HTTP timeouts");
             if (tls) {
                 DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;

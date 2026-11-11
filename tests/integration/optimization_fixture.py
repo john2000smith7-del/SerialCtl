@@ -177,11 +177,14 @@ def main():
             require(text(control(ssh,1016))=='10042','Legacy SSH history was interpreted as an employee number')
             fill(control(ssh,1016),'2222');require(text(control(ssh,1016))=='2222','Custom SSH port was rewritten')
             desktop.capture(theme+'-ssh-history');close(ssh)
-            for identifier in (101,103):
-                desktop.click_control(identifier);connection=dialog()
-                refresh=refresh_glyph(connection,1024,1002 if identifier==101 else 1014)
+            for remote in (False,True):
+                desktop.click_control(101);connection=dialog()
+                if remote:
+                    click(control(connection,1036));key(0x24);key(0x28);key(0x0D)
+                    wait(lambda:user.IsWindowVisible(control(connection,1014)))
+                refresh=refresh_glyph(connection,1024,1014 if remote else 1002)
                 wait(lambda:user.IsWindowEnabled(refresh));click(refresh)
-                desktop.capture(theme+'-refresh-'+str(identifier));close(connection)
+                desktop.capture(theme+'-refresh-'+('remote-serial' if remote else 'local-serial'));close(connection)
             desktop.click_control(303);settings=dialog();gate=control(settings,2507)
             require(user.SendMessageW(gate,0xF0,0,0)==0,'Test must default to off')
             click(gate);password=dialog();fill(control(password,10),'JJ123123');click(control(password,1))

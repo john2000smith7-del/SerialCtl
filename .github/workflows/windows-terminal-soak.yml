@@ -1,0 +1,64 @@
+name: Windows terminal throughput soak
+on:
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Successful Windows build run containing the exact portable package
+        required: true
+        type: string
+      soak_seconds:
+        description: Duration of the aggregate 1 MiB/s phase (1800 = 30 minutes)
+        required: false
+        default: '1800'
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  terminal-soak:
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify package run belongs to this exact commit
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BUILD_RUN -notmatch '^[1-9][0-9]*$') { throw 'build_run must be a numeric Actions run id' }
+          $source = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect build run' }
+          if ($source.head_sha -ne $env:GITHUB_SHA) { throw "Build run commit $($source.head_sha) does not match $env:GITHUB_SHA" }
+      - uses: ./.github/actions/ci-evidence
+        with:
+          mode: restore
+          name: SerialCtl-Win7-portable
+          path: bin
+          run-id: ${{ inputs.build_run }}
+      - name: Run two-session measured 5 MiB/s burst and 30-minute 1 MiB/s soak
+        shell: powershell
+        env:
+          SOAK_SECONDS: ${{ inputs.soak_seconds }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:SOAK_SECONDS -notmatch '^[0-9]+$' -or [int]$env:SOAK_SECONDS -lt 60 -or [int]$env:SOAK_SECONDS -gt 3600) {
+            throw 'soak_seconds must be in 60..3600'
+          }
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archive.Count -ne 1) { throw 'Expected one exact verified portable package' }
+          python tests/integration/gui_command_drag_fixture.py --scenario terminal-soak --soak-seconds $env:SOAK_SECONDS --archive $archive[0].FullName --output "$env:RUNNER_TEMP/serialctl-terminal-soak"
+          if ($LASTEXITCODE -ne 0) { throw 'Measured real-GUI terminal soak failed' }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: SerialCtl-terminal-throughput-soak
+          path: |
+            ${{ runner.temp }}/serialctl-terminal-soak/*.json
+            ${{ runner.temp }}/serialctl-terminal-soak/*.jsonl
+            ${{ runner.temp }}/serialctl-terminal-soak/*.txt
+            ${{ runner.temp }}/serialctl-terminal-soak/*.log
+            ${{ runner.temp }}/serialctl-terminal-soak/*.png
+          if-no-files-found: warn
+          retention-days: 30

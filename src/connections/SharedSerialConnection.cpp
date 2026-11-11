@@ -96,9 +96,25 @@ bool SharedSerialConnection::DiscoverAuto(const std::wstring &host, std::uint16_
         error = L"查询已取消";
         return false;
     }
+    if (std::any_of(found.begin(), found.end(), [](const Probe &probe) {
+            return probe.error.empty() && !probe.names.empty();
+        })) {
+        found.erase(std::remove_if(found.begin(), found.end(), [](const Probe &probe) {
+            return !probe.error.empty() || probe.names.empty();
+        }), found.end());
+    } else if (found.size() > 1 && std::any_of(found.begin(), found.end(), [](const Probe &probe) {
+                   return probe.error.empty();
+               })) {
+        error = L"该 IP 上没有已打开的本地串口";
+        return false;
+    }
     if (found.size() != 1) {
-        error = found.empty() ? L"未发现 SerialCtl WebSocket 服务（7000–7015）"
-                              : L"发现多个 SerialCtl 实例，请明确指定端口：";
+        if (found.empty()) {
+            const auto ports = explicitPort ? std::to_wstring(explicitPort) : L"7000–7015";
+            error = L"未发现 SerialCtl WebSocket 服务（" + ports + L"）";
+        } else {
+            error = L"发现多个 SerialCtl 实例，请确认远端仅有一个实例共享串口：";
+        }
         for (auto &p : found)
             error += L" " + std::to_wstring(p.port);
         return false;

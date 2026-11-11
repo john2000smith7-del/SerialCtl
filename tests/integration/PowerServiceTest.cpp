@@ -26,6 +26,9 @@ struct PowerServiceTestAccess {
     static void FailNextOutputReadback(PowerService &power) {
         power.FailNextOutputReadbackForTest();
     }
+    static void FailNextOutputOffWrite(PowerService &power) {
+        power.FailNextOutputOffWriteForTest();
+    }
     static void PauseRecoveryOn(PowerService &power) {
         std::lock_guard<std::mutex> lock(power.mutex_);
         power.testPauseRecoveryOn_=true;power.testRecoveryAtOn_=false;
@@ -37,6 +40,14 @@ struct PowerServiceTestAccess {
     static void ResumeRecoveryOn(PowerService &power) {
         std::lock_guard<std::mutex> lock(power.mutex_);
         power.testPauseRecoveryOn_=false;power.wake_.notify_all();
+    }
+    static Json PreserveDisconnectBeforePublishing(PowerService &power) {
+        power.Shutdown();
+        Json disconnect{{"id", "disconnect"}, {"state", "running"}};
+        power.actions_.emplace("disconnect", disconnect);
+        power.actions_.emplace("recovery", Json{{"id", "recovery"}, {"state", "running"}});
+        power.Disconnect(true, &disconnect);
+        return disconnect;
     }
 };
 } // namespace serialctl
@@ -58,6 +69,191 @@ Json Wait(PowerService &power, Json action) {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     return {{"error", "Timeout"}};
+}
+
+template <typename Predicate> bool WaitForKeywordTest(Predicate ready) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!ready()) {
+        if (std::chrono::steady_clock::now() >= end) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return true;
+}
+
+void TestKeywordCycle() {
+    PowerService power;
+    Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}})).value("state", "") == "completed",
+           "Connect keyword test fixture");
+    using Run = PowerKeywordRun;
+    std::vector<Run::Rule> rules{
+        {{L"READY", L"go", L"", L"START", L"END", 10, 0}, "READY", "START", "END", {'g', 'o'}, {}},
+        {{L"LINK", L"", L"diag", L"START", L"END"}, "LINK", "START", "END", {}, {'d', 'i', 'a', 'g'}},
+        {{L"LOGIN", L"", L"unexpected", L"LOGIN WINDOW", L""}, "LOGIN", "LOGIN WINDOW", "", {}, {'x'}},
+        {{L"ROUND-MISS", L"", L"check"}, "ROUND-MISS", "", "", {}, {'c', 'h', 'e', 'c', 'k'}}
+    };
+    std::mutex senderMutex;
+    std::vector<std::string> sent;
+    Run::Completion firstWrite;
+    const auto run = std::make_shared<Run>(1, L"COM fixture", "READY", rules,
+        [&](const Bytes &bytes, const std::function<bool()> &allowed, Run::Completion completion, std::wstring &) {
+            if (!allowed()) return false;
+            std::lock_guard<std::mutex> guard(senderMutex);
+            sent.emplace_back(bytes.begin(), bytes.end());
+            if (sent.size() == 1) firstWrite = std::move(completion);
+            else completion(Run::Delivery::Written, {});
+            return true;
+        }, [] { return true; }, [](const std::wstring &) {});
+    const auto feed = [&](const std::string &bytes) { run->Feed(Bytes(bytes.begin(), bytes.end())); };
+    feed("READY START READY END");
+    const Json cycle{{"type", "task"}, {"channels", {1}}, {"onMs", 500}, {"offMs", 100}, {"count", 2}};
+    Expect(Wait(power, power.Submit(cycle, {}, {}, run)).value("state", "") == "completed",
+           "Accept a local keyword cycle");
+    Expect(WaitForKeywordTest([&] { return run->Status().state == Run::State::Listening; }), "Open the first detection window");
+    feed("REA");
+    feed("DY STA");
+    feed("RT RE");
+    feed("ADY READY EN");
+    feed("D READY");
+    auto snapshot = run->Status();
+    Expect(snapshot.ready && snapshot.counts[0].round == 2 && snapshot.counts[0].window == Run::Window::Closed,
+           "Detect split markers and repeated hits only in the configured window");
+    Expect(snapshot.counts[1].window == Run::Window::Closed && snapshot.counts[2].window == Run::Window::Waiting,
+           "Distinguish zero hits from a detection window that never opens");
+    Expect(WaitForKeywordTest([&] { return run->Status().state == Run::State::Draining; }),
+           "End detection while waiting for terminal writes");
+    Expect(power.State()["channels"][0]["output"] == true, "Do not power off while the terminal write is still in flight");
+    {
+        std::lock_guard<std::mutex> guard(senderMutex);
+        if (firstWrite) firstWrite(Run::Delivery::Written, {});
+        else Expect(false, "First action reached the transport");
+    }
+    Expect(WaitForKeywordTest([&] {
+        const auto second = run->Status();
+        return second.round == 2 && second.state == Run::State::Listening;
+    }), "Open a new window at the next power-on");
+    feed("START READY LINK END");
+    Expect(WaitForKeywordTest([&] { return run->Status().state == Run::State::Finished; }), "Finish both power rounds");
+    snapshot = run->Status();
+    Expect(snapshot.counts[0].round == 1 && snapshot.counts[0].total == 3 && snapshot.counts[0].written == 3,
+           "Reset per-round counts and retain cumulative captures and writes");
+    Expect(snapshot.counts[1].written == 1 && snapshot.counts[2].written == 0 && snapshot.counts[3].written == 2,
+           "Execute misses at marker or round end, only for windows that opened");
+    {
+        std::lock_guard<std::mutex> guard(senderMutex);
+        Expect(sent == std::vector<std::string>({"go", "go", "diag", "check", "go", "check"}),
+               "Send every hit and miss in capture order");
+    }
+    Expect(power.State()["channels"][0]["output"] == false, "Normal completion confirms output OFF");
+
+    rules[0].display.hitDelayMs = 2000;
+    const auto canceled = std::make_shared<Run>(1, L"COM fixture", "READY", rules,
+        [](const Bytes &, const std::function<bool()> &, Run::Completion, std::wstring &) { return false; },
+        [] { return true; }, [](const std::wstring &) {});
+    Expect(Wait(power, power.Submit(cycle, {}, {}, canceled)).value("state", "") == "completed", "Start cancel fixture");
+    Expect(WaitForKeywordTest([&] { return canceled->Status().state == Run::State::Listening; }), "Listen before cancel");
+    canceled->Feed(Bytes{'S','T','A','R','T',' ','R','E','A','D','Y'});
+    const auto stop = power.Submit({{"type", "stop"}});
+    Expect(!canceled->Active() && canceled->Status().counts[0].canceled == 1,
+           "Accepting Stop immediately revokes a delayed command");
+    Expect(Wait(power, stop).value("state", "") == "completed", "Stop turns the test outputs off");
+}
+
+void TestBoundRemoteCommands() {
+    PowerService power;
+    const Json connect{{"type", "connect"}, {"backend", "simulation"}};
+    Expect(Wait(power, power.Submit(connect)).value("state", "") == "completed", "Connect remote power fixture");
+    const auto connection = power.State().at("connectionId").get<std::string>();
+    const Json remoteOn{{"type", "output"}, {"channels", {1}}, {"enabled", true}, {"source", "remote-power:1"}};
+    Expect(power.Submit(remoteOn, connection, "series").contains("error"), "Reject a stale remote mode");
+    const bool paused = PowerServiceTestAccess::Pause(power);
+    const auto remote = power.Submit(remoteOn, connection, "independent");
+    const auto local = power.Submit({{"type", "output"}, {"channels", {2}}, {"enabled", true}});
+    power.CancelRemotePending("remote-power:1");
+    PowerServiceTestAccess::Resume(power);
+    Expect(paused && Wait(power, remote).value("state", "") == "canceled", "Release cancels only queued remote work");
+    Expect(Wait(power, local).value("state", "") == "completed" && power.State()["channels"][1]["output"] == true,
+           "Local controls still operate the physical connection");
+    const auto disconnect = Wait(power, power.Submit({{"type", "disconnect"}, {"preserveOutputs", true}}));
+    if (disconnect.value("state", "") != "completed") std::cerr << "Disconnect receipt: " << disconnect.dump() << '\n';
+    Expect(disconnect.value("state", "") == "completed" && disconnect.value("transportDisconnected", false),
+           "Disconnect fixture before reconnect");
+    Expect(Wait(power, power.Submit(connect)).value("state", "") == "completed", "Reconnect fixture");
+    Expect(power.Submit(remoteOn, connection, "independent").contains("error"), "Reject commands bound to the old connection");
+}
+
+void TestPreserveDisconnectPublication() {
+    PowerService power;
+    const auto result = PowerServiceTestAccess::PreserveDisconnectBeforePublishing(power);
+    Expect(power.Action("disconnect").value("state", "") == "running",
+           "Preserving outputs keeps the disconnect action running until its final receipt is published");
+    Expect(power.Action("recovery").value("state", "") == "canceled",
+           "Preserving outputs cancels other running work");
+    Expect(result.value("state", "") == "completed" && result.value("offConfirmation", "") == "preserved",
+           "The final disconnect receipt reports preserved outputs");
+}
+
+void TestConnectScpiDiagnostics() {
+    const std::vector<std::pair<std::string, std::string>> scenarios = {
+        {"*IDN?", "identify"},
+        {"INST:NSEL?", "select_channel"},
+        {"OUTP:TRAC?", "read_mode"},
+        {"MEAS:VOLT?", "initial_poll"}
+    };
+    for (const auto &scenario : scenarios) {
+        PowerService power;
+        const auto result = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"},
+                                                      {"testFailQuery", scenario.first}}));
+        const auto error = result.value("error", std::string());
+        Expect(result.value("state", "") == "failed" && result.value("stage", "") == scenario.second &&
+                   error.find("Power connect [" + scenario.second + "]") != std::string::npos &&
+                   error.find(scenario.first) != std::string::npos,
+               "Failed connect identifies the precise stage and SCPI query");
+        const auto state = power.State();
+        Expect(!state.value("connected", false), "Failed connection releases transport");
+        const auto diagnostic = state.value("lastConnectDiagnostic", Json::object());
+        Expect(diagnostic.value("stage", "") == scenario.second && diagnostic.value("error", "") == error,
+               "Failed connection retains accessible diagnostics");
+        bool hasError = false;
+        for (const auto &row : result.value("scpiTrace", Json::array())) {
+            if (row.value("direction", "") == "ERROR" && row.value("command", "") == scenario.first) hasError = true;
+            Expect(row.value("command", "") != "*RST" && row.value("command", "") != "CHAN:OUTP ON",
+                   "Connection failure does not reset or enable supply");
+        }
+        Expect(hasError, "Failed query is present in SCPI trace");
+    }
+    {
+        PowerService power;
+        const auto result = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"},
+                                                      {"testFailRemoteWrite", true}}));
+        Expect(result.value("state", "") == "failed" && result.value("stage", "") == "enter_remote" &&
+                   result.value("error", std::string()).find("remote-mode write failure") != std::string::npos,
+               "Remote-control write errors are reported at the correct stage");
+        Expect(!power.State().value("connected", false), "Failed remote-mode initialization disconnects");
+    }
+    {
+        PowerService power;
+        const auto result = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}));
+        Expect(result.value("state", "") == "completed", "Simulated power connection completes");
+        const auto trace = result.value("scpiTrace", Json::array());
+        auto position = [&](const std::string &command) {
+            size_t index = 0;
+            for (const auto &row : trace) {
+                if (row.value("direction", "") == "TX" && row.value("command", "") == command) return index;
+                ++index;
+            }
+            return trace.size();
+        };
+        Expect(position("*IDN?") < position("SYST:REM") &&
+                   position("SYST:REM") < position("INST:NSEL 1") &&
+                   position("INST:NSEL 1") < position("OUTP:TRAC?"),
+               "Identity precedes remote-control request and subsequent queries");
+        Expect(power.State().value("connected", false) &&
+                   power.State().value("lastConnectDiagnostic", Json::object()).value("stage", "") == "complete",
+               "Successful connection retains diagnostics");
+        for (const auto &row : trace)
+            Expect(row.value("command", "") != "*RST" && row.value("command", "") != "CHAN:OUTP ON",
+                   "Connection neither resets nor enables the output");
+    }
 }
 
 void TestNativeRecoveryTimingAndCancel() {
@@ -270,7 +466,80 @@ void TestSafetyReadbackFailureAtCapacity() {
            "failed OFF readback remains failed/unknown, never confirmed off");
 }
 
+void TestDisconnectOutputConfirmation(const std::string &scenario) {
+    PowerService power;
+    Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}})).value("state", "") == "completed",
+           "Connected simulation for disconnect test");
+    Expect(Wait(power, power.Submit({{"type", "output"}, {"channels", {1, 2}}, {"enabled", true}})).value("state", "") == "completed",
+           "Both owned and unowned channel start with verified ON readback");
+    Expect(Wait(power, power.Submit({{"type", "schedule"}, {"channels", {1}}, {"startMs", 60000}, {"durationMs", 200}})).value("state", "") == "completed",
+           "Scheduled task owns CH1 only");
+    const bool paused = PowerServiceTestAccess::Pause(power);
+    Expect(paused, "paused worker for disconnect fault injection");
+    if (!paused) return;
+    const auto before = power.State();
+    if (scenario == "write") PowerServiceTestAccess::FailNextOutputOffWrite(power);
+    if (scenario == "readback") PowerServiceTestAccess::FailNextOutputReadback(power);
+    const bool preserve = scenario == "preserved";
+    auto disconnect = power.Submit({{"type", "disconnect"}, {"source", "local"}, {"preserveOutputs", preserve}});
+    PowerServiceTestAccess::Resume(power);
+    const auto result = Wait(power, disconnect);
+    const auto state = power.State();
+    Expect(result.value("transportDisconnected", false) == true, "transportDisconnected is true");
+    Expect(!state.value("connected", true), "power transport disconnected");
+    const auto writes = state.value("testWrites", Json::array());
+    auto selected = std::string();
+    unsigned offWrites = 0;
+    for (size_t index = before.value("testWrites", Json::array()).size(); index < writes.size(); ++index) {
+        const auto line = writes[index].get<std::string>();
+        if (line.rfind("INST:NSEL ", 0) == 0) selected = line;
+        if (line == "CHAN:OUTP OFF") {
+            Expect(selected == "INST:NSEL 1", "Disconnect never sends OFF to an unowned channel");
+            ++offWrites;
+        }
+    }
+    const auto offResults = result.value("offResults", Json::array());
+    std::cout << "disconnect " << scenario << ": " << result.dump() << ", outputs="
+              << Json::array({state["channels"][0]["output"], state["channels"][1]["output"], state["channels"][2]["output"]}).dump()
+              << ", offWrites=" << offWrites << '\n';
+    if (scenario == "write" || scenario == "readback") {
+        Expect(result.value("state", "") == "failed" && result.value("offConfirmation", "") == "failed",
+               "OFF write and readback failures leave the disconnect action failed");
+        Expect(result.value("unconfirmedChannels", Json::array()) == Json::array({1}), "Only owned CH1 has an unconfirmed OFF");
+        Expect(offResults.size() == 1 && offResults[0]["state"] == "unknown" &&
+               offResults[0]["error"] ==
+                   (scenario == "write" ? "SCPI command 'CHAN:OUTP OFF': Simulated OFF write failure"
+                                        : "SCPI query 'CHAN:OUTP?': Simulated output readback timeout"),
+               "Disconnect action retains the actual stage and error");
+        Expect(offWrites == 2 && state["channels"][0]["output"].is_null(), "Safety retry writes OFF without claiming readback");
+        const auto repeated = Wait(power, power.Submit({{"type", "disconnect"}}));
+        Expect(repeated.value("offConfirmation", "") == "not_required" && power.State().value("unconfirmedPowerOff", false),
+               "Repeating disconnect cannot clear an unconfirmed OFF");
+        const auto unread = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}, {"testFailAfterReads", 6}}));
+        Expect(unread.value("state", "") == "failed" && power.State().value("unconfirmedPowerOff", false) &&
+               power.State()["unconfirmedPowerOffChannels"] == Json::array({1}), "Reconnect that fails readback cannot clear the warning");
+        const auto read = Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}));
+        Expect(read.value("state", "") == "completed" && !power.State().value("unconfirmedPowerOff", true),
+               "Successful hardware readback clears the unconfirmed OFF warning");
+    } else if (preserve) {
+        Expect(result.value("state", "") == "completed" && result.value("offConfirmation", "") == "preserved" &&
+               offResults.empty() && offWrites == 0 && state.value("readbackStale", false) &&
+               state["channels"][0]["output"] == true && state["channels"][1]["output"] == true,
+               "Preserve outputs does not write OFF and retains both last readings");
+    } else {
+        Expect(result.value("state", "") == "completed" && result.value("offConfirmation", "") == "confirmed" &&
+               offResults.size() == 1 && offResults[0]["state"] == "confirmed" && offResults[0]["output"] == false && offWrites == 1,
+               "Successful disconnect writes and confirms OFF for owned CH1 only");
+    }
+}
+
 int main() {
+    TestKeywordCycle();
+    TestBoundRemoteCommands();
+    TestPreserveDisconnectPublication();
+    TestConnectScpiDiagnostics();
+    for (const auto *scenario : {"write", "readback", "confirmed", "preserved"})
+        TestDisconnectOutputConfirmation(scenario);
     TestNativeRecoveryTimingAndCancel();
     TestStopDuringRecoveryReadback();
     TestQueuedRecoveryCanceledBeforeStart();

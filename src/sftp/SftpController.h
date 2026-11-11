@@ -21,10 +21,12 @@ public:
     struct Session {
         bool sftpFollowTerminal = true;
         std::wstring terminalDirectory;
-        bool terminalDirectoryFromOsc = false;
+        std::wstring lastPromptDirectory;
+        std::wstring failedSftpFollowDirectory;
         std::wstring sftpDirectory = L".";
         std::wstring sftpHomeDirectory;
         std::wstring pendingSftpDirectory;
+        std::wstring sftpFollowInFlight;
         std::vector<SftpEntry> sftpEntries;
     };
     struct Transfer {
@@ -42,6 +44,7 @@ public:
         int percent = -1;
         std::wstring error;
         bool replaceExisting = false;
+        bool skipOverwritePrompt = false; // Explicit MCP overwrite permission only.
     };
 
     struct Endpoint { std::wstring host; std::uint16_t port = 22; std::wstring username, password; };
@@ -79,15 +82,16 @@ public:
     bool Mutate(std::uint64_t session, Endpoint, Mutation, const std::vector<std::wstring>&,
                 const std::wstring&, const std::vector<bool>&);
     std::uint64_t EnqueueUpload(std::uint64_t session, const std::wstring& local, const std::wstring& remote,
-                                std::wstring& error);
+                                std::wstring& error, std::optional<bool> overwritePolicy = std::nullopt);
     std::uint64_t EnqueueDownload(std::uint64_t session, const std::wstring& remote, const std::wstring& local,
-                                  std::uint64_t size, bool replace, std::wstring& error);
+                                  std::uint64_t size, bool replace, std::wstring& error,
+                                  bool skipOverwritePrompt = false);
     const std::vector<Transfer>& Transfers() const { return transfers_; }
     const Transfer* Next() const;
     bool Begin(std::uint64_t transfer, Endpoint);
     void Cancel(std::uint64_t transfer, const std::wstring& reason = L"传输已取消");
     void CancelSession(std::uint64_t session);
-    void Retry(std::uint64_t transfer, bool sessionAvailable);
+    void Retry(std::uint64_t transfer, bool sessionAvailable, bool confirmedOverwrite = false);
     void ClearFinished();
     bool ApplyProgress(const Progress&);
     bool Finish(Result&, Session*, bool selected); // returns whether this learned the home directory

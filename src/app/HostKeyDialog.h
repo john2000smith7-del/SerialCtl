@@ -133,9 +133,14 @@ private:
         EnableWindow(GetDlgItem(h, IDOK), FALSE);
         UiResizeDialog(h, dpi_, width_, y + 36 + 16);
         RECT bounds{}, owner{}; GetWindowRect(h, &bounds); GetWindowRect(GetWindow(h, GW_OWNER), &owner);
-        SetWindowPos(h, nullptr, owner.left + ((owner.right - owner.left) - (bounds.right - bounds.left)) / 2,
-            owner.top + ((owner.bottom - owner.top) - (bounds.bottom - bounds.top)) / 2,
-            0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        const LONG margin = D(12);
+        const LONG width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
+        const LONG left = monitor.rcWork.left + margin, top = monitor.rcWork.top + margin;
+        const LONG x = std::clamp(owner.left + (owner.right - owner.left - width) / 2, left,
+                                  std::max(left, monitor.rcWork.right - margin - width));
+        const LONG yPosition = std::clamp(owner.top + (owner.bottom - owner.top - height) / 2, top,
+                                          std::max(top, monitor.rcWork.bottom - margin - height));
+        SetWindowPos(h, nullptr, x, yPosition, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
         // Consent and actions stay together on small work areas; only the
         // fingerprint/body region scrolls, so no partial checkbox can paint
         // across the footer or disappear while confirming.

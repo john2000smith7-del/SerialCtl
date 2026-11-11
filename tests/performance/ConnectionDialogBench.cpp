@@ -64,6 +64,25 @@ static BOOL CALLBACK top(HWND h, LPARAM l) {
 static HWND find(DWORD pid,bool dialog,bool visible=true,bool title=true) { Search s{pid,nullptr,dialog,visible,title}; EnumWindows(top,reinterpret_cast<LPARAM>(&s));return s.h; }
 static HWND await(DWORD pid,bool dialog,DWORD ms) {ULONGLONG end=GetTickCount64()+ms;while(GetTickCount64()<end){if(auto h=find(pid,dialog))return h;Sleep(2);}return nullptr;}
 static bool click(HWND h) {RECT r{}; if(!h||!IsWindowVisible(h)||!GetWindowRect(h,&r))return false; SetCursorPos((r.left+r.right)/2,(r.top+r.bottom)/2);mouse_event(MOUSEEVENTF_LEFTDOWN,0,0,0,0);Sleep(10);mouse_event(MOUSEEVENTF_LEFTUP,0,0,0,0);return true;}
+static bool key(WORD code) {
+    INPUT events[2]{};
+    for (auto &event : events) {
+        event.type = INPUT_KEYBOARD;
+        event.ki.wVk = code;
+    }
+    events[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    return SendInput(2, events, sizeof(INPUT)) == 2;
+}
+static bool awaitComboValue(HWND combo, UINT message, DWORD_PTR expected) {
+    const auto deadline = GetTickCount64() + 2000;
+    do {
+        DWORD_PTR value = 0;
+        if (!SendMessageTimeoutW(combo, message, 0, 0, SMTO_ABORTIFHUNG, 100, &value)) return false;
+        if (value == expected) return true;
+        Sleep(2);
+    } while (GetTickCount64() < deadline);
+    return false;
+}
 int wmain(int argc,wchar_t **argv) {
     if(argc<2 || argc>5)return 2;
     const bool requirePaint=argc>=4 && wcscmp(argv[3],L"first-paint")==0;
@@ -99,18 +118,53 @@ int wmain(int argc,wchar_t **argv) {
         Sleep(500);
     }
     struct Spec {const char *name; int id;}; const Spec all[]={{"ssh",100},{"serial",101},{"telnet",102},{"remote",103},{"ai",304},{"settings",303}};
+    const bool unifiedSerial = GetDlgItem(main, 103) == nullptr;
+    printf("DIALOG_REMOTE_TRIGGER=%s\n", unifiedSerial ? "serial-location-commit" : "remote-toolbar-click");
     for(const auto &spec:all) {
+       const bool switchToRemote = unifiedSerial && spec.id == 103;
        // Keep first-open separate, followed by 30 ordinary candidate samples.
        for(int rep=0;rep<(traffic?2:requirePaint?31:5);rep++) {
-          HWND b=GetDlgItem(main,spec.id);SetForegroundWindow(main);Sleep(GetDoubleClickTime()+100);
+          SetForegroundWindow(main);Sleep(GetDoubleClickTime()+100);
+          HWND dialog = nullptr;
+          UINT_PTR previousPaint = 0;
+          if (switchToRemote) {
+              if (click(GetDlgItem(main, 101))) dialog = await(pi.dwProcessId, true, 10000);
+              const HWND location = dialog ? GetDlgItem(dialog, IDC_SERIAL_LOCATION) : nullptr;
+              if (!location || IsWindowVisible(GetDlgItem(dialog, IDC_HOST)) || !click(location) ||
+                  !awaitComboValue(location, CB_GETDROPPEDSTATE, TRUE) ||
+                  !key(VK_HOME) || !key(VK_DOWN)) {
+                  printf("%s,%d,remote_location_setup_failed\n", spec.name, rep);
+                  TerminateProcess(pi.hProcess, 5);
+                  return 5;
+              }
+              previousPaint = reinterpret_cast<UINT_PTR>(GetPropW(dialog, L"SerialCtl.DialogFirstPaint"));
+          }
           const auto paintBefore=reinterpret_cast<UINT_PTR>(GetPropW(GetDlgItem(main,107),L"SerialCtl.PaintSample"));
           const auto bytesBefore=source.bytes.load();
-          ULONGLONG start=GetTickCount64();if(!click(b)){printf("%s,%d,click_failed\n",spec.name,rep);TerminateProcess(pi.hProcess,5);return 5;}ULONGLONG eventSent=GetTickCount64();
-          HWND dialog=nullptr;ULONGLONG created=0,visible=0,caption=0,painted=0;const ULONGLONG deadline=start+12000;
+          const auto start = GetTickCount64();
+          if (!(switchToRemote ? key(VK_RETURN) : click(GetDlgItem(main, spec.id)))) {
+              printf("%s,%d,input_failed\n", spec.name, rep);
+              TerminateProcess(pi.hProcess, 5);
+              return 5;
+          }
+          const auto eventSent = GetTickCount64();
+          ULONGLONG created = 0, visible = 0, caption = 0, painted = 0;
+          const auto deadline = start + 12000;
           while(GetTickCount64()<deadline) {
             if(!dialog){dialog=find(pi.dwProcessId,true,false,false);if(dialog)created=GetTickCount64();}
-            if(dialog&&!visible&&IsWindowVisible(dialog))visible=GetTickCount64();
-            if(dialog&&visible){wchar_t title[256]{};GetWindowTextW(dialog,title,256);if(title[0]){if(!caption)caption=GetTickCount64();painted=reinterpret_cast<UINT_PTR>(GetPropW(dialog,L"SerialCtl.DialogFirstPaint"));if(!requirePaint || painted)break;}}
+            if (switchToRemote && IsWindowVisible(GetDlgItem(dialog, IDC_HOST)) && !created)
+                created = GetTickCount64();
+            if (created && !visible && IsWindowVisible(dialog)) visible = GetTickCount64();
+            if (visible) {
+                wchar_t title[256]{};
+                GetWindowTextW(dialog, title, 256);
+                if (title[0]) {
+                    if (!caption) caption = GetTickCount64();
+                    const auto paint = reinterpret_cast<UINT_PTR>(GetPropW(dialog, L"SerialCtl.DialogFirstPaint"));
+                    if (paint != previousPaint && paint >= start) painted = paint;
+                    if (!requirePaint || painted) break;
+                }
+            }
             Sleep(1);
           }
           if(!dialog || !visible || !caption || (requirePaint && !painted)){printf("%s,%d,timeout,created_ms=%llu\n",spec.name,rep,created?created-start:0);TerminateProcess(pi.hProcess,6);return 6;}

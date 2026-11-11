@@ -1,4 +1,5 @@
 #include "PowerPane.h"
+#include "SerialPorts.h"
 #include "UiStyle.h"
 #include "Win32Helpers.h"
 #include <cmath>
@@ -42,18 +43,24 @@ double Parse(const std::wstring &text) {
 }
 struct ResourceScan {
     std::atomic<bool> done{false};
+    std::atomic<bool> cancel{false};
     int kind = 0;
     Json usb = Json::array();
-    std::vector<std::wstring> ports;
+    std::vector<SerialPortInfo> ports;
+    RemotePowerTarget remote;
+    std::wstring error;
 };
 struct ConnectionDialog {
     PowerPane *pane;
     HFONT font;
     bool dark;
     PowerService *service;
-    HWND kind, resource, port, baud, bits, parity, stop, error, driver;
+    HWND kind, resource, port, baud, bits, parity, stop, error, driver, host;
     Json usb;
+    std::vector<SerialPortInfo> ports; // Indexed exactly as the visible RS232 entries.
+    std::wstring preferredPort;        // Preserve the raw COM selection across a refresh.
     std::shared_ptr<ResourceScan> scan;
+    RemotePowerTarget remote;
 };
 } // namespace
 PowerPane::~PowerPane() {
@@ -73,12 +80,18 @@ PowerPane::~PowerPane() {
 }
 void PowerPane::BeginShutdown() {
     closing_ = true;
+    if (const auto run = std::atomic_load(&keywordRun_)) run->Cancel(L"应用正在退出");
+    remote_.Detach();
     if (window_) KillTimer(window_, 1);
 }
 void PowerPane::WaitForBackground() {
     for (auto &worker : resourceScanWorkers_) worker.Drain();
+    remote_.Join();
+    std::atomic_store(&keywordRun_, std::shared_ptr<PowerKeywordRun>{});
 }
 bool PowerPane::Create(HWND parent, HFONT font, bool dark, PowerService *service) {
+    INITCOMMONCONTROLSEX common{sizeof(common), ICC_LISTVIEW_CLASSES};
+    InitCommonControlsEx(&common);
     font_ = font;
     service_ = service;
     dark_ = dark;
@@ -151,6 +164,7 @@ void PowerPane::Theme(bool dark) {
         const COLORREF backdrop = card ? c.surface : UiAiTheme(dark).surface;
         SetPropW(entry.second, L"SerialCtl.Backdrop", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(backdrop) + 1));
     }
+    ThemeKeywords();
     if (window_)
         RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
@@ -172,14 +186,43 @@ Json PowerPane::Selection() {
 }
 void PowerPane::Submit(Json command) {
     command["source"] = "local";
-    Json result = service_->Submit(command);
+    Json result;
+    if (command["type"] == "disconnect") {
+        result = DisconnectConnection(command.value("preserveOutputs", false));
+    } else if (command["type"] == "connect") {
+        remote_.Detach();
+        result = service_->Submit(command);
+    } else if (remote_.Active() || state_.contains("remoteHost")) {
+        result = remote_.Submit(command, state_.value("mode", std::string("independent")));
+    } else {
+        result = service_->Submit(command);
+    }
     if (result.contains("error"))
         MessageBoxW(window_, Wide(result["error"]).c_str(), L"电源管理", MB_OK | MB_ICONWARNING);
-    else {
+    else if (result.contains("id")) {
         action_ = result["id"];
         pendingActions_.push_back(action_);
     }
     Refresh();
+}
+bool PowerPane::HasConnection() {
+    return remote_.Active() || (service_ && service_->State().value("connected", false));
+}
+Json PowerPane::ViewState() {
+    auto remote = remote_.State();
+    if (remote.is_null()) return service_->State();
+    if (!remote.value("connected", false))
+        remote["channels"] = Json::array({Json::object(), Json::object(), Json::object()});
+    return remote;
+}
+Json PowerPane::DisconnectConnection(bool preserveOutputs) {
+    if (remote_.Active() || state_.contains("remoteHost")) {
+        remote_.Detach();
+        Refresh();
+        PostMessageW(GetParent(window_), PowerStateChanged, 0, 0);
+        return {{"state", "completed"}};
+    }
+    return service_->Submit({{"type", "disconnect"}, {"source", "local"}, {"preserveOutputs", preserveOutputs}});
 }
 void PowerPane::SetRecoveryTarget(const std::string &id, const std::wstring &label, bool eligible) {
     if (id != recoveryTarget_ || !eligible) {
@@ -194,9 +237,11 @@ void PowerPane::SetRecoveryTarget(const std::string &id, const std::wstring &lab
     recoveryTarget_ = id;
     recoveryLabel_ = label;
     recoveryEligible_ = eligible;
-    if (Control(248)) EnableWindow(Control(248), eligible && service_->State().value("connected", false));
+    if (tab_ == 1 && automation_ == KeywordMode) RefreshKeywords();
+    if (Control(248)) EnableWindow(Control(248), eligible && !remote_.Active() && service_->State().value("connected", false));
 }
 Json PowerPane::RecoveryBinding() {
+    if (remote_.Active()) return {{"enabled", false}};
     const auto current = service_->State();
     if (!recoveryBinding_.is_object() || !recoveryEligible_ || !current.value("connected", false) ||
         SendMessageW(Control(248), BM_GETCHECK, 0, 0) != BST_CHECKED ||
@@ -276,11 +321,12 @@ void PowerPane::Action(int id) {
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
-        if (id >= 110 && id <= 114) {
+        if (id >= 110 && id <= 110 + KeywordMode) {
             if(automation_ == id-110)return;
             const int old=automation_+110;
             automation_ = id - 110;
             Layout();
+            Refresh();
             InvalidateRect(Control(old),nullptr,FALSE);
             InvalidateRect(Control(id),nullptr,FALSE);
             InvalidateRect(window_, nullptr, FALSE);
@@ -333,15 +379,32 @@ void PowerPane::Action(int id) {
                     throw std::runtime_error("时间超出范围");
                 return static_cast<long long>(std::llround(seconds * 1000));
             };
-            if (automation_ == 0) {
+            if (automation_ == 0 || automation_ == KeywordMode) {
                 double count = Parse(Text(count_));
                 if (std::floor(count) != count || count < 1 || count > 1000000)
                     throw std::runtime_error("循环次数必须为 1–1000000 的整数");
-                Submit({{"type", "task"},
-                        {"channels", Selection()},
-                        {"onMs", millis(onTime_)},
-                        {"offMs", millis(offTime_)},
-                        {"count", static_cast<long long>(count)}});
+                Json cycle = {{"type", "task"}, {"channels", Selection()}, {"onMs", millis(onTime_)},
+                              {"offMs", millis(offTime_)}, {"count", static_cast<long long>(count)}};
+                if (automation_ == 0) Submit(std::move(cycle));
+                else {
+                    if (remote_.Active() || state_.contains("remoteHost"))
+                        throw std::runtime_error("关键字测试需要本机 USB 或 RS232 电源连接");
+                    if (!keywordTarget_ || (keywordConfig_.rules.empty() && keywordConfig_.ready.empty()))
+                        throw std::runtime_error("请先配置关键字或上电完成标志");
+                    if (const auto previous = std::atomic_load(&keywordRun_); previous && previous->Active())
+                        throw std::runtime_error("关键字测试正在运行");
+                    auto run = keywordTarget_(keywordConfig_);
+                    std::atomic_store(&keywordRun_, run);
+                    keywordSession_ = run->Session();
+                    cycle["source"] = "local";
+                    const auto result = service_->Submit(cycle, {}, {}, run);
+                    if (result.contains("error")) {
+                        run->Cancel(L"电源未接受关键字测试");
+                        throw std::runtime_error(result.at("error").get<std::string>());
+                    }
+                    action_ = result.at("id").get<std::string>();
+                    pendingActions_.push_back(action_);
+                }
             }
             if (automation_ == 1) {
                 auto date = [&](HWND h) {
@@ -412,6 +475,8 @@ void PowerPane::Action(int id) {
                     {"milliseconds", SendMessageW(Control(103), CB_GETCURSEL, 0, 0) == 1 ? 2000 : 1000}});
         else if (id == 123)
             EditSequence();
+        else if (id == KeywordConfigId)
+            ConfigureKeywords();
         else if (id == 133)
             Submit({{"type", "settings"}, {"operation", "readTimer"}});
         else if (id >= 134 && id <= 137)
@@ -507,26 +572,43 @@ void PowerPane::PopulateSettings() {
 void PowerPane::Refresh() {
     if (!service_)
         return;
+    if (!PowerService::ConnectionAvailable() && remote_.Active()) remote_.Detach();
     bool wasConnected = state_.value("connected", false);
-    auto nextState=service_->State();
+    auto nextState = ViewState();
+    const bool remoteChanged = state_.value("remoteHost", std::string()) != nextState.value("remoteHost", std::string()) ||
+        state_.value("remoteLost", false) != nextState.value("remoteLost", false);
+    const bool remote = nextState.contains("remoteHost");
+    bool remoteParametersChanged = false;
+    if (remote && wasConnected && nextState.value("connected", false)) {
+        for (size_t i = 0; i < 3; ++i) {
+            const auto &before = state_.at("channels").at(i);
+            const auto &after = nextState.at("channels").at(i);
+            for (const char *key : {"setVoltage", "setCurrent"})
+                remoteParametersChanged |= before.value(key, Json()) != after.value(key, Json());
+        }
+    }
+    if (tab_ == 1 && automation_ == KeywordMode && IsWindowVisible(window_)) RefreshKeywords();
     if(nextState==state_ && pendingActions_.empty() && !refreshRequired_)return;
+    const bool disconnectRecorded = nextState.value("lastDisconnectActionId", "") != state_.value("lastDisconnectActionId", "");
+    const bool warningChanged = state_.value("unconfirmedPowerOff", false) != nextState.value("unconfirmedPowerOff", false);
     state_=std::move(nextState);
     refreshRequired_=false;
     bool connected = state_.value("connected", false), running = state_["task"].value("running", false);
     if (wasConnected != connected) {
         Layout();
-        PostMessageW(GetParent(window_), PowerStateChanged, 0, 0);
         populated_ = false;
         if (!connected) {
             history_.clear();
             sampleStamp_.clear();
         }
     }
+    if (wasConnected != connected || disconnectRecorded || warningChanged || remoteChanged)
+        PostMessageW(GetParent(window_), PowerStateChanged, 0, 0);
     bool finished = false, parametersChanged = false, deviceSettingsChanged = false;
     std::vector<std::pair<std::wstring, UINT>> notices;
     Json result;
     for (auto it = pendingActions_.begin(); !reporting_ && it != pendingActions_.end();) {
-        result = service_->Action(*it);
+        result = it->rfind("remote-power-", 0) == 0 ? remote_.Action(*it) : service_->Action(*it);
         auto status = result.value("state", std::string());
         if (status == "completed" || status == "failed" || status == "canceled") {
             it = pendingActions_.erase(it);
@@ -546,7 +628,7 @@ void PowerPane::Refresh() {
             ++it;
     }
     action_ = pendingActions_.empty() ? std::string() : pendingActions_.front();
-    if (connected && (finished || !wasConnected ||
+    if (connected && (finished || !wasConnected || remoteParametersChanged ||
                       (action_.empty() && state_.value("mode", std::string("independent")) != Mode()))) {
         auto mode = state_.value("mode", std::string("independent"));
         int index = mode == "parallel" ? 1 : mode == "series" ? 2 : mode == "tracking" ? 3 : 0;
@@ -554,7 +636,7 @@ void PowerPane::Refresh() {
         draftMode_ = index;
         SendMessageW(Control(80), CB_SETCURSEL, index, 0);
         SendMessageW(Control(210), CB_SETCURSEL, index, 0);
-        if (changed || !wasConnected || parametersChanged) {
+        if (changed || !wasConnected || parametersChanged || remoteParametersChanged) {
             for (int i = 0; i < 3; ++i) {
                 auto ch = state_["channels"][i];
                 Json v = ch["setVoltage"], a = ch["setCurrent"];
@@ -585,8 +667,8 @@ void PowerPane::Refresh() {
             SetWindowTextW(Control(125), Value(timer["seconds"]).c_str());
         }
     }
-    EnableWindow(buttons_[0], !connected && action_.empty());
-    EnableWindow(buttons_[1], connected);
+    EnableWindow(buttons_[0], !connected && !remote_.Active() && action_.empty());
+    EnableWindow(buttons_[1], connected || remote_.Active());
     EnableWindow(buttons_[2], connected && !running && !Selection().empty());
     EnableWindow(buttons_[3], connected && !Selection().empty());
     EnableWindow(Control(81), connected && !running && !Selection().empty());
@@ -600,7 +682,12 @@ void PowerPane::Refresh() {
             EnableWindow(current_[i], FALSE);
         }
     }
-    EnableWindow(start_, connected && !running && !Selection().empty());
+    const auto keywordRun = std::atomic_load(&keywordRun_);
+    const bool keywordActive = keywordRun && keywordRun->Active();
+    EnableWindow(start_, connected && !running && !keywordActive && !Selection().empty() &&
+        (automation_ != KeywordMode || !remote));
+    EnableWindow(Control(KeywordConfigId), !keywordActive);
+    EnableWindow(Control(44), !keywordActive);
     EnableWindow(stop_, connected && (running || automation_ == 3 ||
                                       (state_.contains("ownedChannels") && !state_["ownedChannels"].empty())));
     for (auto item : controls_)
@@ -615,11 +702,13 @@ void PowerPane::Refresh() {
     EnableWindow(Control(241), !logExportBusy_ && state_.contains("logPath"));
     EnableWindow(Control(101), !logExportBusy_ && state_.contains("csvPath"));
     EnableWindow(Control(240), !logExportBusy_ && state_.contains("csvPath"));
-    EnableWindow(Control(248), connected && recoveryEligible_ && !Selection().empty());
+    for (int id : {245, 246, 247})
+        EnableWindow(Control(id), connected && !running && !remote);
+    EnableWindow(Control(248), connected && !remote && recoveryEligible_ && !Selection().empty());
     if (recoveryBinding_.is_object() && !RecoveryBinding().value("enabled", false)) {
         recoveryBinding_ = nullptr;
         SendMessageW(Control(248), BM_SETCHECK, BST_UNCHECKED, 0);
-        if (state_.value("task", Json::object()).value("type", std::string()) == "recover" && running)
+        if (!remote && state_.value("task", Json::object()).value("type", std::string()) == "recover" && running)
             service_->Submit({{"type", "stop"}, {"source", "recovery-binding-invalidated"}});
     }
     if (connected && !paused_) {
@@ -673,9 +762,9 @@ void PowerPane::CreateControls() {
     Child(L"BUTTON", L"暂停显示", 100, BS_OWNERDRAW);
     Child(L"BUTTON", L"导出 CSV", 101, BS_OWNERDRAW);
     Combo(103, {L"1 秒", L"2 秒"});
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i <= KeywordMode; ++i)
         Child(L"BUTTON",
-              std::vector<std::wstring>{L"循环测试", L"定时任务", L"步骤序列", L"设备定时器", L"触发与步进"}[i].c_str(),
+              std::vector<std::wstring>{L"循环测试", L"定时任务", L"步骤序列", L"设备定时器", L"触发与步进", L"关键字测试"}[i].c_str(),
               110 + i, BS_OWNERDRAW);
     onTime_ = Child(L"EDIT", L"5", 70, ES_AUTOHSCROLL);
     offTime_ = Child(L"EDIT", L"5", 71, ES_AUTOHSCROLL);
@@ -684,6 +773,10 @@ void PowerPane::CreateControls() {
     stop_ = Child(L"BUTTON", L"停止并掉电", Stop, BS_OWNERDRAW);
     save_ = Child(L"BUTTON", L"保存", Save, BS_OWNERDRAW);
     Child(L"BUTTON", L"载入", 44, BS_OWNERDRAW);
+    Child(L"BUTTON", L"关键字配置", KeywordConfigId, BS_OWNERDRAW);
+    Child(WC_LISTVIEWW, L"关键字统计", KeywordStatsId, LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS);
+    const auto keywordStatus = Child(L"STATIC", L"", KeywordStatusId, SS_LEFT | SS_NOPREFIX);
+    SetWindowLongPtrW(keywordStatus, GWL_STYLE, GetWindowLongPtrW(keywordStatus, GWL_STYLE) & ~WS_TABSTOP);
     Child(L"EDIT", L"", 120, ES_AUTOHSCROLL);
     Child(L"EDIT", L"", 121, ES_AUTOHSCROLL);
     Combo(122, {L"单次"});
@@ -736,6 +829,7 @@ void PowerPane::CreateControls() {
               242 + i, BS_OWNERDRAW);
     SendMessageW(Control(232), BM_SETCHECK, BST_CHECKED, 0);
     LoadTask();
+    LoadKeywords();
     for (int i = 0; i < 2; ++i) {
         std::time_t next = std::time(nullptr) + 60 * (i + 1);
         std::tm local{};
@@ -935,8 +1029,8 @@ void PowerPane::DetailsLayout(int width, int top) {
         SelectObject(dc, old); ReleaseDC(window_, dc);
         return y + 44;
     };
-    auto fields = [&](const std::vector<std::pair<int, std::wstring>> &items, int y) {
-        const int cols = w >= 420 ? 2 : 1;
+    auto fields = [&](const std::vector<std::pair<int, std::wstring>> &items, int y, int columns = 0) {
+        const int cols = columns ? columns : w >= 420 ? 2 : 1;
         const int size = (w - (cols - 1) * 12) / cols;
         for (size_t i = 0; i < items.size(); ++i) {
             const int x = static_cast<int>(i % cols) * (size + 12);
@@ -956,8 +1050,17 @@ void PowerPane::DetailsLayout(int width, int top) {
         return;
     }
     if (tab_ == 1) {
-        y = flow({110, 111, 112, 113, 114}, 0) + 12;
+        y = flow({110, 111, 112, 113, 114, 115}, 0) + 12;
         if (automation_ == 0) y = fields({{70,L"上电时长（秒）"},{71,L"断电等待（秒）"},{72,L"循环次数"}}, y);
+        if (automation_ == KeywordMode) {
+            y = flow({KeywordConfigId}, y);
+            move(KeywordStatusId, 0, y, w, 64);
+            label(L"关键字统计", 0, y + 68, w);
+            move(KeywordStatsId, 0, y + 96, w, 156);
+            LayoutKeywords(w);
+            y = fields({{70,L"检测时长（秒）"},{71,L"断电等待（秒）"},{72,L"循环次数"}}, y + 264,
+                       w >= 315 ? 3 : w >= 215 ? 2 : 1);
+        }
         if (automation_ == 1) y = fields({{120,L"开始时间"},{121,L"掉电时间"},{122,L"重复"}}, y);
         if (automation_ == 2) y = fields({{123,L"步骤序列"}}, y);
         if (automation_ == 3) { y = fields({{124,L"设备输出定时器"},{125,L"掉电延时（秒）"}}, y); y = flow({133}, y); }
@@ -1007,9 +1110,22 @@ void PowerPane::Paint(HDC dc) {
     const bool narrow = r.right < d(400);
     icons_.Draw(dc, ToolbarIcon::Power, {0, d(8), d(18), d(26)}, dark_);
     text(L"IT6332A", {d(28),0,r.right-d(108),d(36)}, titleFont_,c.text);
-    const auto connectionLabel=std::wstring(state_.value("connected",false)?L"已连接":L"未连接")+(state_.value("readbackStale",false)?L" · 上次读回":L"");
+    std::wstring connectionLabel=std::wstring(state_.value("connected",false)?L"已连接":L"未连接")+(state_.value("readbackStale",false)?L" · 上次读回":L"");
+    COLORREF statusColor = c.muted;
+    if (state_.contains("remoteHost")) {
+        connectionLabel = (state_.value("remoteLost", false) ? L"远程已断开 · " :
+                           state_.value("connected", false) ? L"远程 · " : L"正在连接 · ") +
+                          Wide(state_["remoteHost"]);
+        if (state_.value("remoteLost", false)) statusColor = c.danger;
+    }
+    if (!state_.value("connected", false) && state_.value("unconfirmedPowerOff", false)) {
+        connectionLabel = L"输出未知";
+        for (const auto &channel : state_.value("unconfirmedPowerOffChannels", Json::array()))
+            connectionLabel += L" CH" + std::to_wstring(channel.get<int>());
+        statusColor = c.danger;
+    }
     text(connectionLabel,
-        {narrow ? 0 : d(144), narrow ? d(28) : 0, r.right-d(108), narrow ? d(52) : d(36)}, smallFont_,c.muted);
+        {narrow ? 0 : d(144), narrow ? d(28) : 0, r.right-d(108), narrow ? d(52) : d(36)}, smallFont_, statusColor);
     UiSeparator(dc, 0, r.right, bodyTop_ - d(8), c.border);
     UiSeparator(dc, 0, r.right, footerTop_ - d(8), c.border);
     if (tab_ != 1) {
@@ -1032,6 +1148,7 @@ void PowerPane::PaintBody(HDC dc) {
         SelectObject(dc,old);
     };
     if (tab_ == 0) {
+        const auto unconfirmed = state_.value("unconfirmedPowerOffChannels", Json::array());
         text(L"工作模式",{0,0,d(72),d(28)},font_,c.text);
         for (int i=0;i<3;++i) {
             const RECT card=channelRects_[i];
@@ -1051,11 +1168,13 @@ void PowerPane::PaintBody(HDC dc) {
                 if (channel["output"]!=other["output"]) channel["output"]=nullptr;
             }
             const int left=card.left, top=card.top, width=card.right-card.left;
+            const bool offUnconfirmed = std::find(unconfirmed.begin(), unconfirmed.end(), Json(i + 1)) != unconfirmed.end() ||
+                (combined && std::find(unconfirmed.begin(), unconfirmed.end(), Json(2)) != unconfirmed.end());
             const std::wstring status=(state_.value("readbackStale",false)?std::wstring(L"上次 · "):std::wstring())+
-                (channel["output"].is_boolean() ? (channel["output"].get<bool>()?L"输出中":L"已关闭") :
+                (offUnconfirmed ? L"输出未知" : channel["output"].is_boolean() ? (channel["output"].get<bool>()?L"输出中":L"已关闭") :
                 state_.value("connected",false)?L"状态未知":L"未连接");
             RECT statusBox{left+d(combined?164:100),top+d(8),card.right-d(16),top+d(36)};
-            const auto old=SelectObject(dc,smallFont_); SetTextColor(dc,c.muted); SetBkMode(dc,TRANSPARENT);
+            const auto old=SelectObject(dc,smallFont_); SetTextColor(dc,offUnconfirmed ? c.danger : c.muted); SetBkMode(dc,TRANSPARENT);
             DrawTextW(dc,status.c_str(),-1,&statusBox,DT_RIGHT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS); SelectObject(dc,old);
             const wchar_t *labels[]{L"电压（V）",L"电流（A）",L"功率（W）"};
             const char *keys[]{"voltage","current","power"};
@@ -1134,7 +1253,14 @@ void PowerPane::PaintDetails(HDC dc,int width,int) {
             const auto &record=records[index];const int y=detailStatusTop_+static_cast<int>(index-start)*d(64);
             text(Wide(record.value("timestamp",std::string()))+L" · "+Wide(record.value("operation",std::string())),
                 {detailsInset_,y,detailsInset_+width,y+d(28)},c.text);
-            text(Wide(record.value("source",std::string()))+L" · "+Wide(record.value("result",std::string())),
+            auto outcome = Wide(record.value("result",std::string()));
+            if (record.contains("unconfirmedChannels")) {
+                outcome = L"输出未知";
+                for (const auto &channel : record["unconfirmedChannels"])
+                    outcome += L" CH" + std::to_wstring(channel.get<int>());
+                outcome += L" · " + Wide(record.value("result",std::string()));
+            }
+            text(Wide(record.value("source",std::string()))+L" · "+outcome,
                 {detailsInset_,y+d(28),detailsInset_+width,y+d(56)},c.muted);
         }
     }
@@ -1281,7 +1407,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             SetBkColor(reinterpret_cast<HDC>(w), c.field);
             return reinterpret_cast<LRESULT>(self->brush_);
         }
-        bool channel = (id >= 20 && id <= 22) || id == 201 || id == 231 || id == 232;
+        bool channel = (id >= 20 && id <= 22) || id == 201 || id == 231 || id == 232 || id == KeywordStatusId;
         SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : channel ? c.surface : c.raised);
         return reinterpret_cast<LRESULT>(m == WM_CTLCOLOREDIT ? self->brush_
                                          : channel            ? self->surfaceBrush_
@@ -1297,7 +1423,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         item.hDC = paint.Dc();
         auto c = UiTheme(self->dark_);
         bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start || item.CtlID == IDOK;
-        bool mainTab = item.CtlID >= 90 && item.CtlID <= 93, subTab = item.CtlID >= 110 && item.CtlID <= 114,
+        bool mainTab = item.CtlID >= 90 && item.CtlID <= 93, subTab = item.CtlID >= 110 && item.CtlID <= 110 + KeywordMode,
              groupTab = item.CtlID >= 190 && item.CtlID <= 193;
         bool active = mainTab    ? item.CtlID == 90 + self->tab_
                       : subTab   ? item.CtlID == 110 + self->automation_
@@ -1353,6 +1479,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcW(h, m, w, l);
 }
 void PowerPane::ShowConnection() {
+    if (HasConnection() || !action_.empty()) return;
     ConnectionDialog data{this, font_, dark_, service_};
     struct Template {
         DLGTEMPLATE dialog;
@@ -1410,12 +1537,14 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         add(L"STATIC", L"连接方式", -1, 16, 12, 200);
         data->kind = add(L"COMBOBOX", L"", 100, 16, 40, 404, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
-        for (auto text : {L"USB", L"RS232"})
+        for (auto text : {L"USB", L"RS232", L"远程"})
             SendMessageW(data->kind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
         SendMessageW(data->kind, CB_SETCURSEL, 0, 0);
-        add(L"STATIC", L"设备 / COM 口", -1, 16, 80, 200);
+        add(L"STATIC", L"设备 / COM 口", 114, 16, 80, 200);
         data->resource = add(L"COMBOBOX", L"", 101, 16, 108, 300, CBS_DROPDOWNLIST | WS_TABSTOP, 200);
         data->port = add(L"COMBOBOX", L"", 102, 16, 108, 300, WS_TABSTOP | CBS_DROPDOWNLIST, 200);
+        data->host = add(L"EDIT", L"", 115, 16, 108, 300, ES_AUTOHSCROLL | WS_TABSTOP);
+        SendMessageW(data->host, EM_SETLIMITTEXT, 15, 0);
         UiSetButtonGlyph(add(L"BUTTON", L"刷新", 103, 328, 108, 88, WS_TABSTOP | BS_OWNERDRAW), UiGlyph::Refresh, L"刷新设备列表");
         add(L"STATIC", L"波特率", 110, 16, 156, 92);
         add(L"STATIC", L"数据位", 111, 120, 156, 92);
@@ -1446,11 +1575,26 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (!data)
         return FALSE;
+    if (m == WM_DESTROY && data->scan) {
+        data->scan->cancel = true;
+        return FALSE;
+    }
     if (m == WM_TIMER && w == 209) {
         if (!data->scan || !data->scan->done) return TRUE;
         KillTimer(h, 209);
         const int kind = static_cast<int>(SendMessageW(data->kind, CB_GETCURSEL, 0, 0));
         if (kind != data->scan->kind) return TRUE;
+        if (kind == 2) {
+            data->remote = std::move(data->scan->remote);
+            const auto message = data->remote.port
+                ? std::wstring(L"已发现 IT6332A · ") + (data->remote.backend == "usb" ? L"USB" : L"RS232") +
+                  L" · " + data->remote.host + L":" + std::to_wstring(data->remote.port)
+                : data->scan->error;
+            SetWindowTextW(data->error, message.c_str());
+            EnableWindow(GetDlgItem(h, IDOK), data->remote.port != 0);
+            EnableWindow(GetDlgItem(h, 103), TRUE);
+            return TRUE;
+        }
         HWND combo = kind == 0 ? data->resource : data->port;
         SendMessageW(combo, CB_RESETCONTENT, 0, 0);
         if (kind == 0) {
@@ -1459,10 +1603,44 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 const auto text = Wide(s);
                 SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
             }
-        } else for (const auto &text : data->scan->ports)
-            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+        } else {
+            data->ports = std::move(data->scan->ports);
+            for (const auto &port : data->ports) {
+                const auto label = SerialPortDisplayName(port);
+                SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+            }
+        }
+        if (kind == 1) {
+            // Match the detailed terminal list without truncating long USB/driver names.
+            const int minimumWidth = MulDiv(300, data->pane->dpi_, 96);
+            int droppedWidth = minimumWidth;
+            if (HDC dc = GetDC(combo)) {
+                const HGDIOBJ previous = SelectObject(dc, data->font);
+                for (const auto &port : data->ports) {
+                    const auto label = SerialPortDisplayName(port);
+                    SIZE extent{};
+                    if (GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &extent))
+                        droppedWidth = std::max(droppedWidth, static_cast<int>(extent.cx) + MulDiv(48, data->pane->dpi_, 96));
+                }
+                SelectObject(dc, previous);
+                ReleaseDC(combo, dc);
+            }
+            RECT work{};
+            if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0))
+                droppedWidth = std::min(droppedWidth, std::max(minimumWidth, static_cast<int>(work.right - work.left) - MulDiv(32, data->pane->dpi_, 96)));
+            SendMessageW(combo, CB_SETDROPPEDWIDTH, static_cast<WPARAM>(droppedWidth), 0);
+        }
         const bool any = SendMessageW(combo, CB_GETCOUNT, 0, 0) > 0;
-        SendMessageW(combo, CB_SETCURSEL, 0, 0);
+        int selected = 0;
+        if (kind == 1 && !data->preferredPort.empty()) {
+            for (size_t i = 0; i < data->ports.size(); ++i) {
+                if (data->ports[i].port == data->preferredPort) {
+                    selected = static_cast<int>(i);
+                    break;
+                }
+            }
+        }
+        SendMessageW(combo, CB_SETCURSEL, any ? selected : static_cast<WPARAM>(-1), 0);
         EnableWindow(GetDlgItem(h, IDOK), any);
         EnableWindow(GetDlgItem(h, 103), TRUE);
         SetWindowTextW(data->error, any ? L"" : kind == 0 && !PowerService::VisaAvailable()
@@ -1493,13 +1671,27 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         int kind = static_cast<int>(SendMessageW(data->kind, CB_GETCURSEL, 0, 0));
+        if (id == 115 && HIWORD(w) == EN_CHANGE && kind == 2) {
+            if (data->scan) data->scan->cancel = true;
+            data->scan.reset();
+            data->remote = {};
+            KillTimer(h, 209);
+            EnableWindow(GetDlgItem(h, IDOK), FALSE);
+            EnableWindow(GetDlgItem(h, 103), TRUE);
+            SetWindowTextW(data->error, L"点击刷新查找远端已连接的电源。");
+            return TRUE;
+        }
         if ((id == 100 && HIWORD(w) == CBN_SELCHANGE) || (id == 103 && HIWORD(w) == BN_CLICKED)) {
+            if (data->scan) data->scan->cancel = true;
+            data->scan.reset();
+            data->remote = {};
+            KillTimer(h, 209);
             auto d = [data](int x) { return MulDiv(x, data->pane->dpi_, 96); };
             const bool driverNeeded = kind == 0 && !PowerService::VisaAvailable();
-            int footer = kind == 1 ? 268 : driverNeeded ? 264 : 200;
+            int footer = kind == 1 ? 268 : kind == 2 ? 224 : driverNeeded ? 264 : 200;
             MoveWindow(GetDlgItem(h, IDCANCEL), d(216), d(footer), d(96), d(36), TRUE);
             MoveWindow(GetDlgItem(h, IDOK), d(324), d(footer), d(96), d(36), TRUE);
-            MoveWindow(data->error, d(16), d(kind == 1 ? 224 : 156), d(404), d(32), TRUE);
+            MoveWindow(data->error, d(16), d(kind == 1 ? 224 : 156), d(404), d(kind == 2 ? 56 : 32), TRUE);
             MoveWindow(data->driver, d(16), d(kind == 1 ? 308 : 220), d(144), d(28), TRUE);
             UiResizeDialog(h, data->pane->dpi_, 436, footer + 52);
             for (int i = 104; i <= 107; ++i)
@@ -1508,9 +1700,49 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 ShowWindow(GetDlgItem(h, i), kind == 1 ? SW_SHOW : SW_HIDE);
             ShowWindow(data->resource, kind == 0 ? SW_SHOW : SW_HIDE);
             ShowWindow(data->port, kind == 1 ? SW_SHOW : SW_HIDE);
-            ShowWindow(GetDlgItem(h, 103), SW_SHOW);
+            ShowWindow(data->host, kind == 2 ? SW_SHOW : SW_HIDE);
+            SetWindowTextW(GetDlgItem(h, 114), kind == 2 ? L"远端电脑 IP" : L"设备 / COM 口");
+            const auto refresh = GetDlgItem(h, 103);
+            UiSetButtonGlyph(refresh, UiGlyph::Refresh, kind == 2 ? L"刷新远端电源" : L"刷新设备列表");
+            HWND field = kind == 2 ? data->host : kind == 0 ? data->resource : data->port;
+            RECT bounds{};
+            GetWindowRect(field, &bounds);
+            MapWindowPoints(HWND_DESKTOP, h, reinterpret_cast<POINT *>(&bounds), 2);
+            MoveWindow(refresh, d(328), bounds.top, d(88), bounds.bottom - bounds.top, TRUE);
             ShowWindow(data->driver, driverNeeded ? SW_SHOW : SW_HIDE);
+            if (kind == 2) {
+                EnableWindow(GetDlgItem(h, IDOK), FALSE);
+                EnableWindow(refresh, TRUE);
+                SetWindowTextW(data->error, L"输入远端电脑的 IPv4 地址，然后点击刷新。");
+                if (id == 100) return TRUE;
+                const auto host = data->pane->Text(data->host);
+                if (host.empty()) return TRUE;
+                auto job = data->scan = std::make_shared<ResourceScan>();
+                job->kind = kind;
+                EnableWindow(refresh, FALSE);
+                SetWindowTextW(data->error, L"正在查找远端电源…");
+                try {
+                    data->pane->resourceScanWorkers_[2].Retire([job, host] {
+                        try {
+                            job->remote = RemotePowerClient::Discover(host, job->cancel);
+                        } catch (const std::exception &e) {
+                            job->error = Wide(e.what());
+                        }
+                        job->done = true;
+                    });
+                    SetTimer(h, 209, 40, nullptr);
+                } catch (const std::exception &e) {
+                    EnableWindow(refresh, TRUE);
+                    SetWindowTextW(data->error, Wide(e.what()).c_str());
+                }
+                return TRUE;
+            }
             HWND combo = kind == 0 ? data->resource : data->port;
+            if (kind == 1) {
+                const auto index = SendMessageW(data->port, CB_GETCURSEL, 0, 0);
+                if (const auto *selected = SelectedSerialPort(data->ports, index))
+                    data->preferredPort = selected->port;
+            }
             SendMessageW(combo, CB_RESETCONTENT, 0, 0);
             SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"正在查找设备…"));
             SendMessageW(combo, CB_SETCURSEL, 0, 0);
@@ -1521,11 +1753,7 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             data->pane->resourceScanWorkers_[kind == 0 ? 0 : 1].Retire([job] {
                 try {
                     if (job->kind == 0) job->usb = PowerService::UsbResources();
-                    else for (int index = 1; index <= 256; ++index) {
-                        const auto name = L"COM" + std::to_wstring(index);
-                        wchar_t target[1024]{};
-                        if (QueryDosDeviceW(name.c_str(), target, 1024)) job->ports.push_back(name);
-                    }
+                    else job->ports = EnumerateSerialPorts();
                 } catch (...) { }
                 job->done = true;
             });
@@ -1553,6 +1781,16 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         if (id == IDOK) {
             try {
+                if (kind == 2) {
+                    if (!data->remote.port || data->remote.host != data->pane->Text(data->host))
+                        throw std::runtime_error(u8"请先刷新并确认远端电源");
+                    if (data->pane->HasConnection())
+                        throw std::runtime_error(u8"请先断开当前电源连接");
+                    data->pane->remote_.Attach(data->remote);
+                    data->pane->Refresh();
+                    UiEndOwnedDialog(h, IDOK);
+                    return TRUE;
+                }
                 if (kind != 0 && kind != 1)
                     throw std::runtime_error("请选择 USB 或 RS232");
                 Json command = {{"type", "connect"}, {"backend", kind == 0 ? "usb" : "serial"}};
@@ -1563,7 +1801,11 @@ INT_PTR CALLBACK PowerPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     command["resource"] = data->usb[static_cast<size_t>(index)];
                 }
                 if (kind == 1) {
-                    command["port"] = WideToMultiByte(data->pane->Text(data->port), CP_UTF8);
+                    const auto index = SendMessageW(data->port, CB_GETCURSEL, 0, 0);
+                    const auto *selected = SelectedSerialPort(data->ports, index);
+                    if (!selected)
+                        throw std::runtime_error("请选择有效串口");
+                    command["port"] = WideToMultiByte(selected->port, CP_UTF8);
                     command["baud"] = std::stoi(data->pane->Text(data->baud));
                     command["dataBits"] = std::stoi(data->pane->Text(data->bits));
                     command["parity"] = SendMessageW(data->parity, CB_GETCURSEL, 0, 0);
@@ -1646,6 +1888,32 @@ void WritePowerFile(const std::wstring &path, const Json &value) {
     }
 }
 } // namespace
+std::wstring PowerPane::KeywordConfigPath() {
+    return std::filesystem::path(TaskPath()).replace_filename(L"power-keywords.json").wstring();
+}
+
+void PowerPane::LoadKeywords() {
+    const auto path = KeywordConfigPath();
+    if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) return;
+    try {
+        keywordConfig_ = DecodeKeywords(ReadPowerFile(path));
+    } catch (const std::exception &) {
+        keywordConfigError_ = L"无法读取已保存的关键字配置";
+    }
+}
+
+void PowerPane::SaveKeywords(PowerKeywordConfig config) {
+    const auto encoded = EncodeKeywords(config);
+    if (encoded.dump(2).size() > 1024 * 1024)
+        throw std::runtime_error("关键字配置文件过大");
+    WritePowerFile(KeywordConfigPath(), encoded);
+    keywordConfig_ = std::move(config);
+    keywordConfigError_.clear();
+    std::atomic_store(&keywordRun_, std::shared_ptr<PowerKeywordRun>{});
+    keywordSession_ = 0;
+    refreshRequired_ = true;
+}
+
 void PowerPane::TaskFile(bool save) {
     auto path = ChooseFile(save, L"电源任务\0*.json\0\0", L"json");
     if (path.empty())
@@ -1654,17 +1922,16 @@ void PowerPane::TaskFile(bool save) {
         Json fields = Json::object();
         for (int id : {70, 71, 72, 120, 121, 125, 126, 127, 128})
             fields[std::to_string(id)] = WideToMultiByte(Text(Control(id)), CP_UTF8);
-        WritePowerFile(path, {{"format", "SerialCtl.PowerTask.1"},
-                              {"view", automation_},
-                              {"channels", Selection()},
-                              {"fields", fields},
-                              {"timerEnabled", SendMessageW(Control(124), CB_GETCURSEL, 0, 0) == 1},
-                              {"steps", steps_}});
+        Json task = {{"format", "SerialCtl.PowerTask.1"}, {"view", automation_}, {"channels", Selection()},
+                     {"fields", fields}, {"timerEnabled", SendMessageW(Control(124), CB_GETCURSEL, 0, 0) == 1},
+                     {"steps", steps_}};
+        if (automation_ == KeywordMode) task["keywords"] = EncodeKeywords(keywordConfig_);
+        WritePowerFile(path, task);
         SaveTask();
     } else {
         auto file = ReadPowerFile(path);
         if (file.at("format") != "SerialCtl.PowerTask.1" || !file.at("view").is_number_integer() || file["view"] < 0 ||
-            file["view"] > 4 || !file.at("steps").is_array() || file["steps"].empty() || file["steps"].size() > 1000 ||
+            file["view"] > KeywordMode || !file.at("steps").is_array() || file["steps"].empty() || file["steps"].size() > 1000 ||
             !file.at("channels").is_array() || file["channels"].size() > 3)
             throw std::runtime_error("任务格式不正确");
         for (auto ch : file["channels"])
@@ -1681,6 +1948,7 @@ void PowerPane::TaskFile(bool save) {
                 throw std::runtime_error("无效任务步骤");
         }
         bool enabled = file.at("timerEnabled").get<bool>();
+        if (file.contains("keywords")) SaveKeywords(DecodeKeywords(file.at("keywords")));
         automation_ = file["view"];
         steps_ = file["steps"];
         for (int id : {70, 71, 72, 120, 121, 125, 126, 127, 128})

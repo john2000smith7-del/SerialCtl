@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <map>
 #include <new>
 #include <string>
@@ -123,7 +124,9 @@ enum class UiGlyph {
     Send,
     Pause,
     Disconnect,
-    Close
+    Close,
+    ArrowUp,
+    Microphone
 };
 inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
     if (UiResourceGlyph(dc, bounds, color, static_cast<int>(icon)))
@@ -137,6 +140,17 @@ inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon
     pen.SetEndCap(Gdiplus::LineCapRound);
     auto line = [&](int a, int b, int c, int d) { g.DrawLine(&pen, a, b, c, d); };
     switch (icon) {
+    case UiGlyph::Microphone:
+        g.DrawEllipse(&pen, 9, 3, 6, 10);
+        g.DrawArc(&pen, 6, 6, 12, 12, 0, 180);
+        line(12, 18, 12, 21);
+        line(9, 21, 15, 21);
+        break;
+    case UiGlyph::ArrowUp:
+        line(12, 19, 12, 5);
+        line(6, 11, 12, 5);
+        line(12, 5, 18, 11);
+        break;
     case UiGlyph::Pause:
         line(8, 5, 8, 19); line(16, 5, 16, 19);
         break;
@@ -756,6 +770,7 @@ inline LRESULT CALLBACK UiButtonProc(HWND h, UINT message, WPARAM w, LPARAM l, U
     }
     if (message == WM_NCDESTROY) {
         RemovePropW(h, L"SerialCtl.PowerHover");
+        RemovePropW(h, L"SerialCtl.FlatIconVisual");
         RemoveWindowSubclass(h, UiButtonProc, id);
     }
     const auto result = DefSubclassProc(h, message, w, l);
@@ -770,6 +785,10 @@ inline void UiStyleButton(HWND h) {
 }
 inline constexpr wchar_t UiButtonGlyphProperty[] = L"SerialCtl.ButtonGlyph";
 inline constexpr wchar_t UiControlTipsProperty[] = L"SerialCtl.ControlTips";
+inline constexpr wchar_t UiFlatIconProperty[] = L"SerialCtl.FlatIconVisual";
+inline void UiSetFlatIconButton(HWND button) {
+    if (button) SetPropW(button, UiFlatIconProperty, reinterpret_cast<HANDLE>(1));
+}
 inline LRESULT CALLBACK UiControlTipsProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR data) {
     if (message == WM_NCDESTROY) {
         RemoveWindowSubclass(h, UiControlTipsProc, id);
@@ -778,6 +797,30 @@ inline LRESULT CALLBACK UiControlTipsProc(HWND h, UINT message, WPARAM w, LPARAM
         if (IsWindow(tips)) DestroyWindow(tips);
     }
     return DefSubclassProc(h, message, w, l);
+}
+inline void UiSetControlTooltip(HWND control, const wchar_t *tooltip) {
+    if (!control || !IsWindow(control)) return;
+    const HWND owner = GetParent(control);
+    HWND tips = reinterpret_cast<HWND>(GetPropW(owner, UiControlTipsProperty));
+    if (!IsWindow(tips)) {
+        tips = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+                              CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                              owner, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!tips) return;
+        if (!SetWindowSubclass(owner, UiControlTipsProc, 95, reinterpret_cast<DWORD_PTR>(tips)) ||
+            !SetPropW(owner, UiControlTipsProperty, tips)) {
+            RemoveWindowSubclass(owner, UiControlTipsProc, 95);
+            DestroyWindow(tips);
+            return;
+        }
+    }
+    TOOLINFOW tool{sizeof(tool)};
+    tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    tool.hwnd = owner;
+    tool.uId = reinterpret_cast<UINT_PTR>(control);
+    tool.lpszText = const_cast<wchar_t *>(tooltip ? tooltip : L"");
+    if (!SendMessageW(tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool)))
+        SendMessageW(tips, TTM_UPDATETIPTEXTW, 0, reinterpret_cast<LPARAM>(&tool));
 }
 inline void UiSetButtonGlyph(HWND button, UiGlyph glyph, const wchar_t *tooltip) {
     // The native caption remains the accessible name; only its painting changes.
@@ -1176,7 +1219,7 @@ namespace serialctl {
 constexpr UINT UiFirstPaintReady = WM_APP + 190;
 // Background scans and cached-list population start after the complete initial
 // form has painted, not from WM_INITDIALOG or an arbitrary startup delay.
-inline LRESULT CALLBACK UiFirstPaintProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
+inline LRESULT CALLBACK UiFirstPaintProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR notifyReady) {
     if (message == WM_NCDESTROY) {
         RemoveWindowSubclass(h, UiFirstPaintProc, id);
         return DefSubclassProc(h, message, w, l);
@@ -1191,16 +1234,16 @@ inline LRESULT CALLBACK UiFirstPaintProc(HWND h, UINT message, WPARAM w, LPARAM 
             wchar_t metrics[2]{};
             if (GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", metrics, 2))
                 SetPropW(h, L"SerialCtl.DialogFirstPaint", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(GetTickCount64())));
-            PostMessageW(h, UiFirstPaintReady, 0, 0);
+            if (notifyReady) PostMessageW(h, UiFirstPaintReady, 0, 0);
         }
     }
     return result;
 }
-inline void UiRunAfterFirstPaint(HWND dialog) {
+inline void UiRunAfterFirstPaint(HWND dialog, bool notifyReady = true) {
     // Keep the form functional even if native subclass registration fails.
-    if (!SetWindowSubclass(dialog, UiFirstPaintProc, 89, 0))
-        PostMessageW(dialog, UiFirstPaintReady, 0, 0);
-    else
+    if (!SetWindowSubclass(dialog, UiFirstPaintProc, 89, notifyReady)) {
+        if (notifyReady) PostMessageW(dialog, UiFirstPaintReady, 0, 0);
+    } else
         // A native creation/layout call can already have validated the parent.
         // Guarantee a paint opportunity even for keyboard/programmatic opening.
         InvalidateRect(dialog, nullptr, FALSE);
@@ -1260,6 +1303,7 @@ class UiRedrawScope {
 };
 class UiLayoutBatch {
   public:
+    explicit UiLayoutBatch(bool discardOldPixels = false) : discardOldPixels_(discardOldPixels) {}
     void Move(HWND h, int x, int y, int w, int height, BOOL = FALSE) {
         auto &v = items_[h];
         v.rect = {x, y, x + w, y + height};
@@ -1305,7 +1349,8 @@ class UiLayoutBatch {
                     wchar_t className[16]{};
                     GetClassNameW(h, className, 16);
                     const auto style = GetWindowLongPtrW(h, GWL_STYLE);
-                    if ((_wcsicmp(className, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW) ||
+                    if (discardOldPixels_ ||
+                        (_wcsicmp(className, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW) ||
                         (_wcsicmp(className, L"LISTBOX") == 0 &&
                          (style & (LBS_OWNERDRAWFIXED | LBS_OWNERDRAWVARIABLE))))
                         flags |= SWP_NOCOPYBITS;
@@ -1366,6 +1411,7 @@ class UiLayoutBatch {
     }
 
   private:
+    bool discardOldPixels_;
     struct Item {
         RECT rect{};
         bool move = false;
@@ -1381,5 +1427,31 @@ inline void UiPlus(HDC dc, const RECT &r, COLORREF color, int dpi) {
     const POINT vertical[]{{cx, cy - half}, {cx, cy + half}};
     UiPolyline(dc, horizontal, 2, color, static_cast<float>(width));
     UiPolyline(dc, vertical, 2, color, static_cast<float>(width));
+}
+inline void UiDrawProgressBar(HDC dc, int left, int top, int right, int dpi,
+                              std::uint64_t bytes, std::uint64_t total, bool indeterminate,
+                              COLORREF trackColor, COLORREF fillColor) {
+    const auto d = [dpi](int n) { return MulDiv(n, dpi, 96); };
+    const int bottom = top + d(6);
+    const int radius = d(3);
+    UiBox(dc, {left, top, right, bottom}, trackColor, trackColor, radius);
+    if (total > 0 && bytes > 0) {
+        const auto fraction = static_cast<long double>(std::min(bytes, total)) / total;
+        const LONG fillRight = left + static_cast<LONG>((right - left) * fraction);
+        if (fillRight > left) {
+            UiBox(dc, {left, top, fillRight, bottom}, fillColor, fillColor, radius);
+        }
+    } else if (indeterminate && total == 0) {
+        const int width = std::max(1, right - left);
+        const int blockWidth = std::max(d(28), width / 4);
+        const int travel = std::max(1, width + blockWidth);
+        const int tick = static_cast<int>(bytes == 0 ? ((GetTickCount64() / 12) % travel)
+                                                     : ((bytes * 13 + (GetTickCount64() / 15)) % travel)) - blockWidth;
+        const int bLeft = std::clamp(left + tick, left, right);
+        const int bRight = std::clamp(left + tick + blockWidth, left, right);
+        if (bRight > bLeft) {
+            UiBox(dc, {bLeft, top, bRight, bottom}, fillColor, fillColor, radius);
+        }
+    }
 }
 } // namespace serialctl

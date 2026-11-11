@@ -73,7 +73,7 @@ build(V2.0.18): 规范开发交接与发布包文件范围
 - 保持 `/MT` 静态运行库、PE 子系统版本 `6.01`、YY-Thunks 及兼容代码。现代 Windows 上运行成功不代表 Win7 实测通过。
 - Win7 兼容属于发布红线：生产主程序及随包工具不得引入较新系统必需 API、API-set、动态 MSVC／.NET 运行依赖；任何工具链或依赖变化都须重新检查 PE、导入与运行行为。未运行真实 Win7 测试时如实列出，不把 Server 2022 的结果写成 Win7 实测。
 - 不随意替换定制 PuTTY 的 plink.exe、psftp.exe。替换前必须审查固定版本、源码补丁、许可证、Win7 导入及 SSH/SFTP 行为。
-- 整理代码须保留现有功能、界面和操作行为；先给检查结果和整理方案，在用户已确认的范围内修改，不做无关重构。
+- 新增功能与界面修改必须严格按照原有代码架构、模块边界和产品风格进行开发；整理代码须保留现有功能、界面和操作行为，先给检查结果和整理方案，在用户已确认的范围内修改，不做无关重构。
 - 自动更新和宠物行为没有当前明确需求时不自行修改；历史材料中的旧设想不构成授权。
 - `VERSION` 是唯一机器可读版本源，PROJECT_VERSION 与 CPP_VERSION 必须一致。软件版本变化同步维护根 README、VERSION.md、发布包 README 和对应 RELEASE-NOTES。
 - 仅修改本文件等不影响产品及打包输入的维护文档，不自行升级软件版本或重发旧包；保留原 Release 的真实构建提交记录，不能把后来的文档提交说成旧包构建来源。新的正式软件交付仍须从当次精确 main 提交重新完成验证。
@@ -89,7 +89,7 @@ build(V2.0.18): 规范开发交接与发布包文件范围
 
 ## 5. 界面及当前操作规则
 
-- UI 修改遵守 UI-DESIGN-GUIDE，复用共享颜色、间距、圆角、控件高度和绘制机制。按钮使用已有 primary/secondary/text/icon/danger 角色；确需新角色先更新设计规则。
+- 新增功能与 UI 修改必须遵守 UI-DESIGN-GUIDE 并保持产品统一设计：凡是能复用的原有控件、布局、共享颜色、间距、圆角、控件高度、缓冲绘制机制以及现有图标资源（如 `ToolbarIcons`、`utility-icons` 等），一律优先复用，禁止自创散乱样式或重复造轮子。按钮使用已有 primary/secondary/text/icon/danger 角色；确需新角色或新视觉元素先更新设计规则。
 - 弹窗使用共享紧凑网格、内容自适应高度和一致底部动作区。深浅主题均须检查 hover、pressed、focus、checked、disabled 状态。
 - 相邻输入框和按钮比较可见圆角外框的最终运行时像素高度；内部 inset Edit 的文字区高度不等于可见外框高度。
 - 保留窄窗口、缩放、拖动和滚动行为，不用缩小字体或隐藏关键操作掩盖布局问题。
@@ -136,7 +136,7 @@ build(V2.0.18): 规范开发交接与发布包文件范围
 ## 8. 原签名身份与私钥保管
 
 - 正式更新沿用找回的原 V2.0.0 身份，不生成新密钥替代。原 V2.0.2 及后续同身份客户端的兼容必须保留；历史替换公钥版 V2.0.4 是另一信任群体，不宣称自动覆盖所有历史安装。
-- 当前签名路径：`/workspace/.serialctl-signing/serialctl-update-v2-rsa2048.pem`，目录 0700、文件 0600。它位于仓库外，clone 不会取得，换环境可能不存在。
+- 当前签名路径：本机工作区受控目录 `D:/Users/jiojoey/Chatgpt/SerialCtl/secrets/serialctl-update-v2-rsa2048.pem`（NTFS ACL 仅限当前用户 `JIOJOEY\jiojoey` 与 `NT AUTHORITY\SYSTEM` 访问，并由 `.gitignore` 的 `/secrets/` 与 `*.pem` 规则排除在 Git 之外；Linux 环境历史路径为 `/workspace/.serialctl-signing/serialctl-update-v2-rsa2048.pem`，目录 0700、文件 0600）。它不进入 Git 跟踪，clone 不会取得，换环境可能不存在。
 - 活动公钥 SPKI SHA-256：`196b703ac1274da483936513794f0c03eb7be806c302db4d932b30378a78a21a`。签名前通过公开派生值核对私钥与 `src/update/UpdateTrustKey.h`、identity.json 一致，不能输出私钥本身。
 - 本文件只记录路径、公开指纹和操作规则。原签名私钥正文及恢复口令不得放入 Git、聊天、CI secrets／日志／artifact、发布包或更新服务器；正式私钥只在授权签名环境使用，CI 接收公开签名 JSON。访问令牌不得写入源码、聊天或日志，CI 使用现有受控凭据与必要权限，不要求用户发送明文令牌。
 - 现存原 PEM 未做额外口令加密；0700／0600 是访问权限，不是加密，也不能阻止同账号进程或具备相应管理权限者读取。不能承诺该工作区是永久、安全备份。

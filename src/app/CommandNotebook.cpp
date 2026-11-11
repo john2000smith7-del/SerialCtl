@@ -298,6 +298,31 @@ void CommandNotebook::Scroll(int x, int y) {
     Refresh();
     InvalidateRect(editor_, nullptr, FALSE);
 }
+void CommandNotebook::Wheel(WPARAM wParam) {
+    if (!editor_) return;
+    UINT lines = 3;
+    if (!SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0)) lines = 3;
+    if (lines == 0) { wheelRemainder_ = 0; return; }
+    // RichEdit has no native scrollbar: move its actual scroll origin, rather
+    // than forwarding WM_MOUSEWHEEL to a control with no WS_VSCROLL style.
+    wheelRemainder_ += GET_WHEEL_DELTA_WPARAM(wParam);
+    const int notches = wheelRemainder_ / WHEEL_DELTA;
+    wheelRemainder_ %= WHEEL_DELTA;
+    if (!notches) return;
+    RECT view{};
+    GetClientRect(editor_, &view);
+    const int height = std::max(1, static_cast<int>(view.bottom - view.top));
+    const long long documentHeight = static_cast<long long>(
+        SendMessageW(editor_, EM_GETLINECOUNT, 0, 0)) * std::max(1, rowHeight_);
+    const long long maximum = std::max(0LL, documentHeight - height);
+    POINT current{};
+    SendMessageW(editor_, EM_GETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&current));
+    const long long pixelsPerNotch = lines == WHEEL_PAGESCROLL
+        ? height : static_cast<long long>(std::min<UINT>(lines, 100)) * std::max(1, rowHeight_);
+    const long long target = std::clamp(static_cast<long long>(current.y) - notches * pixelsPerNotch,
+                                        0LL, maximum);
+    Scroll(current.x, static_cast<int>(target));
+}
 void CommandNotebook::Menu() {
     HMENU menu = CreatePopupMenu();
     const auto colors = UiTheme(dark_);
@@ -434,6 +459,12 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
         SendMessageW(self->window_, m, w, l);
         return 0;
     }
+    if (m == WM_MOUSEWHEEL) {
+        // The document surface and its non-client gutter must scroll alike.
+        // Consume the event so RichEdit cannot double-scroll it.
+        self->Wheel(w);
+        return 0;
+    }
     if (m == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000) && (w == 'S' || w == 'O')) {
         if (self->action)
             self->action(w == 'S' ? 2 : 3);
@@ -502,7 +533,7 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
         self->SelectionInk(dc);
         ReleaseDC(h, dc);
     }
-    if (m == WM_MOUSEWHEEL || m == WM_HSCROLL || m == WM_VSCROLL || m == WM_KEYUP || m == WM_LBUTTONUP)
+    if (m == WM_HSCROLL || m == WM_VSCROLL || m == WM_KEYUP || m == WM_LBUTTONUP)
         self->Refresh();
     return result;
 }
@@ -657,7 +688,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
         return TRUE;
     }
     case WM_MOUSEWHEEL:
-        SendMessageW(editor_, m, w, l);
+        Wheel(w);
         return 0;
     case WM_LBUTTONDOWN: {
         POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};

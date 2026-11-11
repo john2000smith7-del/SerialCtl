@@ -35,3 +35,55 @@ Copyright © 2018 National Instruments Corporation. All Rights Reserved.
 ## AI companion artwork — whale maid
 
 The optional AI companion is a noncommercial derivative of the Q-style whale-maid artwork from <https://github.com/fornarwhal/deepseek-whale-girl-icon> (improved-1.png). Original character OC “溟月”: 上善无形; DeepSeek derivative: ZipZipPipe; repaired artwork: QYQCAMIAO. The SerialCtl companion's new poses and animation atlas were created from that reference with AI assistance. They are distributed under **Creative Commons Attribution–NonCommercial–ShareAlike 4.0 International**: <https://creativecommons.org/licenses/by-nc-sa/4.0/>. This artwork license is separate from the application code license. No official DeepSeek affiliation is implied. Source/provenance and atlas geometry are recorded in src/app/assets/ai-pet.json.
+
+## Whisper offline voice input
+
+The embedded CPU engine is whisper.cpp 1.7.6 and the embedded multilingual tiny weights derive from OpenAI Whisper. Source and model provenance are recorded in the repository third_party/whisper directory.
+
+### whisper.cpp engine
+
+MIT License
+
+Copyright (c) 2023-2024 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+### OpenAI Whisper model
+
+MIT License
+
+Copyright (c) 2022 OpenAI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

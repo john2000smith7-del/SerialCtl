@@ -34,6 +34,8 @@ struct SessionLoggerTestAccess {
         std::unique_lock<std::mutex> lock(logger.mutex_);
         return logger.wake_.wait_for(lock, 2s, [&] { return !logger.writerAlive_; });
     }
+    static void FailFlushCopy(bool fail) { SessionLogger::testFailFlushCopy_.store(fail); }
+    static void FailFlushStop(bool fail) { SessionLogger::testFailFlushStop_.store(fail); }
 };
 }
 namespace {
@@ -212,6 +214,68 @@ int main() {
         auto readPaths = std::async(std::launch::async, [&] { for (int i = 0; i < 10000; ++i) logger.Path(); });
         logger.Stop(); readPaths.get();
         evidence["cases"].push_back({{"name", "actual readonly source handle rejects WriteFile; writer exits and exporter wakes; concurrent Path/Stop"}});
+
+        // FlushFileBuffers fault injection on SaveCopy: target preserved, temporary deleted, logger healthy
+        Check(logger.Start(L"flush-copy-failure", error, true), "start flush copy fixture");
+        roots.push_back(logger.Path());
+        logger.WriteRaw(Bytes{'k', 'e', 'e', 'p'});
+        Check(SessionLoggerTestAccess::Drained(logger), "drained");
+        const auto flushPoint = logger.CaptureExportPoint();
+        const auto flushTarget = directory / L"flush_target.log";
+        const std::string preservedData = "PRESERVED_TARGET_DATA";
+        Put(flushTarget, preservedData);
+        SessionLoggerTestAccess::FailFlushCopy(true);
+        std::wstring flushError;
+        const bool flushExportResult = logger.SaveCopy(flushTarget.wstring(), flushPoint, flushError, nullptr);
+        SessionLoggerTestAccess::FailFlushCopy(false);
+        Check(!flushExportResult && !flushError.empty(), "flush failure causes SaveCopy to fail");
+        Check(flushError.find(L"日志副本刷新失败") != std::wstring::npos, "expected flush error message");
+        Check(Read(flushTarget) == preservedData, "flush failure preserves target file atomically");
+        NoTemporary(flushTarget);
+        Check(logger.Error().empty(), "export flush failure does not taint logger");
+        evidence["cases"].push_back({{"name", "FlushFileBuffers fault injection on SaveCopy: target preserved, temporary deleted, logger healthy"}});
+
+        // FlushFileBuffers fault injection on Stop: non-blocking, returns boundedly, observable error
+        Check(logger.Start(L"flush-stop-failure", error, true), "start flush stop fixture");
+        roots.push_back(logger.Path());
+        logger.WriteRaw(Bytes{'s', 't', 'o', 'p'});
+        Check(SessionLoggerTestAccess::Drained(logger), "drained");
+        SessionLoggerTestAccess::FailFlushStop(true);
+        const auto stopStart = Clock::now();
+        logger.Stop();
+        const auto stopElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - stopStart);
+        SessionLoggerTestAccess::FailFlushStop(false);
+        Check(stopElapsed < 2000ms, "Stop with flush failure does not hang");
+        Check(logger.Error().find(L"日志刷新失败") != std::wstring::npos, "Stop flush error is observable");
+        evidence["cases"].push_back({{"name", "FlushFileBuffers fault injection on Stop: bounded return and observable error"}});
+
+        Check(logger.Start(L"ordered-batch", error, true), "start ordered batch fixture");
+        const auto batchPath = fs::path(logger.Path());
+        roots.push_back(batchPath);
+        logger.WriteBatch({{false, L"first\r\n"}, {true, L"status"}, {false, L"last\r\n"}});
+        Check(SessionLoggerTestAccess::Drained(logger), "ordered batch drained");
+        const auto batchStats = logger.Stats();
+        logger.Stop();
+        const auto batchText = Read(batchPath);
+        const auto firstAt = batchText.find("first"), statusAt = batchText.find("status"), lastAt = batchText.find("last");
+        Check(firstAt != std::string::npos && statusAt != std::string::npos && lastAt != std::string::npos &&
+              firstAt < statusAt && statusAt < lastAt, "batch conversion preserves exact entry order");
+        Check(batchStats.acceptedBytes == batchStats.completedBytes && batchStats.highWaterBytes > 0 &&
+              batchStats.overflowEvents == 0, "batch logger metrics describe complete delivery");
+        evidence["cases"].push_back({{"name", "ordered batch conversion and backlog metrics"},
+            {"bytes", batchStats.completedBytes}, {"high_water_bytes", batchStats.highWaterBytes}});
+
+        // Slow disk bounded queue test: WriteBytes never blocks producer thread, rejects beyond 8MB
+        Check(logger.Start(L"slow-disk-bounded", error, true), "start slow disk fixture");
+        roots.push_back(logger.Path());
+        const auto queueStart = Clock::now();
+        logger.WriteRaw(Bytes(8 * 1024 * 1024 + 1024, 'q'));
+        const auto queueElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - queueStart);
+        Check(queueElapsed < 500ms, "WriteRaw beyond queue limit returns immediately without blocking");
+        Check(logger.Error().find(L"日志队列已满") != std::wstring::npos, "queue saturation triggers error");
+        logger.Stop();
+        evidence["cases"].push_back({{"name", "slow disk bounded queue: producer never blocks, rejects >8MB without hang"}});
+
         evidence["success"] = true;
     } catch (const std::exception &error) {
         evidence["success"] = false;

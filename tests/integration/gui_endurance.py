@@ -1,6 +1,6 @@
 """Bounded actual-user endurance checks on the caller's isolated packaged GUI.
 
-Uses real Windows mouse input and visible desktop frames. No command/button
+Uses real Windows mouse and keyboard input and visible desktop frames. No command/button
 notifications substitute for clicks. Loopback WebSocket submits only the test
 CMD output producer; it never selects or operates physical devices.
 """
@@ -20,6 +20,15 @@ from gui_paint_user_actions import ScreenRecording
 class GuiThreadInfo(c.Structure):
     _fields_ = [('size',w.DWORD),('flags',w.DWORD),('active',w.HWND),('focus',w.HWND),
                 ('capture',w.HWND),('menuOwner',w.HWND),('moveSize',w.HWND),('caret',w.HWND),('caretRect',RECT)]
+
+
+class ProcessMemoryCountersEx(c.Structure):
+    _fields_ = [('cb',w.DWORD),('page_faults',w.DWORD),
+                ('peak_working_set',c.c_size_t),('working_set',c.c_size_t),
+                ('quota_peak_paged',c.c_size_t),('quota_paged',c.c_size_t),
+                ('quota_peak_nonpaged',c.c_size_t),('quota_nonpaged',c.c_size_t),
+                ('pagefile',c.c_size_t),('peak_pagefile',c.c_size_t),
+                ('private_bytes',c.c_size_t)]
 
 
 def wait(predicate, budget=5):
@@ -47,6 +56,9 @@ class Endurance(DesktopActions):
         self.kernel.GetExitCodeProcess.argtypes=(w.HANDLE,c.POINTER(w.DWORD))
         self.process=self.kernel.OpenProcess(0x00100400,False,args.pid)
         require(self.process,'Cannot observe native process resources')
+        self.psapi=c.WinDLL('psapi',use_last_error=True)
+        self.psapi.GetProcessMemoryInfo.argtypes=(w.HANDLE,c.POINTER(ProcessMemoryCountersEx),w.DWORD)
+        self.psapi.GetProcessMemoryInfo.restype=w.BOOL
         self.responses=[]
         self.resources=[]
         self.dialogs=[]
@@ -76,8 +88,12 @@ class Endurance(DesktopActions):
     def sample_resources(self,label):
         count=w.DWORD()
         require(self.kernel.GetProcessHandleCount(self.process,c.byref(count)),'Cannot read process handles')
+        memory=ProcessMemoryCountersEx();memory.cb=c.sizeof(memory)
+        require(self.psapi.GetProcessMemoryInfo(self.process,c.byref(memory),memory.cb),'Cannot read process memory')
         row={**self.timestamp(),'label':label,'handles':count.value,
-             'gdi':self.user.GetGuiResources(self.process,0),'user':self.user.GetGuiResources(self.process,1)}
+             'gdi':self.user.GetGuiResources(self.process,0),'user':self.user.GetGuiResources(self.process,1),
+             'working_set_bytes':memory.working_set,'private_bytes':memory.private_bytes,
+             'peak_working_set_bytes':memory.peak_working_set}
         require(row['gdi']>0 and row['user']>0,'GUI resource counters unavailable')
         self.resources.append(row)
         return row
@@ -106,7 +122,7 @@ class Endurance(DesktopActions):
         require(self.user.EnumWindows(callback(observe),0),'Cannot enumerate real modal windows')
         return found
 
-    def open_cancel(self,identifier,background_burst=False):
+    def open_cancel(self,identifier,background_burst=False,remote_serial=False):
         started=time.perf_counter()
         self.hit_click(self.control(identifier))
         wait(lambda:len(self.modal_windows())==1)
@@ -117,8 +133,16 @@ class Endurance(DesktopActions):
         screen_sample=None
         require(ready_ms<500,'A modal was unresponsive for more than 500ms under continuous CMD output')
         require(self.user.GetForegroundWindow()==dialog,'The opened modal did not receive foreground')
-        if not any(row['control']==identifier and row['theme']==self.args.theme for row in self.dialogs):
-            self.capture('modal-'+str(identifier));screen_sample=self.frames[-1]['path'];self.flush_frames()
+        if remote_serial:
+            self.hit_click(self.user.GetDlgItem(dialog,1036))
+            for vk in (0x24,0x28,0x0D):  # Home, Down, Enter.
+                self.user.keybd_event(vk,0,0,0)
+                self.user.keybd_event(vk,0,2,0)
+            wait(lambda:self.user.IsWindowVisible(self.user.GetDlgItem(dialog,1014)))
+        if not any(row['control']==identifier and row['theme']==self.args.theme and
+                   row['remote_serial']==remote_serial for row in self.dialogs):
+            self.capture('modal-remote-serial' if remote_serial else 'modal-'+str(identifier))
+            screen_sample=self.frames[-1]['path'];self.flush_frames()
         if background_burst:
             r=self.rect(self.control(identifier));point=((r[0]+r[2])//2,(r[1]+r[3])//2)
             dr=self.rect(dialog)
@@ -127,12 +151,11 @@ class Endurance(DesktopActions):
                 self.move_mouse(point);self.button(True);time.sleep(.008);self.button(False);self.clicks+=1
             time.sleep(.03)
             require(self.modal_windows()==[dialog],'Rapid background clicks created another modal or closed this one')
-        if identifier==103:time.sleep(.65)  # Exercise discovery scheduling before closing.
         self.hit_click(self.user.GetDlgItem(dialog,2))
         wait(lambda:not self.user.IsWindow(dialog))
         wait(lambda:self.user.GetForegroundWindow()==self.window)
         ms=self.responsive();self.responses.append(ms)
-        self.dialogs.append({'control':identifier,'theme':self.args.theme,'first_paint_bounds':dialog_bounds,'screen_sample':screen_sample,'observed_ready_ms':ready_ms,'response_ms':ms,'background_burst':background_burst})
+        self.dialogs.append({'control':identifier,'remote_serial':remote_serial,'theme':self.args.theme,'first_paint_bounds':dialog_bounds,'screen_sample':screen_sample,'observed_ready_ms':ready_ms,'response_ms':ms,'background_burst':background_burst})
 
     def park_visible_pet(self):
         pet=self.user.FindWindowExW(None,None,'SerialCtlAiPetPane',None)
@@ -201,8 +224,8 @@ class Endurance(DesktopActions):
                     self.hit_click(self.control(104));wait(lambda:self.caption(self.control(104))==desired)
                 self.capture('theme-initial');self.flush_frames()
                 for cycle in range(24):
-                    identifier=(100,101,102,103,303)[cycle%5]
-                    self.open_cancel(identifier,background_burst=cycle<5)
+                    identifier=(100,101,102,101,303)[cycle%5]
+                    self.open_cancel(identifier,background_burst=cycle<5,remote_serial=cycle%5==3)
                     if cycle%4==0:self.sample_resources(theme+'-dialogs-'+str(cycle))
                 # AI entry/cancel is a distinct modal/page transition. Close its
                 # pseudo-session through the existing real Disconnect action.

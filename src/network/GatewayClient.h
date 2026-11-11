@@ -28,6 +28,8 @@ class GatewayClient {
     }
     nlohmann::json Request(const std::string &op, const std::string &resource = "",
                            nlohmann::json params = nlohmann::json::object());
+    nlohmann::json RequestUntil(const std::string &op, const std::string &resource,
+                                nlohmann::json params, ULONGLONG deadline);
     std::string SendRequest(const std::string &op, const std::string &resource, nlohmann::json params);
     nlohmann::json Receive();
     const nlohmann::json &Hello() const {

@@ -132,20 +132,30 @@ bool SftpController::Mutate(std::uint64_t session, Endpoint endpoint, Mutation k
     });
 }
 std::uint64_t SftpController::EnqueueUpload(std::uint64_t session, const std::wstring& local,
-                                           const std::wstring& remote, std::wstring& error) {
+                                           const std::wstring& remote, std::wstring& error,
+                                           std::optional<bool> overwritePolicy) {
     Transfer item; item.id = nextTransfer_++; item.sessionId = session; item.direction = Direction::Upload;
     item.name = LocalFileNameOf(local); item.localPath = local; item.remotePath = remote.empty() ? directory_ : remote;
     if (item.remotePath == directory_) {
         const auto found = std::find_if(entries_.begin(), entries_.end(), [&](const auto& entry) { return entry.name == item.name; });
         if (found != entries_.end()) {
             if (found->directory) { error = L"远端已有同名文件夹，无法上传该文件。"; return 0; }
-            item.replaceExisting = true;
+            if (overwritePolicy.has_value() && !*overwritePolicy) {
+                error = L"远端目标已存在；请明确指定 allowOverwrite=true 后重试。";
+                return 0;
+            }
+            if (!overwritePolicy.has_value()) item.replaceExisting = true; // GUI: preserve confirmation.
         }
+    }
+    if (overwritePolicy.has_value()) {
+        item.replaceExisting = *overwritePolicy;
+        item.skipOverwritePrompt = *overwritePolicy;
     }
     item.total = LocalFileSize(local); const auto id = item.id; transfers_.push_back(std::move(item)); return id;
 }
 std::uint64_t SftpController::EnqueueDownload(std::uint64_t session, const std::wstring& remote,
-    const std::wstring& local, std::uint64_t size, bool replace, std::wstring& error) {
+    const std::wstring& local, std::uint64_t size, bool replace, std::wstring& error,
+    bool skipOverwritePrompt) {
     const bool duplicate = std::any_of(transfers_.begin(), transfers_.end(), [&](const auto& item) {
         return item.direction == Direction::Download && (item.state == TransferState::Queued || item.state == TransferState::Running) &&
                ExistingLocalPathsReferToSameFile(item.localPath, local);
@@ -154,6 +164,7 @@ std::uint64_t SftpController::EnqueueDownload(std::uint64_t session, const std::
     Transfer item; item.id = nextTransfer_++; item.sessionId = session; item.direction = Direction::Download;
     item.name = BaseNameSftpRemotePath(remote); item.localPath = local; item.remotePath = remote;
     item.total = size; item.replaceExisting = replace;
+    item.skipOverwritePrompt = replace && skipOverwritePrompt;
     const auto id = item.id; transfers_.push_back(std::move(item)); return id;
 }
 SftpController::Transfer* SftpController::Find(std::uint64_t id) {
@@ -203,10 +214,11 @@ void SftpController::CancelSession(std::uint64_t session) {
         else if (item.state == TransferState::Running) transferCancel_ = true;
     }
 }
-void SftpController::Retry(std::uint64_t id, bool available) {
+void SftpController::Retry(std::uint64_t id, bool available, bool confirmedOverwrite) {
     auto* item = Find(id);
     if (!item || (item->state != TransferState::Failed && item->state != TransferState::Canceled)) return;
     if (!available) { item->error = L"原连接已断开，无法重试"; item->state = TransferState::Failed; return; }
+    if (confirmedOverwrite && item->replaceExisting) item->skipOverwritePrompt = true;
     item->state = TransferState::Queued; item->error.clear(); item->transferred = 0;
     item->bytesPerSecond = 0; item->remainingSeconds = 0; item->percent = item->total == 0 ? -1 : 0;
 }

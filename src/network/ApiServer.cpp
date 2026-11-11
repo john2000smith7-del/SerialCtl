@@ -1,7 +1,11 @@
 #include "ApiServer.h"
+#include "../power/RemotePowerProtocol.h"
 #include "ApiResponse.h"
 #include "Win32Helpers.h"
 #include <algorithm>
+#include <charconv>
+#include <chrono>
+#include <string_view>
 #include <ws2tcpip.h>
 namespace serialctl {
 namespace {
@@ -45,18 +49,44 @@ bool Text(const Json &j, const char *key, size_t max = 128) {
     return j.contains(key) && j[key].is_string() && !j[key].get_ref<const std::string &>().empty() &&
            j[key].get_ref<const std::string &>().size() <= max;
 }
+bool LoopbackAuthority(std::string_view authority, unsigned expectedPort = 0) {
+    for (const std::string_view host : {"localhost", "127.0.0.1", "[::1]"}) {
+        if (authority.substr(0, host.size()) != host) continue;
+        if (authority.size() == host.size()) return true;
+        if (authority[host.size()] != ':') return false;
+        unsigned port = 0;
+        const auto end = authority.data() + authority.size();
+        const auto result = std::from_chars(authority.data() + host.size() + 1, end, port);
+        return result.ec == std::errc{} && result.ptr == end && port > 0 && port <= 65535 &&
+            (!expectedPort || port == expectedPort);
+    }
+    return false;
+}
 } // namespace
-bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsigned last) {
+bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsigned last,
+                      const std::string &bindAddress,
+                      const std::vector<std::string> &allowedClients) {
     Stop();
     if (first == 0 || first > last || last > 65535) {
         error = L"无效端口范围";
         return false;
     }
+    bindAddress_ = bindAddress.empty() ? "0.0.0.0" : bindAddress;
+    allowedClients_ = allowedClients;
     try {
         instance_ = ws::RandomHex();
     } catch (...) {
         error = L"无法初始化网络实例";
         return false;
+    }
+    unsigned long bindIp = INADDR_ANY;
+    if (bindAddress_ != "0.0.0.0" && bindAddress_ != "*") {
+        IN_ADDR addr{};
+        if (InetPtonA(AF_INET, bindAddress_.c_str(), &addr) != 1) {
+            error = L"无效监听绑定地址";
+            return false;
+        }
+        bindIp = addr.s_addr;
     }
     for (unsigned port = first; port <= last; ++port) {
         SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -66,7 +96,7 @@ bool ApiServer::Start(Handler handler, std::wstring &error, unsigned first, unsi
         setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<char *>(&yes), sizeof(yes));
         sockaddr_in a{};
         a.sin_family = AF_INET;
-        a.sin_addr.s_addr = INADDR_ANY;
+        a.sin_addr.s_addr = bindIp;
         a.sin_port = htons(u_short(port));
         if (bind(s, reinterpret_cast<sockaddr *>(&a), sizeof(a)) == 0 && listen(s, SOMAXCONN) == 0) {
             listen_ = s;
@@ -104,6 +134,7 @@ void ApiServer::Stop() {
         std::lock_guard<std::mutex> lock(publicationMutex_);
         publicationStopping_ = true;
         publications_.clear(); publicationBytes_ = 0; publicationGap_ = false;
+        publicationBacklogBytes_ = 0; publicationBacklogItems_ = 0;
         latestPublicationSessions_.reset();
         publicationWake_.notify_all();
     }
@@ -154,6 +185,32 @@ Json ApiServer::Diagnostics() {
     std::lock_guard<std::mutex> l(mutex_);
     return diagnostics_;
 }
+Json ApiServer::Metrics() const {
+    std::lock_guard<std::mutex> l(mutex_);
+    size_t totalHistoryEvents = 0;
+    for (const auto &pair : histories_) {
+        totalHistoryEvents += pair.second.events.size();
+    }
+    return Json{
+        {"bindAddress", bindAddress_},
+        {"port", port_},
+        {"activeClients", clients_.size()},
+        {"publishedEvents", totalPublishedEvents_.load()},
+        {"historyTrims", historyTrimsCount_.load()},
+        {"publicationGaps", publicationGapCount_.load()},
+        {"publicationHighWaterMark", publicationHighWaterMark_.load()},
+        {"publicationBacklogBytes", publicationBacklogBytes_.load()},
+        {"publicationBacklogItems", publicationBacklogItems_.load()},
+        {"serverLockWaitSamples", serverLockWaitSamples_.load()},
+        {"serverLockWaitAverageUsec", serverLockWaitSamples_.load()
+            ? serverLockWaitUsecTotal_.load() / serverLockWaitSamples_.load() : 0},
+        {"serverLockWaitMaximumUsec", serverLockWaitUsecMaximum_.load()},
+        {"rejectedClients", rejectedClientsCount_.load()},
+        {"rejectedOrigins", rejectedOriginsCount_.load()},
+        {"historyBytes", historyBytes_},
+        {"historyEvents", totalHistoryEvents}
+    };
+}
 void ApiServer::Accept() {
     WSAEVENT waits[] = {stopEvent_, acceptEvent_};
     while (running_) {
@@ -188,13 +245,41 @@ void ApiServer::Accept() {
             WSAEventSelect(s, nullptr, 0);
             u_long blocking = 0;
             ioctlsocket(s, FIONBIO, &blocking);
-            std::vector<std::shared_ptr<ClientState>> retired;
+
+            char peer[INET_ADDRSTRLEN]{};
+            inet_ntop(AF_INET, &a.sin_addr, peer, sizeof(peer));
+            std::string peerIpStr = peer;
+
+            bool ipAllowed = true;
+            {
+                std::lock_guard<std::mutex> l(mutex_);
+                if (!allowedClients_.empty()) {
+                    ipAllowed = false;
+                    for (const auto &allowed : allowedClients_) {
+                        if (allowed == peerIpStr || allowed == "0.0.0.0" || allowed == "*") {
+                            ipAllowed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!ipAllowed) {
+                rejectedClientsCount_++;
+                const std::string forbidden =
+                    "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 18\r\n\r\nCLIENT_NOT_ALLOWED";
+                ws::SendAll(s, forbidden.data(), forbidden.size());
+                ws::FinishSend(s, 1500);
+                closesocket(s);
+                continue;
+            }
+
+            std::vector<std::shared_ptr<ClientState>> finishedClients;
             std::shared_ptr<ClientState> c;
             {
                 std::lock_guard<std::mutex> l(mutex_);
                 for (auto it = clients_.begin(); it != clients_.end();)
                     if ((*it)->finished) {
-                        retired.push_back(*it);
+                        finishedClients.push_back(*it);
                         it = clients_.erase(it);
                     } else
                         ++it;
@@ -202,13 +287,11 @@ void ApiServer::Accept() {
                     c = std::make_shared<ClientState>();
                     c->socket = s;
                     c->id = nextClient_++;
-                    char peer[INET_ADDRSTRLEN]{};
-                    inet_ntop(AF_INET, &a.sin_addr, peer, sizeof(peer));
-                    c->peer = std::string(peer) + ":" + std::to_string(ntohs(a.sin_port));
+                    c->peer = peerIpStr + ":" + std::to_string(ntohs(a.sin_port));
                     clients_.push_back(c);
                 }
             }
-            for (auto &old : retired)
+            for (auto &old : finishedClients)
                 old->reader.join();
             ws::SocketOptions(s, 1500);
             if (!c) {
@@ -318,6 +401,20 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
             !ws::Token(h.fields["sec-websocket-protocol"], ws::Protocol) || h.fields.count("transfer-encoding") ||
             (h.fields.count("content-length") && h.fields["content-length"] != "0"))
             throw ws::Error(1002, "UPGRADE_REQUIRED_SERIALCTL_V1");
+        if (h.fields.count("origin")) {
+            const auto origin = ws::Lower(h.fields["origin"]);
+            const size_t scheme = origin.rfind("http://", 0) == 0 ? 7 : origin.rfind("https://", 0) == 0 ? 8 : 0;
+            sockaddr_in destination{};
+            int size = sizeof(destination);
+            if (!scheme || !LoopbackAuthority(std::string_view(origin).substr(scheme)) ||
+                !LoopbackAuthority(ws::Lower(h.fields["host"]), port_) ||
+                c->peer.rfind("127.", 0) != 0 ||
+                getsockname(c->socket, reinterpret_cast<sockaddr*>(&destination), &size) != 0 ||
+                (ntohl(destination.sin_addr.s_addr) >> 24) != 127) {
+                rejectedOriginsCount_++;
+                throw ws::Error(1008, "ORIGIN_NOT_ALLOWED");
+            }
+        }
         auto response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: "
                         "Upgrade\r\nSec-WebSocket-Protocol: " +
                         std::string(ws::Protocol) +
@@ -372,7 +469,11 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
         Trace(c, "rejected", e.what());
         if (upgraded)
             Close(c, e.code, e.what(), false);
-        else {
+        else if (e.code == 1008 || std::string(e.what()) == "ORIGIN_NOT_ALLOWED") {
+            const std::string reply = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 18\r\n\r\nORIGIN_NOT_ALLOWED";
+            ws::SendAll(c->socket, reply.data(), reply.size());
+            ws::FinishSend(c->socket);
+        } else {
             const std::string reply = "HTTP/1.1 426 Upgrade Required\r\nUpgrade: websocket\r\nSec-WebSocket-Protocol: "
                                       "serialctl.v1\r\nConnection: close\r\nContent-Length: 51\r\n\r\nUpgrade "
                                       "required: SerialCtl WebSocket serialctl.v1\n";
@@ -389,6 +490,11 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
     if(c->hasTransfer)try {
         handler_("transfer.release_owner","",{{"source","network:"+std::to_string(c->id)}});
     }catch(...) {Trace(c,"close","XFER_OWNER_RELEASE_FAILED");}
+    if (c->hasRemotePower) {
+        try {
+            handler_(RemotePowerReleaseOp, "power-1", {{"source", "remote-power:" + std::to_string(c->id)}});
+        } catch (...) { Trace(c, "close", "POWER_OWNER_RELEASE_FAILED"); }
+    }
     if (upgraded) {
         Close(c, 1001, "SERVER_STOPPING");
         if (c->sender.joinable())
@@ -469,6 +575,27 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
                 result = handler_(op, target, p);
             else if (op == "power.get" && target == "power-1" && p.empty())
                 result = handler_(op, target, p);
+            else if (target == "power-1" &&
+                     ((op == RemotePowerStateOp && p.empty()) ||
+                      (op == RemotePowerSubmitOp && Keys(p, {"connectionId", "mode", "command"}) &&
+                       Text(p, "connectionId") && Text(p, "mode", 16) && p.contains("command") &&
+                       RemotePowerCommandAllowed(p["command"])) ||
+                      (op == RemotePowerActionOp && Keys(p, {"id"}) && Text(p, "id")))) {
+                bool allowed;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    const auto peerIp = c->peer.substr(0, c->peer.find(':')); // The listener is IPv4 only.
+                    allowed = std::find(allowedClients_.begin(), allowedClients_.end(), peerIp) != allowedClients_.end();
+                }
+                if (!allowed)
+                    result = Failure("POWER_SOURCE_DENIED", u8"请在电源所在电脑的 SerialShare AllowedClients 中加入控制端 IP。");
+                else {
+                    Json body = p;
+                    body["source"] = "remote-power:" + std::to_string(c->id);
+                    if (op == RemotePowerSubmitOp) c->hasRemotePower = true;
+                    result = handler_(op, target, body);
+                }
+            }
             else if (op == "power.output" && target == "power-1" && Keys(p, {"enabled"}) && p.contains("enabled") &&
                      p["enabled"].is_boolean()) {
                 Json body = p;
@@ -575,11 +702,16 @@ bool ApiServer::EnqueuePublish(const std::string& target, const Bytes& data, con
         // Local terminal/logging continue. Remote observers must reconnect and
         // receive an explicit history gap rather than silently lose output.
         publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+        publicationBacklogBytes_ = 0; publicationBacklogItems_ = 0;
         publicationWake_.notify_one();
         return false;
     }
     publications_.push_back({target, source, kind, data, codePage, {}, data.size()});
     publicationBytes_ += data.size();
+    publicationBacklogBytes_ = publicationBytes_;
+    publicationBacklogItems_ = publications_.size();
+    if (publicationBytes_ > publicationHighWaterMark_)
+        publicationHighWaterMark_ = publicationBytes_;
     publicationWake_.notify_one();
     return true;
 }
@@ -601,10 +733,15 @@ bool ApiServer::EnqueueSessions(std::vector<std::string> sessions) {
     latestPublicationSessions_ = snapshot;
     if (publicationGap_ || publications_.size() >= 4096 || charge > maximum - publicationBytes_) {
         publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+        publicationBacklogBytes_ = 0; publicationBacklogItems_ = 0;
     } else {
         Publication update;
         update.sessions = std::move(snapshot); update.charge = charge;
         publications_.push_back(std::move(update)); publicationBytes_ += charge;
+        publicationBacklogBytes_ = publicationBytes_;
+        publicationBacklogItems_ = publications_.size();
+        if (publicationBytes_ > publicationHighWaterMark_)
+            publicationHighWaterMark_ = publicationBytes_;
     }
     publicationWake_.notify_one();
     return true;
@@ -627,6 +764,8 @@ void ApiServer::PublishPending() {
                 event = std::move(publications_.front()); publications_.pop_front();
                 publicationBytes_ -= event.charge;
             }
+            publicationBacklogBytes_ = publicationBytes_;
+            publicationBacklogItems_ = publications_.size();
         }
         try {
             if (gap) {
@@ -642,6 +781,7 @@ void ApiServer::PublishPending() {
     }
 }
 void ApiServer::PublicationGap() {
+    publicationGapCount_++;
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto& target : sessions_) {
         auto& history = histories_[target];
@@ -674,31 +814,47 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
         }
         return;
     }
+    const auto tick = GetTickCount64();
+    std::vector<std::string> encodedChunks;
+    encodedChunks.reserve((data.size() + 16383) / 16384);
+    for (size_t offset = 0; offset < data.size(); offset += 16384) {
+        Bytes b(data.begin() + offset, data.begin() + std::min(data.size(), offset + 16384));
+        encodedChunks.push_back(Encode64(b));
+    }
+    const auto lockStarted = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> l(mutex_);
+    const auto lockUsec = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - lockStarted).count());
+    serverLockWaitUsecTotal_.fetch_add(lockUsec, std::memory_order_relaxed);
+    serverLockWaitSamples_.fetch_add(1, std::memory_order_relaxed);
+    auto maximum = serverLockWaitUsecMaximum_.load(std::memory_order_relaxed);
+    while (maximum < lockUsec && !serverLockWaitUsecMaximum_.compare_exchange_weak(
+        maximum, lockUsec, std::memory_order_relaxed)) {}
     if (!sessions_.count(target))
         return;
     auto &h = histories_[target];
-    for (size_t offset = 0; offset < data.size(); offset += 16384) {
-        Bytes b(data.begin() + offset, data.begin() + std::min(data.size(), offset + 16384));
-        Json event = {{"type", "event"},    {"version", 1},        {"instance", instance_},
-                      {"resource", target}, {"seq", ++h.seq},      {"kind", kind},
-                      {"source", source},   {"data", Encode64(b)}, {"tick", GetTickCount64()}};
+    for (auto &encoded : encodedChunks) {
+        Json event = {{"type", "event"},    {"version", 1},             {"instance", instance_},
+                      {"resource", target}, {"seq", ++h.seq},           {"kind", kind},
+                      {"source", source},   {"data", std::move(encoded)}, {"tick", tick}};
         if (codePage)
             event["codePage"] = codePage;
         auto serialized = event.dump();
         Bytes payload(serialized.begin(), serialized.end());
         auto bytes = payload.size();
-        h.events.push_back(event);
+        h.events.push_back({std::move(event), bytes});
         h.bytes += bytes;
         historyBytes_ += bytes;
+        totalPublishedEvents_++;
         for (auto &c : clients_)
             if (c->subscriptions.count(target))
                 Queue(c, 1, payload);
         while (h.bytes > MaxHistoryBytes || h.events.size() > 1024) {
-            auto n = h.events.front().dump().size();
+            auto n = h.events.front().bytes;
             h.bytes -= n;
             historyBytes_ -= n;
             h.events.pop_front();
+            historyTrimsCount_++;
         }
         while (historyBytes_ > 16 * 1024 * 1024) {
             // Fairness: trim the session holding the most history first instead of
@@ -709,10 +865,11 @@ void ApiServer::Publish(const std::string &target, const Bytes &data, const char
                     largest = &old.second;
             if (!largest)
                 break;
-            auto n = largest->events.front().dump().size();
+            auto n = largest->events.front().bytes;
             largest->bytes -= n;
             historyBytes_ -= n;
             largest->events.pop_front();
+            historyTrimsCount_++;
         }
     }
 }
@@ -722,12 +879,12 @@ Json ApiServer::EventsLocked(const std::string &target, std::uint64_t after) {
         return {{"events", Json::array()}, {"cursor", 0}, {"gap", after != 0}};
     auto &h = it->second;
     bool gap =
-        after > h.seq || (h.events.empty() ? after < h.seq : after + 1 < h.events.front()["seq"].get<std::uint64_t>());
+        after > h.seq || (h.events.empty() ? after < h.seq : after + 1 < h.events.front().event["seq"].get<std::uint64_t>());
     Json events = Json::array();
     if (!gap)
         for (auto &e : h.events)
-            if (e["seq"].get<std::uint64_t>() > after)
-                events.push_back(e);
+            if (e.event["seq"].get<std::uint64_t>() > after)
+                events.push_back(e.event);
     // History retrieval is bounded by the message limit; subscription streams individual frames.
     return {{"events", events}, {"cursor", h.seq}, {"gap", gap}};
 }
