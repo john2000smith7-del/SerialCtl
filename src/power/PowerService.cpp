@@ -924,13 +924,20 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
     Json offResults = Json::array();
     bool stopFailed = false;
     std::string stopError;
-    if(preserveOutputs) {
+    if (preserveOutputs) {
         if (activeCycle_) activeCycle_->Cancel(L"电源连接已断开");
         activeCycle_.reset();
-        owned_=Json::array();task_=Json();
+        owned_ = Json::array();
+        task_ = Json();
+        const auto disconnectId = action ? action->at("id").get<std::string>() : std::string();
         std::lock_guard<std::mutex> lock(mutex_);
-        state_["task"]={{"running",false}};state_["ownedChannels"]=owned_;
-        for(auto& item:actions_)if(item.second.value("state",std::string())=="running")item.second["state"]="canceled";
+        state_["task"] = {{"running", false}};
+        state_["ownedChannels"] = owned_;
+        // The disconnect receipt stays running until Execute publishes the result.
+        for (auto &entry : actions_) {
+            if (entry.first != disconnectId && entry.second.value("state", std::string()) == "running")
+                entry.second["state"] = "canceled";
+        }
     } else {
         try {
             StopTask(&offResults);

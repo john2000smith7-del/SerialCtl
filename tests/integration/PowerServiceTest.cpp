@@ -41,6 +41,14 @@ struct PowerServiceTestAccess {
         std::lock_guard<std::mutex> lock(power.mutex_);
         power.testPauseRecoveryOn_=false;power.wake_.notify_all();
     }
+    static Json PreserveDisconnectBeforePublishing(PowerService &power) {
+        power.Shutdown();
+        Json disconnect{{"id", "disconnect"}, {"state", "running"}};
+        power.actions_.emplace("disconnect", disconnect);
+        power.actions_.emplace("recovery", Json{{"id", "recovery"}, {"state", "running"}});
+        power.Disconnect(true, &disconnect);
+        return disconnect;
+    }
 };
 } // namespace serialctl
 using namespace serialctl;
@@ -165,10 +173,23 @@ void TestBoundRemoteCommands() {
     Expect(paused && Wait(power, remote).value("state", "") == "canceled", "Release cancels only queued remote work");
     Expect(Wait(power, local).value("state", "") == "completed" && power.State()["channels"][1]["output"] == true,
            "Local controls still operate the physical connection");
-    Expect(Wait(power, power.Submit({{"type", "disconnect"}, {"preserveOutputs", true}})).value("state", "") == "completed",
+    const auto disconnect = Wait(power, power.Submit({{"type", "disconnect"}, {"preserveOutputs", true}}));
+    if (disconnect.value("state", "") != "completed") std::cerr << "Disconnect receipt: " << disconnect.dump() << '\n';
+    Expect(disconnect.value("state", "") == "completed" && disconnect.value("transportDisconnected", false),
            "Disconnect fixture before reconnect");
     Expect(Wait(power, power.Submit(connect)).value("state", "") == "completed", "Reconnect fixture");
     Expect(power.Submit(remoteOn, connection, "independent").contains("error"), "Reject commands bound to the old connection");
+}
+
+void TestPreserveDisconnectPublication() {
+    PowerService power;
+    const auto result = PowerServiceTestAccess::PreserveDisconnectBeforePublishing(power);
+    Expect(power.Action("disconnect").value("state", "") == "running",
+           "Preserving outputs keeps the disconnect action running until its final receipt is published");
+    Expect(power.Action("recovery").value("state", "") == "canceled",
+           "Preserving outputs cancels other running work");
+    Expect(result.value("state", "") == "completed" && result.value("offConfirmation", "") == "preserved",
+           "The final disconnect receipt reports preserved outputs");
 }
 
 void TestConnectScpiDiagnostics() {
@@ -515,6 +536,7 @@ void TestDisconnectOutputConfirmation(const std::string &scenario) {
 int main() {
     TestKeywordCycle();
     TestBoundRemoteCommands();
+    TestPreserveDisconnectPublication();
     TestConnectScpiDiagnostics();
     for (const auto *scenario : {"write", "readback", "confirmed", "preserved"})
         TestDisconnectOutputConfirmation(scenario);
