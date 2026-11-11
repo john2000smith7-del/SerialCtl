@@ -31,10 +31,24 @@ class XferPane {
     bool dark_=false,wasBusy_=false,directionChanged_=false,dragging_=false;
     int grab_=0;
     std::wstring localNotice_;
+    std::uint64_t lastSessionId_=0;
     int dpi_=96,offset_=0,contentHeight_=0,bodyHeight_=0,progressTop_=0;
     std::uint64_t displayBytes_=0,displayTotal_=0;
+    bool targetActive_=false;
     UiFieldStyle style_{};
     xfer::TransferController* controller_=nullptr;
     std::function<Target()> target_;
+    struct RenderSnapshot {
+        std::uint64_t targetId=0,session=0,bytes=0,total=0;
+        bool busy=false,stopping=false,finishing=false,rawFinish=false,receive=false;
+        int protocol=0;
+        std::wstring sourceText,fileLabelText,helpText,statusText,countText,filePath;
+        UiGlyph startGlyph=UiGlyph::Run;
+        std::wstring startTip;
+        UiGlyph cancelGlyph=UiGlyph::Stop;
+        std::wstring cancelTip;
+        bool startEnabled=false,cancelEnabled=false;
+    };
+    RenderSnapshot lastRender_{};
 };
 } // namespace serialctl

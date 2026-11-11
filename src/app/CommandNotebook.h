@@ -67,6 +67,7 @@ class CommandNotebook {
     void Refresh(bool edit = false);
     void SelectionInk(HDC);
     void Scroll(int x, int y);
+    void Wheel(WPARAM wParam);
     void Menu();
     int D(int v) const {
         return MulDiv(v, dpi_, 96);
@@ -78,6 +79,7 @@ class CommandNotebook {
     int dpi_ = 96, rowHeight_ = 20, top_ = 80, bottom_ = 0, gutter_ = 48, scrollAxis_ = 0, scrollGrab_ = 0;
     int armedLine_ = -1;
     int contentWidth_ = 0;
+    int wheelRemainder_ = 0;
     unsigned interval_ = 500;
     size_t sent_ = 0, total_ = 0;
     CHARRANGE selection_{0, 0};

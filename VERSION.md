@@ -1,5 +1,9 @@
 # SerialCtl 版本历史
 
+## V2.0.20
+
+新增右侧 `TFTP` 页（与命令、SFTP、Xfer 并列），支持本地文件发布与远程 SSH/SFTP 无落盘有界流式发布（RFC 1350 / 2347 / 2348 / 2349），供板卡 U-Boot/Linux `tftp` 下载及 GUI/AI/MCP 协同控制。新增全功能 MCP 控制接口（83 个工具，见 `docs/architecture/MCP-CAPABILITY-MATRIX.md`）与手动启用、随 GUI 退出停止的 IP 直连 MCP 服务（支持 `--mcp-stdio`），服务端硬性禁止外部修改电源电压、电流、保护、模式、通道或发送原始 SCPI。统一修复第一轮体验细节、终端全屏 BCE 背景色擦除（`menuconfig`）、ZMODEM `rz` 十六进制帧尾 `0x8A` 换行解码、SFTP 跟随自定义提示符与跨 Shell 目录恢复、PetaLinux 重启串口毛刺与未闭合 C1 序列自愈、AI 工作区自定义指令注入与实时权限回显、跨登录会话单实例提示、电源异常降级与防抖、WebSocket Origin 与 16 MiB 全局缓冲上限、分会话接收分片防饿死及日志磁盘满熔断恢复。保持原签名身份与 Windows 7 SP1 x64 兼容目标。范围与限制见 RELEASE-NOTES-V2.0.20。
+
 ## V2.0.19
 
 新增 Xfer 原始二进制及 X/Y/ZMODEM 收发、默认关闭的命令持续发送、断开保留卡片与原位重连、全部断开/全部关闭两阶段操作。修正双击文本命中、本地回显行尾和长行时间戳，统一传输图标、菜单、字段、胶囊及 AI 操作；普通 SSH 凭据隔离保存并增加 TCP 保活，U-Boot 使用 ` stop`/500ms 并识别提示符停止。保持原签名身份和 Win7 目标。范围与限制见 RELEASE-NOTES-V2.0.19，实际验证证据以对应正式 Release 为准。

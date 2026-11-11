@@ -23,6 +23,7 @@ class QueuedConnection final : public IConnection {
     }
     void Stop() override;
     bool Send(const Bytes &data, std::wstring &error) override;
+    bool Interrupt(std::wstring &error) override;
     bool SendConditional(const Bytes&,std::wstring&,std::function<bool()>) override;
     bool SupportsTransfer() const override {return inner_->SupportsTransfer();}
     bool TransferActive() const {std::lock_guard<std::mutex> lock(mutex_);return !transferOwner_.empty();}
@@ -46,12 +47,19 @@ class QueuedConnection final : public IConnection {
     void OverrideTextCodePage(unsigned page) override {
         inner_->OverrideTextCodePage(page);
     }
-    bool SendObserved(const Bytes &, std::wstring &, std::function<void()> accepted, std::function<bool()> allowed = {});
+    enum class WriteResult { Written, NotWritten, Unknown };
+    using WriteCompletion = std::function<void(WriteResult, const std::wstring &error)>;
+    bool SendObserved(const Bytes &, std::wstring &, std::function<void()> accepted,
+                      std::function<bool()> allowed = {}, WriteCompletion completion = {});
     void ResizeTerminal(int columns, int rows) override;
 
   private:
-    struct Write {Bytes bytes;std::function<bool()> allowed;};
-    bool Enqueue(const Bytes&,std::wstring&,std::function<void()>,std::function<bool()>);
+    struct Write {
+        Bytes bytes;
+        std::function<bool()> allowed;
+        WriteCompletion completion;
+    };
+    bool Enqueue(const Bytes &, std::wstring &, std::function<void()>, std::function<bool()>, WriteCompletion);
     void ReleaseCapture();
     void Run();
     std::unique_ptr<IConnection> inner_;

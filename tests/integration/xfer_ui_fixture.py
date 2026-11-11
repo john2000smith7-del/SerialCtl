@@ -212,7 +212,7 @@ def main():
                        stdout=peer_log, stderr=subprocess.STDOUT)
                 desktop.wait(lambda: peer_report.exists() and peer_report.stat().st_size > 0,
                              "controlled peer listening")
-                desktop.click_window(desktop.control(103))
+                desktop.click_window(desktop.control(101))
                 dialogs = []
                 def active_dialog():
                     dialogs[:] = [h for h in desktop.find_class("#32770", top=True)
@@ -220,22 +220,9 @@ def main():
                     return bool(dialogs)
                 desktop.wait(active_dialog, "remote serial form")
                 connection = dialogs[-1]
-                refresh = desktop.user.GetDlgItem(connection, 1024)
-                # Use the product's real advanced-port context menu because its
-                # own gateway and the controlled fixture are separate instances.
-                desktop.move_mouse(tuple((a+b)//2 for a,b in zip(desktop.rect(refresh)[:2],
-                                                                desktop.rect(refresh)[2:])))
-                desktop.user.mouse_event(8, 0, 0, 0, 0)
-                desktop.user.mouse_event(16, 0, 0, 0, 0)
-                time.sleep(.08)
-                desktop.key(0x28)
-                desktop.key(0x0d)
-                desktop.wait(lambda: active_dialog() and dialogs[-1] != connection, "advanced-port form")
-                port_dialog = dialogs[-1]
-                desktop.click_window(desktop.user.GetDlgItem(port_dialog, 1402))
-                desktop.chord(0x11, ord("A"))
-                desktop.text("7014")
-                desktop.click_window(desktop.user.GetDlgItem(port_dialog, 1))
+                desktop.choose(desktop.user.GetDlgItem(connection, 1036), 1)
+                desktop.click_window(desktop.user.GetDlgItem(connection, 1014))
+                desktop.text("127.0.0.1")
                 desktop.wait(lambda: desktop.user.IsWindowEnabled(desktop.user.GetDlgItem(connection, 1)),
                              "real discovery selects controlled COM77", 15)
                 desktop.capture(label + "-remote-ready")

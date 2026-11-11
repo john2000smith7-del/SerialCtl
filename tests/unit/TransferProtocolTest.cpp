@@ -59,6 +59,25 @@ void Pair(Protocol protocol,std::size_t size,bool corruption=false,bool dropAck=
     if(corruption)Require(corrupted,"corruption must actually run");
     if(dropAck)Require(dropped,"lost ACK must actually run");
 }
+void FrameStartsAtWaitDeadline() {
+    Bytes payload(128, 0x55), wire{1,1,254}, received;
+    wire.insert(wire.end(),payload.begin(),payload.end());
+    const auto crc=Crc16(payload.data(),payload.size());
+    wire.push_back(static_cast<std::uint8_t>(crc>>8));wire.push_back(static_cast<std::uint8_t>(crc));wire.push_back(4);
+    size_t at=0;
+    Io io;
+    io.readByte=[&](unsigned)->int {
+        if(at==0)std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return at<wire.size()?wire[at++]:-1;
+    };
+    io.write=[](const Bytes&){};
+    io.writeFile=[&](const std::uint8_t* data,size_t count){received.insert(received.end(),data,data+count);};
+    Options options;options.protocol=Protocol::Xmodem;options.direction=Direction::Receive;
+    options.timeoutMs=50;options.retries=1;options.expectedReceiveBytes=128;options.receiveLimit=128;
+    const auto result=Run(options,io);
+    Require(result.bytes==128&&received==payload,"frame header near wait deadline lost its payload");
+}
+
 void RejectMetadata(const std::string& text) {
     Bytes block(128,0);std::copy(text.begin(),text.end(),block.begin());
     Bytes wire{1,0,255};wire.insert(wire.end(),block.begin(),block.end());
@@ -108,6 +127,7 @@ int main() {
         RejectMetadata(std::string("../escape.bin")+char(0)+"10");
         RejectMetadata(std::string("fixture.bin")+char(0)+"18446744073709551616");
         RejectMetadata(std::string("fixture.bin")+char(0)+"999999999999");
+        FrameStartsAtWaitDeadline();
         MalformedStreams();
         Io cancelled;cancelled.cancelled=[]{return true;};Options options;
         bool stopped=false;try {Run(options,cancelled);}catch(const Cancelled&){stopped=true;}

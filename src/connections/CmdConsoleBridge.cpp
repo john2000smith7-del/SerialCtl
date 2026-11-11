@@ -9,6 +9,11 @@
 
 namespace serialctl {
 namespace {
+BOOL WINAPI HandleBridgeCtrlC(DWORD event) {
+    // Handle CTRL_C_EVENT only in the bridge; do not set the inheritable
+    // ignore-Ctrl+C flag that would make cmd.exe ignore the same event.
+    return event == CTRL_C_EVENT ? TRUE : FALSE;
+}
 bool ReadExact(HANDLE input, void *data, size_t size) {
     auto bytes = static_cast<char *>(data);
     while (size) {
@@ -78,8 +83,10 @@ bool FeedConsole(HANDLE input, HANDLE console, HANDLE process) {
 } // namespace
 int RunCmdConsoleBridge() {
     static_assert(sizeof(wchar_t) == 2, "Native Win32 console input is UTF-16");
-    const auto input = GetStdHandle(STD_INPUT_HANDLE), output = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (GetFileType(input) != FILE_TYPE_PIPE || GetFileType(output) != FILE_TYPE_PIPE)
+    const auto input = GetStdHandle(STD_INPUT_HANDLE), output = GetStdHandle(STD_OUTPUT_HANDLE),
+               interrupt = GetStdHandle(STD_ERROR_HANDLE);
+    if (GetFileType(input) != FILE_TYPE_PIPE || GetFileType(output) != FILE_TYPE_PIPE ||
+        GetFileType(interrupt) != FILE_TYPE_PIPE)
         return 2;
     // A WINDOWS-subsystem executable is not guaranteed to attach to the console
     // requested by CreateProcess. Allocate only in this private helper mode,
@@ -93,6 +100,11 @@ int RunCmdConsoleBridge() {
     // input in CMD: that would retain the pipe and reintroduce byte-wise decoding.
     SetHandleInformation(input, HANDLE_FLAG_INHERIT, 0);
     SetHandleInformation(output, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(interrupt, HANDLE_FLAG_INHERIT, 0);
+    if (!SetConsoleCtrlHandler(HandleBridgeCtrlC, TRUE)) {
+        Report(output, "SerialCtl CMD control handler unavailable\r\n");
+        return 3;
+    }
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
     HANDLE childOutputRead = nullptr, childOutputWrite = nullptr;
     if (!CreatePipe(&childOutputRead, &childOutputWrite, &security, 65536)) return 3;
@@ -144,6 +156,16 @@ int RunCmdConsoleBridge() {
         if (!FeedConsole(input, console, child.hProcess))
             TerminateProcess(child.hProcess, 1);
     });
+    // Control requests have their own pipe and reader: Ctrl+C works even if
+    // normal input is blocked by a busy command or console backpressure.
+    std::thread interrupter([&] {
+        std::uint8_t request = 0;
+        DWORD count = 0;
+        while (ReadFile(interrupt, &request, sizeof(request), &count, nullptr) && count) {
+            if (request == 3)
+                GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0); // private console; cmd.exe survives
+        }
+    });
     WaitForSingleObject(child.hProcess, INFINITE);
     // A single cancel may race with the feeder starting its next ReadFile.
     // Reissue only during shutdown until the thread has actually exited.
@@ -151,6 +173,10 @@ int RunCmdConsoleBridge() {
     while (WaitForSingleObject(thread, 10) == WAIT_TIMEOUT)
         CancelSynchronousIo(thread);
     feeder.join();
+    const auto interruptThread = reinterpret_cast<HANDLE>(interrupter.native_handle());
+    while (WaitForSingleObject(interruptThread, 10) == WAIT_TIMEOUT)
+        CancelSynchronousIo(interruptThread);
+    interrupter.join();
     // The parent owns the entire job tree. Drain until EOF in normal operation;
     // on parent shutdown the job closes all remaining child write endpoints.
     receiver.join();

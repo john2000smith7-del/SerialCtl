@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 
@@ -19,6 +20,28 @@ struct BenchmarkTransport : IConnection {
     bool IsConnected() const override { return true; }
     bool Send(const Bytes &bytes, std::wstring &) override { sentBytes += bytes.size(); return true; }
 };
+std::string PixelHash(HWND window) {
+    RECT client{};
+    GetClientRect(window, &client);
+    const int width = client.right, height = client.bottom;
+    HDC source = GetDC(window), memory = CreateCompatibleDC(source);
+    HBITMAP bitmap = CreateCompatibleBitmap(source, width, height);
+    HGDIOBJ previous = SelectObject(memory, bitmap);
+    if (!source || !memory || !bitmap || !BitBlt(memory, 0, 0, width, height, source, 0, 0, SRCCOPY))
+        throw std::runtime_error("Cannot capture terminal pixels");
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = width; info.bmiHeader.biHeight = -height;
+    info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB;
+    std::vector<std::uint32_t> pixels(static_cast<size_t>(width) * height);
+    if (!GetDIBits(memory, bitmap, 0, height, pixels.data(), &info, DIB_RGB_COLORS))
+        throw std::runtime_error("Cannot read terminal pixels");
+    SelectObject(memory, previous); DeleteObject(bitmap); DeleteDC(memory); ReleaseDC(window, source);
+    std::uint64_t hash = 1469598103934665603ull;
+    for (const auto pixel : pixels) { hash ^= pixel; hash *= 1099511628211ull; }
+    std::ostringstream text; text << std::hex << hash;
+    return text.str();
+}
 }
 struct AiDeviceTestAccess {
     static inline size_t resizeMessages = 0;
@@ -34,6 +57,7 @@ struct AiDeviceTestAccess {
         nlohmann::json result;
         {
             MainWindow main;
+            main.measurePaint_ = true;
             auto session = std::make_unique<MainWindow::SessionState>();
             session->id = 1;
             session->mode = 1;
@@ -90,6 +114,28 @@ struct AiDeviceTestAccess {
                 return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
             };
             for (int i = 0; i < 20; ++i) { paintOnce(parent); paintOnce(main.terminal_); }
+            main.terminalViewport_.Clear();
+            paintOnce(main.terminal_);
+            const auto fullTerminalGdiCalls = reinterpret_cast<UINT_PTR>(
+                GetPropW(main.terminal_, L"SerialCtl.GdiCalls"));
+            const auto terminalPixelHash = PixelHash(main.terminal_);
+            const auto legacyTerminalDrawCalls = [&] {
+                const auto& model = main.activeSession_->terminal;
+                const auto total = model.DisplayLineCount();
+                const auto rows = static_cast<size_t>(main.terminalViewport_.Metrics().rows);
+                const auto top = total > rows ? total - rows : 0;
+                std::uint64_t calls = 2; // frame clear and final BitBlt
+                for (size_t row = top; row < total; ++row) {
+                    const auto& line = model.DisplayLine(row);
+                    const auto columns = (std::min)(line.cells.size(),
+                        static_cast<size_t>(main.terminalViewport_.Metrics().columns));
+                    for (size_t column = 0; column < columns; ++column)
+                        if (!line.cells[column].continuation && line.cells[column].character != L' ') ++calls;
+                }
+                if (total > rows) ++calls; // scroll thumb primitive
+                if (model.CursorVisible()) ++calls;
+                return calls;
+            }();
             const auto warmGdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
             FILETIME created{}, exited{}, kernelStart{}, userStart{}, kernelEnd{}, userEnd{};
             if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernelStart, &userStart))
@@ -199,19 +245,21 @@ struct AiDeviceTestAccess {
             std::sort(steadyResizes.begin(), steadyResizes.end());
             std::sort(interactiveResizes.begin(), interactiveResizes.end());
             result = {{"clientWidth", viewport.right}, {"clientHeight", viewport.bottom},
-                {"paintSamples", paints}, {"paintP50Ms", paints[100]}, {"paintP95Ms", paints[190]},
+                {"paintSamples", paints}, {"paintP50Ms", paints[100]}, {"paintP95Ms", paints[190]}, {"paintP99Ms", paints[198]},
                 {"terminalPaintSamples", terminalPaints}, {"terminalPaintP50Ms", terminalPaints[100]},
-                {"terminalPaintP95Ms", terminalPaints[190]},
+                {"terminalPaintP95Ms", terminalPaints[190]}, {"terminalPaintP99Ms", terminalPaints[198]},
                 {"resizeSamples", resizes}, {"resizeP50Ms", resizes[20]}, {"resizeP95Ms", resizes[38]},
                 {"resizeSteadySamples", steadyResizes}, {"resizeSteadyP50Ms", steadyResizes[40]},
                 {"resizeSteadyP95Ms", steadyResizes[76]}, {"resizeRoundSamples", resizeRoundSamples},
                 {"interactiveResizeSamples", interactiveResizes}, {"interactiveResizeP50Ms", interactiveResizes[40]},
                 {"interactiveResizeP95Ms", interactiveResizes[76]}, {"resizeCommitMs", resizeCommitMs},
-                {"inputSamples", inputs}, {"inputP50Ms", inputs[500]}, {"inputP95Ms", inputs[950]},
+                {"inputSamples", inputs}, {"inputP50Ms", inputs[500]}, {"inputP95Ms", inputs[950]}, {"inputP99Ms", inputs[990]},
                 {"inputWallMs", inputWallMs}, {"inputCpuMs", inputCpuMs}, {"inputBytes", timedInputBytes},
                 {"inputBytesPerSecond", 1000 * 1000 / inputWallMs},
                 {"paintCount", paints.size()}, {"resizeCount", resizes.size()}, {"resizeMessages", resizeMessages},
                 {"wallMs", wallMs}, {"cpuMs", cpuMs}, {"gdiBeforeApp", resourcesBefore},
+                {"fullTerminalGdiCalls", fullTerminalGdiCalls},
+                {"legacyTerminalDrawCalls", legacyTerminalDrawCalls}, {"terminalPixelHash", terminalPixelHash},
                 {"gdiWarm", warmGdi}, {"gdiAfterPaint", afterPaintGdi}, {"gdiResizeRounds", resizeGdi},
                 {"gdiAfterTimedInput", afterInputGdi}, {"gdiAfterWork", afterGdi}, {"peakWorkingSetBytes", memory.PeakWorkingSetSize},
                 {"scope", "actual MainWindow and terminal paint/layout and WM_CHAR local echo through a visible Win32 fixture with 1000 seeded lines and fake transport; no UART, physical keyboard or display scan"}};

@@ -21,7 +21,14 @@ class ApiServer {
     ~ApiServer() {
         Stop();
     }
-    bool Start(Handler, std::wstring &error, unsigned first = 7000, unsigned last = 7015);
+    bool Start(Handler, std::wstring &error, unsigned first = 7000, unsigned last = 7015,
+               const std::string &bindAddress = "0.0.0.0",
+               const std::vector<std::string> &allowedClients = {});
+    void SetAllowedClients(const std::vector<std::string> &allowedClients) {
+        std::lock_guard<std::mutex> l(mutex_);
+        allowedClients_ = allowedClients;
+    }
+    std::string BindAddress() const { return bindAddress_; }
     // Request on the owner thread; Stop owns the joins and handle closure.
     void RequestStop();
     void Stop();
@@ -45,6 +52,7 @@ class ApiServer {
                         const char *kind = "output", unsigned codePage = 0);
     Json Events(const std::string &, std::uint64_t after);
     Json Diagnostics();
+    Json Metrics() const;
 
   private:
     friend struct ApiServerTestAccess;
@@ -66,13 +74,18 @@ class ApiServer {
         size_t responseBytes = 0;
         bool closing = false;
         bool hasTransfer = false;
+        bool hasRemotePower = false;
         bool drainOnClose = false;                              // reader has ended: bounded graceful TCP close
         std::set<std::string> subscriptions;                    // protected by server mutex
         std::map<std::string, std::pair<Json, Json>> responses; // reader only
         std::deque<std::string> responseOrder;
     };
+    struct HistoryEvent {
+        Json event;
+        size_t bytes = 0;
+    };
     struct History {
-        std::deque<Json> events;
+        std::deque<HistoryEvent> events;
         std::uint64_t seq = 0;
         size_t bytes = 0;
     };
@@ -116,6 +129,17 @@ class ApiServer {
     Handler handler_;
     std::thread accept_;
     WSAEVENT acceptEvent_ = WSA_INVALID_EVENT, stopEvent_ = WSA_INVALID_EVENT;
+    std::string bindAddress_ = "0.0.0.0";
+    std::vector<std::string> allowedClients_;
+    std::atomic<uint64_t> totalPublishedEvents_{0};
+    std::atomic<uint64_t> historyTrimsCount_{0};
+    std::atomic<uint64_t> publicationGapCount_{0};
+    std::atomic<size_t> publicationHighWaterMark_{0};
+    std::atomic<size_t> publicationBacklogBytes_{0}, publicationBacklogItems_{0};
+    std::atomic<std::uint64_t> serverLockWaitUsecTotal_{0}, serverLockWaitUsecMaximum_{0},
+                               serverLockWaitSamples_{0};
+    std::atomic<uint64_t> rejectedClientsCount_{0};
+    std::atomic<uint64_t> rejectedOriginsCount_{0};
 };
 inline std::string Encode64(const Bytes &bytes) {
     return ws::Base64(bytes);

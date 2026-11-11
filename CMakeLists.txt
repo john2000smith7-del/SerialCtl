@@ -35,7 +35,7 @@ if(NOT SERIALCTL_PROJECT_VERSION STREQUAL SERIALCTL_CPP_VERSION)
 endif()
 
 string(REGEX REPLACE "^V" "" SERIALCTL_SEMVER "${SERIALCTL_CPP_VERSION}")
-project(SerialCtl VERSION "${SERIALCTL_SEMVER}" LANGUAGES CXX RC)
+project(SerialCtl VERSION "${SERIALCTL_SEMVER}" LANGUAGES C CXX RC)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(SERIALCTL_CROSS_SMOKE "Test-only MinGW cross build (not a verified MSVC release)" OFF)
@@ -106,6 +106,41 @@ if(NOT EXISTS "${YY_THUNKS_OBJECT}")
 endif()
 set_source_files_properties("${YY_THUNKS_OBJECT}" PROPERTIES EXTERNAL_OBJECT TRUE)
 
+function(serialctl_add_whisper)
+    set(vendor "${CMAKE_CURRENT_SOURCE_DIR}/third_party/whisper")
+    set(archive "${vendor}/whisper.cpp-1.7.6.tar.gz")
+    set(model "${vendor}/ggml-tiny-q4_0.bin")
+    file(SHA256 "${archive}" archive_hash)
+    file(SHA256 "${model}" model_hash)
+    if(NOT archive_hash STREQUAL "166140e9a6d8a36f787a2bd77f8f44dd64874f12dd8359ff7c1f4f9acb86202e" OR
+       NOT model_hash STREQUAL "b19643e85a695ac4bd0576d43ae26641ca6d2f9cf3768ae57f20cfb7ade6fe56")
+        message(FATAL_ERROR "Bundled offline voice inputs failed SHA-256 verification")
+    endif()
+    set(source_dir "${CMAKE_CURRENT_BINARY_DIR}/_deps/whisper.cpp-1.7.6")
+    if(NOT EXISTS "${source_dir}/CMakeLists.txt")
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/_deps")
+        file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/_deps")
+    endif()
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+    set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    set(BUILD_SHARED_LIBS OFF)
+    foreach(option WHISPER_BUILD_TESTS WHISPER_BUILD_EXAMPLES WHISPER_BUILD_SERVER WHISPER_ALL_WARNINGS
+                   GGML_NATIVE GGML_OPENMP GGML_CCACHE GGML_BACKEND_DL GGML_AVX GGML_AVX2 GGML_AVX_VNNI
+                   GGML_FMA GGML_F16C GGML_BMI2 GGML_SSE42)
+        set(${option} OFF)
+    endforeach()
+    add_subdirectory("${source_dir}" "${CMAKE_CURRENT_BINARY_DIR}/_deps/whisper-build" EXCLUDE_FROM_ALL)
+    foreach(target whisper ggml ggml-base ggml-cpu)
+        target_compile_definitions(${target} PRIVATE WINVER=0x0601 _WIN32_WINNT=0x0601)
+        set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+    endforeach()
+    set(SERIALCTL_VOICE_MODEL_PATH "${model}")
+    configure_file("${SERIALCTL_SOURCE_DIR}/app/voice-model.rc.in"
+                   "${SERIALCTL_GENERATED_DIR}/voice-model.rc" @ONLY)
+endfunction()
+serialctl_add_whisper()
+
 set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/app"
     "${SERIALCTL_SOURCE_DIR}/ai"
@@ -118,6 +153,8 @@ set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/network"
     "${SERIALCTL_SOURCE_DIR}/update"
     "${SERIALCTL_SOURCE_DIR}/xfer"
+    "${SERIALCTL_SOURCE_DIR}/tftp"
+    "${SERIALCTL_SOURCE_DIR}/mcp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json"
 )
 
@@ -166,14 +203,28 @@ add_executable(serialctl WIN32
     src/app/CommandDocument.cpp
     src/app/CommandNotebook.cpp
     src/app/XferPane.cpp
+    src/app/TftpPane.cpp
+    src/tftp/TftpServer.cpp
+    src/tftp/TftpFileSource.cpp
     src/xfer/TransferController.cpp
     src/xfer/TransferProtocol.cpp
+    src/mcp/McpProtocol.cpp
+    src/mcp/McpIpc.cpp
+    src/mcp/McpHttpServer.cpp
+    src/mcp/McpDispatcher.cpp
+    src/mcp/McpService.cpp
+    src/mcp/McpStdioBridge.cpp
     src/app/MainWindow.cpp
     src/app/TerminalViewport.cpp
     src/app/CommandMacroController.cpp
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
+    src/app/PowerKeywordPane.cpp
     src/app/AiPane.cpp
+    src/ai/AiVoiceInput.cpp
+    src/app/AiTranscriptFormatting.cpp
+    src/ai/AiReplyMarkup.cpp
+    src/ai/AiAttachment.cpp
     src/app/AiPetPane.cpp
     src/ai/CodexClient.cpp
     src/ai/AiDeviceBridge.cpp
@@ -184,6 +235,8 @@ add_executable(serialctl WIN32
     src/update/UpdateManifest.cpp
     src/update/UpdateInstaller.cpp
     src/power/PowerService.cpp
+    src/power/PowerKeywordRun.cpp
+    src/power/RemotePowerClient.cpp
     src/network/ApiServer.cpp
     src/network/WebSocket.cpp
     src/network/GatewayClient.cpp
@@ -206,9 +259,12 @@ add_executable(serialctl WIN32
     src/sftp/SftpController.cpp
     src/sftp/SftpModel.cpp
     src/terminal/TerminalModel.cpp
+    src/terminal/TerminalParseScheduler.cpp
     "${SERIALCTL_GENERATED_DIR}/serialctl.rc"
 )
 serialctl_configure_native_target(serialctl WINDOWS)
+target_sources(serialctl PRIVATE src/ai/AiVoiceWorker.cpp "${SERIALCTL_GENERATED_DIR}/voice-model.rc")
+target_link_libraries(serialctl PRIVATE whisper)
 target_compile_definitions(serialctl PRIVATE SERIALCTL_VERSION=L"${SERIALCTL_CPP_VERSION}")
 target_compile_definitions(serialctl PRIVATE SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
 if(MSVC)
@@ -217,7 +273,7 @@ if(MSVC)
     # resources and to ensure the Win7 compatibility declarations stay authoritative.
     target_link_options(serialctl PRIVATE /MANIFEST:NO)
 endif()
-target_link_libraries(serialctl PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
+target_link_libraries(serialctl PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp psapi)
 
 foreach(PUTTY_PROGRAM IN ITEMS plink.exe psftp.exe)
     if(NOT EXISTS "${PUTTY_ARCH_DIR}/${PUTTY_PROGRAM}")
@@ -242,6 +298,10 @@ install(FILES
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(serial_ports_model_test tests/unit/SerialPortsModelTest.cpp)
+    serialctl_configure_native_target(serial_ports_model_test CONSOLE)
+    add_test(NAME serial_ports_model COMMAND serial_ports_model_test)
+    set_tests_properties(serial_ports_model PROPERTIES TIMEOUT 20)
     add_executable(ui_settings_writer_test tests/unit/UiSettingsWriterTest.cpp)
     serialctl_configure_native_target(ui_settings_writer_test CONSOLE)
     add_test(NAME ui_settings_writer COMMAND ui_settings_writer_test)
@@ -274,6 +334,26 @@ if(BUILD_TESTING)
     add_executable(boot_interrupt_test tests/unit/BootInterruptTest.cpp)
     serialctl_configure_native_target(boot_interrupt_test CONSOLE)
     add_test(NAME boot_interrupt COMMAND boot_interrupt_test)
+    add_executable(session_receive_dispatcher_test tests/unit/SessionReceiveDispatcherTest.cpp)
+    serialctl_configure_native_target(session_receive_dispatcher_test CONSOLE)
+    target_include_directories(session_receive_dispatcher_test PRIVATE src/app src/connections)
+    add_test(NAME session_receive_dispatcher COMMAND session_receive_dispatcher_test)
+    add_executable(performance_metrics_test tests/unit/PerformanceMetricsTest.cpp)
+    serialctl_configure_native_target(performance_metrics_test CONSOLE)
+    target_include_directories(performance_metrics_test PRIVATE src/app)
+    add_test(NAME performance_metrics COMMAND performance_metrics_test)
+    add_executable(terminal_parse_scheduler_test tests/unit/TerminalParseSchedulerTest.cpp
+        src/terminal/TerminalParseScheduler.cpp src/terminal/TerminalModel.cpp src/xfer/TransferProtocol.cpp)
+    serialctl_configure_native_target(terminal_parse_scheduler_test CONSOLE)
+    target_include_directories(terminal_parse_scheduler_test PRIVATE src/terminal src/connections src/xfer)
+    add_test(NAME terminal_parse_scheduler COMMAND terminal_parse_scheduler_test)
+    set_tests_properties(terminal_parse_scheduler PROPERTIES TIMEOUT 30)
+    add_executable(terminal_throughput_benchmark tests/performance/TerminalThroughputBenchmark.cpp
+        src/terminal/TerminalModel.cpp)
+    serialctl_configure_native_target(terminal_throughput_benchmark CONSOLE)
+    target_include_directories(terminal_throughput_benchmark PRIVATE src/terminal)
+    add_test(NAME terminal_throughput_benchmark COMMAND terminal_throughput_benchmark)
+    set_tests_properties(terminal_throughput_benchmark PROPERTIES TIMEOUT 60)
     add_executable(queued_transfer_test tests/integration/QueuedTransferTest.cpp src/connections/QueuedConnection.cpp
         src/connections/SerialConnection.cpp src/connections/SerialDevice.cpp)
     serialctl_configure_native_target(queued_transfer_test CONSOLE)
@@ -316,32 +396,47 @@ if(BUILD_TESTING)
     target_link_libraries(ai_pet_pane_test PRIVATE ole32 msimg32 comctl32 gdiplus gdi32 user32)
     add_test(NAME ai_pet_pane COMMAND ai_pet_pane_test)
     set_tests_properties(ai_pet_pane PROPERTIES TIMEOUT 35 RUN_SERIAL TRUE)
-    add_executable(ai_pane_test tests/integration/AiPaneTest.cpp src/app/AiPane.cpp src/app/ToolbarIcons.cpp src/ai/CodexClient.cpp
+    add_executable(ai_pane_test tests/integration/AiPaneTest.cpp src/app/AiPane.cpp src/app/AiTranscriptFormatting.cpp
+        src/ai/AiVoiceInput.cpp src/ai/AiReplyMarkup.cpp src/ai/AiAttachment.cpp src/app/ToolbarIcons.cpp src/ai/CodexClient.cpp
         src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(ai_pane_test CONSOLE)
     target_sources(ai_pane_test PRIVATE "${SERIALCTL_GENERATED_DIR}/ui-assets.rc")
     target_link_libraries(ai_pane_test PRIVATE ole32 msimg32)
     target_compile_definitions(ai_pane_test PRIVATE SERIALCTL_AI_TESTING)
-    target_link_libraries(ai_pane_test PRIVATE advapi32 ole32 msimg32 comctl32 gdiplus gdi32 user32)
+    target_link_libraries(ai_pane_test PRIVATE advapi32 ole32 msimg32 comctl32 comdlg32 gdiplus gdi32 user32)
     set_target_properties(ai_pane_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ai-fixture")
     add_dependencies(ai_pane_test ai_fake_plink)
     add_test(NAME ai_pane COMMAND ai_pane_test)
+    add_test(NAME ai_composer COMMAND ai_pane_test --composer)
+    add_test(NAME ai_reply_format COMMAND ai_pane_test --reply-format)
+    add_test(NAME ai_voice_composer COMMAND ai_pane_test --voice-composer)
+    add_executable(ai_voice_input_test tests/integration/AiVoiceInputTest.cpp src/ai/AiVoiceInput.cpp)
+    serialctl_configure_native_target(ai_voice_input_test CONSOLE)
+    target_link_libraries(ai_voice_input_test PRIVATE ole32)
+    add_test(NAME ai_voice_input COMMAND ai_voice_input_test)
+    set_tests_properties(ai_voice_input ai_voice_composer PROPERTIES TIMEOUT 30)
+    set_tests_properties(ai_composer PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
     set_tests_properties(ai_pane PROPERTIES TIMEOUT 45)
     add_test(NAME ai_pane_layout_audit COMMAND ai_pane_test --layout-audit)
     set_tests_properties(ai_pane_layout_audit PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
     # Exercise the actual desktop device callback, not a second tool implementation.
     get_target_property(SERIALCTL_DEVICE_TEST_SOURCES serialctl SOURCES)
-    list(REMOVE_ITEM SERIALCTL_DEVICE_TEST_SOURCES src/app/App.cpp "${YY_THUNKS_OBJECT}")
+    list(REMOVE_ITEM SERIALCTL_DEVICE_TEST_SOURCES src/app/App.cpp src/ai/AiVoiceWorker.cpp
+         "${SERIALCTL_GENERATED_DIR}/voice-model.rc" "${YY_THUNKS_OBJECT}")
     add_executable(ai_device_test tests/integration/AiDeviceTest.cpp ${SERIALCTL_DEVICE_TEST_SOURCES})
     serialctl_configure_native_target(ai_device_test CONSOLE)
     target_compile_definitions(ai_device_test PRIVATE SERIALCTL_AI_TESTING SERIALCTL_POWER_TESTING
         SERIALCTL_VERSION=L"${SERIALCTL_CPP_VERSION}" SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
-    target_link_libraries(ai_device_test PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp)
+    target_link_libraries(ai_device_test PRIVATE ws2_32 setupapi msimg32 comctl32 comdlg32 shell32 ole32 advapi32 gdiplus winhttp psapi)
     if(MSVC)
         target_link_options(ai_device_test PRIVATE /MANIFEST:NO)
     endif()
     add_test(NAME ai_device COMMAND ai_device_test)
-    set_tests_properties(ai_device PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+    add_test(NAME terminal_register_ui COMMAND ai_device_test --terminal-register)
+    add_test(NAME serial_card_title COMMAND ai_device_test --serial-card-title)
+    add_test(NAME transfer_pane_layout COMMAND ai_device_test --transfer-layout)
+    add_test(NAME ssh_save_layout COMMAND ai_device_test --ssh-save-layout)
+    set_tests_properties(ai_device terminal_register_ui transfer_pane_layout ssh_save_layout PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
     add_executable(ui_buffered_paint_test tests/unit/UiBufferedPaintTest.cpp)
     serialctl_configure_native_target(ui_buffered_paint_test CONSOLE)
     target_sources(ui_buffered_paint_test PRIVATE "${SERIALCTL_GENERATED_DIR}/ui-assets.rc")
@@ -401,7 +496,8 @@ if(BUILD_TESTING)
     target_link_libraries(session_logger_test PRIVATE shell32 advapi32)
     add_test(NAME session_logger COMMAND session_logger_test)
     set_tests_properties(session_logger PROPERTIES TIMEOUT 90)
-    add_executable(power_service_test tests/integration/PowerServiceTest.cpp src/power/PowerService.cpp src/logging/SessionLogger.cpp)
+    add_executable(power_service_test tests/integration/PowerServiceTest.cpp src/power/PowerService.cpp
+        src/power/PowerKeywordRun.cpp src/logging/SessionLogger.cpp)
     serialctl_configure_native_target(power_service_test CONSOLE)
     target_compile_definitions(power_service_test PRIVATE SERIALCTL_POWER_TESTING)
     target_link_libraries(power_service_test PRIVATE shell32 ws2_32 advapi32)
@@ -436,6 +532,9 @@ if(BUILD_TESTING)
     add_executable(api_response_test tests/unit/ApiResponseTest.cpp)
     serialctl_configure_native_target(api_response_test CONSOLE)
     add_test(NAME api_response COMMAND api_response_test)
+    add_executable(workspace_instructions_test tests/unit/WorkspaceInstructionsTest.cpp)
+    serialctl_configure_native_target(workspace_instructions_test CONSOLE)
+    add_test(NAME workspace_instructions COMMAND workspace_instructions_test)
     set_tests_properties(power_service cmd_connection api_server PROPERTIES TIMEOUT 60)
     add_executable(shared_serial_protocol_test tests/integration/SharedSerialProtocolTest.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(shared_serial_protocol_test CONSOLE)
@@ -458,7 +557,8 @@ if(BUILD_TESTING)
     target_link_libraries(tcp_connection_test PRIVATE ws2_32)
     add_test(NAME tcp_connection COMMAND tcp_connection_test)
 
-    add_executable(network_connect_test tests/integration/NetworkConnectTest.cpp ${GATEWAY_TEST_SOURCES})
+    add_executable(network_connect_test tests/integration/NetworkConnectTest.cpp
+        src/power/RemotePowerClient.cpp ${GATEWAY_TEST_SOURCES})
     serialctl_configure_native_target(network_connect_test CONSOLE)
     target_link_libraries(network_connect_test PRIVATE ws2_32 advapi32)
     add_test(NAME network_connect COMMAND network_connect_test)
@@ -525,7 +625,8 @@ if(BUILD_TESTING)
         "$<TARGET_FILE:multi_serial_test>")
     set_tests_properties(linux_gateway_client PROPERTIES TIMEOUT 30)
 
-    add_executable(terminal_decoder_test tests/unit/TerminalDecoderTest.cpp)
+    add_executable(terminal_decoder_test tests/unit/TerminalDecoderTest.cpp src/xfer/TransferProtocol.cpp
+        src/terminal/TerminalModel.cpp)
     serialctl_configure_native_target(terminal_decoder_test CONSOLE)
     add_test(NAME terminal_decoder COMMAND terminal_decoder_test)
 
@@ -567,6 +668,40 @@ if(BUILD_TESTING)
     target_link_libraries(terminal_preview_test PRIVATE psapi)
     add_test(NAME terminal_preview COMMAND terminal_preview_test)
     set_tests_properties(terminal_preview PROPERTIES TIMEOUT 30)
+
+    add_executable(tftp_server_test
+        tests/integration/TftpServerTest.cpp
+        src/tftp/TftpServer.cpp
+        src/tftp/TftpFileSource.cpp
+        src/connections/PasswordPipe.cpp
+        src/connections/ChildProcess.cpp
+        src/connections/PuttyHostKey.cpp
+    )
+    serialctl_configure_native_target(tftp_server_test CONSOLE)
+    target_link_libraries(tftp_server_test PRIVATE ws2_32 advapi32 ole32)
+    add_test(NAME tftp_server COMMAND tftp_server_test)
+    set_tests_properties(tftp_server PROPERTIES TIMEOUT 40)
+
+    add_executable(mcp_server_test
+        tests/integration/McpServerTest.cpp
+        src/mcp/McpProtocol.cpp
+        src/mcp/McpIpc.cpp
+        src/mcp/McpHttpServer.cpp
+        src/mcp/McpDispatcher.cpp
+        src/mcp/McpService.cpp
+        src/tftp/TftpServer.cpp
+        src/tftp/TftpFileSource.cpp
+        src/connections/PasswordPipe.cpp
+        src/connections/ChildProcess.cpp
+        src/connections/PuttyHostKey.cpp
+        src/power/PowerService.cpp
+        src/logging/SessionLogger.cpp
+    )
+    serialctl_configure_native_target(mcp_server_test CONSOLE)
+    target_compile_definitions(mcp_server_test PRIVATE SERIALCTL_POWER_TESTING)
+    target_link_libraries(mcp_server_test PRIVATE shell32 ws2_32 advapi32 ole32)
+    add_test(NAME mcp_server COMMAND mcp_server_test)
+    set_tests_properties(mcp_server PROPERTIES TIMEOUT 40)
 endif()
 
 if(BUILD_TESTING)

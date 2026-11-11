@@ -225,6 +225,53 @@ void TestProgressParser() {
         "parser ignores percentages outside the valid range");
 }
 
+void TestPromptDirectoryExtraction() {
+    using namespace serialctl;
+    std::wstring dir;
+
+    // 1. Standard format
+    Expect(TryExtractPromptDirectory(L"user@host:/path$", dir) && dir == L"/path",
+        "extract standard user@host:/path$");
+    Expect(TryExtractPromptDirectory(L"user@host:~/path# ", dir) && dir == L"~/path",
+        "extract standard user@host:~/path# with trailing space");
+
+    // 2. Format without '@'
+    Expect(TryExtractPromptDirectory(L"renhongyujie2866:~$", dir) && dir == L"~",
+        "extract username-only renhongyujie2866:~$");
+    Expect(TryExtractPromptDirectory(L"hostname:/var/tmp$", dir) && dir == L"/var/tmp",
+        "extract hostname:/var/tmp$");
+
+    // 3. Environment/Conda/venv prefixes
+    Expect(TryExtractPromptDirectory(L"(venv) renhongyujie2866:~$", dir) && dir == L"~",
+        "extract (venv) renhongyujie2866:~$");
+    Expect(TryExtractPromptDirectory(L"(base) (env) user@host:/opt$", dir) && dir == L"/opt",
+        "extract (base) (env) user@host:/opt$");
+
+    // 4. Bracketed formats
+    Expect(TryExtractPromptDirectory(L"[user@host ~]$", dir) && dir == L"~",
+        "extract bracketed [user@host ~]$");
+    Expect(TryExtractPromptDirectory(L"[user@host /etc/nginx]#", dir) && dir == L"/etc/nginx",
+        "extract bracketed [user@host /etc/nginx]#");
+    Expect(TryExtractPromptDirectory(L"[user@zsh /var/tmp]% ", dir) && dir == L"/var/tmp",
+        "extract Zsh prompt with percent terminator");
+    Expect(TryExtractPromptDirectory(L"(venv) [renhongyujie2866:/tmp]$", dir) && dir == L"/tmp",
+        "extract (venv) [renhongyujie2866:/tmp]$");
+
+    // 5. Anti-misinterpretation guards
+    Expect(!TryExtractPromptDirectory(L"12:34:56:/path$", dir),
+        "reject timestamp prefix 12:34:56:/path$");
+    Expect(!TryExtractPromptDirectory(L"Error: /tmp/foo: No such file$", dir),
+        "reject command error message containing spaces in path");
+    Expect(!TryExtractPromptDirectory(L"echo Hello World", dir),
+        "reject normal output line");
+    Expect(!TryExtractPromptDirectory(L"user@host:/path", dir),
+        "reject line without a prompt terminator");
+    Expect(!TryExtractPromptDirectory(L"user@host:  %", dir),
+        "reject an empty directory after the delimiter");
+    Expect(!TryExtractPromptDirectory(L"[invalid=ident:/tmp]$", dir),
+        "reject identity with illegal punctuation");
+}
+
 } // namespace
 
 int main() {
@@ -235,6 +282,7 @@ int main() {
     TestListingLimits();
     TestSorting();
     TestProgressParser();
+    TestPromptDirectoryExtraction();
     if (failures == 0) std::cout << "SFTP model tests passed\n";
     return failures == 0 ? 0 : 1;
 }

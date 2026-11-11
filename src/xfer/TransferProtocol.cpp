@@ -80,7 +80,7 @@ class Engine {
         throw std::runtime_error("Block was not acknowledged within the retry limit");
     }
     Frame ReadBlock(bool crc) {
-        const auto deadline=Deadline();int c=0,cancels=0;
+        auto deadline=Deadline();int c=0,cancels=0;
         for(unsigned scanned=0;scanned<8192;++scanned) {
             c=Get(deadline);
             if(c==CAN) {if(++cancels==2)throw std::runtime_error("Peer cancelled transfer");continue;}
@@ -88,6 +88,11 @@ class Engine {
             if(scanned==8191)throw BadFrame();
         }
         if(c==EOT)return {EOT,0,{}};
+        // Waiting for a frame and receiving its contents are separate bounded
+        // phases. A retransmitted SOH arriving near the wait deadline must not
+        // lose its payload to that already-expiring deadline (notably after a
+        // lost ACK when both peers' retry timers expire together).
+        deadline=Deadline();
         const int sequence=Get(deadline),inverse=Get(deadline);
         Frame frame{c,sequence,Bytes(c==STX?1024:128)};
         for(auto& b:frame.bytes)b=static_cast<std::uint8_t>(Get(deadline));

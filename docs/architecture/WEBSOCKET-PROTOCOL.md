@@ -28,11 +28,13 @@ events完整响应超限时返回小型HISTORY_TOO_LARGE错误，提示使用sub
 | power.output | power-1 | {enabled:bool} | 仅操作 GUI 当时勾选通道；requestId 用于原有 action 幂等，应使用全局唯一 UUID |
 | action.get | 省略 | {id:string} | 电源异步 queued/running/completed/failed/canceled 状态 |
 
-不开放创建/断开连接、参数、SSH/SFTP、通道勾选、电压电流、保护、预设、模式、复位、SCPI、任务。服务无授权 UI/token，仅适合可信内网。GUI 不通过网络回连，直接调用相同 SessionService 和同一个 QueuedConnection。
+不开放创建/断开连接、参数、SSH/SFTP、通道勾选、电压电流、保护、预设、模式、复位、SCPI、任务。服务无授权 UI/token，仅适合可信内网；`ApiServer::Start` 支持指定监听绑定地址（默认 `0.0.0.0`，可限制为 `127.0.0.1`）与来源 IP 白名单 `allowedClients`（非白名单 IP 在握手前返回 `HTTP/1.1 403 Forbidden` / `CLIENT_NOT_ALLOWED`）。GUI 从现有 `settings.ini` 的 `[SerialShare]` 读取 `BindIp` 与逗号分隔的 `AllowedClients`，并在启动状态报告实际端口和来源限制。现有未配置安装继续沿用原监听行为。带 `Origin` 的浏览器请求必须使用本机来源、回环 TCP 连接以及匹配监听端口的回环 `Host`，失败返回 `HTTP/1.1 403 Forbidden` / `ORIGIN_NOT_ALLOWED`。原生客户端通常不发送 `Origin`，仍受绑定地址和来源白名单约束。GUI 不通过网络回连，直接调用相同 SessionService 和同一个 QueuedConnection。
 
 每个 COM 只有一个本机驱动与内部会话 ID。完整输入批次 FIFO 原子入队，8 MiB 有界写队列；无写租约、无任务级互斥，多写入者的多步任务仍可能互相影响。input accepted 表示接收/排队，不保证执行完成。连接关闭不关闭本机设备、不取消已经入队的写入。超时/断线后执行状态未知，不自动重试可能已经执行的输入。
 
 每连接最多订阅 64 个现有 serial/CMD 会话。每资源独立单调 seq、history 最多 1024 个 event/1 MiB，总缓存 16 MiB；订阅确认先排队，历史与实时事件在同一锁下排序，握手期间输出可通过 after=0 重放。资源事件 `{"type":"event","version":1,"instance":"...","resource":"session-N","seq":1,"kind":"output|input|status|error","source":"device|gui|network:N|connection|terminal-response","data":"Base64","tick":...,"codePage":...}`。CMD input/output 事件额外携带当次文本代码页快照 codePage；原始 Base64 字节不变，客户端文本解码仍需跨包保持状态。session.get/resources 的 codePage 与实际 outputCodePage 一致。同一资源的顺序是网关 Publish 获取锁的顺序。不同资源不承诺共同时间线。
+
+历史预算按每条保留事件序列化后的 UTF-8 字节数计费，包括 Base64 和 JSON 元数据。写入时缓存该长度，淘汰和删除直接扣除，避免重编码。先执行单资源上限，再从当前保留字节数最多的资源淘汰最早事件，直到全局占用回到 16 MiB 以内。大小相同按资源 ID 的排序决定先后。各资源没有单独的保底额度。进程工作集及私有内存还包含 JSON 对象、容器和分配器开销。
 
 after 小于缓存最早序号-1（包括 after=0）、大于当前 seq，返回 HISTORY_GAP；禁止悄悄跳过。重连使用客户端已收到的最后 seq，同一 instance/session，先处理 gap 再决定是否以 session.get 当前状态开始新实时订阅（cursor 通过历史/订阅响应取得）。会话删除发送 resource_gone/TARGET_GONE，并取消订阅；ID 不在同一程序生命周期重复使用。
 

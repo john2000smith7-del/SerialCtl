@@ -24,6 +24,8 @@ bool SessionLogger::Start(const std::wstring &mode, std::wstring &error, bool cs
         path_.clear();
         parts_.clear();
         accepted_ = completed_ = written_ = 0;
+        queued_ = highWaterQueued_ = 0;
+        overflowEvents_ = 0;
         failure_.clear();
         wake_.notify_all();
     }
@@ -100,27 +102,45 @@ void SessionLogger::WriteRaw(const Bytes &data)
 
 void SessionLogger::WriteText(const std::wstring &text)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (stopping_ || text.empty())
-        return;
-    const std::string utf8 = WideToMultiByte(text, CP_UTF8);
-    WriteBytes(utf8.data(), static_cast<DWORD>(utf8.size()));
+    if (!text.empty()) WriteBatch({{false, text}});
 }
 
 void SessionLogger::WriteStatus(const std::wstring &text)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (stopping_)
-    {
-        return;
+    WriteBatch({{true, text}});
+}
+
+void SessionLogger::WriteBatch(const std::vector<std::pair<bool, std::wstring>>& entries)
+{
+    if (entries.empty()) return;
+    std::lock_guard<std::mutex> encodeLock(encodeMutex_);
+    std::wstring combined;
+    size_t reserve = 0;
+    for (const auto& entry : entries) reserve += entry.second.size() + (entry.first ? 32 : 0);
+    combined.reserve(reserve);
+    for (const auto& entry : entries) {
+        if (!entry.first) {
+            combined += entry.second;
+            continue;
+        }
+        SYSTEMTIME now{};
+        GetLocalTime(&now);
+        wchar_t prefix[32]{};
+        swprintf_s(prefix, L"\r\n[%02u:%02u:%02u.%03u] ", now.wHour, now.wMinute, now.wSecond,
+                   now.wMilliseconds);
+        combined += prefix;
+        combined += entry.second;
+        combined += L"\r\n";
     }
-    SYSTEMTIME now{};
-    GetLocalTime(&now);
-    wchar_t prefix[32]{};
-    swprintf_s(prefix, L"\r\n[%02u:%02u:%02u.%03u] ", now.wHour, now.wMinute, now.wSecond,
-               now.wMilliseconds);
-    const std::string utf8 = WideToMultiByte(std::wstring(prefix) + text + L"\r\n", CP_UTF8);
+    const std::string utf8 = WideToMultiByte(combined, CP_UTF8);
+    std::lock_guard<std::mutex> lock(mutex_);
     WriteBytes(utf8.data(), static_cast<DWORD>(utf8.size()));
+}
+
+SessionLogger::Statistics SessionLogger::Stats() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return {queued_, highWaterQueued_, accepted_, completed_, overflowEvents_};
 }
 
 namespace {
@@ -191,6 +211,8 @@ bool IsLogFamily(const std::wstring &name, const std::wstring &root) {
 
 #ifdef SERIALCTL_LOGGER_TESTING
 std::atomic<std::int64_t> SessionLogger::testCopyFailureAfter_{-1};
+std::atomic<bool> SessionLogger::testFailFlushCopy_{false};
+std::atomic<bool> SessionLogger::testFailFlushStop_{false};
 #endif
 
 SessionLogger::ExportPoint SessionLogger::CaptureExportPoint() {
@@ -330,7 +352,11 @@ bool SessionLogger::CopySnapshot(const Snapshot &snapshot, const std::wstring &d
             }
         }
         if (ExportCancelled(cancel)) return CancelExport(error);
-        if (!FlushFileBuffers(output.value)) {
+        bool flushOk = FlushFileBuffers(output.value) != FALSE;
+#ifdef SERIALCTL_LOGGER_TESTING
+        if (testFailFlushCopy_.load()) flushOk = false;
+#endif
+        if (!flushOk) {
             const auto code = GetLastError();
             if (ExportCancelled(cancel)) return CancelExport(error);
             error = L"日志副本刷新失败：" + Win32ErrorMessage(code);
@@ -381,7 +407,11 @@ void SessionLogger::Stop()
     }
     std::wstring failure;
     if (file != INVALID_HANDLE_VALUE) {
-        if (!FlushFileBuffers(file)) failure = L"日志刷新失败：" + Win32ErrorMessage();
+        bool flushOk = FlushFileBuffers(file) != FALSE;
+#ifdef SERIALCTL_LOGGER_TESTING
+        if (testFailFlushStop_.load()) flushOk = false;
+#endif
+        if (!flushOk) failure = L"日志刷新失败：" + Win32ErrorMessage();
         CloseHandle(file);
     }
     if (!failure.empty()) {
@@ -399,12 +429,17 @@ void SessionLogger::WriteBytes(const void *data, DWORD size)
     if (queued_ + size > 8 * 1024 * 1024)
     {
         failure_ = L"日志磁盘处理过慢，日志队列已满。";
+        ++overflowEvents_;
         wake_.notify_all();
         return;
     }
     const auto *bytes = static_cast<const std::uint8_t *>(data);
-    queue_.emplace_back(bytes, bytes + size);
+    if (!queue_.empty() && queue_.back().size() + size <= 256 * 1024)
+        queue_.back().insert(queue_.back().end(), bytes, bytes + size);
+    else
+        queue_.emplace_back(bytes, bytes + size);
     queued_ += size;
+    highWaterQueued_ = std::max(highWaterQueued_, queued_);
     accepted_ += size;
     wake_.notify_all();
 }

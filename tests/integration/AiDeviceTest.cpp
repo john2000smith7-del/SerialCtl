@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "GatewayFixture.h"
 #include "UiTestEvidence.h"
+#include "UiMetrics.h"
 #include "Win32Helpers.h"
 #include "resource.h"
 #include "SshCredentials.h"
@@ -64,6 +65,238 @@ Json Wait(PowerService& power, Json action) {
 }
 }
 struct AiDeviceTestAccess {
+    static void RunTransferPaneLayout(HWND parent) {
+        constexpr int dpi = 120;
+        const auto font = CreateFontW(-MulDiv(13, dpi, 96), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                      DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+        struct FontOwner { HFONT font; ~FontOwner() { DeleteObject(font); } } fontOwner{font};
+        auto server = std::make_shared<TftpServer>();
+        xfer::TransferController transfer;
+        TftpPane tftp;
+        XferPane xfer;
+        Require(tftp.Create(parent, server, [] {
+                    return std::vector<TftpSshSessionInfo>{{"fixture", L"linux@127.0.0.1", L"127.0.0.1", 22,
+                                                            L"linux", L"", true}};
+                }, font, true, dpi) &&
+                xfer.Create(parent, transfer, [] { return XferPane::Target{1, L"COM4 · USB Serial Port"}; },
+                            font, true, dpi), "Create real transfer controls");
+        const auto tftpBody = GetWindow(tftp.Handle(), GW_CHILD);
+        const auto xferBody = FindWindowExW(xfer.Handle(), nullptr, L"SerialCtlXferBody", nullptr);
+        Require(tftpBody && xferBody, "Find transfer content viewports");
+        Require(SendMessageW(GetDlgItem(xferBody, XferPane::Mode), CB_SETCURSEL, 1, 0) == 1,
+                "Select XMODEM in the native transfer form");
+        xfer.Refresh();
+        const auto tftpSampleDir = std::filesystem::temp_directory_path() /
+            (L"serialctl_tftp_layout_" + std::to_wstring(GetCurrentProcessId()));
+        std::error_code dirEc;
+        std::filesystem::remove_all(tftpSampleDir, dirEc);
+        Require(std::filesystem::create_directories(tftpSampleDir / L"nested_subdir", dirEc),
+                "Create temporary TFTP sample directory");
+        {
+            std::ofstream f1(tftpSampleDir / L"Image", std::ios::binary);
+            f1 << "kernel-image-sample";
+            std::ofstream f2(tftpSampleDir / L"board.dtb", std::ios::binary);
+            f2 << "dtb-sample";
+        }
+        struct TempDirGuard {
+            std::filesystem::path dir;
+            ~TempDirGuard() { std::error_code ec; std::filesystem::remove_all(dir, ec); }
+        } dirGuard{tftpSampleDir};
+        tftp.ConfigureDirectories(L"local", tftpSampleDir.wstring(), L"");
+        Require(server->RootConfig().mode == TftpRootMode::Local, "TFTP local directory configured on server");
+        wchar_t filesText[1024]{};
+        GetWindowTextW(GetDlgItem(tftpBody, TftpPane::DirFilesList), filesText, 1024);
+        const std::wstring listed(filesText);
+        Require(listed.find(L"Image") != std::wstring::npos && listed.find(L"board.dtb") != std::wstring::npos &&
+                listed.find(L"nested_subdir") == std::wstring::npos,
+                "TFTP directory listing must auto-list regular files and exclude subdirectories");
+        ShowWindow(parent, SW_SHOW);
+        const auto noOverlap = [&](HWND body) {
+            std::vector<RECT> visible;
+            for (auto child = GetWindow(body, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+                if (!IsWindowVisible(child)) continue;
+                RECT bounds{};
+                GetWindowRect(child, &bounds);
+                for (const auto& prior : visible) {
+                    RECT overlap{};
+                    Require(!IntersectRect(&overlap, &bounds, &prior), "Visible transfer controls overlap");
+                }
+                visible.push_back(bounds);
+            }
+            Require(visible.size() >= 10, "Transfer form lost its visible controls");
+        };
+        for (bool dark : {false, true}) {
+            tftp.Theme(dark, dpi, font);
+            xfer.Theme(dark, dpi, font);
+            for (const int width : {350, 430}) {
+                ShowWindow(xfer.Handle(), SW_HIDE);
+                SetWindowPos(tftp.Handle(), nullptr, 0, 0, width, 680, SWP_NOZORDER | SWP_SHOWWINDOW);
+                for (int source : {1, 0}) {
+                    const auto combo = GetDlgItem(tftpBody, TftpPane::SourceType);
+                    SendMessageW(combo, CB_SETCURSEL, source, 0);
+                    SendMessageW(tftpBody, WM_COMMAND, MAKEWPARAM(TftpPane::SourceType, CBN_SELCHANGE),
+                                 reinterpret_cast<LPARAM>(combo));
+                    noOverlap(tftpBody);
+                }
+                const auto statusCtrl = GetDlgItem(tftpBody, TftpPane::ServiceStatus);
+                RECT statusScreen{}, bodyScreen{};
+                GetWindowRect(statusCtrl, &statusScreen);
+                GetWindowRect(tftpBody, &bodyScreen);
+                Require(statusScreen.top - bodyScreen.top >= MulDiv(8, dpi, 96),
+                        "TFTP top status text must maintain clear spacing below tabs");
+                RECT transfersLabelRect{}, transferCountRect{};
+                GetWindowRect(GetDlgItem(tftpBody, TftpPane::TransfersLabel), &transfersLabelRect);
+                GetWindowRect(GetDlgItem(tftpBody, TftpPane::TransferCount), &transferCountRect);
+                Require(transferCountRect.top - transfersLabelRect.bottom >= MulDiv(10, dpi, 96),
+                        "TFTP transfer section must reserve room for the Xfer-style progress bar");
+                RECT statusRect{};
+                GetClientRect(statusCtrl, &statusRect);
+                HDC statusDc = GetDC(statusCtrl);
+                const auto oldStatusFont = SelectObject(statusDc, font);
+                RECT measured{0, 0, statusRect.right, 0};
+                DrawTextW(statusDc, L"服务状态：未启动 [远程文件不存在、不可读、含链接或 SSH 检查失败]", -1,
+                          &measured, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_EDITCONTROL);
+                SelectObject(statusDc, oldStatusFont);
+                ReleaseDC(statusCtrl, statusDc);
+                Require(statusRect.bottom - statusRect.top >= measured.bottom,
+                        "TFTP service status label height clipped wrapped error text");
+                ShowWindow(tftp.Handle(), SW_HIDE);
+                SetWindowPos(xfer.Handle(), nullptr, 0, 0, width, 680, SWP_NOZORDER | SWP_SHOWWINDOW);
+                noOverlap(xferBody);
+            }
+            ui_test::SaveUiEvidence(xfer.Handle(), dark ? L"xfer-reflow-dark.png" : L"xfer-reflow-light.png",
+                [&](HDC dc) { Require(PrintWindow(xfer.Handle(), dc, PW_CLIENTONLY), "Capture native Xfer pane"); });
+            ShowWindow(xfer.Handle(), SW_HIDE);
+            ShowWindow(tftp.Handle(), SW_SHOW);
+            ui_test::SaveUiEvidence(tftp.Handle(), dark ? L"tftp-reflow-dark.png" : L"tftp-reflow-light.png",
+                [&](HDC dc) { Require(PrintWindow(tftp.Handle(), dc, PW_CLIENTONLY), "Capture native TFTP pane"); });
+            SendMessageW(tftpBody, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-4 * WHEEL_DELTA)), 0);
+            noOverlap(tftpBody);
+            ui_test::SaveUiEvidence(tftp.Handle(), dark ? L"tftp-reflow-bottom-dark.png" : L"tftp-reflow-bottom-light.png",
+                [&](HDC dc) { Require(PrintWindow(tftp.Handle(), dc, PW_CLIENTONLY), "Capture scrolled native TFTP pane"); });
+            SendMessageW(tftpBody, WM_MOUSEWHEEL, MAKEWPARAM(0, 4 * WHEEL_DELTA), 0);
+        }
+        std::cout << "[PASS] Native TFTP/Xfer layout at narrow and normal widths, both themes, and source switching\n";
+    }
+
+    static void RunSshSaveLayout(HWND parent) {
+        MainWindow main;
+        main.instance_ = GetModuleHandleW(nullptr);
+        main.window_ = parent;
+        main.pendingMode_ = 0;
+        main.uiFont_ = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        main.dialogFieldStyle_.font = main.uiFont_;
+        const auto dialog = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
+            MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
+        Require(dialog && IsDlgButtonChecked(dialog, IDC_SSH_SAVE) == BST_CHECKED && !GetDlgItem(dialog, 1031),
+                "Ordinary SSH must offer one checked save control by default");
+        DestroyWindow(dialog);
+        main.window_ = nullptr;
+        main.uiFont_ = nullptr;
+        std::cout << "[PASS] Ordinary SSH single save choice, checked by default\n";
+    }
+
+    static void RunSerialCardTitle() {
+        MainWindow::SessionState session;
+        session.mode = 1;
+        session.name = L"USB Serial Port (COM4)";
+        session.serialSettings.portName = L"COM4";
+        session.serialSettings.friendlyName = session.name;
+        Require(MainWindow::ConnectionCardTitle(session) == L"COM4 · USB Serial Port",
+                "A local card must put the COM number first without repeating it");
+        session.serialSettings.friendlyName = L"com4";
+        Require(MainWindow::ConnectionCardTitle(session) == L"COM4", "A bare COM name must appear once");
+        session.serialSettings.friendlyName = L"Adapter (RS232)";
+        Require(MainWindow::ConnectionCardTitle(session) == L"COM4 · Adapter (RS232)",
+                "A description suffix unrelated to the COM number must be retained");
+        session.mode = 3;
+        session.name = L"COM8 · Remote adapter";
+        Require(MainWindow::ConnectionCardTitle(session) == session.name, "Remote card title must remain server-provided");
+        std::cout << "[PASS] COM-first connection card captions\n";
+    }
+
+    static void RunTerminalRegisterUi(HWND parent) {
+        HWND terminal = CreateWindowExW(0, L"STATIC", L"Terminal register fixture", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+            0, 0, Ui::Scale(480), Ui::Scale(320), parent, nullptr, GetModuleHandleW(nullptr), nullptr);
+        Require(terminal != nullptr, "Create the native terminal test surface");
+        ShowWindow(parent, SW_SHOW);
+        SetFocus(terminal);
+        Require(GetFocus() == terminal, "Focus the native terminal test surface");
+        TerminalViewport viewport;
+        TerminalViewport::State state;
+        TerminalViewport::Options options;
+        options.font = options.smallFont = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        viewport.Measure(terminal, options.font, false);
+        state.terminal.Resize(viewport.Metrics().columns, viewport.Metrics().rows);
+        state.terminal.Feed(L"0x80000005", L"");
+        const auto point = [&](int column, int row) {
+            return MAKELPARAM(Ui::TerminalPadding + column * viewport.Metrics().cellWidth + 1,
+                             Ui::TerminalPadding + row * viewport.Metrics().lineHeight + 1);
+        };
+        const auto select = [&](int first, int last, int row) {
+            viewport.Pointer(terminal, WM_LBUTTONDOWN, point(first, row), &state, options);
+            Require(viewport.Pointer(terminal, WM_LBUTTONUP, point(last, row), &state, options) ==
+                    TerminalViewport::PointerResult::CopySelection, "Complete a real viewport selection");
+            viewport.ShowRegisterPreview(terminal, viewport.SelectionText(state, false));
+        };
+        PaintBuffer capture;
+        const auto render = [&] {
+            RECT rect{};
+            GetClientRect(terminal, &rect);
+            const auto screen = GetDC(terminal);
+            const auto dc = capture.Get(screen, rect.right, rect.bottom, Ui::Dpi);
+            ReleaseDC(terminal, screen);
+            Require(dc != nullptr, "Create a compatible terminal capture");
+            viewport.Paint(dc, terminal, &state, options);
+            return dc;
+        };
+        const auto digitBackground = [&](HDC dc, int bit, int groupsPerRow) {
+            const int group = (31 - bit) / 8, offset = (31 - bit) % 8;
+            const int cell = Ui::Scale(20), gap = Ui::Scale(6), groupPad = Ui::Scale(3);
+            const int left = Ui::TerminalPadding + Ui::Scale(10);
+            const int top = Ui::TerminalPadding + viewport.Metrics().lineHeight + gap + Ui::Scale(24);
+            const int x = left + (group % groupsPerRow) * (8 * cell + 2 * groupPad + gap) + groupPad + offset * cell + 4;
+            const int y = top + (group / groupsPerRow) * (Ui::Scale(39) + gap) + Ui::Scale(24);
+            return GetPixel(dc, x, y);
+        };
+        select(9, 0, 0);
+        Require(viewport.SelectionText(state, false) == L"0x80000005" && GetFocus() == terminal,
+                "Register inspection keeps the original selected text and terminal focus");
+        for (const bool dark : {false, true}) {
+            options.dark = dark;
+            const auto colors = UiTheme(dark);
+            const auto dc = render();
+            ui_test::SaveUiEvidence(terminal, dark ? L"terminal-register-dark.png" : L"terminal-register-light.png",
+                [&](HDC dc) { viewport.Paint(dc, terminal, &state, options); });
+            for (int bit = 0; bit < 32; ++bit) {
+                const bool set = bit == 31 || bit == 2 || bit == 0;
+                const auto pixel = digitBackground(dc, bit, 2);
+                const auto expected = set ? colors.accentSoft : colors.raised;
+                if (pixel != expected)
+                    std::cerr << "Register bit " << bit << " background " << pixel << ", expected " << expected << '\n';
+                Require(pixel == expected,
+                        "Two-row preview must highlight the correct bits in both themes");
+            }
+        }
+        viewport.ClearSelection();
+        Require(viewport.Pointer(terminal, WM_LBUTTONDBLCLK, point(3, 0), &state, options) ==
+                TerminalViewport::PointerResult::CopySelection &&
+                viewport.SelectionText(state, false) == L"0x80000005", "Double-click selects the full hex word");
+        viewport.ShowRegisterPreview(terminal, viewport.SelectionText(state, false));
+        SetWindowPos(terminal, nullptr, 0, 0, Ui::Scale(220), Ui::Scale(320), SWP_NOZORDER | SWP_NOACTIVATE);
+        Require(digitBackground(render(), 0, 1) == UiTheme(true).accentSoft, "Narrow terminals must stack four byte groups");
+        ui_test::SaveUiEvidence(terminal, L"terminal-register-narrow.png",
+            [&](HDC dc) { viewport.Paint(dc, terminal, &state, options); });
+        state.terminal.Feed(L"\r\nordinary", L"");
+        select(0, 7, 1);
+        Require(digitBackground(render(), 0, 1) == UiTheme(true).field, "Ordinary text must dismiss register inspection");
+        select(0, 9, 0);
+        state.terminal.Feed(L"\x1b[Hchanged", L"");
+        Require(digitBackground(render(), 0, 1) == UiTheme(true).field, "Replaced selection must clear stale register bits");
+        DestroyWindow(terminal);
+        std::cout << "[PASS] Terminal register selection, all 32 bit states, two themes, narrow layout and dismissal\n";
+    }
+
     static inline unsigned hostIdentityUpdates = 0;
     static LRESULT CALLBACK ObserveHostIdentity(int code, WPARAM w, LPARAM l) {
         if (code >= 0) {
@@ -88,6 +321,99 @@ struct AiDeviceTestAccess {
         },reinterpret_cast<LPARAM>(&search));
         return search.found;
     }
+    static void RunPowerKeywordUi(HWND parent) {
+        MainWindow main;
+        main.window_ = parent;
+        main.instance_ = GetModuleHandleW(nullptr);
+        Require(SetWindowSubclass(parent, FixtureParent, 9207, reinterpret_cast<DWORD_PTR>(&main)) != FALSE,
+                "Install keyword test window procedure");
+        SetWindowPos(parent, nullptr, 0, 0, 1280, 960, SWP_NOZORDER | SWP_NOACTIVATE);
+        main.CreateControls();
+        main.ShowPowerPage();
+        const auto pane = main.powerPane_.Handle();
+        SendMessageW(pane, WM_COMMAND, MAKEWPARAM(91, BN_CLICKED), 0);
+        SendMessageW(pane, WM_COMMAND, MAKEWPARAM(115, BN_CLICKED), 0);
+        ShowWindow(parent, SW_SHOWNOACTIVATE);
+        const HWND list = PowerControl(pane, 139);
+        Require(list && IsWindowVisible(list) && Header_GetItemCount(ListView_GetHeader(list)) == 5,
+                "Keyword statistics should show five native columns");
+
+        struct ModalStep {
+            int stage = 0;
+            bool dark = false;
+            ULONGLONG deadline = 0;
+            std::exception_ptr error;
+        } step;
+        static thread_local ModalStep *modal = nullptr;
+        modal = &step;
+        const auto timer = SetTimer(nullptr, 0, 30, [](HWND, UINT, UINT_PTR, DWORD) {
+            struct Windows { HWND config, rule; } dialogs{};
+            EnumThreadWindows(GetCurrentThreadId(), [](HWND window, LPARAM state) -> BOOL {
+                auto &result = *reinterpret_cast<Windows *>(state);
+                wchar_t cls[16]{};
+                GetClassNameW(window, cls, static_cast<int>(std::size(cls)));
+                if (wcscmp(cls, L"#32770") != 0) return TRUE;
+                if (GetDlgItem(window, 301)) result.config = window;
+                if (GetDlgItem(window, 310)) result.rule = window;
+                return TRUE;
+            }, reinterpret_cast<LPARAM>(&dialogs));
+            const auto config = dialogs.config, rule = dialogs.rule;
+            auto capture = [](HWND window, const wchar_t *name) {
+                ui_test::SaveUiEvidence(window, name, [&](HDC dc) {
+                    RECT frame{};
+                    POINT client{}, original{};
+                    GetWindowRect(window, &frame);
+                    ClientToScreen(window, &client);
+                    SetViewportOrgEx(dc, frame.left - client.x, frame.top - client.y, &original);
+                    SendMessageW(window, WM_PRINT, reinterpret_cast<WPARAM>(dc), PRF_CLIENT | PRF_CHILDREN | PRF_ERASEBKGND);
+                    SetViewportOrgEx(dc, original.x, original.y, nullptr);
+                });
+            };
+            try {
+                Require(GetTickCount64() < modal->deadline, "Keyword modal sequence timed out");
+                if (modal->stage == 0 && config) {
+                    Require(Header_GetItemCount(ListView_GetHeader(GetDlgItem(config, 302))) == 7,
+                            "Keyword configuration should show seven native columns");
+                    capture(config, modal->dark ? L"keyword-config-dark.png" : L"keyword-config-light.png");
+                    modal->stage = 1;
+                    PostMessageW(config, WM_COMMAND, MAKEWPARAM(303, BN_CLICKED), 0);
+                } else if (modal->stage == 1 && rule) {
+                    Require(GetDlgItem(rule, 316) != nullptr, "Rule editor should show detection markers");
+                    SetDlgItemTextW(rule, 310, L"100BaseTX - RJ45");
+                    SetDlgItemTextW(rule, 311, L"run selftest");
+                    capture(rule, modal->dark ? L"keyword-rule-dark.png" : L"keyword-rule-light.png");
+                    modal->stage = 2;
+                    PostMessageW(rule, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), 0);
+                } else if (modal->stage == 2 && config && !rule) {
+                    Require(ListView_GetItemCount(GetDlgItem(config, 302)) >= 1, "Confirm adds the rule to the configuration draft");
+                    modal->stage = 3;
+                    PostMessageW(config, WM_CLOSE, 0, 0);
+                }
+            } catch (...) {
+                modal->error = std::current_exception();
+                if (rule) PostMessageW(rule, WM_CLOSE, 0, 0);
+                if (config) PostMessageW(config, WM_CLOSE, 0, 0);
+            }
+        });
+        Require(timer != 0, "Create keyword UI fixture timer");
+        for (const bool dark : {false, true}) {
+            step.stage = 0;
+            step.dark = dark;
+            step.deadline = GetTickCount64() + 5000;
+            main.darkMode_ = dark;
+            main.ApplyTheme();
+            ui_test::SaveUiEvidence(parent, dark ? L"keyword-power-dark.png" : L"keyword-power-light.png");
+            SendMessageW(pane, WM_COMMAND, MAKEWPARAM(138, BN_CLICKED), 0);
+            if (step.error) break;
+            if (step.stage != 3) break;
+        }
+        KillTimer(nullptr, timer);
+        modal = nullptr;
+        if (step.error) std::rethrow_exception(step.error);
+        Require(step.stage == 3 && step.dark, "Native keyword configuration and editor must open and close");
+        RemoveWindowSubclass(parent, FixtureParent, 9207);
+        std::cout << "[PASS] Native power keyword tables and both dialogs in light and dark themes\n";
+    }
     static void Run(HWND parent) {
         MainWindow main;
         main.measurePaint_ = true;
@@ -99,6 +425,7 @@ struct AiDeviceTestAccess {
             }
         } windowLifetime{parent};
         main.window_ = parent;
+        main.receiveWindow_.store(parent, std::memory_order_release);
         main.instance_ = GetModuleHandleW(nullptr);
         RECT size{0, 0, 1400, 850};
         AdjustWindowRectEx(&size, WS_OVERLAPPEDWINDOW, FALSE, 0);
@@ -143,12 +470,19 @@ struct AiDeviceTestAccess {
         main.HandleMessage(WM_EXITSIZEMOVE, 0, 0);
         Require(!main.windowResizing_, "Resize completion did not release deferred terminal reflow");
         rightActionsInside();
-        main.pendingMode_ = 3;
+        Require(!GetDlgItem(parent, 103), "Serial toolbar retained a separate Remote Serial button");
+        main.pendingMode_ = 1;
         const auto remote = CreateDialogParamW(main.instance_, MAKEINTRESOURCEW(IDD_CONNECTION), parent,
                                                MainWindow::ConnectionDialogProc, reinterpret_cast<LPARAM>(&main));
-        Require(remote != nullptr, "Remote connection dialog missing");
-        Require(MainWindow::ControlText(GetDlgItem(remote, IDC_PORT)) == L"7000",
-                "Remote discovery lost its hidden default service port");
+        Require(remote != nullptr && SendDlgItemMessageW(remote, IDC_SERIAL_LOCATION, CB_GETCURSEL, 0, 0) == 0,
+                "Serial connection dialog must default to Local");
+        SendDlgItemMessageW(remote, IDC_SERIAL_LOCATION, CB_SETCURSEL, 1, 0);
+        SendMessageW(remote, WM_COMMAND, MAKEWPARAM(IDC_SERIAL_LOCATION, CBN_SELCHANGE),
+                     reinterpret_cast<LPARAM>(GetDlgItem(remote, IDC_SERIAL_LOCATION)));
+        Require(main.pendingMode_ == 3 && !GetDlgItem(remote, 9010) &&
+                    !(GetWindowLongPtrW(GetDlgItem(remote, IDC_PORT), GWL_STYLE) & WS_VISIBLE) &&
+                    MainWindow::ControlText(GetDlgItem(remote, IDC_HOST)).empty(),
+                "Remote serial must show a blank IP field without a manual service port");
         RECT dialogBounds{};
         GetClientRect(remote, &dialogBounds);
         for (int id : {IDC_HOST, IDC_SERIAL_REFRESH, IDC_SERIAL, IDC_DIALOG_ERROR, IDCANCEL, IDOK}) {
@@ -166,11 +500,12 @@ struct AiDeviceTestAccess {
             if (_wcsicmp(className, L"ComboBox") == 0 && (GetWindowLongPtrW(child, GWL_STYLE) & WS_VISIBLE))
                 ++visibleSelectors;
         }
-        Require(visibleSelectors == 1, "Remote dialog must offer only the discovered SerialCtl port selector");
-        for (int id : {IDC_SERIAL}) {
+        Require(visibleSelectors == 2, "Remote dialog must show the location and discovered serial selectors");
+        const int compactHeight = MulDiv(28, Ui::Dpi, 96);
+        for (int id : {IDC_SERIAL_LOCATION, IDC_SERIAL}) {
             RECT field{};
             GetWindowRect(GetDlgItem(remote, id), &field);
-            Require(field.bottom - field.top == 28, "Remote dropdown must retain the 28 px field height");
+            Require(field.bottom - field.top == compactHeight, "Remote dropdown must retain the scaled 28 px field height");
         }
         RECT hostField{}, remoteRefresh{};
         auto hostFrame = reinterpret_cast<HWND>(GetPropW(GetDlgItem(remote, IDC_HOST), L"SerialCtl.FieldFrame"));
@@ -180,7 +515,7 @@ struct AiDeviceTestAccess {
         std::cout << "[REMOTE GEOMETRY] IP=" << hostField.left << ',' << hostField.top << ',' << hostField.right << ','
                   << hostField.bottom << " refresh=" << remoteRefresh.left << ',' << remoteRefresh.top << ','
                   << remoteRefresh.right << ',' << remoteRefresh.bottom << '\n';
-        Require(hostField.bottom - hostField.top == 28 && remoteRefresh.top == hostField.top &&
+        Require(hostField.bottom - hostField.top == compactHeight && remoteRefresh.top == hostField.top &&
                     remoteRefresh.bottom == hostField.bottom && remoteRefresh.left > hostField.right,
                 "Remote Refresh must align with IP field, never overlap the device dropdown");
         ShowWindow(remote, SW_SHOW);
@@ -193,8 +528,8 @@ struct AiDeviceTestAccess {
         main.ApplyTheme();
         {
             test::Wsa sockets;
-            test::Fixture gateway(18540, 18555);
-            main.discoveryExplicitPort_ = static_cast<std::uint16_t>(gateway.server.Port());
+            test::Fixture gateway(7000, 7015);
+            SetDlgItemTextW(remote, IDC_HOST, L"127.0.0.1");
             auto query = [&] {
                 main.DiscoverSharedSerialPorts(remote);
                 if (main.discoveryThread_.joinable()) main.discoveryThread_.join();
@@ -207,7 +542,8 @@ struct AiDeviceTestAccess {
                         SendDlgItemMessageW(remote, IDC_SERIAL, CB_GETCOUNT, 0, 0) == 2,
                     "Native remote dialog failed to discover the controlled SerialCtl COM3/COM5 service");
             std::wstring error;
-            Require(main.ReadConnectionDialog(remote, error) && main.pendingRemoteSerial_ == L"COM3",
+            Require(main.ReadConnectionDialog(remote, error) && main.pendingRemoteSerial_ == L"COM3" &&
+                        main.pendingPort_ == gateway.server.Port(),
                     "Native remote dialog did not pin the discovered SerialCtl port");
             gateway.server.Stop();
             query();
@@ -242,10 +578,10 @@ struct AiDeviceTestAccess {
                     "Serial Refresh must match final dropdown height");
             Require(selector.right - selector.left > refresh.right - refresh.left + 180,
                     "Hardware selector is still squeezed by Refresh");
-            for (const int id : {IDC_SERIAL, IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW}) {
+            for (const int id : {IDC_SERIAL_LOCATION, IDC_SERIAL, IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW}) {
                 RECT field{};
                 GetWindowRect(GetDlgItem(dialog, id), &field);
-                Require(field.bottom - field.top == 28, "Collapsed serial dropdown must be 28 px at test DPI");
+                Require(field.bottom - field.top == compactHeight, "Collapsed serial dropdown must be 28 px scaled to the test DPI");
                 MapWindowPoints(nullptr, dialog, reinterpret_cast<POINT *>(&field), 2);
                 Require(field.bottom <= bounds.bottom, "Serial field escapes resized dialog");
             }
@@ -323,18 +659,16 @@ struct AiDeviceTestAccess {
                 for(int changed:{IDC_PORT,IDC_HOST,IDC_USER}) {
                     SendMessageW(network,WM_APP+210,0,0); // Production deferred history-selection handler.
                     Require(MainWindow::ControlText(GetDlgItem(network,IDC_PASSWORD))==L"controlled-history-password"&&
-                            IsDlgButtonChecked(network,IDC_SSH_REMEMBER_PASSWORD)==BST_CHECKED,
+                            IsDlgButtonChecked(network,IDC_SSH_SAVE)==BST_CHECKED && !GetDlgItem(network,1031),
                             "SSH history did not refill actual Windows credential");
                     Require((GetWindowLongPtrW(GetDlgItem(network,IDC_PASSWORD),GWL_STYLE)&ES_PASSWORD)!=0,
                             "SSH history password must remain masked");
                     SetDlgItemTextW(network,changed,changed==IDC_PORT?L"2223":changed==IDC_HOST?L"other.invalid":L"other-user");
-                    Require(MainWindow::ControlText(GetDlgItem(network,IDC_PASSWORD)).empty()&&
-                            IsDlgButtonChecked(network,IDC_SSH_REMEMBER_PASSWORD)==BST_UNCHECKED,
+                    Require(MainWindow::ControlText(GetDlgItem(network,IDC_PASSWORD)).empty(),
                             "SSH password was carried across a different host/port/user");
                 }
                 main.loadedSshCredentialTarget_.clear();
                 CheckDlgButton(network,IDC_SSH_SAVE,BST_UNCHECKED);
-                CheckDlgButton(network,IDC_SSH_REMEMBER_PASSWORD,BST_UNCHECKED);
                 SetDlgItemTextW(network,IDC_HOST,L"127.0.0.1");
                 SetDlgItemTextW(network,IDC_PORT,L"22");
                 SetDlgItemTextW(network,IDC_USER,L"fixture");
@@ -358,11 +692,11 @@ struct AiDeviceTestAccess {
         auto render = [&](HWND button, UINT state, bool power) {
             RECT rect{};
             GetClientRect(button, &rect);
-            // Inactive power pages have not received layout yet. Exercise their
-            // real painter at a normal selector size; layout is checked separately.
-            if (power && (rect.right < 32 || rect.bottom < 28))
-                rect = {0, 0, 128, 32};
             HDC screen = GetDC(button), dc = CreateCompatibleDC(screen);
+            const int dpi = GetDeviceCaps(screen, LOGPIXELSX);
+            // Paint a known-size selector so the palette sample stays clear of
+            // centered text at different system DPIs. Layout is checked separately.
+            if (power) rect = {0, 0, MulDiv(128, dpi, 96), MulDiv(32, dpi, 96)};
             HBITMAP bitmap = CreateCompatibleBitmap(screen, rect.right, rect.bottom);
             auto old = SelectObject(dc, bitmap);
             DRAWITEMSTRUCT item{};
@@ -376,7 +710,7 @@ struct AiDeviceTestAccess {
                 SendMessageW(main.powerPane_.Handle(), WM_DRAWITEM, item.CtlID, reinterpret_cast<LPARAM>(&item));
             else
                 main.DrawOwnerItem(item);
-            const auto pixel = GetPixel(dc, 8, rect.bottom / 2);
+            const auto pixel = GetPixel(dc, power ? MulDiv(8, dpi, 96) : 8, rect.bottom / 2);
             SelectObject(dc, old);
             DeleteObject(bitmap);
             DeleteDC(dc);
@@ -458,11 +792,35 @@ struct AiDeviceTestAccess {
         main.sessions_[3]->udpRaw = false;
         const auto sessions = main.AiDeviceRequest("sessions", Json::object());
         Require(sessions.size() == 5, "AI target list omitted an open terminal type");
+        // Deliver background parser completions and native paint through the same message loop.
+        unsigned dispatched = 0, paints = 0;
+        const auto messageOpportunity = [&] {
+            MSG next{};
+            if (PeekMessageW(&next, nullptr, 0, 0, PM_REMOVE)) {
+                ++dispatched;
+                if (next.message == WM_PAINT) ++paints;
+                TranslateMessage(&next);
+                DispatchMessageW(&next);
+            } else {
+                MsgWaitForMultipleObjects(0, nullptr, FALSE, 1, QS_ALLINPUT);
+            }
+        };
+        const auto pumpUntil = [&](const auto& ready, DWORD timeout) {
+            const auto deadline = GetTickCount64() + timeout;
+            while (!ready() && GetTickCount64() < deadline) messageOpportunity();
+            return ready();
+        };
+        const auto appendAndWait = [&](MainWindow::SessionState& session, const std::string& output) {
+            const auto cursor = session.aiCursor;
+            main.AppendData(session.id, Bytes(output.begin(), output.end()), CP_UTF8, 0);
+            Require(pumpUntil([&] { return session.aiCursor > cursor; }, 1000),
+                    "Terminal parser completion did not reach AI observation");
+        };
         for (int mode = 0; mode <= 4; ++mode) {
             const auto id = "session-" + std::to_string(mode + 1);
             Require(sessions[mode]["kind"] == ai::TerminalKind(mode), "Wrong terminal kind");
             const std::string output = "ACTUAL_OUTPUT_" + std::to_string(mode) + "\n";
-            main.AppendData(mode + 1, Bytes(output.begin(), output.end()), CP_UTF8, 0);
+            appendAndWait(*main.sessions_[mode], output);
             const auto read = main.AiDeviceRequest("read", {{"sessionId", id}, {"lines", 1}});
             Require(read.at("text") == output && read.at("cursor") == 1, "Actual terminal receive was not retained for AI");
             Require(read.at("kind") == ai::TerminalKind(mode), "Read lost terminal kind");
@@ -557,6 +915,31 @@ struct AiDeviceTestAccess {
             std::wstring manyRows;for(int i=0;i<80;++i)manyRows+=L"echo row-"+std::to_wstring(i)+L"\r\n";
             main.notebook_.SetText(manyRows);main.notebook_.SelectLine(63);
             Require(main.notebook_.SelectedCommands()==std::vector<std::wstring>{L"echo row-63"},"Native paragraph offsets must map to the correct complete row after many CRLF lines");
+            // Wheel input must move the real RichEdit viewport even though the
+            // notebook deliberately draws its own thin scrollbar (no WS_VSCROLL).
+            main.notebook_.Selection(0, 0);
+            const auto documentBeforeWheel = main.notebook_.Text();
+            POINT wheelTop{0, 0};
+            SendMessageW(main.notebook_.Editor(), EM_SETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&wheelTop));
+            const auto firstVisible = SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0);
+            SendMessageW(main.notebook_.Editor(), WM_MOUSEWHEEL,
+                         MAKEWPARAM(0, static_cast<WORD>(-WHEEL_DELTA)), 0);
+            const auto afterBodyWheel = SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0);
+            Require(afterBodyWheel > firstVisible, "Notebook body mouse wheel must scroll the RichEdit viewport down");
+            SendMessageW(main.notebook_.Handle(), WM_MOUSEWHEEL,
+                         MAKEWPARAM(0, static_cast<WORD>(-WHEEL_DELTA)), 0);
+            const auto afterGutterWheel = SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0);
+            Require(afterGutterWheel > afterBodyWheel, "Notebook gutter mouse wheel must scroll the same viewport");
+            SendMessageW(main.notebook_.Editor(), WM_MOUSEWHEEL,
+                         MAKEWPARAM(0, static_cast<WORD>(WHEEL_DELTA / 2)), 0);
+            Require(SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0) == afterGutterWheel,
+                    "Half-notch wheel delta must be accumulated, not discarded or double-scrolled");
+            SendMessageW(main.notebook_.Editor(), WM_MOUSEWHEEL,
+                         MAKEWPARAM(0, static_cast<WORD>(WHEEL_DELTA / 2)), 0);
+            Require(SendMessageW(main.notebook_.Editor(), EM_GETFIRSTVISIBLELINE, 0, 0) < afterGutterWheel,
+                    "Two half-notch wheel deltas must scroll back up");
+            Require(main.notebook_.Text() == documentBeforeWheel && transports[4]->writes == stoppedWrites,
+                    "Scrolling the notebook must not alter the document or submit commands");
             main.notebook_.SetText(std::wstring(300,L'A')+L"\r\necho end");
             Require(SendMessageW(main.notebook_.Editor(),EM_GETLINECOUNT,0,0)==2,"Long notebook commands must not soft-wrap");
             main.notebook_.Selection(200,200);SendMessageW(main.notebook_.Editor(),EM_SCROLLCARET,0,0);
@@ -701,7 +1084,7 @@ struct AiDeviceTestAccess {
         Require(main.aiVisible_ && main.activeSession_ == main.sessions_[4].get(),
             "Changing AI terminal target failed to bind actual CMD session");
         const std::string live = "LIVE_MONITOR_EVIDENCE\n";
-        main.AppendData(5, Bytes(live.begin(), live.end()), CP_UTF8, 0);
+        appendAndWait(*main.sessions_[4], live);
         Require(main.AiDeviceRequest("read", {{"sessionId", "session-5"}, {"lines", 1}})["text"] == live,
             "Monitor receive did not share the AI device data source");
         main.aiPane_.SelectTarget(""); main.SyncAiTerminal();
@@ -736,30 +1119,76 @@ struct AiDeviceTestAccess {
         const auto point = [&](int column, int line) {
             return MAKELPARAM(left + column * cell + cell / 2, top + line * row + row / 2);
         };
+        const auto waitForClipboardIdle = [&] {
+            // Give clipboard listeners time to consume the previous copy before the next gesture.
+            const auto deadline = GetTickCount64() + 500;
+            auto quietSince = GetTickCount64();
+            auto sequence = GetClipboardSequenceNumber();
+            while (GetTickCount64() < deadline) {
+                const auto now = GetTickCount64();
+                const auto current = GetClipboardSequenceNumber();
+                if (GetOpenClipboardWindow() || current != sequence) {
+                    quietSince = now;
+                    sequence = current;
+                } else if (now - quietSince >= 50) {
+                    return;
+                }
+                Sleep(1);
+            }
+            Require(false, "Clipboard stayed busy before the terminal selection gesture");
+        };
         const auto copied = [&] {
-            Require(OpenClipboard(main.terminal_) != FALSE, "Cannot inspect terminal release clipboard");
+            const auto deadline = GetTickCount64() + 100;
+            bool opened = OpenClipboard(main.terminal_) != FALSE;
+            if (!opened) {
+                const auto error = GetLastError();
+                const auto blocker = GetOpenClipboardWindow();
+                do {
+                    Sleep(1);
+                    opened = OpenClipboard(main.terminal_) != FALSE;
+                } while (!opened && GetTickCount64() < deadline);
+                std::cerr << "Clipboard observation contention: error=" << error << " blocker=" << blocker
+                          << " opened=" << opened << '\n';
+            }
+            Require(opened, "Cannot inspect terminal release clipboard");
+            const auto owner = GetClipboardOwner();
             const auto data = GetClipboardData(CF_UNICODETEXT);
             const auto text = data ? static_cast<const wchar_t*>(GlobalLock(data)) : nullptr;
             const std::wstring value = text ? text : L"";
             if (text) GlobalUnlock(data);
             CloseClipboard();
+            Require(owner == main.terminal_, "Clipboard was not written by the terminal under test");
             return value;
         };
         for (const bool finalMoveDelivered : {false, true}) {
+            waitForClipboardIdle();
+            const auto beforeCopy = GetClipboardSequenceNumber();
             SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(0, 0));
             if (finalMoveDelivered)
                 SendMessageW(main.terminal_, WM_MOUSEMOVE, MK_LBUTTON, point(7, 1));
             SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(8, 1));
+            Require(GetClipboardSequenceNumber() != beforeCopy, "Terminal selection release did not write the clipboard");
             Require(main.TerminalSelectionText(false) == L"COPY_HEAD  \r\nHARD_LINE" &&
                         copied() == L"COPY_HEAD  \r\nHARD_LINE",
                     "Terminal mouse release omitted its final character after a coalesced move");
         }
+        waitForClipboardIdle();
+        const auto beforeReverse = GetClipboardSequenceNumber();
         SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(8, 1));
         SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(0, 0));
+        if (GetClipboardSequenceNumber() == beforeReverse) {
+            std::cerr << "Reverse selection clipboard state: owner=" << GetClipboardOwner()
+                      << " openBy=" << GetOpenClipboardWindow()
+                      << " selectionLength=" << main.TerminalSelectionText(false).size()
+                      << " status=" << WideToMultiByte(main.statusText_, CP_UTF8) << '\n';
+        }
+        Require(GetClipboardSequenceNumber() != beforeReverse, "Reverse terminal selection did not write the clipboard");
         Require(copied() == L"COPY_HEAD  \r\nHARD_LINE", "Reverse terminal release lost hard line breaks");
+        const auto beforeClick = GetClipboardSequenceNumber();
         SendMessageW(main.terminal_, WM_LBUTTONDOWN, MK_LBUTTON, point(0, 0));
         SendMessageW(main.terminal_, WM_LBUTTONUP, 0, point(0, 0));
-        Require(copied() == L"COPY_HEAD  \r\nHARD_LINE", "Ordinary click replaced the selection clipboard");
+        Require(GetClipboardSequenceNumber() == beforeClick && copied() == L"COPY_HEAD  \r\nHARD_LINE",
+                "Ordinary click replaced the selection clipboard");
         main.ClearTerminalSelection();
         const auto before = transports[4]->sent;
         Require(main.AiDeviceRequest("command", {{"sessionId", "session-5"}, {"command", "a\nb"}}).contains("error"), "Multiline command bypassed validation");
@@ -807,11 +1236,33 @@ struct AiDeviceTestAccess {
         Require(channels[0]["output"] == true && channels[1]["output"] == false && channels[2]["output"] == true, "Power affected an unchecked channel");
         SendMessageW(PowerControl(main.powerPane_.Handle(), 20), BM_SETCHECK, BST_UNCHECKED, 0);
         Require(main.AiDeviceRequest("power.output", args).contains("error"), "Changed channel selection was silently redirected");
+        Require(main.McpExecute("power.output", {{"enabled", true}, {"channels", Json::array({1,3})}}).contains("error"),
+                "MCP must reject a changed GUI selection instead of silently substituting channels");
         SendMessageW(PowerControl(main.powerPane_.Handle(), 20), BM_SETCHECK, BST_CHECKED, 0);
         args["enabled"] = false; args["requestId"] = "ai-device-fixture-off";
         Require(Wait(main.powerService_, main.AiDeviceRequest("power.output", args))["state"] == "completed", "Power OFF failed");
         Require(main.powerService_.State()["channels"][0]["output"] == false && main.powerService_.State()["channels"][2]["output"] == false, "Power OFF readback incorrect");
         Require(main.AiDeviceRequest("power.parameters", {{"voltage", 30}}).contains("error"), "AI gained unrequested parameter operation");
+        {
+            main.mcpStopping_.store(false);
+            auto pending = std::async(std::launch::async, [&] {
+                return main.DispatchMcpToUi("session.list", Json::object(), true);
+            });
+            MSG queued{};
+            const auto deadline = GetTickCount64() + 2000;
+            while (!PeekMessageW(&queued, parent, WM_APP + 26, WM_APP + 26, PM_NOREMOVE) && GetTickCount64() < deadline) Sleep(1);
+            Require(queued.message == WM_APP + 26, "MCP worker failed to queue its UI request");
+            const auto started = GetTickCount64();
+            main.StopEmbeddedMcpServer();
+            Require(pending.wait_for(std::chrono::milliseconds(500)) == std::future_status::ready,
+                    "Stopping MCP while UI request pending deadlocked the worker");
+            Require(pending.get().contains("error"), "Canceled MCP request reported success");
+            Require(GetTickCount64() - started < 500, "MCP stop waited for UI dispatch timeout");
+            while (PeekMessageW(&queued, parent, WM_APP + 26, WM_APP + 26, PM_REMOVE)) DispatchMessageW(&queued);
+            main.mcpStopping_.store(false);
+            std::cout << "PASS: pending MCP UI dispatch cancels without blocking server stop\n";
+        }
+
         {
             main.SwitchSession(1, MainWindow::SessionFocus::Preserve);
             main.LayoutControls(viewport.right, viewport.bottom);
@@ -823,14 +1274,8 @@ struct AiDeviceTestAccess {
             RedrawWindow(parent, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
             // Exercise the application's ordinary message-loop dispatch, which
             // also delivers RDW_INTERNALPAINT without an invalid client region.
-            unsigned dispatched = 0, paints = 0;
-            const auto paintOpportunity = [&] {
-                MSG next{};
-                if (PeekMessageW(&next, nullptr, 0, 0, PM_REMOVE)) {
-                    ++dispatched; if (next.message == WM_PAINT) ++paints;
-                    TranslateMessage(&next); DispatchMessageW(&next);
-                }
-            };
+            dispatched = 0;
+            paints = 0;
             Json samples = Json::array();
             for (int sample = 0; sample < 16; ++sample) {
                 // Hold the REAL gateway publication lock: sustained device
@@ -851,16 +1296,18 @@ struct AiDeviceTestAccess {
                     MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_POSTMESSAGE);
                 Require(posted, "Local serial display waited for the gateway lock");
                 main.HandleMessage(notification.message, notification.wParam, notification.lParam);
+                pumpUntil([&] {
+                    return reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == sample + 1;
+                }, 1000);
                 if (reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) != sample + 1) {
                     RECT client{}; GetClientRect(main.terminal_, &client);
                     RECT clip{}; HDC surface = GetDC(main.terminal_);
                     const int region = GetClipBox(surface, &clip); ReleaseDC(main.terminal_, surface);
-                    std::lock_guard<std::mutex> lock(main.receivedMutex_);
                     std::cerr << "FAILED serial paint state: sample=" << sample
                               << " painted=" << reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe"))
                               << " decoded=" << main.activeSession_->paintProbe
                               << " pendingArrival=" << main.activeSession_->pendingProbeArrival
-                              << " active=" << main.activeSession_->id << " queued=" << main.received_.size()
+                              << " active=" << main.activeSession_->id << " queued=" << main.receiveDispatcher_.PendingItemCount()
                               << " visible=" << IsWindowVisible(main.terminal_) << " iconic=" << IsIconic(parent)
                               << " client=" << client.right << 'x' << client.bottom
                               << " clip=" << region << ':' << clip.left << ',' << clip.top << ',' << clip.right << ',' << clip.bottom
@@ -872,29 +1319,35 @@ struct AiDeviceTestAccess {
                 gate.unlock();
             }
             for (int i = 0; i < 32; ++i) main.QueueReceived({3, Bytes(16384, 'b'), CP_UTF8, {}, 0});
-            main.receiveFairness_ = 0;
+            {
+                std::lock_guard<std::mutex> lock(main.receiveDispatcher_.mutex_);
+                main.receiveDispatcher_.fairness_ = 0;
+            }
             LARGE_INTEGER arrival{}; QueryPerformanceCounter(&arrival);
             const std::string visibleMarker = "SERIALCTL_PAINT_200";
             main.QueueReceived({2, Bytes(visibleMarker.begin(), visibleMarker.end()), CP_UTF8, {}, arrival.QuadPart});
             main.HandleMessage(WM_APP + 1, 0, 0);
-            Require(reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == 201,
+            Require(pumpUntil([&] {
+                        return reinterpret_cast<INT_PTR>(GetPropW(main.terminal_, L"SerialCtl.PaintProbe")) == 201;
+                    }, 1000),
                     "Background terminal backlog buried the visible serial echo");
             auto backlogDeadline = GetTickCount64() + 5000;
-            while (!main.received_.empty() && GetTickCount64() < backlogDeadline) paintOpportunity();
-            if (!main.received_.empty())
-                std::cerr << "FAILED receive continuation state: remaining=" << main.received_.size()
-                          << " continuation=" << main.receiveContinuation_ << " posted=" << main.receivePosted_
+            while (main.receiveDispatcher_.PendingItemCount() && GetTickCount64() < backlogDeadline) messageOpportunity();
+            if (const auto pending = main.receiveDispatcher_.PendingItemCount())
+                std::cerr << "FAILED receive continuation state: remaining=" << pending
+                          << " continuation=" << main.receiveContinuation_
+                          << " notificationFailures=" << main.receiveDispatcher_.Stats().notificationFailures
                           << " dispatched=" << dispatched << " paints=" << paints
                           << " update=" << GetUpdateRect(parent, nullptr, FALSE)
                           << " queueStatus=" << GetQueueStatus(QS_PAINT | QS_POSTMESSAGE) << std::endl;
-            Require(main.received_.empty(), "Visible-session priority starved background terminal output");
+            Require(!main.receiveDispatcher_.PendingItemCount(), "Visible-session priority starved background terminal output");
             main.activeSession_->terminal.Clear();
             for (int i = 0; i < 64; ++i) main.QueueReceived({2, Bytes(16384, 'x'), CP_UTF8, {}, 0});
             main.HandleMessage(WM_APP + 1, 0, 0);
-            Require(main.received_.empty() || main.receiveContinuation_, "Visible serial backlog reintroduced a receive timer");
+            Require(!main.receiveDispatcher_.PendingItemCount() || main.receiveContinuation_, "Visible serial backlog reintroduced a receive timer");
             const auto deadline = GetTickCount64() + 5000;
-            while (!main.received_.empty() && GetTickCount64() < deadline) paintOpportunity();
-            Require(main.received_.empty(), "Paint-driven serial receive continuation stopped making progress");
+            while (main.receiveDispatcher_.PendingItemCount() && GetTickCount64() < deadline) messageOpportunity();
+            Require(!main.receiveDispatcher_.PendingItemCount(), "Paint-driven serial receive continuation stopped making progress");
             const Json evidence{{"callbackToPaintUsec", samples}, {"samples", 16}, {"gatewayLockHeldDuringPaint", true},
                                 {"visibleBacklogScheduling", "paint opportunities without a receive timer"},
                                 {"scope", "actual Win32 terminal painter and receive handoff with controlled serial bytes; no UART/driver latency claim"}};
@@ -913,24 +1366,34 @@ struct AiDeviceTestAccess {
             const std::string live = "LIVE_AFTER_HISTORY";
             main.QueueReceived({99, Bytes(live.begin(), live.end()), CP_UTF8, {}, 0});
             main.CompleteConnection(true, L"");
-            Require(!main.received_.empty() && main.activeSession_->terminal.HistorySize() == 0,
-                    "Connection completion synchronously parsed the entire startup history");
-            Require(main.received_.front().data.front() == 'y' && main.received_.back().data == Bytes(live.begin(), live.end()),
-                    "Startup history was reordered behind newer live output");
+            {
+                std::lock_guard<std::mutex> lock(main.receiveDispatcher_.mutex_);
+                const auto queued = main.receiveDispatcher_.received_.find(99);
+                Require(queued != main.receiveDispatcher_.received_.end() && !queued->second.empty() &&
+                            main.activeSession_->terminal.HistorySize() == 0,
+                        "Connection completion synchronously parsed the entire startup history");
+                Require(queued->second.front().data.front() == 'y' &&
+                            queued->second.back().data == Bytes(live.begin(), live.end()),
+                        "Startup history was reordered behind newer live output");
+            }
             const auto replayDeadline = GetTickCount64() + 5000;
             main.HandleMessage(WM_APP + 1, 0, 0);
-            while (!main.received_.empty() && GetTickCount64() < replayDeadline) paintOpportunity();
-            if (!main.received_.empty() || main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) {
+            while ((main.receiveDispatcher_.PendingItemCount() || main.terminalParser_.Stats().pendingBytes ||
+                    main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) &&
+                   GetTickCount64() < replayDeadline)
+                messageOpportunity();
+            if (main.receiveDispatcher_.PendingItemCount() || main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") == std::wstring::npos) {
                 const auto text = main.activeSession_->terminal.PlainText(false);
-                std::cerr << "FAILED startup replay state: remaining=" << main.received_.size()
-                          << " continuation=" << main.receiveContinuation_ << " posted=" << main.receivePosted_
+                std::cerr << "FAILED startup replay state: remaining=" << main.receiveDispatcher_.PendingItemCount()
+                          << " continuation=" << main.receiveContinuation_
+                          << " notificationFailures=" << main.receiveDispatcher_.Stats().notificationFailures
                           << " update=" << GetUpdateRect(parent, nullptr, FALSE)
                           << " active=" << main.activeSession_->id << " textLength=" << text.size()
                           << " elapsed=" << GetTickCount64() - (replayDeadline - 5000)
                           << " tail=" << WideToMultiByte(text.substr(text.size() > 64 ? text.size() - 64 : 0), CP_UTF8)
                           << std::endl;
             }
-            Require(main.received_.empty() && main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") != std::wstring::npos,
+            Require(!main.receiveDispatcher_.PendingItemCount() && main.activeSession_->terminal.PlainText(false).find(L"LIVE_AFTER_HISTORY") != std::wstring::npos,
                     "Sliced startup replay lost newer live data");
             SetWindowPos(parent, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         }
@@ -938,6 +1401,84 @@ struct AiDeviceTestAccess {
         main.aiPane_.Shutdown();
         DestroyWindow(parent);
         for (auto font : {main.uiFont_, main.smallFont_, main.titleFont_, main.terminalFont_}) DeleteObject(font);
+    }
+    static void RunPowerDisconnect() {
+        MainWindow main;
+        main.instance_ = GetModuleHandleW(nullptr);
+        main.window_ = CreateWindowExW(0, L"STATIC", L"Power disconnect regression", WS_OVERLAPPEDWINDOW,
+                                       0, 0, 1200, 800, nullptr, nullptr, main.instance_, nullptr);
+        Require(main.window_ != nullptr, "Create native power disconnect window");
+        Require(SetWindowSubclass(main.window_, FixtureParent, 9207, reinterpret_cast<DWORD_PTR>(&main)) != FALSE,
+                "Install native power fixture window procedure");
+        main.CreateControls();
+        ShowWindow(main.window_, SW_SHOWNOACTIVATE);
+        auto &power = main.powerService_;
+        auto until = [&](auto ready, const char *why) {
+            const auto deadline = GetTickCount64() + 5000;
+            while (!ready() && GetTickCount64() < deadline) {
+                MSG message{};
+                while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                    if (message.message == WM_QUIT) continue;
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+                Sleep(1);
+            }
+            Require(ready(), why);
+        };
+        main.ShowPowerPage();
+        Require(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
+                "Connect the controlled power backend");
+        Require(Wait(power, power.Submit({{"type", "schedule"}, {"channels", {1}}, {"startMs", 60000}, {"durationMs", 200}}))["state"] == "completed",
+                "Power task owns CH1");
+        {
+            std::unique_lock<std::mutex> lock(power.mutex_);
+            power.testPauseRequested_ = true;
+            power.wake_.notify_all();
+            Require(power.wake_.wait_for(lock, std::chrono::seconds(2), [&] { return power.testWorkerPaused_; }),
+                    "Pause controlled power backend for fault injection");
+        }
+        power.FailNextOutputReadbackForTest();
+        main.HandleMessage(WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(main.disconnectAllButton_), BN_CLICKED),
+                           reinterpret_cast<LPARAM>(main.disconnectAllButton_));
+        const auto actionId = main.powerDisconnectActionId_;
+        {
+            std::lock_guard<std::mutex> lock(power.mutex_);
+            power.testPauseRequested_ = false;
+            power.wake_.notify_all();
+        }
+        Require(!actionId.empty() && main.disconnectAllPending_, "Main window tracks the submitted disconnect action");
+        until([&] { return main.powerDisconnectActionId_.empty() && !main.disconnectAllPending_; },
+              "Power pane must notify the main window when the actual disconnect action finishes");
+        const auto action = power.Action(actionId);
+        Require(action["state"] == "failed" && action["unconfirmedChannels"] == Json::array({1}) &&
+                main.powerPageOpened_ && MainWindow::ControlText(main.disconnectAllButton_) == L"全部关闭",
+                "Failed OFF releases transport and retains the disconnected card");
+        const auto warning = MainWindow::ControlText(main.status_);
+        Require(warning.find(L"输出未知 CH1") != std::wstring::npos, "Main window displays the unknown channel");
+        ui_test::SaveUiEvidence(main.window_, L"power-disconnect-card-warning.png");
+        main.HandleMessage(WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(main.disconnectAllButton_), BN_CLICKED),
+                           reinterpret_cast<LPARAM>(main.disconnectAllButton_));
+        Require(!main.powerPageOpened_ && MainWindow::ControlText(main.status_).find(L"输出未知 CH1") != std::wstring::npos,
+                "Closing cards must leave the warning visible beside the ordinary status");
+        main.AppendStatus(L"", false);
+        Require(MainWindow::ControlText(main.status_).find(L"输出未知 CH1") != std::wstring::npos,
+                "Ordinary status timeout cannot remove the power warning");
+        ui_test::SaveUiEvidence(main.window_, L"power-disconnect-after-close.png");
+        main.ShowPowerPage();
+        SendMessageW(main.powerPane_.Handle(), WM_COMMAND, 93, 0);
+        const auto record = power.State()["records"].back();
+        Require(main.powerPageOpened_ && record["operation"] == "disconnect" &&
+                record["unconfirmedChannels"] == Json::array({1}) && record["offResults"][0]["state"] == "unknown",
+                "Reopened power pane retains the failure record and unknown channel");
+        for (int step = 0; step < 12; ++step)
+            SendMessageW(main.powerPane_.Handle(), WM_MOUSEWHEEL, MAKEWPARAM(0, -WHEEL_DELTA), 0);
+        ui_test::SaveUiEvidence(main.window_, L"power-disconnect-reopened-history.png");
+        Require(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
+                "Reconnect obtains fresh power readings");
+        until([&] { return main.powerAlert_.empty(); }, "Fresh readback clears the main window warning");
+        std::cout << "[PASS] Power disconnect action " << action.dump() << " remains visible after closing and reopening the card; fresh readback clears warning\n";
+        main.RequestShutdown();main.WaitForShutdown();main.FinishShutdown();
     }
     static void RunConnections() {
         MainWindow main;
@@ -1134,12 +1675,26 @@ struct AiDeviceTestAccess {
     }
 };
 }
-int main() {
+int main(int argc, char **argv) {
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES}; InitCommonControlsEx(&controls);
     Gdiplus::GdiplusStartupInput startup; ULONG_PTR token{}; Gdiplus::GdiplusStartup(&token, &startup, nullptr);
     HWND parent = CreateWindowExW(0,L"STATIC",L"AI device callback fixture",WS_OVERLAPPEDWINDOW,0,0,1000,700,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     int result = 0;
-    try { serialctl::AiDeviceTestAccess::Run(parent); serialctl::AiDeviceTestAccess::RunConnections(); serialctl::AiDeviceTestAccess::RunShutdown(); std::cout << "[PASS] Actual desktop AI callback and asynchronous connection/shutdown lifecycle; controlled transports, no physical devices\n"; }
+    try {
+        const std::string_view mode = argc < 2 ? "" : argv[1];
+        if (mode == "--transfer-layout") serialctl::AiDeviceTestAccess::RunTransferPaneLayout(parent);
+        else if (mode == "--ssh-save-layout") serialctl::AiDeviceTestAccess::RunSshSaveLayout(parent);
+        else if (mode == "--serial-card-title") serialctl::AiDeviceTestAccess::RunSerialCardTitle();
+        else if (mode == "--terminal-register") serialctl::AiDeviceTestAccess::RunTerminalRegisterUi(parent);
+        else if (mode == "--power-keywords") serialctl::AiDeviceTestAccess::RunPowerKeywordUi(parent);
+        else serialctl::AiDeviceTestAccess::RunPowerDisconnect();
+        if (mode.empty()) {
+            serialctl::AiDeviceTestAccess::Run(parent);
+            serialctl::AiDeviceTestAccess::RunConnections();
+            serialctl::AiDeviceTestAccess::RunShutdown();
+            std::cout << "[PASS] Actual desktop AI callback and asynchronous connection/shutdown lifecycle; controlled transports, no physical devices\n";
+        }
+    }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; result = 1; }
     DestroyWindow(parent); Gdiplus::GdiplusShutdown(token); return result;
 }

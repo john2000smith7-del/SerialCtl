@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <cstdint>
 namespace serialctl {
 class PaintBuffer {
 public:
@@ -17,8 +18,10 @@ public:
         previous_ = SelectObject(dc_, bitmap_);
         if (!previous_ || previous_ == HGDI_ERROR) { previous_ = nullptr; Reset(); return nullptr; }
         width_ = width; height_ = height; dpi_ = dpi;
+        ++generation_;
         return dc_;
     }
+    std::uint64_t Generation() const { return generation_; }
 private:
     void Reset() {
         if (previous_) SelectObject(dc_, previous_);
@@ -30,5 +33,6 @@ private:
     HBITMAP bitmap_ = nullptr;
     HGDIOBJ previous_ = nullptr;
     int width_ = 0, height_ = 0, dpi_ = 0;
+    std::uint64_t generation_ = 0;
 };
 } // namespace serialctl
