@@ -316,25 +316,11 @@ bool McpService::StopScmService(std::wstring& error) {
     return true;
 }
 
-bool McpService::SetUserAutoStart(bool enable, const std::wstring& exePath) {
+void McpService::RemoveLegacyUserAutoStart() {
     HKEY key = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, kAutoStartRunKey, 0, KEY_READ | KEY_WRITE, &key) != ERROR_SUCCESS) {
-        return false;
-    }
-
-    bool success = false;
-    if (enable) {
-        std::wstring command = L"\"" + exePath + L"\" --mcp-agent";
-        DWORD size = static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t));
-        success = (RegSetValueExW(key, kAutoStartValueName, 0, REG_SZ,
-                                  reinterpret_cast<const BYTE*>(command.c_str()), size) == ERROR_SUCCESS);
-    } else {
-        RegDeleteValueW(key, kAutoStartValueName);
-        success = true;
-    }
-
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kAutoStartRunKey, 0, KEY_SET_VALUE, &key) != ERROR_SUCCESS) return;
+    RegDeleteValueW(key, kAutoStartValueName);
     RegCloseKey(key);
-    return success;
 }
 
 bool McpService::IsUserAutoStartEnabled() {
@@ -767,6 +753,14 @@ void McpService::LoadTftpConfig() {
                 tftpServer_.PublishLocal(WideToUtf8(nameBuf), pathBuf, true, err);
             }
         }
+    }
+    wchar_t rootModeBuf[32]{};
+    GetPrivateProfileStringW(L"Tftp", L"RootMode", L"local", rootModeBuf, 32, iniPath.c_str());
+    wchar_t localRootBuf[2048]{};
+    GetPrivateProfileStringW(L"Tftp", L"LocalRootDir", L"", localRootBuf, 2048, iniPath.c_str());
+    if (std::wstring(rootModeBuf) != L"remote" && localRootBuf[0] != L'\0') {
+        std::wstring err;
+        tftpServer_.SetLocalRoot(localRootBuf, err);
     }
 
     if (enabled && !IsGuiRunning() && !tftpServer_.IsListening()) {

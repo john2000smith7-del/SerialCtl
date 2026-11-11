@@ -3,6 +3,7 @@
 #include "PerformanceMetrics.h"
 #include <array>
 #include <chrono>
+#include <cwchar>
 #include <windowsx.h>
 #include <algorithm>
 namespace serialctl {
@@ -54,7 +55,81 @@ void DrawTextSimple(HDC dc, const std::wstring& text, RECT rect, COLORREF color,
     SelectObject(dc, oldFont);
 }
 void DrawRoundedBox(HDC dc, const RECT& rect, int radius, COLORREF fill, COLORREF border) { UiBox(dc, rect, fill, border, radius); }
+
+void DrawRegisterPreview(HDC dc, RECT client, const RECT& selection, std::uint32_t value,
+                         const TerminalViewport::Options& options) {
+    const int pad = Ui::Scale(10), gap = Ui::Scale(6);
+    const int cellWidth = Ui::Scale(20), groupPad = Ui::Scale(3);
+    const int groupWidth = 8 * cellWidth + 2 * groupPad;
+    const int groupHeight = Ui::Scale(39), headerHeight = Ui::Scale(24);
+    client.left += gap;
+    client.right -= Ui::OverlayScrollLaneWidth + gap;
+    client.top += gap;
+    client.bottom -= gap;
+    const int columns = client.right - client.left >= 2 * (pad + groupWidth) + gap ? 2 : 1;
+    const int rows = 4 / columns;
+    const int width = 2 * pad + columns * groupWidth + (columns - 1) * gap;
+    const int height = pad + headerHeight + rows * groupHeight + (rows - 1) * gap;
+    if (width > client.right - client.left || height > client.bottom - client.top) return;
+
+    LONG left = std::clamp(selection.left, client.left, client.right - width);
+    LONG top = selection.bottom + gap;
+    if (top + height > client.bottom) {
+        top = selection.top - gap - height;
+        if (top < client.top) {
+            if (selection.right + gap + width <= client.right) left = selection.right + gap;
+            else if (selection.left - gap - width >= client.left) left = selection.left - gap - width;
+            else return;
+            top = std::clamp(selection.top, client.top, client.bottom - height);
+        }
+    }
+    const RECT card{left, top, left + width, top + height};
+    const auto colors = UiTheme(options.dark);
+    UiBox(dc, card, colors.surface, colors.border, Ui::CardRadius);
+    wchar_t hex[11]{};
+    swprintf_s(hex, L"0x%08X", static_cast<unsigned>(value));
+    const RECT title{card.left + pad, card.top, card.right - pad, card.top + headerHeight};
+    DrawTextSimple(dc, hex, title, colors.text, options.smallFont, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextSimple(dc, L"32 位", title, colors.muted, options.smallFont, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    for (int group = 0; group < 4; ++group) {
+        const LONG x = card.left + pad + (group % columns) * (groupWidth + gap);
+        const LONG y = card.top + headerHeight + (group / columns) * (groupHeight + gap);
+        UiBox(dc, {x, y, x + groupWidth, y + groupHeight}, colors.raised, colors.raised, Ui::Scale(6));
+        for (int offset = 0; offset < 8; ++offset) {
+            const int bit = 31 - group * 8 - offset;
+            const bool set = (value & (std::uint32_t{1} << bit)) != 0;
+            const LONG bitX = x + groupPad + offset * cellWidth;
+            const RECT number{bitX, y + Ui::Scale(2), bitX + cellWidth, y + Ui::Scale(18)};
+            const RECT digit{bitX, number.bottom, bitX + cellWidth, y + groupHeight - Ui::Scale(3)};
+            if (set) UiBox(dc, {digit.left + 1, digit.top, digit.right - 1, digit.bottom},
+                          colors.accentSoft, colors.accentSoft, Ui::Scale(4));
+            DrawTextSimple(dc, std::to_wstring(bit), number, colors.muted, options.smallFont,
+                           DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            DrawTextSimple(dc, set ? L"1" : L"0", digit, set ? UiAccentInk(options.dark) : colors.text,
+                           options.smallFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
+    }
 }
+}
+
+void TerminalViewport::ShowRegisterPreview(HWND window, std::wstring_view selection) {
+    const auto value = TerminalViewportController::ParseRegisterValue(selection);
+    if (!value) {
+        DismissRegisterPreview(window);
+        return;
+    }
+    registerPreview_ = RegisterPreview{*value, std::wstring(selection)};
+    cache_.valid = false;
+    InvalidateRect(window, nullptr, FALSE);
+}
+
+void TerminalViewport::DismissRegisterPreview(HWND window) {
+    if (!registerPreview_) return;
+    registerPreview_.reset();
+    cache_.valid = false;
+    if (window) InvalidateRect(window, nullptr, FALSE);
+}
+
 void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, const Options& options) {
     const auto paintStarted = std::chrono::steady_clock::now();
     struct RecordPaint {
@@ -300,6 +375,27 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
                 options.smallFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             gdiCalls += 2;
         }
+
+        if (registerPreview_ && focused && input.selectionActive && !input.selecting) {
+            if (SelectionText(*activeSession_, false) != registerPreview_->selection) {
+                registerPreview_.reset();
+            } else if (selectionStartLine < topLine + static_cast<size_t>(Metrics().rows) && selectionEndLine >= topLine) {
+                const int firstRow = static_cast<int>(std::max(selectionStartLine, topLine) - topLine);
+                const int lastRow = static_cast<int>(std::min(selectionEndLine - topLine,
+                                                             static_cast<size_t>(Metrics().rows - 1)));
+                const bool singleLine = selectionStartLine == selectionEndLine;
+                const int textRight = client.right - Ui::OverlayScrollLaneWidth;
+                const RECT selection{
+                    singleLine ? std::max(textLeft, textLeft + (selectionStartColumn - horizontalOffset) * Metrics().cellWidth)
+                               : textLeft,
+                    padding + firstRow * Metrics().lineHeight,
+                    singleLine ? std::min(textRight, textLeft + (selectionEndColumn + 1 - horizontalOffset) * Metrics().cellWidth)
+                               : textRight,
+                    padding + (lastRow + 1) * Metrics().lineHeight};
+                if (selection.left < selection.right)
+                    DrawRegisterPreview(buffer, client, selection, registerPreview_->value, options);
+            }
+        }
     }
 
     BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
@@ -370,6 +466,7 @@ TerminalViewport::PointerResult TerminalViewport::Pointer(HWND window, UINT mess
     const auto select = [&](size_t line, int column, bool extend) { Select(line, column, extend); InvalidateRect(window, nullptr, FALSE); };
     const auto clearSelection = [&] { ClearSelection(); InvalidateRect(window, nullptr, FALSE); };
     if (message == WM_LBUTTONDOWN) {
+        DismissRegisterPreview(window);
         SetFocus(window);
         if (!session) return PointerResult::Handled;
         POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};

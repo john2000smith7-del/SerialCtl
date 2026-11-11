@@ -90,6 +90,12 @@ nlohmann::json GatewayClient::Request(const std::string &op, const std::string &
         throw std::runtime_error("Unexpected frame during synchronous request");
     }
 }
+nlohmann::json GatewayClient::RequestUntil(const std::string &op, const std::string &resource,
+                                          nlohmann::json params, ULONGLONG deadline) {
+    if (!stream_) throw std::runtime_error("Gateway is disconnected");
+    stream_->Deadline(deadline);
+    return Request(op, resource, std::move(params));
+}
 nlohmann::json GatewayClient::Receive() {
     for (;;) {
         auto m = stream_->Receive();

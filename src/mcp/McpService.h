@@ -27,7 +27,7 @@ public:
     static bool StopScmService(std::wstring& error);
 
     // HKCU Run auto-start management
-    static bool SetUserAutoStart(bool enable, const std::wstring& exePath);
+    static void RemoveLegacyUserAutoStart();
     static bool IsUserAutoStartEnabled();
 
     // Background User Agent process management

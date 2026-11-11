@@ -2,7 +2,7 @@
 
 The producer writes to two real CMD child stdout pipes. Its byte counters are
 recorded at the successful Write() boundary, so requested and achieved rates
-remain distinguishable. All GUI operations use system mouse input.
+remain distinguishable. GUI operations use system mouse and keyboard input.
 """
 import argparse
 import ctypes as c
@@ -184,7 +184,9 @@ class TerminalSoak(Endurance):
                             self.wheel_terminal(-1);time.sleep(.1);self.wheel_terminal(1)
                         elif operation==2:self.sidebar_toggle(observation_budget=.3,capture_rapid_frames=False)
                         elif operation==4:self.resize(1040 if interaction%12==4 else 1180,680 if interaction%12==4 else 760,'soak-resize')
-                        else:self.open_cancel((100,101,102,103,303)[(interaction//6)%5])
+                        else:
+                            form=(interaction//6)%5
+                            self.open_cancel((100,101,102,101,303)[form],remote_serial=form==3)
                         self.responses.append(self.responsive())
                         interaction+=1;next_interaction+=60
                     time.sleep(.2)

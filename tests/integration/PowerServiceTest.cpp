@@ -63,6 +63,114 @@ Json Wait(PowerService &power, Json action) {
     return {{"error", "Timeout"}};
 }
 
+template <typename Predicate> bool WaitForKeywordTest(Predicate ready) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!ready()) {
+        if (std::chrono::steady_clock::now() >= end) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return true;
+}
+
+void TestKeywordCycle() {
+    PowerService power;
+    Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}})).value("state", "") == "completed",
+           "Connect keyword test fixture");
+    using Run = PowerKeywordRun;
+    std::vector<Run::Rule> rules{
+        {{L"READY", L"go", L"", L"START", L"END", 10, 0}, "READY", "START", "END", {'g', 'o'}, {}},
+        {{L"LINK", L"", L"diag", L"START", L"END"}, "LINK", "START", "END", {}, {'d', 'i', 'a', 'g'}},
+        {{L"LOGIN", L"", L"unexpected", L"LOGIN WINDOW", L""}, "LOGIN", "LOGIN WINDOW", "", {}, {'x'}},
+        {{L"ROUND-MISS", L"", L"check"}, "ROUND-MISS", "", "", {}, {'c', 'h', 'e', 'c', 'k'}}
+    };
+    std::mutex senderMutex;
+    std::vector<std::string> sent;
+    Run::Completion firstWrite;
+    const auto run = std::make_shared<Run>(1, L"COM fixture", "READY", rules,
+        [&](const Bytes &bytes, const std::function<bool()> &allowed, Run::Completion completion, std::wstring &) {
+            if (!allowed()) return false;
+            std::lock_guard<std::mutex> guard(senderMutex);
+            sent.emplace_back(bytes.begin(), bytes.end());
+            if (sent.size() == 1) firstWrite = std::move(completion);
+            else completion(Run::Delivery::Written, {});
+            return true;
+        }, [] { return true; }, [](const std::wstring &) {});
+    const auto feed = [&](const std::string &bytes) { run->Feed(Bytes(bytes.begin(), bytes.end())); };
+    feed("READY START READY END");
+    const Json cycle{{"type", "task"}, {"channels", {1}}, {"onMs", 500}, {"offMs", 100}, {"count", 2}};
+    Expect(Wait(power, power.Submit(cycle, {}, {}, run)).value("state", "") == "completed",
+           "Accept a local keyword cycle");
+    Expect(WaitForKeywordTest([&] { return run->Status().state == Run::State::Listening; }), "Open the first detection window");
+    feed("REA");
+    feed("DY STA");
+    feed("RT RE");
+    feed("ADY READY EN");
+    feed("D READY");
+    auto snapshot = run->Status();
+    Expect(snapshot.ready && snapshot.counts[0].round == 2 && snapshot.counts[0].window == Run::Window::Closed,
+           "Detect split markers and repeated hits only in the configured window");
+    Expect(snapshot.counts[1].window == Run::Window::Closed && snapshot.counts[2].window == Run::Window::Waiting,
+           "Distinguish zero hits from a detection window that never opens");
+    Expect(WaitForKeywordTest([&] { return run->Status().state == Run::State::Draining; }),
+           "End detection while waiting for terminal writes");
+    Expect(power.State()["channels"][0]["output"] == true, "Do not power off while the terminal write is still in flight");
+    {
+        std::lock_guard<std::mutex> guard(senderMutex);
+        if (firstWrite) firstWrite(Run::Delivery::Written, {});
+        else Expect(false, "First action reached the transport");
+    }
+    Expect(WaitForKeywordTest([&] {
+        const auto second = run->Status();
+        return second.round == 2 && second.state == Run::State::Listening;
+    }), "Open a new window at the next power-on");
+    feed("START READY LINK END");
+    Expect(WaitForKeywordTest([&] { return run->Status().state == Run::State::Finished; }), "Finish both power rounds");
+    snapshot = run->Status();
+    Expect(snapshot.counts[0].round == 1 && snapshot.counts[0].total == 3 && snapshot.counts[0].written == 3,
+           "Reset per-round counts and retain cumulative captures and writes");
+    Expect(snapshot.counts[1].written == 1 && snapshot.counts[2].written == 0 && snapshot.counts[3].written == 2,
+           "Execute misses at marker or round end, only for windows that opened");
+    {
+        std::lock_guard<std::mutex> guard(senderMutex);
+        Expect(sent == std::vector<std::string>({"go", "go", "diag", "check", "go", "check"}),
+               "Send every hit and miss in capture order");
+    }
+    Expect(power.State()["channels"][0]["output"] == false, "Normal completion confirms output OFF");
+
+    rules[0].display.hitDelayMs = 2000;
+    const auto canceled = std::make_shared<Run>(1, L"COM fixture", "READY", rules,
+        [](const Bytes &, const std::function<bool()> &, Run::Completion, std::wstring &) { return false; },
+        [] { return true; }, [](const std::wstring &) {});
+    Expect(Wait(power, power.Submit(cycle, {}, {}, canceled)).value("state", "") == "completed", "Start cancel fixture");
+    Expect(WaitForKeywordTest([&] { return canceled->Status().state == Run::State::Listening; }), "Listen before cancel");
+    canceled->Feed(Bytes{'S','T','A','R','T',' ','R','E','A','D','Y'});
+    const auto stop = power.Submit({{"type", "stop"}});
+    Expect(!canceled->Active() && canceled->Status().counts[0].canceled == 1,
+           "Accepting Stop immediately revokes a delayed command");
+    Expect(Wait(power, stop).value("state", "") == "completed", "Stop turns the test outputs off");
+}
+
+void TestBoundRemoteCommands() {
+    PowerService power;
+    const Json connect{{"type", "connect"}, {"backend", "simulation"}};
+    Expect(Wait(power, power.Submit(connect)).value("state", "") == "completed", "Connect remote power fixture");
+    const auto connection = power.State().at("connectionId").get<std::string>();
+    const Json remoteOn{{"type", "output"}, {"channels", {1}}, {"enabled", true}, {"source", "remote-power:1"}};
+    Expect(power.Submit(remoteOn, connection, "series").contains("error"), "Reject a stale remote mode");
+    const bool paused = PowerServiceTestAccess::Pause(power);
+    const auto remote = power.Submit(remoteOn, connection, "independent");
+    const auto local = power.Submit({{"type", "output"}, {"channels", {2}}, {"enabled", true}});
+    power.CancelRemotePending("remote-power:1");
+    PowerServiceTestAccess::Resume(power);
+    Expect(paused && Wait(power, remote).value("state", "") == "canceled", "Release cancels only queued remote work");
+    Expect(Wait(power, local).value("state", "") == "completed" && power.State()["channels"][1]["output"] == true,
+           "Local controls still operate the physical connection");
+    Expect(Wait(power, power.Submit({{"type", "disconnect"}, {"preserveOutputs", true}})).value("state", "") == "completed",
+           "Disconnect fixture before reconnect");
+    Expect(Wait(power, power.Submit(connect)).value("state", "") == "completed", "Reconnect fixture");
+    Expect(power.Submit(remoteOn, connection, "independent").contains("error"), "Reject commands bound to the old connection");
+}
+
 void TestConnectScpiDiagnostics() {
     const std::vector<std::pair<std::string, std::string>> scenarios = {
         {"*IDN?", "identify"},
@@ -405,6 +513,8 @@ void TestDisconnectOutputConfirmation(const std::string &scenario) {
 }
 
 int main() {
+    TestKeywordCycle();
+    TestBoundRemoteCommands();
     TestConnectScpiDiagnostics();
     for (const auto *scenario : {"write", "readback", "confirmed", "preserved"})
         TestDisconnectOutputConfirmation(scenario);

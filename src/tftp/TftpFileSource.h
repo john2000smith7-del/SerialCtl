@@ -24,8 +24,15 @@ struct TftpSourceInfo {
     uint64_t size = 0;
     bool sizeKnown = false;
     uint64_t lastModified = 0;
-    std::string status = "Ready"; // "Ready", "Failed", "Unavailable"
+    std::string status = "Ready"; // "Ready", "Pending", "Failed", "Unavailable"
     std::wstring error;
+    bool notFound = false;
+};
+
+struct TftpDirectoryEntry {
+    std::string name;
+    uint64_t size = 0;
+    bool sizeKnown = false;
 };
 
 class ITftpFileSource {
@@ -82,7 +89,7 @@ public:
         HANDLE& procHandle,
         std::wstring& error)>;
 
-    RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher = nullptr);
+    RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher = nullptr, bool deferQuery = false);
     ~RemoteSshTftpFileSource() override;
 
     TftpSourceInfo Info() const override;
@@ -98,7 +105,7 @@ public:
 
 private:
     RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher, TftpSourceInfo prequeriedInfo,
-                           std::wstring snapshot);
+                           std::wstring snapshot, bool deferQuery);
     void ReaderThread();
     bool QueryRemoteAttributes(std::wstring& error);
 
@@ -106,6 +113,7 @@ private:
     StreamLauncher launcher_;
     TftpSourceInfo info_;
     std::wstring snapshot_;
+    bool deferQuery_ = false;
 
     PasswordPipe passwordPipe_;
     HANDLE procHandle_ = nullptr;
@@ -150,5 +158,10 @@ private:
     std::mutex mutex_;
     std::wstring injectedError_;
 };
+
+bool ValidateLocalTftpDirectory(const std::wstring& dirPath, std::wstring& normalizedPath, std::wstring& error);
+bool ListLocalTftpDirectory(const std::wstring& dirPath, std::vector<TftpDirectoryEntry>& entries, std::wstring& error);
+bool ValidateRemoteTftpDirectoryConfig(SshRemoteConfig& config, std::wstring& error);
+bool ListRemoteTftpDirectory(const SshRemoteConfig& config, std::vector<TftpDirectoryEntry>& entries, std::wstring& error);
 
 } // namespace serialctl

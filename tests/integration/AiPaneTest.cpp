@@ -1,6 +1,8 @@
 #include "AiPane.h"
 #include "HostKeyDialog.h"
 #include "UiTestEvidence.h"
+#include "UiMetrics.h"
+#include <shlobj.h>
 #include <chrono>
 #include <cmath>
 #include <gdiplus.h>
@@ -100,7 +102,415 @@ void CheckHostKeyDialogs(HWND parent, HFONT font) {
 
 namespace serialctl {
 struct AiPaneTestAccess {
-    static void CheckModelCapsules(AiPane &pane) {
+    static inline bool composerMenuCaptured = false;
+    static inline bool composerSettingsOpened = false;
+    static inline ULONGLONG composerMenuDeadline = 0;
+    static inline std::wstring composerMenuScreenshot;
+    static void CALLBACK CheckComposerSettings(HWND owner, UINT, UINT_PTR timer, DWORD) {
+        KillTimer(owner, timer);
+        const auto dialog = FindWindowW(L"#32770", L"连接 AI 服务器");
+        DWORD process = 0;
+        if (dialog) GetWindowThreadProcessId(dialog, &process);
+        if (process == GetCurrentProcessId() && GetDlgItem(dialog, 200) && GetDlgItem(dialog, IDCANCEL)) {
+            composerSettingsOpened = true;
+            try { ui_test::SaveUiEvidence(dialog, L"ai-settings-opened-from-header.png"); } catch (...) {}
+            SendMessageW(dialog, WM_COMMAND, IDCANCEL, 0);
+        } else EndMenu();
+    }
+    static void CALLBACK CaptureComposerMenu(HWND owner, UINT, UINT_PTR timer, DWORD) {
+        HWND popup = nullptr;
+        EnumThreadWindows(GetCurrentThreadId(), [](HWND window, LPARAM output) -> BOOL {
+            wchar_t name[24]{};
+            GetClassNameW(window, name, static_cast<int>(std::size(name)));
+            if (!IsWindowVisible(window) || wcscmp(name, L"#32768") != 0) return TRUE;
+            *reinterpret_cast<HWND *>(output) = window;
+            return FALSE;
+        }, reinterpret_cast<LPARAM>(&popup));
+        if (!popup && GetTickCount64() < composerMenuDeadline) return;
+        KillTimer(owner, timer);
+        if (popup) {
+            try {
+                RECT popupBounds{}, anchor{};
+                GetWindowRect(popup, &popupBounds);
+                GetWindowRect(GetDlgItem(owner, 33), &anchor);
+                const auto region = CreateRectRgn(0, 0, 0, 0);
+                const bool rounded = region && GetWindowRgn(popup, region) != ERROR && !PtInRegion(region, 0, 0);
+                if (region) DeleteObject(region);
+                const auto dc = GetDC(owner);
+                const int dpi = GetDeviceCaps(dc, LOGPIXELSX);
+                ReleaseDC(owner, dc);
+                ui_test::SaveUiEvidence(popup, composerMenuScreenshot, [&](HDC dc) {
+                    if (!PrintWindow(popup, dc, PW_CLIENTONLY))
+                        throw std::runtime_error("Cannot capture the native popup client");
+                });
+                composerMenuCaptured = rounded && popupBounds.bottom <= anchor.top &&
+                    popupBounds.right - popupBounds.left <= MulDiv(380, dpi, 96);
+            } catch (...) {}
+        }
+        EndMenu();
+    }
+    static void RunVoiceComposer(AiPane &pane) {
+        SetWindowTextW(pane.Control(10), L"排查 日志");
+        SendMessageW(pane.Control(10), EM_SETSEL, 3, 3);
+        pane.thread_ = "voice-fixture";
+        const auto requests = pane.requests_.size();
+        const auto messages = pane.messages_.size();
+        wchar_t draft[64]{};
+        const auto preview = pane.Control(35);
+        pane.SetVoicePreview(L"正在识别\nCOM");
+        RECT previewBounds{}, draftBounds{};
+        GetWindowRect(preview, &previewBounds);
+        GetWindowRect(pane.Control(10), &draftBounds);
+        if (!IsWindowVisible(preview) || !(GetWindowLongPtrW(preview, GWL_STYLE) & ES_READONLY) ||
+            previewBounds.bottom >= draftBounds.top)
+            throw std::runtime_error("Live voice preview must be read-only and sit above the draft");
+        pane.SetVoicePreview(L"正在识别 COM3");
+        wchar_t revised[64]{};
+        GetWindowTextW(preview, revised, static_cast<int>(std::size(revised)));
+        GetWindowTextW(pane.Control(10), draft, static_cast<int>(std::size(draft)));
+        if (std::wstring(revised) != L"正在识别 COM3" || std::wstring(draft) != L"排查 日志" ||
+            pane.requests_.size() != requests || pane.messages_.size() != messages)
+            throw std::runtime_error("Preview revisions must stay separate from the draft and chat");
+        pane.SetVoicePreview({});
+        if (IsWindowVisible(preview)) throw std::runtime_error("Cleared preview must be hidden");
+        const bool inserted = pane.InsertVoiceDraft(L"COM3 ");
+        GetWindowTextW(pane.Control(10), draft, static_cast<int>(std::size(draft)));
+        if (!inserted || std::wstring(draft) != L"排查 COM3 日志" ||
+            pane.thread_ != "voice-fixture" || pane.requests_.size() != requests || pane.messages_.size() != messages)
+            throw std::runtime_error("Voice text must insert only into the editable draft");
+        if (pane.InsertVoiceDraft(std::wstring(32768, L'x')))
+            throw std::runtime_error("Voice insertion exceeding draft capacity should fail atomically");
+        std::cout << "[PASS] Live voice preview, draft caret insertion and chat isolation\n";
+    }
+
+    static void RunReplyFormat(AiPane &pane) {
+        using ai::markup::Ink;
+        using ai::markup::Kind;
+        const auto require = [](bool condition, const char *message) {
+            if (!condition) throw std::runtime_error(message);
+        };
+        const std::wstring fence(3, L'`');
+        struct Sample { const wchar_t *tag, *line, *token; Ink ink; };
+        const Sample samples[]{
+            {L"js", L"const value = 'example';", L"const", Ink::Keyword},
+            {L"typescript", L"interface Device { ready: boolean }", L"interface", Ink::Keyword},
+            {L"python", L"def main(): # status", L"# status", Ink::Comment},
+            {L"sql", L"SeLeCt 42 FROM devices", L"SeLeCt", Ink::Keyword},
+            {L"html", L"<button disabled>Ready</button>", L"disabled", Ink::Name},
+            {L"css", L".result { color: red; }", L"color", Ink::Name},
+            {L"java", L"record Port(int number) {}", L"record", Ink::Keyword},
+            {L"csharp", L"namespace SerialCtl;", L"namespace", Ink::Keyword},
+            {L"bash", L"printf '%s' ${device}", L"${device}", Ink::Name},
+            {L"cpp", L"#include <stdio.h>", L"#include <stdio.h>", Ink::Name},
+            {L"json", L"{\"status\": false}", L"\"status\"", Ink::Name},
+        };
+        for (const auto &sample : samples) {
+            const auto blocks = ai::markup::Parse(fence + sample.tag + L"\n" + sample.line + L"\n" + fence);
+            require(blocks.size() == 1 && blocks[0].kind == Kind::Code && blocks[0].lines.size() == 1,
+                    "Language sample should be one fenced code block");
+            const auto &line = blocks[0].lines.front();
+            require(std::any_of(line.spans.begin(), line.spans.end(), [&](const auto &span) {
+                return span.ink == sample.ink && line.value.substr(span.start, span.length) == sample.token;
+            }), "Expected language token highlight");
+        }
+        const auto fallback = ai::markup::Parse(fence + L"unknown\nlet file = a|b");
+        require(fallback.front().lines.front().spans.empty(), "Unknown language should retain plain text");
+        const auto comment = ai::markup::Parse(fence + L"js\n/* start\nend */ const x = 7;\n" + fence);
+        require(comment.front().lines[1].spans.front().ink == Ink::Comment &&
+            comment.front().lines[1].spans.back().ink == Ink::Number, "Multiline comments should resume normal highlighting");
+
+        const auto table = ai::markup::Parse(L"| 项目 | 结果 |\n| --- | ---: |\n| **连接** | `A|B` 与 X\\|Y |");
+        require(table.size() == 1 && table.front().rows.size() == 2 &&
+            table.front().rows[1][1].value == L"A|B 与 X|Y" &&
+            table.front().rows[1][0].spans.front().ink == Ink::Bold &&
+            table.front().rows[1][1].spans.front().ink == Ink::InlineCode &&
+            table.front().alignment[1] == ai::markup::Alignment::Right, "Pipe, inline code and column alignment must survive parsing");
+        require(ai::markup::Parse(L"| 项目 | 结果 |\n| --").front().kind == Kind::Prose, "Incomplete divider should display as text");
+        require(ai::markup::Parse(L"| 日志 | 内容 |\n| --- | --- |", false).front().kind == Kind::Prose,
+                "Tool output should retain its literal pipes");
+        require(ai::markup::Parse(L"| A | B |\n| --- | --- |\n| one | two | three |").front().rows[1][1].value ==
+                L"two | three", "Irregular model output must not drop trailing cell text");
+
+        pane.Add(L"AI", L"| 项目 | 结果 |\n| --", "reply-stream");
+        auto &stream = pane.messages_.back();
+        require(stream.blocks.empty(), "Partial table must remain readable");
+        stream.text += L"- | --- |\n| 路径 | `/srv/serialctl` |";
+        pane.Reflow(true);
+        require(stream.blocks.size() == 1 && stream.blocks[0].kind == Kind::Table, "A completed divider must form a table");
+        const auto columns = stream.blocks[0].columns;
+        stream.text += L"\n| 状态 | 新的一行包含更多中文和一个很长的诊断信息 |";
+        pane.Reflow(true);
+        require(stream.blocks[0].columns == columns && stream.blocks[0].rows.size() == 3, "Streamed rows must keep column geometry stable");
+        pane.messages_.clear();
+
+        const std::wstring code = L"\t{\r\n  \"status\": true,\r\n\r\n  \"trace\": \"" + std::wstring(128, L'x') +
+                                  L"END\"\r\n}\r\n";
+        const std::wstring source = L"## 诊断报告\n\n**运行环境确认**\n| 项目 | 结果 |\n| --- | --- |\n"
+            L"| 程序路径 | `/home/linux/.local/bin/codex` |\n| 输入数组 | `{5, 2, 8, 1, 3}` |\n\n"
+            L"**算法特点** 额外空间为 `O(1)`，平均为 `O(n²)`。\n\n"
+            L"**服务返回的 JSON**\n" + fence + L"json\r\n" + code + fence;
+        for (const bool dark : {false, true}) {
+            pane.Theme(dark);
+            for (const int width : {740, 340}) {
+                SetWindowPos(pane.Handle(), nullptr, 0, 0, pane.D(width), pane.D(670), SWP_NOZORDER);
+                pane.messages_.clear();
+                pane.Add(L"AI", source, "reply-render");
+                pane.scroll_.offset = 0;
+                const auto &message = pane.messages_.back();
+                require(message.blocks.size() == 2 && message.blocks[0].kind == Kind::Table &&
+                        message.blocks[1].kind == Kind::Code, "Native reply should lay out one table and one code box");
+                const auto &block = message.blocks[1];
+                require(AiPane::ReplyCodeText(message, block) == code, "Copy must preserve the exact code payload and CRLF");
+                require(block.maximum > 0, "Long code line must have local horizontal overflow");
+                const auto line = std::find_if(message.paragraphs.begin(), message.paragraphs.end(),
+                    [](const auto &item) { return item.text.find(L"END") != std::wstring::npos; });
+                require(line != message.paragraphs.end() && line->lines.size() == 1, "Long code line must not wrap");
+                const auto path = std::find_if(message.paragraphs.begin(), message.paragraphs.end(),
+                    [](const auto &item) { return item.text.find(L"/home/linux") != std::wstring::npos; });
+                require(path != message.paragraphs.end(), "Table path must have a measured cell");
+                const POINT cell{message.bounds.left + path->lines[0].rect.left + 1,
+                                 message.bounds.top + path->lines[0].rect.top + 1};
+                require(std::get<1>(pane.HitText(cell)) == static_cast<size_t>(path - message.paragraphs.begin()),
+                        "Table hit testing must select the cell under the pointer");
+                if (width == 740) {
+                    RECT viewport{};
+                    GetClientRect(pane.transcript_, &viewport);
+                    const auto screen = GetDC(pane.transcript_);
+                    const auto memory = CreateCompatibleDC(screen);
+                    const auto bitmap = CreateCompatibleBitmap(screen, viewport.right, viewport.bottom);
+                    const auto previous = SelectObject(memory, bitmap);
+                    pane.PaintTranscript(memory);
+                    bool foundComplexity = false, boxed = false;
+                    for (const auto &paragraph : message.paragraphs) {
+                        if (paragraph.text.find(L"O(1)") == std::wstring::npos &&
+                            paragraph.text.find(L"{5, 2, 8, 1, 3}") == std::wstring::npos) continue;
+                        foundComplexity |= paragraph.text.find(L"O(1)") != std::wstring::npos;
+                        for (const auto &rendered : paragraph.lines)
+                            for (int x = rendered.rect.left; x < rendered.rect.right; ++x)
+                                boxed |= GetPixel(memory, message.bounds.left + x, message.bounds.top +
+                                    rendered.rect.bottom - pane.D(2)) == UiAiTheme(dark).accentSoft;
+                    }
+                    SelectObject(memory, previous);
+                    DeleteObject(bitmap);
+                    DeleteDC(memory);
+                    ReleaseDC(pane.transcript_, screen);
+                    require(foundComplexity && !boxed, "Inline expressions and table arrays must have no colored box");
+                }
+                const auto screenshot = std::wstring(L"ai-reply-") + (dark ? L"dark-" : L"light-") + std::to_wstring(width) + L".png";
+                ui_test::SaveUiEvidence(pane.transcript_, screenshot, [&](HDC dc) { pane.PaintTranscript(dc); });
+                const int vertical = pane.scroll_.offset;
+                const POINT overCode{message.bounds.left + block.body.left + 1, message.bounds.top + block.body.top + 1};
+                require(pane.TranscriptHorizontal(overCode, INT_MAX / 2) && block.offset == block.maximum &&
+                    pane.scroll_.offset == vertical, "Horizontal scroll should stay inside the code box");
+                const auto last = line->lines.front().advances.back();
+                const POINT end{message.bounds.left + line->lines[0].rect.left + last - block.offset - 1,
+                                message.bounds.top + line->lines[0].rect.top + 1};
+                const auto hit = pane.HitText(end);
+                require(std::get<1>(hit) == static_cast<size_t>(line - message.paragraphs.begin()) &&
+                    std::get<2>(hit) >= line->text.size() - 1, "Code selection must follow its horizontal scroll offset");
+            }
+        }
+        pane.messages_.clear();
+        pane.Add(L"AI", L"| A | B | C | D | E | F | G | H |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+                        L"| 1 | 2 | 3 | 4 | 5 | 6 | 7 | LAST |");
+        pane.scroll_.offset = 0;
+        const auto &wide = pane.messages_.back();
+        const auto &tableBlock = wide.blocks.front();
+        require(tableBlock.maximum > 0, "Wide table should stay inside its own horizontal viewport");
+        require(pane.TranscriptHorizontal({wide.bounds.left + tableBlock.body.left + 1,
+                    wide.bounds.top + tableBlock.body.top + 1}, 10000), "Wide table scroll should accept input");
+        const auto &lastCell = wide.paragraphs.back();
+        const POINT lastCellPoint{wide.bounds.left + lastCell.rect.left - tableBlock.offset + 1,
+                                  wide.bounds.top + lastCell.rect.top + 1};
+        require(std::get<1>(pane.HitText(lastCellPoint)) == wide.paragraphs.size() - 1, "Rightmost table cell must stay selectable after scrolling");
+        std::cout << "[PASS] Native reply markup, supported language tokens, streaming tables, code copy source, clipping and both themes\n";
+    }
+
+    static void RunComposer(AiPane &pane) {
+        const auto check = [](bool ok, const char *reason) { if (!ok) throw std::runtime_error(reason); };
+        CheckComposerContext(pane);
+        pane.SetComposerWidth(pane.D(Ui::AiComposerMaxWidth96));
+        SetWindowPos(pane.window_, nullptr, 0, 0, pane.D(720), 600, SWP_NOZORDER);
+        pane.Layout();
+        check(pane.composerBounds_.right - pane.composerBounds_.left == pane.D(720) &&
+              pane.composerBounds_.left == 0, "Composer did not use available readable-column width");
+        SetWindowPos(pane.window_, nullptr, 0, 0, pane.D(1020), 630, SWP_NOZORDER);
+        pane.Layout();
+        check(pane.composerBounds_.right - pane.composerBounds_.left == pane.D(Ui::AiComposerMaxWidth96) &&
+              pane.composerBounds_.left == (pane.D(1020) - pane.D(Ui::AiComposerMaxWidth96)) / 2 &&
+              !pane.composerExpanded_, "Wide single-line composer must remain a centered capsule");
+
+        pane.busy_ = pane.showTurnProgress_ = true;
+        pane.displayGroup_ = "centered-progress";
+        pane.turnStarted_ = GetTickCount64();
+        pane.Add(L"我", L"帮我检查 COM3 的串口连接");
+        const auto checkProgress = [&] {
+            const auto &latest = pane.messages_.back().bounds;
+            check(!IsRectEmpty(&pane.waitingBounds_) && pane.waitingBounds_.top == latest.bottom + pane.D(12) &&
+                  pane.scroll_.content == pane.waitingBounds_.bottom + pane.D(12),
+                  "Turn progress must follow the latest visible message in the scrollable transcript");
+        };
+        checkProgress();
+        pane.Add(L"工具", L"读取串口状态", "centered-tool");
+        check(!pane.messages_.back().folded, "Running tool details must be visible by default");
+        checkProgress();
+        pane.Event({{"event", "textStarted"}, {"messageId", "centered-answer"}, {"final", true}});
+        pane.Event({{"event", "textDelta"}, {"messageId", "centered-answer"},
+                    {"text", u8"## 串口连接诊断\nCOM3 已连接。\n\n| 项目 | 当前值 | 状态 |\n| --- | --- | --- |\n| 端口 | COM3 | 已连接 |\n| 波特率 | 115200 | 正常 |"}});
+        checkProgress();
+        const auto &user = pane.messages_.front().bounds;
+        const auto &answer = pane.messages_.back().bounds;
+        check(answer.right - answer.left == pane.D(Ui::AiReplyMaxWidth96) && answer.left > 0 &&
+              answer.left > pane.composerBounds_.left && user.right > answer.right && user.right < pane.composerBounds_.right &&
+              pane.waitingBounds_.left == answer.left,
+              "Wide transcript must stagger the user message and AI reply inside the centered composer column");
+        SetWindowPos(pane.window_, nullptr, 0, 0, pane.D(1020), pane.D(270), SWP_NOZORDER);
+        pane.scroll_.Bottom();
+        const auto thumb = pane.ScrollThumb();
+        check(thumb.right == pane.D(1020) - pane.D(4) && thumb.left > pane.composerBounds_.right,
+              "History scrollbar must sit at the outer pane edge, beyond the centered composer");
+        SendMessageW(pane.transcript_, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(thumb.left + 1, thumb.top + 1));
+        SendMessageW(pane.transcript_, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(thumb.left + 1, 0));
+        SendMessageW(pane.transcript_, WM_LBUTTONUP, 0, MAKELPARAM(thumb.left + 1, 0));
+        check(pane.scroll_.offset == 0, "The far-right history scrollbar must drag to the top");
+        ui_test::SaveUiEvidence(pane.transcript_, L"ai-history-far-right-scrollbar.png",
+            [&](HDC dc) { pane.PaintTranscript(dc); });
+        RECT parentClient{};
+        GetClientRect(GetParent(pane.window_), &parentClient);
+        MONITORINFO monitor{sizeof(monitor)};
+        GetMonitorInfoW(MonitorFromWindow(pane.window_, MONITOR_DEFAULTTONEAREST), &monitor);
+        POINT origin{};
+        ClientToScreen(pane.window_, &origin);
+        const int captureWidth = std::min({pane.D(1020), static_cast<int>(parentClient.right),
+                                           static_cast<int>(monitor.rcMonitor.right - origin.x)});
+        const int captureHeight = std::min({680, static_cast<int>(parentClient.bottom),
+                                             static_cast<int>(monitor.rcMonitor.bottom - origin.y)});
+        SetWindowPos(pane.window_, nullptr, 0, 0, captureWidth, captureHeight, SWP_NOZORDER);
+        for (bool dark : {false, true}) {
+            pane.Theme(dark);
+            ui_test::SaveUiEvidence(pane.window_, dark ? L"ai-centered-progress-dark.png" : L"ai-centered-progress-light.png");
+        }
+        SetWindowPos(pane.window_, nullptr, 0, 0, pane.D(340), 600, SWP_NOZORDER);
+        check(user.right == answer.right && answer.right < pane.D(340), "Narrow reply and prompt must fit in the transcript");
+        checkProgress();
+        pane.Event({{"event", "taskFinished"}, {"status", "completed"}});
+        check(IsRectEmpty(&pane.waitingBounds_) && pane.messages_[1].folded && !pane.messages_.back().folded,
+              "Completed turns must fold the process and leave the final reply visible");
+        pane.NewConversation();
+
+        SetWindowPos(pane.window_, nullptr, 0, 0, pane.D(720), 600, SWP_NOZORDER);
+        for (bool dark : {false, true}) {
+            pane.Theme(dark);
+            SetWindowTextW(pane.Control(10), L"");
+            check(pane.currentInputHeight_ == pane.InputLineHeight(), "Capsule did not start with one line");
+            ui_test::SaveUiEvidence(pane.window_, dark ? L"ai-composer-dark.png" : L"ai-composer-light.png");
+            SetWindowTextW(pane.Control(10), L"1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8\r\n9\r\n10");
+            check(pane.currentInputHeight_ == pane.InputLineHeight() * Ui::AiComposerMaxLines,
+                  "Composer did not cap its visible text at six lines");
+            RECT edit{}, plus{}, send{};
+            GetWindowRect(pane.Control(10), &edit);
+            GetWindowRect(pane.Control(33), &plus);
+            GetWindowRect(pane.Control(11), &send);
+            check(pane.composerExpanded_ && edit.bottom <= plus.top && edit.bottom <= send.top &&
+                  edit.left < plus.right && edit.right > send.left - pane.D(40),
+                  "Expanded composer still reserves full-height button columns");
+            const auto before = SendMessageW(pane.Control(10), EM_GETFIRSTVISIBLELINE, 0, 0);
+            SendMessageW(pane.Control(10), WM_MOUSEWHEEL, MAKEWPARAM(0, -WHEEL_DELTA), 0);
+            check(SendMessageW(pane.Control(10), EM_GETFIRSTVISIBLELINE, 0, 0) > before,
+                  "Composer wheel did not scroll its hidden lines");
+            check(pane.InputScrollThumb().bottom > pane.InputScrollThumb().top, "Composer overlay thumb is missing");
+            ui_test::SaveUiEvidence(pane.window_, dark ? L"ai-composer-six-lines-dark.png" : L"ai-composer-six-lines-light.png");
+        }
+        SetWindowTextW(pane.Control(10), L"");
+        const auto savedSettings = pane.settings_;
+        pane.settings_ = ai::ServerSettings{};
+        pane.settings_.host = L"192.0.2.55";
+        pane.settings_.username = L"fixture";
+        SetTimer(pane.window_, 992, 200, CheckComposerSettings);
+        SendMessageW(pane.window_, WM_COMMAND, MAKEWPARAM(19, BN_CLICKED), reinterpret_cast<LPARAM>(pane.Control(19)));
+        pane.settings_ = savedSettings;
+        check(composerSettingsOpened && !pane.dialog_, "AI Settings button did not open and close its original dialog");
+        wchar_t temp[MAX_PATH]{}, path[MAX_PATH]{};
+        check(GetTempPathW(MAX_PATH, temp) && GetTempFileNameW(temp, L"sai", 0, path), "Cannot create attachment fixture");
+        struct RemoveFixture { const wchar_t *path; ~RemoveFixture() { DeleteFileW(path); } } remove{path};
+        {
+            Gdiplus::Bitmap image(64, 48, PixelFormat32bppARGB);
+            Gdiplus::Graphics graphics(&image);
+            graphics.Clear(Gdiplus::Color(255, 30, 70, 150));
+            const CLSID png{0x557cf406, 0x1a04, 0x11d3, {0x9a, 0x73, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x2e}};
+            check(image.Save(path, &png, nullptr) == Gdiplus::Ok, "Cannot save controlled image");
+        }
+        const size_t characters = wcslen(path) + 2;
+        const auto drop = GlobalAlloc(GHND, sizeof(DROPFILES) + characters * sizeof(wchar_t));
+        check(drop != nullptr, "Cannot allocate controlled drop");
+        auto *data = static_cast<DROPFILES *>(GlobalLock(drop));
+        check(data != nullptr, "Cannot initialize controlled drop");
+        data->pFiles = sizeof(DROPFILES); data->fWide = TRUE;
+        memcpy(reinterpret_cast<char *>(data) + sizeof(DROPFILES), path, (characters - 1) * sizeof(wchar_t));
+        GlobalUnlock(drop);
+        SendMessageW(pane.Control(10), WM_DROPFILES, reinterpret_cast<WPARAM>(drop), 0);
+        const auto deadline = GetTickCount64() + 3000;
+        while (pane.attachmentLoad_ && GetTickCount64() < deadline) {
+            pane.PollAttachments();
+            Sleep(10);
+        }
+        check(pane.attachments_.size() == 1 && pane.attachments_[0].image && pane.attachments_[0].thumbnail &&
+              !pane.attachments_[0].bytes->empty(), "Dropped image lost its bytes or thumbnail");
+        check(ai::ValidAttachmentDirectory("/tmp/serialctl-ai.A123456789") &&
+              !ai::ValidAttachmentDirectory("/tmp/serialctl-ai.A123456789/.."),
+              "Attachment staging accepted an unexpected directory");
+        ai::Attachment binary;
+        binary.name = L"引号'与空格 $.bin";
+        binary.bytes = std::make_shared<const Bytes>(Bytes{'f', 'o', 'o'});
+        const auto chunk = ai::AttachmentChunkCommand("/tmp/serialctl-ai.A123456789/file-1.bin", binary, 0);
+        check(chunk.at("command").at(5) == "Zm9v" &&
+              chunk.at("command").at(4) == "/tmp/serialctl-ai.A123456789/file-1.bin" &&
+              chunk.at("command").at(2).get<std::string>().find("base64 -d") != std::string::npos,
+              "Attachment bytes or independent path arguments changed in transit");
+        auto boundary = std::make_shared<Bytes>(ai::AttachmentChunkSize + 1, std::uint8_t{0});
+        boundary->back() = 'f';
+        binary.bytes = boundary;
+        check(ai::AttachmentChunkCommand("/tmp/serialctl-ai.A123456789/file-2.bin", binary, ai::AttachmentChunkSize)
+                  .at("command").at(5) == "Zg==", "Final attachment chunk lost its byte or padding");
+        pane.Theme(false);
+        ui_test::SaveUiEvidence(pane.window_, L"ai-composer-image-thumbnail.png");
+        const auto model = pane.serverDefaultModel_;
+        pane.serverDefaultModel_ = std::string(120, 'M');
+        for (const bool dark : {false, true}) {
+            pane.Theme(dark);
+            composerMenuCaptured = false;
+            composerMenuDeadline = GetTickCount64() + 2000;
+            composerMenuScreenshot = dark ? L"ai-composer-plus-menu-dark.png" : L"ai-composer-plus-menu.png";
+            SetTimer(pane.window_, 991, 60, CaptureComposerMenu);
+            pane.ShowComposerMenu();
+            KillTimer(pane.window_, 991);
+            check(composerMenuCaptured, "Native upward composer menu must be rounded and keep a bounded width");
+        }
+        pane.serverDefaultModel_ = model;
+        pane.busy_ = true;
+        pane.submittedDraft_ = L"附件失败后保留的提问";
+        pane.sendingAttachments_ = pane.attachments_;
+        pane.attachmentUploadToken_ = 4242;
+        pane.AttachmentResponse({{"token", 4242}, {"result", {{"exitCode", 1}}}});
+        wchar_t restoredDraft[128]{};
+        GetWindowTextW(pane.Control(10), restoredDraft, 128);
+        check(!pane.busy_ && pane.attachments_.size() == 1 && std::wstring(restoredDraft) == pane.submittedDraft_,
+              "Failed upload discarded the draft");
+        pane.AttachmentResponse({{"token", 4242}, {"result", {{"exitCode", 0}, {"stdout", "/tmp/serialctl-ai.A123456789\n"}}}});
+        check(!pane.busy_ && pane.attachmentUploadToken_ == 0, "Late upload response restarted a failed turn");
+        pane.busy_ = true;
+        pane.stopRequested_ = false;
+        pane.sendingAttachments_ = pane.attachments_;
+        pane.attachmentUploadToken_ = 4243;
+        pane.Stop();
+        pane.AttachmentResponse({{"token", 4243}, {"result", {{"exitCode", 0}, {"stdout", "32\n"}}}});
+        check(!pane.busy_ && pane.attachments_.size() == 1 && pane.attachmentUploadToken_ == 0,
+              "Stopped upload replayed work or discarded the attachment draft");
+        SendMessageW(pane.window_, WM_COMMAND, MAKEWPARAM(900, BN_CLICKED), reinterpret_cast<LPARAM>(pane.Control(900)));
+        check(pane.attachments_.empty(), "Attachment removal did not update the draft");
+        std::cout << "COMPOSER PASS: centered stagger, trailing turn progress, native capsule, six lines, wheel, Plus menu, image drop and failed-upload draft\n";
+    }
+    static void CheckComposerContext(AiPane &pane) {
         const auto check = [](bool value, const char *why) { if (!value) throw std::runtime_error(why); };
         const auto savedModel = pane.serverDefaultModel_;
         const auto savedWorkspace = pane.workspaceDirectory_;
@@ -120,21 +530,33 @@ struct AiPaneTestAccess {
                     pane.UpdateActions();
                     const auto style = GetWindowLongPtrW(pane.Control(12), GWL_STYLE);
                     check((style & SS_TYPEMASK) == SS_OWNERDRAW && !(style & WS_TABSTOP), "Model capsule became an editable/tab-stop control");
-                    RECT model{}, target{}, send{};
-                    GetWindowRect(pane.Control(12), &model); GetWindowRect(pane.Control(14), &target); GetWindowRect(pane.Control(11), &send);
-                    check(model.left >= target.right + pane.D(8) && model.right <= send.left - pane.D(8) &&
-                          model.bottom - model.top == pane.D(28), "Model capsule overlaps target/send or changed row height");
-                    if (name == "m") check(model.right - model.left < send.left - pane.D(16) - model.left,
-                                            "Short model name unnecessarily fills the whole composer lane");
+                    RECT plus{}, send{}, input{};
+                    GetWindowRect(pane.Control(33), &plus); GetWindowRect(pane.Control(11), &send);
+                    GetWindowRect(pane.Control(10), &input);
+                    check(!IsWindowVisible(pane.Control(12)) && !IsWindowVisible(pane.Control(14)) &&
+                          !IsWindowVisible(pane.Control(15)) && !IsWindowVisible(pane.Control(32)),
+                          "Context controls must be consolidated in the Plus menu");
+                    check(IsWindowVisible(pane.Control(33)) && plus.right <= input.left && input.right <= send.left &&
+                          plus.bottom - plus.top == pane.D(28), "Capsule actions overlap the draft");
+                    RECT settings{}, history{}, pet{};
+                    GetWindowRect(pane.Control(19), &settings);
+                    GetWindowRect(pane.Control(17), &history);
+                    GetWindowRect(pane.Control(30), &pet);
+                    check(IsWindowVisible(pane.Control(19)) && IsWindowEnabled(pane.Control(19)) &&
+                          pet.right < settings.left && settings.right < history.left,
+                          "AI Settings action disappeared or overlaps neighboring actions");
+                    RedrawWindow(pane.Control(19), nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+                    HDC settingsDc = GetDC(pane.Control(19));
+                    check(settingsDc != nullptr, "Cannot capture the native Settings button");
+                    unsigned settingsInk = 0;
+                    const auto background = UiAiTheme(dark).surface;
+                    for (int y = pane.D(6); y < pane.D(22); ++y)
+                        for (int x = pane.D(6); x < pane.D(22); ++x)
+                            settingsInk += GetPixel(settingsDc, x, y) != CLR_INVALID && GetPixel(settingsDc, x, y) != background;
+                    ReleaseDC(pane.Control(19), settingsDc);
+                    check(settingsInk > 8, "AI Settings button has no visible gear artwork");
                     check(pane.modelTooltip_ == (name.empty() ? L"模型未获取" : std::wstring(name.begin(), name.end())),
-                          "Model tooltip lost the full name or invented a server model");
-                    RedrawWindow(pane.window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
-                    HDC dc = GetDC(pane.Control(12));
-                    const bool cleanCorner = dc && GetPixel(dc, 0, 0) == UiAiTheme(dark).field;
-                    const bool outlined = dc && GetPixel(dc, 0, pane.D(14)) != UiAiTheme(dark).field;
-                    if (dc) ReleaseDC(pane.Control(12), dc);
-                    check(cleanCorner, "Rectangular model background escaped onto the composer");
-                    check(outlined, "Model caption lost its capsule outline");
+                          "Read-only context lost the full server model");
                     const auto image = std::wstring(L"v218-model-") + (dark ? L"dark-" : L"light-") +
                         std::to_wstring(width) + (name.empty() ? L"-unknown.png" : name == "m" ? L"-short.png" : L"-long.png");
                     ui_test::SaveUiEvidence(pane.window_, image);
@@ -163,7 +585,7 @@ struct AiPaneTestAccess {
         pane.Theme(savedDark);
         MoveWindow(pane.window_, saved.left, saved.top, saved.right - saved.left, saved.bottom - saved.top, TRUE);
         pane.UpdateActions();
-        std::cout << "MODEL_CAPSULE_CASES=" << cases << " PASS: empty/short/long model, both palettes, narrow/normal, readonly, tooltip and composer corner\n";
+        std::cout << "COMPOSER_CONTEXT_CASES=" << cases << " PASS: empty/short/long model, both palettes, narrow/normal, readonly, tooltip and composer corner\n";
     }
     static void CALLBACK TechnicalTick(HWND parent, UINT, UINT_PTR timer, DWORD) {
         struct Find {
@@ -181,12 +603,12 @@ struct AiPaneTestAccess {
     static void CheckV209(AiPane &pane) {
         auto check = [](bool value, const char *why) { if (!value) throw std::runtime_error(why); };
         pane.busy_ = false; pane.NewConversation();
-        pane.busy_ = true; pane.waitingReply_ = true; pane.displayGroup_ = "v209-tools";
+        pane.busy_ = true; pane.showTurnProgress_ = true; pane.displayGroup_ = "v209-tools";
         const ai::Json result{{"sessionId", "session-1"}, {"text", u8"当前屏幕第一行\n当前屏幕第二行"},
             {"cursor", 8490}, {"alternateScreen", true}, {"truncated", false}};
         pane.AddTool("serialctl_screen", {{"sessionId", "session-1"}}, result, L"SSH");
-        check(pane.messages_.front().folded && IsRectEmpty(&pane.waitingBounds_),
-              "Tool process or waiting placeholder escaped its group");
+        check(!pane.messages_.front().folded && pane.waitingBounds_.top > pane.messages_.front().bounds.bottom,
+              "Turn progress must follow the visible tool process");
         check(pane.messages_.front().text.find(L"sessionId") == std::wstring::npos &&
               pane.messages_.front().text.find(L"第一行\n当前屏幕第二行") != std::wstring::npos &&
               pane.messages_.front().technical.find(L"sessionId") != std::wstring::npos,
@@ -204,10 +626,10 @@ struct AiPaneTestAccess {
         pane.busy_ = false;
         pane.scroll_.unread = true; pane.Layout();
         RECT latest{}, observe{}, overlap{};
-        GetWindowRect(pane.Control(20), &latest); GetWindowRect(pane.Control(32), &observe);
-        check(IsWindowVisible(pane.Control(32)) && !IsWindowVisible(pane.Control(16)) &&
-              !IntersectRect(&overlap,&latest,&observe) && latest.top==observe.top && latest.left>=observe.right,
-              "Latest and log-menu actions must have separate cells in the fixed utility row");
+        GetWindowRect(pane.Control(20), &latest); GetWindowRect(pane.Control(33), &observe);
+        check(IsWindowVisible(pane.Control(33)) && !IsWindowVisible(pane.Control(32)) && !IsWindowVisible(pane.Control(16)) &&
+              !IntersectRect(&overlap,&latest,&observe) && latest.bottom <= observe.top,
+              "Return-to-latest action must stay above the capsule and its Plus menu");
         pane.NewConversation(); pane.busy_ = true; pane.displayGroup_ = "v209-burst";
         pane.Add(L"AI", L"", "burst");
         for (int i = 0; i < 800; ++i)
@@ -434,7 +856,7 @@ struct AiPaneTestAccess {
         GetClassNameW(pane.Control(12), modelClass, 32);
         require(_wcsicmp(modelClass, L"Static") == 0 && !pane.Control(13),
                 "Model must be read-only server default without refresh/manual controls");
-        CheckModelCapsules(pane);
+        CheckComposerContext(pane);
         require(pane.target_.empty(), "AI must not select a local serial port by default");
         require(SendMessageW(pane.Control(14), CB_GETCOUNT, 0, 0) == 3,
                 "Target picker must offer explicit selection plus remote-IP discovery");
@@ -515,7 +937,9 @@ struct AiPaneTestAccess {
                 require(input.left >= outer.left && input.right <= outer.right && input.bottom <= outer.bottom,
                         "Composer escapes center pane");
                 require(canvas.bottom <= input.top, "Transcript must not cover the fixed composer");
-                require(target.right <= send.left, "Target selector overlaps Send at narrow width");
+                require(!IsWindowVisible(pane.Control(14)) &&
+                        (pane.composerExpanded_ ? input.bottom <= send.top : input.right <= send.left),
+                        "Composer text overlaps Send at narrow width");
                 require(pane.scroll_.offset == 0, "Theme/resize must preserve the history reading position");
                 UpdateWindow(pane.Handle());
                 UpdateWindow(pane.transcript_);
@@ -530,14 +954,14 @@ struct AiPaneTestAccess {
             GetWindowRect(pane.Control(10), &baseInput);
             GetWindowRect(pane.Control(11), &baseSend);
             GetWindowRect(pane.transcript_, &baseCanvas);
-            require(baseInput.bottom - baseInput.top == pane.D(40), "Empty input must start at baseline D(40) height");
+            require(baseInput.bottom - baseInput.top == pane.InputLineHeight(), "Empty input must show one measured line");
 
             SetWindowTextW(pane.Control(10), L"第1行日志\r\n第2行日志\r\n第3行日志\r\n第4行日志\r\n第5行日志");
             RECT midInput{}, midSend{}, midCanvas{};
             GetWindowRect(pane.Control(10), &midInput);
             GetWindowRect(pane.Control(11), &midSend);
             GetWindowRect(pane.transcript_, &midCanvas);
-            require(midInput.bottom - midInput.top > pane.D(40) && midInput.top < baseInput.top,
+            require(midInput.bottom - midInput.top > pane.InputLineHeight() && midInput.top < baseInput.top,
                     "Multi-line input did not expand upward");
             require(midSend.top == baseSend.top && midSend.bottom == baseSend.bottom,
                     "Expanding input moved the bottom action row");
@@ -549,13 +973,13 @@ struct AiPaneTestAccess {
             SetWindowTextW(pane.Control(10), thirtyLines.c_str());
             RECT maxInput{};
             GetWindowRect(pane.Control(10), &maxInput);
-            require(maxInput.bottom - maxInput.top <= pane.D(200) && maxInput.bottom - maxInput.top >= midInput.bottom - midInput.top,
+            require(maxInput.bottom - maxInput.top <= pane.InputLineHeight() * Ui::AiComposerMaxLines && maxInput.bottom - maxInput.top >= midInput.bottom - midInput.top,
                     "Long input exceeded maxInputHeight cap");
 
             SetWindowTextW(pane.Control(10), L"");
             RECT clearedInput{};
             GetWindowRect(pane.Control(10), &clearedInput);
-            require(clearedInput.bottom - clearedInput.top == pane.D(40) && clearedInput.top == baseInput.top,
+            require(clearedInput.bottom - clearedInput.top == pane.InputLineHeight() && clearedInput.top == baseInput.top,
                     "Clearing input did not shrink composer back to baseline height");
         }
         pane.Action(20);
@@ -614,15 +1038,16 @@ struct AiPaneTestAccess {
         pane.displayGroup_ = "process-fixture";
         pane.thread_ = "process-thread";
         pane.busy_ = true;
-        pane.waitingReply_ = true;
-        pane.Reflow();
-        require(pane.waitingBounds_.bottom > pane.waitingBounds_.top, "Waiting indicator missing inside transcript");
+        pane.showTurnProgress_ = true;
+        pane.Add(L"我", L"执行诊断");
+        require(pane.waitingBounds_.top > pane.messages_.front().bounds.bottom,
+                "Turn progress must appear after the user message");
         pane.Add(L"工具", L"实际执行输出", "process-tool");
         pane.Add(L"AI", L"最终回答", "process-final");
         pane.Event({{"event", "taskFinished"}, {"conversationId", "process-thread"}, {"status", "completed"}});
-        require(!pane.waitingReply_ && pane.messages_[0].folded && !pane.messages_[1].folded,
+        require(!pane.showTurnProgress_ && pane.messages_[1].folded && !pane.messages_[2].folded,
                 "Successful process must fold without hiding final answer");
-        require(pane.messages_[0].text == L"实际执行输出", "Folding discarded original tool evidence");
+        require(pane.messages_[1].text == L"实际执行输出", "Folding discarded original tool evidence");
         {
             RECT size{};
             GetClientRect(pane.transcript_, &size);
@@ -630,8 +1055,8 @@ struct AiPaneTestAccess {
             auto bitmap = CreateCompatibleBitmap(screen, size.right, size.bottom);
             auto old = SelectObject(dc, bitmap);
             pane.PaintTranscript(dc);
-            const auto summaryPixel = GetPixel(dc, pane.messages_[0].bounds.left + pane.D(20),
-                                               pane.messages_[0].bounds.top + pane.D(34) - pane.scroll_.offset);
+            const auto summaryPixel = GetPixel(dc, pane.messages_[1].bounds.left + pane.D(20),
+                                               pane.messages_[1].bounds.top + pane.D(34) - pane.scroll_.offset);
             SelectObject(dc, old);
             DeleteObject(bitmap);
             DeleteDC(dc);
@@ -642,14 +1067,14 @@ struct AiPaneTestAccess {
 
         pane.collapsedGroups_.erase("process-fixture");
         pane.Reflow();
-        require(!pane.messages_[0].folded, "Process could not be expanded");
+        require(!pane.messages_[1].folded, "Process could not be expanded");
         pane.displayGroup_ = "failed-fixture";
         pane.busy_ = true;
         pane.groupStates_[pane.displayGroup_] = L"含失败记录";
         pane.Add(L"工具", L"退出码 1", "failed-tool");
         const auto failedTool = pane.messages_.size() - 1;
         pane.Add(L"AI", L"已根据日志完成分析", "recovered-final");
-        require(pane.messages_[failedTool].folded, "Running process must default to collapsed");
+        require(!pane.messages_[failedTool].folded, "Running process must default to expanded");
         pane.Event({{"event", "taskFinished"}, {"status", "completed"}});
         require(pane.messages_[failedTool].folded && !pane.messages_.back().folded &&
                     pane.groupStates_["failed-fixture"] == L"已完成 · 含失败记录",
@@ -664,8 +1089,8 @@ struct AiPaneTestAccess {
             pane.Event({{"event", "textComplete"}, {"messageId", "progress"}, {"text", "Checking logs"}, {"final", true}});
             pane.Add(L"工具", L"完整工具输出", "phase-less-tool");
             pane.Event({{"event", "textComplete"}, {"messageId", "answer"}, {"text", "Final diagnosis"}, {"final", true}});
-            require(!pane.messages_[0].process && pane.messages_[1].folded,
-                    "New tool process did not default to collapsed");
+            require(!pane.messages_[0].process && !pane.messages_[1].folded,
+                    "New tool process should be visible while running");
             const std::wstring palette = dark ? L"dark" : L"light";
             ui_test::SaveUiEvidence(pane.transcript_, L"v205-process-" + palette + L"-running.png",
                                  [&](HDC dc) { pane.PaintTranscript(dc); });
@@ -976,7 +1401,10 @@ int main(int argc, char **argv) {
         AiPane pane;
         try {
             const bool layoutAudit=argc>1 && std::string(argv[1])=="--layout-audit";
-            if(!layoutAudit) CheckHostKeyDialogs(parent, font);
+            const bool composer=argc>1 && std::string(argv[1])=="--composer";
+            const bool replyFormat=argc>1 && std::string(argv[1])=="--reply-format";
+            const bool voiceComposer=argc>1 && std::string(argv[1])=="--voice-composer";
+            if(!layoutAudit && !composer && !replyFormat && !voiceComposer) CheckHostKeyDialogs(parent, font);
             if (!pane.Create(parent, font, false, [](const std::string &method, const ai::Json &) {
                     if (method == "sessions")
                         return ai::Json::array({{{"id", "session-7"}, {"name", "192.0.2.20 / COM3"}}});
@@ -984,9 +1412,12 @@ int main(int argc, char **argv) {
                 }))
                 throw std::runtime_error("Cannot create native AI pane");
             SetWindowPos(pane.Handle(), nullptr, 0, 0, 1000, 650, SWP_NOZORDER | SWP_SHOWWINDOW);
-            if(layoutAudit) AiPaneTestAccess::AuditLayoutLoad(pane);
+            if(composer) AiPaneTestAccess::RunComposer(pane);
+            else if(layoutAudit) AiPaneTestAccess::AuditLayoutLoad(pane);
+            else if(replyFormat) AiPaneTestAccess::RunReplyFormat(pane);
+            else if(voiceComposer) AiPaneTestAccess::RunVoiceComposer(pane);
             else AiPaneTestAccess::Run(pane);
-            std::cout << "AiPane: explicit remote selection, wheel/key/scrollbar history navigation, streaming scroll "
+            if (!composer && !replyFormat && !voiceComposer) std::cout << "AiPane: explicit remote selection, wheel/key/scrollbar history navigation, streaming scroll "
                          "anchoring, fixed composer geometry and both themes passed (Win32 UI smoke test)\n";
         } catch (const std::exception &e) {
             std::cerr << e.what() << '\n';

@@ -1,4 +1,5 @@
 #include "ApiServer.h"
+#include "../power/RemotePowerProtocol.h"
 #include "ApiResponse.h"
 #include "Win32Helpers.h"
 #include <algorithm>
@@ -489,6 +490,11 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
     if(c->hasTransfer)try {
         handler_("transfer.release_owner","",{{"source","network:"+std::to_string(c->id)}});
     }catch(...) {Trace(c,"close","XFER_OWNER_RELEASE_FAILED");}
+    if (c->hasRemotePower) {
+        try {
+            handler_(RemotePowerReleaseOp, "power-1", {{"source", "remote-power:" + std::to_string(c->id)}});
+        } catch (...) { Trace(c, "close", "POWER_OWNER_RELEASE_FAILED"); }
+    }
     if (upgraded) {
         Close(c, 1001, "SERVER_STOPPING");
         if (c->sender.joinable())
@@ -569,6 +575,27 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
                 result = handler_(op, target, p);
             else if (op == "power.get" && target == "power-1" && p.empty())
                 result = handler_(op, target, p);
+            else if (target == "power-1" &&
+                     ((op == RemotePowerStateOp && p.empty()) ||
+                      (op == RemotePowerSubmitOp && Keys(p, {"connectionId", "mode", "command"}) &&
+                       Text(p, "connectionId") && Text(p, "mode", 16) && p.contains("command") &&
+                       RemotePowerCommandAllowed(p["command"])) ||
+                      (op == RemotePowerActionOp && Keys(p, {"id"}) && Text(p, "id")))) {
+                bool allowed;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    const auto peerIp = c->peer.substr(0, c->peer.find(':')); // The listener is IPv4 only.
+                    allowed = std::find(allowedClients_.begin(), allowedClients_.end(), peerIp) != allowedClients_.end();
+                }
+                if (!allowed)
+                    result = Failure("POWER_SOURCE_DENIED", u8"请在电源所在电脑的 SerialShare AllowedClients 中加入控制端 IP。");
+                else {
+                    Json body = p;
+                    body["source"] = "remote-power:" + std::to_string(c->id);
+                    if (op == RemotePowerSubmitOp) c->hasRemotePower = true;
+                    result = handler_(op, target, body);
+                }
+            }
             else if (op == "power.output" && target == "power-1" && Keys(p, {"enabled"}) && p.contains("enabled") &&
                      p["enabled"].is_boolean()) {
                 Json body = p;

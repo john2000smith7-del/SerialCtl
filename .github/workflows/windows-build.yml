@@ -351,7 +351,7 @@ jobs:
               if path.suffix in ('.json','.txt','.log') and path.stat().st_size<2000000:
                   shutil.copy2(path,out/path.name)
           for path in root.glob('*.png'):
-              if any(path.name.endswith('-'+part+'.png') for part in ('modal-101','modal-103','modal-303','modal-304','theme-final','pet-after-real-drag','failure-desktop')):
+              if any(path.name.endswith('-'+part+'.png') for part in ('modal-101','modal-remote-serial','modal-303','modal-304','theme-final','pet-after-real-drag','failure-desktop')):
                   shutil.copy2(path,out/path.name)
           manifest={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
           (out/'review-provenance.json').write_text(json.dumps({'source_commit':os.environ['GITHUB_SHA'],'run':os.environ['GITHUB_RUN_ID'],'files_sha256':manifest,'capture':'Unchanged selected original screenshot and result files; full recording retained in packaged-endurance artifact'},indent=2),encoding='utf-8')

@@ -78,6 +78,11 @@ int main() {
             {{"conversationId", "t"}, {"text", "inspect"}, {"defaultModel", "server-default"}, {"cwd", "/srv/code"}});
         Require(task["params"]["model"] == "server-default" && task["params"]["cwd"] == "/srv/code" &&
             task["params"]["sandboxPolicy"]["type"] == "dangerFullAccess", "Turn lost server tool policy");
+        const auto imageTurn = MakeRequest(Operation::StartTask, 81,
+            {{"conversationId", "t"}, {"text", "inspect image"}, {"images", {"/tmp/serialctl-ai.A123456789/file-1.png"}}});
+        Require(imageTurn["params"]["input"].size() == 2 &&
+                imageTurn["params"]["input"][1] == Json{{"type", "localImage"}, {"path", "/tmp/serialctl-ai.A123456789/file-1.png"}},
+                "Turn did not carry the uploaded image as a visual input");
         Json commandItem = {{"id", "cmd-1"}, {"type", "commandExecution"}, {"command", "make test"},
             {"cwd", "/srv/code"}, {"status", "completed"}, {"exitCode", 2}, {"aggregatedOutput", "ACTUAL_FAILED_TEST"}};
         const auto commandEvent = DecodeNotification({{"method", "item/completed"},

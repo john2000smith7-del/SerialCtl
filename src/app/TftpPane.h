@@ -2,7 +2,11 @@
 
 #include "TftpServer.h"
 #include "UiStyle.h"
+#include <atomic>
+#include <cstdint>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <windows.h>
@@ -41,16 +45,19 @@ public:
         RemoteSession,
         RemotePathLabel,
         RemotePath,
-        TftpNameLabel,
-        TftpName,
-        PublishBtn,
-        UnpublishBtn,
+        RefreshDirBtn,
 
-        PublishedLabel,
-        PublishedList,
+        DirFilesLabel,
+        DirFilesList,
         TransfersLabel,
-        TransfersStatus,
+        TransferCount,
+        TransferDetail,
         CancelTransferBtn
+    };
+
+    struct AsyncRemoteShared {
+        std::mutex mutex;
+        HWND hwnd = nullptr;
     };
 
     ~TftpPane();
@@ -60,6 +67,12 @@ public:
     HWND Handle() const { return window_; }
     void Theme(bool dark, int dpi, HFONT font);
     void Refresh();
+    void ConfigureDirectories(const std::wstring& rootMode,
+                              const std::wstring& localDirectory,
+                              const std::wstring& remoteDirectory);
+    std::wstring RootMode() const;
+    std::wstring LocalDirectory() const;
+    std::wstring RemoteDirectory() const;
 
     std::function<void()> stateChanged;
 
@@ -71,10 +84,15 @@ private:
     HWND Control(int id) const;
     void Layout();
     void Scroll(int amount);
-    void BrowseLocalFile();
+    void InvalidateProgress();
+    void BrowseLocalDirectory();
+    void ApplySelectedSource(bool userTriggered);
+    void ApplyLocalDirectory(bool showError, bool persistState);
+    void OnLocalPathTyped();
+    void ApplyRemoteDirectory(bool allowAsyncFetch, bool persistState);
+    void OnRemoteDirDone(LPARAM lParam);
+    void RefreshDirectory(bool userTriggered);
     void OnToggleService();
-    void OnPublish();
-    void OnUnpublish();
     void OnCancelTransfer();
     void Paint(HDC dc);
 
@@ -97,7 +115,29 @@ private:
     std::vector<TftpSshSessionInfo> cachedSshSessions_;
 
     int selectedSourceType_ = 0; // 0 = Local, 1 = Remote SSH
+    std::string selectedRemoteSessionId_;
+    std::wstring localDir_;
+    std::wstring remoteDir_;
+    std::vector<TftpDirectoryEntry> dirEntries_;
+    std::wstring dirListNotice_;
     std::wstring localNotice_;
+    bool suppressEditNotify_ = false;
+
+    std::shared_ptr<AsyncRemoteShared> remoteListShared_;
+    std::atomic<uint64_t> remoteListSeq_{0};
+    bool remoteListingPending_ = false;
+    std::string lastAutoQueriedKey_;
+
+    int progressLeft_ = 0;
+    int progressTop_ = -1;
+    int progressRight_ = 0;
+    uint64_t displayBytes_ = 0;
+    uint64_t displayTotal_ = 0;
+    bool transferActive_ = false;
+    bool transferHasError_ = false;
+    uint64_t lastProgressBytes_ = 0;
+    uint64_t lastProgressTotal_ = 0;
+    bool lastProgressActive_ = false;
 };
 
 } // namespace serialctl

@@ -1,13 +1,54 @@
 #include "TftpPane.h"
 #include <commctrl.h>
-#include <commdlg.h>
+#include <shlobj.h>
+#include <shobjidl.h>
 #include <shlwapi.h>
 #include <algorithm>
+#include <iomanip>
 #include <sstream>
+#include <thread>
 
 namespace serialctl {
 
-static int MeasureText(HWND parent, HFONT font, const std::wstring& text, int width) {
+namespace {
+constexpr UINT kMsgRemoteDirDone = WM_APP + 10;
+
+struct AsyncRemoteListingResult {
+    uint64_t requestId = 0;
+    std::wstring remoteDir;
+    std::string sessionId;
+    SshRemoteConfig config;
+    bool ok = false;
+    std::vector<TftpDirectoryEntry> entries;
+    std::wstring error;
+};
+
+std::wstring TrimWhitespace(const std::wstring& value) {
+    const size_t start = value.find_first_not_of(L" \t\r\n");
+    if (start == std::wstring::npos) return {};
+    const size_t end = value.find_last_not_of(L" \t\r\n");
+    return value.substr(start, end - start + 1);
+}
+
+std::wstring FormatByteSize(uint64_t bytes) {
+    std::wostringstream oss;
+    oss << std::fixed << std::setprecision(1);
+    if (bytes < 1024ULL) {
+        return std::to_wstring(bytes) + L" B";
+    }
+    if (bytes < 1024ULL * 1024ULL) {
+        oss << (static_cast<double>(bytes) / 1024.0) << L" KB";
+        return oss.str();
+    }
+    if (bytes < 1024ULL * 1024ULL * 1024ULL) {
+        oss << (static_cast<double>(bytes) / (1024.0 * 1024.0)) << L" MB";
+        return oss.str();
+    }
+    oss << std::setprecision(2) << (static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0)) << L" GB";
+    return oss.str();
+}
+
+int MeasureText(HWND parent, HFONT font, const std::wstring& text, int width) {
     if (text.empty() || width <= 0) return 0;
     HDC dc = GetDC(parent);
     HFONT old = reinterpret_cast<HFONT>(SelectObject(dc, font));
@@ -18,7 +59,8 @@ static int MeasureText(HWND parent, HFONT font, const std::wstring& text, int wi
     return rc.bottom - rc.top;
 }
 
-static std::wstring ControlText(HWND h) {
+std::wstring ControlText(HWND h) {
+    if (!h) return {};
     int len = GetWindowTextLengthW(h);
     if (len <= 0) return {};
     std::vector<wchar_t> buf(len + 1);
@@ -26,13 +68,13 @@ static std::wstring ControlText(HWND h) {
     return buf.data();
 }
 
-static bool SetTextIfChanged(HWND h, const std::wstring& value) {
+bool SetTextIfChanged(HWND h, const std::wstring& value) {
     if (!h || ControlText(h) == value) return false;
     SetWindowTextW(h, value.c_str());
     return true;
 }
 
-static std::string WideToUtf8(const std::wstring& w) {
+std::string WideToUtf8(const std::wstring& w) {
     if (w.empty()) return {};
     int sz = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
     std::string s(sz, '\0');
@@ -40,7 +82,7 @@ static std::string WideToUtf8(const std::wstring& w) {
     return s;
 }
 
-static std::wstring Utf8ToWide(const std::string& s) {
+std::wstring Utf8ToWide(const std::string& s) {
     if (s.empty()) return {};
     int sz = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), nullptr, 0);
     std::wstring w(sz, L'\0');
@@ -48,13 +90,77 @@ static std::wstring Utf8ToWide(const std::string& s) {
     return w;
 }
 
-static std::wstring ExtractBasename(const std::wstring& path) {
-    auto pos = path.find_last_of(L"\\/");
-    if (pos == std::wstring::npos) return path;
-    return path.substr(pos + 1);
+template <typename T>
+struct ComReleaser {
+    T* ptr = nullptr;
+    ~ComReleaser() {
+        if (ptr) ptr->Release();
+    }
+    ComReleaser() = default;
+    ComReleaser(const ComReleaser&) = delete;
+    ComReleaser& operator=(const ComReleaser&) = delete;
+};
+
+std::wstring PickFolderDialog(HWND owner, const std::wstring& initialDir) {
+    const HRESULT coHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    const bool shouldUninit = (coHr == S_OK || coHr == S_FALSE);
+    struct CoGuard {
+        bool uninit = false;
+        ~CoGuard() {
+            if (uninit) CoUninitialize();
+        }
+    } coGuard{shouldUninit};
+
+    ComReleaser<IFileOpenDialog> dialog;
+    if (SUCCEEDED(CoCreateInstance(__uuidof(FileOpenDialog), nullptr, CLSCTX_INPROC_SERVER,
+                                   __uuidof(IFileOpenDialog), reinterpret_cast<void**>(&dialog.ptr))) && dialog.ptr) {
+        DWORD opts = 0;
+        if (SUCCEEDED(dialog.ptr->GetOptions(&opts))) {
+            dialog.ptr->SetOptions(opts | FOS_PICKFOLDERS | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM);
+        }
+        dialog.ptr->SetTitle(L"选择 TFTP 根目录");
+        const std::wstring trimmed = TrimWhitespace(initialDir);
+        if (!trimmed.empty()) {
+            ComReleaser<IShellItem> folderItem;
+            if (SUCCEEDED(SHCreateItemFromParsingName(trimmed.c_str(), nullptr,
+                                                     __uuidof(IShellItem),
+                                                     reinterpret_cast<void**>(&folderItem.ptr))) && folderItem.ptr) {
+                dialog.ptr->SetFolder(folderItem.ptr);
+            }
+        }
+        const HRESULT showHr = dialog.ptr->Show(owner);
+        if (SUCCEEDED(showHr)) {
+            ComReleaser<IShellItem> result;
+            if (SUCCEEDED(dialog.ptr->GetResult(&result.ptr)) && result.ptr) {
+                PWSTR path = nullptr;
+                if (SUCCEEDED(result.ptr->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path) {
+                    std::wstring selected(path);
+                    CoTaskMemFree(path);
+                    return selected;
+                }
+            }
+        }
+        return {};
+    }
+
+    wchar_t buffer[MAX_PATH]{};
+    BROWSEINFOW bi{};
+    bi.hwndOwner = owner;
+    bi.lpszTitle = L"选择 TFTP 根目录";
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX;
+    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+    if (!pidl) return {};
+    const bool got = SHGetPathFromIDListW(pidl, buffer) != FALSE;
+    CoTaskMemFree(pidl);
+    return got ? std::wstring(buffer) : std::wstring{};
 }
+} // namespace
 
 TftpPane::~TftpPane() {
+    if (remoteListShared_) {
+        std::lock_guard<std::mutex> lock(remoteListShared_->mutex);
+        remoteListShared_->hwnd = nullptr;
+    }
     if (window_) DestroyWindow(window_);
     if (surface_) DeleteObject(surface_);
     if (field_) DeleteObject(field_);
@@ -71,6 +177,7 @@ bool TftpPane::Create(HWND parent, std::shared_ptr<TftpServer> server,
     font_ = font;
     dark_ = dark;
     dpi_ = dpi;
+    remoteListShared_ = std::make_shared<AsyncRemoteShared>();
 
     HINSTANCE inst = GetModuleHandleW(nullptr);
     WNDCLASSEXW wc{sizeof(wc)};
@@ -86,58 +193,66 @@ bool TftpPane::Create(HWND parent, std::shared_ptr<TftpServer> server,
     RegisterClassExW(&bc);
 
     window_ = CreateWindowExW(0, L"SerialCtlTftpPane", L"",
-        WS_CHILD | WS_CLIPCHILDREN, 0, 0, 100, 100, parent, nullptr, inst, this);
+        WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0, 0, 100, 100, parent, nullptr, inst, this);
     if (!window_) return false;
+    {
+        std::lock_guard<std::mutex> lock(remoteListShared_->mutex);
+        remoteListShared_->hwnd = window_;
+    }
 
     body_ = CreateWindowExW(0, L"SerialCtlTftpBody", L"",
         WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN, 0, 0, 100, 100, window_, nullptr, inst, this);
     if (!body_) return false;
 
     auto add = [this, inst](int id, const wchar_t* cls, const wchar_t* text, DWORD style) {
-        HWND h = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style,
+        HWND h = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | style,
                                  0, 0, 10, 10, body_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), inst, nullptr);
         if (_wcsicmp(cls, L"BUTTON") == 0) UiStyleButton(h);
         return h;
     };
 
     // Service controls
-    add(ServiceStatus, L"STATIC", L"服务状态：未启动", SS_LEFT | SS_NOPREFIX);
+    auto serviceStatus = add(ServiceStatus, L"STATIC", L"服务状态：未启动", SS_LEFT | SS_NOPREFIX | SS_EDITCONTROL | SS_NOTIFY);
+    UiSetControlTooltip(serviceStatus, L"服务状态：未启动");
     add(BindIpLabel, L"STATIC", L"监听网卡 / IP:", SS_LEFT | SS_NOPREFIX);
     add(BindIp, L"COMBOBOX", L"", CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
     add(PortLabel, L"STATIC", L"端口:", SS_LEFT | SS_NOPREFIX);
     add(Port, L"EDIT", L"69", ES_LEFT | ES_NUMBER | WS_TABSTOP);
     add(ToggleService, L"BUTTON", L"启动服务", BS_OWNERDRAW | WS_TABSTOP);
-    add(BoardTip, L"STATIC", L"开发板参考：\r\nsetenv serverip <调试机IP>\r\ntftpboot ${loadaddr} <文件名>", SS_LEFT | SS_NOPREFIX);
+    add(BoardTip, L"STATIC", L"开发板设置参考：\r\nsetenv serverip <调试机IP>\r\ntftpboot ${loadaddr} <文件名>", SS_LEFT | SS_NOPREFIX);
 
-    // Publishing controls
+    // Directory publishing controls
     add(SourceTypeLabel, L"STATIC", L"文件来源类别:", SS_LEFT | SS_NOPREFIX);
     auto srcCombo = add(SourceType, L"COMBOBOX", L"", CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
-    SendMessageW(srcCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"本机文件"));
-    SendMessageW(srcCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"远程 SSH"));
+    SendMessageW(srcCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"本机目录"));
+    SendMessageW(srcCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"远程 SSH 目录"));
     SendMessageW(srcCombo, CB_SETCURSEL, 0, 0);
 
-    add(LocalPathLabel, L"STATIC", L"本地文件绝对路径:", SS_LEFT | SS_NOPREFIX);
-    add(LocalPath, L"EDIT", L"", ES_LEFT | ES_AUTOHSCROLL | WS_TABSTOP);
-    auto browseBtn = add(BrowseLocal, L"BUTTON", L"选择文件", BS_OWNERDRAW | WS_TABSTOP);
+    add(LocalPathLabel, L"STATIC", L"本地 TFTP 目录:", SS_LEFT | SS_NOPREFIX);
+    HWND localEdit = add(LocalPath, L"EDIT", L"", ES_LEFT | ES_AUTOHSCROLL | WS_TABSTOP);
+    SetWindowSubclass(localEdit, FieldProc, LocalPath, reinterpret_cast<DWORD_PTR>(this));
+    auto browseBtn = add(BrowseLocal, L"BUTTON", L"选择目录", BS_OWNERDRAW | WS_TABSTOP);
     UiSetFlatIconButton(browseBtn);
-    UiSetButtonGlyph(browseBtn, UiGlyph::Folder, L"选择本地文件");
+    UiSetButtonGlyph(browseBtn, UiGlyph::Folder, L"选择本地 TFTP 目录");
 
     add(RemoteSessionLabel, L"STATIC", L"已配置的 SSH 连接:", SS_LEFT | SS_NOPREFIX);
     add(RemoteSession, L"COMBOBOX", L"", CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
-    add(RemotePathLabel, L"STATIC", L"远程文件绝对路径 (POSIX):", SS_LEFT | SS_NOPREFIX);
-    add(RemotePath, L"EDIT", L"", ES_LEFT | ES_AUTOHSCROLL | WS_TABSTOP);
+    add(RemotePathLabel, L"STATIC", L"远程 TFTP 目录 (POSIX):", SS_LEFT | SS_NOPREFIX);
+    HWND remoteEdit = add(RemotePath, L"EDIT", L"", ES_LEFT | ES_AUTOHSCROLL | WS_TABSTOP);
+    SetWindowSubclass(remoteEdit, FieldProc, RemotePath, reinterpret_cast<DWORD_PTR>(this));
 
-    add(TftpNameLabel, L"STATIC", L"TFTP 发布名 (开发板请求的文件名):", SS_LEFT | SS_NOPREFIX);
-    add(TftpName, L"EDIT", L"", ES_LEFT | ES_AUTOHSCROLL | WS_TABSTOP);
+    auto refreshBtn = add(RefreshDirBtn, L"BUTTON", L"刷新", BS_OWNERDRAW | WS_TABSTOP);
+    UiSetFlatIconButton(refreshBtn);
+    UiSetButtonGlyph(refreshBtn, UiGlyph::Refresh, L"刷新目录文件列表");
 
-    add(PublishBtn, L"BUTTON", L"发布文件", BS_OWNERDRAW | WS_TABSTOP);
-    add(UnpublishBtn, L"BUTTON", L"取消发布", BS_OWNERDRAW | WS_TABSTOP);
-
-    // Status and Lists
-    add(PublishedLabel, L"STATIC", L"已发布文件列表:", SS_LEFT | SS_NOPREFIX);
-    add(PublishedList, L"EDIT", L"(无发布文件)", ES_LEFT | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL);
+    // Directory file list & Transfer progress
+    dirListNotice_ = L"(请选择或输入目录后自动列出文件)";
+    add(DirFilesLabel, L"STATIC", L"目录文件列表 (已排除子目录):", SS_LEFT | SS_NOPREFIX);
+    add(DirFilesList, L"EDIT", dirListNotice_.c_str(), ES_LEFT | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL);
     add(TransfersLabel, L"STATIC", L"实时传输任务:", SS_LEFT | SS_NOPREFIX);
-    add(TransfersStatus, L"EDIT", L"(无活动传输)", ES_LEFT | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL);
+    add(TransferCount, L"STATIC", L"等待传输", SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS);
+    auto transferDetail = add(TransferDetail, L"STATIC", L"(无活动传输)", SS_LEFT | SS_NOPREFIX | SS_EDITCONTROL | SS_NOTIFY);
+    UiSetControlTooltip(transferDetail, L"(无活动传输)");
     add(CancelTransferBtn, L"BUTTON", L"取消当前传输", BS_OWNERDRAW | WS_TABSTOP);
 
     Theme(dark_, dpi_, font_);
@@ -181,43 +296,39 @@ void TftpPane::Layout() {
     GetClientRect(window_, &client);
     const int width = std::max(1L, client.right);
     bodyHeight_ = std::max(1L, client.bottom);
-    MoveWindow(body_, 0, 0, width, bodyHeight_, TRUE);
+    UiLayoutBatch viewport(true);
+    viewport.Move(body_, 0, 0, width, bodyHeight_);
+    viewport.Commit();
 
     const int lane = D(16);
     const int contentWidth = std::max(D(80), width - lane);
     const int hField = D(26);
     const int hLabel = D(18);
     const int gap = D(6);
+    const int btnWidth = D(28);
+    const int btnGap = D(6);
 
     const bool isRemote = (selectedSourceType_ == 1);
 
-    // Show/hide based on source type
-    ShowWindow(Control(LocalPathLabel), !isRemote ? SW_SHOW : SW_HIDE);
-    ShowWindow(Control(LocalPath), !isRemote ? SW_SHOW : SW_HIDE);
-    ShowWindow(Control(BrowseLocal), !isRemote ? SW_SHOW : SW_HIDE);
+    UiLayoutBatch layout(true);
+    for (int id : {LocalPathLabel, LocalPath, BrowseLocal})
+        layout.Show(Control(id), isRemote ? SW_HIDE : SW_SHOW);
+    for (int id : {RemoteSessionLabel, RemoteSession, RemotePathLabel, RemotePath})
+        layout.Show(Control(id), isRemote ? SW_SHOW : SW_HIDE);
 
-    ShowWindow(Control(RemoteSessionLabel), isRemote ? SW_SHOW : SW_HIDE);
-    ShowWindow(Control(RemoteSession), isRemote ? SW_SHOW : SW_HIDE);
-    ShowWindow(Control(RemotePathLabel), isRemote ? SW_SHOW : SW_HIDE);
-    ShowWindow(Control(RemotePath), isRemote ? SW_SHOW : SW_HIDE);
-
-    int y = 0;
-    auto place = [&](int id, int h, int w = -1, int x = 0) {
+    struct FieldPosition { int id, x, y, width, height, dropHeight; };
+    std::vector<FieldPosition> positions;
+    int y = D(8);
+    auto place = [&](int id, int h, int w = -1, int dropHeight = 0) {
         if (w < 0) w = contentWidth;
-        MoveWindow(Control(id), x, y - offset_, std::max(1, w), h, TRUE);
+        positions.push_back({id, 0, y, w, h, dropHeight});
         y += h + gap;
     };
 
     // Service area
-    place(ServiceStatus, D(22));
+    place(ServiceStatus, D(40));
     place(BindIpLabel, hLabel);
-    place(BindIp, D(150)); // dropdown list height
-    {
-        UiLayoutBatch b;
-        b.ComboVisibleHeight(Control(BindIp), hField);
-        b.Commit();
-    }
-    y -= (D(150) - hField); // adjust back
+    place(BindIp, hField, -1, D(150));
 
     place(PortLabel, hLabel);
     place(Port, hField, D(90));
@@ -227,60 +338,104 @@ void TftpPane::Layout() {
     place(BoardTip, boardTipHeight);
     y += gap;
 
-    // File publishing area
+    // Directory selection area
     place(SourceTypeLabel, hLabel);
-    place(SourceType, D(120));
-    {
-        UiLayoutBatch b;
-        b.ComboVisibleHeight(Control(SourceType), hField);
-        b.Commit();
-    }
-    y -= (D(120) - hField);
+    place(SourceType, hField, -1, D(120));
 
     if (!isRemote) {
         place(LocalPathLabel, hLabel);
-        int browseWidth = D(28);
-        MoveWindow(Control(LocalPath), 0, y - offset_, contentWidth - browseWidth - D(8), hField, TRUE);
-        MoveWindow(Control(BrowseLocal), contentWidth - browseWidth, y - offset_, browseWidth, hField, TRUE);
+        const int editW = std::max(D(60), contentWidth - btnWidth * 2 - btnGap * 2);
+        positions.push_back({LocalPath, 0, y, editW, hField, 0});
+        positions.push_back({BrowseLocal, editW + btnGap, y, btnWidth, hField, 0});
+        positions.push_back({RefreshDirBtn, editW + btnGap * 2 + btnWidth, y, btnWidth, hField, 0});
         y += hField + gap;
     } else {
         place(RemoteSessionLabel, hLabel);
-        place(RemoteSession, D(120));
-        {
-            UiLayoutBatch b;
-            b.ComboVisibleHeight(Control(RemoteSession), hField);
-            b.Commit();
-        }
-        y -= (D(120) - hField);
+        place(RemoteSession, hField, -1, D(120));
 
         place(RemotePathLabel, hLabel);
-        place(RemotePath, hField);
+        const int editW = std::max(D(60), contentWidth - btnWidth - btnGap);
+        positions.push_back({RemotePath, 0, y, editW, hField, 0});
+        positions.push_back({RefreshDirBtn, editW + btnGap, y, btnWidth, hField, 0});
+        y += hField + gap;
     }
+    y += gap;
 
-    place(TftpNameLabel, hLabel);
-    place(TftpName, hField);
-
-    int halfBtn = (contentWidth - D(8)) / 2;
-    MoveWindow(Control(PublishBtn), 0, y - offset_, halfBtn, D(30), TRUE);
-    MoveWindow(Control(UnpublishBtn), halfBtn + D(8), y - offset_, halfBtn, D(30), TRUE);
-    y += D(30) + gap * 2;
-
-    // Status and Lists
-    place(PublishedLabel, hLabel);
-    place(PublishedList, D(75));
+    // Directory files and transfer progress
+    place(DirFilesLabel, hLabel);
+    place(DirFilesList, D(108));
+    y += gap;
 
     place(TransfersLabel, hLabel);
-    place(TransfersStatus, D(65));
+    progressLeft_ = 0;
+    progressRight_ = contentWidth;
+    const int progressLogicalY = y;
+    y += D(6) + gap;
+    place(TransferCount, hLabel);
+    place(TransferDetail, D(34));
     place(CancelTransferBtn, D(28));
 
     contentHeight_ = y + D(20);
     offset_ = std::clamp(offset_, 0, std::max(0, contentHeight_ - bodyHeight_));
+    progressTop_ = progressLogicalY - offset_;
+
+    for (const auto& field : positions) {
+        const auto control = Control(field.id);
+        layout.Move(control, field.x, field.y - offset_, std::max(1, field.width),
+                    field.dropHeight ? field.dropHeight : field.height);
+        if (field.dropHeight) layout.ComboVisibleHeight(control, field.height);
+    }
+    layout.Commit();
+    RedrawWindow(body_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
 }
 
 void TftpPane::Scroll(int amount) {
     offset_ = std::clamp(offset_ + amount, 0, std::max(0, contentHeight_ - bodyHeight_));
     Layout();
     InvalidateRect(body_, nullptr, FALSE);
+}
+
+void TftpPane::InvalidateProgress() {
+    if (!body_ || progressTop_ < 0 || progressRight_ <= progressLeft_) return;
+    RECT rc{progressLeft_, progressTop_, progressRight_, progressTop_ + D(6)};
+    InvalidateRect(body_, &rc, FALSE);
+}
+
+void TftpPane::ConfigureDirectories(const std::wstring& rootMode,
+                                      const std::wstring& localDirectory,
+                                      const std::wstring& remoteDirectory) {
+    localDir_ = localDirectory;
+    remoteDir_ = remoteDirectory;
+    selectedSourceType_ = (rootMode == L"remote") ? 1 : 0;
+
+    if (window_) {
+        suppressEditNotify_ = true;
+        SetTextIfChanged(Control(LocalPath), localDir_);
+        SetTextIfChanged(Control(RemotePath), remoteDir_);
+        SendMessageW(Control(SourceType), CB_SETCURSEL, selectedSourceType_, 0);
+        suppressEditNotify_ = false;
+        Layout();
+    }
+
+    if (selectedSourceType_ == 0) {
+        ApplyLocalDirectory(false, false);
+    } else {
+        ApplyRemoteDirectory(false, false);
+    }
+}
+
+std::wstring TftpPane::RootMode() const {
+    return (selectedSourceType_ == 1) ? L"remote" : L"local";
+}
+
+std::wstring TftpPane::LocalDirectory() const {
+    HWND edit = Control(LocalPath);
+    return edit ? TrimWhitespace(ControlText(edit)) : TrimWhitespace(localDir_);
+}
+
+std::wstring TftpPane::RemoteDirectory() const {
+    HWND edit = Control(RemotePath);
+    return edit ? TrimWhitespace(ControlText(edit)) : TrimWhitespace(remoteDir_);
 }
 
 void TftpPane::Refresh() {
@@ -306,7 +461,9 @@ void TftpPane::Refresh() {
     if (!localNotice_.empty()) {
         statusText += L" [" + localNotice_ + L"]";
     }
-    SetTextIfChanged(Control(ServiceStatus), statusText);
+    if (SetTextIfChanged(Control(ServiceStatus), statusText)) {
+        UiSetControlTooltip(Control(ServiceStatus), statusText.c_str());
+    }
 
     SetTextIfChanged(Control(ToggleService), listening ? L"停止服务" : L"启动服务");
     EnableWindow(Control(BindIp), !listening);
@@ -327,7 +484,7 @@ void TftpPane::Refresh() {
         LRESULT index = 0;
         if (listeningIp != L"0.0.0.0") {
             const auto address = reinterpret_cast<LPARAM>(listeningIp.c_str());
-            index = SendMessageW(ipCombo, CB_FINDSTRINGEXACT, -1, address);
+            index = SendMessageW(ipCombo, CB_FINDSTRINGEXACT, static_cast<WPARAM>(-1), address);
             if (index == CB_ERR) index = SendMessageW(ipCombo, CB_ADDSTRING, 0, address);
         }
         if (index >= 0 && SendMessageW(ipCombo, CB_GETCURSEL, 0, 0) != index)
@@ -335,106 +492,403 @@ void TftpPane::Refresh() {
         SetTextIfChanged(Control(Port), std::to_wstring(server_->Port()));
     }
 
-    // Update board guide tip
+    // 2. Populate SSH sessions combo (preserving selectedRemoteSessionId_ across status changes)
+    if (sshProvider_) {
+        cachedSshSessions_ = sshProvider_();
+        HWND sessCombo = Control(RemoteSession);
+        std::vector<std::wstring> desiredLabels;
+        desiredLabels.reserve(cachedSshSessions_.size());
+        int matchIdx = -1;
+        int firstConnectedIdx = -1;
+        for (size_t i = 0; i < cachedSshSessions_.size(); ++i) {
+            const auto& s = cachedSshSessions_[i];
+            desiredLabels.push_back(s.displayName + (s.connected ? L" (已连接)" : L" (未连接)"));
+            if (!selectedRemoteSessionId_.empty() && s.sessionId == selectedRemoteSessionId_) {
+                matchIdx = static_cast<int>(i);
+            }
+            if (firstConnectedIdx < 0 && s.connected) {
+                firstConnectedIdx = static_cast<int>(i);
+            }
+        }
+        if (matchIdx < 0 && !cachedSshSessions_.empty()) {
+            matchIdx = (firstConnectedIdx >= 0) ? firstConnectedIdx : 0;
+            selectedRemoteSessionId_ = cachedSshSessions_[matchIdx].sessionId;
+        } else if (cachedSshSessions_.empty()) {
+            selectedRemoteSessionId_.clear();
+        }
+
+        bool comboChanged = (SendMessageW(sessCombo, CB_GETCOUNT, 0, 0) != static_cast<LRESULT>(desiredLabels.size()));
+        if (!comboChanged) {
+            for (size_t i = 0; i < desiredLabels.size(); ++i) {
+                const LRESULT len = SendMessageW(sessCombo, CB_GETLBTEXTLEN, i, 0);
+                if (len < 0 || static_cast<size_t>(len) != desiredLabels[i].size()) {
+                    comboChanged = true;
+                    break;
+                }
+                std::wstring existing(static_cast<size_t>(len) + 1, L'\0');
+                SendMessageW(sessCombo, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(existing.data()));
+                existing.resize(static_cast<size_t>(len));
+                if (existing != desiredLabels[i]) {
+                    comboChanged = true;
+                    break;
+                }
+            }
+        }
+        if (comboChanged) {
+            SendMessageW(sessCombo, CB_RESETCONTENT, 0, 0);
+            for (const auto& label : desiredLabels) {
+                SendMessageW(sessCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+            }
+        }
+        if (matchIdx >= 0 && SendMessageW(sessCombo, CB_GETCURSEL, 0, 0) != matchIdx) {
+            SendMessageW(sessCombo, CB_SETCURSEL, matchIdx, 0);
+        }
+    }
+
+    // 3. Directory file list & board tip
     auto displayIp = listening ? listeningIp : ControlText(ipCombo);
     if (displayIp.find(L"0.0.0.0") != std::wstring::npos) {
         auto ips = server_->LocalIps();
         displayIp = ips.empty() ? L"127.0.0.1" : Utf8ToWide(ips.front());
     }
-    wchar_t nameBuf[128]{};
-    GetWindowTextW(Control(TftpName), nameBuf, 128);
-    std::wstring targetName = (nameBuf[0] != L'\0') ? nameBuf : L"Image";
-    std::wstring boardTip = displayIp.rfind(L"127.", 0) == 0
+    const std::wstring sampleName = !dirEntries_.empty() ? Utf8ToWide(dirEntries_.front().name) : L"<文件名>";
+    const std::wstring boardTip = displayIp.rfind(L"127.", 0) == 0
         ? L"当前地址为本机回环，外部开发板无法连接。"
-        : L"开发板设置参考：\r\nsetenv serverip " + displayIp + L"\r\ntftpboot ${loadaddr} " + targetName;
-    SetTextIfChanged(Control(BoardTip), boardTip);
+        : L"开发板设置参考：\r\nsetenv serverip " + displayIp + L"\r\ntftpboot ${loadaddr} " + sampleName;
+    const bool boardTipChanged = SetTextIfChanged(Control(BoardTip), boardTip);
 
-    // 2. Populate SSH sessions combo
-    if (sshProvider_) {
-        cachedSshSessions_ = sshProvider_();
-        HWND sessCombo = Control(RemoteSession);
-        std::wstring currentSel = ControlText(sessCombo);
-        SendMessageW(sessCombo, CB_RESETCONTENT, 0, 0);
-        int matchIdx = -1;
-        for (size_t i = 0; i < cachedSshSessions_.size(); ++i) {
-            const auto& s = cachedSshSessions_[i];
-            std::wstring label = s.displayName + (s.connected ? L" (已连接)" : L" (未连接)");
-            SendMessageW(sessCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
-            if (!currentSel.empty() && label == currentSel) matchIdx = static_cast<int>(i);
-        }
-        if (matchIdx >= 0) SendMessageW(sessCombo, CB_SETCURSEL, matchIdx, 0);
-        else if (!cachedSshSessions_.empty()) SendMessageW(sessCombo, CB_SETCURSEL, 0, 0);
+    std::wstring filesLabel = L"目录文件列表 (已排除子目录):";
+    if (!dirEntries_.empty()) {
+        filesLabel = L"目录文件列表 (共 " + std::to_wstring(dirEntries_.size()) + L" 个文件，不含子目录):";
     }
+    SetTextIfChanged(Control(DirFilesLabel), filesLabel);
 
-    // 3. Published files list
-    auto pubItems = server_->ListPublished();
-    std::wstring pubStr;
-    if (pubItems.empty()) {
-        pubStr = L"(无已发布文件)";
+    std::wstring filesText;
+    if (dirEntries_.empty()) {
+        filesText = dirListNotice_.empty() ? L"(目录下无常规文件，已排除子目录)" : dirListNotice_;
     } else {
-        for (const auto& item : pubItems) {
-            auto info = item.source->Info();
-            pubStr += Utf8ToWide(item.tftpName) + L" [" + Utf8ToWide(info.type) + L"]: ";
-            if (info.sizeKnown) {
-                pubStr += std::to_wstring(info.size) + L" 字节";
-            } else {
-                pubStr += L"大小未知";
-            }
-            pubStr += L" (" + Utf8ToWide(info.status) + L")\r\n  -> " + info.displayPath + L"\r\n";
+        for (size_t i = 0; i < dirEntries_.size(); ++i) {
+            if (i > 0) filesText += L"\r\n";
+            const auto& entry = dirEntries_[i];
+            filesText += Utf8ToWide(entry.name) + L"  (" +
+                (entry.sizeKnown ? FormatByteSize(entry.size) : L"大小未知") + L")";
         }
     }
-    SetTextIfChanged(Control(PublishedList), pubStr);
+    SetTextIfChanged(Control(DirFilesList), filesText);
 
-    // 4. Transfers list
+    // 4. Transfer progress (Xfer style)
     auto trans = server_->ListTransfers();
-    std::wstring transStr;
     bool hasActive = false;
-    if (trans.empty()) {
-        transStr = L"(无传输任务)";
-    } else {
-        for (auto it = trans.rbegin(); it != trans.rend(); ++it) {
-            if (it->phase == "transferring" || it->phase == "connecting") hasActive = true;
-            transStr += Utf8ToWide(it->tftpName) + L" <- " + Utf8ToWide(it->clientIp) + L":" +
-                        std::to_wstring(it->clientPort) + L" [" + Utf8ToWide(it->phase) + L"]\r\n  " +
-                        std::to_wstring(it->ackedBytes) + L" / " +
-                        (it->totalBytes ? std::to_wstring(it->totalBytes) : L"?") + L" 字节";
-            if (it->retransmits > 0) {
-                transStr += L" (重传 " + std::to_wstring(it->retransmits) + L" 次)";
-            }
-            if (!it->error.empty()) {
-                transStr += L"\r\n  错误: " + it->error;
-            }
-            transStr += L"\r\n";
+    const TftpTransferStatus* latest = nullptr;
+    for (auto it = trans.rbegin(); it != trans.rend(); ++it) {
+        if (it->phase == "transferring" || it->phase == "connecting") {
+            hasActive = true;
+            if (!latest) latest = &(*it);
+            break;
         }
     }
-    SetTextIfChanged(Control(TransfersStatus), transStr);
+    if (!latest && !trans.empty()) {
+        latest = &trans.back();
+    }
+
+    uint64_t barBytes = 0;
+    uint64_t barTotal = 0;
+    std::wstring countText = L"等待传输";
+    std::wstring detailText = L"(无活动传输)";
+    bool detailError = false;
+
+    if (latest) {
+        if (hasActive) {
+            barBytes = latest->ackedBytes;
+            barTotal = latest->totalBytes;
+            if (latest->totalBytes > 0) {
+                countText = std::to_wstring(latest->ackedBytes) + L" / " +
+                    std::to_wstring(latest->totalBytes) + L" 字节";
+            } else {
+                countText = std::to_wstring(latest->ackedBytes) + L" 字节 (正在读取...)";
+            }
+            if (latest->retransmits > 0) {
+                countText += L" · 重传 " + std::to_wstring(latest->retransmits) + L" 次";
+            }
+        } else if (latest->phase == "completed") {
+            barBytes = (latest->totalBytes == 0 && latest->ackedBytes == 0) ? 1 : latest->ackedBytes;
+            barTotal = (latest->totalBytes == 0 && latest->ackedBytes == 0) ? 1 : std::max(latest->totalBytes, latest->ackedBytes);
+            countText = L"传输完成 (" + std::to_wstring(latest->ackedBytes) + L" 字节)";
+        } else if (latest->phase == "cancelled") {
+            barBytes = latest->ackedBytes;
+            barTotal = latest->totalBytes;
+            countText = L"已取消 (" + std::to_wstring(latest->ackedBytes) + L" 字节)";
+        } else {
+            barBytes = latest->ackedBytes;
+            barTotal = latest->totalBytes;
+            detailError = true;
+            countText = L"传输失败 (" + std::to_wstring(latest->ackedBytes) + L" 字节)";
+        }
+
+        detailText = Utf8ToWide(latest->tftpName) + L" <- " + Utf8ToWide(latest->clientIp) + L":" +
+            std::to_wstring(latest->clientPort) + L" [" + Utf8ToWide(latest->phase) + L"]";
+        if (!latest->error.empty()) {
+            detailError = true;
+            detailText += L"\r\n" + latest->error;
+        }
+    }
+
+    transferActive_ = hasActive;
+    displayBytes_ = barBytes;
+    displayTotal_ = barTotal;
+    const bool detailColorChanged = (transferHasError_ != detailError);
+    transferHasError_ = detailError;
+
+    SetTextIfChanged(Control(TransferCount), countText);
+    if (SetTextIfChanged(Control(TransferDetail), detailText)) {
+        UiSetControlTooltip(Control(TransferDetail), detailText.c_str());
+    } else if (detailColorChanged && Control(TransferDetail)) {
+        InvalidateRect(Control(TransferDetail), nullptr, FALSE);
+    }
     EnableWindow(Control(CancelTransferBtn), hasActive);
 
-    if (listening || hasActive) {
+    const bool progressChanged = (lastProgressActive_ != transferActive_ ||
+                                  lastProgressBytes_ != displayBytes_ ||
+                                  lastProgressTotal_ != displayTotal_);
+    lastProgressActive_ = transferActive_;
+    lastProgressBytes_ = displayBytes_;
+    lastProgressTotal_ = displayTotal_;
+
+    if (hasActive) {
+        SetTimer(window_, 1, 100, nullptr);
+    } else if (listening) {
         SetTimer(window_, 1, 250, nullptr);
     } else {
         KillTimer(window_, 1);
     }
 
-    InvalidateRect(body_, nullptr, FALSE);
+    if (boardTipChanged) {
+        Layout();
+    } else if (progressChanged) {
+        InvalidateProgress();
+    }
 }
 
-void TftpPane::BrowseLocalFile() {
-    wchar_t filename[MAX_PATH] = {};
-    OPENFILENAMEW ofn{sizeof(ofn)};
-    ofn.hwndOwner = window_;
-    ofn.lpstrFilter = L"所有文件 (*.*)\0*.*\0镜像与二进制 (*.bin;*.img;*.uImage;Image;*.dtb)\0*.bin;*.img;*.uImage;Image;*.dtb\0\0";
-    ofn.lpstrFile = filename;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+void TftpPane::BrowseLocalDirectory() {
+    const std::wstring picked = PickFolderDialog(window_, ControlText(Control(LocalPath)));
+    if (picked.empty()) return;
 
-    if (GetOpenFileNameW(&ofn)) {
-        SetWindowTextW(Control(LocalPath), filename);
-        if (ControlText(Control(TftpName)).empty()) {
-            SetWindowTextW(Control(TftpName), ExtractBasename(filename).c_str());
+    suppressEditNotify_ = true;
+    SetTextIfChanged(Control(LocalPath), picked);
+    suppressEditNotify_ = false;
+    localDir_ = picked;
+    ApplyLocalDirectory(true, true);
+}
+
+void TftpPane::ApplySelectedSource(bool userTriggered) {
+    if (selectedSourceType_ == 0) {
+        remoteListingPending_ = false;
+        ++remoteListSeq_;
+        ApplyLocalDirectory(userTriggered, userTriggered);
+    } else {
+        ApplyRemoteDirectory(userTriggered, userTriggered);
+    }
+}
+
+void TftpPane::ApplyLocalDirectory(bool showError, bool persistState) {
+    if (Control(LocalPath)) {
+        localDir_ = ControlText(Control(LocalPath));
+    }
+    const std::wstring trimmed = TrimWhitespace(localDir_);
+    if (trimmed.empty()) {
+        if (selectedSourceType_ == 0 && server_) server_->ClearRoot();
+        dirEntries_.clear();
+        dirListNotice_ = L"(请选择或输入目录后自动列出文件)";
+        localNotice_.clear();
+        Refresh();
+        if (persistState && stateChanged) stateChanged();
+        return;
+    }
+
+    std::vector<TftpDirectoryEntry> entries;
+    std::wstring err;
+    if (!ListLocalTftpDirectory(trimmed, entries, err)) {
+        if (selectedSourceType_ == 0 && server_) server_->ClearRoot();
+        dirEntries_.clear();
+        dirListNotice_ = L"(无法读取目录: " + err + L")";
+        localNotice_ = showError ? err : L"";
+        Refresh();
+        if (persistState && stateChanged) stateChanged();
+        return;
+    }
+
+    if (selectedSourceType_ == 0 && server_) {
+        std::wstring rootErr;
+        if (!server_->SetLocalRoot(trimmed, rootErr)) {
+            dirEntries_.clear();
+            dirListNotice_ = L"(无法设置根目录: " + rootErr + L")";
+            localNotice_ = showError ? rootErr : L"";
+            Refresh();
+            if (persistState && stateChanged) stateChanged();
+            return;
+        }
+    }
+
+    dirEntries_ = std::move(entries);
+    dirListNotice_ = dirEntries_.empty() ? L"(目录下无常规文件，已排除子目录)" : L"";
+    localNotice_.clear();
+    Refresh();
+    if (persistState && stateChanged) stateChanged();
+}
+
+void TftpPane::OnLocalPathTyped() {
+    localDir_ = ControlText(Control(LocalPath));
+    const std::wstring trimmed = TrimWhitespace(localDir_);
+    if (trimmed.empty()) {
+        ApplyLocalDirectory(false, true);
+        return;
+    }
+    const DWORD attrs = GetFileAttributesW(trimmed.c_str());
+    if (attrs != INVALID_FILE_ATTRIBUTES &&
+        (attrs & FILE_ATTRIBUTE_DIRECTORY) &&
+        !(attrs & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        std::wstring normalized, err;
+        if (ValidateLocalTftpDirectory(trimmed, normalized, err)) {
+            ApplyLocalDirectory(false, true);
+        }
+    }
+}
+
+void TftpPane::ApplyRemoteDirectory(bool allowAsyncFetch, bool persistState) {
+    if (Control(RemotePath)) {
+        remoteDir_ = ControlText(Control(RemotePath));
+    }
+    std::wstring trimmed = TrimWhitespace(remoteDir_);
+    while (trimmed.size() > 1 && trimmed.back() == L'/') {
+        trimmed.pop_back();
+    }
+
+    if (trimmed.empty()) {
+        remoteListingPending_ = false;
+        ++remoteListSeq_;
+        if (selectedSourceType_ == 1 && server_) server_->ClearRoot();
+        dirEntries_.clear();
+        dirListNotice_ = L"(请输入远程 POSIX 目录路径，例如 /tftpboot)";
+        localNotice_.clear();
+        Refresh();
+        if (persistState && stateChanged) stateChanged();
+        return;
+    }
+
+    if (!allowAsyncFetch) {
+        if (dirEntries_.empty() && dirListNotice_.empty()) {
+            dirListNotice_ = L"(点击刷新或按回车以加载远程目录文件列表)";
         }
         Refresh();
+        return;
     }
+
+    if (sshProvider_ && cachedSshSessions_.empty()) {
+        cachedSshSessions_ = sshProvider_();
+    }
+    const TftpSshSessionInfo* session = nullptr;
+    for (const auto& s : cachedSshSessions_) {
+        if (s.sessionId == selectedRemoteSessionId_) {
+            session = &s;
+            break;
+        }
+    }
+    if (!session && !cachedSshSessions_.empty()) {
+        session = &cachedSshSessions_.front();
+        selectedRemoteSessionId_ = session->sessionId;
+    }
+    if (!session) {
+        remoteListingPending_ = false;
+        ++remoteListSeq_;
+        if (selectedSourceType_ == 1 && server_) server_->ClearRoot();
+        dirEntries_.clear();
+        localNotice_ = L"请先配置并选择一个 SSH 连接";
+        dirListNotice_ = L"(未选择可用 SSH 连接)";
+        Refresh();
+        if (persistState && stateChanged) stateChanged();
+        return;
+    }
+
+    SshRemoteConfig cfg;
+    cfg.host = session->host;
+    cfg.port = session->port;
+    cfg.username = session->username;
+    cfg.password = session->password;
+    cfg.remotePath = trimmed;
+
+    std::wstring err;
+    if (!ValidateRemoteTftpDirectoryConfig(cfg, err)) {
+        remoteListingPending_ = false;
+        ++remoteListSeq_;
+        if (selectedSourceType_ == 1 && server_) server_->ClearRoot();
+        dirEntries_.clear();
+        localNotice_ = err;
+        dirListNotice_ = L"(远程目录配置无效: " + err + L")";
+        Refresh();
+        if (persistState && stateChanged) stateChanged();
+        return;
+    }
+
+    if (selectedSourceType_ == 1 && server_) {
+        std::wstring rootErr;
+        server_->SetRemoteRoot(cfg, rootErr);
+    }
+
+    const uint64_t reqId = ++remoteListSeq_;
+    remoteListingPending_ = true;
+    dirEntries_.clear();
+    dirListNotice_ = L"(正在读取远程目录文件...)";
+    localNotice_.clear();
+    lastAutoQueriedKey_ = session->sessionId + ":" + std::to_string(session->connected ? 1 : 0) + ":" + WideToUtf8(cfg.remotePath);
+    Refresh();
+    if (persistState && stateChanged) stateChanged();
+
+    auto shared = remoteListShared_;
+    std::string sessionId = session->sessionId;
+    std::thread([shared, reqId, cfg = std::move(cfg), sessionId = std::move(sessionId)]() mutable {
+        auto result = std::make_unique<AsyncRemoteListingResult>();
+        result->requestId = reqId;
+        result->remoteDir = cfg.remotePath;
+        result->sessionId = std::move(sessionId);
+        result->config = cfg;
+        result->ok = ListRemoteTftpDirectory(cfg, result->entries, result->error);
+        if (shared) {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            if (shared->hwnd && PostMessageW(shared->hwnd, kMsgRemoteDirDone, 0,
+                                             reinterpret_cast<LPARAM>(result.get()))) {
+                result.release();
+            }
+        }
+    }).detach();
+}
+
+void TftpPane::OnRemoteDirDone(LPARAM lParam) {
+    std::unique_ptr<AsyncRemoteListingResult> res(reinterpret_cast<AsyncRemoteListingResult*>(lParam));
+    if (!res || res->requestId != remoteListSeq_.load()) {
+        return;
+    }
+    remoteListingPending_ = false;
+    if (selectedSourceType_ != 1) {
+        return;
+    }
+    if (res->ok) {
+        dirEntries_ = std::move(res->entries);
+        dirListNotice_ = dirEntries_.empty() ? L"(目录下无常规文件，已排除子目录)" : L"";
+        localNotice_.clear();
+        if (server_) {
+            std::wstring err;
+            server_->SetRemoteRoot(res->config, err);
+        }
+    } else {
+        dirEntries_.clear();
+        localNotice_ = res->error;
+        dirListNotice_ = L"(无法列出远程目录: " + res->error + L")";
+    }
+    Refresh();
+}
+
+void TftpPane::RefreshDirectory(bool userTriggered) {
+    ApplySelectedSource(userTriggered);
 }
 
 void TftpPane::OnToggleService() {
@@ -465,82 +919,6 @@ void TftpPane::OnToggleService() {
     if (stateChanged) stateChanged();
 }
 
-void TftpPane::OnPublish() {
-    if (!server_) return;
-    localNotice_.clear();
-
-    std::wstring nameW = ControlText(Control(TftpName));
-    if (nameW.empty()) {
-        localNotice_ = L"发布名不能为空";
-        Refresh();
-        return;
-    }
-    std::string tftpName = WideToUtf8(nameW);
-
-    std::wstring err;
-    if (selectedSourceType_ == 0) { // Local
-        std::wstring path = ControlText(Control(LocalPath));
-        if (path.empty()) {
-            localNotice_ = L"请选择本地文件路径";
-            Refresh();
-            return;
-        }
-        if (!server_->PublishLocal(tftpName, path, true, err)) {
-            localNotice_ = err;
-        } else {
-            localNotice_ = L"发布成功: " + nameW;
-        }
-    } else { // Remote SSH
-        int sel = static_cast<int>(SendMessageW(Control(RemoteSession), CB_GETCURSEL, 0, 0));
-        if (sel < 0 || sel >= static_cast<int>(cachedSshSessions_.size())) {
-            localNotice_ = L"请先在左侧选择或建立 SSH 连接";
-            Refresh();
-            return;
-        }
-        const auto& ssh = cachedSshSessions_[sel];
-        std::wstring rpath = ControlText(Control(RemotePath));
-        if (rpath.empty()) {
-            localNotice_ = L"请输入远程 POSIX 路径";
-            Refresh();
-            return;
-        }
-        SshRemoteConfig cfg;
-        cfg.host = ssh.host;
-        cfg.port = ssh.port;
-        cfg.username = ssh.username;
-        cfg.password = ssh.password;
-        cfg.remotePath = rpath;
-
-        if (!server_->PublishRemote(tftpName, cfg, true, err)) {
-            localNotice_ = err;
-        } else {
-            localNotice_ = L"远程发布成功: " + nameW;
-        }
-    }
-
-    Refresh();
-    if (stateChanged) stateChanged();
-}
-
-void TftpPane::OnUnpublish() {
-    if (!server_) return;
-    localNotice_.clear();
-    std::wstring nameW = ControlText(Control(TftpName));
-    if (nameW.empty()) {
-        localNotice_ = L"请输入要取消的发布名";
-        Refresh();
-        return;
-    }
-    std::string name = WideToUtf8(nameW);
-    if (server_->Unpublish(name)) {
-        localNotice_ = L"已取消发布: " + nameW;
-    } else {
-        localNotice_ = L"未找到该发布项";
-    }
-    Refresh();
-    if (stateChanged) stateChanged();
-}
-
 void TftpPane::OnCancelTransfer() {
     if (!server_) return;
     auto trans = server_->ListTransfers();
@@ -559,8 +937,15 @@ void TftpPane::Paint(HDC target) {
     UiBufferedPaint paint(target, rc);
     HDC dc = paint.Dc();
     FillRect(dc, &rc, surface_);
+
+    const auto c = UiTheme(dark_);
+    if (progressTop_ >= 0 && progressRight_ > progressLeft_) {
+        UiDrawProgressBar(dc, progressLeft_, progressTop_, progressRight_, dpi_,
+                          displayBytes_, displayTotal_, transferActive_ && displayTotal_ == 0,
+                          c.raised, c.accent);
+    }
+
     if (contentHeight_ > bodyHeight_) {
-        const auto c = UiTheme(dark_);
         const int thumb = std::max(D(28), bodyHeight_ * bodyHeight_ / std::max(1, contentHeight_));
         const int y = offset_ * (bodyHeight_ - thumb) / std::max(1, contentHeight_ - bodyHeight_);
         UiBox(dc, {rc.right - D(5), y, rc.right, y + thumb}, c.border, c.border, D(2));
@@ -587,8 +972,28 @@ LRESULT CALLBACK TftpPane::Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     }
     case WM_SHOWWINDOW: {
         if (self) {
-            if (wParam) self->Refresh();
-            else KillTimer(hwnd, 1);
+            if (wParam) {
+                self->Refresh();
+                if (self->selectedSourceType_ == 0 && !TrimWhitespace(self->LocalDirectory()).empty()) {
+                    self->ApplyLocalDirectory(false, false);
+                } else if (self->selectedSourceType_ == 1 && !self->remoteListingPending_) {
+                    const std::wstring rdir = self->RemoteDirectory();
+                    if (!rdir.empty() && self->dirEntries_.empty()) {
+                        for (const auto& s : self->cachedSshSessions_) {
+                            if (s.sessionId == self->selectedRemoteSessionId_ && s.connected) {
+                                const std::string key = s.sessionId + ":1:" + WideToUtf8(rdir);
+                                if (self->lastAutoQueriedKey_ != key) {
+                                    self->ApplyRemoteDirectory(true, false);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+            } else {
+                KillTimer(hwnd, 1);
+            }
         }
         return 0;
     }
@@ -596,8 +1001,24 @@ LRESULT CALLBACK TftpPane::Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (self) self->Refresh();
         return 0;
     }
+    case kMsgRemoteDirDone: {
+        if (self) {
+            self->OnRemoteDirDone(lParam);
+        } else {
+            delete reinterpret_cast<AsyncRemoteListingResult*>(lParam);
+        }
+        return 0;
+    }
     case WM_DESTROY: {
         KillTimer(hwnd, 1);
+        if (self && self->remoteListShared_) {
+            std::lock_guard<std::mutex> lock(self->remoteListShared_->mutex);
+            self->remoteListShared_->hwnd = nullptr;
+        }
+        MSG pending{};
+        while (PeekMessageW(&pending, hwnd, kMsgRemoteDirDone, kMsgRemoteDirDone, PM_REMOVE)) {
+            delete reinterpret_cast<AsyncRemoteListingResult*>(pending.lParam);
+        }
         return 0;
     }
     case WM_MOUSEWHEEL: {
@@ -623,6 +1044,9 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         EndPaint(hwnd, &ps);
         return 0;
     }
+    case WM_PRINTCLIENT:
+        if (self) self->Paint(reinterpret_cast<HDC>(wParam));
+        return 0;
     case WM_MEASUREITEM: {
         if (self) {
             reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = self->D(28);
@@ -648,7 +1072,11 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                 return reinterpret_cast<INT_PTR>(self->field_);
             }
             SetBkMode(dc, TRANSPARENT);
-            SetTextColor(dc, c.text);
+            if (ctrl == self->Control(TransferDetail)) {
+                SetTextColor(dc, self->transferHasError_ ? c.danger : c.muted);
+            } else {
+                SetTextColor(dc, c.text);
+            }
             SetBkColor(dc, c.surface);
             return reinterpret_cast<INT_PTR>(self->surface_);
         }
@@ -670,7 +1098,7 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             const bool pressed = (item->itemState & ODS_SELECTED) != 0;
             const bool hovered = GetPropW(item->hwndItem, L"SerialCtl.PowerHover") != nullptr;
             const bool isListening = self->server_ && self->server_->IsListening();
-            const bool isPrimary = (item->CtlID == ToggleService && !isListening) || item->CtlID == PublishBtn;
+            const bool isPrimary = (item->CtlID == ToggleService && !isListening);
             const bool isDanger = (item->CtlID == ToggleService && isListening) || item->CtlID == CancelTransferBtn;
             const auto v = flat ? UiFlatIconVisual(c, c.surface, enabled, pressed, hovered)
                                 : UiButtonVisual(c, enabled, pressed, hovered, isPrimary);
@@ -695,13 +1123,30 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         int code = HIWORD(wParam);
         if (self) {
             if (id == ToggleService && code == BN_CLICKED) self->OnToggleService();
-            else if (id == BrowseLocal && code == BN_CLICKED) self->BrowseLocalFile();
-            else if (id == PublishBtn && code == BN_CLICKED) self->OnPublish();
-            else if (id == UnpublishBtn && code == BN_CLICKED) self->OnUnpublish();
+            else if (id == BrowseLocal && code == BN_CLICKED) self->BrowseLocalDirectory();
+            else if (id == RefreshDirBtn && code == BN_CLICKED) self->RefreshDirectory(true);
             else if (id == CancelTransferBtn && code == BN_CLICKED) self->OnCancelTransfer();
             else if (id == SourceType && code == CBN_SELCHANGE) {
                 self->selectedSourceType_ = static_cast<int>(SendMessageW(self->Control(SourceType), CB_GETCURSEL, 0, 0));
                 self->Layout();
+                self->ApplySelectedSource(true);
+            } else if (id == RemoteSession && code == CBN_SELCHANGE) {
+                const int idx = static_cast<int>(SendMessageW(self->Control(RemoteSession), CB_GETCURSEL, 0, 0));
+                if (idx >= 0 && static_cast<size_t>(idx) < self->cachedSshSessions_.size()) {
+                    self->selectedRemoteSessionId_ = self->cachedSshSessions_[idx].sessionId;
+                }
+                if (self->selectedSourceType_ == 1) {
+                    self->ApplyRemoteDirectory(true, true);
+                }
+            } else if (id == LocalPath && code == EN_CHANGE && !self->suppressEditNotify_) {
+                self->OnLocalPathTyped();
+            } else if (id == LocalPath && code == EN_KILLFOCUS && !self->suppressEditNotify_) {
+                const bool focusingBrowse = (GetFocus() == self->Control(BrowseLocal));
+                self->ApplyLocalDirectory(!focusingBrowse, !focusingBrowse);
+            } else if (id == RemotePath && code == EN_CHANGE && !self->suppressEditNotify_) {
+                self->remoteDir_ = ControlText(self->Control(RemotePath));
+            } else if (id == RemotePath && code == EN_KILLFOCUS && !self->suppressEditNotify_) {
+                self->ApplyRemoteDirectory(true, true);
             }
         }
         break;
@@ -715,6 +1160,27 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
     }
     }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK TftpPane::FieldProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                     UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    auto self = reinterpret_cast<TftpPane*>(dwRefData);
+    switch (msg) {
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, FieldProc, uIdSubclass);
+        break;
+    case WM_KEYDOWN:
+        if (wParam == VK_RETURN && self) {
+            if (uIdSubclass == LocalPath) self->ApplyLocalDirectory(true, true);
+            else if (uIdSubclass == RemotePath) self->ApplyRemoteDirectory(true, true);
+            return 0;
+        }
+        break;
+    case WM_CHAR:
+        if (wParam == L'\r' || wParam == L'\n') return 0;
+        break;
+    }
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
 } // namespace serialctl

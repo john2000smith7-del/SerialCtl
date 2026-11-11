@@ -140,6 +140,8 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     $outputDirectory = Get-SerialCtlBuildOutputDirectory -Architecture $item `
         -Configuration $Configuration -RepositoryRoot $repositoryRoot
     $serialCtlPath = Join-Path $outputDirectory 'serialctl.exe'
+    Assert-SerialCtlCondition -Condition ((Get-Item -LiteralPath $serialCtlPath).Length -le 32MB) `
+        -Message 'serialctl.exe exceeds the existing 32 MiB per-file updater limit'
     & $binaryVerifier -Path $serialCtlPath -Architecture $item -Subsystem GUI `
         -ExpectedProductVersion $version.FileVersion -AllowedDll $serialCtlDlls
 
@@ -166,6 +168,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         'ai_pet_model_test.exe' = @('KERNEL32.dll')
         'ai_pet_pane_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
         'ai_protocol_test.exe' = @('KERNEL32.dll')
+        'ai_voice_input_test.exe' = @('KERNEL32.dll', 'OLE32.dll')
         'ai_device_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'WS2_32.dll', 'COMCTL32.dll', 'ADVAPI32.dll', 'gdiplus.dll', 'COMDLG32.dll', 'GDI32.dll', 'OLE32.dll', 'SHELL32.dll', 'MSIMG32.dll', 'SETUPAPI.dll', 'WINHTTP.dll')
         'ui_buffered_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'OLE32.dll', 'MSIMG32.dll')
         'ui_combo_paint_test.exe' = @('KERNEL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'COMCTL32.dll', 'OLE32.dll', 'MSIMG32.dll')
@@ -199,8 +202,8 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         # provided by KERNEL32 on Windows 7; retain the exact import check.
         'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'sftp_model_test.exe' = @('KERNEL32.dll')
-        'tftp_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
-        'mcp_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll', 'SHELL32.dll')
+        'tftp_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll', 'OLE32.dll')
+        'mcp_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll', 'SHELL32.dll', 'OLE32.dll')
     }
     # Report every test-binary mismatch in the same build. Keep the verifier's
     # exact DLL/API/subsystem checks and fail before packaging if any fail.
@@ -211,7 +214,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     }
     $fixtureDirectory = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "ai-fixture\$Configuration"
     $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'ai_client_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll') })
-    $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'ai_pane_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'MSIMG32.dll') })
+    $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'ai_pane_test.exe'; Dlls = @('KERNEL32.dll', 'ADVAPI32.dll', 'ole32.dll', 'COMCTL32.dll', 'USER32.dll', 'GDI32.dll', 'gdiplus.dll', 'MSIMG32.dll', 'COMDLG32.dll', 'SHELL32.dll') })
     $testBinaries.Add(@{ Path = Join-Path $fixtureDirectory 'plink.exe'; Dlls = @('KERNEL32.dll') })
     $sftpFixture = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "sftp-fixture\$Configuration"
     $sshFixture = Join-Path (Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot) "ssh-fixture\$Configuration"

@@ -1,10 +1,42 @@
 #include "TftpServer.h"
+#include "Win32Helpers.h"
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <vector>
 #include <sstream>
 
 namespace serialctl {
+
+static bool ParseSafeRelativeTftpPath(const std::string& raw, std::vector<std::string>& segments,
+                                      std::string& normalizedName) {
+    segments.clear();
+    normalizedName.clear();
+    if (raw.empty()) return false;
+    for (unsigned char ch : raw) {
+        if (ch < 32 || ch == ':') return false;
+    }
+    if (raw.front() == '/' || raw.front() == '\\' || raw.back() == '/' || raw.back() == '\\') {
+        return false;
+    }
+    size_t pos = 0;
+    while (pos < raw.size()) {
+        const size_t sep = raw.find_first_of("/\\", pos);
+        const std::string seg = (sep == std::string::npos) ? raw.substr(pos) : raw.substr(pos, sep - pos);
+        if (seg.empty() || seg == "." || seg == ".." || seg.back() == '.' || seg.back() == ' ') {
+            segments.clear();
+            return false;
+        }
+        segments.push_back(seg);
+        if (sep == std::string::npos) break;
+        pos = sep + 1;
+    }
+    for (size_t i = 0; i < segments.size(); ++i) {
+        if (i > 0) normalizedName += '/';
+        normalizedName += segments[i];
+    }
+    return !segments.empty();
+}
 
 static std::string WideToAscii(const std::wstring& w) {
     std::string s;
@@ -26,10 +58,11 @@ class TftpTransferSession : public std::enable_shared_from_this<TftpTransferSess
 public:
     TftpTransferSession(uint64_t id, SOCKET s, sockaddr_in clientAddr, std::string tftpName,
                         std::shared_ptr<ITftpFileSource> source, size_t blksize,
-                        uint32_t timeoutSec, std::vector<std::pair<std::string, std::string>> oackOptions)
+                        uint32_t timeoutSec, bool tsizeRequested,
+                        std::vector<std::pair<std::string, std::string>> oackOptions)
         : id_(id), socket_(s), clientAddr_(clientAddr), tftpName_(std::move(tftpName)),
           source_(std::move(source)), blksize_(blksize), timeoutSec_(timeoutSec),
-          oackOptions_(std::move(oackOptions)) {
+          tsizeRequested_(tsizeRequested), oackOptions_(std::move(oackOptions)) {
         startTimeMs_ = GetTickCount64();
         totalBytes_ = source_->Info().sizeKnown ? source_->Info().size : 0;
         phase_ = "connecting";
@@ -92,16 +125,35 @@ private:
     void Run() {
         std::wstring err;
         if (!source_->Open(err)) {
-            std::lock_guard<std::mutex> lock(statusMutex_);
-            phase_ = "failed";
-            error_ = err.empty() ? L"无法打开文件源" : err;
-            finishTimeMs_ = GetTickCount64();
-            SendTftpError(socket_, clientAddr_, 2, "Access violation: open source failed");
+            const auto info = source_->Info();
+            {
+                std::lock_guard<std::mutex> lock(statusMutex_);
+                phase_ = "failed";
+                error_ = err.empty() ? L"无法打开文件源" : err;
+                finishTimeMs_ = GetTickCount64();
+            }
+            if (info.notFound) {
+                SendTftpError(socket_, clientAddr_, 1, "File not found: " + tftpName_);
+            } else {
+                SendTftpError(socket_, clientAddr_, 2, "Access violation: open source failed");
+            }
             return;
         }
 
         {
+            const auto info = source_->Info();
             std::lock_guard<std::mutex> lock(statusMutex_);
+            if (info.sizeKnown) {
+                totalBytes_ = info.size;
+                if (tsizeRequested_) {
+                    const bool hasTsize = std::any_of(
+                        oackOptions_.begin(), oackOptions_.end(),
+                        [](const auto& opt) { return opt.first == "tsize"; });
+                    if (!hasTsize) {
+                        oackOptions_.emplace_back("tsize", std::to_string(info.size));
+                    }
+                }
+            }
             phase_ = "transferring";
         }
 
@@ -321,6 +373,7 @@ private:
     std::shared_ptr<ITftpFileSource> source_;
     size_t blksize_ = 512;
     uint32_t timeoutSec_ = 2;
+    bool tsizeRequested_ = false;
     std::vector<std::pair<std::string, std::string>> oackOptions_;
 
     std::thread workerThread_;
@@ -571,6 +624,40 @@ size_t TftpServer::PublishedCount() const {
     return publishedFiles_.size();
 }
 
+bool TftpServer::SetLocalRoot(const std::wstring& localDirectory, std::wstring& error) {
+    std::wstring normalized;
+    if (!ValidateLocalTftpDirectory(localDirectory, normalized, error)) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    rootConfig_.mode = TftpRootMode::Local;
+    rootConfig_.localDirectory = std::move(normalized);
+    rootConfig_.remoteConfig = {};
+    return true;
+}
+
+bool TftpServer::SetRemoteRoot(const SshRemoteConfig& config, std::wstring& error) {
+    SshRemoteConfig cfg = config;
+    if (!ValidateRemoteTftpDirectoryConfig(cfg, error)) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    rootConfig_.mode = TftpRootMode::Remote;
+    rootConfig_.localDirectory.clear();
+    rootConfig_.remoteConfig = std::move(cfg);
+    return true;
+}
+
+void TftpServer::ClearRoot() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    rootConfig_ = {};
+}
+
+TftpRootConfig TftpServer::RootConfig() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return rootConfig_;
+}
+
 std::vector<TftpTransferStatus> TftpServer::ListTransfers() const {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<TftpTransferStatus> list;
@@ -669,35 +756,79 @@ void TftpServer::ListenerThread() {
         p = null2 + 1;
 
         // Security boundary: filename validation
-        if (filename.empty() || filename.find("..") != std::string::npos ||
-            filename.find('/') != std::string::npos || filename.find('\\') != std::string::npos ||
-            filename.find(':') != std::string::npos) {
+        std::vector<std::string> segments;
+        std::string normalizedName;
+        if (!ParseSafeRelativeTftpPath(filename, segments, normalizedName)) {
             SendTftpError(listener_, clientAddr, 2, "Access violation: invalid filename or path traversal");
             continue;
         }
 
         std::shared_ptr<ITftpFileSource> source;
+        TftpRootConfig rootSnapshot;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            auto it = publishedFiles_.find(filename);
+            auto it = publishedFiles_.find(normalizedName);
             if (it != publishedFiles_.end()) {
                 source = it->second;
+            } else {
+                rootSnapshot = rootConfig_;
+            }
+        }
+
+        if (!source && rootSnapshot.mode != TftpRootMode::None) {
+            if (rootSnapshot.mode == TftpRootMode::Local && !rootSnapshot.localDirectory.empty()) {
+                std::filesystem::path targetPath(rootSnapshot.localDirectory);
+                bool validSegments = true;
+                for (const auto& seg : segments) {
+                    const auto wseg = MultiByteToWide(
+                        reinterpret_cast<const uint8_t*>(seg.data()), seg.size(), CP_UTF8);
+                    if (wseg.empty()) {
+                        validSegments = false;
+                        break;
+                    }
+                    targetPath /= wseg;
+                }
+                if (validSegments) {
+                    source = std::make_shared<LocalTftpFileSource>(targetPath.native());
+                }
+            } else if (rootSnapshot.mode == TftpRootMode::Remote && !rootSnapshot.remoteConfig.remotePath.empty()) {
+                SshRemoteConfig cfg = rootSnapshot.remoteConfig;
+                bool validSegments = true;
+                for (const auto& seg : segments) {
+                    const auto wseg = MultiByteToWide(
+                        reinterpret_cast<const uint8_t*>(seg.data()), seg.size(), CP_UTF8);
+                    if (wseg.empty()) {
+                        validSegments = false;
+                        break;
+                    }
+                    if (cfg.remotePath != L"/") cfg.remotePath += L"/";
+                    cfg.remotePath += wseg;
+                }
+                if (validSegments) {
+                    source = std::make_shared<RemoteSshTftpFileSource>(std::move(cfg), nullptr, true);
+                }
             }
         }
 
         if (!source) {
-            SendTftpError(listener_, clientAddr, 1, "File not found: " + filename);
+            SendTftpError(listener_, clientAddr, 1, "File not found: " + normalizedName);
             continue;
         }
 
-        if (source->Info().status != "Ready") {
-            SendTftpError(listener_, clientAddr, 2, "Access violation: source unavailable");
+        const auto sourceInfo = source->Info();
+        if (sourceInfo.status != "Ready" && sourceInfo.status != "Pending") {
+            if (sourceInfo.notFound) {
+                SendTftpError(listener_, clientAddr, 1, "File not found: " + normalizedName);
+            } else {
+                SendTftpError(listener_, clientAddr, 2, "Access violation: source unavailable");
+            }
             continue;
         }
 
         // Parse options (RFC 2347, 2348, 2349)
         size_t blksize = 512;
         uint32_t timeoutSec = 2;
+        bool tsizeRequested = false;
         std::vector<std::pair<std::string, std::string>> oackOptions;
 
         while (p < end) {
@@ -724,8 +855,9 @@ void TftpServer::ListenerThread() {
                     }
                 } catch (...) {}
             } else if (lowerOpt == "tsize") {
-                if (source->Info().sizeKnown) {
-                    oackOptions.emplace_back("tsize", std::to_string(source->Info().size));
+                tsizeRequested = true;
+                if (sourceInfo.sizeKnown) {
+                    oackOptions.emplace_back("tsize", std::to_string(sourceInfo.size));
                 }
             } else if (lowerOpt == "timeout") {
                 try {
@@ -778,8 +910,9 @@ void TftpServer::ListenerThread() {
             transferId = nextTransferId_++;
             auto sessionSource = source->CreateSessionSource();
             session = std::make_shared<TftpTransferSession>(
-                transferId, transferSocket, clientAddr, filename,
-                sessionSource ? sessionSource : source, blksize, timeoutSec, std::move(oackOptions));
+                transferId, transferSocket, clientAddr, normalizedName,
+                sessionSource ? sessionSource : source, blksize, timeoutSec,
+                tsizeRequested, std::move(oackOptions));
             sessions_.push_back(session);
         }
 

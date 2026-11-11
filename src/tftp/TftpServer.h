@@ -36,6 +36,18 @@ struct TftpPublishedItem {
     std::shared_ptr<ITftpFileSource> source;
 };
 
+enum class TftpRootMode {
+    None,
+    Local,
+    Remote
+};
+
+struct TftpRootConfig {
+    TftpRootMode mode = TftpRootMode::None;
+    std::wstring localDirectory;
+    SshRemoteConfig remoteConfig;
+};
+
 class TftpTransferSession;
 
 class TftpServer {
@@ -65,6 +77,12 @@ public:
     std::vector<TftpPublishedItem> ListPublished() const;
     size_t PublishedCount() const;
 
+    // Directory-based publishing (tftp32 style fallback when not explicitly published)
+    bool SetLocalRoot(const std::wstring& localDirectory, std::wstring& error);
+    bool SetRemoteRoot(const SshRemoteConfig& config, std::wstring& error);
+    void ClearRoot();
+    TftpRootConfig RootConfig() const;
+
     // Transfers & diagnostics
     std::vector<TftpTransferStatus> ListTransfers() const;
     bool CancelTransfer(uint64_t transferId);
@@ -88,6 +106,7 @@ private:
     std::wstring lastError_;
 
     std::map<std::string, std::shared_ptr<ITftpFileSource>> publishedFiles_;
+    TftpRootConfig rootConfig_;
     std::vector<std::shared_ptr<TftpTransferSession>> sessions_;
     uint64_t nextTransferId_ = 1;
 };

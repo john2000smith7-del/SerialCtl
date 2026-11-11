@@ -36,10 +36,11 @@
 #define IDC_SSH_HISTORY 1028
 #define IDC_SSH_SAVE 1029
 #define IDC_SSH_PLATFORM 1030
-#define IDC_SSH_REMEMBER_PASSWORD 1031
 #define IDC_SSH_CREDENTIAL_NOTE 1032
 #define IDC_SSH_HISTORY_LABEL 1033
 #define IDC_SSH_HISTORY_DELETE 1034
+#define IDC_SERIAL_LOCATION_LABEL 1035
+#define IDC_SERIAL_LOCATION 1036
 
 #define IDC_COMMAND_NAME 1101
 #define IDC_COMMAND_TEXT 1102
@@ -57,12 +58,11 @@
 #define IdTftpTab 312
 
 #define IdSettingsMcpEnabled 1501
-#define IdSettingsMcpAutoStart 1502
 #define IdSettingsMcpUrl 1503
 #define IdSettingsMcpStatus 1504
 #define IdSettingsMcpPort 1505
 #define IdSettingsMcpStop 1506
 #define IdSettingsMcpStart 1507
-#define IdSettingsMcpUninstall 1508
+#define IDR_VOICE_MODEL 2801
 #define IdSettingsMcpRiskNote 1509
 

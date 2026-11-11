@@ -74,6 +74,7 @@ class ApiServer {
         size_t responseBytes = 0;
         bool closing = false;
         bool hasTransfer = false;
+        bool hasRemotePower = false;
         bool drainOnClose = false;                              // reader has ended: bounded graceful TCP close
         std::set<std::string> subscriptions;                    // protected by server mutex
         std::map<std::string, std::pair<Json, Json>> responses; // reader only

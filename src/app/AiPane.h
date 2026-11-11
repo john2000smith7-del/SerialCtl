@@ -1,8 +1,13 @@
 #pragma once
+#include "AiReplyMarkup.h"
 #include "CodexSession.h"
 #include "AiPetModel.h"
 #include "ToolbarIcons.h"
 #include "UiStyle.h"
+#include "AiAttachment.h"
+#include "AiVoiceInput.h"
+#include "BackgroundCleanup.h"
+#include <shellapi.h>
 #include <atomic>
 #include <deque>
 #include <future>
@@ -44,6 +49,7 @@ class AiPane {
     void AttachSelection(const std::wstring &text, const std::string &sessionId);
     bool PreTranslate(MSG &);
     void SendPrompt(std::wstring text = {});
+    void SetComposerWidth(int width);
     void Stop();
     std::string WorkspacePractices() const { return workspacePractices_; }
 
@@ -64,6 +70,17 @@ class AiPane {
         std::wstring text;
         int style;
         std::vector<TextLine> lines;
+        std::vector<ai::markup::Span> spans;
+        size_t block = SIZE_MAX;
+        bool tabAfter = false;
+    };
+    struct ReplyBlock {
+        ai::markup::Kind kind = ai::markup::Kind::Prose;
+        RECT rect{}, body{}, copy{}, track{};
+        size_t source = 0, codeBegin = 0, codeEnd = 0;
+        int offset = 0, maximum = 0;
+        std::wstring language;
+        std::vector<int> columns, rows;
     };
     struct Message {
         std::wstring role, text, streamedOutput, nativeBase, technical;
@@ -71,8 +88,10 @@ class AiPane {
         bool process = false, hidden = false, folded = false, groupHeader = false;
         RECT bounds{};
         std::vector<Paragraph> paragraphs;
+        std::vector<ReplyBlock> blocks;
         size_t measuredLength = SIZE_MAX;
         int measuredWidth = 0, measuredHeight = 0;
+        bool measuredGroupHeader = false;
     };
     struct HostPrompt {
         HostKeyChallenge challenge;
@@ -89,6 +108,13 @@ class AiPane {
     void Layout();
     void Paint(HDC);
     void PaintTranscript(HDC);
+    void LayoutMessage(HDC, Message &, int width);
+    void PaintMessageText(HDC, const Message &, size_t index, const RECT &box, const RECT &viewport);
+    bool TranscriptBlockPress(POINT contentPoint);
+    bool TranscriptHorizontal(POINT clientPoint, int pixels);
+    void DragTranscriptBlock(int clientX);
+    RECT ReplyScrollThumb(const ReplyBlock &) const;
+    static std::wstring ReplyCodeText(const Message &, const ReplyBlock &);
     void Reflow(bool appended = false);
     void UpdateTranscriptActions();
     void ShowTechnicalDetails(size_t);
@@ -131,13 +157,54 @@ class AiPane {
     std::wstring SelectedText() const;
     void ClearTextSelection();
     int MeasureInputHeight(int textWidth) const;
+    int InputLineHeight() const;
+    int ComposerWidth() const;
+    bool UseExpandedComposer(int width) const;
+    void RefreshInputLayout();
+    void ShowComposerMenu();
+    void ToggleVoice();
+    void PollVoice();
+    void SetVoicePreview(const std::wstring &);
+    bool InsertVoiceDraft(const std::wstring &);
+    void UpdateVoiceControls();
+    std::wstring VoicePhaseLabel() const;
+    bool VoiceBusy() const { return voice_.Status() != ai::VoiceInput::State::Idle; }
+    void ChooseAttachments(bool images);
+    void LoadAttachments(std::vector<std::wstring> paths);
+    void DropAttachments(HDROP drop);
+    void PollAttachments();
+    void BeginAttachmentUpload();
+    void ContinueAttachmentUpload();
+    void AttachmentResponse(const Json &event);
+    void FailAttachmentUpload(const std::wstring &message);
+    RECT InputScrollThumb() const;
     void LoadWorkspacePractices(bool forceReload = false);
     bool SaveWorkspacePractice(const std::wstring &entry);
     bool RollbackWorkspacePractices();
-    bool waitingReply_ = false, needsPassword_ = false, quickObserve_ = false;
+    bool showTurnProgress_ = false, needsPassword_ = false, quickObserve_ = false;
     bool deferReflow_ = false, reflowPending_ = false, appendPending_ = false;
     bool polling_ = false;
     int currentInputHeight_ = 0;
+    int composerMaxWidth_ = 0;
+    bool composerExpanded_ = false;
+    bool layoutRunning_ = false, inputScrollDragging_ = false;
+    RECT inputScrollLane_{};
+    int inputScrollGrab_ = 0, inputWheelRemainder_ = 0;
+    struct AttachmentLoad {
+        std::atomic_bool done{false}, cancel{false};
+        std::vector<ai::Attachment> files;
+        std::vector<std::wstring> errors;
+    };
+    BackgroundCleanup attachmentLoader_;
+    std::shared_ptr<AttachmentLoad> attachmentLoad_;
+    std::vector<ai::Attachment> attachments_, sendingAttachments_;
+    bool attachmentsStaged_ = false;
+    std::uint64_t attachmentUploadToken_ = 0;
+    size_t uploadFile_ = 0, uploadOffset_ = 0;
+    std::string attachmentDirectory_;
+    Json attachmentImagePaths_ = Json::array();
+    std::wstring submittedDraft_;
+    ULONGLONG attachmentDeadline_ = 0;
     bool keepDirectoryDropdownOpen_ = false;
     std::wstring requestedAccess_ = L"Full Access", effectiveAccess_ = L"待验证";
     std::string workspacePractices_, currentAgentsMdContent_, rollbackAgentsMdSnapshot_;
@@ -154,15 +221,18 @@ class AiPane {
     std::map<std::string, std::wstring> groupStates_;
     std::map<std::string, ULONGLONG> groupDurations_;
     std::vector<std::wstring> targetLabels_;
-    std::wstring compactTargetLabel_, targetTooltip_, workspaceTooltip_, modelTooltip_, sendTooltip_;
+    std::wstring compactTargetLabel_, targetTooltip_, workspaceTooltip_, modelTooltip_, sendTooltip_, voiceTooltip_;
     int sendGesture_ = -1;
+    UINT composerLogChoice_ = 0;
     Json targetSnapshot_;
     HWND tips_ = nullptr;
     void UpdateTargetLabel();
-    HFONT ParagraphFont(int style) const;
+    HFONT ParagraphFont(int style, ai::markup::Ink ink = ai::markup::Ink::Plain) const;
     ToolbarIcons icons_;
     TextPoint selectionStart_{SIZE_MAX, 0, 0}, selectionEnd_{SIZE_MAX, 0, 0};
     bool selecting_ = false;
+    size_t draggedBlockMessage_ = SIZE_MAX, draggedBlock_ = SIZE_MAX;
+    int blockThumbGrab_ = 0;
     bool PromptValue(const std::wstring &, std::wstring &);
     HWND Control(int id) const {
         return GetDlgItem(window_, id);
@@ -171,13 +241,18 @@ class AiPane {
         return MulDiv(n, dpi_, 96);
     }
     HWND window_ = nullptr, transcript_ = nullptr, dialog_ = nullptr;
-    HFONT font_ = nullptr, titleFont_ = nullptr, codeFont_ = nullptr, smallFont_ = nullptr;
+    HFONT font_ = nullptr, titleFont_ = nullptr, codeFont_ = nullptr, smallFont_ = nullptr, boldFont_ = nullptr;
     HBRUSH surfaceBrush_ = nullptr, fieldBrush_ = nullptr;
     bool dark_ = false;
     int dpi_ = 96;
     UiFieldStyle style_{&dark_, nullptr, 96};
     ai::CodexSession client_;
     ai::ServerSettings settings_;
+    ai::VoiceInput voice_;
+    ai::VoiceInput::State voiceShown_ = ai::VoiceInput::State::Idle;
+    std::string voiceThread_;
+    std::wstring voiceWorkspace_;
+    std::wstring voiceNotice_;
     std::wstring workspaceDirectory_, directoryPath_, verifiedDirectory_, serverHome_, pendingDirectorySelection_;
     bool directoryRowsDirty_ = false, directoryPathDirty_ = false, workspaceVerified_ = false;
     Json directoryChildren_ = Json::array();

@@ -5,6 +5,7 @@
 #include "NetworkConnect.h"
 #include "McpStdioBridge.h"
 #include "McpService.h"
+#include "AiVoiceInput.h"
 
 // Windows SDK GDI+ declarations require the COM/property types first.
 // clang-format off
@@ -30,6 +31,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
         return serialctl::RunCmdConsoleBridge();
     if (std::wstring(parameters) == L"--mcp-stdio")
         return serialctl::mcp::RunMcpStdioBridge();
+    if (std::wstring_view(parameters).rfind(serialctl::ai::VoiceWorkerArgument, 0) == 0) {
+        int count = 0;
+        auto arguments = CommandLineToArgvW(GetCommandLineW(), &count);
+        const int result = arguments && count == 4 && std::wstring_view(arguments[1]) == serialctl::ai::VoiceWorkerArgument
+            ? serialctl::ai::RunVoiceWorker(arguments[2], arguments[3]) : 1;
+        if (arguments) LocalFree(arguments);
+        return result;
+    }
     // Legacy resident-service entrypoints are intentionally disabled: the user starts
     // the GUI manually and MCP/TFTP end when the GUI exits.
     if (std::wstring(parameters) == L"--mcp-service" ||
@@ -38,9 +47,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR parameters, int showCom
     if (serialctl::update::HandleUpdateCommandLine(parameters, updateExitCode))
         return updateExitCode;
     // Remove a legacy per-user Run entry on the first manual launch after upgrade.
-    wchar_t executable[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, executable, MAX_PATH);
-    serialctl::mcp::McpService::SetUserAutoStart(false, executable);
+    serialctl::mcp::McpService::RemoveLegacyUserAutoStart();
     serialctl::mcp::McpService::SignalUserAgentStop();
     serialctl::GuiInstance guiInstance;
     const auto instanceResult = guiInstance.Begin();

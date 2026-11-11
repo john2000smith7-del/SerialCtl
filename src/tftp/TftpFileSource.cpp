@@ -5,6 +5,7 @@
 #include "Win32Helpers.h"
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <filesystem>
 #include <system_error>
@@ -53,35 +54,102 @@ bool MatchesSnapshot(HANDLE file, const BY_HANDLE_FILE_INFORMATION& expected) {
         CompareFileTime(&actual.ftLastWriteTime, &expected.ftLastWriteTime) == 0;
 }
 
-HANDLE OpenLocalSource(const std::wstring& path) {
+std::wstring TrimWhitespace(const std::wstring& value) {
+    const size_t start = value.find_first_not_of(L" \t\r\n");
+    if (start == std::wstring::npos) return {};
+    const size_t end = value.find_last_not_of(L" \t\r\n");
+    return value.substr(start, end - start + 1);
+}
+
+bool IsNotFoundWin32Error(DWORD err) {
+    return err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND;
+}
+
+bool OpenLocalVerifiedDirectoryChain(const std::filesystem::path& dir,
+                                     std::vector<std::unique_ptr<SourceHandle>>& directories,
+                                     bool& notFound) {
+    notFound = false;
+    const auto& raw = dir.native();
+    if (!dir.is_absolute() || raw.find(L'\0') != std::wstring::npos ||
+        raw.rfind(L"\\\\.\\", 0) == 0 ||
+        dir.relative_path().native().find(L':') != std::wstring::npos) {
+        return false;
+    }
+    for (const auto& part : dir.relative_path()) {
+        const std::wstring name = part.native();
+        if (name.empty() || name == L"." || name == L".." || name.back() == L'.' || name.back() == L' ') {
+            return false;
+        }
+    }
+    if (dir.relative_path().empty()) {
+        auto handle = std::make_unique<SourceHandle>();
+        handle->value = CreateFileW(dir.c_str(), FILE_READ_ATTRIBUTES,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                                    nullptr);
+        BY_HANDLE_FILE_INFORMATION directory{};
+        if (handle->value == INVALID_HANDLE_VALUE) {
+            notFound = IsNotFoundWin32Error(GetLastError());
+            return false;
+        }
+        if (!GetFileInformationByHandle(handle->value, &directory) ||
+            !(directory.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+            (directory.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            return false;
+        }
+        directories.push_back(std::move(handle));
+        return true;
+    }
+
+    auto current = dir.root_path();
+    for (const auto& part : dir.relative_path()) {
+        current /= part;
+        auto handle = std::make_unique<SourceHandle>();
+        handle->value = CreateFileW(current.c_str(), FILE_READ_ATTRIBUTES,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                                    nullptr);
+        BY_HANDLE_FILE_INFORMATION directory{};
+        if (handle->value == INVALID_HANDLE_VALUE) {
+            notFound = IsNotFoundWin32Error(GetLastError());
+            return false;
+        }
+        if (!GetFileInformationByHandle(handle->value, &directory) ||
+            !(directory.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+            (directory.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            return false;
+        }
+        directories.push_back(std::move(handle));
+    }
+    return true;
+}
+
+HANDLE OpenLocalSource(const std::wstring& path, bool* notFound = nullptr) {
     namespace fs = std::filesystem;
+    if (notFound) *notFound = false;
     const fs::path file(path);
-    if (!file.is_absolute() || file.filename().empty() || path.find(L'\0') != std::wstring::npos ||
+    const std::wstring filename = file.filename().native();
+    if (!file.is_absolute() || filename.empty() || filename == L"." || filename == L".." ||
+        filename.back() == L'.' || filename.back() == L' ' ||
+        path.find(L'\0') != std::wstring::npos ||
         path.rfind(L"\\\\.\\", 0) == 0 ||
-        file.relative_path().native().find(L':') != std::wstring::npos)
+        file.relative_path().native().find(L':') != std::wstring::npos) {
         return INVALID_HANDLE_VALUE;
-    for (const auto& part : file.relative_path()) {
-        const auto& name = part.native();
-        if (name.empty() || name.back() == L'.' || name.back() == L' ') return INVALID_HANDLE_VALUE;
     }
     // Open each ancestor without following a reparse point, and keep it open
     // against replacement until the final handle has been acquired.
-    auto parent = file.root_path();
     std::vector<std::unique_ptr<SourceHandle>> directories;
-    for (const auto& part : file.parent_path().relative_path()) {
-        parent /= part;
-        auto handle = std::make_unique<SourceHandle>();
-        handle->value = CreateFileW(parent.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
-                                   nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-        BY_HANDLE_FILE_INFORMATION directory{};
-        if (handle->value == INVALID_HANDLE_VALUE || !GetFileInformationByHandle(handle->value, &directory) ||
-            !(directory.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
-            (directory.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
-            return INVALID_HANDLE_VALUE;
-        directories.push_back(std::move(handle));
+    bool ancestorNotFound = false;
+    if (!OpenLocalVerifiedDirectoryChain(file.parent_path(), directories, ancestorNotFound)) {
+        if (notFound) *notFound = ancestorNotFound;
+        return INVALID_HANDLE_VALUE;
     }
-    return CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                       FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (handle == INVALID_HANDLE_VALUE && notFound) {
+        *notFound = IsNotFoundWin32Error(GetLastError());
+    }
+    return handle;
 }
 bool LaunchPlink(const SshRemoteConfig& config, const std::wstring& passwordPipe,
                  const std::wstring& remoteCommand, bool diagnostic,
@@ -136,10 +204,12 @@ LocalTftpFileSource::LocalTftpFileSource(std::wstring path)
     info_.type = "local";
     info_.displayPath = path_;
     info_.status = "Failed";
+    bool notFound = false;
     SourceHandle file;
-    file.value = OpenLocalSource(path_);
+    file.value = OpenLocalSource(path_, &notFound);
     if (file.value == INVALID_HANDLE_VALUE || !ReadSnapshot(file.value, snapshot_)) {
-        info_.error = L"无法读取常规文件，或路径包含重解析点";
+        info_.notFound = (file.value == INVALID_HANDLE_VALUE) && notFound;
+        info_.error = info_.notFound ? L"本地文件不存在" : L"无法读取常规文件，或路径包含重解析点";
         return;
     }
     info_.size = FileSize(snapshot_);
@@ -238,87 +308,54 @@ void LocalTftpFileSource::Cancel() {
 // RemoteSshTftpFileSource
 // ============================================================================
 
-RemoteSshTftpFileSource::RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher)
-    : config_(std::move(config)), launcher_(std::move(customLauncher)) {
-    info_.type = "remote";
-    info_.displayPath = config_.remotePath;
-    info_.host = config_.host;
-    info_.port = config_.port;
-    info_.username = config_.username;
-    info_.status = "Failed";
-
-    std::wstring err;
-    if (!QueryRemoteAttributes(err)) {
-        info_.status = "Failed";
-        info_.error = err.empty() ? L"远程文件不可访问" : err;
-    } else {
-        info_.status = "Ready";
-    }
-}
-
-RemoteSshTftpFileSource::RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher,
-                                               TftpSourceInfo prequeriedInfo, std::wstring snapshot)
-    : config_(std::move(config)), launcher_(std::move(customLauncher)), info_(std::move(prequeriedInfo)),
-      snapshot_(std::move(snapshot)) {
-}
-
-RemoteSshTftpFileSource::~RemoteSshTftpFileSource() {
-    Close();
-}
-
-TftpSourceInfo RemoteSshTftpFileSource::Info() const {
-    std::lock_guard<std::mutex> lock(bufferMutex_);
-    return info_;
-}
-
-std::shared_ptr<ITftpFileSource> RemoteSshTftpFileSource::CreateSessionSource() const {
-    std::lock_guard<std::mutex> lock(bufferMutex_);
-    return std::shared_ptr<ITftpFileSource>(new RemoteSshTftpFileSource(config_, launcher_, info_, snapshot_));
-}
-
-bool RemoteSshTftpFileSource::QueryRemoteAttributes(std::wstring& error) {
-    if (config_.remotePath.empty() || config_.remotePath[0] != L'/' ||
-        std::any_of(config_.remotePath.begin(), config_.remotePath.end(), [](wchar_t ch) { return ch < 32; })) {
+namespace {
+bool ValidateRemoteSshConfig(SshRemoteConfig& config, std::wstring& error) {
+    if (config.remotePath.empty() || config.remotePath[0] != L'/' ||
+        std::any_of(config.remotePath.begin(), config.remotePath.end(), [](wchar_t ch) { return ch < 32; })) {
         error = L"远程路径必须是以 '/' 开头的绝对 POSIX 路径，且不能包含控制字符";
         return false;
     }
-    if (launcher_) {
-        info_.size = 10485760;
-        info_.sizeKnown = true;
-        return true;
-    }
-    if (config_.host.empty() || config_.host.front() == L'-' || config_.username.empty()) {
+    if (config.host.empty() || config.host.front() == L'-' || config.username.empty()) {
         error = L"SSH 主机或用户名无效";
         return false;
     }
-    if (config_.hostKey.empty()) config_.hostKey = TrustedPuttyHostKey(config_.host, config_.port);
-    if (config_.hostKey.empty()) {
+    if (config.hostKey.empty()) config.hostKey = TrustedPuttyHostKey(config.host, config.port);
+    if (config.hostKey.empty()) {
         error = L"远程发布需要先在 SerialCtl 中核验该 SSH 主机的身份";
         return false;
     }
+    return true;
+}
 
+bool RunPlinkCommand(const SshRemoteConfig& config, const std::wstring& remoteCommand,
+                     size_t maxOutputBytes, DWORD timeoutMs,
+                     std::string& output, DWORD& exitCode, std::wstring& error) {
+    output.clear();
+    exitCode = 1;
     PasswordPipe password;
-    if (!config_.password.empty() && !password.Open(config_.password, error)) return false;
-    const auto path = L"'" + EscapePosixSingleQuotes(config_.remotePath) + L"'";
-    const auto command = L"f=" + path + L"; [ \"$(realpath -e -- \"$f\")\" = \"$f\" ] && "
-        L"[ -f \"$f\" ] && [ -r \"$f\" ] && " + RemoteStat + L"\"$f\"";
+    if (!config.password.empty() && !password.Open(config.password, error)) return false;
     SourceHandle pipe, child;
-    if (!LaunchPlink(config_, password.Name(), command, true, pipe.value, child.value, error)) return false;
+    if (!LaunchPlink(config, password.Name(), remoteCommand, false, pipe.value, child.value, error)) {
+        return false;
+    }
 
-    std::string output;
-    std::array<char, 512> buffer{};
-    const auto deadline = GetTickCount64() + 8000;
+    std::array<char, 4096> buffer{};
+    const auto deadline = GetTickCount64() + timeoutMs;
     bool exited = false;
+    bool overflow = false;
     while (GetTickCount64() < deadline) {
-        if (!config_.password.empty()) {
+        if (!config.password.empty()) {
             password.Poll();
             if (password.Failed()) break;
         }
         DWORD available = 0, read = 0;
         if (PeekNamedPipe(pipe.value, nullptr, 0, nullptr, &available, nullptr) && available) {
-            if (!ReadFile(pipe.value, buffer.data(), std::min<DWORD>(available, static_cast<DWORD>(buffer.size())),
-                          &read, nullptr) || !read || output.size() + read > buffer.size())
+            const DWORD want = std::min<DWORD>(available, static_cast<DWORD>(buffer.size()));
+            if (!ReadFile(pipe.value, buffer.data(), want, &read, nullptr) || !read) break;
+            if (output.size() + read > maxOutputBytes) {
+                overflow = true;
                 break;
+            }
             output.append(buffer.data(), read);
             continue;
         }
@@ -333,9 +370,104 @@ bool RemoteSshTftpFileSource::QueryRemoteAttributes(std::wstring& error) {
     if (!exited) {
         TerminateProcess(child.value, 1);
         WaitForSingleObject(child.value, 1000);
+        error = overflow ? L"SSH 返回数据超出限制" : L"SSH 检查超时";
+        return false;
     }
+    if (!GetExitCodeProcess(child.value, &exitCode)) {
+        exitCode = 1;
+        error = L"无法获取 SSH 检查结果";
+        return false;
+    }
+    return true;
+}
+} // namespace
+
+RemoteSshTftpFileSource::RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher, bool deferQuery)
+    : config_(std::move(config)), launcher_(std::move(customLauncher)), deferQuery_(deferQuery) {
+    info_.type = "remote";
+    info_.displayPath = config_.remotePath;
+    info_.host = config_.host;
+    info_.port = config_.port;
+    info_.username = config_.username;
+    info_.status = "Failed";
+
+    std::wstring err;
+    if (deferQuery_) {
+        if (!launcher_ && !ValidateRemoteSshConfig(config_, err)) {
+            info_.error = err;
+            return;
+        }
+        if (launcher_ && (config_.remotePath.empty() || config_.remotePath[0] != L'/' ||
+            std::any_of(config_.remotePath.begin(), config_.remotePath.end(), [](wchar_t ch) { return ch < 32; }))) {
+            info_.error = L"远程路径必须是以 '/' 开头的绝对 POSIX 路径，且不能包含控制字符";
+            return;
+        }
+        info_.status = "Pending";
+        return;
+    }
+    if (!QueryRemoteAttributes(err)) {
+        info_.status = "Failed";
+        info_.error = err.empty() ? L"远程文件不可访问" : err;
+    } else {
+        info_.status = "Ready";
+    }
+}
+
+RemoteSshTftpFileSource::RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher,
+                                               TftpSourceInfo prequeriedInfo, std::wstring snapshot, bool deferQuery)
+    : config_(std::move(config)), launcher_(std::move(customLauncher)), info_(std::move(prequeriedInfo)),
+      snapshot_(std::move(snapshot)), deferQuery_(deferQuery) {
+}
+
+RemoteSshTftpFileSource::~RemoteSshTftpFileSource() {
+    Close();
+}
+
+TftpSourceInfo RemoteSshTftpFileSource::Info() const {
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    return info_;
+}
+
+std::shared_ptr<ITftpFileSource> RemoteSshTftpFileSource::CreateSessionSource() const {
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    return std::shared_ptr<ITftpFileSource>(
+        new RemoteSshTftpFileSource(config_, launcher_, info_, snapshot_, deferQuery_));
+}
+
+bool RemoteSshTftpFileSource::QueryRemoteAttributes(std::wstring& error) {
+    info_.notFound = false;
+    if (launcher_) {
+        if (config_.remotePath.empty() || config_.remotePath[0] != L'/' ||
+            std::any_of(config_.remotePath.begin(), config_.remotePath.end(), [](wchar_t ch) { return ch < 32; })) {
+            error = L"远程路径必须是以 '/' 开头的绝对 POSIX 路径，且不能包含控制字符";
+            return false;
+        }
+        info_.size = 10485760;
+        info_.sizeKnown = true;
+        return true;
+    }
+    if (!ValidateRemoteSshConfig(config_, error)) return false;
+
+    const auto path = L"'" + EscapePosixSingleQuotes(config_.remotePath) + L"'";
+    const auto command = L"f=" + path + L"; "
+        L"if [ ! -e \"$f\" ] && [ ! -L \"$f\" ]; then exit 42; fi; "
+        L"[ \"$(realpath -e -- \"$f\")\" = \"$f\" ] && [ -f \"$f\" ] && [ -r \"$f\" ] || exit 43; " +
+        std::wstring(RemoteStat) + L"\"$f\"";
+    std::string output;
     DWORD exitCode = 1;
-    if (!exited || !GetExitCodeProcess(child.value, &exitCode) || exitCode != 0) {
+    if (!RunPlinkCommand(config_, command, 512, 8000, output, exitCode, error)) {
+        return false;
+    }
+    if (exitCode == 42) {
+        info_.notFound = true;
+        error = L"远程文件不存在";
+        return false;
+    }
+    if (exitCode == 43) {
+        error = L"远程文件不是可读常规文件或包含符号链接";
+        return false;
+    }
+    if (exitCode != 0) {
         error = L"远程文件不存在、不可读、含链接或 SSH 检查失败";
         return false;
     }
@@ -363,7 +495,17 @@ bool RemoteSshTftpFileSource::Open(std::wstring& error) {
     if (procHandle_ != nullptr) {
         return true;
     }
-    if (info_.status != "Ready") {
+    if (info_.status == "Pending") {
+        std::wstring queryErr;
+        if (!QueryRemoteAttributes(queryErr)) {
+            info_.status = "Failed";
+            info_.error = queryErr.empty() ? L"远程文件不可访问" : queryErr;
+            error = info_.error;
+            return false;
+        }
+        info_.status = "Ready";
+        info_.error.clear();
+    } else if (info_.status != "Ready") {
         error = info_.error.empty() ? L"远程文件不可用" : info_.error;
         return false;
     }
@@ -634,6 +776,175 @@ bool MockStreamTftpFileSource::Read(uint64_t offset, void* buffer, size_t length
 
 void MockStreamTftpFileSource::Cancel() {
     Close();
+}
+
+namespace {
+void SortTftpDirectoryEntries(std::vector<TftpDirectoryEntry>& entries) {
+    std::sort(entries.begin(), entries.end(), [](const TftpDirectoryEntry& a, const TftpDirectoryEntry& b) {
+        std::string al = a.name, bl = b.name;
+        for (char& ch : al) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        for (char& ch : bl) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (al != bl) return al < bl;
+        return a.name < b.name;
+    });
+}
+} // namespace
+
+bool ValidateLocalTftpDirectory(const std::wstring& dirPath, std::wstring& normalizedPath, std::wstring& error) {
+    normalizedPath.clear();
+    const std::wstring trimmed = TrimWhitespace(dirPath);
+    if (trimmed.empty()) {
+        error = L"请选择或输入本地 TFTP 目录";
+        return false;
+    }
+    std::filesystem::path dir(trimmed);
+    dir = dir.lexically_normal();
+    std::wstring native = dir.native();
+    const size_t rootLen = dir.root_path().native().size();
+    while (native.size() > rootLen && (native.back() == L'\\' || native.back() == L'/')) {
+        native.pop_back();
+    }
+    dir = std::filesystem::path(native);
+
+    std::vector<std::unique_ptr<SourceHandle>> directories;
+    bool notFound = false;
+    if (!OpenLocalVerifiedDirectoryChain(dir, directories, notFound)) {
+        error = notFound ? L"本地目录不存在" : L"本地路径不是有效目录，或包含符号链接/重解析点";
+        return false;
+    }
+    normalizedPath = dir.native();
+    return true;
+}
+
+bool ListLocalTftpDirectory(const std::wstring& dirPath, std::vector<TftpDirectoryEntry>& entries, std::wstring& error) {
+    entries.clear();
+    std::wstring normalized;
+    if (!ValidateLocalTftpDirectory(dirPath, normalized, error)) {
+        return false;
+    }
+    const auto pattern = (std::filesystem::path(normalized) / L"*").native();
+    WIN32_FIND_DATAW fd{};
+    HANDLE find = FindFirstFileW(pattern.c_str(), &fd);
+    if (find == INVALID_HANDLE_VALUE) {
+        const DWORD err = GetLastError();
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_NO_MORE_FILES) {
+            return true;
+        }
+        error = L"读取本地目录内容失败";
+        return false;
+    }
+    struct FindGuard {
+        HANDLE handle = INVALID_HANDLE_VALUE;
+        ~FindGuard() {
+            if (handle != INVALID_HANDLE_VALUE) FindClose(handle);
+        }
+    } guard{find};
+
+    do {
+        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+        if (fd.dwFileAttributes &
+            (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DEVICE | FILE_ATTRIBUTE_OFFLINE)) {
+            continue;
+        }
+        const std::string utf8Name = WideToMultiByte(fd.cFileName, CP_UTF8);
+        if (utf8Name.empty()) continue;
+        TftpDirectoryEntry entry;
+        entry.name = utf8Name;
+        entry.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+        entry.sizeKnown = true;
+        entries.push_back(std::move(entry));
+    } while (FindNextFileW(find, &fd));
+
+    const DWORD err = GetLastError();
+    if (err != ERROR_NO_MORE_FILES) {
+        entries.clear();
+        error = L"枚举本地目录文件时发生错误";
+        return false;
+    }
+
+    SortTftpDirectoryEntries(entries);
+    return true;
+}
+
+bool ValidateRemoteTftpDirectoryConfig(SshRemoteConfig& config, std::wstring& error) {
+    std::wstring path = TrimWhitespace(config.remotePath);
+    while (path.size() > 1 && path.back() == L'/') {
+        path.pop_back();
+    }
+    config.remotePath = path;
+    if (!ValidateRemoteSshConfig(config, error)) {
+        return false;
+    }
+    return true;
+}
+
+bool ListRemoteTftpDirectory(const SshRemoteConfig& config, std::vector<TftpDirectoryEntry>& entries, std::wstring& error) {
+    entries.clear();
+    SshRemoteConfig cfg = config;
+    if (!ValidateRemoteTftpDirectoryConfig(cfg, error)) {
+        return false;
+    }
+    const auto dir = L"'" + EscapePosixSingleQuotes(cfg.remotePath) + L"'";
+    const auto command = L"d=" + dir + L"; "
+        L"if [ ! -e \"$d\" ] && [ ! -L \"$d\" ]; then exit 42; fi; "
+        L"[ \"$(realpath -e -- \"$d\")\" = \"$d\" ] && [ -d \"$d\" ] && [ -r \"$d\" ] && [ -x \"$d\" ] || exit 43; "
+        L"for p in \"$d\"/*; do "
+        L"[ -L \"$p\" ] && continue; "
+        L"[ -f \"$p\" ] && [ -r \"$p\" ] || continue; "
+        L"sz=$(LC_ALL=C stat -c '%s' -- \"$p\" 2>/dev/null || wc -c < \"$p\" 2>/dev/null || printf '?'); "
+        L"printf '%s\t%s\n' \"$sz\" \"${p##*/}\"; "
+        L"done";
+    std::string output;
+    DWORD exitCode = 1;
+    if (!RunPlinkCommand(cfg, command, 512 * 1024, 8000, output, exitCode, error)) {
+        return false;
+    }
+    if (exitCode == 42) {
+        error = L"远程目录不存在";
+        return false;
+    }
+    if (exitCode == 43) {
+        error = L"远程路径不是有效可读目录，或包含符号链接";
+        return false;
+    }
+    if (exitCode != 0) {
+        error = L"读取远程目录失败，请确认 SSH 会话认证与权限";
+        return false;
+    }
+
+    size_t pos = 0;
+    while (pos < output.size()) {
+        size_t end = output.find('\n', pos);
+        if (end == std::string::npos) end = output.size();
+        std::string line = output.substr(pos, end - pos);
+        pos = end + 1;
+        while (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        const size_t tab = line.find('\t');
+        if (tab == std::string::npos) continue;
+        std::string sizeStr = line.substr(0, tab);
+        std::string name = line.substr(tab + 1);
+        if (name.empty() || name == "." || name == ".." ||
+            name.find('/') != std::string::npos || name.find('\\') != std::string::npos ||
+            name.find('\0') != std::string::npos) {
+            continue;
+        }
+        TftpDirectoryEntry entry;
+        entry.name = std::move(name);
+        size_t firstNonSpace = sizeStr.find_first_not_of(" \t");
+        if (firstNonSpace != std::string::npos) {
+            uint64_t parsedSize = 0;
+            const auto res = std::from_chars(sizeStr.data() + firstNonSpace, sizeStr.data() + sizeStr.size(), parsedSize);
+            if (res.ec == std::errc{} && res.ptr == sizeStr.data() + sizeStr.size()) {
+                entry.size = parsedSize;
+                entry.sizeKnown = true;
+            }
+        }
+        entries.push_back(std::move(entry));
+    }
+
+    SortTftpDirectoryEntries(entries);
+    return true;
 }
 
 } // namespace serialctl

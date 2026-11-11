@@ -1,5 +1,6 @@
 #pragma once
 #include "Connection.h"
+#include "PowerKeywordRun.h"
 #include "SessionLogger.h"
 #include "json.hpp"
 #include <condition_variable>
@@ -21,8 +22,11 @@ class PowerService {
         return u8"该功能暂未开放，请等待后续开放。";
     }
     Json State();
-    Json Submit(const Json &command);
+    Json Submit(const Json &command, const std::string &connectionId = {}, const std::string &expectedMode = {},
+                std::shared_ptr<PowerCycleObserver> cycle = {});
+    void LogKeywordEvent(const std::wstring &event) { log_.WriteStatus(event); }
     Json Action(const std::string &id);
+    void CancelRemotePending(const std::string &source);
     static Json UsbResources();
     static bool VisaAvailable();
     void RequestShutdown();
@@ -45,7 +49,7 @@ class PowerService {
 #endif
     struct Transport;
     void Run();
-    void Execute(const std::string &id, const Json &command);
+    void Execute(const std::string &id, const Json &command, const std::shared_ptr<PowerCycleObserver> &cycle = {});
     void Poll();
     void ReadMode();
     void ChangeMode(const std::string &mode);
@@ -55,14 +59,22 @@ class PowerService {
     void CheckScpi();
     void Select(int channel);
     void Outputs(const Json &channels, bool enabled, Json &result);
-    void StopTask(Json *offResults = nullptr);
+    void StopTask(Json *offResults = nullptr, bool completed = false);
+    void CancelKeywordCycle(const wchar_t *reason); // mutex_ held
     void Disconnect(bool preserveOutputs = false, Json *action = nullptr);
     void Command(const std::string &command);
     std::string Query(const std::string &command);
     double Number(const std::string &command);
     std::mutex mutex_;
     std::condition_variable wake_;
-    std::deque<std::pair<std::string, Json>> queue_;
+    struct Job {
+        std::string id;
+        Json command;
+        std::shared_ptr<PowerCycleObserver> cycle;
+    };
+    std::deque<Job> queue_;
+    std::weak_ptr<PowerCycleObserver> keywordCycle_;  // Submission and cancellation, mutex_ held.
+    std::shared_ptr<PowerCycleObserver> activeCycle_; // Power worker only.
     std::map<std::string, Json> actions_;
     Json state_, task_;
     Json owned_ = Json::array();

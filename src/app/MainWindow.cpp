@@ -2,6 +2,7 @@
 #include <chrono>
 #include "TerminalDecoder.h"
 #include "MainWindow.h"
+#include "../power/RemotePowerProtocol.h"
 #include "TerminalViewportGeometry.h"
 #include "UiDialogViewport.h"
 #include "HostKeyDialog.h"
@@ -45,7 +46,6 @@ namespace serialctl {
 
 namespace {
 
-constexpr std::uint16_t DefaultSharePort = 7000;
 constexpr wchar_t WindowClassName[] = L"SerialCtlWin7NativeWindowV3";
 constexpr UINT MessageData = WM_APP + 1;
 constexpr UINT MessageStatus = WM_APP + 2;
@@ -83,8 +83,6 @@ void DiscardUpdate(update::UpdateResult& result) {
 }
 
 constexpr UINT_PTR DiscoveryTimerId = 4003;
-constexpr int IdSharedAdvancedPort = 9010;
-constexpr int IdSharedAutoPort = 9011;
 constexpr UINT_PTR StatusTimerId = 4001;
 constexpr UINT_PTR CommandTimerId = 4002;
 constexpr UINT_PTR SideAnimationTimerId = 4003;
@@ -108,8 +106,7 @@ enum ControlId {
     IdSsh = 100,
     IdSerial,
     IdTelnet,
-    IdShareSerial,
-    IdTheme,
+    IdTheme = 104,
     IdDisconnect,
     IdConnectionList,
     IdTerminal,
@@ -152,7 +149,7 @@ enum ControlId {
 };
 
 bool IsToolbarButton(int id) {
-    return (id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower ||
+    return (id >= IdSsh && id <= IdTelnet) || id == IdCmd || id == IdPower ||
         id == IdAi || id == IdSettings;
 }
 
@@ -261,6 +258,28 @@ bool CompactNavigation(int width) {
     int full = Ui::Gap + Ui::Space;
     for (int item : Ui::ToolbarButtonWidths) full += Ui::Scale(item) + Ui::Space;
     return full + Ui::IconButtonSize * 2 + Ui::Gap * 3 > width;
+}
+
+// Parent-window band whose card frames can differ between two animation
+// frames. Moved children invalidate their own exposed parent pixels; this only
+// covers rounded card edges drawn by PaintWindow. Left animation always keeps
+// the left card, right animation the right card; empty means nothing moved.
+RECT SidebarAnimationDirtyRect(const MainLayoutMetrics& before, const MainLayoutMetrics& after,
+                               int width, int height, bool leftSide) {
+    int low = width, high = 0;
+    for (const auto edge : {std::make_pair(before.leftWidth, after.leftWidth),
+                            std::make_pair(before.centerLeft, after.centerLeft),
+                            std::make_pair(before.centerRight, after.centerRight),
+                            std::make_pair(before.rightLeft, after.rightLeft)}) {
+        if (edge.first == edge.second) continue;
+        low = std::min({low, edge.first, edge.second});
+        high = std::max({high, edge.first, edge.second});
+    }
+    if (low > high) return RECT{};
+    const int pad = Ui::CardRadius + Ui::Gap + Ui::Scale(2);
+    RECT dirty{leftSide ? 0 : std::max(0, low - pad), 0,
+               leftSide ? std::min(width, high + pad) : width, height};
+    return dirty;
 }
 
 RECT NavigationFrame(int width) {
@@ -1156,6 +1175,10 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         EndPaint(window, &paint);
         return 0;
     }
+    if (message == WM_KILLFOCUS || message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL ||
+        message == WM_RBUTTONUP || message == WM_PASTE || message == WM_CHAR || message == WM_SYSCHAR ||
+        (message == WM_SHOWWINDOW && !wParam))
+        self->terminalViewport_.DismissRegisterPreview(window);
     if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
         InvalidateRect(window, nullptr, FALSE);
     } else if (message == WM_RBUTTONUP) {
@@ -1216,6 +1239,7 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
             self->CopyTerminalSelection(false);
             return 0;
         }
+        self->terminalViewport_.DismissRegisterPreview(window);
         if (control && !shift && !alt && wParam == L'C' && self->selectedMode_ == 4) {
             // Ctrl+C is a single interrupt request; key auto-repeat must not
             // interrupt the next command if the shortcut is held down.
@@ -1294,7 +1318,7 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
     }
     const auto pointer = self->terminalViewport_.Pointer(window, message, lParam, self->activeSession_, self->TerminalViewportOptions());
     if (pointer != TerminalViewport::PointerResult::Unhandled) {
-        if (pointer == TerminalViewport::PointerResult::CopySelection) self->CopyTerminalSelection(false);
+        if (pointer == TerminalViewport::PointerResult::CopySelection) self->CopyTerminalSelection(false, true);
         return 0;
     }
     if (message == WM_NCDESTROY) RemoveWindowSubclass(window, TerminalSubclassProc, subclassId);
@@ -2040,13 +2064,17 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case PowerStateChanged: {
-        const auto powerState = powerService_.State();
+        const auto powerState = powerPane_.ViewState();
         std::wstring warning;
         if (powerState.value("unconfirmedPowerOff", false)) {
             warning = L"警告：电源输出未知";
             for (const auto &channel : powerState.value("unconfirmedPowerOffChannels", Json::array()))
                 warning += L" CH" + std::to_wstring(channel.get<int>());
             warning += L"，请人工核查。";
+        } else if (powerState.value("remoteLost", false)) {
+            warning = L"远程电源连接已断开。";
+            const auto error = powerState.value("error", std::string());
+            warning += MultiByteToWide(reinterpret_cast<const std::uint8_t *>(error.data()), error.size(), CP_UTF8);
         }
         if (warning != powerAlert_) {
             powerAlert_ = std::move(warning);
@@ -2285,24 +2313,46 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         if (wParam == LogExportTimerId) { PollLogExport(); return 0; }
-        if(wParam==LeftAnimationTimerId) {
-            if(!leftPanelAnimating_) return 0;
-            const double t=std::min(1.0,static_cast<double>(GetTickCount64()-leftPanelAnimationAt_)/200.0);
+        if(wParam==LeftAnimationTimerId || wParam==SideAnimationTimerId) {
+            // WM_TIMER is synthesized only when no posted message (including
+            // terminal receive notifications) is waiting, so terminal output
+            // keeps priority. Progress is time based: under load frames are
+            // dropped and the animation still finishes on schedule.
+            const bool leftSide = wParam==LeftAnimationTimerId;
+            if(leftSide ? !leftPanelAnimating_ : !rightPanelAnimating_) return 0; // A canceled timer may already have a queued message.
+            const ULONGLONG started = leftSide ? leftPanelAnimationAt_ : rightPanelAnimationAt_;
+            const double t=std::min(1.0,static_cast<double>(GetTickCount64()-started)/200.0);
             const double ease=1-(1-t)*(1-t)*(1-t);
-            leftPanelAnimatedWidth_=leftPanelAnimationFrom_+static_cast<int>((leftPanelAnimationTo_-leftPanelAnimationFrom_)*ease);
-            if(t>=1) { KillTimer(window_,LeftAnimationTimerId); leftPanelAnimating_=false; leftPanelAnimatedWidth_=-1; }
-            RECT rect{};GetClientRect(window_,&rect);LayoutControls(rect.right,rect.bottom);
-            InvalidateRect(window_,nullptr,FALSE);
+            const int from = leftSide ? leftPanelAnimationFrom_ : rightPanelAnimationFrom_;
+            const int to = leftSide ? leftPanelAnimationTo_ : rightPanelAnimationTo_;
+            const int next = from+static_cast<int>((to-from)*ease);
+            int& animated = leftSide ? leftPanelAnimatedWidth_ : rightPanelAnimatedWidth_;
+            const bool done = t>=1;
+            // Skip relayout and repaint when this tick does not move any pixel.
+            if(!done && next==animated) return 0;
+            RECT rect{};GetClientRect(window_,&rect);
+            const bool collapsedBefore = SidebarCollapsed();
+            const auto before = GetMainLayoutMetrics(rect.right, rect.bottom, SidebarWidth(), collapsedBefore,
+                                                     rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
+            animated = next;
+            if(done) {
+                KillTimer(window_, static_cast<UINT_PTR>(wParam));
+                (leftSide ? leftPanelAnimating_ : rightPanelAnimating_) = false;
+                animated = -1;
+            }
+            LayoutControls(rect.right,rect.bottom);
+            const bool collapsedAfter = SidebarCollapsed();
+            if(done || collapsedBefore != collapsedAfter) {
+                // Final frame restores controls and separators hidden during the
+                // animation; repaint the whole parent once as before.
+                InvalidateRect(window_,nullptr,FALSE);
+            } else {
+                const auto after = GetMainLayoutMetrics(rect.right, rect.bottom, SidebarWidth(), collapsedAfter,
+                                                        rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
+                const RECT dirty = SidebarAnimationDirtyRect(before, after, rect.right, rect.bottom, leftSide);
+                if(!IsRectEmpty(&dirty)) InvalidateRect(window_,&dirty,FALSE);
+            }
             return 0;
-        }
-        if(wParam==SideAnimationTimerId) {
-            if (!rightPanelAnimating_) return 0; // A canceled timer may already have a queued message.
-            const double t=std::min(1.0,static_cast<double>(GetTickCount64()-rightPanelAnimationAt_)/200.0);
-            const double ease=1-(1-t)*(1-t)*(1-t);
-            rightPanelAnimatedWidth_=rightPanelAnimationFrom_+static_cast<int>((rightPanelAnimationTo_-rightPanelAnimationFrom_)*ease);
-            if(t>=1){KillTimer(window_,SideAnimationTimerId);rightPanelAnimating_=false;rightPanelAnimatedWidth_=-1;}
-            RECT rect{};GetClientRect(window_,&rect);LayoutControls(rect.right,rect.bottom);
-            InvalidateRect(window_,nullptr,FALSE);return 0;
         }
         if (wParam == StatusTimerId) {
             KillTimer(window_, StatusTimerId);
@@ -2331,7 +2381,20 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (redraw) {
             RECT rect{};GetClientRect(window_,&rect);
             HDC memory = windowPaintBuffer_.Get(dc, rect.right, rect.bottom, Ui::Dpi);
-            if (memory) { const int state = SaveDC(memory); PaintWindow(memory); BitBlt(dc,0,0,rect.right,rect.bottom,memory,0,0,SRCCOPY); RestoreDC(memory,state); }
+            // Repaint and present only the invalid rectangle. Sidebar animation
+            // frames invalidate a narrow band, so redrawing and blitting the full
+            // client area on every frame is unnecessary work. Pixels outside the
+            // clip stay untouched in the retained buffer and are never presented.
+            RECT dirty{};
+            if (!IntersectRect(&dirty, &paint.rcPaint, &rect)) dirty = rect;
+            if (memory) {
+                const int state = SaveDC(memory);
+                IntersectClipRect(memory, dirty.left, dirty.top, dirty.right, dirty.bottom);
+                PaintWindow(memory);
+                BitBlt(dc, dirty.left, dirty.top, dirty.right - dirty.left, dirty.bottom - dirty.top,
+                       memory, dirty.left, dirty.top, SRCCOPY);
+                RestoreDC(memory, state);
+            }
             else PaintWindow(dc);
         }
         EndPaint(window_, &paint);
@@ -2400,14 +2463,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         const int id = LOWORD(wParam);
         const int notification = HIWORD(wParam);
         if (notification == BN_CLICKED) {
-            if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) {
+            if (id >= IdSsh && id <= IdTelnet) {
                 OpenConnectionDialog(id - IdSsh);
             }
             else if (id == IdTheme) { darkMode_ = !darkMode_; ApplyTheme(); }
             else if (id == IdSettings) ShowSettings();
             else if (id == IdDisconnect) {
                 if(aiVisible_) {if(aiPane_.Connected()) aiPane_.Disconnect();else {aiVisible_=false;aiPageOpened_=false;}}
-                else if(powerVisible_) {if(powerService_.State().value("connected",false)) powerService_.Submit({{"type","disconnect"},{"preserveOutputs",true}});else {powerVisible_=false;powerPageOpened_=false;}}
+                else if(powerVisible_) {if(powerPane_.HasConnection()) powerPane_.DisconnectConnection(true);else {powerVisible_=false;powerPageOpened_=false;}}
                 else {Disconnect();return 0;}
                 RefreshConnectionList();RECT r{};GetClientRect(window_,&r);LayoutControls(r.right,r.bottom);InvalidateRect(window_,nullptr,FALSE);
             }
@@ -2606,19 +2669,18 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
     case MessageDiscovery: {
         std::unique_ptr<DiscoveryMessage> result(reinterpret_cast<DiscoveryMessage*>(lParam));
-        if (closing_ || !result || result->dialog != discoveryDialog_ || result->generation != discoveryGeneration_ || !IsWindow(result->dialog)) return 0;
+        if (closing_ || pendingMode_ != 3 || !result || result->dialog != discoveryDialog_ ||
+            result->generation != discoveryGeneration_ || !IsWindow(result->dialog)) return 0;
         HWND ports = GetDlgItem(result->dialog, IDC_SERIAL);
         SendMessageW(ports, CB_RESETCONTENT, 0, 0);
         for (const auto& name : result->names) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         if (!result->success) SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"未发现可连接的串口"));
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         pendingRemoteInstance_ = result->success ? result->instance : std::string();
-        if (result->success) SetDlgItemTextW(result->dialog, IDC_PORT, std::to_wstring(result->port).c_str());
-        const bool multiple = !result->success && result->error.find(L"发现多个实例") == 0;
+        discoveredSerialPort_ = result->success ? result->port : 0;
         SetDlgItemTextW(result->dialog, IDC_DIALOG_ERROR,
-                        result->success ? (L"服务端口 " + std::to_wstring(result->port) + L" · 选择串口连接").c_str()
+                        result->success ? L"已发现远端串口，请选择后连接。"
                                           : result->error.c_str());
-        if (multiple) SetFocus(GetDlgItem(result->dialog, IdSharedAdvancedPort));
         EnableWindow(GetDlgItem(result->dialog, IDOK), result->success);
         InvalidateRect(result->dialog, nullptr, TRUE); return 0;
     }
@@ -2748,9 +2810,10 @@ void MainWindow::CreateControls() {
     terminalFont_ = CreateFontW(-terminalFontHeight_, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH, L"Consolas");
 
-    const wchar_t* toolbarText[] = {L"SSH", L"串口", L"Telnet", L"远程串口"};
-    for (int index = 0; index < 4; ++index) {
-        toolbarButtons_.push_back(CreateChild(L"BUTTON", toolbarText[index], BS_OWNERDRAW, IdSsh + index));
+    const wchar_t* toolbarText[] = {L"SSH", L"串口", L"Telnet"};
+    static_assert(std::size(toolbarText) + 3 == std::size(Ui::ToolbarButtonWidths));
+    for (int id = IdSsh; id <= IdTelnet; ++id) {
+        toolbarButtons_.push_back(CreateChild(L"BUTTON", toolbarText[id - IdSsh], BS_OWNERDRAW, id));
     }
     cmdButton_ = CreateChild(L"BUTTON", L"CMD", BS_OWNERDRAW, IdCmd);
     powerButton_ = CreateChild(L"BUTTON", L"电源", BS_OWNERDRAW, IdPower);
@@ -2798,6 +2861,7 @@ void MainWindow::CreateControls() {
     aiPane_.Create(window_, uiFont_, darkMode_, [this](const std::string& method, const Json& params) { return AiDeviceRequest(method, params); });
     aiPet_.Create(window_, uiFont_, darkMode_, petSettings_);
     powerPane_.Create(window_, uiFont_, darkMode_, &powerService_);
+    powerPane_.SetKeywordTarget([this](const PowerKeywordConfig &config) { return CreatePowerKeywordRun(config); });
     powerPane_.SetLogExportHandler([this](bool csv, const std::wstring &path, SessionLogger::ExportPoint point) {
         const auto slash = point.root.find_last_of(L"\\/");
         const auto name = point.root.substr(slash == std::wstring::npos ? 0 : slash + 1);
@@ -3009,7 +3073,11 @@ void MainWindow::LayoutControls(int width, int height) {
         tool.lpszText = LPSTR_TEXTCALLBACKW;
         SendMessageW(navigationTooltip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool));
     }
-    SetWindowTextW(aiWrapButton_, (powerVisible_ ? powerMonitorWrap_ : aiMonitorWrap_) ? L"自动折行" : L"长行查看");
+    const wchar_t* wrapText = (powerVisible_ ? powerMonitorWrap_ : aiMonitorWrap_) ? L"自动折行" : L"长行查看";
+    wchar_t currentWrapText[16]{};
+    GetWindowTextW(aiWrapButton_, currentWrapText, 16);
+    // WM_SETTEXT repaints the button; animation frames call this layout often.
+    if (wcscmp(currentWrapText, wrapText) != 0) SetWindowTextW(aiWrapButton_, wrapText);
     batch.Move(aiWrapButton_, wrapLeft, headerTop + 2, wrapWidth, Ui::CompactHeight, TRUE);
     batch.Show(aiWrapButton_, monitor ? SW_SHOW : SW_HIDE);
     const bool powerHeading = monitorInnerWidth >= Ui::Scale(460);
@@ -3029,6 +3097,9 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(aiPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
                layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
                centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
+    if (aiVisible_) {
+        aiPane_.SetComposerWidth(Ui::Scale(Ui::AiComposerMaxWidth96));
+    }
     batch.Show(aiPane_.Handle(), aiVisible_ ? SW_SHOW : SW_HIDE);
     const std::string monitorTarget = powerVisible_ ? powerMonitorSession_ : aiPane_.AssociatedTarget();
     batch.Show(terminal_, LiveMonitorPage() ? (monitor && activeSession_ && monitorTarget == "session-" +
@@ -3113,9 +3184,16 @@ void MainWindow::PaintWindow(HDC dc) {
     RECT client{};
     GetClientRect(window_, &client);
     const Palette colors = Colors(darkMode_);
-    FillRect(dc, &client, windowBrush_);
+    // WM_PAINT clips to the invalid rectangle. Skip rounded-box geometry that
+    // lies completely outside it; GDI would discard those pixels anyway.
+    RECT clip = client;
+    const int clipKind = GetClipBox(dc, &clip);
+    if (clipKind == NULLREGION) return;
+    if (clipKind == ERROR) clip = client;
+    FillRect(dc, &clip, windowBrush_);
     const RECT toolbar = NavigationFrame(client.right);
-    DrawRoundedBox(dc, toolbar, UiCapsuleRadius(toolbar), colors.panel, UiPanelBorder(darkMode_));
+    if (RectVisible(dc, &toolbar))
+        DrawRoundedBox(dc, toolbar, UiCapsuleRadius(toolbar), colors.panel, UiPanelBorder(darkMode_));
 
     const MainLayoutMetrics layout = GetMainLayoutMetrics(client.right, client.bottom, SidebarWidth(),
                                                           SidebarCollapsed(), rightPanelAnimatedWidth_, LiveMonitorPage(), LeftWidth());
@@ -3125,13 +3203,16 @@ void MainWindow::PaintWindow(HDC dc) {
         layout.centerRight, layout.contentBottom};
     RECT rightCard{layout.rightLeft, cardTop,
         client.right - Ui::Gap, client.bottom - Ui::Gap};
-    DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
+    const auto visible = [dc](RECT box) { InflateRect(&box, 2, 2); return RectVisible(dc, &box) != FALSE; };
+    if (visible(leftCard)) DrawRoundedBox(dc, leftCard, Ui::CardRadius, colors.panel, UiPanelBorder(darkMode_));
     if(!leftPanelCollapsed_ && !leftPanelAnimating_) {
         const int line=leftCard.bottom-Ui::PanelPadding-Ui::CompactHeight-Ui::Space-statusHeight_-Ui::Scale(Ui::StatusHeaderHeight96/2);
         UiSeparator(dc,leftCard.left+Ui::PanelPadding,leftCard.right-Ui::PanelPadding,line,colors.border);
     }
-    DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, LiveMonitorPage() ? UiAiTheme(darkMode_).surface : colors.terminal, UiPanelBorder(darkMode_));
-    DrawRoundedBox(dc, rightCard, Ui::CardRadius, LiveMonitorPage() ? colors.terminal : colors.panel, UiPanelBorder(darkMode_));
+    if (visible(terminalFrame))
+        DrawRoundedBox(dc, terminalFrame, Ui::CardRadius, LiveMonitorPage() ? UiAiTheme(darkMode_).surface : colors.terminal, UiPanelBorder(darkMode_));
+    if (visible(rightCard))
+        DrawRoundedBox(dc, rightCard, Ui::CardRadius, LiveMonitorPage() ? colors.terminal : colors.panel, UiPanelBorder(darkMode_));
     if (LiveMonitorPage() && !SidebarCollapsed()) {
         UiSeparator(dc, rightCard.left + Ui::PanelPadding, rightCard.right - Ui::PanelPadding,
                     cardTop + Ui::PanelPadding + Ui::StandardHeight + Ui::Scale(2), colors.border);
@@ -3287,11 +3368,11 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         if (LiveMonitorPage() && (id == IdAiWrap || id == IdRightPanelToggle))
             outside = colors.terminal;
         if (id == IdCommandTab || id == IdSftpTab || id == IdXferTab || id == IdTftpTab) outside = colors.panel;
-        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) outside = colors.panel;
+        if ((id >= IdSsh && id <= IdTelnet) || id == IdCmd || id == IdPower || id == IdAi) outside = colors.panel;
         HBRUSH outsideBrush = CreateSolidBrush(outside);
         FillRect(dc, &rect, outsideBrush);
         DeleteObject(outsideBrush);
-        if ((id >= IdSsh && id <= IdShareSerial) || id == IdCmd || id == IdPower || id == IdAi) {
+        if ((id >= IdSsh && id <= IdTelnet) || id == IdCmd || id == IdPower || id == IdAi) {
             if (id == IdSsh || id == IdAi) {
                 // End controls overlap the parent's curved corner rectangles.
                 // Restore that exact capsule instead of a square panel patch.
@@ -3362,7 +3443,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         }
         if (id == IdDisconnect || id == IdReconnect) {
             const bool close=(activeSession_&&!aiVisible_&&!powerVisible_&&activeSession_->disconnected&&pendingReconnectId_!=activeSession_->id)||
-                (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false));
+                (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerPane_.HasConnection());
             const COLORREF ink=!enabled?colors.muted:id==IdReconnect?(darkMode_?RGB(48,209,88):RGB(28,137,61)):close?colors.muted:colors.danger;
             const auto v=UiFlatIconVisual(UiTheme(darkMode_),colors.panel,enabled,pressed,hovered);
             if(v.fill!=colors.panel) UiRoundedSurface(dc,rect,v.fill,v.fill,UiCapsuleRadius(rect),Ui::Dpi);
@@ -3525,7 +3606,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         const SessionState* session = valid ? sessions_[item.itemID].get() : nullptr;
         const bool power=item.itemID==sessions_.size()&&powerPageOpened_;
         const bool ai=item.itemID==sessions_.size()+(powerPageOpened_?1:0)&&aiPageOpened_;
-        const bool connected=ai?aiPane_.Connected():power?powerService_.State().value("connected",false):
+        const bool connected=ai?aiPane_.Connected():power?powerPane_.HasConnection():
             session&&!session->disconnecting&&!session->disconnected&&session->connection&&session->connection->IsConnected();
         const bool active=ai?aiVisible_:power?powerVisible_:!powerVisible_&&!aiVisible_&&session==activeSession_;
         OverlayScrollMetrics scrollMetrics;
@@ -3552,13 +3633,20 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         DrawTextSimple(dc,
                        ai        ? L"AI 助手"
                        : power   ? L"IT6332A"
-                       : session ? session->name
+                       : session ? ConnectionCardTitle(*session)
                                  : L"暂无连接",
                        title, active ? RGB(255, 255, 255) : colors.text, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         std::wstring state = connected ? L"已连接" : L"已断开";
-        if (power && !connected && (powerService_.State().value("unconfirmedPowerOff", false) || !powerAlert_.empty())) {
-            state = L"断开 · 输出未确认(未知)";
+        if (power) {
+            const auto powerState = powerPane_.ViewState();
+            const auto host = powerState.value("remoteHost", std::string());
+            if (!host.empty()) {
+                state = powerState.value("connected", false) ? L"远程 · " : connected ? L"正在连接 · " : L"远程已断开 · ";
+                state += MultiByteToWide(reinterpret_cast<const std::uint8_t *>(host.data()), host.size(), CP_UTF8);
+            } else if (!connected && powerState.value("unconfirmedPowerOff", false)) {
+                state = L"断开 · 输出未确认(未知)";
+            }
         }
         if (session && session->disconnecting) state=L"正在断开…";
         if (session && pendingReconnectId_==session->id) state=L"正在重连…";
@@ -3576,7 +3664,7 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             state = sharedSerial ? state + L" · " + notice : std::wstring(notice) + L" · " + state;
         }
         RECT dot{textLeft, subtitle.top + Ui::Scale(6), textLeft + Ui::Scale(5), subtitle.top + Ui::Scale(11)};
-        const bool powerWarning = power && !connected && (powerService_.State().value("unconfirmedPowerOff", false) || !powerAlert_.empty());
+        const bool powerWarning = power && !connected && (powerPane_.ViewState().value("unconfirmedPowerOff", false) || !powerAlert_.empty());
         const bool unreadError = (session && session->unreadStatus && session->lastStatusIsError) || powerWarning;
         DrawStatusDot(dc, dot, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted);
         subtitle.left += Ui::Scale(12);
@@ -3821,20 +3909,16 @@ void MainWindow::OpenConnectionDialog(int mode) {
         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 
-// IDD_CONNECTION is shared by four immutable connection modes. Its template
-// contains every mode's controls, although most are hidden before it opens.
-// Avoid setting up rounded frames and dropdowns that cannot be shown in this
-// particular dialog; hidden native fields still retain their own data.
+// The serial form can switch between local and remote. Style both sets of
+// controls when opening it, so switching only changes visibility and layout.
 static bool IsConnectionControlUsed(int mode, int id) {
     switch (id) {
+    case IDC_SERIAL_LOCATION_LABEL: case IDC_SERIAL_LOCATION:
     case IDC_SERIAL_LABEL: case IDC_SERIAL: case IDC_SERIAL_REFRESH:
-        return mode == 1 || mode == 3;
     case IDC_BAUD_LABEL: case IDC_BAUD: case IDC_DATABITS_LABEL: case IDC_DATABITS:
     case IDC_PARITY_LABEL: case IDC_PARITY: case IDC_STOPBITS_LABEL: case IDC_STOPBITS:
     case IDC_FLOW_LABEL: case IDC_FLOW:
-        return mode == 1;
-    case IDC_HOST_LABEL: case IDC_HOST:
-        return mode != 1;
+        return mode == 1 || mode == 3;
     case IDC_PORT_LABEL: case IDC_PORT:
         return mode == 0 || mode == 2;
     case IDC_USER_LABEL: case IDC_USER: case IDC_PASSWORD_LABEL: case IDC_PASSWORD:
@@ -3898,8 +3982,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             UiSetButtonGlyph(delBtn,UiGlyph::Trash,L"删除选中的历史连接");
             EnableWindow(delBtn,FALSE);
             add(L"BUTTON",L"成功后保存连接",IDC_SSH_SAVE,BS_AUTOCHECKBOX|WS_TABSTOP);
-            add(L"BUTTON",L"记住密码",IDC_SSH_REMEMBER_PASSWORD,BS_AUTOCHECKBOX|WS_TABSTOP);
-            add(L"STATIC",L"密码仅在勾选后保存到当前 Windows 用户凭据",IDC_SSH_CREDENTIAL_NOTE,0);
+            add(L"STATIC",L"勾选后，密码随连接保存到当前 Windows 用户凭据",IDC_SSH_CREDENTIAL_NOTE,0);
         }
         self->ConfigureConnectionDialog(dialog);
         CenterOnOwner(dialog, self->window_);
@@ -3954,17 +4037,6 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = Ui::Scale(28);
         return TRUE;
     }
-    if (message == WM_CONTEXTMENU && self->pendingMode_ == 3 && reinterpret_cast<HWND>(wParam) == GetDlgItem(dialog, IDC_SERIAL_REFRESH)) {
-        HMENU menu = CreatePopupMenu();
-        AppendMenuW(menu, MF_STRING, IdSharedAdvancedPort, L"高级：指定服务端口…");
-        AppendMenuW(menu, MF_STRING, IdSharedAutoPort, L"恢复自动发现 7000–7015");
-        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-        if (point.x == -1) { RECT rect{}; GetWindowRect(GetDlgItem(dialog, IDC_SERIAL_REFRESH), &rect); point = {rect.left, rect.bottom}; }
-        const UINT choice = UiPopupMenu::Track(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,point.x,point.y,dialog,UiFieldStyle{&self->darkMode_,self->uiFont_,Ui::Dpi});
-        DestroyMenu(menu);
-        if (choice) PostMessageW(dialog, WM_COMMAND, choice, 0);
-        return TRUE;
-    }
     if(message==WM_APP+210 && self->pendingMode_==0) {
         const auto index=static_cast<size_t>(wParam);
         if(index<self->sshHistory_.size()) {
@@ -3980,7 +4052,6 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             const auto target = SshCredentialTarget(wide(row["host"].get<std::string>()), row["port"].get<unsigned>(), wide(row["username"].get<std::string>()));
             const auto result = ReadSshCredential(target, password, credentialError);
             self->loadedSshCredentialTarget_ = result == SshCredentialResult::Loaded ? target : L"";
-            CheckDlgButton(dialog,IDC_SSH_REMEMBER_PASSWORD,result == SshCredentialResult::Loaded ? BST_CHECKED : BST_UNCHECKED);
             if (result == SshCredentialResult::Loaded) SetDlgItemTextW(dialog,IDC_PASSWORD,password.c_str());
             ClearSshSecret(password);
             SetDlgItemTextW(dialog,IDC_DIALOG_ERROR,result == SshCredentialResult::Error ?
@@ -4004,16 +4075,42 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
         return TRUE;
     }
     if (message == WM_TIMER && wParam == DiscoveryTimerId) {
-        KillTimer(dialog, DiscoveryTimerId); self->DiscoverSharedSerialPorts(dialog); return TRUE;
+        KillTimer(dialog, DiscoveryTimerId);
+        if (self->pendingMode_ == 3) self->DiscoverSharedSerialPorts(dialog);
+        return TRUE;
     }
     if (message == WM_TIMER && wParam == SerialScanTimerId) {
-        self->CompleteSerialPortScan(dialog); return TRUE;
+        if (self->pendingMode_ == 1) self->CompleteSerialPortScan(dialog);
+        else KillTimer(dialog, SerialScanTimerId);
+        return TRUE;
     }
     if (message == WM_CLOSE) {
         UiEndOwnedDialog(dialog, IDCANCEL);
         return TRUE;
     }
     if (message == WM_COMMAND) {
+        if (LOWORD(wParam) == IDC_SERIAL_LOCATION && !self->aiRemoteConnect_ &&
+            (HIWORD(wParam) == CBN_CLOSEUP ||
+             (HIWORD(wParam) == CBN_SELCHANGE && !SendDlgItemMessageW(dialog, IDC_SERIAL_LOCATION, CB_GETDROPPEDSTATE, 0, 0)))) {
+            const auto selected = SendDlgItemMessageW(dialog, IDC_SERIAL_LOCATION, CB_GETCURSEL, 0, 0);
+            if (selected == 0 || selected == 1) {
+                const int mode = selected == 0 ? 1 : 3;
+                if (self->pendingMode_ != mode) {
+                    KillTimer(dialog, SerialScanTimerId);
+                    KillTimer(dialog, DiscoveryTimerId);
+                    self->discoveryCancel_ = true;
+                    self->discoveryDialog_ = nullptr;
+                    ++self->discoveryGeneration_;
+                    self->pendingMode_ = mode;
+                    self->ConfigureConnectionDialog(dialog, false);
+                    CenterOnOwner(dialog, self->window_);
+                    if (mode == 1) self->RefreshSerialPorts(dialog);
+                    else SetTimer(dialog, DiscoveryTimerId, 500, nullptr);
+                    RedrawWindow(dialog, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+                }
+            }
+            return TRUE;
+        }
         if (self->pendingMode_ == 0 && HIWORD(wParam) == EN_CHANGE &&
             (LOWORD(wParam) == IDC_HOST || LOWORD(wParam) == IDC_USER || LOWORD(wParam) == IDC_PORT) &&
             !self->initializingConnectionDialog_ && !self->loadedSshCredentialTarget_.empty()) {
@@ -4022,7 +4119,6 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             if (target != self->loadedSshCredentialTarget_) {
                 self->loadedSshCredentialTarget_.clear();
                 SetDlgItemTextW(dialog,IDC_PASSWORD,L"");
-                CheckDlgButton(dialog,IDC_SSH_REMEMBER_PASSWORD,BST_UNCHECKED);
             }
         }
         if (self->pendingMode_ == 0 && LOWORD(wParam) == IDC_SSH_HISTORY_DELETE && HIWORD(wParam) == BN_CLICKED) {
@@ -4043,22 +4139,15 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
             if (!self->initializingConnectionDialog_)
                 self->RefreshConnectionHostIdentity(dialog);
         }
-        if (self->pendingMode_ == 3 && (LOWORD(wParam) == IdSharedAdvancedPort || LOWORD(wParam) == IdSharedAutoPort)) {
-            if (LOWORD(wParam) == IdSharedAdvancedPort) {
-                std::wstring value;
-                if (!self->PromptSftpValue(L"高级共享端口", L"服务端口（通常使用自动发现）", std::to_wstring(self->discoveryExplicitPort_ ? self->discoveryExplicitPort_ : DefaultSharePort), SftpInputPurpose::Port, value, dialog)) return TRUE;
-                self->discoveryExplicitPort_ = static_cast<std::uint16_t>(ParsePositive(value));
-            } else self->discoveryExplicitPort_ = 0;
-            HWND portBtn = GetDlgItem(dialog, IdSharedAdvancedPort);
-            if (portBtn) {
-                SetWindowTextW(portBtn, self->discoveryExplicitPort_ ? (L"端口: " + std::to_wstring(self->discoveryExplicitPort_)).c_str() : L"指定端口…");
-            }
-            ++self->discoveryGeneration_; self->discoveryCancel_ = true;
-            EnableWindow(GetDlgItem(dialog, IDOK), FALSE); SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return TRUE;
-        }
         if (self->pendingMode_ == 3 && LOWORD(wParam) == IDC_HOST && HIWORD(wParam) == EN_CHANGE) {
             if (self->initializingConnectionDialog_) return TRUE;
             ++self->discoveryGeneration_; self->discoveryCancel_ = true;
+            self->pendingRemoteInstance_.clear();
+            self->discoveredSerialPort_ = 0;
+            HWND ports = GetDlgItem(dialog, IDC_SERIAL);
+            SendMessageW(ports, CB_RESETCONTENT, 0, 0);
+            AddComboItems(ports, {L"输入 IP 后自动查找"}, 0);
+            SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"");
             EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
             SetTimer(dialog, DiscoveryTimerId, 500, nullptr); return TRUE;
         }
@@ -4114,31 +4203,22 @@ bool MainWindow::DeleteSshHistoryEntry(HWND dialog, size_t historyIndex) {
     EnableWindow(GetDlgItem(dialog, IDC_SSH_HISTORY_DELETE), FALSE);
     loadedSshCredentialTarget_.clear();
     SetDlgItemTextW(dialog, IDC_PASSWORD, L"");
-    CheckDlgButton(dialog, IDC_SSH_REMEMBER_PASSWORD, BST_UNCHECKED);
     SaveUiState();
     return true;
 }
 
-void MainWindow::ConfigureConnectionDialog(HWND dialog) {
+void MainWindow::ConfigureConnectionDialog(HWND dialog, bool initialize) {
     const bool serial = pendingMode_ == 1;
     const bool ssh = pendingMode_ == 0;
     const bool share = pendingMode_ == 3;
-    HWND portBtn = GetDlgItem(dialog, IdSharedAdvancedPort);
-    if (!portBtn) {
-        portBtn = CreateWindowExW(0, L"BUTTON", L"指定端口…", WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
-            0, 0, 10, 10, dialog, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IdSharedAdvancedPort)),
-            instance_, nullptr);
-        SendMessageW(portBtn, WM_SETFONT, reinterpret_cast<WPARAM>(uiFont_), FALSE);
-        SetWindowSubclass(portBtn, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
-    }
-    ShowDialogItem(dialog, IdSharedAdvancedPort, share);
-    if (share && portBtn) {
-        SetWindowTextW(portBtn, discoveryExplicitPort_ ? (L"端口: " + std::to_wstring(discoveryExplicitPort_)).c_str() : L"指定端口…");
-    }
+    const bool serialLocation = (serial || share) && !aiRemoteConnect_;
+    const int serialTop = serialLocation ? 34 : 0;
+    ShowDialogItem(dialog, IDC_SERIAL_LOCATION_LABEL, serialLocation);
+    ShowDialogItem(dialog, IDC_SERIAL_LOCATION, serialLocation);
     ShowDialogItem(dialog, IDC_HOST_IDENTITY, ssh);
     ShowDialogItem(dialog, IDC_HOST_REVERIFY, ssh);
-    discoveryExplicitPort_ = 0;
     pendingRemoteInstance_.clear();
+    discoveredSerialPort_ = 0;
     const int serialSelectorIds[] = {IDC_SERIAL_LABEL, IDC_SERIAL};
     const int serialSettingIds[] = {IDC_BAUD_LABEL, IDC_BAUD, IDC_DATABITS_LABEL, IDC_DATABITS,
         IDC_PARITY_LABEL, IDC_PARITY, IDC_STOPBITS_LABEL, IDC_STOPBITS, IDC_FLOW_LABEL, IDC_FLOW};
@@ -4159,20 +4239,29 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     constexpr int columnWidth = 101;
     constexpr int rightColumn = 125;
     constexpr int fullWidth = dialogWidth - margin * 2;
+    if (serialLocation) {
+        MoveDialogItemDlu(dialog, IDC_SERIAL_LOCATION_LABEL, margin, 10, fullWidth, 10);
+        MoveDialogItemDlu(dialog, IDC_SERIAL_LOCATION, margin, 22, fullWidth, 70);
+        if (initialize) AddComboItems(GetDlgItem(dialog, IDC_SERIAL_LOCATION), {L"本地", L"远程"}, share ? 1 : 0);
+    }
+    const auto moveSerial = [&](int id, int x, int y, int width, int height) {
+        MoveDialogItemDlu(dialog, id, x, y + serialTop, width, height);
+    };
     if (serial) {
-        MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 10, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 22, 174, 154);
-        MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 22, 32, 14);
-        MoveDialogItemDlu(dialog, IDC_BAUD_LABEL, margin, 44, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_BAUD, margin, 56, columnWidth, 140);
-        MoveDialogItemDlu(dialog, IDC_DATABITS_LABEL, rightColumn, 44, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_DATABITS, rightColumn, 56, columnWidth, 84);
-        MoveDialogItemDlu(dialog, IDC_PARITY_LABEL, margin, 78, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_PARITY, margin, 90, columnWidth, 72);
-        MoveDialogItemDlu(dialog, IDC_STOPBITS_LABEL, rightColumn, 78, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_STOPBITS, rightColumn, 90, columnWidth, 72);
-        MoveDialogItemDlu(dialog, IDC_FLOW_LABEL, margin, 112, 64, 10);
-        MoveDialogItemDlu(dialog, IDC_FLOW, margin, 124, columnWidth, 72);
+        SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"串口");
+        moveSerial(IDC_SERIAL_LABEL, margin, 10, 64, 10);
+        moveSerial(IDC_SERIAL, margin, 22, 174, 154);
+        moveSerial(IDC_SERIAL_REFRESH, 194, 22, 32, 14);
+        moveSerial(IDC_BAUD_LABEL, margin, 44, 64, 10);
+        moveSerial(IDC_BAUD, margin, 56, columnWidth, 140);
+        moveSerial(IDC_DATABITS_LABEL, rightColumn, 44, 64, 10);
+        moveSerial(IDC_DATABITS, rightColumn, 56, columnWidth, 84);
+        moveSerial(IDC_PARITY_LABEL, margin, 78, 64, 10);
+        moveSerial(IDC_PARITY, margin, 90, columnWidth, 72);
+        moveSerial(IDC_STOPBITS_LABEL, rightColumn, 78, 64, 10);
+        moveSerial(IDC_STOPBITS, rightColumn, 90, columnWidth, 72);
+        moveSerial(IDC_FLOW_LABEL, margin, 112, 64, 10);
+        moveSerial(IDC_FLOW, margin, 124, columnWidth, 72);
     } else {
         MoveDialogItemDlu(dialog, IDC_HOST_LABEL, margin, 10, columnWidth, 10);
         MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, columnWidth, 14);
@@ -4185,12 +4274,12 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
             MoveDialogItemDlu(dialog, IDC_PASSWORD, rightColumn, 56, columnWidth, 14);
         } else if (share) {
             SetDlgItemTextW(dialog, IDC_HOST_LABEL, L"远端 IP");
-            MoveDialogItemDlu(dialog, IDC_HOST, margin, 22, 174, 14);
+            moveSerial(IDC_HOST_LABEL, margin, 10, columnWidth, 10);
+            moveSerial(IDC_HOST, margin, 22, 174, 14);
             SetDlgItemTextW(dialog, IDC_SERIAL_LABEL, L"远端串口");
-            MoveDialogItemDlu(dialog, IDC_SERIAL_LABEL, margin, 44, columnWidth, 10);
-            MoveDialogItemDlu(dialog, IdSharedAdvancedPort, 144, 40, 82, 14);
-            MoveDialogItemDlu(dialog, IDC_SERIAL, margin, 56, fullWidth, 154);
-            MoveDialogItemDlu(dialog, IDC_SERIAL_REFRESH, 194, 22, 32, 14);
+            moveSerial(IDC_SERIAL_LABEL, margin, 44, columnWidth, 10);
+            moveSerial(IDC_SERIAL, margin, 56, fullWidth, 154);
+            moveSerial(IDC_SERIAL_REFRESH, 194, 22, 32, 14);
         }
     }
 
@@ -4213,8 +4302,8 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         MoveDialogItemDlu(dialog,IDC_USER,margin,90,columnWidth,14);
         MoveDialogItemDlu(dialog,IDC_PASSWORD_LABEL,rightColumn,78,columnWidth,10);
         MoveDialogItemDlu(dialog,IDC_PASSWORD,rightColumn,90,columnWidth,14);
-        MoveDialogItemDlu(dialog,IDC_SSH_SAVE,margin,114,112,14);
-        MoveDialogItemDlu(dialog,IDC_SSH_REMEMBER_PASSWORD,rightColumn,114,columnWidth,14);
+        MoveDialogItemDlu(dialog,IDC_SSH_SAVE,margin,114,fullWidth,14);
+        if (initialize) CheckDlgButton(dialog, IDC_SSH_SAVE, BST_CHECKED);
         MoveDialogItemDlu(dialog,IDC_SSH_CREDENTIAL_NOTE,margin,134,fullWidth,14);
         MoveDialogItemDlu(dialog, IDC_HOST_IDENTITY, margin, 156, 120, 14);
         MoveDialogItemDlu(dialog, IDC_HOST_REVERIFY, 144, 152, 82, 18);
@@ -4230,21 +4319,19 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
         buttonY = 50;
         dialogHeight = 76;
     }
-    MoveDialogItemDlu(dialog, IDC_DIALOG_ERROR, margin, errorY, fullWidth, 12);
-    MoveDialogItemDlu(dialog, IDCANCEL, dialogWidth - 156, buttonY, 68, 18);
-    MoveDialogItemDlu(dialog, IDOK, dialogWidth - 80, buttonY, 68, 18);
-    ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight);
+    moveSerial(IDC_DIALOG_ERROR, margin, errorY, fullWidth, 12);
+    moveSerial(IDCANCEL, dialogWidth - 156, buttonY, 68, 18);
+    moveSerial(IDOK, dialogWidth - 80, buttonY, 68, 18);
+    ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight + serialTop);
     FitDialogLabels(dialog, true);
     if (serial || share) UiSetButtonGlyph(GetDlgItem(dialog, IDC_SERIAL_REFRESH), UiGlyph::Refresh, L"刷新串口列表");
 
     const wchar_t* titles[] = {L"新建 SSH 连接", L"新建串口连接", L"新建 Telnet 连接", L"连接共享串口"};
-    SetWindowTextW(dialog, titles[pendingMode_]);
+    SetWindowTextW(dialog, serialLocation ? titles[1] : titles[pendingMode_]);
     ShowWindow(GetDlgItem(dialog, IDC_DIALOG_NOTE), SW_HIDE);
-    if (!serial) {
-        SetDlgItemTextW(dialog, IDC_HOST, aiRemoteConnect_ ? L"" : L"127.0.0.1");
-        // The shared-serial dialog hides this field but still reads its
-        // default port when validating the connection.
-        SetDlgItemTextW(dialog, IDC_PORT, pendingMode_ == 0 ? L"22" : pendingMode_ == 2 ? L"23" : L"7000");
+    if (initialize) {
+        SetDlgItemTextW(dialog, IDC_HOST, serial || share ? L"" : L"127.0.0.1");
+        SetDlgItemTextW(dialog, IDC_PORT, ssh ? L"22" : pendingMode_ == 2 ? L"23" : L"");
     }
     SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"");
 
@@ -4260,6 +4347,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
 
     if (serial) {
         HWND ports = GetDlgItem(dialog, IDC_SERIAL);
+        SendMessageW(ports, CB_RESETCONTENT, 0, 0);
         SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"正在查找串口…"));
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
@@ -4267,12 +4355,13 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     } else if (share) {
         HWND ports = GetDlgItem(dialog, IDC_SERIAL);
         SendMessageW(ports, CB_RESETCONTENT, 0, 0);
-        SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"请先查询远端串口"));
+        SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"输入 IP 后自动查找"));
         SendMessageW(ports, CB_SETCURSEL, 0, 0);
         EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
+        EnableWindow(GetDlgItem(dialog, IDC_SERIAL_REFRESH), TRUE);
         discoveryDialog_ = dialog;
     }
-    if (serial) {
+    if (initialize && (serial || share)) {
         AddComboItems(GetDlgItem(dialog, IDC_BAUD), {L"9600", L"38400", L"57600", L"115200", L"230400", L"460800", L"921600", L"1500000"}, 3);
         AddComboItems(GetDlgItem(dialog, IDC_DATABITS), {L"5", L"6", L"7", L"8"}, 3);
         AddComboItems(GetDlgItem(dialog, IDC_PARITY), {L"无", L"奇", L"偶"}, 0);
@@ -4282,6 +4371,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog) {
     if (serial || share) {
         UiLayoutBatch fields;
         fields.ComboVisibleHeight(GetDlgItem(dialog, IDC_SERIAL), Ui::Scale(28));
+        if (serialLocation) fields.ComboVisibleHeight(GetDlgItem(dialog, IDC_SERIAL_LOCATION), Ui::Scale(28));
         if (serial) {
             for (int id : {IDC_BAUD, IDC_DATABITS, IDC_PARITY, IDC_STOPBITS, IDC_FLOW})
                 fields.ComboVisibleHeight(GetDlgItem(dialog, id), Ui::Scale(28));
@@ -4339,10 +4429,17 @@ void MainWindow::CompleteSerialPortScan(HWND dialog) {
 }
 
 void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
+    KillTimer(dialog, DiscoveryTimerId);
+    pendingRemoteInstance_.clear();
+    discoveredSerialPort_ = 0;
+    EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
     if (!discoveryFinished_) { SetTimer(dialog, DiscoveryTimerId, 100, nullptr); return; }
     if (discoveryThread_.joinable()) discoveryThread_.join();
     const std::wstring host = Trim(ControlText(GetDlgItem(dialog, IDC_HOST)));
-    if (host.empty()) return;
+    if (host.empty()) {
+        SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"");
+        return;
+    }
     IN_ADDR ipv4{}; IN6_ADDR ipv6{};
     if (InetPtonW(AF_INET, host.c_str(), &ipv4) != 1 && InetPtonW(AF_INET6, host.c_str(), &ipv6) != 1) {
         SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"请输入完整的 IP 地址"); return;
@@ -4351,10 +4448,8 @@ void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
     discoveryCancel_ = false;
     discoveryFinished_ = false;
     const unsigned generation = ++discoveryGeneration_;
-    const auto explicitPort = discoveryExplicitPort_;
-    EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
     SetDlgItemTextW(dialog, IDC_DIALOG_ERROR, L"正在自动发现串口…");
-    discoveryThread_ = std::thread([this, host, dialog, generation, explicitPort] {
+    discoveryThread_ = std::thread([this, host, dialog, generation] {
         auto result = std::make_unique<DiscoveryMessage>();
         result->dialog = dialog;
         result->generation = generation;
@@ -4362,7 +4457,7 @@ void MainWindow::DiscoverSharedSerialPorts(HWND dialog) {
             std::vector<std::wstring> descriptions;
             result->success = SharedSerialConnection::DiscoverAuto(
                                                     host, result->port, result->names, result->error, &discoveryCancel_,
-                                                    explicitPort, &descriptions, &result->instance);
+                                                    0, &descriptions, &result->instance);
             if (result->success)
                 result->names = std::move(descriptions);
         } catch (...) {
@@ -4378,7 +4473,7 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
     auto text = [dialog](int id) { return Trim(ControlText(GetDlgItem(dialog, id))); };
     if (pendingMode_ == 1) {
         const auto selected = SendMessageW(GetDlgItem(dialog, IDC_SERIAL), CB_GETCURSEL, 0, 0);
-        if (selected < 0 || static_cast<size_t>(selected) >= serialPorts_.size()) {
+        if (!IsWindowEnabled(GetDlgItem(dialog, IDOK)) || selected < 0 || static_cast<size_t>(selected) >= serialPorts_.size()) {
             error = L"请选择有效串口";
             return false;
         }
@@ -4400,11 +4495,10 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
     pendingHost_ = text(IDC_HOST);
     pendingUsername_ = text(IDC_USER);
     pendingPassword_ = ControlText(GetDlgItem(dialog, IDC_PASSWORD));
-    DWORD port = ParsePositive(text(IDC_PORT));
+    const DWORD port = pendingMode_ == 3 ? discoveredSerialPort_ : ParsePositive(text(IDC_PORT));
     pendingSaveSshHistory_=pendingMode_==0 && IsDlgButtonChecked(dialog,IDC_SSH_SAVE)==BST_CHECKED;
-    pendingRememberSshPassword_=pendingMode_==0 && IsDlgButtonChecked(dialog,IDC_SSH_REMEMBER_PASSWORD)==BST_CHECKED;
     pendingEmployeeNumber_.clear();
-    if (pendingHost_.empty() || port == 0 || port > 65535) {
+    if (pendingMode_ != 3 && (pendingHost_.empty() || port == 0 || port > 65535)) {
         error = L"主机或端口无效。";
         return false;
     }
@@ -4413,17 +4507,15 @@ bool MainWindow::ReadConnectionDialog(HWND dialog, std::wstring& error) {
         return false;
     }
     if (pendingMode_ == 3) {
-        if (pendingRemoteInstance_.empty() || !IsWindowEnabled(GetDlgItem(dialog, IDOK))) {
-            error = L"请先查询并选择远端串口。";
+        if (pendingHost_.empty() || !port || pendingRemoteInstance_.empty() || !IsWindowEnabled(GetDlgItem(dialog, IDOK))) {
+            error = L"请输入远端 IP，等待自动发现后选择串口。";
             return false;
         }
         pendingRemoteSerial_ = text(IDC_SERIAL);
         pendingRemoteLabel_ = pendingRemoteSerial_;
         const auto description = pendingRemoteSerial_.find(L" · ");
         if (description != std::wstring::npos) pendingRemoteSerial_.erase(description);
-        if (pendingRemoteSerial_.empty() || pendingRemoteSerial_ == L"请先查询远端串口" ||
-            pendingRemoteSerial_ == L"未发现可连接的串口" ||
-            pendingRemoteSerial_ == L"请先填写正确的 IP 和端口") {
+        if (pendingRemoteSerial_.empty() || pendingRemoteSerial_ == L"未发现可连接的串口") {
             error = L"请先查询并选择远端串口。";
             return false;
         }
@@ -4485,7 +4577,6 @@ void MainWindow::ConnectFromDialog() {
     session->serialSettings = pendingSerial_;
     session->remoteInstance = pendingRemoteInstance_;
     session->saveSshHistory=pendingMode_==0 && pendingSaveSshHistory_;
-    session->rememberSshPassword=pendingMode_==0 && pendingRememberSshPassword_;
     session->employeeNumber=pendingMode_==0?pendingEmployeeNumber_:L"";
     if (session->mode == 3 && !session->udpRaw)
         session->remoteCom = pendingRemoteSerial_;
@@ -4514,9 +4605,9 @@ void MainWindow::ConnectFromDialog() {
             resource["baudRate"] = pendingSerial_.baudRate;
             resource["friendlyName"] = WideToMultiByte(pendingSerial_.friendlyName, CP_UTF8);
         }
-        sessionService_.Register(resource, session->connection,[boot=session->boot] {
+        sessionService_.Register(resource, session->connection,[this, sessionId, boot=session->boot] {
             const auto state=boot->Status(GetTickCount64()).state;
-            return state!="prepared"&&state!="armed"&&state!="interrupting";
+            return state!="prepared"&&state!="armed"&&state!="interrupting"&&!powerPane_.KeywordListening(sessionId);
         });
         apiServer_.EnqueueSessions(sessionService_.Ids());
     }
@@ -4607,16 +4698,12 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
         pendingSession_->port = static_cast<std::uint16_t>(apiServer_.Port());
     const std::uint64_t id = pendingSession_->id;
     std::wstring credentialWarning;
-    if (pendingSession_->mode == 0 && pendingSession_->connection->IsConnected()) {
+    if (pendingSession_->mode == 0 && pendingSession_->saveSshHistory && pendingSession_->connection->IsConnected()) {
         const auto& c = *pendingSession_;
         DWORD credentialError = ERROR_SUCCESS;
         const auto target = SshCredentialTarget(c.host, c.port, c.username);
-        const bool saved = c.rememberSshPassword ? SaveSshCredential(target, c.username, c.password, credentialError)
-                                                : ForgetSshCredential(target, credentialError);
-        if (!saved) credentialWarning = L"SSH 已连接；密码保存设置未能更新（" + std::to_wstring(credentialError) + L"）";
-    }
-    if(pendingSession_->mode==0 && pendingSession_->saveSshHistory && pendingSession_->connection->IsConnected()) {
-        const auto& c=*pendingSession_;
+        if (!SaveSshCredential(target, c.username, c.password, credentialError))
+            credentialWarning = L"SSH 已连接；密码未能写入 Windows 用户凭据（" + std::to_wstring(credentialError) + L"）";
         sshHistory_=RememberSshConnection(sshHistory_,{{"host",WideToMultiByte(c.host,CP_UTF8)},{"port",static_cast<unsigned>(c.port)},{"username",WideToMultiByte(c.username,CP_UTF8)},{"employee",WideToMultiByte(c.employeeNumber,CP_UTF8)},{"lastSuccess",static_cast<std::uint64_t>(time(nullptr))}});
         SaveUiState();
     }
@@ -4669,6 +4756,7 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
 void MainWindow::BeginDisconnect(SessionState& session) {
     if (session.disconnecting || session.disconnected) return;
     session.disconnecting = true;
+    powerPane_.KeywordTargetDisconnected(session.id);
     if (session.boot) session.boot->Cancel();
     if (macro_.Running() && macro_.Session() == session.id)
         StopCommandSequence(CommandSequenceEnd::Interrupted, L"连接已断开");
@@ -4750,7 +4838,7 @@ void MainWindow::PollSessionCleanup() {
 
 void MainWindow::Reconnect() {
     if (aiVisible_) { if(!aiPane_.Connected()) ShowAiPage(true); return; }
-    if (powerVisible_) { if(!powerService_.State().value("connected",false)&&!disconnectAllPending_) powerPane_.ShowConnection(); return; }
+    if (powerVisible_) { if(!powerPane_.HasConnection()&&!disconnectAllPending_) powerPane_.ShowConnection(); return; }
     if (!activeSession_ || pendingSession_ || pendingReconnectId_ || activeSession_->disconnecting || !activeSession_->disconnected) return;
     if (connectionThread_.joinable()) connectionThread_.join();
     auto& old=*activeSession_;
@@ -4758,7 +4846,7 @@ void MainWindow::Reconnect() {
     pendingUsername_=old.username; pendingPassword_=old.password;
     pendingSerial_=old.serialSettings; pendingRemoteSerial_=old.remoteCom;
     pendingRemoteLabel_=old.remoteCom; pendingRemoteInstance_.clear();
-    pendingSaveSshHistory_=old.saveSshHistory; pendingRememberSshPassword_=old.rememberSshPassword;
+    pendingSaveSshHistory_=old.saveSshHistory;
     pendingEmployeeNumber_=old.employeeNumber; pendingHostKeyReverify_=false;
     pendingReconnectId_=old.id;
     ConnectFromDialog();
@@ -4770,15 +4858,15 @@ void MainWindow::RefreshConnectionActions() {
     const bool special=aiVisible_||powerVisible_;
     const bool available=activeSession_&&!special;
     const bool reconnecting=available&&pendingReconnectId_==activeSession_->id;
-    const bool closingCard=(available&&activeSession_->disconnected&&!reconnecting)||(aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false));
+    const bool closingCard=(available&&activeSession_->disconnected&&!reconnecting)||(aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerPane_.HasConnection());
     const auto caption=closingCard?L"关闭卡片":reconnecting?L"取消重连":L"断开连接";
     SetWindowTextW(disconnectButton_,caption);
     UiSetButtonGlyph(disconnectButton_, closingCard?UiGlyph::Close:UiGlyph::Disconnect, caption);
     EnableWindow(disconnectButton_,special||(available&&!activeSession_->disconnecting&&!cancelledConnectionPending_));
     const bool reconnectable=(available&&activeSession_->disconnected&&!activeSession_->disconnecting)||
-        (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerService_.State().value("connected",false)&&!disconnectAllPending_);
+        (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerPane_.HasConnection()&&!disconnectAllPending_);
     EnableWindow(reconnectButton_,reconnectable&&!pendingSession_&&!pendingReconnectId_&&!connectionCleanup_.Busy());
-    bool live=aiPane_.Connected()||powerService_.State().value("connected",false)||pendingSession_!=nullptr;
+    bool live=aiPane_.Connected()||powerPane_.HasConnection()||pendingSession_!=nullptr;
     bool busy=disconnectAllPending_||connectionCleanup_.Busy()||cancelledConnectionPending_;
     for(const auto& session:sessions_) {live|=!session->disconnected; busy|=session->disconnecting;}
     SetWindowTextW(disconnectAllButton_,busy?L"正在断开…":live?L"全部断开":L"全部关闭");
@@ -4789,7 +4877,7 @@ void MainWindow::RefreshConnectionActions() {
 
 void MainWindow::DisconnectAll() {
     if (connectionCleanup_.Busy() || disconnectAllPending_) return;
-    const bool live=pendingSession_||aiPane_.Connected()||powerService_.State().value("connected",false)||
+    const bool live=pendingSession_||aiPane_.Connected()||powerPane_.HasConnection()||
         std::any_of(sessions_.begin(),sessions_.end(),[](const auto& s){return !s->disconnected;});
     if (!live) {
         while(!sessions_.empty()) CloseSession(sessions_.back()->id);
@@ -4806,8 +4894,8 @@ void MainWindow::DisconnectAll() {
     connectionCancel_=true;
     if(pendingSession_) {cancelledConnectionPending_=true;pendingSession_->connection->CancelStart();FinishPendingConnection();}
     for(const auto& session:sessions_) BeginDisconnect(*session);
-    if(powerService_.State().value("connected",false)) {
-        const auto action=powerService_.Submit({{"type","disconnect"},{"source","local"}});
+    if(powerPane_.HasConnection()) {
+        const auto action=powerPane_.DisconnectConnection(false);
         powerDisconnectActionId_ = action.value("id", std::string());
         if(action.contains("error")) {
             AppendStatus(L"电源断开请求失败；请检查连接和输出状态。", true);
@@ -5114,6 +5202,9 @@ void MainWindow::ShowPowerPage() {
     rightPanelAnimatedWidth_ = -1;
     powerVisible_ = true;
     powerPageOpened_ = true;
+    if (powerMonitorSession_.empty() && activeSession_ && !activeSession_->disconnecting &&
+        activeSession_->connection && activeSession_->connection->IsConnected())
+        powerMonitorSession_ = "session-" + std::to_string(activeSession_->id);
     RefreshConnectionList();
     SyncPowerTerminal();
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, TRUE);
@@ -5440,6 +5531,7 @@ void MainWindow::PostData(std::uint64_t sessionId, const Bytes& data, UINT codeP
     LARGE_INTEGER arrival{};
     if (measurePaint_)
         QueryPerformanceCounter(&arrival);
+    powerPane_.ObserveKeywords(sessionId, data);
     QueueReceived({sessionId, data, codePage, {}, arrival.QuadPart});
     // Neither this batch nor the next device read waits for network fan-out.
     apiServer_.EnqueuePublish("session-" + std::to_string(sessionId), data, "device", "output", codePage);
@@ -5948,7 +6040,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
     if (message == WM_INITDIALOG) {
         SetWindowTextW(dialog, L"设置");
         ApplyDarkTitleBar(dialog, self->darkMode_);
-        UiResizeDialog(dialog, Ui::Dpi, 436, 780);
+        UiResizeDialog(dialog, Ui::Dpi, 436, 752);
         auto add = [&](const wchar_t* type, const wchar_t* text, int id, int x, int y,
                        int width, int height, DWORD style = 0) {
             HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
@@ -6022,28 +6114,24 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         auto testNote=add(L"STATIC",L"仅本次运行 · 验证后立即生效",IdSettingsTestNote,128,468,292,28,SS_CENTERIMAGE);
         SendMessageW(testNote,WM_SETFONT,reinterpret_cast<WPARAM>(self->smallFont_),FALSE);
         add(L"STATIC", L"MCP 服务 · 远程 IP 直连免认证", -1, 16, 502, 404, 22);
-        add(L"BUTTON", L"启用 MCP 网络访问（仅当前程序运行期间，退出即停止）", IdSettingsMcpEnabled, 16, 526, 404, 28, check);
-        HWND legacyAuto = add(L"BUTTON", L"开机自启已取消，SerialCtl 需手动启动", IdSettingsMcpAutoStart, 16, 554, 404, 28, check);
-        EnableWindow(legacyAuto, FALSE); // Preserve control ID for existing UI layout contracts.
+        add(L"BUTTON", L"启用 MCP 网络访问（退出即停止）", IdSettingsMcpEnabled, 16, 526, 404, 28, check);
         CheckDlgButton(dialog, IdSettingsMcpEnabled, self->mcpEnabled_ ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(dialog, IdSettingsMcpAutoStart, BST_UNCHECKED);
 
         const std::wstring mcpUrlText = L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp" +
-            ((self->mcpEmbeddedServer_ && self->mcpEmbeddedServer_->IsRunning()) || mcp::McpService::IsAnyServiceProcessRunning() ? L"（运行中）" : L"（已停止）");
-        HWND urlStatic = add(L"STATIC", mcpUrlText.c_str(), IdSettingsMcpUrl, 16, 582, 404, 20);
+            (self->mcpEmbeddedServer_ && self->mcpEmbeddedServer_->IsRunning() ? L"（运行中）" : L"（已停止）");
+        HWND urlStatic = add(L"STATIC", mcpUrlText.c_str(), IdSettingsMcpUrl, 16, 554, 404, 20);
         SendMessageW(urlStatic, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
 
-        HWND riskStatic = add(L"STATIC", L"开启后同一可达网络内的设备可直接通过 IP 调用 MCP 工具，电源参数修改仍被服务端硬禁止。", IdSettingsMcpRiskNote, 16, 604, 404, 34);
+        HWND riskStatic = add(L"STATIC", L"开启后同一可达网络内的设备可直接通过 IP 调用 MCP 工具，电源参数修改仍被服务端硬禁止。", IdSettingsMcpRiskNote, 16, 576, 404, 34);
         SendMessageW(riskStatic, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
 
-        add(L"BUTTON", L"停止服务", IdSettingsMcpStop, 16, 642, 96, 30, button);
-        add(L"BUTTON", L"启动服务", IdSettingsMcpStart, 120, 642, 96, 30, button);
-        add(L"BUTTON", L"清理旧自启", IdSettingsMcpUninstall, 224, 642, 96, 30, button);
+        add(L"BUTTON", L"停止服务", IdSettingsMcpStop, 16, 614, 96, 30, button);
+        add(L"BUTTON", L"启动服务", IdSettingsMcpStart, 120, 614, 96, 30, button);
 
-        add(L"BUTTON", L"取消", IDCANCEL, 216, 688, 96, 36, button);
-        add(L"BUTTON", L"保存", IDOK, 324, 688, 96, 36, button);
-        HWND version = add(L"STATIC", L"SerialCtl " SERIALCTL_VERSION, -1, 16, 736, 136, 20, SS_LEFT);
-        HWND credit = add(L"STATIC", L"Application design by jiojio", -1, 152, 736, 268, 20, SS_RIGHT);
+        add(L"BUTTON", L"取消", IDCANCEL, 216, 660, 96, 36, button);
+        add(L"BUTTON", L"保存", IDOK, 324, 660, 96, 36, button);
+        HWND version = add(L"STATIC", L"SerialCtl " SERIALCTL_VERSION, -1, 16, 708, 136, 20, SS_LEFT);
+        HWND credit = add(L"STATIC", L"Application design by jiojio", -1, 152, 708, 268, 20, SS_RIGHT);
         SetPropW(version, L"SerialCtl.Secondary", reinterpret_cast<HANDLE>(1));
         SetPropW(credit, L"SerialCtl.Secondary", reinterpret_cast<HANDLE>(1));
         SendMessageW(version, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
@@ -6132,9 +6220,6 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         }
         if (id == IdSettingsMcpStop) {
             self->StopEmbeddedMcpServer();
-            mcp::McpService::SignalUserAgentStop();
-            std::wstring err;
-            mcp::McpService::StopScmService(err);
             SetDlgItemTextW(dialog, IdSettingsMcpUrl, (L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp（已停止）").c_str());
             return TRUE;
         }
@@ -6143,24 +6228,13 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             SetDlgItemTextW(dialog, IdSettingsMcpUrl, (L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp（运行中）").c_str());
             return TRUE;
         }
-        if (id == IdSettingsMcpUninstall) {
-            mcp::McpService::SignalUserAgentStop();
-            std::wstring err;
-            mcp::McpService::UninstallScmService(err);
-            wchar_t exe[MAX_PATH]{};
-            GetModuleFileNameW(nullptr, exe, MAX_PATH);
-            mcp::McpService::SetUserAutoStart(false, exe);
-            CheckDlgButton(dialog, IdSettingsMcpAutoStart, BST_UNCHECKED);
-            SetDlgItemTextW(dialog, IdSettingsMcpUrl, (L"服务地址：http://0.0.0.0:" + std::to_wstring(self->mcpPort_) + L"/mcp（自启已卸载）").c_str());
-            return TRUE;
-        }
         if (id == IDOK) {
             const bool echo = IsDlgButtonChecked(dialog, IdSettingsEcho) == BST_CHECKED;
             const bool timestamps = IsDlgButtonChecked(dialog, IdSettingsTimestamp) == BST_CHECKED;
             if (self->localEchoEnabled_ != echo) self->ExecuteTerminalAction(IdMenuLocalEcho);
             if (self->timestampEnabled_ != timestamps) self->ExecuteTerminalAction(IdMenuTimestamp);
             const bool mcpEn = IsDlgButtonChecked(dialog, IdSettingsMcpEnabled) == BST_CHECKED;
-            self->ApplyMcpSettings(mcpEn, false, self->mcpPort_);
+            self->ApplyMcpSettings(mcpEn, self->mcpPort_);
             if (hasSession) {
                 self->activeSession_->rawTrace = IsDlgButtonChecked(dialog, IdSettingsRawTrace) == BST_CHECKED;
                 const auto encoding = SendDlgItemMessageW(dialog, IdSettingsEncoding, CB_GETCURSEL, 0, 0);
@@ -6460,8 +6534,9 @@ std::wstring MainWindow::TerminalSelectionText(bool selectAll) const {
     return activeSession_ ? terminalViewport_.SelectionText(*activeSession_, selectAll) : L"";
 }
 
-void MainWindow::CopyTerminalSelection(bool selectAll) {
+void MainWindow::CopyTerminalSelection(bool selectAll, bool inspectRegister) {
     const std::wstring text = TerminalSelectionText(selectAll);
+    if (inspectRegister) terminalViewport_.ShowRegisterPreview(terminal_, text);
     if (text.empty()) return;
     const size_t bytes = (text.size() + 1) * sizeof(wchar_t);
     HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
@@ -6512,8 +6587,8 @@ UINT MainWindow::SelectedCodePage() const {
     return selectedCodePage_ == 20936 && !IsValidCodePage(20936) ? 936 : selectedCodePage_;
 }
 
-std::wstring MainWindow::SelectedLineEnding() const {
-    switch (lineEndingIndex_) {
+std::wstring MainWindow::LineEnding(int index) {
+    switch (index) {
     case 0: return L"\r";
     case 1: return L"\n";
     case 2: return L"\r\n";
@@ -6538,6 +6613,19 @@ void MainWindow::SetConnectedUi(bool connected) {
 
 
     InvalidateRect(window_, nullptr, TRUE);
+}
+
+std::wstring MainWindow::ConnectionCardTitle(const SessionState& session) {
+    const auto& port = session.serialSettings.portName;
+    if (session.mode != 1 || port.empty()) return session.name;
+    auto description = session.serialSettings.friendlyName;
+    if (_wcsicmp(description.c_str(), port.c_str()) == 0) return port;
+    const auto suffix = L" (" + port + L")";
+    if (description.size() >= suffix.size()) {
+        const auto start = description.size() - suffix.size();
+        if (_wcsicmp(description.c_str() + start, suffix.c_str()) == 0) description.resize(start);
+    }
+    return description.empty() ? port : port + L" · " + description;
 }
 
 void MainWindow::RefreshConnectionList() {
@@ -6565,7 +6653,7 @@ void MainWindow::RefreshConnectionList() {
             auto length = SendMessageW(connectionList_, LB_GETTEXTLEN, i, 0);
             std::vector<wchar_t> text(static_cast<size_t>(std::max<LRESULT>(length, 0)) + 1);
             SendMessageW(connectionList_, LB_GETTEXT, i, reinterpret_cast<LPARAM>(text.data()));
-            if (sessions_[i]->name != text.data()) {
+            if (ConnectionCardTitle(*sessions_[i]) != text.data()) {
                 same = false;
                 break;
             }
@@ -6573,8 +6661,10 @@ void MainWindow::RefreshConnectionList() {
     if (!same) {
         SendMessageW(connectionList_, WM_SETREDRAW, FALSE, 0);
         SendMessageW(connectionList_, LB_RESETCONTENT, 0, 0);
-        for (const auto &session : sessions_)
-            SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(session->name.c_str()));
+        for (const auto &session : sessions_) {
+            const auto title = ConnectionCardTitle(*session);
+            SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(title.c_str()));
+        }
         if (powerPageOpened_)
             SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"IT6332A"));
         if (aiPageOpened_) SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"AI 助手"));
@@ -6623,6 +6713,70 @@ void MainWindow::RefreshPowerTargets() {
     if (selected == ids.end()) powerMonitorSession_.clear();
     SendMessageW(powerMonitorTarget_, CB_SETCURSEL, selected == ids.end() ? 0 : selected - ids.begin() + 1, 0);
     powerPane_.SetRecoveryTarget(powerMonitorSession_, selectedLabel, eligible);
+}
+
+std::shared_ptr<PowerKeywordRun> MainWindow::CreatePowerKeywordRun(const PowerKeywordConfig &config) {
+    const auto target = std::find_if(sessions_.begin(), sessions_.end(), [&](const auto &session) {
+        return powerMonitorSession_ == "session-" + std::to_string(session->id);
+    });
+    if (target == sessions_.end() || (*target)->disconnecting || (*target)->disconnected)
+        throw std::runtime_error("请先在右侧选择已连接的终端");
+    const auto &session = **target;
+    auto queue = std::dynamic_pointer_cast<QueuedConnection>(session.connection);
+    if (!queue || !queue->IsConnected() || queue->TransferActive())
+        throw std::runtime_error("关联终端已断开或正在传输文件");
+    const auto bootState = session.boot->Status(GetTickCount64()).state;
+    if (bootState == "prepared" || bootState == "armed" || bootState == "interrupting")
+        throw std::runtime_error("请先停止关联终端的启动按键任务");
+
+    const auto outputPage = queue->OutputCodePage() ? queue->OutputCodePage() : session.codePage;
+    const auto inputPage = queue->InputCodePage() ? queue->InputCodePage() : session.codePage;
+    const auto encode = [](const std::wstring &text, UINT page) {
+        if (text.empty()) return std::string();
+        if (page == 20936 && !IsValidCodePage(page)) page = 936;
+        const auto result = WideToMultiByte(text, page);
+        if (result.empty() || MultiByteToWide(reinterpret_cast<const std::uint8_t *>(result.data()), result.size(), page) != text)
+            throw std::runtime_error("关联终端的编码无法表示关键字或指令");
+        return result;
+    };
+    const auto ending = session.mode == 0 ? L"\r" : session.mode == 4 ? L"\r\n" : LineEnding(session.lineEndingIndex);
+    const auto command = [&](const std::wstring &line) {
+        if (line.empty()) return Bytes{};
+        const auto bytes = encode(line + ending, inputPage);
+        Bytes result(bytes.begin(), bytes.end());
+        return session.mode == 4 ? SessionService::CmdBatch(result) : result;
+    };
+    std::vector<PowerKeywordRun::Rule> rules;
+    for (const auto &rule : config.rules)
+        rules.push_back({rule, encode(rule.keyword, outputPage), encode(rule.begin, outputPage),
+                         encode(rule.end, outputPage), command(rule.onHit), command(rule.onMiss)});
+
+    const std::weak_ptr<QueuedConnection> bound = queue;
+    auto connected = [bound, inputPage, outputPage] {
+        const auto link = bound.lock();
+        return link && link->IsConnected() && !link->TransferActive() &&
+            (!link->InputCodePage() || link->InputCodePage() == inputPage) &&
+            (!link->OutputCodePage() || link->OutputCodePage() == outputPage);
+    };
+    auto send = [bound, inputPage](const Bytes &bytes, const std::function<bool()> &allowed,
+                        PowerKeywordRun::Completion complete, std::wstring &error) {
+        const auto link = bound.lock();
+        if (!link) { error = L"关联终端已断开"; return false; }
+        if (const auto page = link->InputCodePage(); page && page != inputPage) {
+            error = L"关联终端编码已变更";
+            return false;
+        }
+        return link->SendObserved(bytes, error, {}, [allowed] { return PowerService::ConnectionAvailable() && allowed(); },
+            [complete = std::move(complete)](QueuedConnection::WriteResult result, const std::wstring &detail) {
+                using Write = QueuedConnection::WriteResult;
+                using Delivery = PowerKeywordRun::Delivery;
+                complete(result == Write::Written ? Delivery::Written :
+                         result == Write::NotWritten ? Delivery::NotWritten : Delivery::Unknown, detail);
+            });
+    };
+    return std::make_shared<PowerKeywordRun>(session.id, session.name, encode(config.ready, outputPage),
+        std::move(rules), std::move(send), std::move(connected),
+        [this](const std::wstring &event) { powerService_.LogKeywordEvent(event); });
 }
 
 void MainWindow::SyncPowerTerminal() {
@@ -6738,7 +6892,6 @@ void MainWindow::LoadUiState() {
     rightPanelCollapsed_ = GetPrivateProfileIntW(
         L"Layout", L"RightPanelCollapsed", 0, path.c_str()) != 0;
     mcpEnabled_ = GetPrivateProfileIntW(L"Mcp", L"Enabled", 0, path.c_str()) != 0;
-    mcpAutoStart_ = false; // Legacy AutoStart is no longer honored.
     mcpPort_ = static_cast<uint16_t>(GetPrivateProfileIntW(L"Mcp", L"Port", 7080, path.c_str()));
     wchar_t mcpBindBuf[64]{};
     GetPrivateProfileStringW(L"Mcp", L"BindIp", L"0.0.0.0", mcpBindBuf, 64, path.c_str());
@@ -6786,7 +6939,6 @@ void MainWindow::SaveUiState() {
     add(L"Commands", L"DoubleClickRun", notebook_.DoubleClick());
     add(L"Commands", L"IntervalMs", notebook_.Interval());
     add(L"Mcp", L"Enabled", mcpEnabled_ ? 1 : 0);
-    add(L"Mcp", L"AutoStart", 0);
     add(L"Mcp", L"Port", mcpPort_);
     snapshot.entries.push_back({L"Mcp", L"BindIp", MultiByteToWide(reinterpret_cast<const uint8_t*>(mcpBindIp_.data()), mcpBindIp_.size(), CP_UTF8)});
     if (tftpServer_) {
@@ -6805,6 +6957,9 @@ void MainWindow::SaveUiState() {
             }
         }
         add(L"Tftp", L"LocalCount", localCount);
+        snapshot.entries.push_back({L"Tftp", L"RootMode", tftpPane_.RootMode()});
+        snapshot.entries.push_back({L"Tftp", L"LocalRootDir", tftpPane_.LocalDirectory()});
+        snapshot.entries.push_back({L"Tftp", L"RemoteRootDir", tftpPane_.RemoteDirectory()});
     }
     for(const auto& preset:bootPresets_) {
         const auto value=preset.second.first+"|"+std::to_string(preset.second.second);
@@ -6835,6 +6990,18 @@ void MainWindow::LoadTftpState() {
             std::wstring err;
             tftpServer_->PublishLocal(tftpName, localPath, true, err);
         }
+    }
+    wchar_t rootModeBuf[32]{};
+    GetPrivateProfileStringW(L"Tftp", L"RootMode", L"local", rootModeBuf, 32, path.c_str());
+    wchar_t localRootBuf[2048]{};
+    GetPrivateProfileStringW(L"Tftp", L"LocalRootDir", L"", localRootBuf, 2048, path.c_str());
+    wchar_t remoteRootBuf[2048]{};
+    GetPrivateProfileStringW(L"Tftp", L"RemoteRootDir", L"", remoteRootBuf, 2048, path.c_str());
+    if (tftpPane_.Handle()) {
+        tftpPane_.ConfigureDirectories(rootModeBuf, localRootBuf, remoteRootBuf);
+    } else if (std::wstring(rootModeBuf) != L"remote" && localRootBuf[0] != L'\0') {
+        std::wstring err;
+        tftpServer_->SetLocalRoot(localRootBuf, err);
     }
     if (tftpEnabled) {
         std::wstring err;
@@ -6904,6 +7071,7 @@ XferPane::Target MainWindow::XferTarget() {
     target.connection=std::dynamic_pointer_cast<QueuedConnection>(activeSession_->connection);
     if(!target.connection||!target.connection->IsConnected()||(activeSession_&&(activeSession_->disconnecting||activeSession_->disconnected)))target.unavailable=L"请先连接串口";
     else if(!target.connection->SupportsTransfer())target.unavailable=L"远端版本不支持 Xfer，请先升级远端 SerialCtl";
+    else if(powerPane_.KeywordListening(target.id))target.unavailable=L"该串口正在运行电源关键字测试";
     else {
         const auto boot=activeSession_->boot->Status(GetTickCount64());
         if(boot.state=="prepared"||boot.state=="armed"||boot.state=="interrupting")
@@ -7874,7 +8042,7 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
         SetDlgItemTextW(dialog, IDC_SFTP_INPUT_ERROR, L"");
         FitDialogLabels(dialog);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_LIMITTEXT,
-            self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4 : self->pendingSftpInputPurpose_ == SftpInputPurpose::Port ? 5 : self->pendingSftpInputPurpose_ == SftpInputPurpose::Path ? 1024 : 255, 0);
+            self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4 : self->pendingSftpInputPurpose_ == SftpInputPurpose::Path ? 1024 : 255, 0);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_SETMARGINS,
             EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
         CenterOnOwner(dialog, self->window_);
@@ -7924,8 +8092,6 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                     std::all_of(value.begin(), value.end(), [](wchar_t character) {
                         return character >= L'0' && character <= L'7';
                     });
-            } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Port) {
-                valid = ParsePositive(value) > 0 && ParsePositive(value) <= 65535;
             } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Path) {
                 valid = !value.empty() && value.find_first_of(L"\r\n\x001A") == std::wstring::npos && (value.front() == L'/' || value == L"~" || value.rfind(L"~/", 0) == 0);
             } else {
@@ -7950,8 +8116,6 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                         return character >= L'0' && character <= L'7';
                     }))
                     error = L"请输入三位或四位八进制权限，例如 644。";
-            } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Port) {
-                if (ParsePositive(value) == 0 || ParsePositive(value) > 65535) error = L"端口必须在 1–65535 之间";
             } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Path) {
                 if (value.empty() || value.find_first_of(L"\r\n\x001A") != std::wstring::npos || !(value.front() == L'/' || value == L"~" || value.rfind(L"~/", 0) == 0)) error = L"请输入绝对路径或 ~/ 路径";
             } else if (value.empty()) {
@@ -8514,8 +8678,39 @@ Json MainWindow::ApiResources() {
 }
 Json MainWindow::ApiRequest(const std::string &op, const std::string &resource, const Json &params) {
     if(op=="transfer.release_owner") {sessionService_.ReleaseTransfers(params.value("source",std::string()));return {{"released",true}};}
+    if (op == RemotePowerReleaseOp) {
+        powerService_.CancelRemotePending(params.at("source"));
+        return {{"released", true}};
+    }
     if (closing_)
         return {{"error", {{"code", "APPLICATION_CLOSING"}, {"message", "Application closing"}}}};
+    if (op == RemotePowerStateOp || op == RemotePowerSubmitOp || op == RemotePowerActionOp) {
+        const auto source = params.at("source").get<std::string>();
+        if (op == RemotePowerActionOp) {
+            auto action = powerService_.Action(params.at("id"));
+            if (action.value("command", Json::object()).value("source", std::string()) != source)
+                return {{"error", "Remote power action not found"}};
+            return {{"action", std::move(action)}};
+        }
+        if (!PowerService::ConnectionAvailable())
+            return {{"error", u8"请在电源所在电脑本地解锁 Test。"}};
+        auto state = powerService_.State();
+        const auto backend = state.value("backend", std::string());
+        if (!state.value("connected", false) || !state.contains("connectionId") || (backend != "usb" && backend != "serial"))
+            return {{"error", u8"远端没有已连接的 USB 或 RS232 电源。"}};
+        if (op == RemotePowerStateOp) {
+            for (const char *key : {"logPath", "csvPath", "lastConnectDiagnostic", "lastDisconnectActionId"})
+                state.erase(key);
+            return {{"powerState", std::move(state)}};
+        }
+        auto command = params.at("command");
+        command.erase("requestId");
+        command.erase("_connectionId");
+        command.erase("_connectionMode");
+        command["source"] = source;
+        auto action = powerService_.Submit(command, params.at("connectionId"), params.at("mode"));
+        return {{"action", std::move(action)}};
+    }
     if (op == "resources")
         return ApiResources();
     if (op == "session.get")
@@ -8695,15 +8890,10 @@ void MainWindow::StopEmbeddedMcpServer() {
     }
 }
 
-void MainWindow::ApplyMcpSettings(bool enabled, bool /*autoStart*/, uint16_t port) {
+void MainWindow::ApplyMcpSettings(bool enabled, uint16_t port) {
     mcpEnabled_ = enabled;
-    mcpAutoStart_ = false;
     mcpPort_ = port ? port : 7080;
     SaveUiState();
-    wchar_t exe[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    mcp::McpService::SetUserAutoStart(false, exe);
-    mcp::McpService::SignalUserAgentStop();
     if (mcpEnabled_) StartEmbeddedMcpServer();
     else StopEmbeddedMcpServer();
 }
@@ -9582,7 +9772,6 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
             (newPort != effectivePort || newBindIp != effectiveBindIp);
         mcpPort_ = newPort;
         mcpBindIp_ = newBindIp;
-        mcpAutoStart_ = false;
         SaveUiState();
         return {
             {"ok", true}, {"port", newPort}, {"bindIp", newBindIp},

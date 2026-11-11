@@ -18,13 +18,13 @@ HWND XferPane::Control(int id)const{return GetDlgItem(id==Start||id==Cancel?wind
 bool XferPane::Create(HWND parent,xfer::TransferController& controller,std::function<Target()> target,HFONT font,bool dark,int dpi) {
     controller_=&controller;target_=std::move(target);font_=font;dark_=dark;dpi_=dpi;style_={&dark_,font_,dpi_,false};
     WNDCLASSW wc{};wc.hInstance=GetModuleHandleW(nullptr);wc.lpfnWndProc=Proc;wc.lpszClassName=L"SerialCtlXferPane";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);RegisterClassW(&wc);
-    window_=CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,L"串口传输文件",WS_CHILD|WS_CLIPCHILDREN,0,0,100,100,parent,nullptr,wc.hInstance,this);
+    window_=CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,L"串口传输文件",WS_CHILD|WS_CLIPCHILDREN|WS_CLIPSIBLINGS,0,0,100,100,parent,nullptr,wc.hInstance,this);
     if(!window_)return false;
     wc.lpfnWndProc=BodyProc;wc.lpszClassName=L"SerialCtlXferBody";RegisterClassW(&wc);
     body_=CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,L"传输选项",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN,0,0,100,100,window_,nullptr,wc.hInstance,this);
     if(!body_)return false;
     const auto add=[&](int id,const wchar_t* cls,const wchar_t* text,DWORD extra){
-        auto h=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|extra,0,0,1,1,id==Start||id==Cancel?window_:body_,
+        auto h=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|extra,0,0,1,1,id==Start||id==Cancel?window_:body_,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),wc.hInstance,nullptr);
         SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(font_),FALSE);
         if(_wcsicmp(cls,L"BUTTON")==0)UiStyleButton(h);
@@ -75,12 +75,13 @@ void XferPane::Layout() {
     RECT client{};GetClientRect(window_,&client);
     const int width=std::max(1L,client.right),footer=D(48);
     bodyHeight_=std::max(1,static_cast<int>(client.bottom)-footer);
-    MoveWindow(body_,0,0,width,bodyHeight_,TRUE);
+    UiLayoutBatch frame(true);
+    frame.Move(body_,0,0,width,bodyHeight_);
     const int lane=D(16),contentWidth=std::max(D(80),width-lane);
     const int half=std::max(1,(contentWidth-D(12))/2);
-    const int helpHeight=std::max(D(28),Measure(body_,font_,Text(Control(Help)),contentWidth));
+    const int helpHeight=std::max(D(28),Measure(body_,font_,Text(Control(Help)),contentWidth)+D(2));
     const int countHeight=std::max(D(20),Measure(body_,font_,Text(Control(Count)),contentWidth));
-    const int statusHeight=std::max(D(28),Measure(body_,font_,Text(Control(Status)),contentWidth));
+    const int statusHeight=std::max(D(28),Measure(body_,font_,Text(Control(Status)),contentWidth)+D(2));
     const int ySource = 0;
     const int yDirLabel = ySource + D(32);
     const int yDir = yDirLabel + D(22);
@@ -94,18 +95,23 @@ void XferPane::Layout() {
     const int statusTop = countTop + countHeight + D(8);
     contentHeight_ = statusTop + statusHeight + D(16);
     offset_ = std::clamp(offset_,0,std::max(0,contentHeight_-bodyHeight_));
-    const auto move=[&](int id,int x,int y,int w,int h){MoveWindow(Control(id),x,y-offset_,std::max(1,w),h,TRUE);};
+    UiLayoutBatch fields(true);
+    const auto move=[&](int id,int x,int y,int w,int h){fields.Move(Control(id),x,y-offset_,std::max(1,w),h);};
     move(Source,0,ySource,contentWidth,D(28));
     move(DirectionLabel,0,yDirLabel,half,D(20));move(ModeLabel,half+D(12),yDirLabel,half,D(20));
     move(Direction,0,yDir,half,D(180));move(Mode,half+D(12),yDir,half,D(200));
-    {UiLayoutBatch b;b.ComboVisibleHeight(Control(Direction),D(28));b.ComboVisibleHeight(Control(Mode),D(28));b.Commit();}
+    fields.ComboVisibleHeight(Control(Direction),D(28));
+    fields.ComboVisibleHeight(Control(Mode),D(28));
     move(FileLabel,0,yFileLabel,contentWidth,D(20));move(File,0,yFile,contentWidth-D(40),D(28));move(Browse,contentWidth-D(28),yFile,D(28),D(28));
     move(LengthLabel,0,yLengthLabel,contentWidth,D(20));move(Length,0,yLength,contentWidth,D(28));
     move(Help,0,yHelp,contentWidth,helpHeight);
     move(Count,0,countTop,contentWidth,countHeight);move(Status,0,statusTop,contentWidth,statusHeight);
     const int buttonWidth=std::max(1,(width-D(12))/2),top=std::max(0,static_cast<int>(client.bottom)-D(36));
-    MoveWindow(Control(Start),0,top,buttonWidth,D(36),TRUE);MoveWindow(Control(Cancel),buttonWidth+D(12),top,buttonWidth,D(36),TRUE);
-    InvalidateRect(body_,nullptr,FALSE);
+    frame.Move(Control(Start),0,top,buttonWidth,D(36));
+    frame.Move(Control(Cancel),buttonWidth+D(12),top,buttonWidth,D(36));
+    frame.Commit();
+    fields.Commit();
+    RedrawWindow(window_,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_FRAME|RDW_ALLCHILDREN);
 }
 void XferPane::Scroll(int amount){offset_=std::clamp(offset_+amount,0,std::max(0,contentHeight_-bodyHeight_));Layout();}
 void XferPane::Refresh() {
@@ -283,20 +289,7 @@ void XferPane::Paint(HDC target) {
     RECT r{};GetClientRect(body_,&r);UiBufferedPaint paint(target,r);auto dc=paint.Dc();
     FillRect(dc,&r,surface_);const auto c=UiTheme(dark_);
     const int right=std::max(D(16),static_cast<int>(r.right)-D(16)),top=progressTop_-offset_;
-    UiBox(dc,{0,top,right,top+D(6)},c.raised,c.raised,D(3));
-    if(displayTotal_>0&&displayBytes_>0) {
-        const auto fraction=static_cast<long double>(std::min(displayBytes_,displayTotal_))/displayTotal_;
-        UiBox(dc,{0,top,static_cast<LONG>(right*fraction),top+D(6)},c.accent,c.accent,D(3));
-    } else if(targetActive_&&displayTotal_==0) {
-        const int blockWidth=std::max(D(28),right/4);
-        const int travel=std::max(1,right+blockWidth);
-        const int tick=static_cast<int>(displayBytes_==0?((GetTickCount64()/12)%travel):((displayBytes_*13+(GetTickCount64()/15))%travel))-blockWidth;
-        const int bLeft=std::clamp(tick,0,right);
-        const int bRight=std::clamp(tick+blockWidth,0,right);
-        if(bRight>bLeft) {
-            UiBox(dc,{bLeft,top,bRight,top+D(6)},c.accent,c.accent,D(3));
-        }
-    }
+    UiDrawProgressBar(dc,0,top,right,dpi_,displayBytes_,displayTotal_,targetActive_,c.raised,c.accent);
     if(contentHeight_>bodyHeight_) {
         const int thumb=std::max(D(28),bodyHeight_*bodyHeight_/std::max(1,contentHeight_));
         const int y=offset_*(bodyHeight_-thumb)/std::max(1,contentHeight_-bodyHeight_);
@@ -345,7 +338,13 @@ LRESULT CALLBACK XferPane::Proc(HWND h,UINT m,WPARAM w,LPARAM l) {
     if(!self)return DefWindowProcW(h,m,w,l);
     if(m==WM_SIZE){self->Layout();return 0;}
     if(m==WM_SETFOCUS){SetFocus(self->Control(File));return 0;}
-    if(m==WM_SHOWWINDOW){if(w)self->Refresh();else if(!self->controller_->Busy())KillTimer(h,1);return 0;}
+    if(m==WM_SHOWWINDOW){
+        if(w){
+            self->Refresh();
+            RedrawWindow(h,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_FRAME|RDW_ALLCHILDREN);
+        } else if(!self->controller_->Busy())KillTimer(h,1);
+        return 0;
+    }
     if(m==WM_TIMER){self->Refresh();return 0;}
     if(m==WM_APP+219) {
         if(SendMessageW(self->Control(Direction),CB_GETDROPPEDSTATE,0,0)||SendMessageW(self->Control(Mode),CB_GETDROPPEDSTATE,0,0))return 0;

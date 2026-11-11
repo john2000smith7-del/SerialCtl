@@ -71,6 +71,9 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
         params = {{"threadId", data.at("conversationId")},
                   {"approvalPolicy", "never"},
                   {"input", Json::array({{{"type", "text"}, {"text", data.at("text")}}})}};
+        if (data.contains("images"))
+            for (const auto &path : data.at("images"))
+                params["input"].push_back({{"type", "localImage"}, {"path", path}});
         params["sandboxPolicy"] = {{"type", "dangerFullAccess"}};
         break;
     case Operation::StopTask:

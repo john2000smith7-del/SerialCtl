@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <filesystem>
 #include <thread>
 #include <chrono>
 #include <random>
@@ -820,6 +821,99 @@ void TestBindAddressValidation(uint16_t testPort) {
     server.Stop();
 }
 
+void TestLocalDirectoryRootMode(uint16_t testPort) {
+    std::cout << "[RUN] Testing directory-based TFTP root mode (excluding subdirectories)..." << std::endl;
+    namespace fs = std::filesystem;
+    const auto root = fs::temp_directory_path() / (L"serialctl_tftp_root_" + std::to_wstring(GetCurrentProcessId()));
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    Require(fs::create_directories(root / L"nested", ec), "Create test root & nested subdir");
+
+    std::vector<uint8_t> imageData(1234);
+    for (size_t i = 0; i < imageData.size(); ++i) imageData[i] = static_cast<uint8_t>((i * 13 + 7) & 0xFF);
+    std::vector<uint8_t> dtbData(77, 0x5A);
+    {
+        std::ofstream f1(root / L"Image", std::ios::binary);
+        f1.write(reinterpret_cast<const char*>(imageData.data()), imageData.size());
+        std::ofstream f2(root / L"nested" / L"board.dtb", std::ios::binary);
+        f2.write(reinterpret_cast<const char*>(dtbData.data()), dtbData.size());
+    }
+
+    std::vector<TftpDirectoryEntry> entries;
+    std::wstring err;
+    Require(ListLocalTftpDirectory(root.wstring(), entries, err), "ListLocalTftpDirectory must succeed");
+    Require(entries.size() == 1 && entries[0].name == "Image" && entries[0].sizeKnown && entries[0].size == 1234,
+            "Directory listing must include only top-level regular files and exclude nested subdirectories");
+
+    TftpServer server;
+    Require(server.SetLocalRoot(root.wstring(), err), "SetLocalRoot must accept valid directory");
+    Require(server.RootConfig().mode == TftpRootMode::Local, "RootConfig mode must be Local");
+    Require(server.Start("127.0.0.1", testPort, err), "Server start for directory root test");
+
+    TftpClientSimulator client;
+    std::vector<uint8_t> downloaded;
+    uint64_t tsize = 0;
+    Require(client.DownloadFile(testPort, "Image", 512, downloaded, true, &tsize),
+            "Download file directly from configured local root");
+    Require(tsize == imageData.size() && downloaded == imageData, "Root file contents & tsize must match");
+
+    downloaded.clear();
+    Require(client.DownloadFile(testPort, "nested/board.dtb", 512, downloaded, true, &tsize),
+            "Download file via safe relative subpath under configured root");
+    Require(tsize == dtbData.size() && downloaded == dtbData, "Nested subpath file contents must match");
+
+    client.SendRrq(testPort, "missing.bin");
+    sockaddr_in from{};
+    std::vector<uint8_t> reply;
+    int r = client.RecvPacket(reply, from);
+    Require(r >= 4 && (reply[0] << 8 | reply[1]) == 5 && (reply[2] << 8 | reply[3]) == 1,
+            "Missing file under directory root must return TFTP ERROR 1");
+
+    client.SendRrq(testPort, "nested");
+    r = client.RecvPacket(reply, from);
+    Require(r >= 4 && (reply[0] << 8 | reply[1]) == 5 && (reply[2] << 8 | reply[3]) == 2,
+            "Requesting a directory itself must return TFTP ERROR 2");
+
+    client.SendRrq(testPort, "../outside.bin");
+    r = client.RecvPacket(reply, from);
+    Require(r >= 4 && (reply[0] << 8 | reply[1]) == 5 && (reply[2] << 8 | reply[3]) == 2,
+            "Path traversal under directory root must return TFTP ERROR 2");
+
+    server.Stop();
+    fs::remove_all(root, ec);
+
+    // Deferred remote source verification (pending until session Open)
+    SshRemoteConfig remoteCfg;
+    remoteCfg.host = L"127.0.0.1";
+    remoteCfg.port = 22;
+    remoteCfg.username = L"tester";
+    remoteCfg.remotePath = L"/tftpboot/Image";
+    auto mockLauncher = [](const SshRemoteConfig&, HANDLE& outRead, HANDLE& outProc, std::wstring&) -> bool {
+        SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+        HANDLE rPipe = nullptr, wPipe = nullptr;
+        if (!CreatePipe(&rPipe, &wPipe, &sa, 4096)) return false;
+        CloseHandle(wPipe);
+        STARTUPINFOW si{sizeof(si)};
+        PROCESS_INFORMATION pi{};
+        wchar_t cmd[] = L"cmd.exe /c exit 0";
+        if (!CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            CloseHandle(rPipe);
+            return false;
+        }
+        CloseHandle(pi.hThread);
+        outRead = rPipe;
+        outProc = pi.hProcess;
+        return true;
+    };
+    RemoteSshTftpFileSource deferredRemote(remoteCfg, mockLauncher, true);
+    Require(deferredRemote.Info().status == "Pending", "Deferred remote source must start in Pending status");
+    Require(deferredRemote.Open(err), "Deferred remote source queries/opens on demand");
+    Require(deferredRemote.Info().status == "Ready" && deferredRemote.Info().sizeKnown,
+            "Deferred remote source becomes Ready with size on Open");
+    deferredRemote.Close();
+    std::cout << "[PASS] Directory root mode, exclusion, subpath resolution, and deferred remote verified." << std::endl;
+}
+
 int main() {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -842,6 +936,7 @@ int main() {
     TestSlowStreamAndPrematureEof(6978);
     TestConcurrencyLimitAndPathBoundary(6979);
     TestLocalSourceIdentity();
+    TestLocalDirectoryRootMode(6982);
 
     WSACleanup();
     std::cout << "=== TFTP Server Integration Tests PASSED ===" << std::endl;

@@ -33,7 +33,6 @@
 #include "McpIpc.h"
 #include "McpHttpServer.h"
 #include "McpDispatcher.h"
-#include "McpService.h"
 #include <deque>
 #include <functional>
 #include <future>
@@ -73,7 +72,7 @@ private:
     using SftpTransferDirection = SftpController::Direction;
     using SftpTransferState = SftpController::TransferState;
     using SftpMutationKind = SftpController::Mutation;
-    enum class SftpInputPurpose { Name, Mode, Path, Port };
+    enum class SftpInputPurpose { Name, Mode, Path };
 
     struct SettingsDialogState {
         MainWindow* owner = nullptr;
@@ -81,7 +80,6 @@ private:
         int initialEncoding = 0;
         wchar_t exportTip[2048]{};
         bool mcpEnabled = false;
-        bool mcpAutoStart = false;
         uint16_t mcpPort = 7080;
     };
 
@@ -123,7 +121,6 @@ private:
         UINT codePage = CP_UTF8;
         bool rawTrace = false;
         bool saveSshHistory = false;
-        bool rememberSshPassword = false;
         std::wstring employeeNumber;
         std::wstring host;
         std::wstring remoteCom;
@@ -183,7 +180,7 @@ private:
     void DrawOwnerItem(const DRAWITEMSTRUCT& item);
     void ApplyTheme();
     void OpenConnectionDialog(int mode);
-    void ConfigureConnectionDialog(HWND dialog);
+    void ConfigureConnectionDialog(HWND dialog, bool initialize = true);
     bool DeleteSshHistoryEntry(HWND dialog, size_t historyIndex);
     void RefreshConnectionHostIdentity(HWND dialog);
     void RefreshSerialPorts(HWND dialog);
@@ -221,7 +218,7 @@ private:
     void ClearTerminalSelection();
     bool HasTerminalSelection() const;
     std::wstring TerminalSelectionText(bool selectAll) const;
-    void CopyTerminalSelection(bool selectAll);
+    void CopyTerminalSelection(bool selectAll, bool inspectRegister = false);
     void SendCommand(size_t index);
     void SendNextCommandStep();
     using CommandSequenceEnd = CommandMacroController::End;
@@ -253,9 +250,11 @@ private:
     void ExecuteTerminalAction(UINT command, HWND owner = nullptr);
     UINT SelectedCodePage() const;
     std::string EncodeTerminalText(const std::wstring &);
-    std::wstring SelectedLineEnding() const;
+    static std::wstring LineEnding(int index);
+    std::wstring SelectedLineEnding() const { return LineEnding(lineEndingIndex_); }
     void SetConnectedUi(bool connected);
     void RefreshConnectionList();
+    static std::wstring ConnectionCardTitle(const SessionState&);
 
     void LoadUiState();
     void SaveUiState();
@@ -269,6 +268,7 @@ private:
     int SidebarWidth() const;
     void SyncAiTerminal();
     void RefreshPowerTargets();
+    std::shared_ptr<PowerKeywordRun> CreatePowerKeywordRun(const PowerKeywordConfig &config);
     void SyncPowerTerminal();
     bool LiveMonitorPage() const { return aiVisible_ || powerVisible_; }
 
@@ -541,11 +541,10 @@ private:
     std::atomic_bool discoveryFinished_{true};
     unsigned discoveryGeneration_ = 0;
     HWND discoveryDialog_ = nullptr;
-    std::uint16_t discoveryExplicitPort_ = 0;
+    std::uint16_t discoveredSerialPort_ = 0;
     int pendingMode_ = 0;
     bool pendingHostKeyReverify_ = false;
     bool pendingSaveSshHistory_ = false;
-    bool pendingRememberSshPassword_ = false;
     std::wstring loadedSshCredentialTarget_;
     std::wstring pendingEmployeeNumber_;
     Json sshHistory_ = Json::array();
@@ -580,7 +579,6 @@ private:
     std::unique_ptr<mcp::McpDispatcher> mcpDispatcher_;
     std::atomic<bool> mcpStopping_{false};
     bool mcpEnabled_ = false;
-    bool mcpAutoStart_ = false;
     uint16_t mcpPort_ = 7080;
     std::string mcpBindIp_ = "0.0.0.0";
 
@@ -589,7 +587,7 @@ private:
     std::unique_ptr<mcp::McpDispatcher> CreateMcpDispatcher(bool http);
     void StartEmbeddedMcpServer();
     void StopEmbeddedMcpServer();
-    void ApplyMcpSettings(bool enabled, bool autoStart, uint16_t port);
+    void ApplyMcpSettings(bool enabled, uint16_t port);
     Json DispatchMcpToUi(const std::string& method, const Json& params, bool http);
     Json McpExecute(const std::string& method, const Json& params);
     SessionState* ResolveTargetSession(const Json& params, std::string& err);
