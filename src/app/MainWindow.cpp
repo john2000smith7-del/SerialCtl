@@ -4104,6 +4104,7 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                     self->pendingMode_ = mode;
                     self->ConfigureConnectionDialog(dialog, false);
                     CenterOnOwner(dialog, self->window_);
+                    if (self->measurePaint_) UiRunAfterFirstPaint(dialog, false);
                     if (mode == 1) self->RefreshSerialPorts(dialog);
                     else SetTimer(dialog, DiscoveryTimerId, 500, nullptr);
                     RedrawWindow(dialog, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);

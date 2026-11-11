@@ -1219,7 +1219,7 @@ namespace serialctl {
 constexpr UINT UiFirstPaintReady = WM_APP + 190;
 // Background scans and cached-list population start after the complete initial
 // form has painted, not from WM_INITDIALOG or an arbitrary startup delay.
-inline LRESULT CALLBACK UiFirstPaintProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
+inline LRESULT CALLBACK UiFirstPaintProc(HWND h, UINT message, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR notifyReady) {
     if (message == WM_NCDESTROY) {
         RemoveWindowSubclass(h, UiFirstPaintProc, id);
         return DefSubclassProc(h, message, w, l);
@@ -1234,16 +1234,16 @@ inline LRESULT CALLBACK UiFirstPaintProc(HWND h, UINT message, WPARAM w, LPARAM 
             wchar_t metrics[2]{};
             if (GetEnvironmentVariableW(L"SERIALCTL_UI_METRICS", metrics, 2))
                 SetPropW(h, L"SerialCtl.DialogFirstPaint", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(GetTickCount64())));
-            PostMessageW(h, UiFirstPaintReady, 0, 0);
+            if (notifyReady) PostMessageW(h, UiFirstPaintReady, 0, 0);
         }
     }
     return result;
 }
-inline void UiRunAfterFirstPaint(HWND dialog) {
+inline void UiRunAfterFirstPaint(HWND dialog, bool notifyReady = true) {
     // Keep the form functional even if native subclass registration fails.
-    if (!SetWindowSubclass(dialog, UiFirstPaintProc, 89, 0))
-        PostMessageW(dialog, UiFirstPaintReady, 0, 0);
-    else
+    if (!SetWindowSubclass(dialog, UiFirstPaintProc, 89, notifyReady)) {
+        if (notifyReady) PostMessageW(dialog, UiFirstPaintReady, 0, 0);
+    } else
         // A native creation/layout call can already have validated the parent.
         // Guarantee a paint opportunity even for keyboard/programmatic opening.
         InvalidateRect(dialog, nullptr, FALSE);

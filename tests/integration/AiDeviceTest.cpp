@@ -692,11 +692,11 @@ struct AiDeviceTestAccess {
         auto render = [&](HWND button, UINT state, bool power) {
             RECT rect{};
             GetClientRect(button, &rect);
-            // Inactive power pages have not received layout yet. Exercise their
-            // real painter at a normal selector size; layout is checked separately.
-            if (power && (rect.right < 32 || rect.bottom < 28))
-                rect = {0, 0, 128, 32};
             HDC screen = GetDC(button), dc = CreateCompatibleDC(screen);
+            const int dpi = GetDeviceCaps(screen, LOGPIXELSX);
+            // Paint a known-size selector so the palette sample stays clear of
+            // centered text at different system DPIs. Layout is checked separately.
+            if (power) rect = {0, 0, MulDiv(128, dpi, 96), MulDiv(32, dpi, 96)};
             HBITMAP bitmap = CreateCompatibleBitmap(screen, rect.right, rect.bottom);
             auto old = SelectObject(dc, bitmap);
             DRAWITEMSTRUCT item{};
@@ -710,7 +710,7 @@ struct AiDeviceTestAccess {
                 SendMessageW(main.powerPane_.Handle(), WM_DRAWITEM, item.CtlID, reinterpret_cast<LPARAM>(&item));
             else
                 main.DrawOwnerItem(item);
-            const auto pixel = GetPixel(dc, 8, rect.bottom / 2);
+            const auto pixel = GetPixel(dc, power ? MulDiv(8, dpi, 96) : 8, rect.bottom / 2);
             SelectObject(dc, old);
             DeleteObject(bitmap);
             DeleteDC(dc);
