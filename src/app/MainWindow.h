@@ -160,6 +160,8 @@ private:
     static INT_PTR CALLBACK CommandDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static INT_PTR CALLBACK SftpInputDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static INT_PTR CALLBACK SettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
+    static INT_PTR CALLBACK ShortcutSettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
+    void ShowShortcutSettings(HWND owner);
     static void PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     static INT_PTR CALLBACK UpdateDialogProc(HWND, UINT, WPARAM, LPARAM);
@@ -204,6 +206,7 @@ private:
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {}, std::function<bool()> allowed = {});
     void SendTerminalCharacter(wchar_t character);
+    void SendTerminalText(const std::wstring& text);
     void SendTerminalKey(WPARAM key, bool shift, bool control, bool alt);
     void PasteToTerminal();
     void PaintTerminal(HDC dc);
@@ -236,6 +239,7 @@ private:
     void RefreshStatusDisplay();
     void SaveCurrentLog(HWND owner = nullptr);
     void StartLogExport(const std::wstring &, const std::wstring &, std::uint64_t, LogExportTask);
+    void ToggleContinuousLogSave(HWND owner);
     void PollLogExport();
     void CancelLogExport();
     void StopLogExport();
@@ -364,6 +368,9 @@ private:
     UINT selectedCodePage_ = CP_UTF8;
     bool localEchoEnabled_ = false;
     bool timestampEnabled_ = true;
+    // Missing INI key defaults to the user-requested ASCII shortcut.
+    bool serialF2CustomEnabled_ = true;
+    wchar_t pendingHighSurrogate_ = 0;
     UiFieldStyle dialogFieldStyle_{&darkMode_, nullptr, 96};
 
     std::vector<HWND> toolbarButtons_;

@@ -1,5 +1,6 @@
 #include "TerminalModel.h"
 #include "TerminalViewportController.h"
+#include "SerialShortcut.h"
 #include "json.hpp"
 #include <algorithm>
 #include <chrono>
@@ -15,6 +16,14 @@ using namespace serialctl;
 void Require(bool value, const char* why) { if (!value) throw std::runtime_error(why); }
 int main() {
     try {
+        const auto f2 = SerialF2Payload();
+        Require(std::string(f2.begin(), f2.end()) == "232start", "serial F2 payload is exact ASCII");
+        for (unsigned bit = 0; bit < 32; ++bit) {
+            const std::uint32_t flipped = FlipRegisterBit(0, bit);
+            Require(flipped == (std::uint32_t{1} << bit), "every register bit is addressable");
+            Require(FlipRegisterBit(flipped, bit) == 0, "register bit toggles both ways");
+        }
+        Require(FlipRegisterBit(0xA5A5A5A5u, 32) == 0xA5A5A5A5u, "out of range bit ignored");
         TerminalModel source(80, 24);
         std::wstring history;
         for (int i = 0; i < 20000; ++i) history += std::wstring(60, L'x') + L"\r\n";
@@ -55,6 +64,12 @@ int main() {
                 "viewport clamps upward history scrolling");
         view.terminalHasNewOutput = true; viewport.ToBottom(view);
         Require(!view.terminalScrollOffset && !view.terminalHasNewOutput, "viewport bottom clears unread-output marker");
+        TerminalModel wideErase(80, 3);
+        wideErase.Feed(L"中", L"");
+        wideErase.Feed(L"\b \b", L"");
+        const auto& erasedRow = wideErase.DisplayLine(0);
+        Require(erasedRow.cells[0].character == L' ' && !erasedRow.cells[1].continuation,
+                "wide serial character partial erase leaves no orphan half-cell");
         view.terminal.Clear(); view.terminal.Feed(L"中A", L"");
         size_t hitLine = 0; int hitColumn = -1;
         Require(viewport.PointToCell(view, 8 + 9, 8, 8, 8, 200, hitLine, hitColumn) && hitColumn == 0,

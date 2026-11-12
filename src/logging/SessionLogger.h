@@ -19,6 +19,13 @@ class SessionLogger
   public:
     ~SessionLogger();
     bool Start(const std::wstring &mode, std::wstring &error, bool csv = false);
+    // After a connection is stopped, reopen the same log/parts rather than discard
+    // history and the user's continuous-save destination.
+    bool Resume(const std::wstring &mode, std::wstring &error);
+    bool StartContinuousSave(const std::wstring &destination, std::wstring &error);
+    void StopContinuousSave();
+    bool ContinuousSaving() const { return continuousActive_.load(); }
+    std::wstring ContinuousSaveError() const;
     void WriteRaw(const Bytes &data);
     void WriteText(const std::wstring &text);
     void WriteStatus(const std::wstring &text);
@@ -62,6 +69,8 @@ class SessionLogger
     bool CaptureSnapshot(ExportPoint, const std::atomic<bool> *, Snapshot &, std::wstring &);
     static bool CopySnapshot(const Snapshot &, const std::wstring &, std::wstring &,
                              const std::atomic<bool> *, const ExportProgress &);
+    bool CopyCompletedRange(ExportPoint, std::uint64_t from, HANDLE output, std::wstring& error);
+    void ContinuousSaveWorker(HANDLE output);
     void WriteBytes(const void *data, DWORD size);
     void Run();
     std::deque<Bytes> queue_;
@@ -78,6 +87,12 @@ class SessionLogger
     std::mutex encodeMutex_;
     std::wstring path_;
     std::vector<Part> parts_;
+    mutable std::mutex continuousMutex_;
+    std::condition_variable continuousWake_;
+    std::thread continuousWorker_;
+    std::atomic<bool> continuousStop_{false}, continuousActive_{false};
+    std::atomic<std::uint64_t> continuousStopAt_{0};
+    std::wstring continuousPath_, continuousError_;
     std::uint64_t written_ = 0;
     std::uint64_t generation_ = 0, accepted_ = 0, completed_ = 0;
 #ifdef SERIALCTL_LOGGER_TESTING

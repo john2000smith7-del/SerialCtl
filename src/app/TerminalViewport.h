@@ -2,6 +2,7 @@
 #include "TerminalViewportController.h"
 #include "TerminalDecoder.h"
 #include "PaintBuffer.h"
+#include <array>
 #include <windows.h>
 namespace serialctl {
 class PerformanceMetrics;
@@ -53,6 +54,8 @@ private:
         std::wstring selection;
     };
     std::optional<RegisterPreview> registerPreview_;
+    RECT registerCardBounds_{};
+    std::array<RECT, 32> registerBitBounds_{};
     TerminalViewportController controller_;
     PaintBuffer paintBuffer_;
     std::uint64_t paintSample_ = 0;

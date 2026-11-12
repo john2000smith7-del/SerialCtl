@@ -2,6 +2,7 @@
 #include <chrono>
 #include "TerminalDecoder.h"
 #include "MainWindow.h"
+#include "SerialShortcut.h"
 #include "../power/RemotePowerProtocol.h"
 #include "TerminalViewportGeometry.h"
 #include "UiDialogViewport.h"
@@ -167,7 +168,8 @@ enum TerminalMenuId {
     IdMenuRawTrace,
     IdMenuEncodingCmdAuto,
     IdMenuNetworkDiagnostics,
-    IdMenuCancelLogExport
+    IdMenuCancelLogExport,
+    IdMenuContinuousLog
 };
 
 enum LineEndingMenuId {
@@ -185,7 +187,10 @@ enum SettingsControlId {
     IdSettingsEnding,
     IdSettingsExportNote,
     IdSettingsTest,
-    IdSettingsTestNote
+    IdSettingsTestNote,
+    IdSettingsShortcuts = 2520,
+    IdShortcutMode = 2521,
+    IdShortcutReset = 2522
 };
 
 enum SftpMenuId {
@@ -1203,7 +1208,20 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         // TranslateMessage may post ETX even after Ctrl+C key-down was handled
         // for copy/interrupt; never deliver a second, accidental CMD interrupt.
         if (self->selectedMode_ == 4 && wParam == 3) return 0;
-        self->SendTerminalCharacter(static_cast<wchar_t>(wParam));
+        const auto character = static_cast<wchar_t>(wParam);
+        if (character >= 0xD800 && character <= 0xDBFF) {
+            self->pendingHighSurrogate_ = character;
+            return 0;
+        }
+        if (character >= 0xDC00 && character <= 0xDFFF) {
+            const wchar_t high = self->pendingHighSurrogate_;
+            self->pendingHighSurrogate_ = 0;
+            if (high >= 0xD800 && high <= 0xDBFF)
+                self->SendTerminalText(std::wstring{high, character});
+            return 0; // Reject an isolated low surrogate, never send a replacement '?'.
+        }
+        self->pendingHighSurrogate_ = 0;
+        self->SendTerminalCharacter(character);
         return 0;
     }
     if (message == WM_SYSCHAR) {
@@ -1223,6 +1241,16 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
         const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         const bool alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+        if (wParam == VK_F2 && !shift && !control && !alt && self->serialF2CustomEnabled_ &&
+            (self->selectedMode_ == 1 || self->selectedMode_ == 3)) {
+            // Preserve automatic firmware-interrupt F2: this handles only a physical
+            // terminal key press. Suppress auto-repeat to avoid duplicate commands.
+            if (!(lParam & (1LL << 30))) {
+                const auto command = SerialF2Payload();
+                self->SendBytesToActive(Bytes(command.begin(), command.end()), false);
+            }
+            return 0;
+        }
         if (wParam == VK_APPS || (shift && wParam == VK_F10)) {
             if (!(lParam & (1LL << 30))) self->ShowSettings();
             return 0;
@@ -4587,7 +4615,13 @@ void MainWindow::ConnectFromDialog() {
     session->password = pendingPassword_;
     session->port = pendingPort_;
     session->logger = std::make_shared<SessionLogger>();
+    const bool resumeLog = pendingReconnectId_ && FindSession(pendingReconnectId_) &&
+        FindSession(pendingReconnectId_)->logger &&
+        !FindSession(pendingReconnectId_)->logger->Path().empty();
     if (auto* previous = FindSession(pendingReconnectId_)) {
+        // Reuse the same append-only log across disconnect/reconnect. The terminal
+        // already preserves its display model; don't discard its earlier disk log.
+        if (resumeLog) session->logger = previous->logger;
         session->name=previous->name; session->codePage=previous->codePage;
         session->lineEndingIndex=previous->lineEndingIndex; session->rawTrace=previous->rawTrace;
         session->terminal=previous->terminal; session->terminal.BeginConnection();
@@ -4621,11 +4655,13 @@ void MainWindow::ConnectFromDialog() {
     AppendStatus(L"正在连接：" + pendingSession_->name, false);
     SessionState* pending = pendingSession_.get();
     try {
-        connectionThread_ = std::thread([this, pending, sessionId] {
+        connectionThread_ = std::thread([this, pending, sessionId, resumeLog] {
             auto result = std::make_unique<ConnectionMessage>();
             result->sessionId = sessionId;
             try {
-                if (!connectionCancel_.load() && pending->logger->Start(pending->name, result->error)) {
+                if (!connectionCancel_.load() && (resumeLog
+                        ? pending->logger->Resume(pending->name, result->error)
+                        : pending->logger->Start(pending->name, result->error))) {
                     result->success = pending->connection->Start(
                         [this, sessionId, boot = pending->boot, transport = std::weak_ptr<IConnection>(pending->connection)](const Bytes& data) {
                             const auto burst = boot->FeedBurst(reinterpret_cast<const char*>(data.data()), data.size(), GetTickCount64());
@@ -4806,6 +4842,12 @@ void MainWindow::CloseSession(std::uint64_t id) {
     const auto index = static_cast<size_t>(it - sessions_.begin());
     const bool wasActive = session == activeSession_;
     if (!session->password.empty()) SecureZeroMemory(session->password.data(), session->password.size()*sizeof(wchar_t));
+    // A slow destination (for example SMB) must not block the UI when the
+    // disconnected card is closed. Keep the logger alive until mirror shutdown.
+    if (session->logger && session->logger->ContinuousSaving()) {
+        auto retainedLog = session->logger;
+        connectionCleanup_.Retire([retainedLog] { retainedLog->StopContinuousSave(); });
+    }
     sessions_.erase(it);
     if (wasActive) {
         activeSession_=nullptr; connection_=nullptr; logger_=nullptr; activeConnectionName_.clear(); selectedMode_=-1;
@@ -5310,8 +5352,26 @@ bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std:
     return true;
 }
 
+void MainWindow::SendTerminalText(const std::wstring& text) {
+    if (text.empty() || !activeSession_ || !connection_ || !connection_->IsConnected() ||
+        macro_.RunningIndex() >= 0) return;
+    if (selectedMode_ == 4) {
+        if (!activeSession_->cmdEditor.Insert(text))
+            AppendStatus(L"CMD 输入超过 8191 字符", true);
+        InvalidateRect(terminal_, nullptr, FALSE);
+        return;
+    }
+    const auto bytes = EncodeTerminalText(text);
+    if (!bytes.empty())
+        SendBytesToActive(Bytes(bytes.begin(), bytes.end()), localEchoEnabled_, text);
+}
+
 void MainWindow::SendTerminalCharacter(wchar_t character) {
     if (!activeSession_ || !connection_ || !connection_->IsConnected()) return;
+    if (character >= 32 && character != 127) {
+        SendTerminalText(std::wstring(1, character));
+        return;
+    }
     if (selectedMode_ == 4 && character == 3) {
         std::wstring error;
         if (!connection_->Interrupt(error)) {
@@ -5916,6 +5976,44 @@ void MainWindow::StopLogExport() {
     logExportJob_.reset();
 }
 
+void MainWindow::ToggleContinuousLogSave(HWND owner) {
+    if (!activeSession_ || !activeSession_->logger || activeSession_->logger->Path().empty()) {
+        AppendStatus(L"当前没有可持续保存的日志", true); return;
+    }
+    auto logger = activeSession_->logger;
+    if (logger->ContinuousSaving()) {
+        // Joining the follower is potentially slow on a network destination:
+        // reuse the existing nonblocking export task machinery.
+        const auto point = logger->CaptureExportPoint();
+        StartLogExport(L"正在结束持续保存", L"", point.bytes,
+            [logger](std::wstring& error, const std::atomic<bool>*, const SessionLogger::ExportProgress&) {
+                logger->StopContinuousSave();
+                error = logger->ContinuousSaveError();
+                return error.empty();
+            });
+        return;
+    }
+    const auto sessionId = activeSession_->id;
+    wchar_t path[MAX_PATH] = L"SerialCtl-持续日志.log";
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = owner ? owner : window_;
+    dialog.lpstrFilter = L"日志文件 (*.log)\0*.log\0所有文件 (*.*)\0*.*\0";
+    dialog.lpstrFile = path;
+    dialog.nMaxFile = static_cast<DWORD>(std::size(path));
+    dialog.lpstrDefExt = L"log";
+    dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    if (!GetSaveFileNameW(&dialog)) return;
+    if (!activeSession_ || activeSession_->id != sessionId || activeSession_->logger != logger) {
+        AppendStatus(L"会话已切换，请重新选择持续保存目标", true); return;
+    }
+    std::wstring error;
+    if (!logger->StartContinuousSave(path, error)) {
+        AppendStatus(L"持续保存启动失败：" + error, true); return;
+    }
+    AppendStatus(L"日志正在持续保存，新输出将自动追加到指定文件", false);
+}
+
 void MainWindow::SaveCurrentLog(HWND owner) {
     PollLogExport();
     if (logExportJob_) return;
@@ -5982,6 +6080,92 @@ void MainWindow::SaveNetworkDiagnostics(HWND owner) {
     AppendStatus(ok ? L"网络连接诊断已保存" : L"网络连接诊断写入失败：" + error, !ok);
 }
 
+void MainWindow::ShowShortcutSettings(HWND owner) {
+    struct Template { DLGTEMPLATE dialog; WORD menu = 0, cls = 0, title = 0; } data{};
+    data.dialog.style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME;
+    data.dialog.cx = 240;
+    data.dialog.cy = 180;
+    UiDialogBoxIndirectOwned(instance_, &data.dialog, owner ? owner : window_, ShortcutSettingsDialogProc,
+                             reinterpret_cast<LPARAM>(this));
+}
+
+INT_PTR CALLBACK MainWindow::ShortcutSettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_INITDIALOG)
+        SetWindowLongPtrW(dialog, DWLP_USER, lParam);
+    auto* self = reinterpret_cast<MainWindow*>(GetWindowLongPtrW(dialog, DWLP_USER));
+    if (!self) return FALSE;
+    if (message == WM_INITDIALOG) {
+        SetWindowTextW(dialog, L"快捷键设置");
+        ApplyDarkTitleBar(dialog, self->darkMode_);
+        UiResizeDialog(dialog, Ui::Dpi, 420, 238);
+        auto add = [&](const wchar_t* type, const wchar_t* text, int id, int x, int y,
+                       int width, int height, DWORD style = 0) {
+            HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
+                Ui::Scale(x), Ui::Scale(y), Ui::Scale(width), Ui::Scale(height), dialog,
+                reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), self->instance_, nullptr);
+            SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(self->uiFont_), FALSE);
+            if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
+                SetWindowSubclass(control, ButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(self));
+            if (_wcsicmp(type, WC_COMBOBOXW) == 0)
+                UiStyleField(control, &self->dialogFieldStyle_);
+            return control;
+        };
+        add(L"STATIC", L"F2 · 本地串口与远程共享串口", -1, 16, 18, 388, 24);
+        HWND combo = add(WC_COMBOBOXW, L"", IdShortcutMode, 16, 48, 388, 150,
+            CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_TABSTOP);
+        for (const wchar_t* item : {L"自定义模式（发送 232start）", L"正常模式（原生 F2）"})
+            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item));
+        SendMessageW(combo, CB_SETCURSEL, self->serialF2CustomEnabled_ ? 0 : 1, 0);
+        add(L"STATIC", L"不自动追加回车；自动 UEFI 启动打断不受影响。", -1, 16, 92, 388, 36);
+        const DWORD button = BS_OWNERDRAW | WS_TABSTOP;
+        add(L"BUTTON", L"恢复默认", IdShortcutReset, 16, 154, 120, 32, button);
+        add(L"BUTTON", L"取消", IDCANCEL, 204, 154, 96, 36, button);
+        add(L"BUTTON", L"保存", IDOK, 308, 154, 96, 36, button);
+        UiLayoutBatch layout; layout.ComboVisibleHeight(combo, Ui::Scale(28)); layout.Commit();
+        CenterOnOwner(dialog, GetWindow(dialog, GW_OWNER));
+        UiDialogViewport::Fit(dialog, Ui::Dpi);
+        UiRunAfterFirstPaint(dialog);
+        return TRUE;
+    }
+    if (message == WM_ERASEBKGND) {
+        RECT rect{}; GetClientRect(dialog, &rect);
+        FillRect(reinterpret_cast<HDC>(wParam), &rect, self->panelBrush_);
+        return TRUE;
+    }
+    if (message == WM_CTLCOLORDLG || message == WM_CTLCOLORSTATIC || message == WM_CTLCOLORBTN) {
+        const auto colors = Colors(self->darkMode_);
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        SetBkMode(dc, TRANSPARENT); SetTextColor(dc, colors.text); SetBkColor(dc, colors.panel);
+        return reinterpret_cast<INT_PTR>(self->panelBrush_);
+    }
+    if (message == WM_MEASUREITEM) {
+        auto& item = *reinterpret_cast<MEASUREITEMSTRUCT*>(lParam);
+        if (item.CtlType == ODT_COMBOBOX) { item.itemHeight = Ui::Scale(28); return TRUE; }
+    }
+    if (message == WM_DRAWITEM) {
+        self->DrawOwnerItem(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam)); return TRUE;
+    }
+    if (message == UiFirstPaintReady) return TRUE;
+    if (message == WM_CLOSE || (message == WM_COMMAND && LOWORD(wParam) == IDCANCEL)) {
+        UiEndOwnedDialog(dialog, IDCANCEL); return TRUE;
+    }
+    if (message == WM_COMMAND) {
+        const auto id = LOWORD(wParam);
+        if (id == IdShortcutReset) {
+            SendDlgItemMessageW(dialog, IdShortcutMode, CB_SETCURSEL, 0, 0); return TRUE;
+        }
+        if (id == IDOK) {
+            const auto selected = SendDlgItemMessageW(dialog, IdShortcutMode, CB_GETCURSEL, 0, 0);
+            if (selected == 0 || selected == 1) {
+                self->serialF2CustomEnabled_ = selected == 0;
+                self->SaveUiState();
+            }
+            UiEndOwnedDialog(dialog, IDOK); return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 void MainWindow::ShowSettings() {
     SettingsDialogState state{this, activeSession_ ? activeSession_->id : 0};
     struct Template {
@@ -6018,6 +6202,18 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             self->activeSession_->mode != 4);
         enable(IdMenuSaveLog, hasSession && self->logger_ && !self->logger_->Path().empty() &&
             !self->logExportJob_);
+        enable(IdMenuContinuousLog, hasSession && self->logger_ && !self->logger_->Path().empty() &&
+            !self->logExportJob_);
+        if (HWND toggle = GetDlgItem(dialog, IdMenuContinuousLog)) {
+            const bool running = hasSession && self->logger_ && self->logger_->ContinuousSaving();
+            const wchar_t* title = running ? L"停止持续保存" : L"持续保存…";
+            if (ControlText(toggle) != title) SetWindowTextW(toggle, title);
+            if (hasSession && self->logger_) {
+                const auto error = self->logger_->ContinuousSaveError();
+                if (!error.empty() && self->logExportNotice_ != error)
+                    self->logExportNotice_ = error;
+            }
+        }
         enable(IdMenuCancelLogExport, self->logExportJob_ && !self->logExportJob_->cancel.load());
         const auto note = self->logExportNotice_.empty() ?
             std::wstring(L"保存/取消仅影响选项；操作立即执行。") : self->logExportNotice_;
@@ -6041,7 +6237,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
     if (message == WM_INITDIALOG) {
         SetWindowTextW(dialog, L"设置");
         ApplyDarkTitleBar(dialog, self->darkMode_);
-        UiResizeDialog(dialog, Ui::Dpi, 436, 752);
+        UiResizeDialog(dialog, Ui::Dpi, 436, 800);
         auto add = [&](const wchar_t* type, const wchar_t* text, int id, int x, int y,
                        int width, int height, DWORD style = 0) {
             HWND control = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style,
@@ -6093,8 +6289,9 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         CheckDlgButton(dialog, IdSettingsRawTrace,
             hasSession && self->activeSession_->rawTrace ? BST_CHECKED : BST_UNCHECKED);
         add(L"STATIC", L"会话操作 · 点击立即执行", -1, 16, 208, 404, 24);
-        add(L"BUTTON", L"保存当前日志…", IdMenuSaveLog, 16, 240, 196, 32, button);
-        add(L"BUTTON", L"清空终端", IdMenuClear, 224, 240, 196, 32, button);
+        add(L"BUTTON", L"保存快照…", IdMenuSaveLog, 16, 240, 124, 32, button);
+        add(L"BUTTON", L"持续保存…", IdMenuContinuousLog, 152, 240, 124, 32, button);
+        add(L"BUTTON", L"清空终端", IdMenuClear, 288, 240, 132, 32, button);
         add(L"BUTTON", L"复制", IdMenuCopy, 16, 280, 128, 32, button);
         add(L"BUTTON", L"粘贴", IdMenuPaste, 156, 280, 128, 32, button);
         add(L"BUTTON", L"全选", IdMenuSelectAll, 296, 280, 124, 32, button);
@@ -6129,10 +6326,11 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
         add(L"BUTTON", L"停止服务", IdSettingsMcpStop, 16, 614, 96, 30, button);
         add(L"BUTTON", L"启动服务", IdSettingsMcpStart, 120, 614, 96, 30, button);
 
-        add(L"BUTTON", L"取消", IDCANCEL, 216, 660, 96, 36, button);
-        add(L"BUTTON", L"保存", IDOK, 324, 660, 96, 36, button);
-        HWND version = add(L"STATIC", L"SerialCtl " SERIALCTL_VERSION, -1, 16, 708, 136, 20, SS_LEFT);
-        HWND credit = add(L"STATIC", L"Application design by jiojio", -1, 152, 708, 268, 20, SS_RIGHT);
+        add(L"BUTTON", L"快捷键设置…", IdSettingsShortcuts, 16, 654, 404, 32, button);
+        add(L"BUTTON", L"取消", IDCANCEL, 216, 708, 96, 36, button);
+        add(L"BUTTON", L"保存", IDOK, 324, 708, 96, 36, button);
+        HWND version = add(L"STATIC", L"SerialCtl " SERIALCTL_VERSION, -1, 16, 756, 136, 20, SS_LEFT);
+        HWND credit = add(L"STATIC", L"Application design by jiojio", -1, 152, 756, 268, 20, SS_RIGHT);
         SetPropW(version, L"SerialCtl.Secondary", reinterpret_cast<HANDLE>(1));
         SetPropW(credit, L"SerialCtl.Secondary", reinterpret_cast<HANDLE>(1));
         SendMessageW(version, WM_SETFONT, reinterpret_cast<WPARAM>(self->smallFont_), FALSE);
@@ -6201,6 +6399,10 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
     }
     if (message == WM_COMMAND) {
         const UINT id = LOWORD(wParam);
+        if (id == IdSettingsShortcuts) {
+            self->ShowShortcutSettings(dialog);
+            return TRUE;
+        }
         if(id==IdSettingsTest) {
             const bool enabled=PowerService::ConnectionAvailable();
             CheckDlgButton(dialog,IdSettingsTest,enabled?BST_CHECKED:BST_UNCHECKED);
@@ -6264,7 +6466,7 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
             return TRUE;
         }
         if (id == IdMenuNetworkDiagnostics || id == IdMenuCancelLogExport ||
-            id == IdMenuSaveLog || id == IdMenuClear ||
+            id == IdMenuSaveLog || id == IdMenuContinuousLog || id == IdMenuClear ||
             id == IdMenuCopy || id == IdMenuPaste || id == IdMenuSelectAll) {
             refresh();
             if (IsWindowEnabled(GetDlgItem(dialog, id))) self->ExecuteTerminalAction(id, dialog);
@@ -6327,6 +6529,9 @@ void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
     }
     case IdMenuSaveLog:
         SaveCurrentLog(owner);
+        break;
+    case IdMenuContinuousLog:
+        ToggleContinuousLogSave(owner);
         break;
     case IdMenuClear:
         if (activeSession_) {
@@ -6563,8 +6768,15 @@ void MainWindow::CopyTerminalSelection(bool selectAll, bool inspectRegister) {
 
 std::string MainWindow::EncodeTerminalText(const std::wstring &text) {
     const UINT page = SelectedCodePage();
-    if (selectedMode_ != 4)
-        return WideToMultiByte(text, page);
+    if (selectedMode_ != 4) {
+        const auto bytes = WideToMultiByte(text, page);
+        if (bytes.empty() || MultiByteToWide(reinterpret_cast<const std::uint8_t*>(bytes.data()),
+                                            bytes.size(), page) != text) {
+            AppendStatus(L"当前终端编码无法无损表示输入字符，请调整 UTF-8/GBK/GB2312 编码", true);
+            return {};
+        }
+        return bytes;
+    }
     BOOL replacement = FALSE;
     const DWORD flags = page == CP_UTF8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS;
     auto used = page == CP_UTF8 ? nullptr : &replacement;
@@ -6839,6 +7051,7 @@ void MainWindow::LoadUiState() {
     }
     uiSettingsPath_ = JoinLocalPath(directory, L"settings.ini");
     const std::wstring &path = uiSettingsPath_;
+    serialF2CustomEnabled_ = GetPrivateProfileIntW(L"Shortcuts", L"SerialF2Custom", 1, path.c_str()) != 0;
     petSettings_.enabled = GetPrivateProfileIntW(L"Pet", L"Enabled", 1, path.c_str()) != 0;
     petSettings_.follow = GetPrivateProfileIntW(L"Pet", L"Follow", 1, path.c_str()) != 0;
     petSettings_.opening = GetPrivateProfileIntW(L"Pet", L"Opening", 1, path.c_str()) != 0;
@@ -6939,6 +7152,7 @@ void MainWindow::SaveUiState() {
     snapshot.entries.push_back({L"SSH",L"History",MultiByteToWide(reinterpret_cast<const uint8_t*>(history.data()),history.size(),CP_UTF8)});
     add(L"Commands", L"DoubleClickRun", notebook_.DoubleClick());
     add(L"Commands", L"IntervalMs", notebook_.Interval());
+    add(L"Shortcuts", L"SerialF2Custom", serialF2CustomEnabled_ ? 1 : 0);
     add(L"Mcp", L"Enabled", mcpEnabled_ ? 1 : 0);
     add(L"Mcp", L"Port", mcpPort_);
     snapshot.entries.push_back({L"Mcp", L"BindIp", MultiByteToWide(reinterpret_cast<const uint8_t*>(mcpBindIp_.data()), mcpBindIp_.size(), CP_UTF8)});

@@ -291,6 +291,19 @@ void TerminalModel::PutCharacter(
     }
     const size_t column = static_cast<size_t>(screen.cursorColumn);
     if (insertMode_) InsertCharacters(width);
+    // A serial peer may erase a wide cell with BS/SPACE instead of a full
+    // two-column erase. Never leave the other half of that glyph behind.
+    if (line.cells[column].continuation && column > 0) {
+        auto &leading = line.cells[column - 1];
+        leading.character = L' ';
+        leading.continuation = false;
+    }
+    if (width == 1 && IsWideCharacter(line.cells[column].character) &&
+        column + 1 < line.cells.size() && line.cells[column + 1].continuation) {
+        auto &trailing = line.cells[column + 1];
+        trailing.character = L' ';
+        trailing.continuation = false;
+    }
     line.cells[column].character = character;
     line.cells[column].attributes = attributes_;
     line.cells[column].continuation = false;

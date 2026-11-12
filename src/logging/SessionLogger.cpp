@@ -12,11 +12,13 @@ namespace serialctl
 
 SessionLogger::~SessionLogger()
 {
+    StopContinuousSave();
     Stop();
 }
 
 bool SessionLogger::Start(const std::wstring &mode, std::wstring &error, bool csv)
 {
+    StopContinuousSave();
     Stop();
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -88,6 +90,52 @@ bool SessionLogger::Start(const std::wstring &mode, std::wstring &error, bool cs
     }
     if (!csv)
         WriteStatus(L"SerialCtl 会话开始，模式：" + mode);
+    return true;
+}
+
+bool SessionLogger::Resume(const std::wstring &mode, std::wstring &error) {
+    Stop();
+    std::wstring lastPath;
+    std::uint64_t expected = 0;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (path_.empty() || parts_.empty() || !failure_.empty()) {
+            error = failure_.empty() ? L"没有可恢复的会话日志" : failure_;
+            return false;
+        }
+        lastPath = parts_.back().path;
+        expected = parts_.back().length;
+    }
+    HANDLE file = CreateFileW(lastPath.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) { error = L"无法重新打开历史日志：" + Win32ErrorMessage(); return false; }
+    LARGE_INTEGER actual{}, end{};
+    end.QuadPart = 0;
+    if (!GetFileSizeEx(file, &actual) || actual.QuadPart < 0 ||
+        static_cast<std::uint64_t>(actual.QuadPart) != expected ||
+        !SetFilePointerEx(file, end, nullptr, FILE_END)) {
+        CloseHandle(file);
+        error = L"历史日志文件已发生外部变化，拒绝重连追加";
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        file_ = file;
+        written_ = expected;
+        stopping_ = false;
+        writerAlive_ = true;
+    }
+    try { worker_ = std::thread(&SessionLogger::Run, this); }
+    catch (...) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true; writerAlive_ = false; file_ = INVALID_HANDLE_VALUE;
+        }
+        CloseHandle(file);
+        error = L"无法启动历史日志续写线程";
+        return false;
+    }
+    WriteStatus(L"SerialCtl 会话重新连接，模式：" + mode);
     return true;
 }
 
@@ -383,6 +431,125 @@ bool SessionLogger::CopySnapshot(const Snapshot &snapshot, const std::wstring &d
     return success;
 }
 
+
+bool SessionLogger::CopyCompletedRange(ExportPoint point, std::uint64_t from,
+                                       HANDLE output, std::wstring& error) {
+    Snapshot snapshot;
+    if (from > point.bytes || !CaptureSnapshot(point, nullptr, snapshot, error)) return false;
+    std::array<char, 65536> buffer{};
+    auto skip = from;
+    for (const auto& part : snapshot.parts) {
+        if (skip >= part.length) { skip -= part.length; continue; }
+        HANDLE input = CreateFileW(part.path.c_str(), GENERIC_READ,
+                                   FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                                   FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (input == INVALID_HANDLE_VALUE) {
+            error = L"持续保存无法读取日志分卷：" + Win32ErrorMessage(); return false;
+        }
+        LARGE_INTEGER distance{}; distance.QuadPart = static_cast<LONGLONG>(skip);
+        if (!SetFilePointerEx(input, distance, nullptr, FILE_BEGIN)) {
+            error = L"持续保存定位源日志失败：" + Win32ErrorMessage(); CloseHandle(input); return false;
+        }
+        auto remaining = part.length - skip;
+        skip = 0;
+        while (remaining) {
+            DWORD count = 0;
+            const auto required = static_cast<DWORD>(std::min<std::uint64_t>(remaining, buffer.size()));
+            if (!ReadFile(input, buffer.data(), required, &count, nullptr) || !count) {
+                error = L"持续保存读取源日志失败：" + Win32ErrorMessage(); CloseHandle(input); return false;
+            }
+            DWORD pos = 0;
+            while (pos < count) {
+                DWORD written = 0;
+                if (!WriteFile(output, buffer.data() + pos, count - pos, &written, nullptr) || !written) {
+                    error = L"持续保存写入目标失败：" + Win32ErrorMessage(); CloseHandle(input); return false;
+                }
+                pos += written;
+            }
+            remaining -= count;
+        }
+        CloseHandle(input);
+    }
+    return true;
+}
+
+std::wstring SessionLogger::ContinuousSaveError() const {
+    std::lock_guard<std::mutex> lock(continuousMutex_);
+    return continuousError_;
+}
+
+bool SessionLogger::StartContinuousSave(const std::wstring &destination, std::wstring &error) {
+    if (continuousActive_.load()) { error = L"已经在持续保存日志"; return false; }
+    if (continuousWorker_.joinable()) continuousWorker_.join();
+    std::wstring fullDestination, fullSource, parent, sourceParent;
+    const auto source = Path();
+    if (source.empty() || !FullExportPath(destination, fullDestination, error) ||
+        !FullExportPath(source, fullSource, error) ||
+        !ExportParent(fullDestination, parent, error) ||
+        !ExportParent(fullSource, sourceParent, error)) return false;
+    const auto filename = fullDestination.substr(fullDestination.find_last_of(L"\\/") + 1);
+    const auto sourceName = fullSource.substr(fullSource.find_last_of(L"\\/") + 1);
+    if (_wcsicmp(parent.c_str(), sourceParent.c_str()) == 0 && IsLogFamily(filename, sourceName)) {
+        error = L"不能将持续保存目标设为日志源文件或分卷"; return false;
+    }
+    HANDLE output = CreateFileW(fullDestination.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                                 nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (output == INVALID_HANDLE_VALUE) {
+        error = L"无法创建持续保存目标：" + Win32ErrorMessage(); return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(continuousMutex_);
+        continuousPath_ = fullDestination;
+        continuousError_.clear();
+    }
+    continuousStopAt_.store(0);
+    continuousStop_.store(false);
+    continuousActive_.store(true);
+    try { continuousWorker_ = std::thread(&SessionLogger::ContinuousSaveWorker, this, output); }
+    catch (...) {
+        CloseHandle(output); continuousActive_.store(false);
+        error = L"无法启动持续日志保存线程"; return false;
+    }
+    return true;
+}
+
+void SessionLogger::StopContinuousSave() {
+    if (!continuousWorker_.joinable()) return;
+    continuousStopAt_.store(CaptureExportPoint().bytes);
+    continuousStop_.store(true);
+    continuousWake_.notify_all();
+    continuousWorker_.join();
+    continuousActive_.store(false);
+}
+
+void SessionLogger::ContinuousSaveWorker(HANDLE output) {
+    std::uint64_t offset = 0;
+    std::wstring error;
+    for (;;) {
+        const auto point = CaptureExportPoint();
+        auto end = point.bytes;
+        if (continuousStop_.load()) end = std::min(end, continuousStopAt_.load());
+        if (end > offset) {
+            if (!CopyCompletedRange({point.generation, end, point.root}, offset, output, error))
+                break;
+            offset = end;
+            if (!FlushFileBuffers(output)) {
+                error = L"持续保存刷新目标文件失败：" + Win32ErrorMessage(); break;
+            }
+        }
+        if (continuousStop_.load() && offset >= continuousStopAt_.load()) break;
+        std::unique_lock<std::mutex> lock(continuousMutex_);
+        continuousWake_.wait_for(lock, std::chrono::milliseconds(200));
+    }
+    if (!FlushFileBuffers(output) && error.empty())
+        error = L"持续保存最终刷新失败：" + Win32ErrorMessage();
+    CloseHandle(output);
+    {
+        std::lock_guard<std::mutex> lock(continuousMutex_);
+        if (!error.empty()) continuousError_ = error;
+    }
+    continuousActive_.store(false);
+}
 
 std::wstring SessionLogger::Error()
 {

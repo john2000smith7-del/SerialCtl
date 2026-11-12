@@ -276,6 +276,41 @@ int main() {
         logger.Stop();
         evidence["cases"].push_back({{"name", "slow disk bounded queue: producer never blocks, rejects >8MB without hang"}});
 
+        // A disconnected session can be exported, and reconnect retains the
+        // identical source log plus the user's continuously saved mirror.
+        Check(logger.Start(L"continuous-reconnect", error, true), "start resumable log");
+        const auto resumable = fs::path(logger.Path());
+        roots.push_back(resumable);
+        const auto mirror = directory / L"continuous-mirror.log";
+        roots.push_back(mirror);
+        Check(logger.StartContinuousSave(mirror.wstring(), error), "start live mirror");
+        logger.WriteRaw(Bytes{'A', 'B'});
+        Check(SessionLoggerTestAccess::Drained(logger), "initial source drained");
+        logger.Stop();
+        const auto disconnected = directory / L"disconnected-snapshot.log";
+        roots.push_back(disconnected);
+        Check(logger.SaveCopy(disconnected.wstring(), error), "save disconnected source");
+        Check(Read(disconnected) == "AB", "disconnected snapshot preserves source");
+        Check(logger.Resume(L"serial", error), "reopen original log on reconnect");
+        Check(fs::path(logger.Path()) == resumable, "reconnect retains original log path");
+        logger.WriteRaw(Bytes{'C', 'D'});
+        Check(SessionLoggerTestAccess::Drained(logger), "reconnected source drained");
+        logger.Stop();
+        const auto deadline = Clock::now() + 5s;
+        bool mirrored = false;
+        while (Clock::now() < deadline) {
+            if (fs::exists(mirror) && fs::file_size(mirror) == fs::file_size(resumable)) {
+                mirrored = Read(mirror) == Read(resumable);
+                if (mirrored) break;
+            }
+            std::this_thread::sleep_for(25ms);
+        }
+        Check(mirrored, "continuous mirror includes all pre/post reconnect bytes, once, in order");
+        logger.StopContinuousSave();
+        Check(!logger.ContinuousSaving() && logger.ContinuousSaveError().empty(), "mirror exits cleanly");
+        evidence["cases"].push_back({{"name", "continuous copy + disconnected save + reconnect history"},
+            {"source_bytes", fs::file_size(resumable)}});
+
         evidence["success"] = true;
     } catch (const std::exception &error) {
         evidence["success"] = false;

@@ -1,4 +1,5 @@
 #include "TerminalViewport.h"
+#include "SerialShortcut.h"
 #include "TerminalViewportGeometry.h"
 #include "PerformanceMetrics.h"
 #include <array>
@@ -57,7 +58,8 @@ void DrawTextSimple(HDC dc, const std::wstring& text, RECT rect, COLORREF color,
 void DrawRoundedBox(HDC dc, const RECT& rect, int radius, COLORREF fill, COLORREF border) { UiBox(dc, rect, fill, border, radius); }
 
 void DrawRegisterPreview(HDC dc, RECT client, const RECT& selection, std::uint32_t value,
-                         const TerminalViewport::Options& options) {
+                         const TerminalViewport::Options& options,
+                         RECT* cardBounds, std::array<RECT, 32>* bitBounds) {
     const int pad = Ui::Scale(10), gap = Ui::Scale(6);
     const int cellWidth = Ui::Scale(20), groupPad = Ui::Scale(3);
     const int groupWidth = 8 * cellWidth + 2 * groupPad;
@@ -84,6 +86,7 @@ void DrawRegisterPreview(HDC dc, RECT client, const RECT& selection, std::uint32
         }
     }
     const RECT card{left, top, left + width, top + height};
+    if (cardBounds) *cardBounds = card;
     const auto colors = UiTheme(options.dark);
     UiBox(dc, card, colors.surface, colors.border, Ui::CardRadius);
     wchar_t hex[11]{};
@@ -101,6 +104,8 @@ void DrawRegisterPreview(HDC dc, RECT client, const RECT& selection, std::uint32
             const LONG bitX = x + groupPad + offset * cellWidth;
             const RECT number{bitX, y + Ui::Scale(2), bitX + cellWidth, y + Ui::Scale(18)};
             const RECT digit{bitX, number.bottom, bitX + cellWidth, y + groupHeight - Ui::Scale(3)};
+            if (bitBounds) (*bitBounds)[static_cast<size_t>(bit)] =
+                {number.left, number.top, digit.right, digit.bottom};
             if (set) UiBox(dc, {digit.left + 1, digit.top, digit.right - 1, digit.bottom},
                           colors.accentSoft, colors.accentSoft, Ui::Scale(4));
             DrawTextSimple(dc, std::to_wstring(bit), number, colors.muted, options.smallFont,
@@ -119,6 +124,8 @@ void TerminalViewport::ShowRegisterPreview(HWND window, std::wstring_view select
         return;
     }
     registerPreview_ = RegisterPreview{*value, std::wstring(selection)};
+    registerCardBounds_ = {};
+    registerBitBounds_.fill(RECT{});
     cache_.valid = false;
     InvalidateRect(window, nullptr, FALSE);
 }
@@ -126,6 +133,8 @@ void TerminalViewport::ShowRegisterPreview(HWND window, std::wstring_view select
 void TerminalViewport::DismissRegisterPreview(HWND window) {
     if (!registerPreview_) return;
     registerPreview_.reset();
+    registerCardBounds_ = {};
+    registerBitBounds_.fill(RECT{});
     cache_.valid = false;
     if (window) InvalidateRect(window, nullptr, FALSE);
 }
@@ -376,6 +385,8 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
             gdiCalls += 2;
         }
 
+        registerCardBounds_ = {};
+        registerBitBounds_.fill(RECT{});
         if (registerPreview_ && focused && input.selectionActive && !input.selecting) {
             if (SelectionText(*activeSession_, false) != registerPreview_->selection) {
                 registerPreview_.reset();
@@ -393,7 +404,8 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
                                : textRight,
                     padding + (lastRow + 1) * Metrics().lineHeight};
                 if (selection.left < selection.right)
-                    DrawRegisterPreview(buffer, client, selection, registerPreview_->value, options);
+                    DrawRegisterPreview(buffer, client, selection, registerPreview_->value, options,
+                                        &registerCardBounds_, &registerBitBounds_);
             }
         }
     }
@@ -466,6 +478,19 @@ TerminalViewport::PointerResult TerminalViewport::Pointer(HWND window, UINT mess
     const auto select = [&](size_t line, int column, bool extend) { Select(line, column, extend); InvalidateRect(window, nullptr, FALSE); };
     const auto clearSelection = [&] { ClearSelection(); InvalidateRect(window, nullptr, FALSE); };
     if (message == WM_LBUTTONDOWN) {
+        const POINT click{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        if (registerPreview_ && PointInRect(registerCardBounds_, click)) {
+            for (unsigned bit = 0; bit < 32; ++bit) {
+                if (PointInRect(registerBitBounds_[bit], click)) {
+                    registerPreview_->value = FlipRegisterBit(registerPreview_->value, bit);
+                    cache_.valid = false;
+                    InvalidateRect(window, &registerCardBounds_, FALSE);
+                    break;
+                }
+            }
+            SetFocus(window);
+            return PointerResult::Handled; // Inside the card: don't start text selection.
+        }
         DismissRegisterPreview(window);
         SetFocus(window);
         if (!session) return PointerResult::Handled;
