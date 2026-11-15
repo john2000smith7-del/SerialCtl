@@ -73,12 +73,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $baseline = Join-Path $env:RUNNER_TEMP 'combo-baseline'
+          if (Test-Path $baseline) { Remove-Item $baseline -Recurse -Force }
           New-Item -ItemType Directory $baseline -Force | Out-Null
-          Copy-Item src/app/*.h $baseline
-          $original = git show 937e2d052f5289e1465e44277d33cbabb54441c2:src/app/UiStyle.h
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot read the exact original dropdown renderer' }
-          [IO.File]::WriteAllText((Join-Path $baseline 'UiStyle.h'), ($original -join "`n"), (New-Object Text.UTF8Encoding($false)))
-          cl /nologo /std:c++17 /EHsc /O2 /MT /DUNICODE /D_UNICODE /DNOMINMAX /I "$baseline" /I tests/integration /Fe:"$baseline/combo-baseline.exe" tests/integration/UiComboPaintTest.cpp gdiplus.lib gdi32.lib user32.lib comctl32.lib ole32.lib msimg32.lib
+          $baselineTar = Join-Path $baseline 'headers.tar'
+          git archive --format=tar -o $baselineTar 937e2d052f5289e1465e44277d33cbabb54441c2 src/app/
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot archive the exact original baseline headers' }
+          tar -xf $baselineTar -C $baseline --strip-components=2
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $baseline 'UiStyle.h'))) { throw 'Cannot extract the exact original baseline headers' }
+          cl /nologo /utf-8 /std:c++17 /EHsc /O2 /MT /DUNICODE /D_UNICODE /DNOMINMAX /DSERIALCTL_BASELINE_COMBO_PROBE /I "$baseline" /I tests/integration /Fe:"$baseline/combo-baseline.exe" tests/integration/UiComboPaintTest.cpp gdiplus.lib gdi32.lib user32.lib comctl32.lib ole32.lib msimg32.lib
           if ($LASTEXITCODE -ne 0) { throw 'Cannot build the isolated original dropdown renderer probe' }
           $ErrorActionPreference = 'Continue'
           $result = & "$baseline/combo-baseline.exe" 2>&1
@@ -175,6 +177,7 @@ jobs:
           python -m unittest discover -s tests/integration -p 'test_repository_flow.py' -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Describe the exact verified ZIP for offline signing
+        id: describe
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -190,11 +193,13 @@ jobs:
           }
           $sha = (Get-FileHash $archive[0].FullName -Algorithm SHA256).Hash
           Write-Host "::notice title=Verified portable ZIP::$($archive[0].Name) SHA256=$sha"
+          $version = $archive[0].BaseName -replace '^SerialCtl-|-Win7-x64$', ''
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "archive_path=bin/$($archive[0].Name)`nartifact_name=SerialCtl-$version-isolated-test`n", (New-Object Text.UTF8Encoding($false)))
       - name: Export private-test candidate for user download
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: SerialCtl-V2.0.20-isolated-test
-          path: bin/SerialCtl-V2.0.20-Win7-x64.zip
+          name: ${{ steps.describe.outputs.artifact_name }}
+          path: ${{ steps.describe.outputs.archive_path }}
           compression-level: 0
           if-no-files-found: error
           retention-days: 30

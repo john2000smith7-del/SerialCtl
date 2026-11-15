@@ -20,6 +20,58 @@ import zipfile
 from desktop_user_actions import DesktopActions, RECT, POINT, require
 
 
+def parse_version(version):
+    """Parse SerialCtl release tags like V2.0.21 into numeric tuples."""
+    match = re.fullmatch(r'V?(\d+)\.(\d+)\.(\d+)', version.strip())
+    require(match is not None, f'Unexpected version format: {version}')
+    return tuple(int(part) for part in match.groups())
+
+
+def field_corner_regions(box, dpi):
+    """Return only the four corner squares affected by the approved radius 10->8 polish."""
+    left, top, right, bottom = box
+    if right <= left or bottom <= top:
+        return []
+    corner = min((right - left) // 2, (bottom - top) // 2, (11 * dpi + 48) // 96)
+    if corner <= 0:
+        return []
+    return [
+        [left, top, left + corner, top + corner],
+        [right - corner, top, right, top + corner],
+        [left, bottom - corner, left + corner, bottom],
+        [right - corner, bottom - corner, right, bottom],
+    ]
+
+
+def approved_v221_main_geometry(before_rows, after_rows, dpi):
+    """Verify V2.0.21 main controls match baseline except the +2px navigation optical inset."""
+    before_by_id = {row[0]: row for row in before_rows}
+    after_by_id = {row[0]: row for row in after_rows}
+    require(set(before_by_id) == set(after_by_id) and len(before_rows) == len(after_rows),
+            'Main window non-exempt control set changed')
+    shifted_ids = (107, 125)
+    for ctrl_id, before_row in before_by_id.items():
+        if ctrl_id not in shifted_ids:
+            require(after_by_id[ctrl_id] == before_row, f'Main control {ctrl_id} geometry changed unexpectedly')
+    expected_shift = (2 * dpi + 48) // 96
+    shifts = {}
+    for ctrl_id in shifted_ids:
+        require(ctrl_id in before_by_id and ctrl_id in after_by_id, f'Missing main control {ctrl_id}')
+        _, before_cls, b_left, b_top, b_right, b_bottom, b_enabled = before_by_id[ctrl_id]
+        _, after_cls, a_left, a_top, a_right, a_bottom, a_enabled = after_by_id[ctrl_id]
+        require(before_cls == after_cls and b_enabled == a_enabled, f'Main control {ctrl_id} state changed')
+        require(a_left == b_left and a_right == b_right, f'Main control {ctrl_id} shifted horizontally')
+        require(a_right > a_left and a_bottom > a_top, f'Main control {ctrl_id} collapsed')
+        top_delta = a_top - b_top
+        require(abs(top_delta - expected_shift) <= 1, f'Main control {ctrl_id} top delta {top_delta} != {expected_shift}')
+        if ctrl_id == 107:
+            require(a_bottom == b_bottom, 'Terminal bottom edge shifted unexpectedly')
+        else:
+            require((a_bottom - a_top) == (b_bottom - b_top), 'Sidebar toggle button height changed')
+        shifts[str(ctrl_id)] = top_delta
+    return {'status': 'PASS', 'expectedTopShift': expected_shift, 'observedTopShifts': shifts}
+
+
 def glyph_rounding_equivalent(before, after, pixel, width, regions):
     """Only original glyph resampling may differ by at most two RGB levels."""
     x,y=pixel%width,pixel//width
@@ -116,6 +168,7 @@ def main():
     user.SendMessageW.argtypes, user.SendMessageW.restype = user.PostMessageW.argtypes, c.c_ssize_t
     user.SetFocus.argtypes = (w.HWND,)
     user.IsChild.argtypes = (w.HWND,w.HWND)
+    user.GetPropW.argtypes, user.GetPropW.restype = (w.HWND, w.LPCWSTR), w.HANDLE
     shell.SHGetFolderPathW.argtypes = (w.HWND, c.c_int, w.HANDLE, w.DWORD, w.LPWSTR)
     profile = c.create_unicode_buffer(260)
     require(shell.SHGetFolderPathW(None, 0x1A, None, 0, profile) == 0, 'Cannot resolve test profile')
@@ -226,7 +279,7 @@ def main():
             config.mkdir()
             fixture_owned = True
             (config / 'commands.txt').write_text('#Fixture\necho FIXTURE\n', encoding='utf-8')
-            (config / 'settings.ini').write_text('[Pet]\nEnabled=0\n[Layout]\nRightPanelWidth=320\n', encoding='ascii')
+            (config / 'settings.ini').write_text('[Pet]\nEnabled=0\n[Layout]\nRightPanelWidth=338\n', encoding='ascii')
             app = args.output / (label + '-app'); version = extract(archive, app)
             process = subprocess.Popen([str(app / 'serialctl.exe')], cwd=app)
             main_window = wait(lambda: (windows(process.pid, 'SerialCtlWin7NativeWindowV3') or [None])[0])
@@ -314,15 +367,22 @@ def main():
                             capture['approvedRegions'].extend([
                                 [left,top,right,top+band], [left,bottom-band,right,bottom],
                                 [left,top,left+band,bottom], [right-band,top,right,bottom]])
-                    # V2.0.16 explicitly changes button silhouettes. Keep every
-                    # field/label pixel frozen outside the actual button bounds.
+                    # V2.0.16 explicitly changes button silhouettes; V2.0.21 adjusts
+                    # dialog field corner radius (10->8) while keeping field interiors frozen.
                     capture.setdefault('approvedRegions', [])
                     @callback
                     def button_region(child, _):
                         classname=c.create_unicode_buffer(128);user.GetClassNameW(child,classname,128)
-                        if classname.value=='Button' and user.IsWindowVisible(child):
-                            box=RECT();user.GetWindowRect(child,c.byref(box))
-                            capture['approvedRegions'].append([box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y])
+                        if user.IsWindowVisible(child):
+                            if classname.value=='Button':
+                                box=RECT();user.GetWindowRect(child,c.byref(box))
+                                capture['approvedRegions'].append([box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y])
+                            elif target!=main_window and classname.value in ('ComboBox','Edit'):
+                                frame=user.GetPropW(child,'SerialCtl.FieldFrame') if classname.value=='Edit' else None
+                                handle=frame or child
+                                box=RECT();user.GetWindowRect(handle,c.byref(box))
+                                capture['approvedRegions'].extend(field_corner_regions(
+                                    [box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y],report['dpi']))
                         return True
                     user.EnumChildWindows(target,button_region,0)
                     if name=='main':
@@ -362,7 +422,7 @@ def main():
                     "baselineFrame": before["frame"], "candidateFrame": after["frame"],
                     "pixelComparison": "Serial form adds a location chooser; visual review required"})
                 continue
-            if key[1]=="ssh" and version in ("V2.0.19", "V2.0.20"):
+            if key[1]=="ssh" and parse_version(version) >= (2, 0, 19):
                 # Explicit user approval adds history + secure-remember rows
                 # and repositions all four input fields. Preserve both actual
                 # screenshots; do not claim these unequal layouts are frozen.
@@ -419,7 +479,10 @@ def main():
             unexpected=changed-rounded
             unexpected_raw=unexempt-raw_rounded
             residual=[pixel for pixel in normalized_changes if not rounding(pixel)]
-            report['cases'].append({'theme': key[0], 'view': key[1], 'changedPixels': changed,
+            main_contract = None
+            if key[1] == 'main' and parse_version(version) >= (2, 0, 21):
+                main_contract = approved_v221_main_geometry(before['geometry'], after['geometry'], report['dpi'])
+            case_entry = {'theme': key[0], 'view': key[1], 'changedPixels': changed,
                 'glyphRoundingPixels':rounded,'glyphRoundingRegions':glyph_regions,'glyphMaxChannelDifference':
                     max((max(abs(before['pixels'][p*4+k]-after['pixels'][p*4+k]) for k in range(3)) for p in normalized_changes if rounding(p)),default=0),
                 'unexpectedChangedPixels':unexpected,'unexpectedRawChangedPixels':unexpected_raw,
@@ -431,10 +494,14 @@ def main():
                     'orderOnly':before['geometry']!=after['geometry'] and sorted(before['geometry'])==sorted(after['geometry'])},
                 'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
                 'baselineVersion': before.get('version'), 'candidateVersion': after.get('version'),
-                'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')})
+                'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')}
+            if main_contract is not None:
+                case_entry['geometryContract'] = main_contract
+            report['cases'].append(case_entry)
         require(all((case.get("comparison")=="approved-layout" and case["layoutContract"]["status"]=="PASS") or
                     (case.get("comparison")!="approved-layout" and case['unexpectedChangedPixels']==0 and
-                     case['unexpectedRawChangedPixels']==0 and case['geometryEqual'])
+                     case['unexpectedRawChangedPixels']==0 and
+                     (case['geometryEqual'] or case.get('geometryContract', {}).get('status') == 'PASS'))
                     for case in report['cases']), 'UI freeze pixel/geometry or approved-layout contract mismatch')
         report['status'] = 'PASS'
     except Exception as error:
@@ -448,7 +515,7 @@ def main():
             os.replace(backup, config)
         (args.output / 'ui-freeze-comparison.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
         for case in report['cases']:
-            fields=('theme','view','comparison','layoutContract','unexpectedChangedPixels','unexpectedRawChangedPixels','geometryEqual','geometryDifferences')
+            fields=('theme','view','comparison','layoutContract','geometryContract','unexpectedChangedPixels','unexpectedRawChangedPixels','geometryEqual','geometryDifferences')
             print('UI_FREEZE_CASE_JSON='+json.dumps({k:case[k] for k in fields if k in case},separators=(',',':')))
         print('::notice title=UI freeze comparison::'+json.dumps(report, separators=(',', ':')))
     return 0 if report['status'] == 'PASS' else 1

@@ -152,7 +152,7 @@ public static class SerialCtlUiSmoke {
         double scale=(ssh.Bottom-ssh.Top)/36.0;
         int padding=(int)Math.Round(16*scale), gap=(int)Math.Round(12*scale);
         int horizontal=terminal.Left-padding-left.Right-padding;
-        int vertical=terminal.Top-padding-ssh.Bottom-(int)Math.Round(2*scale);
+        int vertical=terminal.Top-padding-ssh.Bottom-(int)Math.Round(4*scale);
         int other=right.Left-padding-terminal.Right-padding;
         if(Math.Abs(horizontal-gap)>1 || Math.Abs(vertical-gap)>1 || Math.Abs(other-gap)>1)
             throw new Exception("Unequal main card gaps: left="+horizontal+" top="+vertical+" right="+other);
@@ -245,14 +245,21 @@ public static class SerialCtlUiSmoke {
             throw new Exception("Power geometry mismatch id="+id+" actual="+rect.Left+","+rect.Top+","+(rect.Right-rect.Left)+","+(rect.Bottom-rect.Top)+" expected="+x+","+y+","+width+","+height);
     }
     public static void AssertAiHeader(IntPtr window) {
-        RECT title,wrap,toggle,theme;
-        GetWindowRect(GetDlgItem(window,305),out title);
-        GetWindowRect(GetDlgItem(window,306),out wrap);
-        GetWindowRect(GetDlgItem(window,125),out toggle);
-        GetWindowRect(GetDlgItem(window,104),out theme);
-        int gap=(int)Math.Round((theme.Bottom-theme.Top)/3.0);
-        if(title.Right+gap>wrap.Left || wrap.Right+gap>toggle.Left)
-            throw new Exception("AI monitor title/wrap/toggle areas overlap or lose the shared gap");
+        IntPtr tabFirst = GetDlgItem(window, 321);
+        IntPtr tabLast = GetDlgItem(window, 320);
+        IntPtr wrapCtrl = GetDlgItem(window, 306);
+        IntPtr toggleCtrl = GetDlgItem(window, 125);
+        if (!IsWindowVisible(tabFirst) || !IsWindowVisible(tabLast) || !IsWindowVisible(wrapCtrl) || !IsWindowVisible(toggleCtrl))
+            throw new Exception("AI monitor header controls are not visible when expanded");
+        RECT tabsLeft, tabsRight, wrap, toggle, theme;
+        GetWindowRect(tabFirst, out tabsLeft);
+        GetWindowRect(tabLast, out tabsRight);
+        GetWindowRect(wrapCtrl, out wrap);
+        GetWindowRect(toggleCtrl, out toggle);
+        GetWindowRect(GetDlgItem(window, 104), out theme);
+        int gap = (int)Math.Round(8.0 * (theme.Bottom - theme.Top) / 28.0);
+        if (tabsLeft.Right > tabsRight.Left || tabsRight.Right + gap > wrap.Left || wrap.Right + gap > toggle.Left)
+            throw new Exception("AI monitor tabs/wrap/toggle areas overlap or lose the shared gap");
     }
     public static void AssertPowerGap(IntPtr pane, int leftId, int rightId) {
         RECT left, right; GetWindowRect(GetDlgItem(pane,leftId),out left); GetWindowRect(GetDlgItem(pane,rightId),out right);
@@ -564,7 +571,7 @@ foreach ($architecture in @('x64')) {
             }
             # Production AI page and connection dialog; never contact a real server.
             Click-Control $application.MainWindowHandle 304
-            $aiDialog = Wait-Dialog $application.Id '连接 AI 服务器'
+            $aiDialog = Wait-Dialog $application.Id '连接 AI 服务'
             [SerialCtlUiSmoke]::AssertLabels($aiDialog, $expectedUiFace)
             if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,208) -ne [IntPtr]::Zero -or [SerialCtlUiSmoke]::GetDlgItem($aiDialog,213) -ne [IntPtr]::Zero) { throw 'AI connection form still owns workspace controls.' }
             if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,214) -eq [IntPtr]::Zero) { throw 'AI platform mode field missing.' }
@@ -584,7 +591,7 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::GetClassName([SerialCtlUiSmoke]::GetDlgItem($aiPane,12),$modelClass,32) | Out-Null
             if ($modelClass.ToString() -ne 'Static' -or [SerialCtlUiSmoke]::GetDlgItem($aiPane,13) -ne [IntPtr]::Zero) { throw 'AI still exposes model selection.' }
             # First launch defaults to a 50/50 monitor; later launches may restore its saved state.
-            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))) {
+            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321))) {
                 Click-Control $application.MainWindowHandle 125
                 Start-Sleep -Milliseconds 200
             }
@@ -593,7 +600,7 @@ foreach ($architecture in @('x64')) {
             $expandUntil = [DateTime]::UtcNow.AddSeconds(2)
             do {
                 Start-Sleep -Milliseconds 25
-                $expanded = [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))
+                $expanded = [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321))
             } while (-not $expanded -and [DateTime]::UtcNow -lt $expandUntil)
             if (-not $expanded) {
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-expand-failed"
@@ -611,7 +618,7 @@ foreach ($architecture in @('x64')) {
                     $headerRect = New-Object SerialCtlUiSmoke+RECT
                     $windowRect = New-Object SerialCtlUiSmoke+RECT
                     [SerialCtlUiSmoke]::GetWindowRect($aiPane,[ref]$paneRect)|Out-Null
-                    [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305),[ref]$headerRect)|Out-Null
+                    [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321),[ref]$headerRect)|Out-Null
                     [SerialCtlUiSmoke]::GetWindowRect($application.MainWindowHandle,[ref]$windowRect)|Out-Null
                     $startX = [int](($paneRect.Right+$headerRect.Left)/2)
                     $y = $paneRect.Top+100

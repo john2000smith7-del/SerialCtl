@@ -1,6 +1,13 @@
 """Mutation checks for the narrowly scoped actual-screen glyph comparison."""
 import unittest
-from ui_freeze_compare import glyph_rounding_equivalent, combo_glyph_regions, approved_v219_ssh_layout
+from ui_freeze_compare import (
+    approved_v219_ssh_layout,
+    approved_v221_main_geometry,
+    combo_glyph_regions,
+    field_corner_regions,
+    glyph_rounding_equivalent,
+    parse_version,
+)
 
 
 class GlyphComparisonTest(unittest.TestCase):
@@ -39,6 +46,46 @@ class GlyphComparisonTest(unittest.TestCase):
         after["geometry"]=after["geometry"][1:]
         with self.assertRaises(AssertionError):
             approved_v219_ssh_layout(before,after)
+
+    def test_parse_version_covers_v2021_and_rejects_garbage(self):
+        self.assertGreaterEqual(parse_version("V2.0.21"), (2, 0, 19))
+        self.assertGreaterEqual(parse_version("2.0.21"), (2, 0, 21))
+        with self.assertRaises(AssertionError):
+            parse_version("V2.0.21-dirty")
+
+    def test_field_corner_regions_only_cover_corners(self):
+        corners = field_corner_regions([10, 20, 210, 48], 96)
+        self.assertEqual(corners, [
+            [10, 20, 21, 31],
+            [199, 20, 210, 31],
+            [10, 37, 21, 48],
+            [199, 37, 210, 48],
+        ])
+        # Interior center pixel is not inside any corner box.
+        self.assertFalse(any(l <= 110 < r and t <= 34 < b for l, t, r, b in corners))
+
+    def test_approved_v221_main_geometry_tracks_inset_and_rejects_horizontal_drift(self):
+        before = [
+            [107, "RichEdit50W", 218, 84, 834, 822, True],
+            [125, "Button", 1150, 86, 1178, 114, True],
+            [302, "Button", 28, 790, 174, 822, False],
+        ]
+        after = [
+            [107, "RichEdit50W", 218, 86, 834, 822, True],
+            [125, "Button", 1150, 88, 1178, 116, True],
+            [302, "Button", 28, 790, 174, 822, False],
+        ]
+        contract = approved_v221_main_geometry(before, after, 96)
+        self.assertEqual(contract["status"], "PASS")
+        bad_width = [list(r) for r in after]
+        bad_width[0][4] = 852
+        with self.assertRaises(AssertionError):
+            approved_v221_main_geometry(before, bad_width, 96)
+        bad_shift = [list(r) for r in after]
+        bad_shift[1][3] += 6
+        bad_shift[1][5] += 6
+        with self.assertRaises(AssertionError):
+            approved_v221_main_geometry(before, bad_shift, 96)
 
 
 if __name__=='__main__':unittest.main()

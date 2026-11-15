@@ -2737,9 +2737,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 Reconnect();
             }
             else if (id == IdDisconnectAll) {
-                if (!UiTryAcquireActionCooldown(disconnectAllButton_, IdDisconnectAll, 250)) return 0;
                 const bool live = pendingSession_ || aiPane_.Connected() || powerPane_.HasConnection() ||
                     std::any_of(sessions_.begin(), sessions_.end(), [](const auto& s) { return !s->disconnected; });
+                if (!live && !UiTryAcquireActionCooldown(disconnectAllButton_, IdDisconnectAll, 250)) return 0;
                 if (live && !ConfirmActiveTransfers(L"断开全部连接", false)) return 0;
                 DisconnectAll();
             }

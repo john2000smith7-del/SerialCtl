@@ -1871,7 +1871,13 @@ struct AiPaneTestAccess {
 
                     SendMessageW(dlg2, WM_COMMAND, MAKEWPARAM(231, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(dlg2, 231)));
                     const auto localAfterCancel = readComboItems(GetDlgItem(dlg2, 208));
+                    GetDlgItemTextW(dlg2, 213, dlgPath, 512);
+                    const std::wstring localPathAfterCancel = dlgPath;
+                    std::error_code localPathError;
+                    const bool sameLocalDirectory = std::filesystem::equivalent(
+                        localPathAfterCancel, localWsDir, localPathError);
                     require(pane.workspaceDialogIsLocal_ && !pane.directoryPending_ &&
+                                sameLocalDirectory && !localPathError &&
                                 std::find(localAfterCancel.begin(), localAfterCancel.end(), L"probe") != localAfterCancel.end(),
                             "Clicking Local during pending remote browse must cancel pending wait and show local subdirectories");
 
@@ -1883,7 +1889,7 @@ struct AiPaneTestAccess {
                     GetDlgItemTextW(dlg2, 213, dlgPath, 512);
                     const auto afterStale = readComboItems(GetDlgItem(dlg2, 208));
                     require(pane.workspaceDialogIsLocal_ &&
-                                std::wstring(dlgPath) == localWsDir &&
+                                std::wstring(dlgPath) == localPathAfterCancel &&
                                 std::find(afterStale.begin(), afterStale.end(), L"stale_dir") == afterStale.end() &&
                                 std::find(afterStale.begin(), afterStale.end(), L"probe") != afterStale.end(),
                             "Stale remote RemoteFsList response must be rejected after switching to Local");

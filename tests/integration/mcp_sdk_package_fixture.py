@@ -47,6 +47,22 @@ async def exercise(url):
                     'safe_results': results, 'forbidden_power_rejected': denied, 'sdk': 'mcp 1.20.0'}
 
 
+def read_expected_version():
+    version_file = Path(__file__).resolve().parents[2] / 'VERSION'
+    records = {}
+    for raw in version_file.read_text(encoding='utf-8-sig').splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        key, sep, val = line.partition('=')
+        require(sep == '=', f'Malformed VERSION record: {raw}')
+        records[key] = val
+    project_version = records.get('PROJECT_VERSION')
+    cpp_version = records.get('CPP_VERSION')
+    require(project_version and project_version == cpp_version, 'VERSION records missing or mismatched')
+    return project_version
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', type=Path, required=True)
@@ -56,10 +72,12 @@ def main():
             'Requires an isolated hosted Windows test account')
     args.output.mkdir(parents=True, exist_ok=False)
     app = args.output / 'fully-extracted'
+    expected_version = read_expected_version()
     with zipfile.ZipFile(args.archive) as archive:
         archive.extractall(app)
         manifest = json.loads(archive.read('MANIFEST.json'))
-        require(manifest['version'] == 'V2.0.20', 'Candidate version mismatch')
+        require(manifest['version'] == expected_version,
+                f"Candidate version mismatch: expected {expected_version}, got {manifest.get('version')}")
     # Disable update checks only in this extracted test instance; the ZIP stays byte-for-byte intact.
     (app / 'update.ini').write_text('[update]\nurl=\n', encoding='ascii')
     config = Path(os.environ['APPDATA']) / 'SerialCtl'
