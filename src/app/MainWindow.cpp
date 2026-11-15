@@ -602,9 +602,12 @@ void FitDialogLabels(HWND dialog, bool visibleOnly = true) {
         RECT rect{};
         GetWindowRect(child, &rect);
         MapWindowPoints(HWND_DESKTOP, dialog, reinterpret_cast<POINT*>(&rect), 2);
-        const int height = std::max(static_cast<int>(rect.bottom - rect.top), DialogLabelHeight(child));
-        SetWindowPos(child, nullptr, rect.left, rect.top, rect.right - rect.left, height,
-            SWP_NOZORDER | SWP_NOACTIVATE);
+        const int currentHeight = static_cast<int>(rect.bottom - rect.top);
+        const int height = std::max(currentHeight, DialogLabelHeight(child));
+        if (height > currentHeight) {
+            SetWindowPos(child, nullptr, rect.left, rect.top, rect.right - rect.left, height,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
     }
 }
 
@@ -639,9 +642,14 @@ void ShowDialogItem(HWND dialog, int id, bool show) {
     HWND control = GetDlgItem(dialog, id);
     if (!control) return;
     const int command = show ? SW_SHOW : SW_HIDE;
-    HWND frame = reinterpret_cast<HWND>(GetPropW(control, Ui::FieldFrameProperty));
-    if (frame) ShowWindow(frame, command);
-    ShowWindow(control, command);
+    auto setVisible = [show, command](HWND target) {
+        const bool visible = (GetWindowLongPtrW(target, GWL_STYLE) & WS_VISIBLE) != 0;
+        if (visible != show) ShowWindow(target, command);
+    };
+    if (HWND frame = reinterpret_cast<HWND>(GetPropW(control, Ui::FieldFrameProperty))) {
+        setVisible(frame);
+    }
+    setVisible(control);
 }
 
 void MatchDialogControlHeight(HWND dialog, int referenceId, int targetId) {
@@ -5027,11 +5035,26 @@ void MainWindow::RefreshSerialPorts(HWND dialog) {
         });
     }
     HWND ports = GetDlgItem(dialog, IDC_SERIAL);
-    SendMessageW(ports, CB_RESETCONTENT, 0, 0);
-    SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"正在查找串口…"));
-    SendMessageW(ports, CB_SETCURSEL, 0, 0);
-    EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
-    EnableWindow(GetDlgItem(dialog, IDC_SERIAL_REFRESH), FALSE);
+    constexpr const wchar_t* kScanningLabel = L"正在查找串口…";
+    bool hasScanningPlaceholder = false;
+    if (SendMessageW(ports, CB_GETCOUNT, 0, 0) == 1 && SendMessageW(ports, CB_GETCURSEL, 0, 0) == 0) {
+        const auto len = SendMessageW(ports, CB_GETLBTEXTLEN, 0, 0);
+        if (len > 0 && static_cast<size_t>(len) == wcslen(kScanningLabel)) {
+            std::wstring text(static_cast<size_t>(len) + 1, L'\0');
+            SendMessageW(ports, CB_GETLBTEXT, 0, reinterpret_cast<LPARAM>(text.data()));
+            text.resize(static_cast<size_t>(len));
+            hasScanningPlaceholder = (text == kScanningLabel);
+        }
+    }
+    if (!hasScanningPlaceholder) {
+        SendMessageW(ports, CB_RESETCONTENT, 0, 0);
+        SendMessageW(ports, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(kScanningLabel));
+        SendMessageW(ports, CB_SETCURSEL, 0, 0);
+    }
+    for (int id : {IDOK, IDC_SERIAL_REFRESH}) {
+        HWND button = GetDlgItem(dialog, id);
+        if (button && IsWindowEnabled(button)) EnableWindow(button, FALSE);
+    }
     SetTimer(dialog, SerialScanTimerId, 40, nullptr);
 }
 void MainWindow::CompleteSerialPortScan(HWND dialog) {
