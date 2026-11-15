@@ -139,6 +139,8 @@ class Endurance(DesktopActions):
                 self.user.keybd_event(vk,0,0,0)
                 self.user.keybd_event(vk,0,2,0)
             wait(lambda:self.user.IsWindowVisible(self.user.GetDlgItem(dialog,1014)))
+            res=c.c_size_t()
+            require(self.user.SendMessageTimeoutW(dialog,0,0,0,2,1000,c.byref(res)),'Remote serial dialog did not settle after mode switch')
         if not any(row['control']==identifier and row['theme']==self.args.theme and
                    row['remote_serial']==remote_serial for row in self.dialogs):
             self.capture('modal-remote-serial' if remote_serial else 'modal-'+str(identifier))

@@ -4720,7 +4720,6 @@ INT_PTR CALLBACK MainWindow::ConnectionDialogProc(HWND dialog, UINT message, WPA
                     ++self->discoveryGeneration_;
                     self->pendingMode_ = mode;
                     self->ConfigureConnectionDialog(dialog, false);
-                    CenterOnOwner(dialog, self->window_);
                     if (self->measurePaint_) UiRunAfterFirstPaint(dialog, false);
                     if (mode == 1) self->RefreshSerialPorts(dialog);
                     else SetTimer(dialog, DiscoveryTimerId, 500, nullptr);
@@ -4831,26 +4830,34 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog, bool initialize) {
     const bool share = pendingMode_ == 3;
     const bool serialLocation = (serial || share) && !aiRemoteConnect_;
     const int serialTop = serialLocation ? 34 : 0;
-    ShowDialogItem(dialog, IDC_SERIAL_LOCATION_LABEL, serialLocation);
-    ShowDialogItem(dialog, IDC_SERIAL_LOCATION, serialLocation);
-    ShowDialogItem(dialog, IDC_HOST_IDENTITY, ssh);
-    ShowDialogItem(dialog, IDC_HOST_REVERIFY, ssh);
+    // Hide retired controls before layout and reveal newly active controls only
+    // after geometry and centering settle, so a cross-process observer or live
+    // paint never sees controls (or reads IDCANCEL rects) at stale coordinates.
+    const std::pair<int, bool> visibility[] = {
+        {IDC_SERIAL_LOCATION_LABEL, serialLocation},
+        {IDC_SERIAL_LOCATION, serialLocation},
+        {IDC_HOST_IDENTITY, ssh},
+        {IDC_HOST_REVERIFY, ssh},
+        {IDC_SERIAL_LABEL, serial || share},
+        {IDC_SERIAL, serial || share},
+        {IDC_BAUD_LABEL, serial}, {IDC_BAUD, serial},
+        {IDC_DATABITS_LABEL, serial}, {IDC_DATABITS, serial},
+        {IDC_PARITY_LABEL, serial}, {IDC_PARITY, serial},
+        {IDC_STOPBITS_LABEL, serial}, {IDC_STOPBITS, serial},
+        {IDC_FLOW_LABEL, serial}, {IDC_FLOW, serial},
+        {IDC_HOST_LABEL, !serial}, {IDC_HOST, !serial},
+        {IDC_PORT_LABEL, !serial && !share}, {IDC_PORT, !serial && !share},
+        {IDC_USER_LABEL, ssh}, {IDC_USER, ssh},
+        {IDC_PASSWORD_LABEL, ssh}, {IDC_PASSWORD, ssh},
+        {IDC_SHARE_LABEL, false}, {IDC_SHARE_PORT, false},
+        {IDC_SERIAL_REFRESH, serial || share},
+        {IDC_DIALOG_NOTE, false},
+    };
+    for (const auto& [id, show] : visibility) {
+        if (!show) ShowDialogItem(dialog, id, false);
+    }
     pendingRemoteInstance_.clear();
     discoveredSerialPort_ = 0;
-    const int serialSelectorIds[] = {IDC_SERIAL_LABEL, IDC_SERIAL};
-    const int serialSettingIds[] = {IDC_BAUD_LABEL, IDC_BAUD, IDC_DATABITS_LABEL, IDC_DATABITS,
-        IDC_PARITY_LABEL, IDC_PARITY, IDC_STOPBITS_LABEL, IDC_STOPBITS, IDC_FLOW_LABEL, IDC_FLOW};
-    const int networkIds[] = {IDC_HOST_LABEL, IDC_HOST, IDC_PORT_LABEL, IDC_PORT};
-    for (int id : serialSelectorIds) ShowDialogItem(dialog, id, serial || share);
-    for (int id : serialSettingIds) ShowDialogItem(dialog, id, serial);
-    for (int id : networkIds) ShowDialogItem(dialog, id, !serial);
-    for (int id : {IDC_USER_LABEL, IDC_USER, IDC_PASSWORD_LABEL, IDC_PASSWORD})
-        ShowDialogItem(dialog, id, ssh);
-    ShowDialogItem(dialog, IDC_SHARE_LABEL, false);
-    ShowDialogItem(dialog, IDC_SHARE_PORT, false);
-    ShowDialogItem(dialog, IDC_SERIAL_REFRESH, serial || share);
-    ShowDialogItem(dialog, IDC_DIALOG_NOTE, false);
-    if (share) { ShowDialogItem(dialog, IDC_PORT_LABEL, false); ShowDialogItem(dialog, IDC_PORT, false); }
 
     constexpr int dialogWidth = 238;
     constexpr int margin = 12;
@@ -4941,7 +4948,7 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog, bool initialize) {
     moveSerial(IDCANCEL, dialogWidth - 156, buttonY, 68, 18);
     moveSerial(IDOK, dialogWidth - 80, buttonY, 68, 18);
     ResizeDialogClientDlu(dialog, dialogWidth, dialogHeight + serialTop);
-    FitDialogLabels(dialog, true);
+    if (!initialize) CenterOnOwner(dialog, window_);
     if (serial || share) UiSetButtonGlyph(GetDlgItem(dialog, IDC_SERIAL_REFRESH), UiGlyph::Refresh, L"刷新串口列表");
 
     const wchar_t* titles[] = {L"新建 SSH 连接", L"新建串口连接", L"新建 Telnet 连接", L"连接共享串口"};
@@ -5001,6 +5008,10 @@ void MainWindow::ConfigureConnectionDialog(HWND dialog, bool initialize) {
         MatchDialogControlHeight(dialog, IDC_SSH_HISTORY, IDC_SSH_HISTORY_DELETE);
         RefreshConnectionHostIdentity(dialog);
     }
+    for (const auto& [id, show] : visibility) {
+        if (show) ShowDialogItem(dialog, id, true);
+    }
+    FitDialogLabels(dialog, true);
 }
 
 void MainWindow::RefreshSerialPorts(HWND dialog) {
