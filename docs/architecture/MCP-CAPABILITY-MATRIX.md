@@ -18,11 +18,14 @@
      - 严禁修改工作模式 (`mode`：串联/并联/跟踪)；
      - 严禁通过参数更改通道勾选 (`channels`)；
      - 严禁修改预设、校准、复位 (`reset`)、发送原始 SCPI 指令 (`scpi`/`raw`)。
-3. **机密脱敏与防递归**：
+3. **本地环回独占工作空间隔离 (Loopback-Only Workspace Boundary)**：
+   - 所有 `workspace.*` 工具（`workspace.info`、`workspace.list`、`workspace.search_text`、`workspace.read_file`、`workspace.write_file`、`workspace.edit_file`、`workspace.move`、`workspace.delete`、`workspace.exec`）仅允许来自本机环回客户端 (`127.0.0.1` / `::1` / 进程内 / 本机命名管道 IPC) 的请求；即使公网/LAN MCP 监听为 `0.0.0.0`，来自非环回客户端的 `workspace.*` 调用也会在分发层直接硬拦截并返回 `-32007 PERMISSION_DENIED`。
+   - 此外，`workspace.*` 强制执行已授权本地根目录边界校验（拒绝未绑定目录、`..`、`UNC`、重解析点/符号链接/联接点及 DOS 保留设备名），并在开启只读保护 (`readOnly`) 时拦截写/改/删/执行操作。
+4. **机密脱敏与防递归**：
    - `ssh_history.list` 严禁读取或回显已保存的 SSH 明文密码。
    - 首次/变更 SSH host key 若未信任则结构化返回指纹并要求显式 `confirmHostKey=true`，不无条件盲信。
    - `ai.send` 包含调用深度限制（`recursionDepth >= 2` 拦截），防止“外部 MCP 调内置 AI → 内置 AI 又调外部 MCP”的无限递归。
-4. **GUI 生命周期（#52 已取消）**：
+5. **GUI 生命周期（#52 已取消）**：
    - SerialCtl 仅手动启动；MCP 默认关闭，用户本机启用后在 GUI 存活期间提供服务。
    - GUI 退出后 HTTP/TFTP 停止，无开机自启或独立常驻后台服务。STDIO 只桥接现有 GUI。
    - 下表为源码接口映射，不是全部业务已经端到端验证的证明。尤其 TestBusinessFlow 使用模拟 executor；验收结果以本轮精确 SHA 的原始证据和逐 Issue 报告为准。
@@ -112,6 +115,15 @@
 | **内置 AI** | AI 工作空间指示 | `WorkspaceInstructions::Text` | `ai.workspace` | 无 | 允许（只读） | `McpServerTest::TestBusinessFlow` |
 | **内置 AI** | 提交 AI 对话提示词 | `AiPane::SendPrompt` | `ai.send` | `prompt` (str), `recursionDepth` (int, 可选) | 允许（**深度 >= 2 拦截**） | `McpServerTest::TestAiRecursionGuard` |
 | **内置 AI** | 停止 AI 回复生成 | `AiPane::Stop` | `ai.stop` | 无 | 允许 | `McpServerTest::TestBusinessFlow` |
+| **本地工作空间** | 查询当前工作空间上下文与模式 | `MainWindow::McpExecute` / `AiPane` | `workspace.info` | 无 | **仅限本机环回 / 进程内（只读）** | `McpServerTest::TestWorkspaceLoopbackBoundary` |
+| **本地工作空间** | 枚举工作空间目录条目（不依赖 Git/外部 CLI） | `LocalWorkspaceService::ExecuteTool` | `workspace.list` | `path` (str, 可选), `depth` (int 1..3), `pattern` (str), `includeHidden` (bool) | **仅限本机环回 / 进程内（只读）** | `LocalWorkspaceTest`, `McpServerTest` |
+| **本地工作空间** | 在工作空间内检索纯文本/正则（不依赖 ripgrep） | `LocalWorkspaceService::ExecuteTool` | `workspace.search_text` | `query` (str), `path` (str, 可选), `filePattern` (str), `caseSensitive` (bool), `regex` (bool), `maxResults` (int) | **仅限本机环回 / 进程内（只读）** | `LocalWorkspaceTest`, `McpServerTest` |
+| **本地工作空间** | 按行读取工作空间内 UTF-8/文本文件 | `LocalWorkspaceService::ExecuteTool` | `workspace.read_file` | `path` (str), `startLine` (int), `maxLines` (int 1..400) | **仅限本机环回 / 进程内（只读）** | `LocalWorkspaceTest` |
+| **本地工作空间** | 原子写入或创建工作空间内文件 | `LocalWorkspaceService::ExecuteTool` | `workspace.write_file` | `path` (str), `content` (str), `createDirs` (bool) | **仅限本机环回 / 进程内（非只读模式）** | `LocalWorkspaceTest` |
+| **本地工作空间** | 精确匹配替换工作空间内文件内容 | `LocalWorkspaceService::ExecuteTool` | `workspace.edit_file` | `path` (str), `oldText` (str), `newText` (str), `replaceAll` (bool) | **仅限本机环回 / 进程内（非只读模式）** | `LocalWorkspaceTest` |
+| **本地工作空间** | 在工作空间根目录内移动或重命名 | `LocalWorkspaceService::ExecuteTool` | `workspace.move` | `from` (str), `to` (str), `overwrite` (bool) | **仅限本机环回 / 进程内（非只读模式）** | `LocalWorkspaceTest` |
+| **本地工作空间** | 删除工作空间内文件/目录（需 `confirm: true`） | `LocalWorkspaceService::ExecuteTool` | `workspace.delete` | `path` (str), `confirm` (bool, 必须 `true`), `recursive` (bool) | **仅限本机环回 / 进程内（非只读模式 + 显式确认）** | `LocalWorkspaceTest` |
+| **本地工作空间** | 在本地工作空间执行 Windows `cmd.exe` 命令（超时/取消含子进程树清理） | `LocalWorkspaceService::ExecuteTool` | `workspace.exec` | `command` (str), `cwd` (str, 可选), `timeoutMs` (int, 可选) | **仅限本机环回 / 进程内（非只读模式 + 审计参数脱敏）** | `LocalWorkspaceTest`, `McpServerTest` |
 | **受控电源** | 状态/测量/已选通道查询 | `PowerService::State` | `power.get` | 无 | **白名单允许（只读）** | `McpServerTest::TestPowerWhitelistAndRejections` |
 | **受控电源** | 通道输出开关 | `PowerService::Submit("output")` | `power.output` | `enabled` (bool), `reason` (str, 可选) | **白名单允许（仅作用于 GUI 已选通道）** | `McpServerTest::TestPowerWhitelistAndRejections` |
 | **受控电源** | 动作结果查询 | `PowerService::Action` | `power.action` | `id` (str) | **白名单允许（只读）** | `McpServerTest::TestPowerWhitelistAndRejections` |

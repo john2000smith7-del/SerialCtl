@@ -379,9 +379,9 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
 
     if (launched) *launched = true;
     std::string bytes;
-    const DWORD started = GetTickCount();
-    DWORD lastActivityTick = started;
-    DWORD lastProgressTick = started;
+    const ULONGLONG started = GetTickCount64();
+    ULONGLONG lastActivityTick = started;
+    ULONGLONG lastProgressTick = started;
     std::uint64_t lastProgressBytes = 0;
     IO_COUNTERS baselineIo{};
     bool progressStarted = transferKind == TransferKind::None;
@@ -403,7 +403,7 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
         }
         const bool receivedOutput = bytes.size() != previous;
         if (receivedOutput && transferKind != TransferKind::None) {
-            lastActivityTick = GetTickCount();
+            lastActivityTick = GetTickCount64();
             constexpr size_t ProgressTailBytes = 2048;
             const size_t offset = bytes.size() > ProgressTailBytes ?
                 bytes.size() - ProgressTailBytes : 0;
@@ -416,11 +416,11 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
             if (bytes.find(marker) != std::string::npos || nativePercent >= 0) {
                 GetProcessIoCounters(process.hProcess, &baselineIo);
                 progressStarted = true;
-                lastProgressTick = GetTickCount();
+                lastProgressTick = GetTickCount64();
                 if (progress) progress({0, totalBytes, 0, 0, totalBytes == 0 ? -1 : 0});
             }
         }
-        const DWORD now = GetTickCount();
+        const ULONGLONG now = GetTickCount64();
         if (progress && progressStarted && transferKind != TransferKind::None &&
             now - lastProgressTick >= 100) {
             IO_COUNTERS currentIo{};
@@ -433,7 +433,7 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
                 const std::uint64_t transferred = nativePercent >= 0 && totalBytes > 0
                     ? totalBytes * static_cast<std::uint64_t>(nativePercent) / 100ULL
                     : (totalBytes == 0 ? raw : std::min(totalBytes, raw));
-                const DWORD elapsed = std::max<DWORD>(1, now - lastProgressTick);
+                const ULONGLONG elapsed = std::max<ULONGLONG>(1, now - lastProgressTick);
                 const std::uint64_t speed = transferred >= lastProgressBytes
                     ? (transferred - lastProgressBytes) * 1000ULL / elapsed : 0;
                 SftpTransferProgress value;
@@ -461,7 +461,7 @@ bool SftpClient::RunBatch(const std::wstring& commands, DWORD timeoutMillisecond
             WaitForSingleObject(process.hProcess, 1000);
             break;
         }
-        const DWORD timeoutStart = transferKind == TransferKind::None ? started : lastActivityTick;
+        const ULONGLONG timeoutStart = transferKind == TransferKind::None ? started : lastActivityTick;
         if (now - timeoutStart >= timeoutMilliseconds || (deadline && GetTickCount64() >= deadline)) {
             timedOut = true;
             TerminateProcess(process.hProcess, 1);

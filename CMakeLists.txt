@@ -221,6 +221,7 @@ add_executable(serialctl WIN32
     src/app/PowerPane.cpp
     src/app/PowerKeywordPane.cpp
     src/app/AiPane.cpp
+    src/app/AiChangesPane.cpp
     src/ai/AiVoiceInput.cpp
     src/app/AiTranscriptFormatting.cpp
     src/ai/AiReplyMarkup.cpp
@@ -228,6 +229,7 @@ add_executable(serialctl WIN32
     src/app/AiPetPane.cpp
     src/ai/CodexClient.cpp
     src/ai/AiDeviceBridge.cpp
+    src/ai/LocalWorkspace.cpp
     src/connections/PasswordPipe.cpp
     src/update/UpdateArchive.cpp
     src/update/UpdateInflate.cpp
@@ -255,6 +257,7 @@ add_executable(serialctl WIN32
     src/connections/SerialPorts.cpp
     src/connections/TcpConnection.cpp
     src/logging/SessionLogger.cpp
+    src/logging/OperationAuditLogger.cpp
     src/sftp/SftpClient.cpp
     src/sftp/SftpController.cpp
     src/sftp/SftpModel.cpp
@@ -369,14 +372,19 @@ if(BUILD_TESTING)
     target_link_libraries(gui_instance_test PRIVATE advapi32)
     add_test(NAME gui_instance COMMAND gui_instance_test)
     set_tests_properties(gui_instance PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
-    add_executable(ai_protocol_test tests/unit/AiProtocolTest.cpp)
+    add_executable(ai_protocol_test tests/unit/AiProtocolTest.cpp src/mcp/McpProtocol.cpp src/ai/AiReplyMarkup.cpp)
     serialctl_configure_native_target(ai_protocol_test CONSOLE)
     add_test(NAME ai_protocol COMMAND ai_protocol_test)
     set_tests_properties(ai_protocol PROPERTIES TIMEOUT 30)
-    add_executable(ai_fake_plink tests/integration/AiFakePlink.cpp)
+    add_executable(local_workspace_test tests/unit/LocalWorkspaceTest.cpp src/ai/LocalWorkspace.cpp src/ai/AiAttachment.cpp)
+    serialctl_configure_native_target(local_workspace_test CONSOLE)
+    target_link_libraries(local_workspace_test PRIVATE advapi32 ole32 gdiplus)
+    add_test(NAME local_workspace COMMAND local_workspace_test)
+    set_tests_properties(local_workspace PROPERTIES TIMEOUT 45)
+    add_executable(ai_fake_plink tests/integration/AiFakePlink.cpp src/mcp/McpProtocol.cpp)
     serialctl_configure_native_target(ai_fake_plink CONSOLE)
     set_target_properties(ai_fake_plink PROPERTIES OUTPUT_NAME plink RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ai-fixture")
-    add_executable(ai_client_test tests/integration/AiClientTest.cpp src/ai/CodexClient.cpp
+    add_executable(ai_client_test tests/integration/AiClientTest.cpp src/ai/CodexClient.cpp src/mcp/McpProtocol.cpp
         src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(ai_client_test CONSOLE)
     target_link_libraries(ai_client_test PRIVATE advapi32 ole32)
@@ -397,13 +405,13 @@ if(BUILD_TESTING)
     add_test(NAME ai_pet_pane COMMAND ai_pet_pane_test)
     set_tests_properties(ai_pet_pane PROPERTIES TIMEOUT 35 RUN_SERIAL TRUE)
     add_executable(ai_pane_test tests/integration/AiPaneTest.cpp src/app/AiPane.cpp src/app/AiTranscriptFormatting.cpp
-        src/ai/AiVoiceInput.cpp src/ai/AiReplyMarkup.cpp src/ai/AiAttachment.cpp src/app/ToolbarIcons.cpp src/ai/CodexClient.cpp
-        src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
+        src/ai/AiVoiceInput.cpp src/ai/AiReplyMarkup.cpp src/ai/AiAttachment.cpp src/ai/LocalWorkspace.cpp src/app/ToolbarIcons.cpp src/ai/CodexClient.cpp
+        src/mcp/McpProtocol.cpp src/connections/PasswordPipe.cpp src/connections/PuttyHostKey.cpp src/connections/ChildProcess.cpp)
     serialctl_configure_native_target(ai_pane_test CONSOLE)
     target_sources(ai_pane_test PRIVATE "${SERIALCTL_GENERATED_DIR}/ui-assets.rc")
     target_link_libraries(ai_pane_test PRIVATE ole32 msimg32)
     target_compile_definitions(ai_pane_test PRIVATE SERIALCTL_AI_TESTING)
-    target_link_libraries(ai_pane_test PRIVATE advapi32 ole32 msimg32 comctl32 comdlg32 gdiplus gdi32 user32)
+    target_link_libraries(ai_pane_test PRIVATE advapi32 ole32 msimg32 comctl32 comdlg32 shell32 gdiplus gdi32 user32)
     set_target_properties(ai_pane_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ai-fixture")
     add_dependencies(ai_pane_test ai_fake_plink)
     add_test(NAME ai_pane COMMAND ai_pane_test)
@@ -497,13 +505,13 @@ if(BUILD_TESTING)
     add_test(NAME session_logger COMMAND session_logger_test)
     set_tests_properties(session_logger PROPERTIES TIMEOUT 90)
     add_executable(power_service_test tests/integration/PowerServiceTest.cpp src/power/PowerService.cpp
-        src/power/PowerKeywordRun.cpp src/logging/SessionLogger.cpp)
+        src/power/PowerKeywordRun.cpp src/logging/SessionLogger.cpp src/logging/OperationAuditLogger.cpp)
     serialctl_configure_native_target(power_service_test CONSOLE)
     target_compile_definitions(power_service_test PRIVATE SERIALCTL_POWER_TESTING)
     target_link_libraries(power_service_test PRIVATE shell32 ws2_32 advapi32)
     add_test(NAME power_service COMMAND power_service_test)
     add_executable(power_connection_gate_test tests/integration/PowerConnectionGateTest.cpp
-        src/power/PowerService.cpp src/logging/SessionLogger.cpp)
+        src/power/PowerService.cpp src/logging/SessionLogger.cpp src/logging/OperationAuditLogger.cpp)
     serialctl_configure_native_target(power_connection_gate_test CONSOLE)
     target_link_libraries(power_connection_gate_test PRIVATE shell32 ws2_32 advapi32)
     add_test(NAME power_connection_gate COMMAND power_connection_gate_test)
@@ -653,7 +661,7 @@ if(BUILD_TESTING)
     set_tests_properties(sftp_controller PROPERTIES TIMEOUT 20)
     add_executable(ai_device_bridge_test tests/integration/AiDeviceBridgeTest.cpp
         src/ai/AiDeviceBridge.cpp src/terminal/TerminalModel.cpp src/network/SessionService.cpp
-        src/connections/QueuedConnection.cpp src/power/PowerService.cpp src/logging/SessionLogger.cpp)
+        src/connections/QueuedConnection.cpp src/power/PowerService.cpp src/logging/SessionLogger.cpp src/logging/OperationAuditLogger.cpp)
     serialctl_configure_native_target(ai_device_bridge_test CONSOLE)
     target_link_libraries(ai_device_bridge_test PRIVATE ole32 shell32 ws2_32 advapi32)
     add_test(NAME ai_device_bridge COMMAND ai_device_bridge_test)
@@ -689,6 +697,7 @@ if(BUILD_TESTING)
         src/mcp/McpHttpServer.cpp
         src/mcp/McpDispatcher.cpp
         src/mcp/McpService.cpp
+        src/ai/LocalWorkspace.cpp
         src/tftp/TftpServer.cpp
         src/tftp/TftpFileSource.cpp
         src/connections/PasswordPipe.cpp
@@ -696,12 +705,122 @@ if(BUILD_TESTING)
         src/connections/PuttyHostKey.cpp
         src/power/PowerService.cpp
         src/logging/SessionLogger.cpp
+        src/logging/OperationAuditLogger.cpp
     )
     serialctl_configure_native_target(mcp_server_test CONSOLE)
-    target_compile_definitions(mcp_server_test PRIVATE SERIALCTL_POWER_TESTING)
+    target_compile_definitions(mcp_server_test PRIVATE SERIALCTL_POWER_TESTING SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
     target_link_libraries(mcp_server_test PRIVATE shell32 ws2_32 advapi32 ole32)
     add_test(NAME mcp_server COMMAND mcp_server_test)
     set_tests_properties(mcp_server PROPERTIES TIMEOUT 40)
+
+    add_executable(tftp_packet_test
+        tests/unit/TftpPacketUnitTest.cpp
+        src/tftp/TftpServer.cpp
+        src/tftp/TftpFileSource.cpp
+        src/connections/PasswordPipe.cpp
+        src/connections/ChildProcess.cpp
+        src/connections/PuttyHostKey.cpp
+    )
+    serialctl_configure_native_target(tftp_packet_test CONSOLE)
+    target_link_libraries(tftp_packet_test PRIVATE ws2_32 advapi32 ole32)
+    add_test(NAME tftp_packet COMMAND tftp_packet_test)
+    set_tests_properties(tftp_packet PROPERTIES TIMEOUT 20)
+
+    add_executable(session_dispatcher_load_test
+        tests/unit/SessionDispatcherLoadTest.cpp
+        src/terminal/TerminalParseScheduler.cpp
+        src/terminal/TerminalModel.cpp
+        src/xfer/TransferProtocol.cpp
+    )
+    serialctl_configure_native_target(session_dispatcher_load_test CONSOLE)
+    target_include_directories(session_dispatcher_load_test PRIVATE src/app src/terminal src/connections src/xfer)
+    add_test(NAME session_dispatcher_load COMMAND session_dispatcher_load_test)
+    set_tests_properties(session_dispatcher_load PROPERTIES TIMEOUT 30)
+
+    add_executable(logger_circular_audit_test
+        tests/unit/LoggerCircularAuditTest.cpp
+        src/logging/SessionLogger.cpp
+        src/logging/OperationAuditLogger.cpp
+    )
+    serialctl_configure_native_target(logger_circular_audit_test CONSOLE)
+    target_include_directories(logger_circular_audit_test PRIVATE src/logging src/connections)
+    target_link_libraries(logger_circular_audit_test PRIVATE shell32 advapi32)
+    add_test(NAME logger_circular_audit COMMAND logger_circular_audit_test)
+    set_tests_properties(logger_circular_audit PROPERTIES TIMEOUT 20)
+
+    add_executable(ui_style_metrics_test tests/unit/UiStyleMetricsTest.cpp)
+    serialctl_configure_native_target(ui_style_metrics_test CONSOLE)
+    target_include_directories(ui_style_metrics_test PRIVATE src/app)
+    target_link_libraries(ui_style_metrics_test PRIVATE ole32 msimg32 gdiplus gdi32 user32 comctl32)
+    add_test(NAME ui_style_metrics COMMAND ui_style_metrics_test)
+    set_tests_properties(ui_style_metrics PROPERTIES TIMEOUT 20)
+
+    # T1 Layered CTest labels: tier:fast / tier:integration / tier:desktop_full + mod:<module>
+    set_tests_properties(serial_ports_model boot_interrupt session_receive_dispatcher connection_profile
+        PROPERTIES LABELS "tier:fast;mod:serial")
+    set_tests_properties(tftp_packet
+        PROPERTIES LABELS "tier:fast;mod:tftp")
+    set_tests_properties(session_dispatcher_load
+        PROPERTIES LABELS "tier:fast;mod:serial;mod:terminal")
+    set_tests_properties(logger_circular_audit
+        PROPERTIES LABELS "tier:fast;mod:logger")
+    set_tests_properties(ui_settings_writer tool_presentation ui_buffered_paint command_macro ui_style_metrics
+        PROPERTIES LABELS "tier:fast;mod:ui")
+    set_tests_properties(transfer_protocol
+        PROPERTIES LABELS "tier:fast;mod:xfer")
+    set_tests_properties(performance_metrics
+        PROPERTIES LABELS "tier:fast;mod:perf")
+    set_tests_properties(terminal_parse_scheduler terminal_model terminal_decoder terminal_preview
+        PROPERTIES LABELS "tier:fast;mod:terminal")
+    set_tests_properties(ai_protocol local_workspace ai_pet_model workspace_instructions
+        PROPERTIES LABELS "tier:fast;mod:ai")
+    set_tests_properties(api_response
+        PROPERTIES LABELS "tier:fast;mod:network")
+    set_tests_properties(sftp_model
+        PROPERTIES LABELS "tier:fast;mod:sftp")
+
+    set_tests_properties(cancellable_io queued_transfer cmd_connection queued_resize
+        PROPERTIES LABELS "tier:integration;mod:serial")
+    set_tests_properties(ssh_lifecycle ssh_credentials ssh_lifecycle_delayed_start putty_host_key
+        PROPERTIES LABELS "tier:integration;mod:ssh")
+    set_tests_properties(terminal_throughput_benchmark
+        PROPERTIES LABELS "tier:integration;mod:terminal;mod:perf")
+    set_tests_properties(ai_client ai_voice_input ai_device_bridge
+        PROPERTIES LABELS "tier:integration;mod:ai")
+    set_tests_properties(update_client update_installer
+        PROPERTIES LABELS "tier:integration;mod:update")
+    set_tests_properties(session_logger
+        PROPERTIES LABELS "tier:integration;mod:logger")
+    set_tests_properties(power_service power_connection_gate
+        PROPERTIES LABELS "tier:integration;mod:power")
+    set_tests_properties(transfer_controller
+        PROPERTIES LABELS "tier:integration;mod:xfer")
+    set_tests_properties(api_server tcp_connection network_connect api_client linux_gateway_client websocket_deadline
+        PROPERTIES LABELS "tier:integration;mod:network")
+    set_tests_properties(shared_serial_protocol udp_serial serial_share_backpressure multi_serial
+        PROPERTIES LABELS "tier:integration;mod:network;mod:serial")
+    set_tests_properties(shared_terminal_response
+        PROPERTIES LABELS "tier:integration;mod:network;mod:terminal")
+    set_tests_properties(sftp_client sftp_controller
+        PROPERTIES LABELS "tier:integration;mod:sftp")
+    set_tests_properties(tftp_server
+        PROPERTIES LABELS "tier:integration;mod:tftp")
+    set_tests_properties(mcp_server
+        PROPERTIES LABELS "tier:integration;mod:mcp")
+
+    set_tests_properties(gui_instance ui_dialog_viewport ui_viewport_reentry_scroll ui_viewport_reentry_reset
+        ui_glyph_cache ui_combo_paint ui_popup_menu
+        PROPERTIES LABELS "tier:desktop_full;mod:ui")
+    set_tests_properties(ai_pet_pane ai_pane ai_composer ai_reply_format ai_voice_composer ai_pane_layout_audit ai_device
+        PROPERTIES LABELS "tier:desktop_full;mod:ai;mod:ui")
+    set_tests_properties(terminal_register_ui
+        PROPERTIES LABELS "tier:desktop_full;mod:ui;mod:terminal")
+    set_tests_properties(serial_card_title
+        PROPERTIES LABELS "tier:desktop_full;mod:ui;mod:serial")
+    set_tests_properties(transfer_pane_layout
+        PROPERTIES LABELS "tier:desktop_full;mod:ui;mod:xfer")
+    set_tests_properties(ssh_save_layout
+        PROPERTIES LABELS "tier:desktop_full;mod:ui;mod:ssh")
 endif()
 
 if(BUILD_TESTING)

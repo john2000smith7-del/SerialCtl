@@ -102,11 +102,33 @@ struct AiDeviceTestAccess {
             std::filesystem::path dir;
             ~TempDirGuard() { std::error_code ec; std::filesystem::remove_all(dir, ec); }
         } dirGuard{tftpSampleDir};
+        auto readTftpDirItems = [&]() {
+            const auto listHwnd = GetDlgItem(tftpBody, TftpPane::DirFilesList);
+            std::vector<std::wstring> items;
+            const auto count = static_cast<int>(SendMessageW(listHwnd, LB_GETCOUNT, 0, 0));
+            for (int i = 0; i < count; ++i) {
+                const auto len = static_cast<int>(SendMessageW(listHwnd, LB_GETTEXTLEN, i, 0));
+                if (len <= 0) {
+                    items.emplace_back();
+                    continue;
+                }
+                std::wstring item(static_cast<size_t>(len) + 1, L'\0');
+                const auto copied = static_cast<int>(SendMessageW(
+                    listHwnd, LB_GETTEXT, i, reinterpret_cast<LPARAM>(item.data())));
+                if (copied >= 0) item.resize(static_cast<size_t>(copied));
+                else item.clear();
+                items.push_back(std::move(item));
+            }
+            return items;
+        };
         tftp.ConfigureDirectories(L"local", tftpSampleDir.wstring(), L"");
         Require(server->RootConfig().mode == TftpRootMode::Local, "TFTP local directory configured on server");
-        wchar_t filesText[1024]{};
-        GetWindowTextW(GetDlgItem(tftpBody, TftpPane::DirFilesList), filesText, 1024);
-        const std::wstring listed(filesText);
+        const auto localItems = readTftpDirItems();
+        std::wstring listed;
+        for (const auto &it : localItems) {
+            if (!listed.empty()) listed += L"\n";
+            listed += it;
+        }
         Require(listed.find(L"Image") != std::wstring::npos && listed.find(L"board.dtb") != std::wstring::npos &&
                 listed.find(L"nested_subdir") == std::wstring::npos,
                 "TFTP directory listing must auto-list regular files and exclude subdirectories");
@@ -136,6 +158,20 @@ struct AiDeviceTestAccess {
                     SendMessageW(combo, CB_SETCURSEL, source, 0);
                     SendMessageW(tftpBody, WM_COMMAND, MAKEWPARAM(TftpPane::SourceType, CBN_SELCHANGE),
                                  reinterpret_cast<LPARAM>(combo));
+                    SendMessageW(tftpBody, WM_COMMAND, MAKEWPARAM(TftpPane::SourceType, CBN_CLOSEUP),
+                                 reinterpret_cast<LPARAM>(combo));
+                    const auto items = readTftpDirItems();
+                    std::wstring joined;
+                    for (const auto &it : items) joined += it + L"\n";
+                    if (source == 1) {
+                        Require(joined.find(L"Image") == std::wstring::npos &&
+                                joined.find(L"board.dtb") == std::wstring::npos,
+                                "Switching TFTP source to Remote must clear local file entries");
+                    } else {
+                        Require(joined.find(L"Image") != std::wstring::npos &&
+                                joined.find(L"board.dtb") != std::wstring::npos,
+                                "Switching TFTP source back to Local must restore local file entries");
+                    }
                     noOverlap(tftpBody);
                 }
                 const auto statusCtrl = GetDlgItem(tftpBody, TftpPane::ServiceStatus);
@@ -250,14 +286,18 @@ struct AiDeviceTestAccess {
             viewport.Paint(dc, terminal, &state, options);
             return dc;
         };
-        const auto digitBackground = [&](HDC dc, int bit, int groupsPerRow) {
+        const auto digitPoint = [&](int bit, int groupsPerRow) {
             const int group = (31 - bit) / 8, offset = (31 - bit) % 8;
             const int cell = Ui::Scale(20), gap = Ui::Scale(6), groupPad = Ui::Scale(3);
             const int left = Ui::TerminalPadding + Ui::Scale(10);
             const int top = Ui::TerminalPadding + viewport.Metrics().lineHeight + gap + Ui::Scale(24);
-            const int x = left + (group % groupsPerRow) * (8 * cell + 2 * groupPad + gap) + groupPad + offset * cell + 4;
-            const int y = top + (group / groupsPerRow) * (Ui::Scale(39) + gap) + Ui::Scale(24);
-            return GetPixel(dc, x, y);
+            return POINT{
+                left + (group % groupsPerRow) * (8 * cell + 2 * groupPad + gap) + groupPad + offset * cell + 4,
+                top + (group / groupsPerRow) * (Ui::Scale(39) + gap) + Ui::Scale(24)};
+        };
+        const auto digitBackground = [&](HDC dc, int bit, int groupsPerRow) {
+            const POINT pt = digitPoint(bit, groupsPerRow);
+            return GetPixel(dc, pt.x, pt.y);
         };
         select(9, 0, 0);
         Require(viewport.SelectionText(state, false) == L"0x80000005" && GetFocus() == terminal,
@@ -287,6 +327,22 @@ struct AiDeviceTestAccess {
         Require(digitBackground(render(), 0, 1) == UiTheme(true).accentSoft, "Narrow terminals must stack four byte groups");
         ui_test::SaveUiEvidence(terminal, L"terminal-register-narrow.png",
             [&](HDC dc) { viewport.Paint(dc, terminal, &state, options); });
+        const POINT bit0 = digitPoint(0, 1);
+        const LPARAM bit0Param = MAKELPARAM(bit0.x, bit0.y);
+        Require(viewport.Pointer(terminal, WM_LBUTTONDOWN, bit0Param, &state, options) ==
+                TerminalViewport::PointerResult::Handled &&
+                viewport.Pointer(terminal, WM_LBUTTONUP, bit0Param, &state, options) ==
+                TerminalViewport::PointerResult::Handled,
+                "Clicking a register bit must keep the card open");
+        Require(digitBackground(render(), 0, 1) == UiTheme(true).raised,
+                "First click on a set register bit must toggle it off");
+        Require(viewport.Pointer(terminal, WM_LBUTTONDBLCLK, bit0Param, &state, options) ==
+                TerminalViewport::PointerResult::Handled &&
+                viewport.Pointer(terminal, WM_LBUTTONUP, bit0Param, &state, options) ==
+                TerminalViewport::PointerResult::Handled,
+                "Double-clicking inside the register card must not select underlying text or dismiss the card");
+        Require(digitBackground(render(), 0, 1) == UiTheme(true).accentSoft,
+                "Rapid second click (WM_LBUTTONDBLCLK) on a register bit must toggle it back on");
         state.terminal.Feed(L"\r\nordinary", L"");
         select(0, 7, 1);
         Require(digitBackground(render(), 0, 1) == UiTheme(true).field, "Ordinary text must dismiss register inspection");
@@ -330,13 +386,75 @@ struct AiDeviceTestAccess {
         SetWindowPos(parent, nullptr, 0, 0, 1280, 960, SWP_NOZORDER | SWP_NOACTIVATE);
         main.CreateControls();
         main.ShowPowerPage();
-        const auto pane = main.powerPane_.Handle();
-        SendMessageW(pane, WM_COMMAND, MAKEWPARAM(91, BN_CLICKED), 0);
-        SendMessageW(pane, WM_COMMAND, MAKEWPARAM(115, BN_CLICKED), 0);
         ShowWindow(parent, SW_SHOWNOACTIVATE);
+        const auto pane = main.powerPane_.Handle();
+        Require(PowerControl(pane, 115) == nullptr, "Standalone keyword subtab must be removed from automation");
+        SendMessageW(pane, WM_COMMAND, MAKEWPARAM(91, BN_CLICKED), 0);
+        const HWND enableCheck = PowerControl(pane, 141);
+        Require(enableCheck && IsWindowVisible(enableCheck), "Automation cycle mode should expose keyword enable option");
+        SendMessageW(enableCheck, BM_SETCHECK, BST_CHECKED, 0);
+        SendMessageW(pane, WM_COMMAND, MAKEWPARAM(141, BN_CLICKED), 0);
         const HWND list = PowerControl(pane, 139);
         Require(list && IsWindowVisible(list) && Header_GetItemCount(ListView_GetHeader(list)) == 5,
-                "Keyword statistics should show five native columns");
+                "Keyword statistics should show five native columns in automation options");
+
+        // Verify Power right panel ("实时终端") and AI drag overlay match expected backdrops in Light mode.
+        main.darkMode_ = false;
+        main.ApplyTheme();
+        main.LayoutControls(1280, 960);
+        {
+            RECT targetRect{}, client{};
+            GetClientRect(parent, &client);
+            GetWindowRect(main.powerMonitorTarget_, &targetRect);
+            MapWindowPoints(nullptr, parent, reinterpret_cast<LPPOINT>(&targetRect), 2);
+            HDC screen = GetDC(nullptr);
+            HDC memDc = CreateCompatibleDC(screen);
+            HBITMAP bmp = CreateCompatibleBitmap(screen, client.right, client.bottom);
+            HGDIOBJ old = SelectObject(memDc, bmp);
+            main.PaintWindow(memDc);
+            const COLORREF rightCardBg = GetPixel(memDc, targetRect.left + 8, targetRect.bottom + 16);
+            const auto headerBrush = reinterpret_cast<HBRUSH>(main.HandleMessage(
+                WM_CTLCOLORSTATIC, reinterpret_cast<WPARAM>(memDc), reinterpret_cast<LPARAM>(main.aiTerminalHeader_)));
+            const COLORREF labelBg = GetBkColor(memDc);
+            SelectObject(memDc, old);
+            DeleteObject(bmp);
+            DeleteDC(memDc);
+            ReleaseDC(nullptr, screen);
+            Require(headerBrush != nullptr && rightCardBg == UiTheme(false).field &&
+                        labelBg == UiTheme(false).field &&
+                        UiControlBackdrop(main.powerMonitorTarget_, 0) == UiTheme(false).field,
+                    "Power live terminal right panel and label backdrop must both use field surface in Light mode");
+        }
+        {
+            main.ShowAiPage(false);
+            main.LayoutControls(1280, 960);
+            main.rightPanelDragging_ = true;
+            main.BeginFrozenSplitterDrag(false);
+            const int origRatio = main.aiMonitorRatio_;
+            main.aiMonitorRatio_ = std::min(750, origRatio + 180);
+            RECT client{};
+            GetClientRect(parent, &client);
+            const int overlayHeight = std::max(1, static_cast<int>(client.bottom) - main.dragSnapshotTop_);
+            HDC screen = GetDC(nullptr);
+            HDC memDc = CreateCompatibleDC(screen);
+            HBITMAP bmp = CreateCompatibleBitmap(screen, client.right, overlayHeight);
+            HGDIOBJ old = SelectObject(memDc, bmp);
+            main.PaintFrozenDragOverlay(memDc);
+            const int sampleX = std::max(8, main.dragOrigRightLeft_ - 30);
+            const int sampleY = std::max(8, overlayHeight / 2);
+            const COLORREF dragFill = GetPixel(memDc, sampleX, sampleY);
+            SelectObject(memDc, old);
+            DeleteObject(bmp);
+            DeleteDC(memDc);
+            ReleaseDC(nullptr, screen);
+            main.EndFrozenSplitterDrag();
+            main.rightPanelDragging_ = false;
+            main.aiMonitorRatio_ = origRatio;
+            main.ShowPowerPage();
+            main.LayoutControls(1280, 960);
+            Require(dragFill == UiTheme(false).window && dragFill != RGB(255, 255, 255),
+                    "AI right-sidebar frozen drag overlay must use Light window backdrop rather than pure white");
+        }
 
         struct ModalStep {
             int stage = 0;
@@ -347,7 +465,7 @@ struct AiDeviceTestAccess {
         static thread_local ModalStep *modal = nullptr;
         modal = &step;
         const auto timer = SetTimer(nullptr, 0, 30, [](HWND, UINT, UINT_PTR, DWORD) {
-            struct Windows { HWND config, rule; } dialogs{};
+            struct Windows { HWND config, rule, cmd; } dialogs{};
             EnumThreadWindows(GetCurrentThreadId(), [](HWND window, LPARAM state) -> BOOL {
                 auto &result = *reinterpret_cast<Windows *>(state);
                 wchar_t cls[16]{};
@@ -355,18 +473,13 @@ struct AiDeviceTestAccess {
                 if (wcscmp(cls, L"#32770") != 0) return TRUE;
                 if (GetDlgItem(window, 301)) result.config = window;
                 if (GetDlgItem(window, 310)) result.rule = window;
+                if (GetDlgItem(window, 320)) result.cmd = window;
                 return TRUE;
             }, reinterpret_cast<LPARAM>(&dialogs));
-            const auto config = dialogs.config, rule = dialogs.rule;
+            const auto config = dialogs.config, rule = dialogs.rule, cmd = dialogs.cmd;
             auto capture = [](HWND window, const wchar_t *name) {
                 ui_test::SaveUiEvidence(window, name, [&](HDC dc) {
-                    RECT frame{};
-                    POINT client{}, original{};
-                    GetWindowRect(window, &frame);
-                    ClientToScreen(window, &client);
-                    SetViewportOrgEx(dc, frame.left - client.x, frame.top - client.y, &original);
-                    SendMessageW(window, WM_PRINT, reinterpret_cast<WPARAM>(dc), PRF_CLIENT | PRF_CHILDREN | PRF_ERASEBKGND);
-                    SetViewportOrgEx(dc, original.x, original.y, nullptr);
+                    PrintWindow(window, dc, PW_CLIENTONLY);
                 });
             };
             try {
@@ -379,18 +492,33 @@ struct AiDeviceTestAccess {
                     PostMessageW(config, WM_COMMAND, MAKEWPARAM(303, BN_CLICKED), 0);
                 } else if (modal->stage == 1 && rule) {
                     Require(GetDlgItem(rule, 316) != nullptr, "Rule editor should show detection markers");
-                    SetDlgItemTextW(rule, 310, L"100BaseTX - RJ45");
-                    SetDlgItemTextW(rule, 311, L"run selftest");
+                    SetDlgItemTextW(rule, 310, L"DUPLEX FULL");
+                    SendMessageW(GetDlgItem(rule, 311), CB_SETCURSEL, 1, 0);
+                    SetDlgItemTextW(rule, 312, L"500");
                     capture(rule, modal->dark ? L"keyword-rule-dark.png" : L"keyword-rule-light.png");
                     modal->stage = 2;
                     PostMessageW(rule, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), 0);
-                } else if (modal->stage == 2 && config && !rule) {
-                    Require(ListView_GetItemCount(GetDlgItem(config, 302)) >= 1, "Confirm adds the rule to the configuration draft");
+                } else if (modal->stage == 2 && config && !rule && !cmd) {
+                    Require(ListView_GetItemCount(GetDlgItem(config, 302)) >= 1,
+                            "Confirm adds the rule to the configuration draft");
                     modal->stage = 3;
+                    PostMessageW(config, WM_COMMAND, MAKEWPARAM(304, BN_CLICKED), 0);
+                } else if (modal->stage == 3 && cmd) {
+                    SetDlgItemTextW(cmd, 320, L"run selftest");
+                    SetDlgItemTextW(cmd, 322, L"500");
+                    SetDlgItemTextW(cmd, 323, L"1000");
+                    capture(cmd, modal->dark ? L"keyword-cmd-dark.png" : L"keyword-cmd-light.png");
+                    modal->stage = 4;
+                    PostMessageW(cmd, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), 0);
+                } else if (modal->stage == 4 && config && !cmd) {
+                    Require(ListView_GetItemCount(GetDlgItem(config, 302)) >= 2,
+                            "Adding child command should render parent keyword and child command row");
+                    modal->stage = 5;
                     PostMessageW(config, WM_CLOSE, 0, 0);
                 }
             } catch (...) {
                 modal->error = std::current_exception();
+                if (cmd) PostMessageW(cmd, WM_CLOSE, 0, 0);
                 if (rule) PostMessageW(rule, WM_CLOSE, 0, 0);
                 if (config) PostMessageW(config, WM_CLOSE, 0, 0);
             }
@@ -405,14 +533,14 @@ struct AiDeviceTestAccess {
             ui_test::SaveUiEvidence(parent, dark ? L"keyword-power-dark.png" : L"keyword-power-light.png");
             SendMessageW(pane, WM_COMMAND, MAKEWPARAM(138, BN_CLICKED), 0);
             if (step.error) break;
-            if (step.stage != 3) break;
+            if (step.stage != 5) break;
         }
         KillTimer(nullptr, timer);
         modal = nullptr;
         if (step.error) std::rethrow_exception(step.error);
-        Require(step.stage == 3 && step.dark, "Native keyword configuration and editor must open and close");
+        Require(step.stage == 5 && step.dark, "Native keyword configuration, rule, and child command dialogs must open and close");
         RemoveWindowSubclass(parent, FixtureParent, 9207);
-        std::cout << "[PASS] Native power keyword tables and both dialogs in light and dark themes\n";
+        std::cout << "[PASS] Integrated power automation keyword UI, 7-action rules, and child commands in light and dark themes\n";
     }
     static void Run(HWND parent) {
         MainWindow main;
@@ -1015,21 +1143,31 @@ struct AiDeviceTestAccess {
         Require(!main.aiMonitorCollapsed_, "AI monitor must start expanded");
         main.aiMonitorCollapsed_ = true;
         main.LayoutControls(viewport.right, viewport.bottom);
-        Require(!IsWindowVisible(main.terminal_), "Collapsed AI monitor exposed terminal");
+        Require(!IsWindowVisible(main.terminal_) && !IsWindowVisible(main.aiCompileTabButton_),
+            "Collapsed AI monitor exposed terminal or header tabs");
         main.aiMonitorCollapsed_ = false;
         main.aiMonitorRatio_ = 500;
         main.LayoutControls(viewport.right, viewport.bottom);
         RECT ai{}, terminal{}, header{};
         GetWindowRect(main.aiPane_.Handle(), &ai);
         GetWindowRect(main.terminal_, &terminal);
-        GetWindowRect(main.aiTerminalHeader_, &header);
+        GetWindowRect(main.aiCompileTabButton_, &header);
         std::cout << "[GEOMETRY] client=" << viewport.right << "x" << viewport.bottom << " chat=" << ai.right - ai.left
                   << " terminal=" << terminal.right - terminal.left << '\n';
         Require(std::abs((terminal.right - terminal.left) - (ai.right - ai.left)) <= 1,
                 "Default AI and terminal widths must be equal");
         Require(!main.sessions_[1]->terminal.LineWrapView(), "AI monitor defaults to long-line projection");
-        Require(IsWindowVisible(main.terminal_) && terminal.left > ai.right && terminal.top >= header.bottom,
+        Require(main.aiSidebarTab_ == MainWindow::AiSidebarTab::Terminal &&
+                    IsWindowVisible(main.aiCompileTabButton_) && IsWindowVisible(main.aiTerminalTabButton_) &&
+                    IsWindowVisible(main.aiChangesTabButton_) &&
+                    IsWindowVisible(main.terminal_) && terminal.left > ai.right && terminal.top >= header.bottom,
             "Expanded monitor did not place actual terminal beside chat under its header");
+        RECT termTabRc{}, chgTabRc{}, compTabRc{};
+        GetWindowRect(main.aiTerminalTabButton_, &termTabRc);
+        GetWindowRect(main.aiChangesTabButton_, &chgTabRc);
+        GetWindowRect(main.aiCompileTabButton_, &compTabRc);
+        Require(termTabRc.right <= chgTabRc.left && chgTabRc.right <= compTabRc.left,
+                "AI sidebar tabs must be ordered Terminal -> Changes -> Compile");
         Require(main.rightPanelWidth_ == 320 && !main.rightPanelCollapsed_,
             "AI monitor changed terminal sidebar preference");
         Require(IsWindowVisible(main.aiPet_.Handle()), "AI desktop companion is not visible");
@@ -1065,7 +1203,7 @@ struct AiDeviceTestAccess {
                 item.rcItem = rect;
                 item.itemState = state;
                 main.DrawOwnerItem(item);
-                Require(GetPixel(buffer, 0, 0) == UiTheme(true).field,
+                Require(GetPixel(buffer, 0, 0) == UiTheme(true).surface,
                         "AI monitor button exposed a rectangular sidebar-colored exterior");
             }
             SelectObject(buffer, old);
@@ -1088,14 +1226,127 @@ struct AiDeviceTestAccess {
         Require(main.AiDeviceRequest("read", {{"sessionId", "session-5"}, {"lines", 1}})["text"] == live,
             "Monitor receive did not share the AI device data source");
         main.aiPane_.SelectTarget(""); main.SyncAiTerminal();
-        Require(!IsWindowVisible(main.terminal_), "Missing AI target exposed another session output");
+        Require(main.ActiveTerminalViewState() == nullptr &&
+                    main.TerminalViewportOptions().emptyHint == L"请在上方选择已连接的实时终端",
+                "Missing AI target exposed another session output");
+        main.HandleAiTurnStarted(77);
+        ai::ExecProgressEvent execStart{};
+        execStart.phase = ai::ExecProgressEvent::Phase::Started;
+        execStart.execId = "exec-dev-1";
+        execStart.toolName = "run_command";
+        execStart.command = "cmake --build build";
+        execStart.cwd = "D:/repo";
+        main.HandleAiExecEvent(execStart);
+        Require(main.ShowingAiExecTerminal() && main.ActiveTerminalViewState() == &main.aiExecTerminalState_ &&
+                    IsWindowVisible(main.terminal_) && IsWindowVisible(main.aiExecCombo_) &&
+                    IsWindowVisible(main.aiExecCopyButton_),
+                "AI command start did not switch sidebar to Compile live terminal view");
+        ai::ExecProgressEvent execDelta{};
+        execDelta.phase = ai::ExecProgressEvent::Phase::OutputDelta;
+        execDelta.execId = "exec-dev-1";
+        execDelta.chunk = "\x1b[32mbuild ok\x1b[0m\n";
+        main.HandleAiExecEvent(execDelta);
+        ai::ExecProgressEvent execDone{};
+        execDone.phase = ai::ExecProgressEvent::Phase::Completed;
+        execDone.execId = "exec-dev-1";
+        execDone.exitCode = 0;
+        execDone.durationMs = 15;
+        main.HandleAiExecEvent(execDone);
+        const auto execDeadline = GetTickCount64() + 1500;
+        bool sawExecText = false;
+        while (GetTickCount64() < execDeadline) {
+            MSG m{};
+            while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&m);
+                DispatchMessageW(&m);
+            }
+            if (main.TerminalSelectionText(true).find(L"build ok") != std::wstring::npos) {
+                sawExecText = true;
+                break;
+            }
+            Sleep(10);
+        }
+        Require(sawExecText, "Compile terminal parser did not render streamed AI command output");
+        ai::FileChangeRecord change{};
+        change.changeId = "chg-dev-1";
+        change.path = "src/main.cpp";
+        change.action = "edit";
+        change.addedLines = 2;
+        change.removedLines = 1;
+        change.turnSeq = 77;
+        std::string preview;
+        for (int ln = 1; ln <= 40; ++ln) {
+            if (ln == 2) preview += "new\nmore\n";
+            else if (ln == 20) preview += "middle_needle_token();\n";
+            else preview += "int line_" + std::to_string(ln) + " = " + std::to_string(ln) + ";\n";
+        }
+        change.contentPreview = preview;
+        change.diffText = "@@ -1,3 +1,4 @@\n-old\n+new\n+more\n int line_3 = 3;\n@@ -35,2 +36,2 @@\n int line_35 = 35;\n-int old_tail = 0;\n+int line_36 = 36;\n";
+        main.HandleAiFileChanges({change}, 77, change.changeId, true);
+        Require(main.aiSidebarTab_ == MainWindow::AiSidebarTab::Changes &&
+                    IsWindowVisible(main.aiChangesPane_.Handle()) && !IsWindowVisible(main.terminal_),
+                "AI file change focus did not show Changes pane");
+        wchar_t tabLabel[32]{};
+        GetWindowTextW(main.aiChangesTabButton_, tabLabel, 32);
+        Require(std::wstring(tabLabel) == L"修改", "AI changes tab should stay unlabeled without count");
+        RECT termTabRect{}, modeComboRect{}, fileComboRect{}, searchComboRect{}, prevBtnRect{}, nextBtnRect{},
+            toggleBtnRect{}, changesHostRect{};
+        HWND modeComboHwnd = GetDlgItem(main.aiChangesPane_.Handle(), AiChangesPane::ModeComboBox);
+        HWND prevBtnHwnd = GetDlgItem(main.aiChangesPane_.Handle(), AiChangesPane::PrevMatchButton);
+        HWND nextBtnHwnd = GetDlgItem(main.aiChangesPane_.Handle(), AiChangesPane::NextMatchButton);
+        GetWindowRect(main.aiTerminalTabButton_, &termTabRect);
+        GetWindowRect(modeComboHwnd, &modeComboRect);
+        GetWindowRect(GetDlgItem(main.aiChangesPane_.Handle(), AiChangesPane::FileComboBox), &fileComboRect);
+        GetWindowRect(GetDlgItem(main.aiChangesPane_.Handle(), AiChangesPane::SearchComboBox), &searchComboRect);
+        GetWindowRect(prevBtnHwnd, &prevBtnRect);
+        GetWindowRect(nextBtnHwnd, &nextBtnRect);
+        GetWindowRect(main.rightPanelToggleButton_, &toggleBtnRect);
+        GetWindowRect(main.aiChangesPane_.Handle(), &changesHostRect);
+        const auto *compactLabel = reinterpret_cast<const std::wstring *>(GetPropW(modeComboHwnd, L"SerialCtl.CompactLabel"));
+        Require(termTabRect.bottom - termTabRect.top == modeComboRect.bottom - modeComboRect.top &&
+                    modeComboRect.top == fileComboRect.top && fileComboRect.top == searchComboRect.top &&
+                    searchComboRect.top == prevBtnRect.top && prevBtnRect.top == nextBtnRect.top &&
+                    modeComboRect.right < fileComboRect.left && fileComboRect.right < searchComboRect.left &&
+                    searchComboRect.right < prevBtnRect.left && prevBtnRect.right < nextBtnRect.left &&
+                    main.aiChangesPane_.TopCardHeight() == Ui::Scale(6) + Ui::CompactHeight + Ui::Scale(6) &&
+                    SendMessageW(modeComboHwnd, CB_GETCOUNT, 0, 0) == 2 &&
+                    compactLabel && *compactLabel == L"DIFF" &&
+                    !IsWindowEnabled(prevBtnHwnd) && !IsWindowEnabled(nextBtnHwnd) &&
+                    toggleBtnRect.right <= changesHostRect.right,
+                "AI Changes Row 2 controls must align on one row with DIFF compact label and search nav buttons");
+        main.aiChangesPane_.SetSearchQuery(L"middle_needle_token");
+        Require(main.aiChangesPane_.SearchMatchCount() == 1 &&
+                    IsWindowEnabled(prevBtnHwnd) && IsWindowEnabled(nextBtnHwnd),
+                "Changes pane search did not find match inside collapsed middle section");
+        SendMessageW(main.aiChangesPane_.Handle(), WM_COMMAND, MAKEWPARAM(AiChangesPane::NextMatchButton, BN_CLICKED),
+                     reinterpret_cast<LPARAM>(nextBtnHwnd));
+        Require(main.aiChangesPane_.SearchMatchCount() == 1 && main.aiChangesPane_.ActiveSearchMatchIndex() == 0,
+                "Changes pane search step failed");
+        main.aiChangesPane_.SetSearchQuery(L"");
+        main.FocusAiExecInSidebar("exec-dev-1");
+        Require(main.ShowingAiExecTerminal() && IsWindowVisible(main.terminal_) &&
+                    !IsWindowVisible(main.aiChangesPane_.Handle()),
+                "Focusing AI exec from card failed to switch back to Compile tab");
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
         main.LayoutControls(viewport.right, viewport.bottom);
         GetWindowRect(main.terminal_, &terminal); GetWindowRect(main.aiPane_.Handle(), &ai);
         Require(!main.aiVisible_ && IsWindowVisible(main.terminal_) && terminal.left == ai.left &&
+            !IsWindowVisible(main.aiChangesPane_.Handle()) && !IsWindowVisible(main.aiExecCombo_) &&
             main.rightPanelWidth_ == 320, "Leaving AI failed to restore original terminal layout");
         // A final WM_MOUSEMOVE can be coalesced while output is repainting.
         // The real terminal handler must finish at WM_LBUTTONUP's coordinates.
+        bool hadPreviousClipboardText = false;
+        std::wstring previousClipboardText;
+        if (OpenClipboard(main.terminal_)) {
+            if (HANDLE prev = GetClipboardData(CF_UNICODETEXT)) {
+                if (const auto* text = static_cast<const wchar_t*>(GlobalLock(prev))) {
+                    previousClipboardText.assign(text);
+                    hadPreviousClipboardText = true;
+                    GlobalUnlock(prev);
+                }
+            }
+            CloseClipboard();
+        }
         main.activeSession_->terminal.Reset();
         main.activeSession_->terminal.Feed(L"COPY_HEAD  \r\nHARD_LINE", L"");
         // A normal page refresh now queues paint. Expose this fixture before
@@ -1190,6 +1441,22 @@ struct AiDeviceTestAccess {
         Require(GetClipboardSequenceNumber() == beforeClick && copied() == L"COPY_HEAD  \r\nHARD_LINE",
                 "Ordinary click replaced the selection clipboard");
         main.ClearTerminalSelection();
+        if (OpenClipboard(main.terminal_)) {
+            EmptyClipboard();
+            if (hadPreviousClipboardText) {
+                const size_t bytes = (previousClipboardText.size() + 1) * sizeof(wchar_t);
+                if (HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes)) {
+                    if (void* dst = GlobalLock(mem)) {
+                        std::memcpy(dst, previousClipboardText.c_str(), bytes);
+                        GlobalUnlock(mem);
+                        if (!SetClipboardData(CF_UNICODETEXT, mem)) GlobalFree(mem);
+                    } else {
+                        GlobalFree(mem);
+                    }
+                }
+            }
+            CloseClipboard();
+        }
         const auto before = transports[4]->sent;
         Require(main.AiDeviceRequest("command", {{"sessionId", "session-5"}, {"command", "a\nb"}}).contains("error"), "Multiline command bypassed validation");
         Require(transports[4]->sent == before, "Rejected command partially wrote");

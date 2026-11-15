@@ -94,11 +94,11 @@ McpHttpServer::~McpHttpServer() {
 
 bool McpHttpServer::Start(const std::string& bindIp, uint16_t port,
                           RequestHandler requestHandler, HealthHandler healthHandler,
-                          std::wstring& error) {
+                          std::wstring& error, bool allowEphemeralPort) {
     if (running_.load()) return true;
 
     bindIp_ = bindIp.empty() ? "0.0.0.0" : bindIp;
-    port_ = port ? port : 7080;
+    port_ = (port == 0 && allowEphemeralPort) ? 0 : (port ? port : 7080);
     requestHandler_ = std::move(requestHandler);
     healthHandler_ = std::move(healthHandler);
 
@@ -108,8 +108,8 @@ bool McpHttpServer::Start(const std::string& bindIp, uint16_t port,
         return false;
     }
 
-    BOOL reuse = TRUE;
-    setsockopt(listenSocket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse), sizeof(reuse));
+    BOOL exclusive = TRUE;
+    setsockopt(listenSocket_, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive), sizeof(exclusive));
 
     sockaddr_in sin{};
     sin.sin_family = AF_INET;
@@ -131,6 +131,14 @@ bool McpHttpServer::Start(const std::string& bindIp, uint16_t port,
         closesocket(listenSocket_);
         listenSocket_ = INVALID_SOCKET;
         return false;
+    }
+
+    if (port_ == 0) {
+        sockaddr_in bound{};
+        int boundLen = sizeof(bound);
+        if (getsockname(listenSocket_, reinterpret_cast<sockaddr*>(&bound), &boundLen) == 0) {
+            port_ = ntohs(bound.sin_port);
+        }
     }
 
     if (listen(listenSocket_, SOMAXCONN) == SOCKET_ERROR) {
@@ -229,6 +237,7 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
     std::string host;
     std::string contentType;
     std::string protocolVersion;
+    std::string authorization;
 
     while (running_.load()) {
         if (GetTickCount64() >= deadline) { invalidHeaders = true; break; }
@@ -260,7 +269,13 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
                         invalidHeaders = true; break;
                     }
                     const auto name = lowerLine.substr(0, colon);
-                    if (!seenHeaders.insert(name).second || name == "transfer-encoding") {
+                    if (name == "transfer-encoding") {
+                        invalidHeaders = true; break;
+                    }
+                    const bool singleHeaderRequired =
+                        name == "content-length" || name == "host" || name == "origin" ||
+                        name == "content-type" || name == "mcp-protocol-version" || name == "authorization";
+                    if (!seenHeaders.insert(name).second && singleHeaderRequired) {
                         invalidHeaders = true; break;
                     }
                     if (name == "content-length") {
@@ -287,6 +302,12 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
                         protocolVersion = line.substr(21);
                         while (!protocolVersion.empty() && protocolVersion.front() == ' ') protocolVersion.erase(protocolVersion.begin());
                         while (!protocolVersion.empty() && protocolVersion.back() == ' ') protocolVersion.pop_back();
+                    } else if (lowerLine.rfind("authorization:", 0) == 0) {
+                        authorization = line.substr(14);
+                        while (!authorization.empty() && (authorization.front() == ' ' || authorization.front() == '\t'))
+                            authorization.erase(authorization.begin());
+                        while (!authorization.empty() && (authorization.back() == ' ' || authorization.back() == '\t'))
+                            authorization.pop_back();
                     }
                 }
             }
@@ -338,11 +359,31 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
             return;
         }
         const std::string allowedOrigin = origin;
+        const bool isLoopbackBind = (bindIp_ == "127.0.0.1" || bindIp_ == "localhost" || bindIp_ == "::1");
+        const bool isLoopbackPeer = (clientIp == "127.0.0.1" || clientIp == "::1" || clientIp == "localhost");
+        auto constantTimeEquals = [](const std::string& a, const std::string& b) {
+            if (a.size() != b.size()) return false;
+            unsigned diff = 0;
+            for (size_t i = 0; i < a.size(); ++i) diff |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+            return diff == 0;
+        };
+        auto authorizedRequest = [&]() {
+            if (isLoopbackBind) return true;
+            if (authToken_.empty()) return isLoopbackPeer;
+            if (isLoopbackPeer && authorization.empty()) return true;
+            const std::string expected = "Bearer " + authToken_;
+            return authorization.size() >= 7 &&
+                   (authorization.rfind("Bearer ", 0) == 0 || authorization.rfind("bearer ", 0) == 0) &&
+                   constantTimeEquals(authorization.substr(7), authToken_);
+        };
 
         // Stateless MCP Streamable HTTP (2025-03-26): each request is one POST;
         // server-to-client SSE and sessions are intentionally not advertised.
         std::string response;
-        if (!protocolVersion.empty() && protocolVersion != "2025-03-26") {
+        const bool supportedProtocol =
+            protocolVersion.empty() || protocolVersion == "2024-11-05" || protocolVersion == "2025-03-26" ||
+            protocolVersion == "2025-06-18" || protocolVersion == "2025-11-25";
+        if (!supportedProtocol) {
             response = BuildHttpResponse(400, "Bad Request", "application/json",
                 "{\"error\":\"Unsupported MCP-Protocol-Version\"}", allowedOrigin);
         } else if (method == "OPTIONS") {
@@ -353,6 +394,9 @@ void McpHttpServer::HandleClient(SOCKET clientSocket, std::string clientIp) {
         } else if (method == "GET" && (uri == "/health" || uri == "/")) {
             std::string healthBody = healthHandler_ ? healthHandler_() : "{\"status\":\"ok\"}";
             response = BuildHttpResponse(200, "OK", "application/json", healthBody, allowedOrigin);
+        } else if (method == "POST" && (uri == "/mcp" || uri == "/") && !authorizedRequest()) {
+            response = BuildHttpResponse(401, "Unauthorized", "application/json",
+                "{\"error\":\"Valid Authorization: Bearer token required for non-loopback MCP access\"}", allowedOrigin);
         } else if (method == "POST" && (uri == "/mcp" || uri == "/")) {
             const size_t headerLength = (requestData.find("\r\n\r\n") != std::string::npos) ? 4 : 2;
             const size_t bodyStart = headerEnd + headerLength;

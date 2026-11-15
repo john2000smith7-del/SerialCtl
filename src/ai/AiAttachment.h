@@ -23,4 +23,7 @@ Attachment ReadAttachment(const std::wstring &path);
 bool ValidAttachmentDirectory(const std::string &path);
 nlohmann::json AttachmentDirectoryCommand();
 nlohmann::json AttachmentChunkCommand(const std::string &path, const Attachment &, size_t offset);
+bool StageLocalAttachments(const std::vector<Attachment> &files, std::string &directoryOut,
+                           std::vector<std::string> &stagedPathsOut, std::wstring &errorOut);
+void CleanupLocalAttachmentDirectory(const std::string &directory);
 } // namespace serialctl::ai

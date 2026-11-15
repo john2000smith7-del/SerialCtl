@@ -5,8 +5,13 @@ namespace serialctl {
 namespace Ui {
 inline int Dpi=96;
 inline int Scale(int value) { return MulDiv(value,Dpi,96); }
-inline int Radius = 10;
+inline int Radius = 8;
 inline int CardRadius = 12;
+inline constexpr int InnerRadius96 = 6;
+inline int InnerRadius = InnerRadius96;
+inline constexpr int ButtonPadXStandard96 = 16;
+inline constexpr int ButtonPadXCompact96 = 12;
+inline constexpr int ButtonIconGap96 = 6;
 inline int Space = 8;
 inline int Gap = 12;
 inline constexpr int OverlayScrollLaneWidth96 = 16;
@@ -16,10 +21,10 @@ inline int TerminalPadding = 8;
 inline int TerminalTimestampWidth = 112;
 inline int Section = 16;
 inline int ToolbarHeight = 72;
-inline constexpr int ToolbarButtonWidths[] = {89, 88, 98, 92, 88, 80};
+inline constexpr int ToolbarButtonWidths[] = {96, 94, 108, 100, 94, 84};
 inline constexpr int CompactIconButtonSize = 28;
 inline constexpr int CompactGlyphSize = 16;
-inline constexpr int NavigationOpticalInset96 = 2;
+inline constexpr int NavigationOpticalInset96 = 4;
 inline constexpr int AiComposerHeight96 = 48;
 inline constexpr int AiComposerMaxWidth96 = 820;
 inline constexpr int AiReplyMaxWidth96 = 760;
@@ -41,7 +46,7 @@ inline int MaxLeftWidth = 190;
 inline constexpr int MaxResizableLeftWidth96 = 280;
 inline constexpr int StatusViewportHeight96 = 72;
 inline constexpr int StatusHeaderHeight96 = 24;
-inline int MinRightWidth = 260;
+inline int MinRightWidth = 338;
 inline int MaxRightWidth = 650;
 inline int CollapsedRightWidth = 48;
 inline int MinCenterWidth = 400;

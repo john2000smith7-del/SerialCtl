@@ -107,7 +107,7 @@ class UiPopupMenu {
                 const int saved=SaveDC(dc);
                 ExcludeClipRect(dc,client.left,client.top,client.right,client.bottom);
                 const auto colors=UiFieldColors(c.style);
-                UiBox(dc,bounds,colors.field,colors.border,c.D(10));
+                UiBox(dc,bounds,colors.field,colors.border,UiControlRadius(c.style.dpi));
                 RestoreDC(dc,saved);ReleaseDC(h,dc);
             }
             return 0;
@@ -120,7 +120,7 @@ class UiPopupMenu {
             OffsetRect(&bounds, -bounds.left, -bounds.top);
             if (HDC dc = GetWindowDC(h)) {
                 PaintSubmenuArrows(h, dc, c, origin);
-                UiFocusOutline(dc, bounds, c.D(10), c.style.dpi, UiFieldColors(c.style).border);
+                UiFocusOutline(dc, bounds, UiControlRadius(c.style.dpi), c.style.dpi, UiFieldColors(c.style).border);
                 ReleaseDC(h, dc);
             }
             return result;
@@ -144,7 +144,8 @@ class UiPopupMenu {
                 // SetWindowRgn synchronously sends WINDOWPOS notifications.
                 // Publish the dimensions first, including for reentrant calls.
                 if(found==c.regionSizes.end()||found->second.cx!=size.cx||found->second.cy!=size.cy) {
-                    HRGN region=CreateRoundRectRgn(0,0,size.cx+1,size.cy+1,c.D(20),c.D(20));
+                    const int d = UiControlRadius(c.style.dpi) * 2;
+                    HRGN region=CreateRoundRectRgn(0,0,size.cx+1,size.cy+1,d,d);
                     if(region) {
                         c.regionSizes[h]=size;
                         if(!SetWindowRgn(h,region,TRUE)){DeleteObject(region);c.regionSizes.erase(h);}
@@ -204,7 +205,7 @@ class UiPopupMenu {
                 const bool disabled=!!(item.itemState&(ODS_DISABLED|ODS_GRAYED));
                 const bool selected=!!(item.itemState&ODS_SELECTED)&&!disabled;
                 RECT highlight=r;InflateRect(&highlight,0,-std::max(1,c.D(1)));
-                if(selected)UiBox(dc,highlight,colors.accent,colors.accent,c.D(8));
+                if(selected)UiBox(dc,highlight,colors.accent,colors.accent,UiInnerRadius(c.style.dpi));
                 const auto ink=disabled?colors.muted:selected?RGB(255,255,255):colors.text;
                 if(item.itemState&ODS_CHECKED) {
                     const int y=(r.top+r.bottom-c.D(16))/2;

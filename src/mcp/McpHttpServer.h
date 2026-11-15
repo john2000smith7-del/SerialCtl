@@ -21,12 +21,14 @@ public:
 
     bool Start(const std::string& bindIp, uint16_t port,
                RequestHandler requestHandler, HealthHandler healthHandler,
-               std::wstring& error);
+               std::wstring& error, bool allowEphemeralPort = false);
     void Stop();
 
     bool IsRunning() const { return running_.load(); }
     std::string BindIp() const { return bindIp_; }
     uint16_t Port() const { return port_; }
+    void SetAuthToken(const std::string& token) { authToken_ = token; }
+    std::string AuthToken() const { return authToken_; }
 
 private:
     void AcceptLoop();
@@ -36,6 +38,7 @@ private:
     SOCKET listenSocket_ = INVALID_SOCKET;
     std::string bindIp_ = "0.0.0.0";
     uint16_t port_ = 7080;
+    std::string authToken_;
     RequestHandler requestHandler_;
     HealthHandler healthHandler_;
     struct ClientThread {

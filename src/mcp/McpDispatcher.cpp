@@ -1,4 +1,5 @@
 #include "McpDispatcher.h"
+#include "OperationAuditLogger.h"
 #include <windows.h>
 #include <chrono>
 #include <ctime>
@@ -213,7 +214,63 @@ Json McpDispatcher::CallTool(const std::string& clientIp, const std::string& too
         return McpProtocol::MakeToolResult(res);
     }
 
-    // 4. Device and UI Tools (require GUI running, except offline local TFTP tools handled by McpService)
+    // 4. Built-in Windows Local Workspace Tools (loopback/in-process only, worker-thread safe)
+    if (toolName.rfind("workspace.", 0) == 0) {
+        auto check = McpSecurity::ValidateWorkspaceCall(toolName, clientIp);
+        const Json auditArgs = McpSecurity::SanitizeWorkspaceAuditArguments(toolName, arguments);
+        if (!check.allowed) {
+            McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId,
+                                          check.errorCode, check.errorMessage, auditArgs);
+            return {
+                {"error", {
+                    {"code", check.errorCode},
+                    {"message", check.errorMessage}
+                }}
+            };
+        }
+        const bool isGuiRunning = guiStatusChecker_ ? guiStatusChecker_() : false;
+        if (!isGuiRunning) {
+            std::string err = "APP_NOT_RUNNING: SerialCtl GUI is not running. Call app.launch first to start the application.";
+            McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId, ErrAppNotRunning, err, auditArgs);
+            return {
+                {"error", {
+                    {"code", ErrAppNotRunning},
+                    {"message", err}
+                }}
+            };
+        }
+        if (!workspaceExecutor_) {
+            std::string err = "Local workspace executor not bound";
+            McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId, ErrInternalError, err, auditArgs);
+            return {
+                {"error", {
+                    {"code", ErrInternalError},
+                    {"message", err}
+                }}
+            };
+        }
+        Json wsResult;
+        try {
+            wsResult = workspaceExecutor_(toolName, arguments);
+        } catch (const std::exception& e) {
+            std::string err = std::string("Workspace tool exception: ") + e.what();
+            McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId, ErrInternalError, err, auditArgs);
+            return {
+                {"error", {
+                    {"code", ErrInternalError},
+                    {"message", err}
+                }}
+            };
+        }
+        const int resCode = wsResult.contains("error") ? -1 : 0;
+        const std::string errMsg = wsResult.contains("error") ? wsResult["error"].dump() : "";
+        McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId, resCode, errMsg, auditArgs);
+        OperationAuditLogger::Instance().Record("MCP", toolName, clientIp, auditArgs.dump(),
+                                                resCode == 0 ? "ok" : errMsg);
+        return McpProtocol::MakeToolResult(wsResult, wsResult.contains("error"));
+    }
+
+    // 5. Device and UI Tools (require GUI running, except offline local TFTP tools handled by McpService)
     const bool isGuiRunning = guiStatusChecker_ ? guiStatusChecker_() : false;
     const bool isOfflineCapableTftp = (toolName.rfind("tftp.", 0) == 0 && toolName != "tftp.publish_remote");
     if (!isGuiRunning && !isOfflineCapableTftp) {
@@ -264,10 +321,16 @@ Json McpDispatcher::CallTool(const std::string& clientIp, const std::string& too
     int resultCode = execResult.contains("error") ? -1 : 0;
     std::string errorMsg = execResult.contains("error") ? execResult["error"].dump() : "";
     McpAuditLog::Instance().Record(timestamp, clientIp, toolName, sessionId, resultCode, errorMsg, arguments);
+    OperationAuditLogger::Instance().Record("MCP", toolName, clientIp, arguments.dump(),
+                                            resultCode == 0 ? "ok" : errorMsg);
 
     bool isErr = execResult.contains("error");
     return McpProtocol::MakeToolResult(execResult, isErr);
 }
+
+#ifndef SERIALCTL_APP_VERSION
+#define SERIALCTL_APP_VERSION "V2.0.21"
+#endif
 
 Json McpDispatcher::HandleAppStatus() {
     const bool isGuiRunning = guiStatusChecker_ ? guiStatusChecker_() : false;
@@ -276,7 +339,7 @@ Json McpDispatcher::HandleAppStatus() {
     return {
         {"serviceRunning", true},
         {"guiRunning", isGuiRunning},
-        {"version", "2.0.20"},
+        {"version", SERIALCTL_APP_VERSION},
         {"uptimeMs", uptimeMs},
         {"status", isGuiRunning ? "GUI and MCP Service Active" : "MCP Service Active (GUI Offline)"}
     };

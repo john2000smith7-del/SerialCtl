@@ -45,6 +45,8 @@ void GatewayClient::ConnectUntil(const std::wstring &host, unsigned port, const 
             throw std::runtime_error("CONNECT_CANCELED");
         if (hello_.value("type", "") != "hello" || hello_.value("version", 0) != 1)
             throw std::runtime_error("PROTOCOL_MISMATCH");
+        if (hello_.value("authRequired", false) && !accessToken_.empty())
+            RequestUntil("auth", "", {{"token", accessToken_}}, deadline);
     } catch (...) {
         Close();
         throw;

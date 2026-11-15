@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TftpServer.h"
+#include "BackgroundCleanup.h"
 #include "UiStyle.h"
 #include <atomic>
 #include <cstdint>
@@ -58,9 +59,12 @@ public:
     struct AsyncRemoteShared {
         std::mutex mutex;
         HWND hwnd = nullptr;
+        std::atomic<bool> cancel{false};
     };
 
     ~TftpPane();
+    void BeginShutdown();
+    void WaitForBackground();
 
     bool Create(HWND parent, std::shared_ptr<TftpServer> server,
                 SshSessionProvider sshProvider, HFONT font, bool dark, int dpi);
@@ -80,6 +84,7 @@ private:
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK BodyProc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK FieldProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
+    static LRESULT CALLBACK DirListProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 
     HWND Control(int id) const;
     void Layout();
@@ -101,6 +106,7 @@ private:
     HWND window_ = nullptr;
     HWND body_ = nullptr;
     HFONT font_ = nullptr;
+    HFONT monoFont_ = nullptr;
     HBRUSH surface_ = nullptr;
     HBRUSH field_ = nullptr;
     bool dark_ = false;
@@ -120,10 +126,15 @@ private:
     std::wstring remoteDir_;
     std::vector<TftpDirectoryEntry> dirEntries_;
     std::wstring dirListNotice_;
+    std::wstring cachedDirListSignature_;
+    RECT dirListFrame_{};
+    bool dirListDragging_ = false;
+    int dirListDragOffset_ = 0;
     std::wstring localNotice_;
     bool suppressEditNotify_ = false;
 
     std::shared_ptr<AsyncRemoteShared> remoteListShared_;
+    BackgroundCleanup remoteListWorkers_;
     std::atomic<uint64_t> remoteListSeq_{0};
     bool remoteListingPending_ = false;
     std::string lastAutoQueriedKey_;

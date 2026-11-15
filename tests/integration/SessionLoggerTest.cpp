@@ -120,6 +120,12 @@ int main() {
         const auto second = root.parent_path() / (root.stem().wstring() + L".part2" + root.extension().wstring());
         roots.push_back(second);
         const auto third = root.parent_path() / (root.stem().wstring() + L".part3" + root.extension().wstring());
+        const auto fourth = root.parent_path() / (root.stem().wstring() + L".part4" + root.extension().wstring());
+        const auto fifth = root.parent_path() / (root.stem().wstring() + L".part5" + root.extension().wstring());
+        const auto sixth = root.parent_path() / (root.stem().wstring() + L".part6" + root.extension().wstring());
+        roots.push_back(third);
+        roots.push_back(fourth);
+        roots.push_back(fifth);
         Bytes block(65536, 'A');
         for (int i = 0; i < 65 * 16; ++i) {
             logger.WriteRaw(block);
@@ -157,7 +163,8 @@ int main() {
             {"later_bytes_excluded", 1024 * 1024}, {"progress_final", lastProgress}});
         Check(!logger.SaveCopy(root.wstring(), point, error, nullptr), "protect source root");
         Check(!logger.SaveCopy(second.wstring(), point, error, nullptr), "protect existing part");
-        Check(!logger.SaveCopy(third.wstring(), point, error, nullptr) && !fs::exists(third), "protect future part");
+        Check(!logger.SaveCopy(third.wstring(), point, error, nullptr) && fs::exists(third), "protect rotated part3 at 16 MiB split");
+        Check(!logger.SaveCopy(sixth.wstring(), point, error, nullptr) && !fs::exists(sixth), "protect future part");
         evidence["cases"].push_back({{"name", "source root/current/future rotation protected"}});
 
         const auto old = directory / L"preserved.log";

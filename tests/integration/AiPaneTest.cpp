@@ -1,5 +1,7 @@
 #include "AiPane.h"
 #include "HostKeyDialog.h"
+#include "LocalWorkspace.h"
+#include "Workspace.h"
 #include "UiTestEvidence.h"
 #include "UiMetrics.h"
 #include <shlobj.h>
@@ -108,7 +110,7 @@ struct AiPaneTestAccess {
     static inline std::wstring composerMenuScreenshot;
     static void CALLBACK CheckComposerSettings(HWND owner, UINT, UINT_PTR timer, DWORD) {
         KillTimer(owner, timer);
-        const auto dialog = FindWindowW(L"#32770", L"连接 AI 服务器");
+        const auto dialog = FindWindowW(L"#32770", L"连接 AI 服务");
         DWORD process = 0;
         if (dialog) GetWindowThreadProcessId(dialog, &process);
         if (process == GetCurrentProcessId() && GetDlgItem(dialog, 200) && GetDlgItem(dialog, IDCANCEL)) {
@@ -243,6 +245,24 @@ struct AiPaneTestAccess {
         require(stream.blocks[0].columns == columns && stream.blocks[0].rows.size() == 3, "Streamed rows must keep column geometry stable");
         pane.messages_.clear();
 
+        pane.Add(L"AI", L"| 类别 | 内容 |\n| --- | --- |\n| 事实 | ", "partial-row1-stream");
+        auto &partial = pane.messages_.back();
+        require(partial.blocks.size() == 1 && partial.blocks[0].kind == Kind::Table && !partial.blocks[0].tableReady,
+                "Row with an empty cell must not freeze table columns prematurely");
+        partial.text += L"5";
+        pane.Reflow(true);
+        const int narrowContentCol = partial.blocks[0].columns[1];
+        partial.text += L"396 处于 SGMII 模式且为 master，但 LINK_STAT=0 |";
+        pane.Reflow(true);
+        require(partial.blocks[0].columns[1] > narrowContentCol && partial.blocks[0].tableReady,
+                "Streaming into the first data row must still widen its content column");
+        const auto settledCols = partial.blocks[0].columns;
+        partial.text += L"\n| 事实 | 对端能力字 0xEC00 不是合法单纤模式字，后续行对齐 |";
+        pane.Reflow(true);
+        require(partial.blocks[0].columns == settledCols && partial.blocks[0].rows.size() == 3,
+                "Subsequent rows must inherit settled row-1 column geometry");
+        pane.messages_.clear();
+
         const std::wstring code = L"\t{\r\n  \"status\": true,\r\n\r\n  \"trace\": \"" + std::wstring(128, L'x') +
                                   L"END\"\r\n}\r\n";
         const std::wstring source = L"## 诊断报告\n\n**运行环境确认**\n| 项目 | 结果 |\n| --- | --- |\n"
@@ -268,6 +288,19 @@ struct AiPaneTestAccess {
                 const auto path = std::find_if(message.paragraphs.begin(), message.paragraphs.end(),
                     [](const auto &item) { return item.text.find(L"/home/linux") != std::wstring::npos; });
                 require(path != message.paragraphs.end(), "Table path must have a measured cell");
+                if (width == 740 && !path->spans.empty() && path->lines.size() == 1) {
+                    const auto &sp = path->spans.front();
+                    HDC checkDc = GetDC(pane.transcript_);
+                    HGDIOBJ oldF = SelectObject(checkDc, pane.codeFont_);
+                    SIZE rawSz{};
+                    GetTextExtentPoint32W(checkDc, path->text.data() + sp.start, static_cast<int>(sp.length), &rawSz);
+                    SelectObject(checkDc, oldF);
+                    ReleaseDC(pane.transcript_, checkDc);
+                    const int spanAdv = path->lines[0].advances[sp.start + sp.length - path->lines[0].start] -
+                                        path->lines[0].advances[sp.start - path->lines[0].start];
+                    require(spanAdv >= static_cast<int>(rawSz.cx) + pane.D(5),
+                            "Inline code pill must reserve right-side breathing padding beyond raw glyph extent");
+                }
                 const POINT cell{message.bounds.left + path->lines[0].rect.left + 1,
                                  message.bounds.top + path->lines[0].rect.top + 1};
                 require(std::get<1>(pane.HitText(cell)) == static_cast<size_t>(path - message.paragraphs.begin()),
@@ -323,6 +356,164 @@ struct AiPaneTestAccess {
         const POINT lastCellPoint{wide.bounds.left + lastCell.rect.left - tableBlock.offset + 1,
                                   wide.bounds.top + lastCell.rect.top + 1};
         require(std::get<1>(pane.HitText(lastCellPoint)) == wide.paragraphs.size() - 1, "Rightmost table cell must stay selectable after scrolling");
+
+        // Phase 2 GFM, HTML table, list hanging indent, details toggle and link layout checks
+        pane.messages_.clear();
+        const std::wstring gfmDoc =
+            L"# 主标题（H1）\n"
+            L"## 二级标题（H2）\n"
+            L"### 三级标题（H3）\n"
+            L"1. 执行系统重启：<br>reboot<br>2. 下发配置：<br>tftpboot 0x82000000 u-boot.bin\n\n"
+            L"* 一级条目\n  * 二级条目\n- [x] 已验证\n- [ ] 待排查\n\n"
+            L"包含 **粗体**、*斜体*、***粗斜体***、~~删除~~、<mark>高亮</mark>、<kbd>Ctrl</kbd>+<kbd>C</kbd> 与 H<sub>2</sub>O。\n"
+            L"点击跳转：[跳至结尾](#结尾测试) 或 <https://kernel.org>\n\n"
+            L"> [!NOTE]\n> 注意检查板卡供电。\n\n"
+            L"> 外层引用\n> > 嵌套引用\n\n"
+            L"<details><summary>展开详细日志</summary>\n\n内部详情行\n\n</details>\n\n"
+            L"<table><thead><tr><th>阶段</th><th>说明</th></tr></thead>"
+            L"<tbody><tr><td><b>BUG-01</b><br><span style=\"color: gray;\">[高优]</span></td><td>右列内容</td></tr></tbody></table>\n\n"
+            L"### 结尾测试\n完成。";
+        for (const bool dark : {false, true}) {
+            pane.Theme(dark);
+            pane.messages_.clear();
+            SetWindowPos(pane.Handle(), nullptr, 0, 0, pane.D(740), pane.D(670), SWP_NOZORDER);
+            pane.Add(L"AI", gfmDoc, "gfm-render");
+            pane.scroll_.offset = 0;
+            auto &gfm = pane.messages_.back();
+            require(!gfm.headingRules.empty() && gfm.taskChecks.size() == 2 &&
+                    gfm.taskChecks[0].checked && !gfm.taskChecks[1].checked,
+                    "GFM render must create H1 rule and task checkboxes");
+            const auto rebootIt = std::find_if(gfm.paragraphs.begin(), gfm.paragraphs.end(),
+                [](const auto &p) { return p.text == L"reboot"; });
+            const auto step1It = std::find_if(gfm.paragraphs.begin(), gfm.paragraphs.end(),
+                [](const auto &p) { return p.text.rfind(L"1. 执行系统重启", 0) == 0; });
+            require(rebootIt != gfm.paragraphs.end() && step1It != gfm.paragraphs.end() &&
+                    rebootIt->rect.left > step1It->rect.left,
+                    "Ordered list <br> continuation must use hanging indent");
+            const auto level2It = std::find_if(gfm.paragraphs.begin(), gfm.paragraphs.end(),
+                [](const auto &p) { return p.text.find(L"二级条目") != std::wstring::npos; });
+            const auto level1It = std::find_if(gfm.paragraphs.begin(), gfm.paragraphs.end(),
+                [](const auto &p) { return p.text.find(L"一级条目") != std::wstring::npos; });
+            require(level1It != gfm.paragraphs.end() && level2It != gfm.paragraphs.end() &&
+                    level2It->rect.left > level1It->rect.left,
+                    "Nested list items must indent deeper");
+            const auto rightCellIt = std::find_if(gfm.paragraphs.begin(), gfm.paragraphs.end(),
+                [](const auto &p) { return p.text == L"右列内容"; });
+            require(rightCellIt != gfm.paragraphs.end(), "HTML table right cell must lay out");
+            const POINT rightCellPt{gfm.bounds.left + rightCellIt->lines[0].rect.left + 2,
+                                    gfm.bounds.top + rightCellIt->lines[0].rect.top + 2};
+            require(std::get<1>(pane.HitText(rightCellPt)) == static_cast<size_t>(rightCellIt - gfm.paragraphs.begin()),
+                    "Multi-line <br> HTML table left cell must keep HitText working on right cell");
+            const auto linkPara = std::find_if(gfm.paragraphs.begin(), gfm.paragraphs.end(),
+                [](const auto &p) { return p.text.find(L"跳至结尾") != std::wstring::npos; });
+            require(linkPara != gfm.paragraphs.end() && !linkPara->links.empty(), "Anchor link must attach LinkRange");
+            const auto &firstLink = linkPara->links.front();
+            const int linkX = gfm.bounds.left + linkPara->lines[0].rect.left +
+                (linkPara->lines[0].advances[firstLink.start] + linkPara->lines[0].advances[firstLink.start + firstLink.length]) / 2;
+            const POINT linkPt{linkX, gfm.bounds.top + linkPara->lines[0].rect.top + 2};
+            require(pane.HitLink(linkPt) == L"#结尾测试", "HitLink must detect anchor URL over link text");
+            require(pane.HitLink({gfm.bounds.right - 2, linkPt.y}).empty(), "Blank padding after line must not hit link");
+            const auto detailsIt = std::find_if(gfm.blocks.begin(), gfm.blocks.end(),
+                [](const auto &b) { return b.kind == Kind::Details; });
+            require(detailsIt != gfm.blocks.end() && !detailsIt->expanded, "Details block starts collapsed");
+            const int collapsedHeight = gfm.measuredHeight;
+            const POINT togglePt{gfm.bounds.left + detailsIt->toggle.left + pane.D(12),
+                                 gfm.bounds.top + detailsIt->toggle.top + pane.D(12)};
+            require(pane.TranscriptBlockPress(togglePt), "Clicking details toggle must be handled");
+            const auto expandedDetailsIt = std::find_if(pane.messages_.back().blocks.begin(),
+                pane.messages_.back().blocks.end(), [](const auto &b) { return b.kind == Kind::Details; });
+            require(expandedDetailsIt != pane.messages_.back().blocks.end() &&
+                    expandedDetailsIt->expanded && pane.messages_.back().measuredHeight > collapsedHeight,
+                    "Clicking details must expand content and increase message height");
+            const auto preScroll = pane.scroll_.offset;
+            require(pane.ActivateLink(L"#结尾测试") && pane.scroll_.offset > preScroll,
+                    "Internal #anchor link must scroll to matching heading");
+            pane.scroll_.offset = 0;
+            const auto screenshot = std::wstring(L"ai-reply-gfm-") + (dark ? L"dark.png" : L"light.png");
+            ui_test::SaveUiEvidence(pane.transcript_, screenshot, [&](HDC dc) { pane.PaintTranscript(dc); });
+
+            pane.messages_.clear();
+            SetWindowPos(pane.Handle(), nullptr, 0, 0, pane.D(740), pane.D(940), SWP_NOZORDER);
+            const std::wstring mathDoc =
+                L"### 四、逻辑边界检视：为何会出现“先有鸡”的争议？（对应 $P_3$ 与连续性悖论）\n\n"
+                L"上述推论在以下两个边界条件下需要进一步界定，否则推论会不完备：\n\n"
+                L"**1. 语义切换到 $P_3$ （母体效应定义）时的反转**\n\n"
+                L"一枚蛋由两部分构成：**内部胚胎基因型 $G_{\\text{embryo}}$** 与 **外部母体分泌结构 $M_{\\text{mother}}$**（如输卵管分泌的卵壳基质蛋白与蛋壳矿化结构）。\n\n"
+                L"- 对关键卵 $e_k$ 而言：$G_{\\text{embryo}}(e_k)$ 属于鸡（$C=1$），但包裹它的蛋壳 $M_{\\text{mother}}(e_k)$ 是由“非鸡母体 $x_{k-1}$”合成的（$C=0$）。\n"
+                L"- 如果有人把“鸡蛋”强行定义为“必须由基因型为鸡的母体所分泌产下的蛋”（$M_{\\text{mother}} = 1$），那么第一枚符合该定义的蛋只能由 $x_k$ 产下（即下一代卵 $e_{k+1}$），此时 $t(x_k) < t(e_{k+1})$。\n\n"
+                L"**2. 连续演化的“连锁悖论（Sorites Paradox）”**\n\n"
+                L"推论 2 中为了推理使用了二值阶跃假设 $C(x) \\in \\{0, 1\\}$。但在真实的演化生物学中，物种分化是群体基因频率和生殖隔离度的**连续函数 $C(x) \\in [0, 1]$**。\n\n"
+                L"1. **合子决定公理**：受精卵时期 $t_{\\text{zygote}}$ 已完成整合。\n"
+                L"2. **单细胞瓶颈与魏斯曼屏障（Weismann barrier）**：一个已孵化的成体（$t > t_{\\text{hatch}}$）不会在后天生命周期中发生全身性的跨物种突变。\n\n"
+                L"### 总结\n\n"
+                L"$$\n"
+                L"\\text{广义蛋先于鸡（演化时间序）} \\;\\land\\; \\\\\n"
+                L"\\text{合子基因型决定于受精而非孵化（发育遗传序）} \\implies \\\\\n"
+                L"\\mathbf{\\text{先有蛋，后有鸡}}\n"
+                L"$$";
+            pane.Add(L"AI", mathDoc);
+            pane.Layout();
+            pane.scroll_.offset = 0;
+            const auto &mathMsg = pane.messages_.back();
+            require(!mathMsg.paragraphs.empty() && mathMsg.paragraphs[0].headingLevel == 3,
+                    "Math test heading must be H3");
+            const auto &h3 = mathMsg.paragraphs[0];
+            const size_t p3Pos = h3.text.find(L"P3");
+            require(p3Pos != std::wstring::npos && h3.text.find(L'\\') == std::wstring::npos,
+                    "H3 heading $P_3$ must translate cleanly");
+            HFONT pFont = nullptr, subFont = nullptr;
+            for (const auto &sp : h3.spans) {
+                if (sp.start <= p3Pos && p3Pos < sp.start + sp.length)
+                    pFont = pane.ParagraphFont(h3.style, sp.ink, sp.flags);
+                if (sp.start <= p3Pos + 1 && p3Pos + 1 < sp.start + sp.length)
+                    subFont = pane.ParagraphFont(h3.style, sp.ink, sp.flags);
+            }
+            require(pFont == pane.h3Font_ && pFont != pane.codeFont_,
+                    "Heading math variable $P$ must use heading font, not monospace code font");
+            require(subFont == pane.subFont_,
+                    "Heading math subscript $_3$ must use subFont_");
+
+            const auto mathBlockIt = std::find_if(mathMsg.blocks.begin(), mathMsg.blocks.end(),
+                [](const auto &b) { return b.kind == Kind::Math; });
+            require(mathBlockIt != mathMsg.blocks.end(), "Display math block must be laid out");
+            const size_t mathBlockIdx = static_cast<size_t>(mathBlockIt - mathMsg.blocks.begin());
+            int mathTop = INT_MAX, mathBottom = INT_MIN;
+            std::wstring mathCombined;
+            for (const auto &mp : mathMsg.paragraphs) {
+                if (mp.block != mathBlockIdx) continue;
+                mathTop = std::min<int>(mathTop, mp.rect.top);
+                mathBottom = std::max<int>(mathBottom, mp.rect.bottom);
+                mathCombined += mp.text;
+            }
+            require(mathCombined.find(L"∧") != std::wstring::npos &&
+                    mathCombined.find(L"⇒") != std::wstring::npos &&
+                    mathCombined.find(L'\\') == std::wstring::npos,
+                    "Display math block must render Unicode math operators without raw TeX backslashes");
+            require(mathTop >= mathBlockIt->rect.top + pane.D(8) &&
+                    mathBlockIt->rect.bottom - mathBottom >= pane.D(8),
+                    "Display math block must keep top and bottom vertical padding");
+
+            for (const auto &mp : mathMsg.paragraphs) {
+                for (size_t li = 0; li + 1 < mp.lines.size(); ++li) {
+                    const size_t nextStart = mp.lines[li + 1].start;
+                    const wchar_t firstChar = nextStart < mp.text.size() ? mp.text[nextStart] : L'\0';
+                    require(std::wstring_view(L"，。；：、！？）】》”’").find(firstChar) == std::wstring_view::npos,
+                            "CJK wrapping must not leave forbidden closing/separating punctuation at line start");
+                }
+            }
+            const auto parIt = std::find_if(mathMsg.paragraphs.begin(), mathMsg.paragraphs.end(),
+                [](const auto &p) { return p.text.find(L"二值阶跃假设") != std::wstring::npos && p.lines.size() >= 2; });
+            require(parIt != mathMsg.paragraphs.end(), "Sorites CJK/math paragraph must wrap into multiple lines");
+            const auto &firstWrapped = parIt->lines[0];
+            require(!firstWrapped.advances.empty() &&
+                    firstWrapped.advances.back() >= (firstWrapped.rect.right - firstWrapped.rect.left) * 60 / 100,
+                    "CJK paragraph must break cleanly near right edge instead of jumping back to an earlier ASCII space");
+
+            const auto mathShot = std::wstring(L"ai-reply-math-") + (dark ? L"dark.png" : L"light.png");
+            ui_test::SaveUiEvidence(pane.transcript_, mathShot, [&](HDC dc) { pane.PaintTranscript(dc); });
+        }
+        pane.messages_.clear();
+
         std::cout << "[PASS] Native reply markup, supported language tokens, streaming tables, code copy source, clipping and both themes\n";
     }
 
@@ -514,6 +705,7 @@ struct AiPaneTestAccess {
         const auto check = [](bool value, const char *why) { if (!value) throw std::runtime_error(why); };
         const auto savedModel = pane.serverDefaultModel_;
         const auto savedWorkspace = pane.workspaceDirectory_;
+        const bool savedWsLocal = pane.workspaceIsLocal_;
         const bool savedDark = pane.dark_;
         wchar_t savedText[1024]{}; GetWindowTextW(pane.Control(12), savedText, 1024);
         RECT saved{}; GetWindowRect(pane.window_, &saved);
@@ -563,6 +755,7 @@ struct AiPaneTestAccess {
                     ++cases;
                 }
                 int shortWidth=0,longWidth=0;
+                pane.workspaceIsLocal_=false;
                 for(bool longName:{false,true}) {
                     pane.workspaceDirectory_=L"/srv/"+(longName?std::wstring(200,L'x'):std::wstring(L"m"));
                     pane.UpdateActions();
@@ -581,6 +774,7 @@ struct AiPaneTestAccess {
         }
         pane.serverDefaultModel_ = savedModel;
         pane.workspaceDirectory_ = savedWorkspace;
+        pane.workspaceIsLocal_ = savedWsLocal;
         SetWindowTextW(pane.Control(12), savedText);
         pane.Theme(savedDark);
         MoveWindow(pane.window_, saved.left, saved.top, saved.right - saved.left, saved.bottom - saved.top, TRUE);
@@ -615,7 +809,7 @@ struct AiPaneTestAccess {
               "Readable tool text and optional technical envelope were not separated");
         for (bool dark : {false, true}) {
             pane.Theme(dark);
-            pane.collapsedGroups_.erase("v209-tools"); pane.Reflow();
+            pane.Reflow();
             ui_test::SaveUiEvidence(pane.transcript_, dark ? L"v209-readable-tools-dark.png" : L"v209-readable-tools-light.png",
                 [&](HDC dc) { pane.PaintTranscript(dc); });
             const auto parent = GetAncestor(pane.window_, GA_ROOT);
@@ -639,7 +833,7 @@ struct AiPaneTestAccess {
         check(!pane.events_.empty(), "A single UI poll drained the whole output burst");
         while (!pane.events_.empty()) pane.Poll();
         check(pane.messages_.front().text.size() == 8000, "Sliced UI delivery lost or duplicated deltas");
-        pane.collapsedGroups_.erase("v209-burst"); pane.Reflow();
+        pane.Reflow();
         std::cout << "[TIMING] v209 800 streamed events and long-line expand " << GetTickCount64() - started << "ms\n";
         check(GetTickCount64() - started < 5000, "Bounded long-line rendering remained unresponsive");
         pane.busy_ = false; pane.NewConversation();
@@ -730,6 +924,28 @@ struct AiPaneTestAccess {
         KillTimer(parent,timer);PostMessageW(dialog,WM_COMMAND,IDCANCEL,0);
     }
     static void CheckWorkspaceDialogs(AiPane &pane) {
+        struct WsFixtureGuard {
+            AiPane &pane;
+            ai::ServerSettings settings;
+            bool wsLocal;
+            std::wstring localWs, remoteWs, wsDir;
+            std::string sshId;
+            ~WsFixtureGuard() {
+                pane.settings_ = settings;
+                pane.workspaceIsLocal_ = wsLocal;
+                pane.localWorkspaceDirectory_ = localWs;
+                pane.remoteWorkspaceDirectory_ = remoteWs;
+                pane.remoteSshSessionId_ = sshId;
+                pane.workspaceDirectory_ = wsDir;
+                pane.SyncLocalWorkspaceService();
+            }
+        } wsGuard{pane, pane.settings_, pane.workspaceIsLocal_, pane.localWorkspaceDirectory_,
+                  pane.remoteWorkspaceDirectory_, pane.workspaceDirectory_, pane.remoteSshSessionId_};
+        pane.settings_.localMode = false;
+        pane.settings_.provider = ai::AiProvider::Codex;
+        pane.workspaceIsLocal_ = false;
+        pane.remoteSshSessionId_.clear();
+        pane.SyncLocalWorkspaceService();
         const auto previousCwd=pane.workspaceDirectory_;const auto previousThread=pane.thread_;
         const auto oldCount=pane.messages_.size();
         pane.pendingWorkspace_=L"/srv/candidate";pane.busy_=true;
@@ -1320,7 +1536,8 @@ struct AiPaneTestAccess {
         size_t commandCards = 0;
         for (const auto& message : pane.messages_) if (message.item == "server:running") {
             ++commandCards;
-            require(message.text == L"exit 2: ACTUAL_FAILURE\nACTUAL_PROGRESS", "Native result did not replace its progress");
+            require(message.text == L"exit 2: ACTUAL_FAILURE\n\n**输出**\n```text\nACTUAL_PROGRESS\n```",
+                    "Native result did not replace its progress");
         }
         require(commandCards == 1, "Native tool stream duplicated its message frame");
         pane.Event({{"event", "serverTool"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
@@ -1330,11 +1547,13 @@ struct AiPaneTestAccess {
         pane.Event({{"event", "serverToolDelta"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
                     {"messageId", "server:ansi"}, {"text", "1mRED\x1b[0m"}});
         auto ansi = std::find_if(pane.messages_.begin(), pane.messages_.end(), [](const auto &m) { return m.item == "server:ansi"; });
-        require(ansi != pane.messages_.end() && ansi->text == L"diagnoseRED", "Split ANSI escape leaked during streaming");
+        require(ansi != pane.messages_.end() && ansi->text == L"diagnose\n\n**实时输出**\n```text\nRED\n```",
+                "Split ANSI escape leaked during streaming");
         pane.Event({{"event", "serverTool"}, {"conversationId", "fixture"}, {"taskId", "turn-direct"},
                     {"messageId", "server:ansi"}, {"completed", true}, {"appendStream", true}, {"text", "finished"}});
         ansi = std::find_if(pane.messages_.begin(), pane.messages_.end(), [](const auto &m) { return m.item == "server:ansi"; });
-        require(ansi->text == L"finished\nRED" && ansi->technical.find(L"\\u001b") != std::wstring::npos,
+        require(ansi->text == L"finished\n\n**输出**\n```text\nRED\n```" &&
+                    ansi->technical.find(L"\\u001b") != std::wstring::npos,
                 "Completed native output must be readable and retain original escape codes in technical details");
         pane.Event({{"event", "textComplete"},
                     {"conversationId", "fixture"},
@@ -1374,6 +1593,676 @@ struct AiPaneTestAccess {
         require(!pane.busy_ && pane.status_.find(L"CONTAINER_APIKEY") != std::wstring::npos,
                 "Missing server environment did not release busy state with its actual cause");
         require(pane.CompanionActivity() == pet::Activity::Failed, "Pet celebrated a failed service call");
+
+        // Decoupled 2x2 workspace mode, offline switch UI, and async mcp_workspace_* execution
+        {
+            const auto origWs = ai::LoadWorkspaceSettings(&pane.settings_);
+            const auto origSettings = pane.settings_;
+            wchar_t tmpRoot[MAX_PATH]{};
+            const DWORD tn = GetTempPathW(MAX_PATH, tmpRoot);
+            require(tn > 0 && tn < MAX_PATH, "GetTempPathW failed for AI pane workspace test");
+            const std::wstring localWsDir =
+                std::wstring(tmpRoot, tn) + L"serialctl-aipane-ws-" + std::to_wstring(GetCurrentProcessId());
+            std::error_code ec;
+            std::filesystem::remove_all(localWsDir, ec);
+            require(std::filesystem::create_directories(localWsDir, ec), "Failed to create AI pane local ws dir");
+
+            try {
+                // Remote AI + Local Windows Workspace keeps POSIX cwd for SSH process while exposing local tools
+                pane.settings_.localMode = false;
+                pane.ApplyWorkspaceSelection(true, false, localWsDir, L"/srv/project-keep", "ssh-7");
+                require(pane.workspaceIsLocal_ && pane.localWorkspaceDirectory_ == localWsDir &&
+                            pane.remoteWorkspaceDirectory_ == L"/srv/project-keep",
+                        "ApplyWorkspaceSelection failed to retain independent local and remote paths");
+                require(ai::ValidRemoteWorkspacePath(pane.ProcessCwdForAi()),
+                        "Remote AI with local workspace must pass POSIX cwd rather than Windows path to SSH server");
+                wchar_t wsBtnText[256]{};
+                GetWindowTextW(pane.Control(31), wsBtnText, 256);
+                require(std::wstring(wsBtnText).find(L"本地") != std::wstring::npos,
+                        "Workspace header capsule did not show local indicator");
+
+                // Async mcp_workspace_write_file -> WM_APP+195 delivery -> real file & tool card
+                pane.NewConversation();
+                pane.thread_ = "fixture";
+                pane.busy_ = true;
+                pane.taskAuthorized_ = true;
+                pane.turn_ = "turn-ws";
+                const auto msgBefore = pane.messages_.size();
+                ai::Json wsCall = {
+                    {"event", "serialToolRequest"},
+                    {"requestId", 951},
+                    {"conversationId", "fixture"},
+                    {"taskId", "turn-ws"},
+                    {"callId", "ws-write-1"},
+                    {"tool", "mcp_workspace_write_file"},
+                    {"arguments", {{"path", "probe/hello.txt"}, {"content", "WIN_LOCAL_TOOL_OK"}}}};
+                pane.Event(wsCall);
+                const auto asyncDeadline = GetTickCount64() + 5000;
+                while (pane.messages_.size() == msgBefore && GetTickCount64() < asyncDeadline) {
+                    MSG m{};
+                    while (PeekMessageW(&m, pane.Handle(), WM_APP + 195, WM_APP + 195, PM_REMOVE))
+                        DispatchMessageW(&m);
+                    pane.ProcessAsyncWork();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+                }
+                require(pane.messages_.size() > msgBefore &&
+                            std::filesystem::exists(std::filesystem::path(localWsDir) / L"probe" / L"hello.txt"),
+                        "Async mcp_workspace_write_file did not execute off-thread and deliver result card");
+
+                // Remote workspace must reject mcp_workspace_* access to local drive
+                pane.ApplyWorkspaceSelection(false, false, localWsDir, L"/srv/project-keep", "ssh-7");
+                const auto deniedBefore = pane.messages_.size();
+                wsCall["requestId"] = 952;
+                wsCall["callId"] = "ws-write-denied";
+                wsCall["arguments"]["path"] = "probe/denied.txt";
+                pane.Event(wsCall);
+                std::this_thread::sleep_for(std::chrono::milliseconds(40));
+                require(!std::filesystem::exists(std::filesystem::path(localWsDir) / L"probe" / L"denied.txt") &&
+                            pane.messages_.size() == deniedBefore,
+                        "Remote workspace allowed mcp_workspace_* write");
+
+                pane.busy_ = false;
+                pane.taskAuthorized_ = false;
+                pane.client_.Shutdown();
+                pane.UpdateActions();
+                require(IsWindowEnabled(pane.Control(31)) != FALSE,
+                        "Workspace entry button must remain enabled even when AI is offline");
+
+                // Decoupled WorkspaceProc segmented switch & controls visibility in both palettes
+                pane.ApplyWorkspaceSelection(false, false, localWsDir, L"/srv/project-keep", "");
+                for (bool darkTheme : {false, true}) {
+                    pane.Theme(darkTheme);
+                    struct WsForm { DLGTEMPLATE d{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME,0,0,0,0,456,332}; WORD menu=0,cls=0,title=0; } form;
+                    const HWND dlg = CreateDialogIndirectParamW(
+                        GetModuleHandleW(nullptr), &form.d, GetAncestor(pane.window_, GA_ROOT),
+                        AiPane::WorkspaceProc, reinterpret_cast<LPARAM>(&pane));
+                    require(dlg != nullptr, "Failed to create WorkspaceProc dialog");
+                    ShowWindow(dlg, SW_SHOW);
+                    UpdateWindow(dlg);
+                    MSG m{};
+                    while (PeekMessageW(&m, dlg, WM_APP + 89, WM_APP + 95, PM_REMOVE)) DispatchMessageW(&m);
+
+                    // Initially remote mode: SshCombo visible, BrowseLocal & LocalReadOnly hidden
+                    require(IsWindowVisible(GetDlgItem(dlg, 235)) != FALSE &&
+                                IsWindowVisible(GetDlgItem(dlg, 232)) == FALSE &&
+                                IsWindowVisible(GetDlgItem(dlg, 233)) == FALSE,
+                            "Workspace dialog initial remote mode control visibility mismatch");
+                    // Switch to local mode via WsModeLocal (231)
+                    SendMessageW(dlg, WM_COMMAND, MAKEWPARAM(231, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(dlg, 231)));
+                    require(pane.workspaceDialogIsLocal_ &&
+                                IsWindowVisible(GetDlgItem(dlg, 232)) != FALSE &&
+                                IsWindowVisible(GetDlgItem(dlg, 233)) != FALSE &&
+                                IsWindowVisible(GetDlgItem(dlg, 235)) == FALSE,
+                            "Switching to Local workspace tab did not toggle browse/read-only controls");
+                    RECT rRemote{}, rLocal{}, rPath{}, rBrowse{};
+                    GetWindowRect(GetDlgItem(dlg, 230), &rRemote);
+                    GetWindowRect(GetDlgItem(dlg, 231), &rLocal);
+                    GetWindowRect(GetDlgItem(dlg, 213), &rPath);
+                    GetWindowRect(GetDlgItem(dlg, 232), &rBrowse);
+                    require(rRemote.right < rLocal.left && rPath.right < rBrowse.left &&
+                                (rRemote.bottom - rRemote.top) == (rPath.bottom - rPath.top) &&
+                                (rBrowse.bottom - rBrowse.top) == (rPath.bottom - rPath.top),
+                            "Local workspace segmented switch / path / browse controls misaligned or overlapping");
+                    ui_test::SaveUiEvidence(dlg, darkTheme ? L"v210-workspace-local-dark.png" : L"v210-workspace-local-light.png");
+
+                    // Switch back to Remote (230) preserves both paths
+                    SendMessageW(dlg, WM_COMMAND, MAKEWPARAM(230, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(dlg, 230)));
+                    require(!pane.workspaceDialogIsLocal_ &&
+                                IsWindowVisible(GetDlgItem(dlg, 235)) != FALSE &&
+                                IsWindowVisible(GetDlgItem(dlg, 232)) == FALSE,
+                            "Switching back to Remote workspace tab did not restore SSH selector");
+                    DestroyWindow(dlg);
+                }
+
+                // Remote Antigravity ("ai-settings") listing, "." $HOME fallback, combo refresh on mode switches, and stale seq guard
+                {
+                    struct FsMockGuard {
+                        AiPane &pane;
+                        AiPane::RemoteFsRunner runner;
+                        AiPane::DeviceRequest devices;
+                        std::wstring serverHome;
+                        ~FsMockGuard() {
+                            pane.SetRemoteFsRunner(std::move(runner));
+                            pane.devices_ = std::move(devices);
+                            pane.serverHome_ = std::move(serverHome);
+                        }
+                    } fsGuard{pane, pane.remoteFsRunner_, pane.devices_, pane.serverHome_};
+
+                    auto pumpDlgAndAsync = [&](int maxMs = 1500) {
+                        const auto until = GetTickCount64() + static_cast<ULONGLONG>(maxMs);
+                        MSG m{};
+                        do {
+                            bool had = false;
+                            while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
+                                had = true;
+                                TranslateMessage(&m);
+                                DispatchMessageW(&m);
+                            }
+                            pane.ProcessAsyncWork();
+                            if (!pane.directoryPending_ && !had) break;
+                            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                        } while (GetTickCount64() < until);
+                    };
+                    auto readComboItems = [&](HWND combo) {
+                        std::vector<std::wstring> items;
+                        const int count = static_cast<int>(SendMessageW(combo, CB_GETCOUNT, 0, 0));
+                        for (int i = 0; i < count; ++i) {
+                            const int len = static_cast<int>(SendMessageW(combo, CB_GETLBTEXTLEN, i, 0));
+                            std::wstring s(len > 0 ? static_cast<size_t>(len) + 1 : 1, L'\0');
+                            const int got = len > 0
+                                ? static_cast<int>(SendMessageW(combo, CB_GETLBTEXT, i, reinterpret_cast<LPARAM>(s.data())))
+                                : 0;
+                            s.resize(got > 0 ? static_cast<size_t>(got) : 0);
+                            items.push_back(std::move(s));
+                        }
+                        return items;
+                    };
+
+                    pane.client_.Shutdown();
+                    pane.settings_.localMode = false;
+                    pane.settings_.provider = ai::AiProvider::Antigravity;
+                    pane.settings_.host = L"10.0.0.8";
+                    pane.settings_.port = 22;
+                    pane.settings_.username = L"dev";
+                    pane.serverHome_.clear();
+                    pane.devices_ = [&](const std::string &op, const ai::Json &args) {
+                        if (op == "remote_fs.sessions") return ai::Json::array();
+                        return fsGuard.devices ? fsGuard.devices(op, args) : ai::Json(nullptr);
+                    };
+
+                    std::vector<std::pair<std::string, std::string>> fsCalls;
+                    pane.SetRemoteFsRunner([&](const std::string &op, const ai::Json &args, AiPane::RemoteFsCallback cb) {
+                        if (op != "list") return;
+                        const auto sid = args.value("sessionId", "");
+                        const auto path = args.value("path", "");
+                        fsCalls.emplace_back(sid, path);
+                        if (path == "/home/linux/workspace") {
+                            cb({{"error", "No such directory"}});
+                        } else if (path == ".") {
+                            cb({{"ok", true},
+                                {"sessionId", sid},
+                                {"path", "/home/dev"},
+                                {"children", ai::Json::array({"/home/dev/proj_a", "/home/dev/proj_b"})}});
+                        } else {
+                            cb({{"error", "unexpected path"}});
+                        }
+                    });
+
+                    pane.ApplyWorkspaceSelection(false, false, localWsDir, L"/home/linux/workspace", "");
+                    struct WsDlgForm { DLGTEMPLATE d{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME,0,0,0,0,456,332}; WORD menu=0,cls=0,title=0; } wsDlgForm;
+                    const HWND dlg1 = CreateDialogIndirectParamW(
+                        GetModuleHandleW(nullptr), &wsDlgForm.d, GetAncestor(pane.window_, GA_ROOT),
+                        AiPane::WorkspaceProc, reinterpret_cast<LPARAM>(&pane));
+                    require(dlg1 != nullptr, "Failed to create WorkspaceProc dialog for Antigravity remote browse");
+                    ShowWindow(dlg1, SW_SHOW);
+                    UpdateWindow(dlg1);
+                    pumpDlgAndAsync();
+
+                    wchar_t dlgPath[512]{};
+                    GetDlgItemTextW(dlg1, 213, dlgPath, 512);
+                    const auto remoteItems = readComboItems(GetDlgItem(dlg1, 208));
+                    require(fsCalls.size() == 2 &&
+                                fsCalls[0] == std::pair<std::string, std::string>{"ai-settings", "/home/linux/workspace"} &&
+                                fsCalls[1] == std::pair<std::string, std::string>{"ai-settings", "."} &&
+                                std::wstring(dlgPath) == L"/home/dev" &&
+                                remoteItems.size() == 3 &&
+                                remoteItems[1] == L"proj_a" && remoteItems[2] == L"proj_b",
+                            "Antigravity default remote SSH must fall back to '.' $HOME and list remote subdirectories");
+
+                    SendMessageW(dlg1, WM_COMMAND, MAKEWPARAM(231, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(dlg1, 231)));
+                    const auto localItems = readComboItems(GetDlgItem(dlg1, 208));
+                    require(pane.workspaceDialogIsLocal_ &&
+                                std::find(localItems.begin(), localItems.end(), L"probe") != localItems.end() &&
+                                std::find(localItems.begin(), localItems.end(), L"proj_a") == localItems.end(),
+                            "Switching Remote -> Local must refresh Directory dropdown to local subdirectories");
+
+                    pane.PopulateLocalDirectoryListing(dlg1, L"Z:\\serialctl_missing_invalid_dir_xyz");
+                    require(SendDlgItemMessageW(dlg1, 208, CB_GETCOUNT, 0, 0) == 1,
+                            "Invalid local directory must clear stale Directory dropdown entries");
+
+                    pane.PopulateLocalDirectoryListing(dlg1, localWsDir);
+                    require(SendDlgItemMessageW(dlg1, 208, CB_GETCOUNT, 0, 0) >= 2,
+                            "Restoring valid local path must repopulate local Directory entries");
+
+                    pane.settings_.host.clear();
+                    SendMessageW(dlg1, WM_COMMAND, MAKEWPARAM(230, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(dlg1, 230)));
+                    pumpDlgAndAsync(200);
+                    require(!pane.workspaceDialogIsLocal_ &&
+                                SendDlgItemMessageW(dlg1, 208, CB_GETCOUNT, 0, 0) == 1,
+                            "Switching Local -> Remote when remote browse is unavailable must clear local Directory entries");
+                    DestroyWindow(dlg1);
+
+                    // localMode == true with connected SSH session ("ssh-auto") + switching to Local cancels pending remote browse
+                    pane.settings_.localMode = true;
+                    pane.devices_ = [&](const std::string &op, const ai::Json &args) {
+                        if (op == "remote_fs.sessions") {
+                            return ai::Json::array({
+                                {{"id", "ssh-auto"}, {"name", "dev"}, {"host", "10.0.0.9"}, {"directory", "/srv/remote-auto"}}});
+                        }
+                        return fsGuard.devices ? fsGuard.devices(op, args) : ai::Json(nullptr);
+                    };
+                    AiPane::RemoteFsCallback heldRemoteCb;
+                    std::string autoSid = "unset";
+                    pane.SetRemoteFsRunner([&](const std::string &op, const ai::Json &args, AiPane::RemoteFsCallback cb) {
+                        if (op == "list") {
+                            autoSid = args.value("sessionId", "");
+                            heldRemoteCb = std::move(cb);
+                        }
+                    });
+                    pane.ApplyWorkspaceSelection(false, false, localWsDir, L"/srv/remote-auto", "");
+                    const HWND dlg2 = CreateDialogIndirectParamW(
+                        GetModuleHandleW(nullptr), &wsDlgForm.d, GetAncestor(pane.window_, GA_ROOT),
+                        AiPane::WorkspaceProc, reinterpret_cast<LPARAM>(&pane));
+                    require(dlg2 != nullptr, "Failed to create WorkspaceProc dialog for localMode auto-SSH test");
+                    ShowWindow(dlg2, SW_SHOW);
+                    UpdateWindow(dlg2);
+                    const auto captureUntil = GetTickCount64() + 1500;
+                    while (!heldRemoteCb && GetTickCount64() < captureUntil) {
+                        MSG m{};
+                        while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
+                            TranslateMessage(&m);
+                            DispatchMessageW(&m);
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+                    require(heldRemoteCb && autoSid.empty() && pane.directoryPending_ &&
+                                IsWindowEnabled(GetDlgItem(dlg2, 231)) != FALSE,
+                            "localMode with connected SSH terminal must browse default session while leaving mode switch enabled");
+
+                    SendMessageW(dlg2, WM_COMMAND, MAKEWPARAM(231, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(dlg2, 231)));
+                    const auto localAfterCancel = readComboItems(GetDlgItem(dlg2, 208));
+                    require(pane.workspaceDialogIsLocal_ && !pane.directoryPending_ &&
+                                std::find(localAfterCancel.begin(), localAfterCancel.end(), L"probe") != localAfterCancel.end(),
+                            "Clicking Local during pending remote browse must cancel pending wait and show local subdirectories");
+
+                    heldRemoteCb({{"ok", true},
+                                  {"sessionId", ""},
+                                  {"path", "/srv/remote-auto"},
+                                  {"children", ai::Json::array({"/srv/remote-auto/stale_dir"})}});
+                    pumpDlgAndAsync(200);
+                    GetDlgItemTextW(dlg2, 213, dlgPath, 512);
+                    const auto afterStale = readComboItems(GetDlgItem(dlg2, 208));
+                    require(pane.workspaceDialogIsLocal_ &&
+                                std::wstring(dlgPath) == localWsDir &&
+                                std::find(afterStale.begin(), afterStale.end(), L"stale_dir") == afterStale.end() &&
+                                std::find(afterStale.begin(), afterStale.end(), L"probe") != afterStale.end(),
+                            "Stale remote RemoteFsList response must be rejected after switching to Local");
+
+                    // Switching back to Remote + selecting explicit SSH session in WsSshCombo passes sessionId == "ssh-auto"
+                    heldRemoteCb = {};
+                    SendMessageW(dlg2, WM_COMMAND, MAKEWPARAM(230, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(dlg2, 230)));
+                    require(!pane.workspaceDialogIsLocal_ && heldRemoteCb,
+                            "Switching back to Remote must initiate remote browse");
+                    heldRemoteCb({{"ok", true},
+                                  {"sessionId", ""},
+                                  {"path", "/srv/remote-auto"},
+                                  {"children", ai::Json::array({"/srv/remote-auto/auto_sub"})}});
+                    heldRemoteCb = {};
+                    pumpDlgAndAsync(200);
+                    require(readComboItems(GetDlgItem(dlg2, 208)).size() == 2,
+                            "Default auto SSH browse must populate Directory items");
+                    const HWND sshCombo = GetDlgItem(dlg2, 235);
+                    SendMessageW(sshCombo, CB_SETCURSEL, 1, 0);
+                    SendMessageW(dlg2, WM_COMMAND, MAKEWPARAM(235, CBN_SELCHANGE), reinterpret_cast<LPARAM>(sshCombo));
+                    require(pane.workspaceDialogSshSessionId_ == "ssh-auto" && autoSid == "ssh-auto" &&
+                                SendDlgItemMessageW(dlg2, 208, CB_GETCOUNT, 0, 0) == 1,
+                            "Switching WsSshCombo session must clear previous Directory entries and query selected SSH session");
+                    DestroyWindow(dlg2);
+                }
+
+                // Toggling AI localMode must never overwrite local/remote workspace choice
+                pane.ApplyWorkspaceSelection(true, false, localWsDir, L"/srv/project-keep", "ssh-7");
+                pane.settings_.localMode = true;
+                require(pane.workspaceIsLocal_ && pane.localWorkspaceDirectory_ == localWsDir &&
+                            pane.remoteWorkspaceDirectory_ == L"/srv/project-keep",
+                        "AI localMode transition overwrote independent workspace state");
+
+                // ConnectProc must pass Windows listening port into settings_.mcpPort (keeping remoteMcpPort == 0 for auto -R)
+                {
+                    const ai::ServerSettings diskOrig = ai::LoadServerSettings();
+                    struct McpConnectGuard {
+                        AiPane &pane;
+                        std::function<uint16_t()> ensureOrig;
+                        ai::ServerSettings diskOrig;
+                        HWND dlg = nullptr;
+                        ~McpConnectGuard() {
+                            pane.client_.Shutdown();
+                            if (dlg && IsWindow(dlg)) DestroyWindow(dlg);
+                            pane.SetEnsureMcpPortProvider(std::move(ensureOrig));
+                            std::wstring err;
+                            ai::SaveServerSettings(diskOrig, err);
+                        }
+                    } mcpGuard{pane, pane.ensureMcpPort_, diskOrig};
+
+                    struct DlgTpl { DLGTEMPLATE d{WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME, 0, 0, 0, 0, 270, 260}; WORD menu = 0, cls = 0, title = 0; } connForm;
+                    pane.settings_.provider = ai::AiProvider::Antigravity;
+                    pane.settings_.localMode = false;
+                    pane.settings_.host = L"serialctl-offline-mcp-" + std::to_wstring(GetCurrentProcessId()) + L".invalid";
+                    pane.settings_.port = 22;
+                    pane.settings_.platformMode = false;
+                    pane.settings_.username = L"fixture";
+                    pane.settings_.password = L"fixture-only-π";
+                    pane.settings_.rememberPassword = false;
+                    pane.settings_.mcpPort = 7080;
+                    pane.settings_.remoteMcpPort = 9999;
+
+                    pane.SetEnsureMcpPortProvider([]() -> uint16_t { return 43219; });
+                    mcpGuard.dlg = CreateDialogIndirectParamW(
+                        GetModuleHandleW(nullptr), &connForm.d, GetAncestor(pane.window_, GA_ROOT),
+                        AiPane::ConnectProc, reinterpret_cast<LPARAM>(&pane));
+                    require(mcpGuard.dlg != nullptr, "Failed to create ConnectProc dialog for MCP port test");
+                    CheckDlgButton(mcpGuard.dlg, 204 /*Remember*/, BST_UNCHECKED);
+                    CheckDlgButton(mcpGuard.dlg, 214 /*PortMode*/, BST_UNCHECKED);
+                    SendDlgItemMessageW(mcpGuard.dlg, 216 /*ProviderCombo*/, CB_SETCURSEL, 1, 0);
+                    SendDlgItemMessageW(mcpGuard.dlg, 217 /*ConnModeCombo*/, CB_SETCURSEL, 0, 0);
+                    SendMessageW(mcpGuard.dlg, WM_COMMAND, MAKEWPARAM(206 /*Test*/, BN_CLICKED),
+                                 reinterpret_cast<LPARAM>(GetDlgItem(mcpGuard.dlg, 206)));
+                    require(pane.settings_.provider == ai::AiProvider::Antigravity && !pane.settings_.localMode &&
+                                pane.settings_.mcpPort == 43219 && pane.settings_.remoteMcpPort == 0,
+                            "Remote Antigravity ConnectProc must set mcpPort from ensureMcpPort_ and keep remoteMcpPort == 0");
+                    pane.client_.Shutdown();
+
+                    pane.SetEnsureMcpPortProvider([]() -> uint16_t { return 43220; });
+                    pane.settings_.mcpPort = 7080;
+                    SendDlgItemMessageW(mcpGuard.dlg, 217 /*ConnModeCombo*/, CB_SETCURSEL, 1, 0);
+                    SendMessageW(mcpGuard.dlg, WM_COMMAND, MAKEWPARAM(206 /*Test*/, BN_CLICKED),
+                                 reinterpret_cast<LPARAM>(GetDlgItem(mcpGuard.dlg, 206)));
+                    require(pane.settings_.provider == ai::AiProvider::Antigravity && pane.settings_.localMode &&
+                                pane.settings_.mcpPort == 43220 && pane.settings_.remoteMcpPort == 0,
+                            "Local Antigravity ConnectProc must also set mcpPort from ensureMcpPort_ and keep remoteMcpPort == 0");
+                    pane.client_.Shutdown();
+
+                    HKEY mcpHostKey = nullptr;
+                    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\TrustedHostKeys", 0, KEY_SET_VALUE, &mcpHostKey) == ERROR_SUCCESS) {
+                        RegDeleteValueW(mcpHostKey, (pane.settings_.host + L":22").c_str());
+                        RegCloseKey(mcpHostKey);
+                    }
+                }
+            } catch (...) {
+                pane.busy_ = false;
+                pane.taskAuthorized_ = false;
+                pane.client_.Shutdown();
+                pane.settings_ = origSettings;
+                pane.ApplyWorkspaceSelection(origWs.isLocal, origWs.localReadOnly, origWs.localDirectory,
+                                             origWs.remoteDirectory, origWs.remoteSshSessionId);
+                std::error_code remEc;
+                std::filesystem::remove_all(localWsDir, remEc);
+                throw;
+            }
+            pane.busy_ = false;
+            pane.taskAuthorized_ = false;
+            pane.settings_ = origSettings;
+            pane.ApplyWorkspaceSelection(origWs.isLocal, origWs.localReadOnly, origWs.localDirectory,
+                                         origWs.remoteDirectory, origWs.remoteSshSessionId);
+            std::filesystem::remove_all(localWsDir, ec);
+        }
+
+        // Verify thinking/tool formatting, interleaved turn order, and Antigravity resume/cache/workspace restoration
+        {
+            const auto savedSettings = pane.settings_;
+            const bool savedLocal = pane.workspaceIsLocal_;
+            const bool savedReadOnly = pane.localWorkspaceReadOnly_;
+            const auto savedLocalDir = pane.localWorkspaceDirectory_;
+            const auto savedRemoteDir = pane.remoteWorkspaceDirectory_;
+            const auto savedSshSid = pane.remoteSshSessionId_;
+            std::error_code ec;
+            const auto resumeLocalDir = std::filesystem::temp_directory_path() /
+                (L"serialctl-pane-resume-ws-" + std::to_wstring(GetCurrentProcessId()));
+            std::filesystem::create_directories(resumeLocalDir, ec);
+
+            struct ResumeTestGuard {
+                AiPane &pane;
+                ai::ServerSettings settings;
+                bool isLocal, readOnly;
+                std::wstring localDir, remoteDir;
+                std::string sshSid;
+                std::filesystem::path tempDir;
+                ~ResumeTestGuard() {
+                    pane.busy_ = false;
+                    pane.pendingHistoryRestore_ = false;
+                    pane.pendingHistoryBinding_ = {};
+                    pane.isProbeSession_ = false;
+                    pane.thread_.clear();
+                    pane.turn_.clear();
+                    pane.displayGroup_.clear();
+                    pane.messages_.clear();
+                    pane.requests_.clear();
+                    pane.transcriptCache_.clear();
+                    pane.transcriptCacheOrder_.clear();
+                    pane.groupStates_.clear();
+                    pane.groupDurations_.clear();
+                    pane.collapsedGroups_.clear();
+                    pane.initializedGroups_.clear();
+                    pane.settings_ = settings;
+                    pane.ApplyWorkspaceSelection(isLocal, readOnly, localDir, remoteDir, sshSid);
+                    pane.Reflow();
+                    std::error_code remEc;
+                    std::filesystem::remove_all(tempDir, remEc);
+                }
+            } resumeGuard{pane, savedSettings, savedLocal, savedReadOnly, savedLocalDir, savedRemoteDir, savedSshSid, resumeLocalDir};
+
+            pane.busy_ = false;
+            pane.stopRequested_ = false;
+            pane.deferReflow_ = false;
+            pane.displayGroup_.clear();
+            pane.ClearTextSelection();
+            pane.messages_.clear();
+            pane.selectedMessage_ = SIZE_MAX;
+            pane.messageBytes_ = 0;
+            pane.collapsedGroups_.clear();
+            pane.initializedGroups_.clear();
+            pane.groupStates_.clear();
+            pane.groupDurations_.clear();
+            pane.transcriptCache_.clear();
+            pane.transcriptCacheOrder_.clear();
+
+            // 1. Thinking uses full proseMarkup; Tool uses inlineFormatted without breaking pipes or underscores
+            pane.Add(L"思考", L"### 分析步骤\n\n- 检查 `list`\n- 对照输出", "think-fmt");
+            pane.Add(L"工具",
+                     L"**Run mcp_serialctl_workspace.list** · 已完成\n\n```json\n{\"depth\": 2}\n```\n\n**输出**\n```text\nsrc/\n```\n| col1 | col2 |\n| --- | --- |",
+                     "server:fmt-1", L"{\"rawOutput\":{\"entries\":[\"src/\"]}}");
+            pane.Reflow();
+            require(pane.messages_.size() == 2 &&
+                        pane.messages_[0].paragraphs.size() >= 3 &&
+                        pane.messages_[0].paragraphs[0].headingLevel == 3 &&
+                        pane.messages_[0].paragraphs[0].text == L"分析步骤" &&
+                        !pane.messages_[0].paragraphs[1].spans.empty() &&
+                        pane.messages_[0].paragraphs[1].text.find(L"list") != std::wstring::npos,
+                    "Thinking bubble must lay out headings, inline code spans and list items");
+            require(pane.messages_[1].blocks.size() == 2 &&
+                        pane.messages_[1].blocks[0].kind == ai::markup::Kind::Code &&
+                        pane.messages_[1].blocks[1].kind == ai::markup::Kind::Code &&
+                        !pane.messages_[1].paragraphs.empty() &&
+                        pane.messages_[1].paragraphs[0].spans.size() == 1 &&
+                        pane.messages_[1].paragraphs[0].spans[0].ink == ai::markup::Ink::Bold &&
+                        pane.messages_[1].paragraphs[0].text == L"Run mcp_serialctl_workspace.list · 已完成" &&
+                        pane.messages_[1].paragraphs.back().text == L"| --- | --- |",
+                    "Tool bubble must apply bold/code inline formatting while keeping literal pipes as prose");
+            {
+                HDC screenDc = GetDC(nullptr);
+                HDC memDc = CreateCompatibleDC(screenDc);
+                HBITMAP bmp = CreateCompatibleBitmap(screenDc, 820, 520);
+                HGDIOBJ oldBmp = SelectObject(memDc, bmp);
+                HGDIOBJ oldFont = SelectObject(memDc, pane.font_);
+                pane.PaintTranscript(memDc);
+                SelectObject(memDc, oldFont);
+                SelectObject(memDc, oldBmp);
+                DeleteObject(bmp);
+                DeleteDC(memDc);
+                ReleaseDC(nullptr, screenDc);
+            }
+
+            // 2. Interleaved live ACP turn events: thought -> commentary -> tool -> thought2 -> final
+            pane.settings_.provider = ai::AiProvider::Antigravity;
+            pane.settings_.localMode = false;
+            pane.messages_.clear();
+            pane.thread_ = "acp-thread-a";
+            pane.isProbeSession_ = false;
+            pane.turn_ = "acp-turn-1";
+            pane.busy_ = true;
+            pane.showTurnProgress_ = true;
+            pane.displayGroup_ = "acp-turn-1";
+            pane.groupStates_["acp-turn-1"] = L"进行中";
+            pane.turnStarted_ = GetTickCount64();
+
+            pane.Event({{"event", "thinkingDelta"}, {"conversationId", "acp-thread-a"}, {"taskId", "acp-turn-1"},
+                        {"messageId", "thinking:acp-turn-1"}, {"text", u8"先思考目录结构"}});
+            pane.Event({{"event", "textDelta"}, {"conversationId", "acp-thread-a"}, {"taskId", "acp-turn-1"},
+                        {"messageId", "acp-msg-acp-turn-1"}, {"text", u8"先列出根目录。"}});
+            pane.Event({{"event", "textComplete"}, {"conversationId", "acp-thread-a"}, {"taskId", "acp-turn-1"},
+                        {"messageId", "acp-msg-acp-turn-1"}, {"text", u8"先列出根目录。"}, {"final", false}});
+            pane.Event({{"event", "serverTool"}, {"conversationId", "acp-thread-a"}, {"taskId", "acp-turn-1"},
+                        {"messageId", "server:t1"}, {"completed", true}, {"failed", false}, {"appendStream", false},
+                        {"technical", "{\"rawOutput\":{\"entries\":[\"src/\"]}}"},
+                        {"text", u8"**Run mcp_workspace_list** · 已完成\n\n**输出**\n```text\nsrc/\n```"}});
+            pane.Event({{"event", "thinkingDelta"}, {"conversationId", "acp-thread-a"}, {"taskId", "acp-turn-1"},
+                        {"messageId", "thinking:acp-turn-1:2"}, {"text", u8"工具返回 src/"}});
+            pane.Event({{"event", "textDelta"}, {"conversationId", "acp-thread-a"}, {"taskId", "acp-turn-1"},
+                        {"messageId", "acp-msg-acp-turn-1-2"}, {"text", u8"总结：发现 src 目录。"}});
+            pane.Event({{"event", "textComplete"}, {"conversationId", "acp-thread-a"}, {"taskId", "acp-turn-1"},
+                        {"messageId", "acp-msg-acp-turn-1-2"}, {"text", u8"总结：发现 src 目录。"}, {"final", true}});
+            pane.Event({{"event", "taskFinished"}, {"conversationId", "acp-thread-a"}, {"taskId", "acp-turn-1"},
+                        {"status", "completed"}, {"message", ""}});
+
+            require(pane.messages_.size() == 5 &&
+                        pane.messages_[0].role == L"思考" && pane.messages_[0].item == "thinking:acp-turn-1" &&
+                        pane.messages_[1].role == L"AI" && pane.messages_[1].process &&
+                        pane.messages_[2].role == L"工具" && pane.messages_[2].technical.find(L"rawOutput") != std::wstring::npos &&
+                        pane.messages_[3].role == L"思考" && pane.messages_[3].item == "thinking:acp-turn-1:2" &&
+                        pane.messages_[4].role == L"AI" && !pane.messages_[4].process &&
+                        pane.messages_[0].groupHeader && pane.messages_[0].folded &&
+                        pane.messages_[1].hidden && pane.messages_[2].hidden && pane.messages_[3].hidden &&
+                        !pane.messages_[4].hidden && !pane.messages_[4].folded,
+                    "Interleaved thinking, commentary and tool process bubbles must stay chronological and fold on completion");
+
+            // 3a. Switching from thread-a to thread-b when Antigravity server returns no messages must clear thread-a
+            pane.requests_[801] = {"resume", "", pane.workspaceDirectory_, 0};
+            pane.Event({{"event", "response"},
+                        {"token", 801},
+                        {"result", {{"conversationId", "acp-thread-b"}, {"messages", ai::Json::array()}}}});
+            require(pane.thread_ == "acp-thread-b" &&
+                        pane.messages_.size() == 1 && pane.messages_[0].role == L"状态" &&
+                        pane.messages_[0].text.find(L"acp-thread-b") != std::wstring::npos,
+                    "Switching to Antigravity session without replay must clear stale transcript instead of showing old thread");
+
+            // 3b. Reconnect on same thread-b (non-probe) must preserve current transcript rather than duplicating status
+            pane.Add(L"我", L"继续查日志", "local-u1");
+            pane.requests_[802] = {"resume", "", pane.workspaceDirectory_, 0};
+            pane.Event({{"event", "response"},
+                        {"token", 802},
+                        {"result", {{"conversationId", "acp-thread-b"}, {"messages", ai::Json::array()}}}});
+            require(pane.thread_ == "acp-thread-b" && pane.messages_.size() == 2 &&
+                        pane.messages_[1].text == L"继续查日志",
+                    "Same-thread Antigravity resume without server replay must retain in-memory transcript");
+
+            // 3c. Switching back to thread-a with empty server replay restores from local transcriptCache_
+            pane.requests_[803] = {"resume", "", pane.workspaceDirectory_, 0};
+            pane.Event({{"event", "response"},
+                        {"token", 803},
+                        {"result", {{"conversationId", "acp-thread-a"}, {"messages", ai::Json::array()}}}});
+            require(pane.thread_ == "acp-thread-a" && pane.messages_.size() == 5 &&
+                        pane.messages_[2].technical.find(L"rawOutput") != std::wstring::npos &&
+                        pane.messages_[4].text == L"总结：发现 src 目录。",
+                    "Returning to cached Antigravity session must restore transcript and technical details");
+
+            // 3d. Resuming with server-replayed messages + pendingHistoryBinding_ localReadOnly
+            pane.pendingHistoryRestore_ = true;
+            pane.pendingHistoryTarget_.clear();
+            pane.pendingHistoryBinding_ = {true, true, true, resumeLocalDir.u8string(), "/home/linux/old", "ssh-9"};
+            pane.requests_[804] = {"resume", "", pane.workspaceDirectory_, 0};
+            pane.Event({{"event", "response"},
+                        {"token", 804},
+                        {"result",
+                         {{"conversationId", "acp-thread-c"},
+                          {"messages",
+                           ai::Json::array({{{"role", u8"我"}, {"text", u8"读只读目录"}, {"messageId", "u1"}, {"group", "g1"}, {"status", "completed"}},
+                                            {{"role", u8"工具"}, {"text", u8"**Run mcp_workspace_list** · 已完成"}, {"technical", "{\"entries\":[]}"},
+                                             {"messageId", "server:t9"}, {"process", true}, {"group", "g1"}, {"status", "completed"}, {"failedStep", false}},
+                                            {{"role", "AI"}, {"text", u8"完成"}, {"messageId", "a1"}, {"group", "g1"}, {"status", "completed"}}})}}}});
+            require(pane.thread_ == "acp-thread-c" && pane.workspaceIsLocal_ && pane.localWorkspaceReadOnly_ &&
+                        pane.workspaceVerified_ && !pane.pendingHistoryRestore_ &&
+                        pane.messages_.size() == 3 &&
+                        pane.messages_[1].technical == L"{\"entries\":[]}" &&
+                        pane.messages_[1].folded && !pane.messages_[2].folded,
+                    "History resume must restore localReadOnly workspace binding, technical metadata and folded process state");
+
+            // 3e. Scheme A SidebarCallbacks + compact exec / file change cards + deep-link clicks
+            std::vector<ai::ExecProgressEvent> cbExecs;
+            std::vector<std::string> cbFocusExecs;
+            std::vector<ai::FileChangeRecord> cbLastChanges;
+            std::uint64_t cbLastTurnSeq = 0;
+            std::string cbLastFocusChange;
+            {
+                AiPane::SidebarCallbacks sc;
+                sc.onExecEvent = [&](const ai::ExecProgressEvent &ev) { cbExecs.push_back(ev); };
+                sc.onFocusExec = [&](const std::string &id) { cbFocusExecs.push_back(id); };
+                sc.onFileChangesUpdated = [&](const std::vector<ai::FileChangeRecord> &changes,
+                                              std::uint64_t turnSeq, const std::string &focusId, bool) {
+                    cbLastChanges = changes;
+                    cbLastTurnSeq = turnSeq;
+                    cbLastFocusChange = focusId;
+                };
+                pane.SetSidebarCallbacks(std::move(sc));
+            }
+            const bool savedBusy = pane.busy_;
+            const bool savedStop = pane.stopRequested_;
+            const auto savedTurn = pane.turn_;
+            pane.busy_ = true;
+            pane.stopRequested_ = false;
+            pane.turn_ = "turn-3e";
+            pane.Event({{"event", "serverTool"},
+                        {"messageId", "srv:exec1"},
+                        {"taskId", "turn-3e"},
+                        {"execKind", "command"},
+                        {"execId", "srv-exec-1"},
+                        {"command", "cmake --build build"},
+                        {"cwd", "/home/proj"},
+                        {"completed", false}});
+            pane.Event({{"event", "serverToolDelta"},
+                        {"messageId", "srv:exec1"},
+                        {"taskId", "turn-3e"},
+                        {"execDelta", true},
+                        {"text", "[1/2] Compiling...\n"}});
+            pane.Event({{"event", "serverTool"},
+                        {"messageId", "srv:exec1"},
+                        {"taskId", "turn-3e"},
+                        {"execKind", "command"},
+                        {"execId", "srv-exec-1"},
+                        {"command", "cmake --build build"},
+                        {"exitCode", 0},
+                        {"failed", false},
+                        {"completed", true}});
+            pane.Event({{"event", "serverTool"},
+                        {"messageId", "srv:chg1"},
+                        {"taskId", "turn-3e"},
+                        {"fileChanges", ai::Json::array({{{"changeId", "srv-chg-1"},
+                                                          {"action", "edit"},
+                                                          {"path", "src/app/Foo.cpp"},
+                                                          {"addedLines", 5},
+                                                          {"removedLines", 2},
+                                                          {"diff", "--- a/src/app/Foo.cpp\n+++ b/src/app/Foo.cpp\n@@ -1 +1 @@\n-old\n+new\n"}}})},
+                        {"completed", true}});
+            pane.busy_ = savedBusy;
+            pane.stopRequested_ = savedStop;
+            pane.turn_ = savedTurn;
+            require(cbExecs.size() == 3 &&
+                        cbExecs[0].phase == ai::ExecProgressEvent::Phase::Started &&
+                        cbExecs[1].phase == ai::ExecProgressEvent::Phase::OutputDelta &&
+                        cbExecs[2].phase == ai::ExecProgressEvent::Phase::Completed &&
+                        cbExecs[2].exitCode == 0,
+                    "SidebarCallbacks must receive live exec Started/Delta/Completed events");
+            require(!pane.FileChanges().empty() &&
+                        pane.FileChanges().back().changeId == "srv-chg-1" &&
+                        pane.FileChanges().back().path == "src/app/Foo.cpp",
+                    "File change toolUse must record change in AiPane::FileChanges()");
+            pane.ActivateLink(L"serialctl-exec://srv-exec-1");
+            pane.ActivateLink(L"serialctl-change://srv-chg-1");
+            require(!cbFocusExecs.empty() && cbFocusExecs.back() == "srv-exec-1" &&
+                        cbLastFocusChange == "srv-chg-1",
+                    "ActivateLink must dispatch serialctl-exec:// and serialctl-change:// deep links");
+            pane.SetSidebarCallbacks({});
+        }
+
         pane.client_.Shutdown();
         HKEY key = nullptr;
         if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\SerialCtl\\TrustedHostKeys", 0, KEY_SET_VALUE, &key) ==

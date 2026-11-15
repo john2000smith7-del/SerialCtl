@@ -6,7 +6,10 @@ int main() {
     using serialctl::IncompleteDbcsTail;
     if (IncompleteDbcsTail({0xd6, 0xd0}, lead) != 0 || IncompleteDbcsTail({0xd6}, lead) != 1 ||
         IncompleteDbcsTail({0xd6, 0xd0, 0xce}, lead) != 1 || IncompleteDbcsTail({0xd6, 0xd0, 'A'}, lead) != 0 ||
-        IncompleteDbcsTail({'A', 0xd6, 0xd0, 0xce, 0xc4}, lead) != 0 || IncompleteDbcsTail({}, lead) != 0)
+        IncompleteDbcsTail({'A', 0xd6, 0xd0, 0xce, 0xc4}, lead) != 0 ||
+        IncompleteDbcsTail({0xd6, 0x1b, '[', '3', '2', 'm', 0xd6}, lead) != 1 ||
+        IncompleteDbcsTail({0xd6, '\r', '\n', 0xd6, 0xd0}, lead) != 0 ||
+        IncompleteDbcsTail({}, lead) != 0)
         return 1;
     using serialctl::IncompleteUtf8Tail;
     if (IncompleteUtf8Tail({0xe4, 0xb8}) != 2 || IncompleteUtf8Tail({0xe4, 0xb8, 0xad}) != 0 ||
@@ -36,6 +39,18 @@ int main() {
     if (!transition.Decode({0xe4}, CP_UTF8).empty() || transition.Decode({'A'}, 936) != L"\xfffd"
                                                                                         L"A")
         return 4;
+
+    {
+        serialctl::TerminalDecoder gbkNoise;
+        const auto gbkText = serialctl::WideToMultiByte(L"\x1b[32m中文\x1b[0m\r\n", 936);
+        std::vector<std::uint8_t> part2(gbkText.begin(), gbkText.end());
+        auto out = gbkNoise.Decode({0xd6}, 936);
+        out += gbkNoise.Decode(part2, 936);
+        if (out.find(L"\x1b[32m中文\x1b[0m\r\n") == std::wstring::npos) {
+            std::cerr << "Isolated GBK lead byte swallowed ANSI escape\n";
+            return 12;
+        }
+    }
 
     // Issue #59: ZMODEM rz hex frame normalization
     {

@@ -454,6 +454,72 @@ const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
         }},
         {"power.recover", "Trigger bound power recovery cycle (requires unlocked Test)", {
             {"type", "object"}, {"properties", Json::object()}
+        }},
+
+        // --- Built-in Windows Local Workspace Tools (Zero External Git/Python Dependency) ---
+        {"workspace.info", "Inspect whether Windows local workspace mode is active, its authorized root directory, readOnly status, and built-in tools", {
+            {"type", "object"}, {"properties", Json::object()}, {"additionalProperties", false}
+        }},
+        {"workspace.list", "List directories and files inside the active Windows local workspace (supports depth 1..3 and filename glob pattern)", {
+            {"type", "object"}, {"properties", {
+                {"path", {{"type", "string"}, {"description", "Relative path inside local workspace (default '.')"}}},
+                {"depth", {{"type", "integer"}, {"minimum", 1}, {"maximum", 3}, {"description", "Recursion depth (default 1, max 3)"}}},
+                {"pattern", {{"type", "string"}, {"description", "Optional wildcard filename filter, e.g. '*.cpp'"}}},
+                {"includeHidden", {{"type", "boolean"}, {"description", "Include hidden entries and .git/node_modules (default false)"}}}
+            }}, {"additionalProperties", false}
+        }},
+        {"workspace.search_text", "Built-in multi-file text/regex search inside the active Windows local workspace (no git/grep/rg required)", {
+            {"type", "object"}, {"properties", {
+                {"query", {{"type", "string"}, {"minLength", 1}, {"maxLength", 512}, {"description", "Substring or ECMAScript regex pattern to search"}}},
+                {"path", {{"type", "string"}, {"description", "Optional relative subdirectory or file path (default '.')"}}},
+                {"filePattern", {{"type", "string"}, {"description", "Optional wildcard filename filter, e.g. '*.c'"}}},
+                {"caseSensitive", {{"type", "boolean"}, {"description", "Case-sensitive search (default false)"}}},
+                {"regex", {{"type", "boolean"}, {"description", "Interpret query as ECMAScript regex (default false)"}}},
+                {"maxResults", {{"type", "integer"}, {"minimum", 1}, {"maximum", 200}, {"description", "Maximum matches to return (default 100, max 200)"}}}
+            }}, {"required", {"query"}}, {"additionalProperties", false}
+        }},
+        {"workspace.read_file", "Read bounded text lines from a file inside the active Windows local workspace", {
+            {"type", "object"}, {"properties", {
+                {"path", {{"type", "string"}, {"description", "Relative file path inside local workspace"}}},
+                {"startLine", {{"type", "integer"}, {"minimum", 1}, {"description", "1-based start line (default 1)"}}},
+                {"maxLines", {{"type", "integer"}, {"minimum", 1}, {"maximum", 400}, {"description", "Max lines to read (default 200, max 400)"}}}
+            }}, {"required", {"path"}}, {"additionalProperties", false}
+        }},
+        {"workspace.write_file", "Create or atomically overwrite a UTF-8 text file inside the active Windows local workspace", {
+            {"type", "object"}, {"properties", {
+                {"path", {{"type", "string"}, {"description", "Relative file path inside local workspace"}}},
+                {"content", {{"type", "string"}, {"description", "UTF-8 file content (max 512 KiB)"}}},
+                {"createDirs", {{"type", "boolean"}, {"description", "Automatically create missing parent folders (default true)"}}}
+            }}, {"required", {"path", "content"}}, {"additionalProperties", false}
+        }},
+        {"workspace.edit_file", "Atomically replace an exact text fragment inside an existing file in the active Windows local workspace", {
+            {"type", "object"}, {"properties", {
+                {"path", {{"type", "string"}, {"description", "Relative file path inside local workspace"}}},
+                {"oldText", {{"type", "string"}, {"minLength", 1}, {"description", "Exact existing text to replace"}}},
+                {"newText", {{"type", "string"}, {"description", "Replacement text"}}},
+                {"replaceAll", {{"type", "boolean"}, {"description", "Replace every match instead of requiring a unique match (default false)"}}}
+            }}, {"required", {"path", "oldText", "newText"}}, {"additionalProperties", false}
+        }},
+        {"workspace.move", "Rename or move a file/folder within the active Windows local workspace", {
+            {"type", "object"}, {"properties", {
+                {"from", {{"type", "string"}, {"description", "Source relative path inside local workspace"}}},
+                {"to", {{"type", "string"}, {"description", "Destination relative path inside local workspace"}}},
+                {"overwrite", {{"type", "boolean"}, {"description", "Overwrite destination if it exists (default false)"}}}
+            }}, {"required", {"from", "to"}}, {"additionalProperties", false}
+        }},
+        {"workspace.delete", "Delete a file or directory inside the active Windows local workspace (requires confirm=true)", {
+            {"type", "object"}, {"properties", {
+                {"path", {{"type", "string"}, {"description", "Relative path inside local workspace"}}},
+                {"confirm", {{"type", "boolean"}, {"description", "Must be true to confirm deletion"}}},
+                {"recursive", {{"type", "boolean"}, {"description", "Allow deleting non-empty directories safely (default false)"}}}
+            }}, {"required", {"path", "confirm"}}, {"additionalProperties", false}
+        }},
+        {"workspace.exec", "Execute a Windows command via cmd.exe locked inside the active local workspace directory", {
+            {"type", "object"}, {"properties", {
+                {"command", {{"type", "string"}, {"minLength", 1}, {"maxLength", 4096}, {"description", "Single-line Windows command executed in cmd.exe"}}},
+                {"cwd", {{"type", "string"}, {"description", "Optional relative subdirectory inside local workspace (default '.')"}}},
+                {"timeoutMs", {{"type", "integer"}, {"minimum", 100}, {"maximum", 120000}, {"description", "Timeout in milliseconds (default 30000, max 120000)"}}}
+            }}, {"required", {"command"}}, {"additionalProperties", false}
         }}
     };
     return s_tools;

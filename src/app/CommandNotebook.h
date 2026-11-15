@@ -9,6 +9,7 @@ class CommandNotebook {
     friend struct AiDeviceTestAccess;
 #endif
   public:
+    ~CommandNotebook();
     bool Create(HWND parent, int id);
     HWND Handle() const {
         return window_;
@@ -50,6 +51,7 @@ class CommandNotebook {
     void SetInterval(unsigned v) {
         interval_ = std::clamp(v, 1u, 60000u);
     }
+    void SetDeferLayout(bool defer);
     std::function<void(int)> action; // run=1, save=2, import=3, export=4
     std::function<void(size_t)> runLine;
     std::function<void(const std::wstring &)> drop;
@@ -74,12 +76,15 @@ class CommandNotebook {
     }
     HWND window_ = nullptr, editor_ = nullptr, buttons_[4]{}, more_ = nullptr, tooltip_ = nullptr;
     HFONT ui_ = nullptr, mono_ = nullptr;
+    HBRUSH surfaceBrush_ = nullptr;
     bool dark_ = false, dirty_ = false, loading_ = false, writable_ = false, running_ = false, doubleClick_ = true;
     bool repeat_ = false; // Deliberately off for each application launch.
+    bool deferLayout_ = false;
     int dpi_ = 96, rowHeight_ = 20, top_ = 80, bottom_ = 0, gutter_ = 48, scrollAxis_ = 0, scrollGrab_ = 0;
     int armedLine_ = -1;
     int contentWidth_ = 0;
     int wheelRemainder_ = 0;
+    int lastLayoutWidth_ = -1, lastLayoutHeight_ = -1, lastLayoutDpi_ = 0, lastLayoutGutter_ = -1;
     unsigned interval_ = 500;
     size_t sent_ = 0, total_ = 0;
     CHARRANGE selection_{0, 0};

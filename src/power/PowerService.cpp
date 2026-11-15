@@ -1,9 +1,11 @@
 #include "PowerService.h"
+#include "OperationAuditLogger.h"
 #include <wincrypt.h>
 #include "Win32Helpers.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <fstream>
 #include <locale>
 #include <set>
 #include <shlobj.h>
@@ -344,6 +346,75 @@ struct PowerService::Transport {
     }
 };
 std::atomic<bool> PowerService::testEnabled_{false};
+namespace {
+std::mutex &PowerRegistryMutex() {
+    static auto *m = new std::mutex();
+    return *m;
+}
+std::set<PowerService *> &PowerRegistry() {
+    static auto *s = new std::set<PowerService *>();
+    return *s;
+}
+} // namespace
+
+std::wstring PowerService::RecoveryFilePath() {
+    return SessionLogger::DefaultLogDirectory() + L"\\power-recovery.json";
+}
+
+void PowerService::ClearRecoveryFile() {
+    DeleteFileW(RecoveryFilePath().c_str());
+}
+
+void PowerService::SyncEmergencyFlagsLocked() {
+    const bool connected = state_.value("connected", false);
+    const bool taskRunning = state_.contains("task") && state_["task"].value("running", false);
+    bool anyOn = false;
+    if (state_.contains("channels") && state_["channels"].is_array()) {
+        for (int i = 0; i < 3 && i < static_cast<int>(state_["channels"].size()); ++i) {
+            const auto &out = state_["channels"][i]["output"];
+            const bool active = out.is_boolean() ? out.get<bool>() : false;
+            emergencyOutputActive_[i].store(active, std::memory_order_relaxed);
+            anyOn = anyOn || active;
+        }
+    }
+    emergencyActionInFlight_.store(connected || !queue_.empty() || taskRunning || anyOn, std::memory_order_relaxed);
+}
+
+void PowerService::MarkEmergencyRecoveryNeededAll() {
+    std::unique_lock<std::mutex> lock(PowerRegistryMutex(), std::try_to_lock);
+    if (!lock.owns_lock()) return;
+    bool needed = false;
+    Json channels = Json::array();
+    bool seen[3]{};
+    for (PowerService *svc : PowerRegistry()) {
+        if (!svc) continue;
+        if (svc->emergencyActionInFlight_.load(std::memory_order_relaxed)) needed = true;
+        for (int i = 0; i < 3; ++i) {
+            if (svc->emergencyOutputActive_[i].load(std::memory_order_relaxed)) {
+                needed = true;
+                if (!seen[i]) {
+                    seen[i] = true;
+                    channels.push_back(i + 1);
+                }
+            }
+        }
+    }
+    if (!needed) return;
+    const auto dir = SessionLogger::DefaultLogDirectory();
+    CreateDirectoryW(dir.c_str(), nullptr);
+    const auto path = dir + L"\\power-recovery.json";
+    Json marker = {{"unconfirmedPowerOff", true}, {"timestamp", Timestamp()}, {"channels", channels}};
+    const std::string payload = marker.dump();
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                              FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
+    if (file != INVALID_HANDLE_VALUE) {
+        DWORD written = 0;
+        WriteFile(file, payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr);
+        FlushFileBuffers(file);
+        CloseHandle(file);
+    }
+}
+
 bool PowerService::AuthorizeTest(const std::wstring& password) {
     if(password.size()>128)return false;
     const BYTE expected[32]={0x8e,0xf3,0x61,0x9e,0x00,0x68,0x8b,0x1d,0x9b,0x05,0xc8,0x89,0xe1,0xab,0x38,0x7e,0xb1,0xfd,0xa8,0x70,0xd8,0xe7,0x10,0x83,0x1e,0x0b,0xdd,0x5f,0xa4,0x9d,0xcc,0xc1};
@@ -409,10 +480,31 @@ PowerService::PowerService() {
                                       {"power", nullptr},
                                       {"output", nullptr},
                                       {"timestamp", nullptr}});
+    {
+        std::ifstream recovery(std::filesystem::path(RecoveryFilePath()), std::ios::binary);
+        if (recovery) {
+            try {
+                Json marker = Json::parse(recovery);
+                if (marker.is_object() && marker.value("unconfirmedPowerOff", false)) {
+                    state_["unconfirmedPowerOff"] = true;
+                    if (marker.contains("channels") && marker["channels"].is_array())
+                        state_["unconfirmedPowerOffChannels"] = marker["channels"];
+                    state_["error"] = u8"上次运行异常退出时电源仍处于活动状态，请核查硬件输出状态";
+                }
+            } catch (...) {
+            }
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(PowerRegistryMutex());
+        PowerRegistry().insert(this);
+    }
     thread_ = std::thread(&PowerService::Run, this);
 }
 PowerService::~PowerService() {
     Shutdown();
+    std::lock_guard<std::mutex> lock(PowerRegistryMutex());
+    PowerRegistry().erase(this);
 }
 Json PowerService::State() {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -522,6 +614,9 @@ Json PowerService::Submit(const Json &command, const std::string &connectionId, 
                         command.at("mode") == "series" || command.at("mode") == "tracking",
                     "Unknown channel mode");
         if (type == "batch") {
+            const auto src = command.value("source", std::string("local"));
+            Require(connectionId.empty() && (src == "local" || src == "gui"),
+                    "Batch parameter updates require local GUI authorization");
             Require(command.at("settings").is_array() && !command["settings"].empty() &&
                         command["settings"].size() <= 3,
                     "Invalid parameter batch");
@@ -719,6 +814,7 @@ Json PowerService::Submit(const Json &command, const std::string &connectionId, 
             queue_.push_front({id, std::move(queued), {}});
         } else
             queue_.push_back({id, std::move(queued), std::move(cycle)});
+        SyncEmergencyFlagsLocked();
         while (actions_.size() > 256) {
             // Evict the oldest finished action (lowest numeric id). Map key order is
             // lexicographic ("power-action-10" < "power-action-9"), so it cannot be
@@ -881,8 +977,10 @@ void PowerService::Outputs(const Json &channels, bool enabled, Json &result) {
     if (failed)
         throw std::runtime_error("Output operation incomplete; inspect per-channel result");
 }
-void PowerService::StopTask(Json *offResults, bool finished) {
+void PowerService::StopTask(Json *offResults, bool finished, bool preserveOutputs) {
     auto cycle = std::move(activeCycle_);
+    cyclePaused_ = false;
+    cyclePausedRemaining_ = 0;
     if (cycle && !finished) cycle->Cancel(L"电源测试已停止");
     if (owned_.empty())
         return;
@@ -902,15 +1000,18 @@ void PowerService::StopTask(Json *offResults, bool finished) {
         if (completed.is_object())
             state_["task"] = completed;
         state_["task"]["running"] = false;
+        state_["task"]["paused"] = false;
     }
-    try {
-        if (transport_) {
-            Json result;
-            Outputs(channels, false, offResults ? *offResults : result);
+    if (!preserveOutputs) {
+        try {
+            if (transport_) {
+                Json result;
+                Outputs(channels, false, offResults ? *offResults : result);
+            }
+        } catch (...) {
+            if (cycle) cycle->Cancel(L"电源掉电未确认，测试已停止");
+            throw;
         }
-    } catch (...) {
-        if (cycle) cycle->Cancel(L"电源掉电未确认，测试已停止");
-        throw;
     }
     if (cycle && finished) cycle->Finish();
     owned_ = Json::array();
@@ -995,7 +1096,10 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
         }
     }
 
-    if (preserveOutputs) return;
+    if (preserveOutputs) {
+        SyncEmergencyFlagsLocked();
+        return;
+    }
     for (auto &channel : state_["channels"]) {
         channel["output"] = nullptr;
         channel["voltage"] = nullptr;
@@ -1003,6 +1107,8 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
         channel["power"] = nullptr;
         channel.erase("protection");
     }
+    SyncEmergencyFlagsLocked();
+    if (!stopFailed && !state_.value("unconfirmedPowerOff", false)) ClearRecoveryFile();
 }
 void PowerService::Execute(const std::string &id, const Json &command,
                            const std::shared_ptr<PowerCycleObserver> &cycle) {
@@ -1230,6 +1336,8 @@ void PowerService::Execute(const std::string &id, const Json &command,
             task_["completed"] = 0;
             task_["phase"] = "off";
             task_["index"] = 0;
+            cyclePaused_ = false;
+            cyclePausedRemaining_ = 0;
             taskAt_ = GetTickCount64() + command.value("startMs", 0ull);
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -1296,7 +1404,13 @@ void PowerService::Execute(const std::string &id, const Json &command,
             state_["records"].erase(state_["records"].begin());
         if (transport_ && transport_->simulated)
             state_["testWrites"] = transport_->writes;
+        SyncEmergencyFlagsLocked();
     }
+    const auto src = command.value("source", std::string("local"));
+    const std::string category = src.rfind("ai:", 0) == 0 ? "AI" : (src == "mcp" ? "MCP" : "MANUAL");
+    OperationAuditLogger::Instance().Record(
+        category, "power." + command.value("type", std::string()),
+        src, action.dump(), action.value("state", std::string("unknown")));
 }
 void PowerService::Poll() {
     ReadMode();
@@ -1343,6 +1457,8 @@ void PowerService::Poll() {
     state_["readbackStale"] = false;
     state_["unconfirmedPowerOff"] = false;
     state_.erase("unconfirmedPowerOffChannels");
+    SyncEmergencyFlagsLocked();
+    ClearRecoveryFile();
     if (!measurements_.Error().empty())
         state_["logError"] = WideToMultiByte(measurements_.Error(), CP_UTF8);
     if (!log_.Error().empty())
@@ -1404,10 +1520,43 @@ void PowerService::Run() {
             continue;
         try {
             auto now = GetTickCount64();
-            if (activeCycle_ && !activeCycle_->Healthy())
-                StopTask();
-            else if (!task_.is_null() && !task_.empty() && now >= taskAt_)
+            if (activeCycle_) {
+                if (!activeCycle_->Healthy()) {
+                    StopTask();
+                } else {
+                    using CycleAction = PowerCycleObserver::CycleAction;
+                    const auto cycleAction = activeCycle_->PollAction();
+                    if (cycleAction == CycleAction::StopPowerOff) {
+                        StopTask(nullptr, true, false);
+                    } else if (cycleAction == CycleAction::StopKeepPower) {
+                        StopTask(nullptr, true, true);
+                    } else if (cycleAction == CycleAction::Pause) {
+                        if (!cyclePaused_) {
+                            cyclePaused_ = true;
+                            cyclePausedRemaining_ = taskAt_ > now ? taskAt_ - now : 0;
+                            std::lock_guard<std::mutex> lock(mutex_);
+                            if (state_["task"].is_object()) state_["task"]["paused"] = true;
+                        }
+                        taskAt_ = now + cyclePausedRemaining_;
+                    } else {
+                        if (cyclePaused_) {
+                            cyclePaused_ = false;
+                            taskAt_ = now + cyclePausedRemaining_;
+                            std::lock_guard<std::mutex> lock(mutex_);
+                            if (state_["task"].is_object()) state_["task"]["paused"] = false;
+                        }
+                        if (cycleAction == CycleAction::PowerOffContinue &&
+                            task_.is_object() && task_.value("type", std::string()) == "task" &&
+                            task_.value("phase", std::string()) == "on") {
+                            AdvanceTask(true);
+                        } else if (!task_.is_null() && !task_.empty() && now >= taskAt_) {
+                            AdvanceTask();
+                        }
+                    }
+                }
+            } else if (!task_.is_null() && !task_.empty() && now >= taskAt_) {
                 AdvanceTask();
+            }
             if (now >= pollAt_) {
                 Poll();
                 pollAt_ = GetTickCount64() + pollInterval_;
@@ -1775,7 +1924,7 @@ void PowerService::Extended(const Json &command, Json &action) {
         }
     }
 }
-void PowerService::AdvanceTask() {
+void PowerService::AdvanceTask(bool forcePowerOff) {
     const auto type = task_.value("type", std::string("task"));
     Json result;
     if (type == "recover") {
@@ -1848,8 +1997,8 @@ void PowerService::AdvanceTask() {
         task_["phase"] = "on";
         taskAt_ = GetTickCount64() + task_["durationMs"].get<std::uint64_t>();
     } else {
-        bool on = task_["phase"] == "off";
-        if (activeCycle_) {
+        bool on = !forcePowerOff && task_["phase"] == "off";
+        if (activeCycle_ && !forcePowerOff) {
             if (on && (!activeCycle_->BeginRound() || !activeCycle_->Healthy())) { StopTask(); return; }
             if (!on && !activeCycle_->EndRound()) return;
         }

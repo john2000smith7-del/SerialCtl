@@ -152,7 +152,9 @@ class ExportActions(GlobalActions):
         self.screenshot('export-completed')
         resolution = self.report['save_dialog_controls'][-1]
         filename = resolution['selected']['text']
-        source = Path(os.environ['LOCALAPPDATA']) / 'SerialCtl' / 'logs' / filename
+        exe_logs = Path(self.exe).parent / 'logs' / filename
+        source = exe_logs if (exe_logs.is_file() or exe_logs.with_suffix('.log').is_file()) else (
+            Path(os.environ['LOCALAPPDATA']) / 'SerialCtl' / 'logs' / filename)
         if not source.is_file(): source = source.with_suffix('.log')
         require(source.is_file(), 'native picker source filename identifies actual session log')
         cutoff = self.prop('LogExportCutoff')

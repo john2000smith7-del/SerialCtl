@@ -184,3 +184,10 @@ update.json
 - 该轮 Windows CI 验证、原签名及发布后下载复核通过；真实 Win7、现场 SSH／模型网关、物理板卡／电源及八小时运行未执行。普通场景 P95 不构成所有负载的硬实时保证。
 
 这是一条历史交付记录，不是新任务的“当前最新”或新代码验收证明。每次接手必须重新查询 main、VERSION、Release 和所需验证。
+
+## 11. V2.0.21 商业加固工程规范与分层测试体系
+
+- **程序目录环形日志与崩溃保护**：会话日志默认落盘 `<程序目录>\logs\`（单会话单文件上限 16 MiB，最多保留 10 个分段循环覆盖）；操作审计日志落盘 `<程序目录>\logs\operations\`（JSONL 格式，记录 `[MANUAL]`/`[AI]`/`[MCP]`，单文件 4 MiB × 10 个循环）；未捕获 SEH 异常或 `std::terminate` 时紧急刷盘所有会话及审计日志、向 `<程序目录>\logs\power-recovery.json` 写入未确认断电告警，并动态加载 `dbghelp.dll` 生成 MiniDump 至 `<程序目录>\logs\crash\`（保留最近 5 份）。
+- **高并发与长稳运行约定**：`SessionReceiveDispatcher` 容量上限保持 `MaxSessions = 256`、`MaxTotalItems = 32768`；`TerminalParseScheduler` 全局内存上限 `128 MiB` 且仅对可见会话执行视图模型深拷贝，合并主线程待消费解析消息；`ApiServer` 广播采用 Per-Session 隔离（单会话上限 `2 MiB`、局部 `1013 HISTORY_GAP` 断连）；内部计时统一采用 64 位 `GetTickCount64()` 或无符号回绕保护。
+- **局域网与电源五重安全锁**：`McpHttpServer` 使用 `SO_EXCLUSIVEADDRUSE`，非回环绑定强制校验 `Authorization: Bearer` 令牌并阻断高危工作区远程写入/执行；`ApiServer` 串口共享支持 `ReadOnly=0/1` 与 `AccessToken`；电源测试态保持本地密码解锁、`Off`/`Stop` 零冷却急停、高危升压（`>=5.0V` 或单步 `>+1.0V`）二次确认、`batch` 仅限本机 GUI、以及 30 分钟无操作自动复锁。
+- **分层 CTest 体系与检查注册**：`CMakeLists.txt` 为全部测试标记 `tier:fast` / `tier:integration` / `tier:desktop_full` 与 `mod:<module>`；日常回归使用 `.\scripts\test.ps1 -Scope Fast`、`Integration`、`Full`、`Module -Module <name>` 或 `All`。新增任意测试可执行文件时，必须同步在 `CMakeLists.txt` 注册标签并在 `scripts/check.ps1` 的 `$testPrograms` 登记其精确 Win7 SP1 导入 DLL 白名单。

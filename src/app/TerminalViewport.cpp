@@ -4,7 +4,11 @@
 #include "PerformanceMetrics.h"
 #include <array>
 #include <chrono>
+#include <condition_variable>
+#include <cstring>
 #include <cwchar>
+#include <mutex>
+#include <thread>
 #include <windowsx.h>
 #include <algorithm>
 namespace serialctl {
@@ -139,6 +143,385 @@ void TerminalViewport::DismissRegisterPreview(HWND window) {
     if (window) InvalidateRect(window, nullptr, FALSE);
 }
 
+namespace {
+struct FrameKey {
+    const TerminalViewport::State* state = nullptr;
+    std::uint64_t revision = 0;
+    int width = 0, height = 0, scroll = 0, horizontal = 0;
+    size_t anchorLine = 0, focusLine = 0;
+    int anchorColumn = 0, focusColumn = 0;
+    bool selection = false, newOutput = false, focused = false;
+    bool dark = false, timestamps = false, liveMonitor = false;
+    int mode = -1;
+    HFONT font = nullptr, smallFont = nullptr;
+    std::wstring draft;
+    size_t draftCursor = 0;
+    bool operator==(const FrameKey& other) const {
+        return state == other.state && revision == other.revision &&
+               width == other.width && height == other.height &&
+               scroll == other.scroll && horizontal == other.horizontal &&
+               anchorLine == other.anchorLine && focusLine == other.focusLine &&
+               anchorColumn == other.anchorColumn && focusColumn == other.focusColumn &&
+               selection == other.selection && newOutput == other.newOutput &&
+               focused == other.focused && dark == other.dark &&
+               timestamps == other.timestamps && liveMonitor == other.liveMonitor &&
+               mode == other.mode && font == other.font && smallFont == other.smallFont &&
+               draft == other.draft && draftCursor == other.draftCursor;
+    }
+};
+
+struct RenderFrameParams {
+    int width = 0, height = 0;
+    int padding = 0, textLeft = 0, cellWidth = 8, lineHeight = 16, columns = 80, rows = 24;
+    int horizontalOffset = 0, scrollOffset = 0;
+    size_t topLine = 0, totalLines = 0;
+    size_t selectionStartLine = 0, selectionEndLine = 0;
+    int selectionStartColumn = 0, selectionEndColumn = 0;
+    bool dark = false, showTimestamps = false, selectionActive = false;
+    bool drawCursor = false, showNewOutput = false;
+    size_t cursorLine = 0;
+    int cursorColumn = 0;
+    bool vScrollVisible = false, hScrollVisible = false;
+    bool liveMonitor = false;
+    RECT vThumb{}, hThumb{};
+    HFONT font = nullptr, smallFont = nullptr;
+    int radius3 = 3, radiusCard = 6, outerRadius = 8;
+};
+
+template <typename LineAt>
+void RenderTerminalSurface(HDC buffer, const RECT& client, const RenderFrameParams& p,
+                           const LineAt& lineAt, std::uint64_t& gdiCalls) {
+    const auto colors = UiTheme(p.dark);
+    HBRUSH dcBrush = reinterpret_cast<HBRUSH>(GetStockObject(DC_BRUSH));
+    int savedCard = 0;
+    if (p.liveMonitor) {
+        // Fill outer tray background matching rightCard and clip content inside the rounded card
+        // so both Light and Dark modes frame the terminal cleanly without exposed sharp corners.
+        const COLORREF trayBg = p.dark ? colors.field : colors.window;
+        SetDCBrushColor(buffer, trayBg);
+        FillRect(buffer, &client, dcBrush);
+        UiBox(buffer, client, colors.field, colors.border, p.outerRadius);
+        savedCard = SaveDC(buffer);
+        const int r = std::max(0, p.outerRadius);
+        if (HRGN rgn = CreateRoundRectRgn(client.left + 1, client.top + 1, client.right, client.bottom, r * 2, r * 2)) {
+            SelectClipRgn(buffer, rgn);
+            DeleteObject(rgn);
+        }
+        gdiCalls = 2;
+    } else {
+        SetDCBrushColor(buffer, colors.field);
+        FillRect(buffer, &client, dcBrush);
+        gdiCalls = 1;
+    }
+
+    if (p.totalLines > 0 || p.drawCursor) {
+        HFONT previousFont = reinterpret_cast<HFONT>(SelectObject(buffer, p.font));
+        SetBkMode(buffer, TRANSPARENT);
+        const int availableColumns = std::max(0,
+            (static_cast<int>(client.right) - p.textLeft - Ui::OverlayScrollLaneWidth) /
+                std::max(1, p.cellWidth));
+        std::wstring text;
+        std::vector<int> advances;
+        text.reserve(static_cast<size_t>(availableColumns));
+        advances.reserve(static_cast<size_t>(availableColumns));
+
+        for (int viewRow = 0; viewRow < p.rows; ++viewRow) {
+            const size_t lineIndex = p.topLine + static_cast<size_t>(viewRow);
+            if (lineIndex >= p.totalLines) break;
+            const TerminalLine& line = lineAt(lineIndex);
+            const int y = p.padding + viewRow * p.lineHeight;
+            if (p.showTimestamps && !line.timestamp.empty()) {
+                RECT timestampRect{p.padding, y, p.textLeft - Ui::Gap, y + p.lineHeight};
+                DrawTextSimple(buffer, line.timestamp, timestampRect, colors.muted,
+                    p.smallFont, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+                ++gdiCalls;
+            }
+
+            int viewColumn = 0;
+            while (viewColumn < availableColumns) {
+                const int column = viewColumn + p.horizontalOffset;
+                if (column < 0 || static_cast<size_t>(column) >= line.cells.size()) break;
+                const TerminalCell& cell = line.cells[static_cast<size_t>(column)];
+                if (cell.continuation) { ++viewColumn; continue; }
+                const auto visual = [&](const TerminalCell& value, int modelColumn) {
+                    const bool selected = p.selectionActive &&
+                        (lineIndex > p.selectionStartLine ||
+                            (lineIndex == p.selectionStartLine && modelColumn >= p.selectionStartColumn)) &&
+                        (lineIndex < p.selectionEndLine ||
+                            (lineIndex == p.selectionEndLine && modelColumn <= p.selectionEndColumn));
+                    COLORREF foreground = ResolveTerminalColor(value.attributes.foreground,
+                        colors.text, p.dark, value.attributes.bold);
+                    COLORREF background = ResolveTerminalColor(value.attributes.background,
+                        colors.field, p.dark, false);
+                    if (value.attributes.inverse) std::swap(foreground, background);
+                    if (selected) { background = colors.accentSoft; foreground = colors.text; }
+                    struct Visual { COLORREF foreground, background; bool bold, underline; };
+                    return Visual{foreground, background, value.attributes.bold, value.attributes.underline};
+                };
+                const auto runVisual = visual(cell, column);
+                const auto sameVisual = [](const auto& left, const auto& right) {
+                    return left.foreground == right.foreground && left.background == right.background &&
+                        left.bold == right.bold && left.underline == right.underline;
+                };
+                const int runStart = viewColumn;
+                text.clear();
+                advances.clear();
+                while (viewColumn < availableColumns) {
+                    const int runColumn = viewColumn + p.horizontalOffset;
+                    if (runColumn < 0 || static_cast<size_t>(runColumn) >= line.cells.size()) break;
+                    const auto& runCell = line.cells[static_cast<size_t>(runColumn)];
+                    if (runCell.continuation) { ++viewColumn; continue; }
+                    const auto currentVisual = visual(runCell, runColumn);
+                    if (!sameVisual(runVisual, currentVisual)) break;
+                    const int width = static_cast<size_t>(runColumn + 1) < line.cells.size() &&
+                        line.cells[static_cast<size_t>(runColumn + 1)].continuation ? 2 : 1;
+                    text.push_back(runCell.character);
+                    advances.push_back(width * p.cellWidth);
+                    viewColumn += width;
+                }
+                const int runRight = viewColumn;
+                RECT runRect{p.textLeft + runStart * p.cellWidth, y,
+                    p.textLeft + runRight * p.cellWidth, y + p.lineHeight};
+                if (runVisual.background != colors.field) {
+                    SetDCBrushColor(buffer, runVisual.background);
+                    FillRect(buffer, &runRect, dcBrush);
+                    ++gdiCalls;
+                }
+                if (!text.empty() && std::any_of(text.begin(), text.end(), [](wchar_t value) { return value != L' '; })) {
+                    SetTextColor(buffer, runVisual.foreground);
+                    ExtTextOutW(buffer, runRect.left, runRect.top, 0, nullptr, text.data(),
+                                static_cast<UINT>(text.size()), advances.data());
+                    ++gdiCalls;
+                    if (runVisual.bold) {
+                        ExtTextOutW(buffer, runRect.left + 1, runRect.top, 0, nullptr, text.data(),
+                                    static_cast<UINT>(text.size()), advances.data());
+                        ++gdiCalls;
+                    }
+                }
+                if (runVisual.underline) {
+                    HPEN dcPen = reinterpret_cast<HPEN>(GetStockObject(DC_PEN));
+                    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, dcPen));
+                    SetDCPenColor(buffer, runVisual.foreground);
+                    MoveToEx(buffer, runRect.left, runRect.bottom - 2, nullptr);
+                    LineTo(buffer, runRect.right, runRect.bottom - 2);
+                    SelectObject(buffer, oldPen);
+                    ++gdiCalls;
+                }
+            }
+        }
+
+        if (p.drawCursor &&
+            p.cursorLine >= p.topLine &&
+            p.cursorLine < p.topLine + static_cast<size_t>(p.rows) &&
+            p.cursorColumn >= 0 && p.cursorColumn < p.columns) {
+            const int viewRow = static_cast<int>(p.cursorLine - p.topLine);
+            RECT cursor{p.textLeft + p.cursorColumn * p.cellWidth,
+                p.padding + viewRow * p.lineHeight,
+                p.textLeft + (p.cursorColumn + 1) * p.cellWidth,
+                p.padding + (viewRow + 1) * p.lineHeight};
+            RECT cursorLine{cursor.left, cursor.bottom - 2, cursor.right, cursor.bottom};
+            SetDCBrushColor(buffer, colors.accent);
+            FillRect(buffer, &cursorLine, dcBrush);
+            ++gdiCalls;
+        }
+        SelectObject(buffer, previousFont);
+
+        if (p.vScrollVisible) {
+            DrawRoundedBox(buffer, p.vThumb, p.radius3, colors.border, colors.border);
+            ++gdiCalls;
+        }
+        if (p.hScrollVisible) {
+            DrawRoundedBox(buffer, p.hThumb, p.radius3, colors.border, colors.border);
+            ++gdiCalls;
+        }
+        if (p.showNewOutput) {
+            const RECT notification = TerminalNewOutputRect(client, p.hScrollVisible);
+            DrawRoundedBox(buffer, notification, p.radiusCard, colors.accentSoft, colors.accent);
+            DrawTextSimple(buffer, L"↓  新输出", notification, UiAccentInk(p.dark),
+                p.smallFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            gdiCalls += 2;
+        }
+    }
+    if (p.liveMonitor && savedCard) {
+        RestoreDC(buffer, savedCard);
+        const float w = static_cast<float>(client.right - client.left - 1);
+        const float h = static_cast<float>(client.bottom - client.top - 1);
+        if (w > 0 && h > 0) {
+            const float x = client.left + 0.5f, y = client.top + 0.5f;
+            const float diameter = std::min(static_cast<float>(std::max(0, p.outerRadius) * 2), std::min(w, h));
+            Gdiplus::Graphics graphics(buffer);
+            graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            Gdiplus::GraphicsPath path;
+            if (diameter > 0) {
+                path.AddArc(x, y, diameter, diameter, 180, 90);
+                path.AddArc(x + w - diameter, y, diameter, diameter, 270, 90);
+                path.AddArc(x + w - diameter, y + h - diameter, diameter, diameter, 0, 90);
+                path.AddArc(x, y + h - diameter, diameter, diameter, 90, 90);
+                path.CloseFigure();
+            } else {
+                path.AddRectangle(Gdiplus::RectF(x, y, w, h));
+            }
+            Gdiplus::Pen borderPen(UiColor(colors.border), 1.0f);
+            graphics.DrawPath(&borderPen, &path);
+        }
+    }
+}
+} // namespace
+
+struct TerminalViewport::AsyncRasterizer {
+    struct Job {
+        FrameKey key;
+        RenderFrameParams params;
+        LOGFONTW fontLog{};
+        LOGFONTW smallFontLog{};
+        bool hasFontLog = false;
+        bool hasSmallFontLog = false;
+        std::vector<TerminalLine> visibleLines;
+        HWND notifyWindow = nullptr;
+    };
+
+    ~AsyncRasterizer() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stop_ = true;
+            pendingJob_.reset();
+        }
+        cv_.notify_all();
+        if (worker_.joinable()) worker_.join();
+    }
+
+    bool TryConsume(const FrameKey& key, std::vector<std::uint32_t>& outPixels) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!readyValid_ || !(readyKey_ == key)) return false;
+        outPixels = readyPixels_;
+        return true;
+    }
+
+    void Submit(Job job) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_) return;
+        if (readyValid_ && readyKey_ == job.key) return;
+        if (pendingJob_ && pendingJob_->key == job.key) return;
+        if (active_ && activeKey_ == job.key) return;
+        pendingJob_ = std::move(job);
+        if (!worker_.joinable()) worker_ = std::thread([this] { WorkerLoop(); });
+        cv_.notify_one();
+    }
+
+private:
+    void WorkerLoop() {
+        HDC memDc = nullptr;
+        HBITMAP dib = nullptr;
+        HGDIOBJ oldBmp = nullptr;
+        void* dibBits = nullptr;
+        int dibW = 0, dibH = 0;
+        HFONT workerFont = nullptr, workerSmallFont = nullptr;
+        LOGFONTW cachedFontLog{}, cachedSmallFontLog{};
+        bool hasCachedFont = false, hasCachedSmallFont = false;
+        std::vector<std::uint32_t> scratchPixels;
+
+        auto ensureDib = [&](int w, int h) -> bool {
+            if (memDc && dib && dibW == w && dibH == h) return true;
+            if (oldBmp && memDc) SelectObject(memDc, oldBmp);
+            if (dib) DeleteObject(dib);
+            dib = nullptr; oldBmp = nullptr; dibBits = nullptr; dibW = 0; dibH = 0;
+            if (!memDc) memDc = CreateCompatibleDC(nullptr);
+            if (!memDc || w <= 0 || h <= 0) return false;
+            BITMAPINFO bmi{};
+            bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+            bmi.bmiHeader.biWidth = w;
+            bmi.bmiHeader.biHeight = -h;
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32;
+            bmi.bmiHeader.biCompression = BI_RGB;
+            dib = CreateDIBSection(memDc, &bmi, DIB_RGB_COLORS, &dibBits, nullptr, 0);
+            if (!dib || !dibBits) {
+                if (dib) DeleteObject(dib);
+                dib = nullptr;
+                return false;
+            }
+            oldBmp = SelectObject(memDc, dib);
+            dibW = w;
+            dibH = h;
+            return true;
+        };
+
+        auto ensureFont = [](const LOGFONTW& lf, bool valid, HFONT& handle, LOGFONTW& cached, bool& hasCached) -> HFONT {
+            if (!valid) return nullptr;
+            if (hasCached && handle && std::memcmp(&lf, &cached, sizeof(LOGFONTW)) == 0) return handle;
+            if (handle) DeleteObject(handle);
+            handle = CreateFontIndirectW(&lf);
+            cached = lf;
+            hasCached = handle != nullptr;
+            return handle;
+        };
+
+        for (;;) {
+            Job job;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                cv_.wait(lock, [&] { return stop_ || pendingJob_.has_value(); });
+                if (stop_) break;
+                job = std::move(*pendingJob_);
+                pendingJob_.reset();
+                active_ = true;
+                activeKey_ = job.key;
+            }
+
+            bool rendered = false;
+            if (ensureDib(job.params.width, job.params.height)) {
+                job.params.font = ensureFont(job.fontLog, job.hasFontLog, workerFont, cachedFontLog, hasCachedFont);
+                job.params.smallFont = ensureFont(job.smallFontLog, job.hasSmallFontLog, workerSmallFont, cachedSmallFontLog, hasCachedSmallFont);
+                RECT client{0, 0, job.params.width, job.params.height};
+                std::uint64_t gdiCalls = 0;
+                const size_t base = job.params.topLine;
+                RenderTerminalSurface(memDc, client, job.params,
+                    [&](size_t lineIndex) -> const TerminalLine& {
+                        return job.visibleLines[lineIndex - base];
+                    }, gdiCalls);
+                GdiFlush();
+                const size_t pixelCount = static_cast<size_t>(dibW) * static_cast<size_t>(dibH);
+                scratchPixels.resize(pixelCount);
+                std::memcpy(scratchPixels.data(), dibBits, pixelCount * sizeof(std::uint32_t));
+                rendered = true;
+            }
+
+            HWND notify = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                active_ = false;
+                if (rendered && !stop_) {
+                    readyKey_ = std::move(job.key);
+                    readyPixels_.swap(scratchPixels);
+                    readyValid_ = true;
+                    notify = job.notifyWindow;
+                }
+            }
+            if (notify && IsWindow(notify)) InvalidateRect(notify, nullptr, FALSE);
+        }
+
+        if (workerFont) DeleteObject(workerFont);
+        if (workerSmallFont) DeleteObject(workerSmallFont);
+        if (oldBmp && memDc) SelectObject(memDc, oldBmp);
+        if (dib) DeleteObject(dib);
+        if (memDc) DeleteDC(memDc);
+    }
+
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::thread worker_;
+    bool stop_ = false;
+    bool active_ = false;
+    FrameKey activeKey_;
+    std::optional<Job> pendingJob_;
+    bool readyValid_ = false;
+    FrameKey readyKey_;
+    std::vector<std::uint32_t> readyPixels_;
+};
+
+TerminalViewport::TerminalViewport() = default;
+TerminalViewport::~TerminalViewport() = default;
+
 void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, const Options& options) {
     const auto paintStarted = std::chrono::steady_clock::now();
     struct RecordPaint {
@@ -174,7 +557,8 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
         cache_.focused == focused && cache_.dark == options.dark && cache_.timestamps == options.timestamps &&
         cache_.liveMonitor == options.liveMonitor && cache_.mode == options.mode &&
         cache_.font == options.font && cache_.smallFont == options.smallFont &&
-        cache_.draft == draft && cache_.draftCursor == draftCursor;
+        cache_.draft == draft && cache_.draftCursor == draftCursor &&
+        cache_.emptyHint == options.emptyHint;
     if (reusable) {
         BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
         if (options.measure)
@@ -182,10 +566,26 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
         return;
     }
     const int savedBuffer = SaveDC(buffer);
-    HBRUSH dcBrush = reinterpret_cast<HBRUSH>(GetStockObject(DC_BRUSH));
-    SetDCBrushColor(buffer, colors.field);
-    FillRect(buffer, &client, dcBrush);
     std::uint64_t gdiCalls = 1;
+
+    auto updateCache = [&] {
+        cache_.state = activeSession_;
+        cache_.revision = revision;
+        cache_.bufferGeneration = paintBuffer_.Generation();
+        cache_.width = client.right; cache_.height = client.bottom;
+        cache_.scroll = activeSession_ ? activeSession_->terminalScrollOffset : 0;
+        cache_.horizontal = activeSession_ ? activeSession_->terminalHorizontalOffset : 0;
+        cache_.anchorLine = input.anchorLine; cache_.focusLine = input.focusLine;
+        cache_.anchorColumn = input.anchorColumn; cache_.focusColumn = input.focusColumn;
+        cache_.selection = input.selectionActive;
+        cache_.newOutput = activeSession_ && activeSession_->terminalHasNewOutput;
+        cache_.focused = focused; cache_.dark = options.dark; cache_.timestamps = options.timestamps;
+        cache_.liveMonitor = options.liveMonitor; cache_.mode = options.mode;
+        cache_.font = options.font; cache_.smallFont = options.smallFont;
+        cache_.draft = draft; cache_.draftCursor = draftCursor;
+        cache_.emptyHint.assign(options.emptyHint);
+        cache_.valid = buffer != dc;
+    };
 
     if (activeSession_) {
         const TerminalModel& model = activeSession_->terminal;
@@ -251,139 +651,100 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
             std::swap(selectionStartColumn, selectionEndColumn);
         }
 
-        HFONT previousFont = reinterpret_cast<HFONT>(SelectObject(buffer, options.font));
-        SetBkMode(buffer, TRANSPARENT);
-        for (int viewRow = 0; viewRow < Metrics().rows; ++viewRow) {
-            const size_t lineIndex = topLine + static_cast<size_t>(viewRow);
-            if (lineIndex >= totalLines) break;
-            const TerminalLine &line = displayLine(lineIndex);
-            const int y = padding + viewRow * Metrics().lineHeight;
-            if (showTimestamps && !line.timestamp.empty()) {
-                RECT timestampRect{padding, y, textLeft - Ui::Gap, y + Metrics().lineHeight};
-                DrawTextSimple(buffer, line.timestamp, timestampRect, colors.muted,
-                    options.smallFont, DT_RIGHT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
-                ++gdiCalls;
-            }
-
-            const int availableColumns = std::max(0,
-                (static_cast<int>(client.right) - textLeft - Ui::OverlayScrollLaneWidth) /
-                    Metrics().cellWidth);
-            int viewColumn = 0;
-            while (viewColumn < availableColumns) {
-                const int column = viewColumn + horizontalOffset;
-                if (column < 0 || static_cast<size_t>(column) >= line.cells.size()) break;
-                const TerminalCell& cell = line.cells[static_cast<size_t>(column)];
-                if (cell.continuation) { ++viewColumn; continue; }
-                const auto visual = [&](const TerminalCell& value, int modelColumn) {
-                    const bool selected = Input().selectionActive &&
-                    (lineIndex > selectionStartLine ||
-                        (lineIndex == selectionStartLine && modelColumn >= selectionStartColumn)) &&
-                    (lineIndex < selectionEndLine ||
-                        (lineIndex == selectionEndLine && modelColumn <= selectionEndColumn));
-                    COLORREF foreground = ResolveTerminalColor(value.attributes.foreground,
-                        colors.text, options.dark, value.attributes.bold);
-                    COLORREF background = ResolveTerminalColor(value.attributes.background,
-                        colors.field, options.dark, false);
-                    if (value.attributes.inverse) std::swap(foreground, background);
-                    if (selected) { background = colors.accentSoft; foreground = colors.text; }
-                    struct Visual { COLORREF foreground, background; bool bold, underline; };
-                    return Visual{foreground, background, value.attributes.bold, value.attributes.underline};
-                };
-                const auto runVisual = visual(cell, column);
-                const auto sameVisual = [](const auto& left, const auto& right) {
-                    return left.foreground == right.foreground && left.background == right.background &&
-                        left.bold == right.bold && left.underline == right.underline;
-                };
-                const int runStart = viewColumn;
-                std::wstring text;
-                std::vector<int> advances;
-                while (viewColumn < availableColumns) {
-                    const int runColumn = viewColumn + horizontalOffset;
-                    if (runColumn < 0 || static_cast<size_t>(runColumn) >= line.cells.size()) break;
-                    const auto& runCell = line.cells[static_cast<size_t>(runColumn)];
-                    if (runCell.continuation) { ++viewColumn; continue; }
-                    const auto currentVisual = visual(runCell, runColumn);
-                    if (!sameVisual(runVisual, currentVisual)) break;
-                    const int width = static_cast<size_t>(runColumn + 1) < line.cells.size() &&
-                        line.cells[static_cast<size_t>(runColumn + 1)].continuation ? 2 : 1;
-                    text.push_back(runCell.character);
-                    advances.push_back(width * Metrics().cellWidth);
-                    viewColumn += width;
-                }
-                const int runRight = viewColumn;
-                RECT runRect{textLeft + runStart * Metrics().cellWidth, y,
-                    textLeft + runRight * Metrics().cellWidth, y + Metrics().lineHeight};
-                if (runVisual.background != colors.field) {
-                    SetDCBrushColor(buffer, runVisual.background);
-                    FillRect(buffer, &runRect, dcBrush);
-                    ++gdiCalls;
-                }
-                if (!text.empty() && std::any_of(text.begin(), text.end(), [](wchar_t value) { return value != L' '; })) {
-                    SetTextColor(buffer, runVisual.foreground);
-                    ExtTextOutW(buffer, runRect.left, runRect.top, 0, nullptr, text.data(),
-                                static_cast<UINT>(text.size()), advances.data());
-                    ++gdiCalls;
-                    if (runVisual.bold) {
-                        ExtTextOutW(buffer, runRect.left + 1, runRect.top, 0, nullptr, text.data(),
-                                    static_cast<UINT>(text.size()), advances.data());
-                        ++gdiCalls;
-                    }
-                }
-                if (runVisual.underline) {
-                    HPEN dcPen = reinterpret_cast<HPEN>(GetStockObject(DC_PEN));
-                    HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(buffer, dcPen));
-                    SetDCPenColor(buffer, runVisual.foreground);
-                    MoveToEx(buffer, runRect.left, runRect.bottom - 2, nullptr);
-                    LineTo(buffer, runRect.right, runRect.bottom - 2);
-                    SelectObject(buffer, oldPen);
-                    ++gdiCalls;
-                }
-            }
-        }
-
-        if (GetFocus() == terminal_ && model.CursorVisible() &&
-            activeSession_->terminalScrollOffset == 0) {
-            const size_t cursorLine =
-                preview ? (model.LineWrapView() ? model.HistorySize() : 0) + preview->CursorDisplayLine()
-                        : model.CursorDisplayLine();
-            const int cursorColumn = (preview ? preview->CursorColumn() : model.CursorColumn()) - horizontalOffset;
-            if (cursorLine >= topLine &&
-                cursorLine < topLine + static_cast<size_t>(Metrics().rows) &&
-                cursorColumn >= 0 && cursorColumn < Metrics().columns) {
-                const int viewRow = static_cast<int>(cursorLine - topLine);
-                RECT cursor{textLeft + cursorColumn * Metrics().cellWidth,
-                    padding + viewRow * Metrics().lineHeight,
-                    textLeft + (cursorColumn + 1) * Metrics().cellWidth,
-                    padding + (viewRow + 1) * Metrics().lineHeight};
-                RECT cursorLine{cursor.left, cursor.bottom - 2, cursor.right, cursor.bottom};
-                SetDCBrushColor(buffer, colors.accent);
-                FillRect(buffer, &cursorLine, dcBrush);
-                ++gdiCalls;
-            }
-        }
-        SelectObject(buffer, previousFont);
-
         const TerminalScrollMetrics scroll = GetTerminalScrollMetrics(terminal_,
             totalLines, Metrics().rows, activeSession_->terminalScrollOffset);
-        if (scroll.visible) {
-            DrawRoundedBox(buffer, scroll.thumb, Ui::Scale(3), colors.border, colors.border);
-            ++gdiCalls;
-        }
         const TerminalHorizontalScrollMetrics horizontalScroll =
             GetTerminalHorizontalScrollMetrics(terminal_, textLeft, totalColumns,
                 Metrics().columns, activeSession_->terminalHorizontalOffset);
-        if (horizontalScroll.visible) {
-            DrawRoundedBox(buffer, horizontalScroll.thumb, Ui::Scale(3), colors.border, colors.border);
-            ++gdiCalls;
+
+        RenderFrameParams params;
+        params.width = client.right;
+        params.height = client.bottom;
+        params.padding = padding;
+        params.textLeft = textLeft;
+        params.cellWidth = Metrics().cellWidth;
+        params.lineHeight = Metrics().lineHeight;
+        params.columns = Metrics().columns;
+        params.rows = Metrics().rows;
+        params.horizontalOffset = horizontalOffset;
+        params.scrollOffset = activeSession_->terminalScrollOffset;
+        params.topLine = topLine;
+        params.totalLines = totalLines;
+        params.selectionStartLine = selectionStartLine;
+        params.selectionEndLine = selectionEndLine;
+        params.selectionStartColumn = selectionStartColumn;
+        params.selectionEndColumn = selectionEndColumn;
+        params.dark = options.dark;
+        params.showTimestamps = showTimestamps;
+        params.selectionActive = input.selectionActive;
+        params.drawCursor = focused && model.CursorVisible() && activeSession_->terminalScrollOffset == 0;
+        params.cursorLine = preview
+            ? (model.LineWrapView() ? model.HistorySize() : 0) + preview->CursorDisplayLine()
+            : model.CursorDisplayLine();
+        params.cursorColumn = (preview ? preview->CursorColumn() : model.CursorColumn()) - horizontalOffset;
+        params.showNewOutput = activeSession_->terminalHasNewOutput && activeSession_->terminalScrollOffset > 0;
+        params.vScrollVisible = scroll.visible;
+        params.hScrollVisible = horizontalScroll.visible;
+        params.liveMonitor = options.liveMonitor;
+        params.vThumb = scroll.thumb;
+        params.hThumb = horizontalScroll.thumb;
+        params.font = options.font;
+        params.smallFont = options.smallFont;
+        params.radius3 = Ui::Scale(3);
+        params.radiusCard = Ui::Radius;
+        params.outerRadius = Ui::Scale(8);
+
+        if (!options.measure && buffer != dc && !registerPreview_) {
+            FrameKey key{activeSession_, revision, client.right, client.bottom,
+                activeSession_->terminalScrollOffset, activeSession_->terminalHorizontalOffset,
+                input.anchorLine, input.focusLine, input.anchorColumn, input.focusColumn,
+                input.selectionActive, activeSession_->terminalHasNewOutput, focused,
+                options.dark, options.timestamps, options.liveMonitor, options.mode,
+                options.font, options.smallFont, draft, draftCursor};
+            std::vector<std::uint32_t> readyPixels;
+            if (rasterizer_ && rasterizer_->TryConsume(key, readyPixels) &&
+                readyPixels.size() == static_cast<size_t>(client.right) * static_cast<size_t>(client.bottom)) {
+                BITMAPINFO bmi{};
+                bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                bmi.bmiHeader.biWidth = client.right;
+                bmi.bmiHeader.biHeight = -client.bottom;
+                bmi.bmiHeader.biPlanes = 1;
+                bmi.bmiHeader.biBitCount = 32;
+                bmi.bmiHeader.biCompression = BI_RGB;
+                SetDIBitsToDevice(buffer, 0, 0, client.right, client.bottom, 0, 0, 0, client.bottom,
+                                  readyPixels.data(), &bmi, DIB_RGB_COLORS);
+                BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
+                updateCache();
+                RestoreDC(buffer, savedBuffer);
+                return;
+            }
+            if (cache_.valid && cache_.state == activeSession_ &&
+                cache_.width == client.right && cache_.height == client.bottom &&
+                cache_.bufferGeneration == paintBuffer_.Generation() &&
+                cache_.dark == options.dark) {
+                if (!rasterizer_) rasterizer_ = std::make_unique<AsyncRasterizer>();
+                AsyncRasterizer::Job job;
+                job.key = std::move(key);
+                job.params = params;
+                job.params.font = nullptr;
+                job.params.smallFont = nullptr;
+                job.hasFontLog = options.font && GetObjectW(options.font, sizeof(LOGFONTW), &job.fontLog) > 0;
+                job.hasSmallFontLog = options.smallFont && GetObjectW(options.smallFont, sizeof(LOGFONTW), &job.smallFontLog) > 0;
+                job.notifyWindow = terminal_;
+                const size_t endLine = std::min(totalLines, topLine + static_cast<size_t>(Metrics().rows));
+                if (endLine > topLine) {
+                    job.visibleLines.reserve(endLine - topLine);
+                    for (size_t i = topLine; i < endLine; ++i)
+                        job.visibleLines.push_back(displayLine(i));
+                }
+                rasterizer_->Submit(std::move(job));
+                BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
+                RestoreDC(buffer, savedBuffer);
+                return;
+            }
         }
 
-        if (activeSession_->terminalHasNewOutput && activeSession_->terminalScrollOffset > 0) {
-            const RECT notification = TerminalNewOutputRect(client, horizontalScroll.visible);
-            DrawRoundedBox(buffer, notification, Ui::Radius, colors.accentSoft, colors.accent);
-            DrawTextSimple(buffer, L"↓  新输出", notification, UiAccentInk(options.dark),
-                options.smallFont, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-            gdiCalls += 2;
-        }
+        RenderTerminalSurface(buffer, client, params, displayLine, gdiCalls);
 
         registerCardBounds_ = {};
         registerBitBounds_.fill(RECT{});
@@ -408,6 +769,39 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
                                         &registerCardBounds_, &registerBitBounds_);
             }
         }
+    } else {
+        RenderFrameParams emptyParams;
+        emptyParams.width = client.right;
+        emptyParams.height = client.bottom;
+        emptyParams.dark = options.dark;
+        emptyParams.liveMonitor = options.liveMonitor;
+        emptyParams.outerRadius = Ui::Scale(8);
+        RenderTerminalSurface(buffer, client, emptyParams,
+            [](size_t) -> const TerminalLine& { static const TerminalLine kEmpty{}; return kEmpty; }, gdiCalls);
+        if (!options.emptyHint.empty()) {
+            const int inset = Ui::Scale(16);
+            RECT hintRect{client.left + inset, client.top + inset, client.right - inset, client.bottom - inset};
+            if (hintRect.right > hintRect.left && hintRect.bottom > hintRect.top) {
+                HFONT hintFont = options.smallFont ? options.smallFont : options.font;
+                HGDIOBJ oldFont = hintFont ? SelectObject(buffer, hintFont) : nullptr;
+                const int oldMode = SetBkMode(buffer, TRANSPARENT);
+                const COLORREF oldColor = SetTextColor(buffer, colors.muted);
+                RECT measured = hintRect;
+                const int h = DrawTextW(buffer, options.emptyHint.data(), static_cast<int>(options.emptyHint.size()),
+                                        &measured, DT_CENTER | DT_WORDBREAK | DT_CALCRECT | DT_NOPREFIX);
+                if (h > 0 && h < (hintRect.bottom - hintRect.top)) {
+                    hintRect.top += ((hintRect.bottom - hintRect.top) - h) / 2;
+                    hintRect.bottom = hintRect.top + h;
+                }
+                DrawTextW(buffer, options.emptyHint.data(), static_cast<int>(options.emptyHint.size()),
+                          &hintRect, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
+                ++gdiCalls;
+                SetTextColor(buffer, oldColor);
+                SetBkMode(buffer, oldMode);
+                if (oldFont)
+                    SelectObject(buffer, oldFont);
+            }
+        }
     }
 
     BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
@@ -425,20 +819,7 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
         SetPropW(terminal_, L"SerialCtl.PaintProbe", reinterpret_cast<HANDLE>(activeSession_->paintProbe));
         activeSession_->pendingProbeArrival = 0;
     }
-    cache_.state = activeSession_;
-    cache_.revision = activeSession_ ? activeSession_->terminal.Revision() : 0;
-    cache_.bufferGeneration = paintBuffer_.Generation();
-    cache_.width = client.right; cache_.height = client.bottom;
-    cache_.scroll = activeSession_ ? activeSession_->terminalScrollOffset : 0;
-    cache_.horizontal = activeSession_ ? activeSession_->terminalHorizontalOffset : 0;
-    cache_.anchorLine = input.anchorLine; cache_.focusLine = input.focusLine;
-    cache_.anchorColumn = input.anchorColumn; cache_.focusColumn = input.focusColumn;
-    cache_.selection = input.selectionActive;
-    cache_.newOutput = activeSession_ && activeSession_->terminalHasNewOutput;
-    cache_.focused = focused; cache_.dark = options.dark; cache_.timestamps = options.timestamps;
-    cache_.liveMonitor = options.liveMonitor; cache_.mode = options.mode;
-    cache_.font = options.font; cache_.smallFont = options.smallFont;
-    cache_.draft = draft; cache_.draftCursor = draftCursor; cache_.valid = buffer != dc;
+    updateCache();
     RestoreDC(buffer, savedBuffer);
 }
 void TerminalViewport::Measure(HWND window, HFONT font, bool timestamps) {
@@ -477,7 +858,7 @@ TerminalViewport::PointerResult TerminalViewport::Pointer(HWND window, UINT mess
     };
     const auto select = [&](size_t line, int column, bool extend) { Select(line, column, extend); InvalidateRect(window, nullptr, FALSE); };
     const auto clearSelection = [&] { ClearSelection(); InvalidateRect(window, nullptr, FALSE); };
-    if (message == WM_LBUTTONDOWN) {
+    if (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK) {
         const POINT click{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         if (registerPreview_ && PointInRect(registerCardBounds_, click)) {
             for (unsigned bit = 0; bit < 32; ++bit) {
@@ -489,8 +870,10 @@ TerminalViewport::PointerResult TerminalViewport::Pointer(HWND window, UINT mess
                 }
             }
             SetFocus(window);
-            return PointerResult::Handled; // Inside the card: don't start text selection.
+            return PointerResult::Handled; // Inside the card: don't start or replace text selection.
         }
+    }
+    if (message == WM_LBUTTONDOWN) {
         DismissRegisterPreview(window);
         SetFocus(window);
         if (!session) return PointerResult::Handled;

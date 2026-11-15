@@ -26,7 +26,7 @@ class XferPane {
     void Paint(HDC);
     int D(int n)const{return MulDiv(n,dpi_,96);}
     HWND window_=nullptr,body_=nullptr;
-    HFONT font_=nullptr;
+    HFONT font_=nullptr,monoFont_=nullptr;
     HBRUSH surface_=nullptr,field_=nullptr;
     bool dark_=false,wasBusy_=false,directionChanged_=false,dragging_=false;
     int grab_=0;

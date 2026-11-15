@@ -1,6 +1,7 @@
 #include "AiAttachment.h"
 #include "Win32Helpers.h"
 #include <algorithm>
+#include <atomic>
 #include <objidl.h>
 #include <string_view>
 
@@ -108,5 +109,105 @@ nlohmann::json AttachmentChunkCommand(const std::string &path, const Attachment 
         : "set -eu; printf '%s' \"$2\" | base64 -d >> \"$1\"; wc -c < \"$1\"";
     return {{"command", {"sh", "-c", script, "serialctl-attachment", path, Base64(*attachment.bytes, offset, length)}},
             {"timeoutMs", 10000}, {"outputBytesCap", 1024}};
+}
+bool StageLocalAttachments(const std::vector<Attachment> &files, std::string &directoryOut,
+                           std::vector<std::string> &stagedPathsOut, std::wstring &errorOut) {
+    directoryOut.clear();
+    stagedPathsOut.clear();
+    errorOut.clear();
+
+    wchar_t baseBuf[32768]{};
+    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", baseBuf, 32768);
+    std::wstring baseDir;
+    if (n > 0 && n < 32768) {
+        baseDir = std::wstring(baseBuf, n) + L"\\SerialCtl";
+        CreateDirectoryW(baseDir.c_str(), nullptr);
+        baseDir += L"\\ai-attachments";
+        CreateDirectoryW(baseDir.c_str(), nullptr);
+    } else {
+        DWORD t = GetTempPathW(32768, baseBuf);
+        if (t == 0 || t >= 32768) {
+            errorOut = L"无法定位本机附件暂存目录";
+            return false;
+        }
+        baseDir = std::wstring(baseBuf, t) + L"serialctl-ai-attachments";
+        CreateDirectoryW(baseDir.c_str(), nullptr);
+    }
+
+    static std::atomic<uint64_t> seq{1};
+    std::wstring dir;
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        std::wstring candidate = baseDir + L"\\serialctl-ai." + std::to_wstring(GetCurrentProcessId()) +
+                                 L"-" + std::to_wstring(seq.fetch_add(1, std::memory_order_relaxed));
+        if (CreateDirectoryW(candidate.c_str(), nullptr)) {
+            dir = std::move(candidate);
+            break;
+        }
+    }
+    if (dir.empty()) {
+        errorOut = L"无法创建本机附件暂存目录：" + Win32ErrorMessage();
+        return false;
+    }
+
+    for (size_t i = 0; i < files.size(); ++i) {
+        const auto &att = files[i];
+        std::wstring suffix = MultiByteToWide(reinterpret_cast<const uint8_t *>(att.suffix.data()),
+                                              att.suffix.size(), CP_UTF8);
+        if (suffix.empty())
+            suffix = L".bin";
+        const std::wstring target = dir + L"\\" + std::to_wstring(i + 1) + suffix;
+        HANDLE h = CreateFileW(target.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                               FILE_ATTRIBUTE_TEMPORARY, nullptr);
+        if (h == INVALID_HANDLE_VALUE) {
+            errorOut = L"无法写入本机暂存附件：" + Win32ErrorMessage();
+            CleanupLocalAttachmentDirectory(WideToMultiByte(dir, CP_UTF8));
+            return false;
+        }
+        bool ok = true;
+        if (att.bytes && !att.bytes->empty()) {
+            size_t offset = 0;
+            while (offset < att.bytes->size()) {
+                DWORD written = 0;
+                const DWORD want = static_cast<DWORD>(std::min<size_t>(att.bytes->size() - offset, 65536));
+                if (!WriteFile(h, att.bytes->data() + offset, want, &written, nullptr) || written != want) {
+                    ok = false;
+                    break;
+                }
+                offset += written;
+            }
+        }
+        CloseHandle(h);
+        if (!ok) {
+            errorOut = L"写入本机暂存附件未完成";
+            CleanupLocalAttachmentDirectory(WideToMultiByte(dir, CP_UTF8));
+            return false;
+        }
+        stagedPathsOut.push_back(WideToMultiByte(target, CP_UTF8));
+    }
+    directoryOut = WideToMultiByte(dir, CP_UTF8);
+    return true;
+}
+void CleanupLocalAttachmentDirectory(const std::string &directory) {
+    if (directory.empty())
+        return;
+    const std::wstring wide = MultiByteToWide(reinterpret_cast<const uint8_t *>(directory.data()),
+                                              directory.size(), CP_UTF8);
+    if (wide.empty() || wide.find(L"serialctl-ai.") == std::wstring::npos)
+        return;
+    WIN32_FIND_DATAW ffd{};
+    HANDLE hFind = FindFirstFileW((wide + L"\\*").c_str(), &ffd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            const std::wstring name(ffd.cFileName);
+            if (name == L"." || name == L"..")
+                continue;
+            if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+                !(ffd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+                DeleteFileW((wide + L"\\" + name).c_str());
+            }
+        } while (FindNextFileW(hFind, &ffd));
+        FindClose(hFind);
+    }
+    RemoveDirectoryW(wide.c_str());
 }
 } // namespace serialctl::ai

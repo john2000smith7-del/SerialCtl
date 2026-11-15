@@ -160,6 +160,38 @@ public:
         }
         return {true, 0, ""};
     }
+
+    static bool IsLoopbackClient(const std::string& clientIp) {
+        return clientIp == "127.0.0.1" || clientIp == "::1" ||
+               clientIp == "localhost" || clientIp == "in-process";
+    }
+
+    static SecurityCheckResult ValidateWorkspaceCall(const std::string& toolName, const std::string& clientIp) {
+        if (toolName.rfind("workspace.", 0) == 0 && !IsLoopbackClient(clientIp)) {
+            if (toolName == "workspace.exec" || toolName == "workspace.write_file" || toolName == "workspace.delete") {
+                return {false, ErrPermissionDenied,
+                    "PERMISSION_DENIED: High-risk workspace tool '" + toolName +
+                    "' strictly refuses remote non-loopback execution."};
+            }
+            return {false, ErrPermissionDenied,
+                "PERMISSION_DENIED: Windows local workspace tools only accept loopback/local callers (127.0.0.1), "
+                "never arbitrary LAN clients."};
+        }
+        return {true, 0, ""};
+    }
+
+    static Json SanitizeWorkspaceAuditArguments(const std::string& toolName, const Json& arguments) {
+        if (toolName.rfind("workspace.", 0) != 0 || !arguments.is_object())
+            return arguments;
+        Json trimmed = arguments;
+        for (const char* field : {"content", "oldText", "newText"}) {
+            if (trimmed.contains(field) && trimmed[field].is_string()) {
+                const auto len = trimmed[field].get<std::string>().size();
+                trimmed[field] = "[TEXT:" + std::to_string(len) + " bytes]";
+            }
+        }
+        return trimmed;
+    }
 };
 
 } // namespace serialctl::mcp

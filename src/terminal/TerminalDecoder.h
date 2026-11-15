@@ -8,6 +8,10 @@
 #include <array>
 #endif
 namespace serialctl {
+inline bool IsValidDbcsTrailByte(std::uint8_t byte) {
+    return byte >= 0x40 && byte != 0x7f && byte != 0xff;
+}
+
 // Walk from a known boundary: DBCS trail bytes may look like lead bytes.
 template <class IsLeadByte> size_t IncompleteDbcsTail(const std::vector<std::uint8_t> &bytes, IsLeadByte isLead) {
     size_t index = 0;
@@ -15,7 +19,10 @@ template <class IsLeadByte> size_t IncompleteDbcsTail(const std::vector<std::uin
         if (isLead(bytes[index])) {
             if (index + 1 == bytes.size())
                 return 1;
-            index += 2;
+            if (IsValidDbcsTrailByte(bytes[index + 1]))
+                index += 2;
+            else
+                ++index;
         } else
             ++index;
     }
@@ -126,7 +133,29 @@ class TerminalDecoder {
                                                  return IsDBCSLeadByteEx(effective, b) != FALSE;
                                              });
         size_t n = pending_.size() - tail;
-        result += MultiByteToWide(pending_.data(), n, effective);
+        if (effective == CP_UTF8) {
+            result += MultiByteToWide(pending_.data(), n, effective);
+        } else {
+            size_t chunkStart = 0;
+            size_t i = 0;
+            while (i < n) {
+                if (IsDBCSLeadByteEx(effective, pending_[i])) {
+                    if (i + 1 < n && IsValidDbcsTrailByte(pending_[i + 1])) {
+                        i += 2;
+                    } else {
+                        if (i > chunkStart)
+                            result += MultiByteToWide(pending_.data() + chunkStart, i - chunkStart, effective);
+                        result += L'\xfffd';
+                        ++i;
+                        chunkStart = i;
+                    }
+                } else {
+                    ++i;
+                }
+            }
+            if (n > chunkStart)
+                result += MultiByteToWide(pending_.data() + chunkStart, n - chunkStart, effective);
+        }
         pending_.erase(pending_.begin(), pending_.begin() + n);
         return result;
     }

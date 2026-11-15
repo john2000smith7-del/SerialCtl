@@ -103,8 +103,11 @@ bool PowerPane::Create(HWND parent, HFONT font, bool dark, PowerService *service
     face.lfWeight = FW_SEMIBOLD;
     face.lfHeight = MulDiv(-18, dpi_, 96);
     titleFont_ = CreateFontIndirectW(&face);
-    face.lfHeight = MulDiv(-20, dpi_, 96);
-    valueFont_ = CreateFontIndirectW(&face);
+    LOGFONTW monoFace = face;
+    wcscpy_s(monoFace.lfFaceName, L"Consolas");
+    monoFace.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
+    monoFace.lfHeight = MulDiv(-20, dpi_, 96);
+    valueFont_ = CreateFontIndirectW(&monoFace);
     face.lfHeight = MulDiv(-13, dpi_, 96);
     face.lfWeight = FW_NORMAL;
     smallFont_ = CreateFontIndirectW(&face);
@@ -128,12 +131,12 @@ HWND PowerPane::Child(const wchar_t *type, const wchar_t *text, int id, DWORD st
     if ((id >= 50 && id <= 52) || (id >= 60 && id <= 62))
         SetPropW(h, L"SerialCtl.FieldSurface", reinterpret_cast<HANDLE>(1));
     SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE);
-    if (id >= 90)
+    if (id >= 90 && _wcsicmp(type, L"BUTTON") != 0)
         SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), FALSE);
     if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_OWNERDRAW)
         UiStyleButton(h);
     if (_wcsicmp(type, L"BUTTON") == 0 && (style & BS_TYPEMASK) == BS_AUTOCHECKBOX)
-        UiStyleCheckBox(h, &fieldStyle_, id >= 20 && id <= 22);
+        UiStyleCheckBox(h, &fieldStyle_, (id >= 20 && id <= 22) || id == KeywordEnableId);
     if (_wcsicmp(type, L"EDIT") == 0)
         UiStyleField(h, &fieldStyle_);
     return h;
@@ -186,8 +189,14 @@ Json PowerPane::Selection() {
 }
 void PowerPane::Submit(Json command) {
     command["source"] = "local";
+    const std::string cmdType = command.value("type", std::string());
+    const bool emergencyStop = (cmdType == "stop") || (cmdType == "output" && !command.value("enabled", true));
+    if (emergencyStop) {
+        pendingActions_.clear();
+        action_.clear();
+    }
     Json result;
-    if (command["type"] == "disconnect") {
+    if (cmdType == "disconnect") {
         result = DisconnectConnection(command.value("preserveOutputs", false));
     } else if (command["type"] == "connect") {
         remote_.Detach();
@@ -237,7 +246,7 @@ void PowerPane::SetRecoveryTarget(const std::string &id, const std::wstring &lab
     recoveryTarget_ = id;
     recoveryLabel_ = label;
     recoveryEligible_ = eligible;
-    if (tab_ == 1 && automation_ == KeywordMode) RefreshKeywords();
+    if (tab_ == 1 && automation_ == 0 && (keywordEnabled_ || std::atomic_load(&keywordRun_))) RefreshKeywords();
     if (Control(248)) EnableWindow(Control(248), eligible && !remote_.Active() && service_->State().value("connected", false));
 }
 Json PowerPane::RecoveryBinding() {
@@ -273,6 +282,9 @@ void PowerPane::LoadTask() {
     int channels = GetPrivateProfileIntW(L"Task", L"Channels", 1, path.c_str());
     for (int i = 0; i < 3; ++i)
         SendMessageW(check_[i], BM_SETCHECK, (channels & (1 << i)) ? BST_CHECKED : BST_UNCHECKED, 0);
+    keywordEnabled_ = GetPrivateProfileIntW(L"Task", L"KeywordEnabled", 0, path.c_str()) != 0;
+    if (HWND enable = Control(KeywordEnableId))
+        SendMessageW(enable, BM_SETCHECK, keywordEnabled_ ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 void PowerPane::SaveTask() {
     auto path = TaskPath();
@@ -281,6 +293,7 @@ void PowerPane::SaveTask() {
         if (SendMessageW(check_[i], BM_GETCHECK, 0, 0) == BST_CHECKED)
             mask |= 1 << i;
     bool ok = WritePrivateProfileStringW(L"Task", L"Channels", std::to_wstring(mask).c_str(), path.c_str()) != FALSE;
+    ok = WritePrivateProfileStringW(L"Task", L"KeywordEnabled", keywordEnabled_ ? L"1" : L"0", path.c_str()) && ok;
     for (auto item :
          {std::pair<HWND, const wchar_t *>{onTime_, L"OnSeconds"}, {offTime_, L"OffSeconds"}, {count_, L"Count"}})
         ok = WritePrivateProfileStringW(L"Task", item.second, Text(item.first).c_str(), path.c_str()) && ok;
@@ -321,7 +334,7 @@ void PowerPane::Action(int id) {
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
-        if (id >= 110 && id <= 110 + KeywordMode) {
+        if (id >= 110 && id <= 110 + MaxAutomationMode) {
             if(automation_ == id-110)return;
             const int old=automation_+110;
             automation_ = id - 110;
@@ -349,57 +362,105 @@ void PowerPane::Action(int id) {
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
-        if (id == Connect)
+        if (id == Connect) {
+            if (!UiTryAcquireActionCooldown(Control(Connect), Connect, 300)) return;
             ShowConnection();
-        else if (id == Disconnect)
+        } else if (id == Disconnect)
             Submit({{"type", "disconnect"},{"preserveOutputs",true}});
         else if (id == Protection) {
             tab_ = 2;
             settings_ = 0;
             Layout();
-        } else if (id == On || id == Off)
-            Submit({{"type", "output"}, {"channels", Selection()}, {"enabled", id == On}});
-        else if (id == 81) {
+        } else if (id == Off) {
+            Submit({{"type", "output"}, {"channels", Selection()}, {"enabled", false}});
+        } else if (id == On) {
+            if (!UiTryAcquireActionCooldown(Control(On), On, 300)) return;
+            if (!action_.empty()) {
+                MessageBoxW(window_, L"上一个电源操作尚在进行中，请稍候完成或先执行 Off/停止。", L"电源管理", MB_OK | MB_ICONINFORMATION);
+                return;
+            }
+            Submit({{"type", "output"}, {"channels", Selection()}, {"enabled", true}});
+        } else if (id == 81) {
+            if (!UiTryAcquireActionCooldown(Control(81), 81, 300)) return;
+            if (!action_.empty()) {
+                MessageBoxW(window_, L"上一个电源设置尚在进行中，请稍候完成后再试。", L"电源管理", MB_OK | MB_ICONINFORMATION);
+                return;
+            }
             Json settings = Json::array();
             auto selection = Selection();
             bool group = draftMode_ != 0;
+            bool needsHighVoltageConfirm = false;
+            std::wstring confirmDetails;
             for (auto ch : selection) {
                 int i = ch.get<int>() - 1;
                 if (group && i == 1)
                     continue;
+                const double targetV = Parse(Text(voltage_[i]));
+                double prevV = 0.0;
+                bool hasPrev = false;
+                if (state_.contains("channels") && state_["channels"].is_array() &&
+                    static_cast<size_t>(i) < state_["channels"].size()) {
+                    const auto& chState = state_["channels"][i];
+                    if (chState.contains("setVoltage") && chState["setVoltage"].is_number()) {
+                        prevV = chState["setVoltage"].get<double>();
+                        hasPrev = true;
+                        if (group && i == 0 && draftMode_ == 2 && state_["channels"].size() > 1 &&
+                            state_["channels"][1].contains("setVoltage") && state_["channels"][1]["setVoltage"].is_number()) {
+                            prevV += state_["channels"][1]["setVoltage"].get<double>();
+                        }
+                    }
+                }
+                if (targetV >= 5.0 || (hasPrev && (targetV - prevV) > 1.0)) {
+                    needsHighVoltageConfirm = true;
+                    wchar_t line[128]{};
+                    swprintf_s(line, L"CH%d 设定 %.3f V", i + 1, targetV);
+                    if (!confirmDetails.empty()) confirmDetails += L"、";
+                    confirmDetails += line;
+                }
                 settings.push_back({{"channels", group && i == 0 ? Json::array({1, 2}) : Json::array({i + 1})},
-                                    {"voltage", Parse(Text(voltage_[i]))},
+                                    {"voltage", targetV},
                                     {"current", Parse(Text(current_[i]))}});
+            }
+            if (needsHighVoltageConfirm && !settings.empty()) {
+                const std::wstring msg = L"检测到高压或较大幅度升压（" + confirmDetails +
+                                         L"；单次设定 >= 5.0V 或升压 > +1.0V）。\n\n请确认负载安全，是否继续写入设定？";
+                if (MessageBoxW(window_, msg.c_str(), L"电源安全确认", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+                    return;
             }
             Submit({{"type", "batch"}, {"mode", Mode()}, {"settings", settings}});
         } else if (id == Start) {
+            if (!UiTryAcquireActionCooldown(Control(Start), Start, 300)) return;
+            if (!action_.empty()) {
+                MessageBoxW(window_, L"已有电源任务或命令正在执行中，请先等待完成或点击停止。", L"电源管理", MB_OK | MB_ICONINFORMATION);
+                return;
+            }
             auto millis = [&](HWND h) {
                 double seconds = Parse(Text(h));
                 if (seconds < 0 || seconds > 604800)
                     throw std::runtime_error("时间超出范围");
                 return static_cast<long long>(std::llround(seconds * 1000));
             };
-            if (automation_ == 0 || automation_ == KeywordMode) {
+            if (automation_ == 0) {
                 double count = Parse(Text(count_));
                 if (std::floor(count) != count || count < 1 || count > 1000000)
                     throw std::runtime_error("循环次数必须为 1–1000000 的整数");
                 Json cycle = {{"type", "task"}, {"channels", Selection()}, {"onMs", millis(onTime_)},
                               {"offMs", millis(offTime_)}, {"count", static_cast<long long>(count)}};
-                if (automation_ == 0) Submit(std::move(cycle));
+                if (!keywordEnabled_) Submit(std::move(cycle));
                 else {
                     if (remote_.Active() || state_.contains("remoteHost"))
-                        throw std::runtime_error("关键字测试需要本机 USB 或 RS232 电源连接");
+                        throw std::runtime_error("启用关键字检测需要本机 USB 或 RS232 电源连接");
                     if (!keywordTarget_ || (keywordConfig_.rules.empty() && keywordConfig_.ready.empty()))
                         throw std::runtime_error("请先配置关键字或上电完成标志");
                     if (const auto previous = std::atomic_load(&keywordRun_); previous && previous->Active())
-                        throw std::runtime_error("关键字测试正在运行");
+                        throw std::runtime_error("关键字检测正在运行");
                     auto run = keywordTarget_(keywordConfig_);
                     std::atomic_store(&keywordRun_, run);
                     keywordSession_ = run->Session();
                     cycle["source"] = "local";
                     const auto result = service_->Submit(cycle, {}, {}, run);
                     if (result.contains("error")) {
-                        run->Cancel(L"电源未接受关键字测试");
+                        run->Cancel(L"电源未接受关键字检测任务");
                         throw std::runtime_error(result.at("error").get<std::string>());
                     }
                     action_ = result.at("id").get<std::string>();
@@ -444,12 +505,19 @@ void PowerPane::Action(int id) {
                 if (selected.empty())
                     throw std::runtime_error("请选择通道");
                 int i = selected[0].get<int>() - 1;
+                const double triggerV = Parse(Text(voltage_[i]));
+                if (triggerV >= 5.0) {
+                    wchar_t msg[256]{};
+                    swprintf_s(msg, L"触发设定电压为 %.3f V（>= 5.0V），请确认负载安全后继续。", triggerV);
+                    if (MessageBoxW(window_, msg, L"电源安全确认", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+                        return;
+                }
                 Submit({{"type", "trigger"},
                         {"channels", selected},
                         {"delay", Parse(Text(Control(126)))},
                         {"voltageStep", Parse(Text(Control(127)))},
                         {"currentStep", Parse(Text(Control(128)))},
-                        {"voltage", Parse(Text(voltage_[i]))},
+                        {"voltage", triggerV},
                         {"current", Parse(Text(current_[i]))},
                         {"fire", true}});
             }
@@ -475,8 +543,19 @@ void PowerPane::Action(int id) {
                     {"milliseconds", SendMessageW(Control(103), CB_GETCURSEL, 0, 0) == 1 ? 2000 : 1000}});
         else if (id == 123)
             EditSequence();
-        else if (id == KeywordConfigId)
+        else if (id == KeywordEnableId) {
+            keywordEnabled_ = SendMessageW(Control(KeywordEnableId), BM_GETCHECK, 0, 0) == BST_CHECKED;
+            SaveTask();
+            Layout();
+            RefreshKeywords();
+        } else if (id == KeywordConfigId)
             ConfigureKeywords();
+        else if (id == KeywordResumeId) {
+            if (const auto run = std::atomic_load(&keywordRun_); run && run->Active()) {
+                run->Resume();
+                RefreshKeywords();
+            }
+        }
         else if (id == 133)
             Submit({{"type", "settings"}, {"operation", "readTimer"}});
         else if (id >= 134 && id <= 137)
@@ -587,7 +666,8 @@ void PowerPane::Refresh() {
                 remoteParametersChanged |= before.value(key, Json()) != after.value(key, Json());
         }
     }
-    if (tab_ == 1 && automation_ == KeywordMode && IsWindowVisible(window_)) RefreshKeywords();
+    if (tab_ == 1 && automation_ == 0 && (keywordEnabled_ || std::atomic_load(&keywordRun_)) && IsWindowVisible(window_))
+        RefreshKeywords();
     if(nextState==state_ && pendingActions_.empty() && !refreshRequired_)return;
     const bool disconnectRecorded = nextState.value("lastDisconnectActionId", "") != state_.value("lastDisconnectActionId", "");
     const bool warningChanged = state_.value("unconfirmedPowerOff", false) != nextState.value("unconfirmedPowerOff", false);
@@ -684,9 +764,13 @@ void PowerPane::Refresh() {
     }
     const auto keywordRun = std::atomic_load(&keywordRun_);
     const bool keywordActive = keywordRun && keywordRun->Active();
+    const bool keywordPaused = keywordActive && keywordRun->Status().state == PowerKeywordRun::State::Paused;
     EnableWindow(start_, connected && !running && !keywordActive && !Selection().empty() &&
-        (automation_ != KeywordMode || !remote));
+        (automation_ != 0 || !keywordEnabled_ || !remote));
+    EnableWindow(Control(KeywordEnableId), !keywordActive && !running && !remote);
     EnableWindow(Control(KeywordConfigId), !keywordActive);
+    EnableWindow(Control(KeywordResumeId), keywordPaused);
+    ShowWindow(Control(KeywordResumeId), tab_ == 1 && automation_ == 0 && keywordPaused ? SW_SHOW : SW_HIDE);
     EnableWindow(Control(44), !keywordActive);
     EnableWindow(stop_, connected && (running || automation_ == 3 ||
                                       (state_.contains("ownedChannels") && !state_["ownedChannels"].empty())));
@@ -762,9 +846,9 @@ void PowerPane::CreateControls() {
     Child(L"BUTTON", L"暂停显示", 100, BS_OWNERDRAW);
     Child(L"BUTTON", L"导出 CSV", 101, BS_OWNERDRAW);
     Combo(103, {L"1 秒", L"2 秒"});
-    for (int i = 0; i <= KeywordMode; ++i)
+    for (int i = 0; i <= MaxAutomationMode; ++i)
         Child(L"BUTTON",
-              std::vector<std::wstring>{L"循环测试", L"定时任务", L"步骤序列", L"设备定时器", L"触发与步进", L"关键字测试"}[i].c_str(),
+              std::vector<std::wstring>{L"循环测试", L"定时任务", L"步骤序列", L"设备定时器", L"触发与步进"}[i].c_str(),
               110 + i, BS_OWNERDRAW);
     onTime_ = Child(L"EDIT", L"5", 70, ES_AUTOHSCROLL);
     offTime_ = Child(L"EDIT", L"5", 71, ES_AUTOHSCROLL);
@@ -773,7 +857,9 @@ void PowerPane::CreateControls() {
     stop_ = Child(L"BUTTON", L"停止并掉电", Stop, BS_OWNERDRAW);
     save_ = Child(L"BUTTON", L"保存", Save, BS_OWNERDRAW);
     Child(L"BUTTON", L"载入", 44, BS_OWNERDRAW);
+    Child(L"BUTTON", L"启用关键字检测", KeywordEnableId, BS_AUTOCHECKBOX);
     Child(L"BUTTON", L"关键字配置", KeywordConfigId, BS_OWNERDRAW);
+    Child(L"BUTTON", L"继续测试", KeywordResumeId, BS_OWNERDRAW);
     Child(WC_LISTVIEWW, L"关键字统计", KeywordStatsId, LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS);
     const auto keywordStatus = Child(L"STATIC", L"", KeywordStatusId, SS_LEFT | SS_NOPREFIX);
     SetWindowLongPtrW(keywordStatus, GWL_STYLE, GetWindowLongPtrW(keywordStatus, GWL_STYLE) & ~WS_TABSTOP);
@@ -907,7 +993,7 @@ void PowerPane::Layout() {
     };
     const int headerHeight = width < d(400) ? d(52) : d(36);
     fixed(connected ? Disconnect : Connect, width - d(96), 0, d(96), d(36));
-    HDC dc = GetDC(window_); const auto old = SelectObject(dc, smallFont_);
+    HDC dc = GetDC(window_); const auto old = SelectObject(dc, font_);
     int x = 0, y = headerHeight + d(12);
     for (int id = 90; id <= 93; ++id) {
         const auto label = Text(Control(id)); SIZE size{};
@@ -1018,7 +1104,7 @@ void PowerPane::DetailsLayout(int width, int top) {
     };
     auto flow = [&](const std::vector<int> &ids, int y) {
         int x = 0;
-        HDC dc = GetDC(window_); const auto old = SelectObject(dc, smallFont_);
+        HDC dc = GetDC(window_); const auto old = SelectObject(dc, font_);
         for (int id : ids) {
             const auto text = Text(Control(id)); SIZE extent{};
             GetTextExtentPoint32W(dc, text.c_str(), static_cast<int>(text.size()), &extent);
@@ -1050,16 +1136,34 @@ void PowerPane::DetailsLayout(int width, int top) {
         return;
     }
     if (tab_ == 1) {
-        y = flow({110, 111, 112, 113, 114, 115}, 0) + 12;
-        if (automation_ == 0) y = fields({{70,L"上电时长（秒）"},{71,L"断电等待（秒）"},{72,L"循环次数"}}, y);
-        if (automation_ == KeywordMode) {
-            y = flow({KeywordConfigId}, y);
-            move(KeywordStatusId, 0, y, w, 64);
-            label(L"关键字统计", 0, y + 68, w);
-            move(KeywordStatsId, 0, y + 96, w, 156);
-            LayoutKeywords(w);
-            y = fields({{70,L"检测时长（秒）"},{71,L"断电等待（秒）"},{72,L"循环次数"}}, y + 264,
-                       w >= 315 ? 3 : w >= 215 ? 2 : 1);
+        y = flow({110, 111, 112, 113, 114}, 0) + 12;
+        if (automation_ == 0) {
+            y = fields({{70, L"上电时长（秒）"}, {71, L"断电等待（秒）"}, {72, L"循环次数"}}, y);
+            label(L"自动化测试选项", 0, y, w);
+            const auto run = std::atomic_load(&keywordRun_);
+            const bool keywordActive = run && run->Active();
+            const bool keywordPaused = keywordActive && run->Status().state == PowerKeywordRun::State::Paused;
+            const int optionY = y + 28;
+            const int cfgW = std::min(120, std::max(88, (w - 12) / 3));
+            const int resumeW = keywordPaused ? std::min(104, std::max(84, (w - 24) / 3)) : 0;
+            if (w >= 300) {
+                const int chkW = std::max(112, w - cfgW - (resumeW ? resumeW + 12 : 0) - 12);
+                move(KeywordEnableId, 0, optionY, chkW, 32);
+                move(KeywordConfigId, chkW + 12, optionY, cfgW, 32);
+                if (keywordPaused) move(KeywordResumeId, chkW + 12 + cfgW + 12, optionY, resumeW, 32);
+                y = optionY + 44;
+            } else {
+                move(KeywordEnableId, 0, optionY, w, 28);
+                y = keywordPaused ? flow({KeywordConfigId, KeywordResumeId}, optionY + 34)
+                                  : flow({KeywordConfigId}, optionY + 34);
+            }
+            if (keywordEnabled_ || run) {
+                move(KeywordStatusId, 0, y, w, 48);
+                label(L"关键字统计", 0, y + 52, w);
+                move(KeywordStatsId, 0, y + 80, w, 156);
+                LayoutKeywords(w);
+                y += 248;
+            }
         }
         if (automation_ == 1) y = fields({{120,L"开始时间"},{121,L"掉电时间"},{122,L"重复"}}, y);
         if (automation_ == 2) y = fields({{123,L"步骤序列"}}, y);
@@ -1153,7 +1257,7 @@ void PowerPane::PaintBody(HDC dc) {
         for (int i=0;i<3;++i) {
             const RECT card=channelRects_[i];
             if (card.right<=card.left) continue;
-            UiBox(dc,card,c.surface,UiPanelBorder(dark_),d(12));
+            UiCardBox(dc,card,c.surface,UiPanelBorder(dark_),UiCardRadius(dpi_),dark_);
             if (!state_.contains("channels")) continue;
             auto channel=state_["channels"][i];
             const bool combined=(draftMode_==1||draftMode_==2)&&i==0;
@@ -1192,11 +1296,11 @@ void PowerPane::PaintBody(HDC dc) {
             text(combined&&draftMode_==1?L"总电流限值（A）":L"电流限值（A）",
                 {currentLeft,top+d(inlineFields?104:144),currentLeft+d(combined?120:100),top+d(inlineFields?132:172)},smallFont_,c.muted);
         }
-    } else UiBox(dc,{0,0,bodyWidth_,contentHeight_},c.surface,UiPanelBorder(dark_),d(12));
+    } else UiCardBox(dc,{0,0,bodyWidth_,contentHeight_},c.surface,UiPanelBorder(dark_),UiCardRadius(dpi_),dark_);
     PaintDetails(dc,bodyWidth_-detailsInset_*2,detailsTop_);
     RestoreDC(dc,saved);
     if (contentHeight_>bodyHeight_) {
-        UiBox(dc,ScrollThumb(),c.border,c.border,d(3));
+        UiDrawScrollbarThumb(dc, ScrollThumb(), dpi_, c);
     }
 }
 
@@ -1214,7 +1318,7 @@ void PowerPane::PaintDetails(HDC dc,int width,int) {
         for(int metric=0;metric<2;++metric){
             const int x=stack?0:metric*(plotWidth+d(12));
             const int y=detailStatusTop_+(stack?metric*d(200):0);
-            UiBox(dc,{x,y,x+plotWidth,y+d(188)},c.surface,c.border,d(12));
+            UiCardBox(dc,{x,y,x+plotWidth,y+d(188)},c.surface,c.border,UiCardRadius(dpi_),dark_);
             text(metric?L"电流（A）":L"电压（V）",{x+d(12),y+d(8),x+plotWidth-d(12),y+d(32)},c.muted);
             const int left=x+d(12),right=x+plotWidth-d(12),top=y+d(44),bottom=y+d(172);
             for(int n=0;n<=4;++n) UiSeparator(dc,left,right,top+(bottom-top)*n/4,c.border);
@@ -1238,7 +1342,7 @@ void PowerPane::PaintDetails(HDC dc,int width,int) {
         if(task.value("type",std::string())=="recover")status=running?
             L"断电等待 · "+std::to_wstring((task.value("remainingMs",std::uint64_t(0))+999)/1000)+L" 秒":
             task.value("phase",std::string())=="on_confirmed"?L"上电已确认":L"恢复已停止";
-        else if(running)status+=L" · 第 "+std::to_wstring(task.value("completed",0)+1)+L" / "+std::to_wstring(task.value("count",1))+L" 轮";
+        else if(running)status = (task.value("paused",false)?L"已暂停":L"运行中")+std::wstring(L" · 第 ")+std::to_wstring(task.value("completed",0)+1)+L" / "+std::to_wstring(task.value("count",1))+L" 轮";
         if(state_.contains("error"))status=Wide(state_["error"]);
         text(status,{detailsInset_,detailStatusTop_,detailsInset_+width,detailStatusTop_+d(56)},
             state_.contains("error")?c.danger:c.text,font_,DT_LEFT|DT_WORDBREAK);
@@ -1407,7 +1511,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             SetBkColor(reinterpret_cast<HDC>(w), c.field);
             return reinterpret_cast<LRESULT>(self->brush_);
         }
-        bool channel = (id >= 20 && id <= 22) || id == 201 || id == 231 || id == 232 || id == KeywordStatusId;
+        bool channel = (id >= 20 && id <= 22) || id == 201 || id == 231 || id == 232 || id == KeywordStatusId || id == KeywordEnableId;
         SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : channel ? c.surface : c.raised);
         return reinterpret_cast<LRESULT>(m == WM_CTLCOLOREDIT ? self->brush_
                                          : channel            ? self->surfaceBrush_
@@ -1423,7 +1527,7 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         item.hDC = paint.Dc();
         auto c = UiTheme(self->dark_);
         bool primary = item.CtlID == On || item.CtlID == Connect || item.CtlID == Start || item.CtlID == IDOK;
-        bool mainTab = item.CtlID >= 90 && item.CtlID <= 93, subTab = item.CtlID >= 110 && item.CtlID <= 110 + KeywordMode,
+        bool mainTab = item.CtlID >= 90 && item.CtlID <= 93, subTab = item.CtlID >= 110 && item.CtlID <= 110 + MaxAutomationMode,
              groupTab = item.CtlID >= 190 && item.CtlID <= 193;
         bool active = mainTab    ? item.CtlID == 90 + self->tab_
                       : subTab   ? item.CtlID == 110 + self->automation_
@@ -1445,10 +1549,10 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 UiFocusInk(self->dark_, !(item.itemState & ODS_DISABLED) && (primary || (item.itemState & ODS_SELECTED))));
             SetBkMode(item.hDC, TRANSPARENT);
             SetTextColor(item.hDC, visual.ink);
-            auto old = SelectObject(item.hDC, self->smallFont_);
+            auto old = SelectObject(item.hDC, self->font_);
             auto label = self->Text(item.hwndItem);
-            RECT rect = item.rcItem;
-            DrawTextW(item.hDC, label.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            RECT rect = UiCapsuleContentRect(item.rcItem, self->dpi_);
+            DrawTextW(item.hDC, label.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             SelectObject(item.hDC, old);
             return TRUE;
         }
@@ -1460,7 +1564,8 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         DeleteObject(outside);
         const auto visual = UiButtonVisual(c, !(item.itemState & ODS_DISABLED), item.itemState & ODS_SELECTED,
                                            GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
-        UiBox(item.hDC, item.rcItem, visual.fill, (item.itemState & ODS_DISABLED) ? UiPanelBorder(self->dark_) : visual.border, UiCapsuleRadius(item.rcItem));
+        UiBox(item.hDC, item.rcItem, visual.fill, (item.itemState & ODS_DISABLED) ? UiPanelBorder(self->dark_) : visual.border,
+              UiCapsuleRadius(item.rcItem));
         UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, self->dpi_,
                 UiFocusInk(self->dark_, !(item.itemState & ODS_DISABLED) && (primary || (item.itemState & ODS_SELECTED))));
         SetBkMode(item.hDC, TRANSPARENT);
@@ -1468,13 +1573,42 @@ LRESULT CALLBACK PowerPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                                : (item.itemState & ODS_SELECTED)         ? visual.ink
                                : item.CtlID == Off || item.CtlID == Stop ? c.danger
                                                                          : visual.ink);
-        auto old = SelectObject(item.hDC, item.CtlID >= 90 ? self->smallFont_ : self->font_);
-        RECT rect = item.rcItem;
+        auto old = SelectObject(item.hDC, self->font_);
+        RECT rect = UiCapsuleContentRect(item.rcItem, self->dpi_);
         auto value = self->Text(item.hwndItem);
         if (!UiDrawButtonGlyph(item.hDC, item, GetTextColor(item.hDC), self->dpi_))
-            DrawTextW(item.hDC, value.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            DrawTextW(item.hDC, value.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         SelectObject(item.hDC, old);
         return TRUE;
+    }
+    if (m == WM_NOTIFY) {
+        const auto &notice = *reinterpret_cast<NMHDR *>(l);
+        if (notice.idFrom == KeywordStatsId && notice.code == NM_CUSTOMDRAW) {
+            auto &draw = *reinterpret_cast<NMLVCUSTOMDRAW *>(l);
+            const auto c = UiTheme(self->dark_);
+            if (draw.nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+            if (draw.nmcd.dwDrawStage == CDDS_ITEMPREPAINT) return CDRF_NOTIFYSUBITEMDRAW;
+            if (draw.nmcd.dwDrawStage == (CDDS_ITEMPREPAINT | CDDS_SUBITEM)) {
+                const auto row = static_cast<int>(draw.nmcd.dwItemSpec);
+                const COLORREF rowBg = (row % 2 == 1) ? c.raised : c.surface;
+                draw.clrTextBk = rowBg;
+                draw.clrText = c.text;
+                const auto col = draw.iSubItem;
+                const auto run = std::atomic_load(&self->keywordRun_);
+                const auto snap = run ? run->Status() : PowerKeywordRun::Snapshot{};
+                if (static_cast<size_t>(row) < snap.counts.size() && snap.round) {
+                    const auto &cnt = snap.counts[static_cast<size_t>(row)];
+                    if (col == 1 && cnt.total > 0) draw.clrText = c.accent;
+                    else if (col == 2 && cnt.missTotal > 0) draw.clrText = c.danger;
+                    else if (col == 4) {
+                        if (cnt.failed || cnt.canceled) draw.clrText = c.danger;
+                        else if (cnt.round) draw.clrText = c.accent;
+                        else if (cnt.window == PowerKeywordRun::Window::Closed) draw.clrText = c.muted;
+                    }
+                }
+                return CDRF_NEWFONT;
+            }
+        }
     }
     return DefWindowProcW(h, m, w, l);
 }
@@ -1924,14 +2058,15 @@ void PowerPane::TaskFile(bool save) {
             fields[std::to_string(id)] = WideToMultiByte(Text(Control(id)), CP_UTF8);
         Json task = {{"format", "SerialCtl.PowerTask.1"}, {"view", automation_}, {"channels", Selection()},
                      {"fields", fields}, {"timerEnabled", SendMessageW(Control(124), CB_GETCURSEL, 0, 0) == 1},
-                     {"steps", steps_}};
-        if (automation_ == KeywordMode) task["keywords"] = EncodeKeywords(keywordConfig_);
+                     {"keywordEnabled", keywordEnabled_}, {"steps", steps_}};
+        if (automation_ == 0 && keywordEnabled_) task["keywords"] = EncodeKeywords(keywordConfig_);
         WritePowerFile(path, task);
         SaveTask();
     } else {
         auto file = ReadPowerFile(path);
-        if (file.at("format") != "SerialCtl.PowerTask.1" || !file.at("view").is_number_integer() || file["view"] < 0 ||
-            file["view"] > KeywordMode || !file.at("steps").is_array() || file["steps"].empty() || file["steps"].size() > 1000 ||
+        const int view = file.at("view").get<int>();
+        if (file.at("format") != "SerialCtl.PowerTask.1" || !file.at("view").is_number_integer() || view < 0 ||
+            view > MaxAutomationMode + 1 || !file.at("steps").is_array() || file["steps"].empty() || file["steps"].size() > 1000 ||
             !file.at("channels").is_array() || file["channels"].size() > 3)
             throw std::runtime_error("任务格式不正确");
         for (auto ch : file["channels"])
@@ -1949,7 +2084,10 @@ void PowerPane::TaskFile(bool save) {
         }
         bool enabled = file.at("timerEnabled").get<bool>();
         if (file.contains("keywords")) SaveKeywords(DecodeKeywords(file.at("keywords")));
-        automation_ = file["view"];
+        automation_ = view > MaxAutomationMode ? 0 : view;
+        keywordEnabled_ = file.value("keywordEnabled", view > MaxAutomationMode || file.contains("keywords"));
+        if (HWND enable = Control(KeywordEnableId))
+            SendMessageW(enable, BM_SETCHECK, keywordEnabled_ ? BST_CHECKED : BST_UNCHECKED, 0);
         steps_ = file["steps"];
         for (int id : {70, 71, 72, 120, 121, 125, 126, 127, 128})
             SetWindowTextW(Control(id), Wide(file["fields"][std::to_string(id)]).c_str());
@@ -2121,9 +2259,13 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         UiEndOwnedDialog(h, IDCANCEL);
         return TRUE;
     }
-    if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT) {
-        SetTextColor(reinterpret_cast<HDC>(w), c.text);
-        SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : c.surface);
+    if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORBTN) {
+        HDC dc = reinterpret_cast<HDC>(w);
+        if (m == WM_CTLCOLORBTN) {
+            SetBkMode(dc, TRANSPARENT);
+        }
+        SetTextColor(dc, c.text);
+        SetBkColor(dc, m == WM_CTLCOLOREDIT ? c.field : c.surface);
         return reinterpret_cast<INT_PTR>(m == WM_CTLCOLOREDIT ? pane->brush_ : pane->surfaceBrush_);
     }
     if (m == WM_ERASEBKGND) {
@@ -2148,7 +2290,8 @@ INT_PTR CALLBACK PowerPane::TextProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SetTextColor(item.hDC, visual.ink);
         auto old = SelectObject(item.hDC, pane->font_);
         auto text = pane->Text(item.hwndItem);
-        DrawTextW(item.hDC, text.c_str(), -1, &item.rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        RECT rect = UiCapsuleContentRect(item.rcItem, pane->dpi_);
+        DrawTextW(item.hDC, text.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         SelectObject(item.hDC, old);
         return TRUE;
     }

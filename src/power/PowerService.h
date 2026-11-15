@@ -31,6 +31,8 @@ class PowerService {
     static bool VisaAvailable();
     void RequestShutdown();
     void Shutdown();
+    static void MarkEmergencyRecoveryNeededAll();
+    static std::wstring RecoveryFilePath();
     bool ExportLog(bool csv, const std::wstring &path, std::wstring &error);
     SessionLogger::ExportPoint CaptureLogExportPoint(bool csv);
     bool ExportLog(bool csv, const std::wstring &path, SessionLogger::ExportPoint point,
@@ -55,11 +57,11 @@ class PowerService {
     void ChangeMode(const std::string &mode);
     void SetParameters(const Json &settings);
     void Extended(const Json &command, Json &action);
-    void AdvanceTask();
+    void AdvanceTask(bool forcePowerOff = false);
     void CheckScpi();
     void Select(int channel);
     void Outputs(const Json &channels, bool enabled, Json &result);
-    void StopTask(Json *offResults = nullptr, bool completed = false);
+    void StopTask(Json *offResults = nullptr, bool completed = false, bool preserveOutputs = false);
     void CancelKeywordCycle(const wchar_t *reason); // mutex_ held
     void Disconnect(bool preserveOutputs = false, Json *action = nullptr);
     void Command(const std::string &command);
@@ -84,10 +86,15 @@ class PowerService {
     bool stopping_ = false, lockRequested_ = false;
     static std::atomic<bool> testEnabled_;
     std::uint64_t next_ = 1;
-    std::uint64_t pollAt_ = 0, taskAt_ = 0;
+    std::uint64_t pollAt_ = 0, taskAt_ = 0, cyclePausedRemaining_ = 0;
+    bool cyclePaused_ = false;
     unsigned pollInterval_ = 1000;
     std::uint64_t recoveryNotBefore_[3]{};
     std::atomic<std::uint64_t> recoveryCancelEpoch_{0};
     std::uint64_t taskRecoveryEpoch_ = 0;
+    std::atomic<bool> emergencyActionInFlight_{false};
+    std::atomic<bool> emergencyOutputActive_[3]{};
+    void SyncEmergencyFlagsLocked();
+    static void ClearRecoveryFile();
 };
 } // namespace serialctl

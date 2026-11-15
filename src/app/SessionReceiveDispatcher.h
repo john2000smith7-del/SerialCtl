@@ -22,8 +22,8 @@ struct ReceivedItem {
 class SessionReceiveDispatcher {
 public:
     static constexpr size_t MaxSessionBytes = 4 * 1024 * 1024;
-    static constexpr size_t MaxTotalItems = 4096;
-    static constexpr size_t MaxSessions = 64;
+    static constexpr size_t MaxTotalItems = 32768;
+    static constexpr size_t MaxSessions = 256;
     static constexpr size_t MaxChunkSize = 16384;
 
     struct Statistics {

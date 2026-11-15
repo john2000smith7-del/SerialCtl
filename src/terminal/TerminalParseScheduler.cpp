@@ -9,7 +9,7 @@ using Clock = std::chrono::steady_clock;
 constexpr size_t MaximumBatchBytes = 64 * 1024;
 constexpr size_t MaximumBatchItems = 32;
 constexpr size_t MaximumContextBytes = 4 * 1024 * 1024;
-constexpr size_t MaximumTotalBytes = 16 * 1024 * 1024;
+constexpr size_t MaximumTotalBytes = 128 * 1024 * 1024;
 
 void MergeResult(TerminalFeedResult& destination, TerminalFeedResult source) {
     destination.response += source.response;
@@ -24,7 +24,7 @@ void MergeResult(TerminalFeedResult& destination, TerminalFeedResult source) {
 } // namespace
 
 TerminalParseScheduler::TerminalParseScheduler(unsigned workerCount)
-    : workerCount_((std::max)(1u, (std::min)(workerCount, 4u))) {
+    : workerCount_((std::max)(1u, (std::min)(workerCount, 8u))) {
     workers_.reserve(workerCount_);
     for (unsigned i = 0; i < workerCount_; ++i)
         workers_.emplace_back([this] { Worker(); });
@@ -225,49 +225,53 @@ void TerminalParseScheduler::Worker() {
             update = std::make_unique<Update>();
             update->context = context;
             update->sessionId = context->sessionId;
-            update->wasAlternateScreen = context->model.AlternateScreen();
-            for (auto& job : jobs) {
-                if (job.kind == Context::Job::Kind::Resize) {
-                    context->model.SetLineWrapView(job.wrap);
-                    context->model.Resize(job.columns, job.rows);
+            {
+                std::lock_guard<std::mutex> modelLock(context->modelMutex);
+                update->wasAlternateScreen = context->model.AlternateScreen();
+                for (auto& job : jobs) {
+                    if (job.kind == Context::Job::Kind::Resize) {
+                        context->model.SetLineWrapView(job.wrap);
+                        context->model.Resize(job.columns, job.rows);
+                        update->sequence = job.sequence;
+                        continue;
+                    }
+                    if (job.kind == Context::Job::Kind::Clear ||
+                        job.kind == Context::Job::Kind::ClearScrollback) {
+                        if (job.kind == Context::Job::Kind::Clear) context->model.Clear();
+                        else context->model.ClearScrollback();
+                        update->sequence = job.sequence;
+                        continue;
+                    }
+                    std::wstring decoded;
+                    if (job.kind == Context::Job::Kind::Text) {
+                        decoded = std::move(job.text);
+                    } else {
+                        const auto decodeStart = Clock::now();
+                        decoded = context->decoder.Decode(job.data, job.codePage);
+                        update->decodeUsec += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                            Clock::now() - decodeStart).count());
+                    }
+                    const auto parseStart = Clock::now();
+                    auto feedResult = context->model.Feed(decoded, job.timestamp);
+                    update->parseUsec += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                        Clock::now() - parseStart).count());
+                    if (!feedResult.logText.empty()) update->logEntries.push_back({false, feedResult.logText});
+                    if (!job.statusAfter.empty()) update->logEntries.push_back({true, std::move(job.statusAfter)});
+                    MergeResult(update->result, std::move(feedResult));
+                    update->decoded += decoded;
+                    if (job.observe) update->observedDecoded += decoded;
+                    if (!job.timestamp.empty()) update->timestamp = job.timestamp;
+                    if (job.arrival) update->arrival = job.arrival;
+                    update->inputBytes += job.data.size();
                     update->sequence = job.sequence;
-                    continue;
                 }
-                if (job.kind == Context::Job::Kind::Clear ||
-                    job.kind == Context::Job::Kind::ClearScrollback) {
-                    if (job.kind == Context::Job::Kind::Clear) context->model.Clear();
-                    else context->model.ClearScrollback();
-                    update->sequence = job.sequence;
-                    continue;
-                }
-                std::wstring decoded;
-                if (job.kind == Context::Job::Kind::Text) {
-                    decoded = std::move(job.text);
-                } else {
-                    const auto decodeStart = Clock::now();
-                    decoded = context->decoder.Decode(job.data, job.codePage);
-                    update->decodeUsec += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                        Clock::now() - decodeStart).count());
-                }
-                const auto parseStart = Clock::now();
-                auto feedResult = context->model.Feed(decoded, job.timestamp);
-                update->parseUsec += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                    Clock::now() - parseStart).count());
-                if (!feedResult.logText.empty()) update->logEntries.push_back({false, feedResult.logText});
-                if (!job.statusAfter.empty()) update->logEntries.push_back({true, std::move(job.statusAfter)});
-                MergeResult(update->result, std::move(feedResult));
-                update->decoded += decoded;
-                if (job.observe) update->observedDecoded += decoded;
-                if (!job.timestamp.empty()) update->timestamp = job.timestamp;
-                if (job.arrival) update->arrival = job.arrival;
-                update->inputBytes += job.data.size();
-                update->sequence = job.sequence;
+                context->completedSequence = update->sequence;
+                update->alternateScreen = context->model.AlternateScreen();
+                // TerminalModel history entries are shared immutable lines, but skipping
+                // snapshot clones for backgrounded tabs eliminates 50x deep model copies.
+                if (context->visible.load(std::memory_order_acquire))
+                    update->snapshot = std::make_unique<TerminalModel>(context->model);
             }
-            update->alternateScreen = context->model.AlternateScreen();
-            // TerminalModel history entries are shared immutable lines.  This
-            // copies the small live grids and shared_ptr index, never 20,000
-            // historical cell buffers; UI ownership is transferred by move.
-            update->snapshot = std::make_unique<TerminalModel>(context->model);
             if (context->log && !update->logEntries.empty())
                 context->log(update->logEntries);
         }
@@ -300,6 +304,56 @@ void TerminalParseScheduler::Worker() {
             wake_.notify_one();
         }
     }
+}
+
+void TerminalParseScheduler::SetVisible(const std::shared_ptr<Context>& context, bool visible) {
+    if (!context) return;
+    context->visible.store(visible, std::memory_order_release);
+}
+
+bool TerminalParseScheduler::CopySnapshot(const std::shared_ptr<Context>& context, TerminalModel& model,
+                                          std::uint64_t& sequence) {
+    if (!context) return false;
+    std::lock_guard<std::mutex> lock(context->modelMutex);
+    model = context->model;
+    sequence = context->completedSequence;
+    return true;
+}
+
+bool TerminalParseScheduler::StageCoalescedUpdate(const std::shared_ptr<Context>& context,
+                                                  std::unique_ptr<Update> update) {
+    if (!context || !update) return false;
+    std::lock_guard<std::mutex> lock(context->uiPublishMutex);
+    if (!context->coalescedUpdate) {
+        context->coalescedUpdate = std::move(update);
+    } else {
+        auto& dst = *context->coalescedUpdate;
+        dst.sequence = (std::max)(dst.sequence, update->sequence);
+        if (update->snapshot) dst.snapshot = std::move(update->snapshot);
+        MergeResult(dst.result, std::move(update->result));
+        dst.decoded += update->decoded;
+        dst.observedDecoded += update->observedDecoded;
+        if (!update->timestamp.empty()) dst.timestamp = std::move(update->timestamp);
+        if (!dst.arrival && update->arrival) dst.arrival = update->arrival;
+        dst.alternateScreen = update->alternateScreen;
+        dst.decodeUsec += update->decodeUsec;
+        dst.parseUsec += update->parseUsec;
+        dst.inputBytes += update->inputBytes;
+        dst.logEntries.insert(dst.logEntries.end(),
+                              std::make_move_iterator(update->logEntries.begin()),
+                              std::make_move_iterator(update->logEntries.end()));
+    }
+    if (context->uiMessagePosted) return false;
+    context->uiMessagePosted = true;
+    return true;
+}
+
+std::unique_ptr<TerminalParseScheduler::Update> TerminalParseScheduler::TakeCoalescedUpdate(
+    const std::shared_ptr<Context>& context) {
+    if (!context) return {};
+    std::lock_guard<std::mutex> lock(context->uiPublishMutex);
+    context->uiMessagePosted = false;
+    return std::move(context->coalescedUpdate);
 }
 
 } // namespace serialctl

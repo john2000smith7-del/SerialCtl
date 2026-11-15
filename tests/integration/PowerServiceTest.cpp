@@ -156,6 +156,84 @@ void TestKeywordCycle() {
     Expect(!canceled->Active() && canceled->Status().counts[0].canceled == 1,
            "Accepting Stop immediately revokes a delayed command");
     Expect(Wait(power, stop).value("state", "") == "completed", "Stop turns the test outputs off");
+
+    // Verify multi-command chains, PauseAll/Resume, PowerOffContinue, and StopTest/RunCommandsStopTest actions.
+    std::vector<Run::Rule> actionRules;
+    {
+        Run::Rule multi;
+        multi.display.keyword = L"DUPLEX";
+        multi.keyword = "DUPLEX";
+        multi.hitAction = PowerKeywordAction::RunCommands;
+        multi.missAction = PowerKeywordAction::None;
+        multi.hitCommands = {{Bytes{'c', '1'}, L"cmd1", 10, 10}, {Bytes{'c', '2'}, L"cmd2", 10, 0}};
+        actionRules.push_back(std::move(multi));
+
+        Run::Rule pauseRule;
+        pauseRule.display.keyword = L"HOLD";
+        pauseRule.keyword = "HOLD";
+        pauseRule.hitAction = PowerKeywordAction::PauseAll;
+        actionRules.push_back(std::move(pauseRule));
+
+        Run::Rule cutRule;
+        cutRule.display.keyword = L"CUT";
+        cutRule.keyword = "CUT";
+        cutRule.hitAction = PowerKeywordAction::PowerOffContinue;
+        actionRules.push_back(std::move(cutRule));
+
+        Run::Rule stopCmdRule;
+        stopCmdRule.display.keyword = L"FINISH";
+        stopCmdRule.keyword = "FINISH";
+        stopCmdRule.hitAction = PowerKeywordAction::RunCommandsStopTest;
+        stopCmdRule.hitCommands = {{Bytes{'b', 'y', 'e'}, L"bye", 0, 0}};
+        actionRules.push_back(std::move(stopCmdRule));
+    }
+    sent.clear();
+    const auto advancedRun = std::make_shared<Run>(2, L"COM fixture", "", actionRules,
+        [&](const Bytes &bytes, const std::function<bool()> &allowed, Run::Completion completion, std::wstring &) {
+            if (!allowed()) return false;
+            std::lock_guard<std::mutex> guard(senderMutex);
+            sent.emplace_back(bytes.begin(), bytes.end());
+            completion(Run::Delivery::Written, {});
+            return true;
+        }, [] { return true; }, [](const std::wstring &) {});
+    const Json longCycle{{"type", "task"}, {"channels", {1}}, {"onMs", 600}, {"offMs", 100}, {"count", 3}};
+    Expect(Wait(power, power.Submit(longCycle, {}, {}, advancedRun)).value("state", "") == "completed",
+           "Start multi-command and power-action cycle");
+    Expect(WaitForKeywordTest([&] { return advancedRun->Status().state == Run::State::Listening; }), "Listen in round 1");
+    advancedRun->Feed(Bytes{'D', 'U', 'P', 'L', 'E', 'X'});
+    Expect(WaitForKeywordTest([&] {
+        std::lock_guard<std::mutex> guard(senderMutex);
+        return sent == std::vector<std::string>({"c1", "c2"});
+    }), "Execute child commands sequentially");
+
+    advancedRun->Feed(Bytes{'H', 'O', 'L', 'D'});
+    Expect(WaitForKeywordTest([&] { return advancedRun->Status().state == Run::State::Paused; }),
+           "PauseAll freezes keyword execution and power task");
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    Expect(power.State()["task"].value("paused", false) && power.State()["channels"][0]["output"] == true,
+           "Power outputs hold steady while paused");
+    Expect(advancedRun->Resume(), "Resume paused keyword cycle");
+    Expect(WaitForKeywordTest([&] { return !power.State()["task"].value("paused", false); }),
+           "Clear paused flag upon Resume");
+
+    advancedRun->Feed(Bytes{'C', 'U', 'T'});
+    Expect(WaitForKeywordTest([&] {
+        const auto s = advancedRun->Status();
+        return s.round == 2 && s.state == Run::State::Listening;
+    }), "PowerOffContinue ends current ON phase early and advances to round 2");
+
+    advancedRun->Feed(Bytes{'F', 'I', 'N', 'I', 'S', 'H'});
+    Expect(WaitForKeywordTest([&] { return advancedRun->Status().state == Run::State::Finished; }),
+           "RunCommandsStopTest writes command then finishes test cleanly");
+    {
+        std::lock_guard<std::mutex> guard(senderMutex);
+        Expect(sent == std::vector<std::string>({"c1", "c2", "bye"}),
+               "Verify exact command sequence across multi-command and stop actions");
+    }
+    Expect(!power.State()["task"].value("running", false) && power.State()["channels"][0]["output"] == true,
+           "StopTest/RunCommandsStopTest stops automation while preserving current output state");
+    Expect(Wait(power, power.Submit({{"type", "output"}, {"channels", {1}}, {"enabled", false}})).value("state", "") == "completed",
+           "Restore output off cleanly");
 }
 
 void TestBoundRemoteCommands() {
@@ -703,6 +781,17 @@ int main() {
     Expect(batch["state"] == "completed" && extended.State()["channels"][0]["setVoltage"] == 3 &&
                extended.State()["channels"][2]["setVoltage"] == 5,
            "independent settings remain distinct");
+    const auto rejectedRemoteBatch = extended.Submit(
+        Json{{"type", "batch"}, {"source", "gui"}, {"steps", Json::array()}},
+        "remote-ws-1");
+    Expect(rejectedRemoteBatch.contains("error") && !rejectedRemoteBatch["error"].get<std::string>().empty(),
+           "batch power commands reject non-local connectionId");
+    const auto rejectedRemoteSourceBatch = extended.Submit(
+        Json{{"type", "batch"}, {"source", "remote-power:1"}, {"steps", Json::array()}},
+        "");
+    Expect(rejectedRemoteSourceBatch.contains("error") &&
+               !rejectedRemoteSourceBatch["error"].get<std::string>().empty(),
+           "batch power commands reject non-local source");
     Expect(extended.Submit({{"type", "settings"}, {"operation", "savePreset"}, {"slot", 0}}).contains("error"),
            "device storage is 1..36");
     auto preset = Wait(extended, extended.Submit({{"type", "settings"}, {"operation", "savePreset"}, {"slot", 36}}));

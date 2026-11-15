@@ -206,6 +206,12 @@ void TestWideCharactersAndColor() {
     Expect(line.cells[4].attributes.foreground.kind == serialctl::TerminalColor::Kind::Indexed &&
         line.cells[4].attributes.foreground.index == 1,
         "SGR indexed foreground color is stored per cell");
+
+    serialctl::TerminalModel eraseWide(20, 3);
+    eraseWide.Feed(L"# 的\b\x1b[J范", L"");
+    ExpectLine(eraseWide, 0, L"#  范", "CSI J on wide continuation clears the orphaned leading glyph");
+    Expect(eraseWide.DisplayLine(0).cells[2].character == L' ' && !eraseWide.DisplayLine(0).cells[2].continuation,
+        "leading wide cell becomes blank space after CSI J on continuation");
 }
 
 void TestFullScreenCompatibilitySequences() {

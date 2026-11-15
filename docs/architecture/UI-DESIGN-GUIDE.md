@@ -339,3 +339,18 @@ AI chat bubbles use alignment and accent fill to identify the speaker; omit role
 - Ordinary SSH has independent opt-in password retention using current-user Windows Credential Manager, keyed by host, actual port and account. New targets do not inherit another history's password. Passwords never enter history JSON or INI.
 - Xfer is the third right-panel tab beside Commands and SFTP, with tooltip “串口传输文件”. Keep it visible for every session type; enable only for connected local or remote serial sessions. Use the same panel, not a terminal entry or a new modal. Its independent controller owns file I/O, protocol state and cancellation; a running transfer stays bound to its source session when views change.
 - Approved transfer scope: raw binary and XMODEM/YMODEM/ZMODEM, send and receive. Do not expose an unimplemented mode as usable, or label local submission as peer verification. Real board interoperability remains a separate acceptance item.
+
+## V2.0.21 商业级统一设计系统规范
+
+- **三层同心圆角与全按钮半圆胶囊体系（96 DPI 基准，按 DPI 等比缩放）**：
+  - 外层卡片与弹窗容器：`Ui::CardRadius` / `UiCardRadius(dpi)` = `12px`。
+  - 非按钮标准控件（输入框、下拉框、弹出菜单外框）：`Ui::Radius` / `UiControlRadius(dpi)` = `8px`。
+  - 内嵌选中高亮、列表项、芯片标签与滚动条滑块：`Ui::InnerRadius96` / `UiInnerRadius(dpi)` = `6px`。
+  - **全仓按钮统一半圆胶囊弧度**：所有界面按钮（主操作、次操作、页签、工具栏、弹窗确认/取消、`IdDisconnectAll`、TFTP/Xfer/Power/AI 操作按钮与圆形图标按钮）统一使用 `UiCapsuleRadius(rect)` / `UiButtonRadius(rect, true, dpi)`（`min(width, height) / 2` 半圆弧度），同一界面及弹窗内绝不混用矩形与胶囊按钮。
+- **胶囊边界内边距、按钮间距与按钮字号全局统一**：
+  - 文本胶囊统一通过 `UiCapsuleContentRect(rect, dpi)` 施加对称水平内边距并配合 `DT_END_ELLIPSIS | DT_NOPREFIX`：标准高度按钮（`>= 34px`）使用 `ButtonPadXStandard96 = 16px`，紧凑按钮使用 `ButtonPadXCompact96 = 12px`；图文混排胶囊（如工作空间、新增命令、工具按钮）保持左右对称边距（紧凑 28px 头栏为 `6px`，标准工具栏为 `12px`）及一致图文间距；紧凑图标按钮（`UiIsCompactIconRect`）保持等宽高正圆胶囊。
+  - 所有操作栏、页签条与按钮组内部相邻按钮间距统一为 `Ui::Space`（`8px` @ 96 DPI）。
+  - 所有布局中的按钮文字字号统一为基准正文 UI 字体（`uiFont_` / `font_` = `15px` @ 96 DPI），禁止在页签或局部按钮降级使用 `smallFont_`（`13px`）；`smallFont_` 仅保留给辅助说明标签与表格列头。
+- **统一网格间距与控件对齐**：面板与表单严格遵循 `4 / 8 / 12 / 16px` 节奏步进；同行相邻输入框与按钮保持完全一致的可见外框运行时像素高度。
+- **共享滚动条与视觉细节**：所有自定义滚动区（Terminal/AI/Command/TFTP/Xfer/Power/Path/Dialog）统一复用 `UiDrawScrollbarThumb`；暗色主题卡片通过 `UiCardBox` 绘制微弱顶部高光线增强层次；TFTP/Xfer 统计计数及 Power 实时电压电流读数统一使用等宽 `Consolas` 字体防数字跳动。
+- **防误触机制**：非紧急的启停、传输、连接及电源开启类动作按钮统一通过 `UiTryAcquireActionCooldown` 执行 `250-300ms` 节流防连击；紧急停止/断电/断开动作（`Off` / `Stop` / 急停）禁止受冷却锁限制，必须立即响应。

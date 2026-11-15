@@ -20,6 +20,7 @@ public:
     using ServiceConfigurator = std::function<Json(const Json& params)>;
     using ServiceStatusProvider = std::function<Json()>;
     using PowerContextProvider = std::function<void(bool& testUnlocked, Json& selectedChannels)>;
+    using WorkspaceExecutor = std::function<Json(const std::string& toolName, const Json& arguments)>;
 
     McpDispatcher();
 
@@ -29,6 +30,7 @@ public:
     void SetServiceConfigurator(ServiceConfigurator configurator) { serviceConfigurator_ = std::move(configurator); }
     void SetServiceStatusProvider(ServiceStatusProvider provider) { serviceStatusProvider_ = std::move(provider); }
     void SetPowerContextProvider(PowerContextProvider provider) { powerContextProvider_ = std::move(provider); }
+    void SetWorkspaceExecutor(WorkspaceExecutor executor) { workspaceExecutor_ = std::move(executor); }
 
     void SetTestUnlocked(bool unlocked) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -64,6 +66,7 @@ private:
     ServiceConfigurator serviceConfigurator_;
     ServiceStatusProvider serviceStatusProvider_;
     PowerContextProvider powerContextProvider_;
+    WorkspaceExecutor workspaceExecutor_;
 
     bool testUnlocked_ = false;
     Json guiSelectedChannels_ = Json::array();

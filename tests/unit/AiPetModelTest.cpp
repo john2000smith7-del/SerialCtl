@@ -110,7 +110,7 @@ int main() {
     assert(roam.Step(1040,true)>0);
     assert(roam.Step(100000,false)==0);
     assert(roam.Step(100040,true)<1); // Pause never accumulates a position jump.
-    Settings walking; walking.opening=false;
+    Settings walking; assert(!walking.roaming); walking.opening=false; walking.roaming=true;
     Model roamModel;roamModel.Configure(walking,1);roamModel.Page(true,1);
     assert(roamModel.CanRoam());
     roamModel.SetActivity(Activity::Working,2);assert(!roamModel.CanRoam());

@@ -118,7 +118,7 @@ HANDLE CreatePipeInstance(const std::wstring& name, PSECURITY_DESCRIPTOR descrip
 bool SendIpcRequest(const std::wstring& pipeName, const std::string& request,
                     std::string& response, DWORD timeoutMs) {
     HANDLE pipe = INVALID_HANDLE_VALUE;
-    const DWORD startTick = GetTickCount();
+    const ULONGLONG startTick = GetTickCount64();
 
     while (true) {
         pipe = CreateFileW(
@@ -138,12 +138,12 @@ bool SendIpcRequest(const std::wstring& pipeName, const std::string& request,
             return false;
         }
 
-        const DWORD elapsed = GetTickCount() - startTick;
+        const ULONGLONG elapsed = GetTickCount64() - startTick;
         if (elapsed >= timeoutMs) {
             return false;
         }
 
-        if (!WaitNamedPipeW(pipeName.c_str(), timeoutMs - elapsed)) {
+        if (!WaitNamedPipeW(pipeName.c_str(), static_cast<DWORD>(timeoutMs - elapsed))) {
             return false;
         }
     }

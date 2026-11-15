@@ -14,6 +14,7 @@
 #include <chrono>
 #include <sstream>
 #include <commdlg.h>
+#include <shlobj.h>
 #include <filesystem>
 #include <windowsx.h>
 
@@ -55,9 +56,19 @@ enum {
     DirectoryRefresh,
     PathDisplay,
     PortMode,
-    PortLabel
+    PortLabel,
+    ProviderCombo,
+    ConnModeCombo,
+    WsModeRemote = 230,
+    WsModeLocal,
+    WsBrowseLocal,
+    WsLocalReadOnly,
+    WsSshLabel,
+    WsSshCombo,
+    WsSourceHint
 };
 constexpr UINT_PTR Timer = 1;
+constexpr UINT WorkspaceAsyncNotify = WM_APP + 195;
 constexpr UINT CommitDirectory = WM_APP + 196;
 constexpr UINT RefreshDirectoryRows = WM_APP + 197;
 constexpr UINT CommitTarget = WM_APP + 198;
@@ -67,6 +78,83 @@ std::wstring Wide(const std::string &s) {
 }
 std::string Utf8(const std::wstring &s) {
     return WideToMultiByte(s, CP_UTF8);
+}
+template <typename T>
+struct ComGuard {
+    T *ptr = nullptr;
+    ~ComGuard() {
+        if (ptr) ptr->Release();
+    }
+};
+std::wstring DefaultLocalWorkspaceFallback() {
+    wchar_t cwd[MAX_PATH]{};
+    DWORD len = GetCurrentDirectoryW(MAX_PATH, cwd);
+    if (len > 0 && len < MAX_PATH) {
+        const auto norm = ai::NormalizeLocalWorkspacePathUtf8(WideToMultiByte(cwd, CP_UTF8));
+        if (!norm.empty()) return MultiByteToWide(reinterpret_cast<const uint8_t *>(norm.data()), norm.size(), CP_UTF8);
+    }
+    wchar_t exe[MAX_PATH]{};
+    len = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    if (len > 0 && len < MAX_PATH) {
+        std::wstring path(exe, len);
+        const auto slash = path.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) {
+            const auto norm = ai::NormalizeLocalWorkspacePathUtf8(WideToMultiByte(path.substr(0, slash), CP_UTF8));
+            if (!norm.empty()) return MultiByteToWide(reinterpret_cast<const uint8_t *>(norm.data()), norm.size(), CP_UTF8);
+        }
+    }
+    return L"C:\\";
+}
+std::wstring BrowseLocalWorkspaceFolder(HWND owner, const std::wstring &initialDir) {
+    const HRESULT coHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    const bool shouldUninit = (coHr == S_OK || coHr == S_FALSE);
+    struct CoScope {
+        bool uninit = false;
+        ~CoScope() {
+            if (uninit) CoUninitialize();
+        }
+    } coScope{shouldUninit};
+
+    ComGuard<IFileOpenDialog> dialog;
+    if (SUCCEEDED(CoCreateInstance(__uuidof(FileOpenDialog), nullptr, CLSCTX_INPROC_SERVER,
+                                   __uuidof(IFileOpenDialog), reinterpret_cast<void **>(&dialog.ptr))) && dialog.ptr) {
+        DWORD opts = 0;
+        if (SUCCEEDED(dialog.ptr->GetOptions(&opts))) {
+            dialog.ptr->SetOptions(opts | FOS_PICKFOLDERS | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM);
+        }
+        dialog.ptr->SetTitle(L"选择 Windows 本地工作空间根目录");
+        if (!initialDir.empty()) {
+            ComGuard<IShellItem> folderItem;
+            if (SUCCEEDED(SHCreateItemFromParsingName(initialDir.c_str(), nullptr,
+                                                     __uuidof(IShellItem),
+                                                     reinterpret_cast<void **>(&folderItem.ptr))) && folderItem.ptr) {
+                dialog.ptr->SetFolder(folderItem.ptr);
+            }
+        }
+        if (SUCCEEDED(dialog.ptr->Show(owner))) {
+            ComGuard<IShellItem> result;
+            if (SUCCEEDED(dialog.ptr->GetResult(&result.ptr)) && result.ptr) {
+                PWSTR path = nullptr;
+                if (SUCCEEDED(result.ptr->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path) {
+                    std::wstring selected(path);
+                    CoTaskMemFree(path);
+                    return selected;
+                }
+            }
+        }
+        return {};
+    }
+
+    wchar_t buffer[MAX_PATH]{};
+    BROWSEINFOW bi{};
+    bi.hwndOwner = owner;
+    bi.lpszTitle = L"选择 Windows 本地工作空间根目录";
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_EDITBOX;
+    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+    if (!pidl) return {};
+    const bool got = SHGetPathFromIDListW(pidl, buffer) != FALSE;
+    CoTaskMemFree(pidl);
+    return got ? std::wstring(buffer) : std::wstring{};
 }
 std::wstring Text(HWND h) {
     const int length = GetWindowTextLengthW(h);
@@ -123,7 +211,10 @@ void Center(HWND window, HWND owner) {
                  std::max(0L, p.top + (p.bottom - p.top - r.bottom + r.top) / 2), 0, 0, SWP_NOSIZE | SWP_NOZORDER);
 }
 std::wstring Profile(const ai::ServerSettings &s) {
-    return s.host + L":" + std::to_wstring(s.port) + L"/" + s.username;
+    std::wstring p;
+    if (s.provider == ai::AiProvider::Antigravity) p += L"agy:";
+    if (s.localMode) return p + L"local";
+    return p + s.host + L":" + std::to_wstring(s.port) + L"/" + s.username;
 }
 struct HistoryPopup {
     bool dark = false, canCompact = false, dragging = false;
@@ -143,7 +234,11 @@ struct HistoryPopup {
         std::transform(query.begin(), query.end(), query.begin(), towlower);
         filtered.clear();
         for (size_t i = 0; i < entries.size(); ++i) {
-            auto title = Wide(entries[i].value("title", std::string()) + " " + ai::StoredWorkspace(entries[i]));
+            const auto binding = ai::ParseStoredWorkspaceBinding(entries[i]);
+            std::string searchBlob = entries[i].value("title", std::string()) + " " + ai::StoredWorkspace(entries[i]);
+            if (binding.hasExplicitMode)
+                searchBlob += binding.isLocal ? u8" 本地 local" : u8" 远程 remote";
+            auto title = Wide(searchBlob);
             std::transform(title.begin(), title.end(), title.begin(), towlower);
             if (query.empty() || title.find(query) != std::wstring::npos)
                 filtered.push_back(i);
@@ -188,7 +283,7 @@ struct HistoryPopup {
                 if (row.bottom < 0 || row.top > r.bottom)
                     continue;
                 const bool active = static_cast<int>(i) == p->selected;
-                if(active)UiBox(dc,row,c.accentSoft,c.accentSoft,p->D(8));
+                if(active)UiBox(dc,row,c.accentSoft,c.accentSoft,UiInnerRadius(p->dpi));
                 row.left += p->D(12);
                 row.right -= p->D(12);
                 RECT title = row;
@@ -196,8 +291,16 @@ struct HistoryPopup {
                 Draw(dc, Wide(p->entries[p->filtered[i]].value("title", std::string("AI 会话"))), title, p->font,
                      c.text);
                 row.top += p->D(24);
+                const auto binding = ai::ParseStoredWorkspaceBinding(p->entries[p->filtered[i]]);
                 const auto cwd = ai::StoredWorkspace(p->entries[p->filtered[i]]);
-                Draw(dc, cwd.empty() ? L"服务器默认目录" : Wide(cwd), row, p->font, c.muted);
+                std::wstring subtitle = cwd.empty() ? L"服务器默认目录" : Wide(cwd);
+                if (binding.hasExplicitMode) {
+                    const std::wstring tag = binding.isLocal
+                        ? (binding.localReadOnly ? L"[本地·只读] " : L"[本地] ")
+                        : L"[远程] ";
+                    subtitle = tag + subtitle;
+                }
+                Draw(dc, subtitle, row, p->font, c.muted);
                 if(!active) {
                     RECT separator{row.left,row.bottom-1,row.right,row.bottom};
                     const auto brush=CreateSolidBrush(UiPanelBorder(p->dark));FillRect(dc,&separator,brush);DeleteObject(brush);
@@ -207,7 +310,7 @@ struct HistoryPopup {
             if (content > r.bottom) {
                 const int height = std::max<int>(p->D(28), r.bottom * r.bottom / content),
                           top = p->offset * (r.bottom - height) / (content - r.bottom);
-                UiBox(dc, {r.right - p->D(5), top, r.right, top + height}, c.muted, c.muted, p->D(2));
+                UiDrawScrollbarThumb(dc, {r.right - p->D(5), top, r.right, top + height}, p->dpi, c, true);
             }
             EndPaint(h, &ps);
             return 0;
@@ -342,17 +445,19 @@ struct HistoryPopup {
             const auto visual = UiButtonVisual(c, enabled, item.itemState & ODS_SELECTED,
                                                GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
             FillRect(item.hDC, &item.rcItem, p->surface);
-            UiBox(item.hDC, item.rcItem, visual.fill, visual.border, p->D(10));
+            UiBox(item.hDC, item.rcItem, visual.fill, visual.border, UiCapsuleRadius(item.rcItem));
             UiButtonKeyboardFocus(item.hDC, item.rcItem, item.itemState, p->D(96),
                 UiFocusInk(p->dark, enabled && (primary || (item.itemState & ODS_SELECTED))));
-            Draw(item.hDC, Text(item.hwndItem), item.rcItem, p->font, visual.ink,
-                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            Draw(item.hDC, Text(item.hwndItem), UiCapsuleContentRect(item.rcItem, p->D(96)), p->font, visual.ink,
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             return TRUE;
         }
-        if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT) {
+        if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORBTN) {
             auto c = UiAiTheme(p->dark);
-            SetTextColor(reinterpret_cast<HDC>(w), c.text);
-            SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : c.surface);
+            auto dc = reinterpret_cast<HDC>(w);
+            SetBkMode(dc, m == WM_CTLCOLORBTN ? TRANSPARENT : OPAQUE);
+            SetTextColor(dc, c.text);
+            SetBkColor(dc, m == WM_CTLCOLOREDIT ? c.field : c.surface);
             return reinterpret_cast<INT_PTR>(m == WM_CTLCOLOREDIT ? p->field : p->surface);
         }
         if (m == WM_CLOSE) {
@@ -370,8 +475,23 @@ struct HistoryPopup {
 } // namespace
 AiPane::~AiPane() {
     Shutdown();
+    if (observerBridge_) {
+        std::lock_guard<std::mutex> lock(observerBridge_->mutex);
+        observerBridge_->owner = nullptr;
+    }
+    UnregisterLocalWorkspaceObserver();
     if (titleFont_)
         DeleteObject(titleFont_);
+    if (h1Font_)
+        DeleteObject(h1Font_);
+    if (h3Font_)
+        DeleteObject(h3Font_);
+    if (italicFont_)
+        DeleteObject(italicFont_);
+    if (boldItalicFont_)
+        DeleteObject(boldItalicFont_);
+    if (subFont_)
+        DeleteObject(subFont_);
     if (codeFont_)
         DeleteObject(codeFont_);
     if (smallFont_)
@@ -383,12 +503,560 @@ AiPane::~AiPane() {
     if (fieldBrush_)
         DeleteObject(fieldBrush_);
 }
+void AiPane::SetSidebarCallbacks(SidebarCallbacks callbacks) {
+    sidebarCallbacks_ = std::move(callbacks);
+    if (sidebarCallbacks_.onFileChangesUpdated)
+        sidebarCallbacks_.onFileChangesUpdated(fileChanges_, turnSeq_, {}, false);
+}
+void AiPane::SetLocalWorkspaceService(std::shared_ptr<ai::LocalWorkspaceService> service) {
+    UnregisterLocalWorkspaceObserver();
+    localWorkspaceService_ = service ? std::move(service) : std::make_shared<ai::LocalWorkspaceService>();
+    SyncLocalWorkspaceService();
+    if (observerBridge_)
+        RegisterLocalWorkspaceObserver();
+}
+void AiPane::SetEnsureMcpPortProvider(std::function<uint16_t()> provider) {
+    ensureMcpPort_ = std::move(provider);
+}
+void AiPane::SetRemoteFsRunner(RemoteFsRunner runner) {
+    remoteFsRunner_ = std::move(runner);
+}
+bool AiPane::RemoteAiSshEndpoint(std::wstring &host, std::uint16_t &port,
+                                 std::wstring &username, std::wstring &password) const {
+    if (settings_.localMode || settings_.host.empty() || settings_.port == 0 || settings_.username.empty())
+        return false;
+    host = settings_.host;
+    port = static_cast<std::uint16_t>(settings_.port);
+    username = settings_.username;
+    password = settings_.password;
+    return true;
+}
+std::string AiPane::ProcessCwdForAi() const {
+    if (settings_.localMode) {
+        if (workspaceIsLocal_ && ai::ValidLocalWorkspacePath(Utf8(localWorkspaceDirectory_)))
+            return ai::NormalizeLocalWorkspacePathUtf8(Utf8(localWorkspaceDirectory_));
+        return Utf8(DefaultLocalWorkspaceFallback());
+    }
+    if (!workspaceIsLocal_ && ai::ValidRemoteWorkspacePath(Utf8(remoteWorkspaceDirectory_)))
+        return Utf8(remoteWorkspaceDirectory_);
+    if (!serverHome_.empty() && ai::ValidRemoteWorkspacePath(Utf8(serverHome_)))
+        return Utf8(serverHome_);
+    if (!remoteWorkspaceDirectory_.empty() && ai::ValidRemoteWorkspacePath(Utf8(remoteWorkspaceDirectory_)))
+        return Utf8(remoteWorkspaceDirectory_);
+    return "/tmp";
+}
+int AiPane::MeasureSmallTextWidth(const std::wstring &text) const {
+    if (text.empty() || !window_)
+        return 0;
+    SIZE sz{};
+    if (HDC dc = GetDC(window_)) {
+        const auto old = SelectObject(dc, smallFont_);
+        GetTextExtentPoint32W(dc, text.c_str(), static_cast<int>(text.size()), &sz);
+        SelectObject(dc, old);
+        ReleaseDC(window_, dc);
+    }
+    return static_cast<int>(sz.cx);
+}
+int AiPane::MeasureButtonTextWidth(const std::wstring &text) const {
+    if (text.empty() || !window_)
+        return 0;
+    RECT bounds{};
+    if (HDC dc = GetDC(window_)) {
+        const auto old = SelectObject(dc, font_);
+        DrawTextW(dc, text.c_str(), static_cast<int>(text.size()), &bounds,
+                  DT_SINGLELINE | DT_CALCRECT | DT_NOPREFIX);
+        SelectObject(dc, old);
+        ReleaseDC(window_, dc);
+    }
+    return static_cast<int>(bounds.right - bounds.left);
+}
+std::wstring AiPane::WorkspaceCapsuleLabel(int availableWidth) const {
+    const auto activePath = ActiveWorkspaceDirectory();
+    if (activePath.empty()) {
+        const std::wstring full = workspaceIsLocal_ ? L"本地工作空间" : L"远程工作空间";
+        if (availableWidth > 0 && MeasureButtonTextWidth(full) + D(34) > availableWidth)
+            return workspaceIsLocal_ ? L"本地" : L"远程";
+        return full;
+    }
+    const std::wstring leaf = ai::WorkspaceLeafLabel(activePath);
+    const std::wstring prefixed = (workspaceIsLocal_ ? L"本地 · " : L"远程 · ") + leaf;
+    if (availableWidth <= 0)
+        return prefixed;
+    if (MeasureButtonTextWidth(prefixed) + D(34) <= availableWidth)
+        return prefixed;
+    if (MeasureButtonTextWidth(leaf) + D(34) <= availableWidth)
+        return leaf;
+    return availableWidth >= D(96) ? prefixed : leaf;
+}
+void AiPane::SyncLocalWorkspaceService() {
+    if (!localWorkspaceService_) return;
+    std::string configErr;
+    if (workspaceIsLocal_ && ai::ValidLocalWorkspacePath(Utf8(localWorkspaceDirectory_))) {
+        localWorkspaceService_->Configure(true, localWorkspaceDirectory_, localWorkspaceReadOnly_, configErr);
+    } else {
+        localWorkspaceService_->Configure(false, std::wstring(), true, configErr);
+    }
+}
+void AiPane::RegisterLocalWorkspaceObserver() {
+    if (!localWorkspaceService_ || localWorkspaceObserverId_ != 0 || !observerBridge_ || closing_)
+        return;
+    {
+        std::lock_guard<std::mutex> lock(observerBridge_->mutex);
+        observerBridge_->owner = this;
+    }
+    auto bridge = observerBridge_;
+    localWorkspaceObserverId_ = localWorkspaceService_->AddObserver(
+        [bridge](const ai::ExecProgressEvent &ev) {
+            std::lock_guard<std::mutex> lock(bridge->mutex);
+            if (!bridge->owner || bridge->owner->closing_)
+                return;
+            AsyncWorkResult work;
+            work.kind = AsyncWorkResult::Kind::WorkspaceExecEvent;
+            work.execEvent = ev;
+            bridge->owner->EnqueueAsyncWork(std::move(work));
+        },
+        [bridge](const ai::FileChangeRecord &rec) {
+            std::lock_guard<std::mutex> lock(bridge->mutex);
+            if (!bridge->owner || bridge->owner->closing_)
+                return;
+            AsyncWorkResult work;
+            work.kind = AsyncWorkResult::Kind::WorkspaceFileChanged;
+            work.fileChange = rec;
+            bridge->owner->EnqueueAsyncWork(std::move(work));
+        });
+}
+void AiPane::UnregisterLocalWorkspaceObserver() {
+    if (localWorkspaceObserverId_ != 0 && localWorkspaceService_) {
+        localWorkspaceService_->RemoveObserver(localWorkspaceObserverId_);
+    }
+    localWorkspaceObserverId_ = 0;
+}
+void AiPane::ClearActivityTrackingForConversation() {
+    turnSeq_ = 0;
+    nextServerChangeSeq_ = 0;
+    fileChanges_.clear();
+    knownWsExecIds_.clear();
+    knownWsChangeIds_.clear();
+    wsExecStates_.clear();
+    serverExecs_.clear();
+    acpToWsExec_.clear();
+    pendingAcpBySummary_.clear();
+}
+void AiPane::EnsureTurnSeqActive() {
+    if (turnSeq_ == 0)
+        turnSeq_ = 1;
+}
+void AiPane::UpsertToolCard(const std::string &itemId, const std::wstring &text, const std::wstring &technical,
+                            bool process) {
+    const auto capped = Wide(ai::PreviewText(Utf8(text), 65536));
+    auto it = std::find_if(messages_.begin(), messages_.end(),
+                           [&](const Message &m) { return !itemId.empty() && m.item == itemId; });
+    if (it == messages_.end()) {
+        Add(L"工具", capped, itemId, technical);
+        if (!messages_.empty() && messages_.back().item == itemId)
+            messages_.back().process = process;
+        return;
+    }
+    const auto nextTech = technical.empty() ? it->technical : technical;
+    const auto oldBytes = (it->text.size() + it->technical.size()) * sizeof(wchar_t);
+    const auto newBytes = (capped.size() + nextTech.size()) * sizeof(wchar_t);
+    if (messageBytes_ - oldBytes + newBytes <= MaxConversation) {
+        messageBytes_ = messageBytes_ - oldBytes + newBytes;
+        it->text = capped;
+        it->technical = nextTech;
+        it->process = process;
+        it->measuredLength = SIZE_MAX;
+        Reflow(true);
+    } else {
+        ShowDisplayLimit();
+    }
+}
+void AiPane::NotifyFileChanges(const std::string &focusChangeId, bool autoSwitch) {
+    if (sidebarCallbacks_.onFileChangesUpdated)
+        sidebarCallbacks_.onFileChangesUpdated(fileChanges_, turnSeq_, focusChangeId, autoSwitch);
+}
+void AiPane::RecordFileChange(ai::FileChangeRecord rec, const std::string &cardItemId, const std::wstring &technical,
+                              bool appendCard) {
+    if (rec.changeId.empty())
+        rec.changeId = "srv-chg-" + std::to_string(++nextServerChangeSeq_);
+    if (rec.turnSeq == 0) {
+        EnsureTurnSeqActive();
+        rec.turnSeq = turnSeq_;
+    }
+    auto it = std::find_if(fileChanges_.begin(), fileChanges_.end(),
+                           [&](const ai::FileChangeRecord &existing) { return existing.changeId == rec.changeId; });
+    if (it != fileChanges_.end()) {
+        *it = rec;
+    } else {
+        if (fileChanges_.size() >= 200)
+            fileChanges_.erase(fileChanges_.begin());
+        fileChanges_.push_back(rec);
+    }
+    if (appendCard && !cardItemId.empty())
+        UpsertToolCard(cardItemId, Wide(ai::FormatCompactFileChangeCardMarkdown(rec)), technical, true);
+}
+void AiPane::HandleWorkspaceExecEvent(const ai::ExecProgressEvent &ev) {
+    if (ev.execId.empty())
+        return;
+    const bool known = wsExecStates_.find(ev.execId) != wsExecStates_.end();
+    if (ev.phase == ai::ExecProgressEvent::Phase::Started && !busy_ && !known)
+        return;
+    if (ev.phase == ai::ExecProgressEvent::Phase::Completed && !known && !busy_ && !stopRequested_)
+        return;
+
+    EnsureTurnSeqActive();
+    knownWsExecIds_.insert(ev.execId);
+    auto &ws = wsExecStates_[ev.execId];
+    ws.execId = ev.execId;
+    if (!ev.command.empty()) {
+        ws.command = ev.command;
+        ws.cmdSummary = ai::SingleLineCommandSummary(ev.command, 140);
+    }
+    if (!ev.cwd.empty())
+        ws.cwd = ev.cwd;
+    if (ws.messageId.empty())
+        ws.messageId = "ws-exec:" + ev.execId;
+
+    if (ev.phase == ai::ExecProgressEvent::Phase::Started) {
+        if (!ws.cmdSummary.empty()) {
+            const auto pendIt = pendingAcpBySummary_.find(ws.cmdSummary);
+            if (pendIt != pendingAcpBySummary_.end()) {
+                const std::string acpId = pendIt->second;
+                pendingAcpBySummary_.erase(pendIt);
+                acpToWsExec_[acpId] = ev.execId;
+                for (auto &m : messages_) {
+                    if (m.item == acpId) {
+                        m.item = ws.messageId;
+                        break;
+                    }
+                }
+            }
+        }
+        UpsertToolCard(ws.messageId,
+                       Wide(ai::FormatCompactExecMarkdown(u8"本机命令", ws.command, ev.execId, false, false, 0, false,
+                                                          false, 0)),
+                       {}, true);
+        observedTool_ = true;
+    } else if (ev.phase == ai::ExecProgressEvent::Phase::OutputDelta) {
+        if (!ev.chunk.empty() && ws.outputPreview.size() < 16384) {
+            const size_t avail = 16384 - ws.outputPreview.size();
+            ws.outputPreview.append(ev.chunk, 0, (std::min)(avail, ev.chunk.size()));
+        }
+    } else if (ev.phase == ai::ExecProgressEvent::Phase::Completed) {
+        ws.completed = true;
+        Json tech = {{"execId", ev.execId},
+                     {"command", ws.command},
+                     {"cwd", ws.cwd},
+                     {"exitCode", ev.exitCode},
+                     {"durationMs", ev.durationMs},
+                     {"timedOut", ev.timedOut},
+                     {"cancelled", ev.cancelled},
+                     {"outputPreview", ws.outputPreview}};
+        auto techWide = Wide(tech.dump(2));
+        if (techWide.size() > 32768)
+            techWide.resize(32768);
+        UpsertToolCard(ws.messageId,
+                       Wide(ai::FormatCompactExecMarkdown(u8"本机命令", ws.command, ev.execId, true, ev.failed,
+                                                          ev.exitCode, ev.timedOut, ev.cancelled, ev.durationMs)),
+                       techWide, true);
+    }
+
+    if (sidebarCallbacks_.onExecEvent)
+        sidebarCallbacks_.onExecEvent(ev);
+}
+void AiPane::HandleWorkspaceFileChange(ai::FileChangeRecord rec) {
+    if (rec.changeId.empty())
+        return;
+    if (!busy_ || stopRequested_)
+        return;
+    EnsureTurnSeqActive();
+    knownWsChangeIds_.insert(rec.changeId);
+    rec.turnSeq = turnSeq_;
+    RecordFileChange(rec, "ws-chg:" + rec.changeId, {}, true);
+    observedTool_ = true;
+    NotifyFileChanges({}, false);
+}
+bool AiPane::TryHandleServerExecOrFileTool(const std::string &event, const std::string &id, const Json &e) {
+    if (event == "serverToolDelta") {
+        auto it = serverExecs_.find(id);
+        const bool isExecDelta = e.value("execDelta", false) || it != serverExecs_.end();
+        if (!isExecDelta)
+            return false;
+        if (it == serverExecs_.end()) {
+            auto &st = serverExecs_[id];
+            st.execId = e.value("execId", id);
+            st.startedEmitted = true;
+            if (sidebarCallbacks_.onExecEvent) {
+                ai::ExecProgressEvent startEv;
+                startEv.phase = ai::ExecProgressEvent::Phase::Started;
+                startEv.execId = st.execId;
+                sidebarCallbacks_.onExecEvent(startEv);
+            }
+            it = serverExecs_.find(id);
+        }
+        const std::string chunk = e.value("text", std::string());
+        if (!chunk.empty()) {
+            it->second.streamedBytes += chunk.size();
+            if (sidebarCallbacks_.onExecEvent) {
+                ai::ExecProgressEvent deltaEv;
+                deltaEv.phase = ai::ExecProgressEvent::Phase::OutputDelta;
+                deltaEv.execId = it->second.execId;
+                deltaEv.command = it->second.command;
+                deltaEv.cwd = it->second.cwd;
+                deltaEv.chunk = chunk;
+                sidebarCallbacks_.onExecEvent(deltaEv);
+            }
+        }
+        return true;
+    }
+
+    if (event != "serverTool")
+        return false;
+
+    const bool completed = e.value("completed", false);
+    const std::string execKind = e.value("execKind", std::string());
+    const std::string wsExecId = e.value("wsExecId", std::string());
+    const std::string wsChangeId = e.value("wsChangeId", std::string());
+    const bool hasFileChanges = e.contains("fileChanges") && e["fileChanges"].is_array() && !e["fileChanges"].empty();
+    if (execKind.empty() && wsChangeId.empty() && !hasFileChanges)
+        return false;
+
+    auto extractTech = [&]() -> std::wstring {
+        auto technical = Wide(e.value("technical", std::string()));
+        if (technical.size() > 32768) {
+            technical.resize(32768);
+            if (!technical.empty() && technical.back() >= 0xd800 && technical.back() <= 0xdbff)
+                technical.pop_back();
+            technical += L"\r\n[技术详情预览已截断，原始工具结果仍正常传递]";
+        }
+        return technical;
+    };
+
+    if (!wsChangeId.empty() && knownWsChangeIds_.count(wsChangeId)) {
+        const auto tech = extractTech();
+        if (!tech.empty()) {
+            for (auto &m : messages_) {
+                if (m.item == "ws-chg:" + wsChangeId && m.technical.empty()) {
+                    const auto oldBytes = m.technical.size() * sizeof(wchar_t);
+                    const auto newBytes = tech.size() * sizeof(wchar_t);
+                    if (messageBytes_ - oldBytes + newBytes <= MaxConversation) {
+                        messageBytes_ = messageBytes_ - oldBytes + newBytes;
+                        m.technical = tech;
+                    }
+                    break;
+                }
+            }
+        }
+        if (execKind.empty())
+            return true;
+    }
+
+    std::string fileLinksMarkdown;
+    if (hasFileChanges) {
+        EnsureTurnSeqActive();
+        for (const auto &fc : e["fileChanges"]) {
+            if (!fc.is_object())
+                continue;
+            const std::string cid = fc.value("changeId", std::string());
+            if (!cid.empty() && knownWsChangeIds_.count(cid))
+                continue;
+            ai::FileChangeRecord rec;
+            rec.changeId = !cid.empty() ? cid : ("srv-chg-" + std::to_string(++nextServerChangeSeq_));
+            rec.path = fc.value("path", std::string());
+            rec.action = fc.value("action", std::string("edit"));
+            rec.detail = fc.value("detail", std::string());
+            rec.diffText = fc.value("diff", std::string());
+            rec.contentPreview = fc.value("contentPreview", std::string());
+            rec.addedLines = fc.value("addedLines", size_t{0});
+            rec.removedLines = fc.value("removedLines", size_t{0});
+            rec.truncated = fc.value("truncated", false);
+            rec.turnSeq = turnSeq_;
+            RecordFileChange(rec, {}, {}, false);
+            fileLinksMarkdown += "\n- " + ai::FormatFileChangeLinkMarkdown(rec);
+        }
+        if (!fileLinksMarkdown.empty())
+            NotifyFileChanges({}, false);
+    }
+
+    if (execKind.empty()) {
+        std::string md = u8"**文件改动** · ";
+        md += completed ? (e.value("failed", false) ? u8"失败" : u8"已完成") : u8"进行中";
+        if (!fileLinksMarkdown.empty())
+            md += "\n" + fileLinksMarkdown;
+        else
+            md += "\n\n" + e.value("text", std::string());
+        UpsertToolCard(id, Wide(md), extractTech(), true);
+        return true;
+    }
+
+    const std::string cmd = e.value("command", std::string());
+    const std::string cmdSummary = ai::SingleLineCommandSummary(cmd, 140);
+    if (execKind == "workspace") {
+        std::string matchedWsId = wsExecId;
+        if (matchedWsId.empty()) {
+            if (auto alias = acpToWsExec_.find(id); alias != acpToWsExec_.end()) {
+                matchedWsId = alias->second;
+            } else if (!cmdSummary.empty()) {
+                for (const auto &[candId, ws] : wsExecStates_) {
+                    if (!ws.completed && ws.cmdSummary == cmdSummary) {
+                        matchedWsId = candId;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!matchedWsId.empty() && wsExecStates_.count(matchedWsId)) {
+            acpToWsExec_[id] = matchedWsId;
+            if (!cmdSummary.empty())
+                pendingAcpBySummary_.erase(cmdSummary);
+            const auto &ws = wsExecStates_[matchedWsId];
+            const auto tech = extractTech();
+            if (!tech.empty()) {
+                for (auto &m : messages_) {
+                    if (m.item == ws.messageId && m.technical.empty()) {
+                        const auto oldBytes = m.technical.size() * sizeof(wchar_t);
+                        const auto newBytes = tech.size() * sizeof(wchar_t);
+                        if (messageBytes_ - oldBytes + newBytes <= MaxConversation) {
+                            messageBytes_ = messageBytes_ - oldBytes + newBytes;
+                            m.technical = tech;
+                        }
+                        break;
+                    }
+                }
+            }
+            return true;
+        }
+        if (!completed && wsExecId.empty() && !cmdSummary.empty()) {
+            pendingAcpBySummary_[cmdSummary] = id;
+            const std::string md =
+                ai::FormatCompactExecMarkdown(u8"本机命令", cmd, id, false, false, 0, false, false, 0);
+            UpsertToolCard(id, Wide(md), extractTech(), true);
+            return true;
+        }
+    }
+
+    if (!cmdSummary.empty())
+        pendingAcpBySummary_.erase(cmdSummary);
+    EnsureTurnSeqActive();
+    const std::string canonExecId = !wsExecId.empty() ? wsExecId : e.value("execId", id);
+    auto &st = serverExecs_[id];
+    st.execId = canonExecId;
+    st.command = cmd;
+    st.cwd = e.value("cwd", std::string());
+    st.cmdSummary = cmdSummary;
+    if (!st.startedEmitted) {
+        st.startedEmitted = true;
+        if (sidebarCallbacks_.onExecEvent) {
+            ai::ExecProgressEvent startEv;
+            startEv.phase = ai::ExecProgressEvent::Phase::Started;
+            startEv.execId = canonExecId;
+            startEv.toolName = execKind;
+            startEv.command = cmd;
+            startEv.cwd = st.cwd;
+            sidebarCallbacks_.onExecEvent(startEv);
+        }
+    }
+
+    const bool failed = e.value("failed", false);
+    const int exitCode = e.value("exitCode", failed ? 1 : 0);
+    const bool timedOut = e.value("timedOut", false);
+    const bool cancelled = e.value("cancelled", false);
+    const auto durationMs = e.value("durationMs", std::uint64_t{0});
+    const std::string title =
+        (execKind == "workspace") ? u8"本机命令" : (execKind == "codex" ? u8"远端命令" : u8"终端命令");
+
+    std::string md = ai::FormatCompactExecMarkdown(title, cmd, canonExecId, completed, failed, exitCode, timedOut,
+                                                   cancelled, durationMs);
+    if (!fileLinksMarkdown.empty())
+        md += "\n" + fileLinksMarkdown;
+
+    if (completed) {
+        st.completed = true;
+        const std::string outText = e.value("execOutput", std::string());
+        if (!outText.empty() && outText.size() > st.streamedBytes && sidebarCallbacks_.onExecEvent) {
+            ai::ExecProgressEvent deltaEv;
+            deltaEv.phase = ai::ExecProgressEvent::Phase::OutputDelta;
+            deltaEv.execId = canonExecId;
+            deltaEv.toolName = execKind;
+            deltaEv.command = cmd;
+            deltaEv.cwd = st.cwd;
+            deltaEv.chunk = outText.substr(st.streamedBytes);
+            st.streamedBytes = outText.size();
+            sidebarCallbacks_.onExecEvent(deltaEv);
+        }
+        if (sidebarCallbacks_.onExecEvent) {
+            ai::ExecProgressEvent doneEv;
+            doneEv.phase = ai::ExecProgressEvent::Phase::Completed;
+            doneEv.execId = canonExecId;
+            doneEv.toolName = execKind;
+            doneEv.command = cmd;
+            doneEv.cwd = st.cwd;
+            doneEv.exitCode = exitCode;
+            doneEv.failed = failed;
+            doneEv.timedOut = timedOut;
+            doneEv.cancelled = cancelled;
+            doneEv.durationMs = durationMs;
+            sidebarCallbacks_.onExecEvent(doneEv);
+        }
+    }
+
+    UpsertToolCard(id, Wide(md), extractTech(), true);
+    return true;
+}
+void AiPane::ApplyWorkspaceSelection(bool isLocal, bool readOnly, const std::wstring &localDir,
+                                     const std::wstring &remoteDir, const std::string &sshSessionId) {
+    workspaceIsLocal_ = isLocal;
+    localWorkspaceReadOnly_ = readOnly;
+    if (!localDir.empty() && ai::ValidLocalWorkspacePath(Utf8(localDir)))
+        localWorkspaceDirectory_ = Wide(ai::NormalizeLocalWorkspacePathUtf8(Utf8(localDir)));
+    if (!remoteDir.empty() && ai::ValidRemoteWorkspacePath(Utf8(remoteDir)))
+        remoteWorkspaceDirectory_ = remoteDir;
+    remoteSshSessionId_ = sshSessionId;
+    workspaceDirectory_ = workspaceIsLocal_ ? localWorkspaceDirectory_ : remoteWorkspaceDirectory_;
+    if (workspaceIsLocal_) {
+        std::wstring resolved;
+        std::string err;
+        workspaceVerified_ = !localWorkspaceDirectory_.empty() &&
+                             ai::ResolveAndValidateLocalRoot(localWorkspaceDirectory_, resolved, err);
+    } else {
+        workspaceVerified_ = false;
+    }
+    ai::WorkspaceSettings ws;
+    ws.isLocal = workspaceIsLocal_;
+    ws.localReadOnly = localWorkspaceReadOnly_;
+    ws.localDirectory = localWorkspaceDirectory_;
+    ws.remoteDirectory = remoteWorkspaceDirectory_;
+    ws.remoteSshSessionId = remoteSshSessionId_;
+    std::wstring saveErr;
+    ai::SaveWorkspaceSettings(ws, &settings_, saveErr);
+    SyncLocalWorkspaceService();
+    if (window_)
+        UpdateActions();
+}
 bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     font_ = font;
     dark_ = dark;
     devices_ = std::move(devices);
     settings_ = ai::LoadServerSettings();
-    workspaceDirectory_ = settings_.workingDirectory;
+    const auto ws = ai::LoadWorkspaceSettings(&settings_);
+    workspaceIsLocal_ = ws.isLocal;
+    localWorkspaceReadOnly_ = ws.localReadOnly;
+    localWorkspaceDirectory_ = ws.localDirectory.empty() ? DefaultLocalWorkspaceFallback() : ws.localDirectory;
+    remoteWorkspaceDirectory_ = ws.remoteDirectory;
+    remoteSshSessionId_ = ws.remoteSshSessionId;
+    workspaceDirectory_ = ActiveWorkspaceDirectory();
+    if (workspaceIsLocal_) {
+        std::wstring resolved;
+        std::string err;
+        workspaceVerified_ = !localWorkspaceDirectory_.empty() &&
+                             ai::ResolveAndValidateLocalRoot(localWorkspaceDirectory_, resolved, err);
+    }
+    SyncLocalWorkspaceService();
+    {
+        std::lock_guard<std::mutex> lock(observerBridge_->mutex);
+        observerBridge_->owner = this;
+    }
+    RegisterLocalWorkspaceObserver();
     HDC dc = GetDC(parent);
     dpi_ = GetDeviceCaps(dc, LOGPIXELSX);
     ReleaseDC(parent, dc);
@@ -396,9 +1064,22 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     GetObjectW(font, sizeof(lf), &lf);
     lf.lfWeight = FW_SEMIBOLD;
     boldFont_ = CreateFontIndirectW(&lf);
+    lf.lfItalic = TRUE;
+    boldItalicFont_ = CreateFontIndirectW(&lf);
+    lf.lfWeight = FW_NORMAL;
+    italicFont_ = CreateFontIndirectW(&lf);
+    lf.lfItalic = FALSE;
+    lf.lfHeight = -D(16);
+    lf.lfWeight = FW_SEMIBOLD;
+    h3Font_ = CreateFontIndirectW(&lf);
     lf.lfHeight = -D(18);
     titleFont_ = CreateFontIndirectW(&lf);
+    lf.lfHeight = -D(20);
+    lf.lfWeight = FW_BOLD;
+    h1Font_ = CreateFontIndirectW(&lf);
     lf.lfWeight = FW_NORMAL;
+    lf.lfHeight = -D(11);
+    subFont_ = CreateFontIndirectW(&lf);
     lf.lfHeight = -D(13);
     smallFont_ = CreateFontIndirectW(&lf);
     codeFont_ = CreateFontW(-D(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
@@ -483,6 +1164,7 @@ bool AiPane::Create(HWND parent, HFONT font, bool dark, DeviceRequest devices) {
     SendMessageW(tips_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&sendTip));
     Theme(dark);
     SetTimer(window_, Timer, 50, nullptr);
+    if (workspaceIsLocal_) LoadWorkspacePractices();
     RefreshTargets();
     UpdateActions();
     return window_ != nullptr;
@@ -671,6 +1353,30 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (w == Timer)
             self->Poll();
         return 0;
+    case WorkspaceAsyncNotify:
+        if (!self->closing_) self->ProcessAsyncWork();
+        return 0;
+    case WM_CONTEXTMENU:
+        if (!self->closing_ && reinterpret_cast<HWND>(w) == self->Control(WorkspaceButton) &&
+            IsWindowEnabled(self->Control(WorkspaceButton))) {
+            HMENU menu = CreatePopupMenu();
+            const std::wstring targetLabel = self->workspaceIsLocal_
+                ? (L"一键切换到远程工作空间" + (self->remoteWorkspaceDirectory_.empty() ? std::wstring() : L" · " + ai::WorkspaceLeafLabel(self->remoteWorkspaceDirectory_)))
+                : (L"一键切换到本地工作空间" + (self->localWorkspaceDirectory_.empty() ? std::wstring() : L" · " + ai::WorkspaceLeafLabel(self->localWorkspaceDirectory_)));
+            AppendMenuW(menu, MF_STRING, 1, targetLabel.c_str());
+            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(menu, MF_STRING, 2, L"打开工作空间配置…");
+            RECT wr{};
+            GetWindowRect(self->Control(WorkspaceButton), &wr);
+            POINT pt{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            if (pt.x == -1 && pt.y == -1) { pt.x = wr.left; pt.y = wr.bottom; }
+            const auto cmd = UiPopupMenu::Track(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, h, self->style_);
+            DestroyMenu(menu);
+            if (cmd == 1) self->QuickToggleWorkspaceMode();
+            else if (cmd == 2) self->Action(WorkspaceButton);
+            return 0;
+        }
+        break;
     case CommitTarget:
         if(w==1) { if(self->targetRefreshDeferred_) self->RefreshTargets(); return 0; }
         self->targetCommitQueued_=false;
@@ -745,7 +1451,7 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             const auto index = static_cast<size_t>(item.CtlID - AttachmentFirst);
             if (index >= self->attachments_.size()) return TRUE;
             const auto &file = self->attachments_[index];
-            UiBox(dc, item.rcItem, c.surface, c.border, self->D(10));
+            UiBox(dc, item.rcItem, c.surface, c.border, UiControlRadius(self->dpi_));
             if (file.thumbnail) {
                 Gdiplus::Graphics graphics(dc);
                 graphics.DrawImage(file.thumbnail.get(), item.rcItem.left + self->D(8), item.rcItem.top + self->D(4),
@@ -762,47 +1468,57 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return TRUE;
         }
         const bool composerButton = item.CtlID == Send || item.CtlID == ComposerMenu || item.CtlID == VoiceButton;
-        FillRect(dc, &item.rcItem, composerButton ? self->fieldBrush_ : self->surfaceBrush_);
+        FillRect(dc, &item.rcItem, self->surfaceBrush_);
+        if (composerButton) {
+            RECT box = self->composerBounds_;
+            POINT origin{};
+            MapWindowPoints(item.hwndItem, h, &origin, 1);
+            OffsetRect(&box, -origin.x, -origin.y);
+            UiBox(dc, box, c.field, UiPanelBorder(self->dark_),
+                  self->D(self->composerExpanded_ ? Ui::AiComposerExpandedRadius96 : 24));
+        }
         const bool enabled = IsWindowEnabled(item.hwndItem) != FALSE;
-        const bool primary = (item.CtlID == Send && !self->busy_) || item.CtlID == IDOK;
+        const bool primary = (item.CtlID == Send && !self->busy_) || item.CtlID == IDOK ||
+                             (item.CtlID == WsModeRemote && !self->workspaceDialogIsLocal_) ||
+                             (item.CtlID == WsModeLocal && self->workspaceDialogIsLocal_);
         const bool hover = GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr;
         const bool pressed = enabled && (item.itemState & ODS_SELECTED);
         const auto visual = UiButtonVisual(c, enabled, pressed, hover, primary);
         if (item.CtlID == HostReverify) {
             if (pressed || hover) UiBox(dc, item.rcItem, pressed ? c.accent : c.raised,
-                                      pressed ? c.accent : c.raised, self->D(10));
-            Draw(dc, Text(item.hwndItem), item.rcItem, self->smallFont_,
+                                      pressed ? c.accent : c.raised, UiCapsuleRadius(item.rcItem));
+            Draw(dc, Text(item.hwndItem), UiCapsuleContentRect(item.rcItem, self->dpi_), self->font_,
                  !enabled ? c.muted : pressed ? RGB(255, 255, 255) : UiAccentInk(self->dark_),
-                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->dpi_, UiFocusInk(self->dark_, pressed));
             return TRUE;
         }
         const bool headerIcon = item.CtlID == PetButton || item.CtlID == Connect || item.CtlID == HistoryButton || item.CtlID == New;
         const bool quiet = headerIcon || item.CtlID == VoiceButton || item.CtlID == ComposerMenu || item.CtlID == QuickMenu || item.CtlID == Analyze || item.CtlID == Observe || (item.CtlID == Send && !enabled);
+        const bool isCapsule = true;
         auto button = visual;
         if (quiet) {
             const COLORREF base = composerButton ? c.field : c.surface;
             button = UiFlatIconVisual(c, base, enabled, pressed, hover);
             if (hover && !pressed && button.fill == base) button.fill = c.field;
             if (button.fill != base)
-                UiBox(dc, item.rcItem, button.fill, button.fill, self->D(Ui::CompactIconRadius));
+                UiBox(dc, item.rcItem, button.fill, button.fill, UiButtonRadius(item.rcItem, isCapsule, self->dpi_));
         } else
             UiBox(dc, item.rcItem, button.fill, button.border,
-                  UiCapsuleRadius(item.rcItem));
+                  UiButtonRadius(item.rcItem, isCapsule, self->dpi_));
         UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->style_.dpi,
             UiFocusInk(self->dark_, enabled && !quiet && (primary || pressed)));
         if (UiDrawButtonGlyph(dc, item, button.ink, self->dpi_)) {
             return TRUE;
         } else if(item.CtlID==WorkspaceButton) {
-            auto path=self->workspaceDirectory_;while(path.size()>1 && path.back()==L'/')path.pop_back();
-            const auto slash=path.rfind(L'/');auto leaf=slash==std::wstring::npos?path:path.substr(slash+1);if(leaf.empty())leaf=L"/";
-            UiDrawGlyph(dc,{item.rcItem.left+self->D(4),item.rcItem.top+self->D(6),item.rcItem.left+self->D(20),item.rcItem.top+self->D(22)},button.ink,UiGlyph::Folder);
-            auto text=item.rcItem;text.left+=self->D(26);text.right-=self->D(4);
-            Draw(dc,leaf,text,self->smallFont_,button.ink,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
+            const auto leaf = self->WorkspaceCapsuleLabel(item.rcItem.right - item.rcItem.left);
+            UiDrawGlyph(dc,{item.rcItem.left+self->D(6),item.rcItem.top+self->D(6),item.rcItem.left+self->D(22),item.rcItem.top+self->D(22)},button.ink,UiGlyph::Folder);
+            auto text=item.rcItem;text.left+=self->D(26);text.right-=self->D(6);
+            Draw(dc,leaf,text,self->font_,button.ink,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
         } else if(item.CtlID==Bottom) {
             UiDrawGlyph(dc,{item.rcItem.left+self->D(4),item.rcItem.top+self->D(7),item.rcItem.left+self->D(18),item.rcItem.top+self->D(21)},button.ink,UiGlyph::ChevronDown);
             auto text=item.rcItem;text.left+=self->D(22);
-            Draw(dc,Text(item.hwndItem),text,self->smallFont_,button.ink,DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+            Draw(dc,Text(item.hwndItem),text,self->font_,button.ink,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
         } else if(item.CtlID==QuickMenu || item.CtlID==StopTurn) {
             const int x=(item.rcItem.left+item.rcItem.right-self->D(14))/2,y=(item.rcItem.top+item.rcItem.bottom-self->D(14))/2;
             UiDrawGlyph(dc,{x,y,x+self->D(14),y+self->D(14)},item.CtlID==StopTurn?c.danger:button.ink,item.CtlID==StopTurn?UiGlyph::Stop:UiGlyph::ChevronDown);
@@ -822,18 +1538,22 @@ LRESULT CALLBACK AiPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                             item.CtlID == Send ? (self->busy_ ? UiGlyph::Stop : UiGlyph::ArrowUp) :
                             item.CtlID == ComposerMenu ? UiGlyph::Plus : item.CtlID == PetButton ? UiGlyph::Pet : item.CtlID == New ? UiGlyph::Plus : UiGlyph::Clock);
         } else
-            Draw(dc, Text(item.hwndItem), item.rcItem, self->font_,
+            Draw(dc, Text(item.hwndItem), UiCapsuleContentRect(item.rcItem, self->dpi_), self->font_,
                  item.CtlID == StopTurn && enabled && !pressed ? c.danger : button.ink,
-                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         return TRUE;
     }
+    case WM_CTLCOLORBTN:
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLOREDIT: {
         auto dc = reinterpret_cast<HDC>(w);
         const auto c = UiAiTheme(self->dark_);
         const auto control = reinterpret_cast<HWND>(l);
-        const bool field = EditColorMessage(m, l) || control == self->Control(Model);
-        SetTextColor(dc, field && (GetDlgCtrlID(control) == VoicePreview || !IsWindowEnabled(control)) ? c.muted : c.text);
+        const int id = control ? GetDlgCtrlID(control) : 0;
+        const bool composerBtn = m == WM_CTLCOLORBTN && (id == Send || id == ComposerMenu || id == VoiceButton);
+        const bool field = EditColorMessage(m, l) || control == self->Control(Model) || composerBtn;
+        SetBkMode(dc, m == WM_CTLCOLORBTN ? TRANSPARENT : OPAQUE);
+        SetTextColor(dc, !composerBtn && field && (id == VoicePreview || !IsWindowEnabled(control)) ? c.muted : c.text);
         SetBkColor(dc, field ? c.field : c.surface);
         return reinterpret_cast<LRESULT>(field ? self->fieldBrush_ : self->surfaceBrush_);
     }
@@ -926,21 +1646,12 @@ void AiPane::Layout() {
     b.Move(Control(HistoryButton), historyLeft + D(40), 0, D(28), D(28));
     b.Move(Control(New), historyLeft + D(80), 0, D(28), D(28));
     b.Move(transcript_, 0, top, width, std::max(D(24), composerTop - top - D(12)));
-    auto workspaceLabel = workspaceDirectory_;
-    while (workspaceLabel.size() > 1 && workspaceLabel.back() == L'/') workspaceLabel.pop_back();
-    const auto slash = workspaceLabel.rfind(L'/');
-    if (slash != std::wstring::npos && slash + 1 < workspaceLabel.size()) workspaceLabel = workspaceLabel.substr(slash + 1);
-    if (workspaceLabel.empty()) workspaceLabel = L"工作空间";
-    SIZE workspaceText{};
-    if (HDC dc = GetDC(window_)) {
-        const auto old = SelectObject(dc, smallFont_);
-        GetTextExtentPoint32W(dc, workspaceLabel.c_str(), static_cast<int>(workspaceLabel.size()), &workspaceText);
-        SelectObject(dc, old); ReleaseDC(window_, dc);
-    }
     const int workspaceLeft = D(width < D(320) ? 48 : 76);
     const int workspaceAvailable = std::max(D(28), historyLeft - D(52) - workspaceLeft);
+    const auto workspaceLabel = WorkspaceCapsuleLabel(workspaceAvailable);
+    const int workspaceTextWidth = MeasureButtonTextWidth(workspaceLabel);
     b.Move(Control(WorkspaceButton), workspaceLeft, 0,
-           std::min(workspaceAvailable, std::max(D(36), static_cast<int>(workspaceText.cx) + D(34))), D(28));
+           std::min(workspaceAvailable, std::max(D(36), workspaceTextWidth + D(34))), D(28));
     for (int id : {Analyze, QuickMenu, Observe, StopTurn, Target, Model}) b.Show(Control(id), SW_HIDE);
     b.Move(Control(Bottom), width - D(28), composerTop - D(40), D(28), D(28));
     b.Show(Control(VoicePreview), showPreview ? SW_SHOW : SW_HIDE);
@@ -992,7 +1703,7 @@ void AiPane::Paint(HDC target) {
     UiBox(dc, composerBounds_, c.field, UiPanelBorder(dark_),
           D(composerExpanded_ ? Ui::AiComposerExpandedRadius96 : 24));
     const auto thumb = InputScrollThumb();
-    if (thumb.bottom > thumb.top) UiBox(dc, thumb, c.border, c.border, D(3));
+    if (thumb.bottom > thumb.top) UiDrawScrollbarThumb(dc, thumb, dpi_, c);
     if (composerExpanded_) {
         const auto voice = VoicePhaseLabel();
         if (!voice.empty()) Draw(dc, voice, {composerBounds_.left + D(44), composerBounds_.bottom - D(38),
@@ -1162,6 +1873,20 @@ void AiPane::PaintTranscript(HDC target) {
             if (m.folded)
                 continue;
         }
+        if (m.role == L"思考") {
+            const int roleTop = box.top + (m.groupHeader ? D(36) : D(10));
+            const int railTop = std::max(roleTop + D(2), static_cast<int>(r.top));
+            const int railBottom = std::min(static_cast<int>(box.bottom) - D(14), static_cast<int>(r.bottom));
+            if (railBottom > railTop) {
+                const auto brush = CreateSolidBrush(c.border);
+                RECT rail{box.left + D(8), railTop, box.left + D(10), railBottom};
+                FillRect(dc, &rail, brush);
+                DeleteObject(brush);
+            }
+            if (roleTop + D(18) > r.top && roleTop < r.bottom)
+                Draw(dc, L"思考过程", {box.left + D(16), roleTop, box.right - D(16), roleTop + D(18)},
+                     smallFont_, c.muted);
+        }
         UiDrawGlyph(dc, {box.right - D(34), box.bottom - D(26), box.right - D(18), box.bottom - D(10)},
                     m.role == L"我" ? RGB(255, 255, 255) : c.muted, UiGlyph::Copy);
         if (!m.technical.empty())
@@ -1181,7 +1906,7 @@ void AiPane::PaintTranscript(HDC target) {
     }
     auto thumb = ScrollThumb();
     if (thumb.bottom > thumb.top)
-        UiBox(dc, thumb, c.border, c.border, D(2));
+        UiDrawScrollbarThumb(dc, thumb, dpi_, c);
 }
 void AiPane::Scroll(int pixels) {
     scroll_.Move(pixels);
@@ -1267,6 +1992,7 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 break;
             }
         p.y -= self->scroll_.offset;
+        self->pressedLink_ = self->HitLink(p);
         self->selectionStart_ = self->selectionEnd_ = self->HitText(p);
         self->selecting_ = std::get<0>(self->selectionStart_) != SIZE_MAX;
         if (self->selecting_)
@@ -1302,15 +2028,20 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             self->Scroll(0);
         }
         return 0;
-    case WM_LBUTTONUP:
+    case WM_LBUTTONUP: {
         if (self->draggedBlock_ != SIZE_MAX)
             self->DragTranscriptBlock(GET_X_LPARAM(l));
         self->draggedBlock_ = self->draggedBlockMessage_ = SIZE_MAX;
+        const POINT releasePoint{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+        const auto pendingLink = std::move(self->pressedLink_);
+        self->pressedLink_.clear();
         if (self->selecting_) {
-            self->selectionEnd_ = self->HitText({GET_X_LPARAM(l), GET_Y_LPARAM(l)});
+            self->selectionEnd_ = self->HitText(releasePoint);
             const auto text = self->SelectedText();
             if (!text.empty()) {
                 self->Copy(text);
+            } else if (!pendingLink.empty() && self->HitLink(releasePoint) == pendingLink) {
+                self->ActivateLink(pendingLink);
             }
         }
         self->selecting_ = false;
@@ -1319,10 +2050,12 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ReleaseCapture();
         InvalidateRect(h, nullptr, FALSE);
         return 0;
+    }
     case WM_CAPTURECHANGED:
         self->draggedBlock_ = self->draggedBlockMessage_ = SIZE_MAX;
         self->selecting_ = false;
         self->dragging_ = false;
+        self->pressedLink_.clear();
         if (GetCapture() == h)
             ReleaseCapture();
         return 0;
@@ -1332,7 +2065,9 @@ LRESULT CALLBACK AiPane::TranscriptProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         ScreenToClient(h, &p);
         RECT r{};
         GetClientRect(h, &r);
-        SetCursor(LoadCursorW(nullptr, p.x < r.right - self->D(16) ? IDC_IBEAM : IDC_ARROW));
+        const wchar_t *cursor = !self->HitLink(p).empty() ? IDC_HAND
+            : (p.x < r.right - self->D(16) ? IDC_IBEAM : IDC_ARROW);
+        SetCursor(LoadCursorW(nullptr, cursor));
         return TRUE;
     }
     case WM_GETDLGCODE:
@@ -1488,7 +2223,7 @@ void AiPane::Add(std::wstring role, std::wstring text, std::string item, std::ws
     message.item = std::move(item);
     message.technical = std::move(technical);
     message.group = displayGroup_;
-    message.process = message.role == L"工具" || (busy_ && message.role == L"AI" && !displayGroup_.empty());
+    message.process = message.role == L"工具" || message.role == L"思考" || (busy_ && message.role == L"AI" && !displayGroup_.empty());
     if (message.process && !message.group.empty() && initializedGroups_.insert(message.group).second &&
         (!busy_ || message.group != displayGroup_))
         collapsedGroups_.insert(message.group);
@@ -1551,11 +2286,13 @@ void AiPane::ShowTechnicalDetails(size_t index) {
                 return TRUE;
             }
             if (m == WM_DRAWITEM || m == WM_MEASUREITEM) return AiPane::Proc(self->window_, m, w, l);
-            if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT) {
+            if (m == WM_CTLCOLORDLG || m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORBTN) {
                 const auto c = UiAiTheme(self->dark_);
+                auto dc = reinterpret_cast<HDC>(w);
                 const bool field = reinterpret_cast<HWND>(l) == GetDlgItem(h, 101);
-                SetTextColor(reinterpret_cast<HDC>(w), c.text);
-                SetBkColor(reinterpret_cast<HDC>(w), field ? c.field : c.surface);
+                SetBkMode(dc, m == WM_CTLCOLORBTN ? TRANSPARENT : OPAQUE);
+                SetTextColor(dc, c.text);
+                SetBkColor(dc, field ? c.field : c.surface);
                 return reinterpret_cast<INT_PTR>(field ? self->fieldBrush_ : self->surfaceBrush_);
             }
             return FALSE;
@@ -1670,6 +2407,59 @@ void AiPane::PollVoice() {
         }
     }
 }
+std::string AiPane::ActiveModel() const {
+    return !selectedModel_.empty() ? selectedModel_ : serverDefaultModel_;
+}
+std::string AiPane::ActiveEffort() const {
+    if (!selectedEffort_.empty()) return selectedEffort_;
+    const auto active = ActiveModel();
+    for (const auto &m : availableModels_)
+        if (m.id == active && !m.defaultEffort.empty())
+            return m.defaultEffort;
+    return serverDefaultEffort_;
+}
+std::vector<std::string> AiPane::ActiveEfforts() const {
+    const auto active = ActiveModel();
+    for (const auto &m : availableModels_)
+        if (m.id == active && !m.efforts.empty())
+            return m.efforts;
+    if (!availableEfforts_.empty())
+        return availableEfforts_;
+    return {"low", "medium", "high"};
+}
+void AiPane::ApplyModelInfo(const Json &result) {
+    if (result.contains("defaultModel") && result["defaultModel"].is_string() &&
+        !result["defaultModel"].get<std::string>().empty())
+        serverDefaultModel_ = result["defaultModel"].get<std::string>();
+    if (result.contains("defaultEffort") && result["defaultEffort"].is_string() &&
+        !result["defaultEffort"].get<std::string>().empty())
+        serverDefaultEffort_ = result["defaultEffort"].get<std::string>();
+    if (result.contains("models") && result["models"].is_array() && !result["models"].empty()) {
+        availableModels_.clear();
+        for (const auto &m : result["models"]) {
+            if (!m.is_object()) continue;
+            ModelOption opt;
+            opt.id = m.value("id", std::string());
+            if (opt.id.empty()) continue;
+            opt.label = m.value("label", opt.id);
+            opt.defaultEffort = m.value("defaultEffort", std::string());
+            for (const auto &e : m.value("efforts", Json::array()))
+                if (e.is_string()) opt.efforts.push_back(e.get<std::string>());
+            availableModels_.push_back(std::move(opt));
+        }
+    }
+    if (result.contains("efforts") && result["efforts"].is_array() && !result["efforts"].empty()) {
+        availableEfforts_.clear();
+        for (const auto &e : result["efforts"])
+            if (e.is_string()) availableEfforts_.push_back(e.get<std::string>());
+    }
+    const auto activeModel = ActiveModel();
+    const auto activeEffort = ActiveEffort();
+    std::wstring text = activeModel.empty() ? L"模型未获取"
+                                            : ((selectedModel_.empty() ? L"默认 · " : L"") + Wide(activeModel));
+    if (!activeEffort.empty()) text += L" · " + Wide(activeEffort);
+    SetWindowTextW(Control(Model), text.c_str());
+}
 void AiPane::UpdateActions() {
     SetWindowTextW(window_,client_.Ready()?L"AI 已连接":client_.Running()?L"AI 连接中":L"AI 未连接");
     const auto updateTip = [&](int id, const std::wstring &next, std::wstring &current) {
@@ -1681,10 +2471,25 @@ void AiPane::UpdateActions() {
         tip.lpszText=const_cast<wchar_t*>(current.c_str());
         SendMessageW(tips_,TTM_ADDTOOLW,0,reinterpret_cast<LPARAM>(&tip));
     };
-    updateTip(WorkspaceButton, workspaceDirectory_ + (workspaceVerified_ ? std::wstring() : std::wstring(L" · 目录待验证")) +
-              (client_.Ready() ? L" · 点击切换工作空间" : L" · 需先连接服务器") +
+    const auto activeWs = ActiveWorkspaceDirectory();
+    const auto wsTitle = WorkspaceCapsuleLabel(0);
+    if (Text(Control(WorkspaceButton)) != wsTitle) {
+        SetWindowTextW(Control(WorkspaceButton), wsTitle.c_str());
+        InvalidateRect(Control(WorkspaceButton), nullptr, FALSE);
+    }
+    const std::wstring wsKind = workspaceIsLocal_
+        ? (localWorkspaceReadOnly_ ? L"[本地工作空间 · 只读]" : L"[本地工作空间 · 读写/可执行命令]")
+        : L"[远程工作空间 · SSH]";
+    updateTip(WorkspaceButton, (activeWs.empty() ? std::wstring(L"未配置目录") : activeWs) +
+              (workspaceIsLocal_ || workspaceVerified_ ? std::wstring() : std::wstring(L" · 目录待验证")) +
+              L"\n" + wsKind +
+              L"\n左键打开配置与一键切换，右键直接切换本地/远程" +
               L"\n请求权限：" + requestedAccess_ + L"\n实际权限：" + effectiveAccess_, workspaceTooltip_);
-    updateTip(Model, serverDefaultModel_.empty() ? L"模型未获取" : Wide(serverDefaultModel_), modelTooltip_);
+    const auto activeModel = ActiveModel();
+    const auto activeEffort = ActiveEffort();
+    std::wstring modelTip = activeModel.empty() ? L"模型未获取" : Wide(activeModel);
+    if (!activeEffort.empty()) modelTip += L" · 思考：" + Wide(activeEffort);
+    updateTip(Model, modelTip, modelTooltip_);
     const bool ready = client_.Ready();
     if (!busy_ && companionActivity_ != pet::Activity::Done && companionActivity_ != pet::Activity::Failed && companionActivity_ != pet::Activity::Stopped)
         SetCompanionActivity(ready ? pet::Activity::Idle : client_.Running() ? pet::Activity::Connecting : pet::Activity::Offline);
@@ -1696,12 +2501,12 @@ void AiPane::UpdateActions() {
     EnableWindow(Control(Send), ready && !directoryPending_ && (!busy_ || !stopRequested_) && (!attachmentLoad_ || busy_) &&
         (!VoiceBusy() || busy_));
     EnableWindow(Control(StopTurn), busy_ && !stopRequested_);
-    for (int id : {Analyze, Observe, QuickMenu, HistoryButton, New, WorkspaceButton})
+    for (int id : {Analyze, Observe, QuickMenu, HistoryButton, New})
         EnableWindow(Control(id), ready && !busy_ && !directoryPending_ && !VoiceBusy());
     EnableWindow(Control(Target), !busy_);
     EnableWindow(Control(Analyze), ready && !busy_ && !target_.empty());
     EnableWindow(Control(QuickMenu),ready && !busy_ && !target_.empty());
-    EnableWindow(Control(WorkspaceButton),ready && !busy_ && !directoryPending_ && !VoiceBusy());
+    EnableWindow(Control(WorkspaceButton), !busy_ && !directoryPending_ && !VoiceBusy());
     EnableWindow(Control(Observe), ready && !busy_ && !target_.empty());
     EnableWindow(Control(Input), !closing_);
     Layout();
@@ -1820,7 +2625,7 @@ bool AiPane::Request(ai::Operation operation, Json params, const std::string &pu
         SetStatus(L"AI 连接不可用或发送队列已满");
         return false;
     }
-    requests_[id] = {purpose, turn_, workspaceDirectory_};
+    requests_[id] = {purpose, turn_, workspaceDirectory_, workspaceBrowseSeq_};
     if (operation == ai::Operation::NewConversation || operation == ai::Operation::RestoreConversation ||
         operation == ai::Operation::StartTask)
         effectiveAccess_ = L"待验证";
@@ -1895,6 +2700,9 @@ void AiPane::SendPrompt(std::wstring text) {
     displayGroup_ = "local:" + std::to_string(nextRequest_);
     showTurnProgress_ = true;
     busy_ = true;
+    ++turnSeq_;
+    if (sidebarCallbacks_.onTurnStarted)
+        sidebarCallbacks_.onTurnStarted(turnSeq_);
     turn_.clear();
     completionDeadline_ = 0;
     stopRequested_ = false;
@@ -1906,11 +2714,17 @@ void AiPane::SendPrompt(std::wstring text) {
     Add(L"我", displayed);
     SetWindowTextW(Control(Input), L"");
     if (thread_.empty()) {
-        if (!Request(ai::Operation::NewConversation, {{"cwd", Utf8(workspaceDirectory_)}, {"defaultModel", serverDefaultModel_}}, "start")) {
+        isProbeSession_ = false;
+        if (!Request(ai::Operation::NewConversation,
+                     {{"cwd", ProcessCwdForAi()},
+                      {"defaultModel", ActiveModel()},
+                      {"effort", ActiveEffort()}},
+                     "start")) {
             if (!sendingAttachments_.empty()) FailAttachmentUpload(L"无法创建附件会话，草稿已保留");
             else { busy_ = showTurnProgress_ = false; pendingPrompt_.clear(); }
         }
     } else {
+        isProbeSession_ = false;
         RememberThread(thread_,text.substr(0,40));
         StartTurn();
     }
@@ -1922,14 +2736,31 @@ void AiPane::StartTurn() {
         BeginAttachmentUpload();
         return;
     }
+    std::string wsContext;
+    if (workspaceIsLocal_) {
+        wsContext = "\n[SerialCtl active workspace: mode=local; root=" + Utf8(localWorkspaceDirectory_) +
+                    "; readOnly=" + (localWorkspaceReadOnly_ ? "true" : "false") +
+                    "; operate on this Windows workspace exclusively via SerialCtl workspace.* / mcp_workspace_* tools (including workspace.exec when writable); do not assume git, bash, rg, or python are installed.]";
+    } else {
+        const std::string remoteRoot = remoteWorkspaceDirectory_.empty() ? std::string("/home/linux/workspace") : Utf8(remoteWorkspaceDirectory_);
+        wsContext = "\n[SerialCtl active workspace: mode=remote; remoteRoot=" + remoteRoot +
+                    (settings_.localMode
+                         ? "; aiHost=windows-local; use SerialCtl sftp.* and terminal.* tools on associated/target SSH session " +
+                               (remoteSshSessionId_.empty() ? std::string("(none selected)") : remoteSshSessionId_) +
+                               " instead of local Windows filesystem paths"
+                         : "; aiHost=remote-ssh") +
+                    "]";
+    }
     Json params = {{"conversationId", thread_},
-                   {"defaultModel", serverDefaultModel_},
-                   {"cwd", Utf8(workspaceDirectory_)},
+                   {"defaultModel", ActiveModel()},
+                   {"effort", ActiveEffort()},
+                   {"cwd", ProcessCwdForAi()},
                    {"text", Utf8(pendingPrompt_) + "\n\n[SerialCtl associated terminal session: " + turnTarget_ +
                                 "; label: " + Utf8(turnTargetLabel_) +
                                 "; selected session read/write enabled; no per-command confirmation. "
                                 "Power tools independently address the connected IT6332A GUI-selected channels; "
-                                "call serialctl_power_get first and only switch output when the user asks.]"}};
+                                "call serialctl_power_get first and only switch output when the user asks.]" +
+                                wsContext}};
     if (!attachmentImagePaths_.empty()) params["images"] = attachmentImagePaths_;
     if (!Request(ai::Operation::StartTask, params, "turn")) {
         if (!sendingAttachments_.empty()) FailAttachmentUpload(L"附件已上传，但消息未能发送。草稿已保留");
@@ -1939,6 +2770,7 @@ void AiPane::StartTurn() {
 }
 void AiPane::Stop() {
     SetCompanionActivity(pet::Activity::Stopped);
+    CancelWorkspaceTools();
     taskAuthorized_ = false;
     restoreOnConfig_ = false;
     nativeItems_.clear();
@@ -1947,8 +2779,9 @@ void AiPane::Stop() {
     showTurnProgress_ = false;
     Reflow();
     completionDeadline_ = 0;
-    if (attachmentUploadToken_ || (!sendingAttachments_.empty() && turn_.empty())) {
+    if (attachmentUploadToken_ || localAttachPending_ || (!sendingAttachments_.empty() && turn_.empty())) {
         attachmentUploadToken_ = 0;
+        localAttachPending_ = false;
         attachmentDeadline_ = 0;
         sendingAttachments_.clear();
         attachmentImagePaths_ = Json::array();
@@ -1970,14 +2803,51 @@ void AiPane::Stop() {
     SetStatus(L"已请求停止；已提交的服务器或设备命令可能继续执行，不自动重发");
     UpdateActions();
 }
+void AiPane::CacheCurrentTranscript() {
+    if (thread_.empty() || isProbeSession_ || messages_.empty())
+        return;
+    Json saved = Json::array();
+    for (const auto &m : messages_) {
+        if (m.item.rfind("client:", 0) == 0)
+            continue;
+        Json entry = {{"role", Utf8(m.role)},
+                      {"text", Utf8(m.text)},
+                      {"messageId", m.item},
+                      {"group", m.group},
+                      {"process", m.process}};
+        if (!m.technical.empty())
+            entry["technical"] = Utf8(m.technical);
+        saved.push_back(std::move(entry));
+    }
+    if (saved.empty())
+        return;
+    const std::string key = Utf8(Profile(settings_)) + "|" + thread_;
+    CachedTranscript snap;
+    snap.messages = std::move(saved);
+    snap.groupStates = groupStates_;
+    snap.groupDurations = groupDurations_;
+    snap.fileChanges = fileChanges_;
+    snap.turnSeq = turnSeq_;
+    transcriptCache_[key] = std::move(snap);
+    auto it = std::find(transcriptCacheOrder_.begin(), transcriptCacheOrder_.end(), key);
+    if (it != transcriptCacheOrder_.end())
+        transcriptCacheOrder_.erase(it);
+    transcriptCacheOrder_.push_back(key);
+    while (transcriptCacheOrder_.size() > 24) {
+        transcriptCache_.erase(transcriptCacheOrder_.front());
+        transcriptCacheOrder_.erase(transcriptCacheOrder_.begin());
+    }
+}
 void AiPane::NewConversation() {
     if (busy_)
         return;
+    CacheCurrentTranscript();
     voice_.Cancel();
     voiceNotice_.clear();
     SetCompanionActivity(client_.Ready() ? pet::Activity::Idle : pet::Activity::Offline);
     taskAuthorized_ = false;
     restoreOnConfig_ = false;
+    isProbeSession_ = false;
     thread_.clear();
     turn_.clear();
     effectiveAccess_ = L"待验证";
@@ -1996,6 +2866,8 @@ void AiPane::NewConversation() {
     scroll_ = {};
     attachment_.clear();
     attachmentTarget_.clear();
+    ClearActivityTrackingForConversation();
+    NotifyFileChanges({}, false);
     SetStatus(client_.Ready() ? L"Codex 已连接 · 新会话" : L"AI 未连接");
     Reflow();
     UpdateActions();
@@ -2022,8 +2894,7 @@ void AiPane::Action(int id) {
         ShowConnection();
     else if(id==New) NewConversation();
     else if(id==WorkspaceButton) {
-        if (ChooseWorkspace() && directoryPath_ != workspaceDirectory_)
-            BeginWorkspaceConversation(directoryPath_);
+        ChooseWorkspace();
     } else if(id==QuickMenu) {
         HMENU menu=CreatePopupMenu();
         AppendMenuW(menu,MF_STRING,1,L"分析当前日志\n引用实际输出，说明事实与可能原因");
@@ -2116,6 +2987,7 @@ void AiPane::Action(int id) {
 void AiPane::Disconnect() {
     voice_.Cancel();
     Stop();
+    CancelWorkspaceTools();
     client_.Disconnect();
     busy_ = false;
     turn_.clear();
@@ -2130,6 +3002,12 @@ void AiPane::Disconnect() {
 void AiPane::BeginShutdown() {
     if (closing_.exchange(true))
         return;
+    if (observerBridge_) {
+        std::lock_guard<std::mutex> lock(observerBridge_->mutex);
+        observerBridge_->owner = nullptr;
+    }
+    UnregisterLocalWorkspaceObserver();
+    CancelWorkspaceTools();
     voice_.Cancel();
     if (attachmentLoad_) attachmentLoad_->cancel = true;
     attachmentUploadToken_ = 0;
@@ -2152,8 +3030,238 @@ void AiPane::BeginShutdown() {
 }
 void AiPane::WaitForShutdown() {
     client_.Shutdown();
+    workspaceToolWorker_.Drain();
+    localAttachmentWorker_.Drain();
     attachmentLoader_.Drain();
     voice_.Join();
+    for (const auto &dir : stagedAttachmentDirs_)
+        ai::CleanupLocalAttachmentDirectory(dir);
+    stagedAttachmentDirs_.clear();
+}
+void AiPane::CancelWorkspaceTools() {
+    ++localToolGeneration_;
+    ++localAttachGeneration_;
+    localAttachPending_ = false;
+    std::shared_ptr<std::atomic<bool>> cancel;
+    {
+        std::lock_guard<std::mutex> lock(workspaceExecMutex_);
+        cancel = std::move(workspaceExecCancel_);
+    }
+    if (cancel) cancel->store(true);
+    if (localWorkspaceService_) localWorkspaceService_->CancelAllExecs();
+}
+void AiPane::EnqueueAsyncWork(AsyncWorkResult item) {
+    {
+        std::lock_guard<std::mutex> lock(asyncQueueMutex_);
+        asyncResults_.push_back(std::move(item));
+    }
+    if (window_ && IsWindow(window_)) PostMessageW(window_, WorkspaceAsyncNotify, 0, 0);
+}
+void AiPane::ProcessAsyncWork() {
+    std::deque<AsyncWorkResult> batch;
+    {
+        std::lock_guard<std::mutex> lock(asyncQueueMutex_);
+        batch.swap(asyncResults_);
+    }
+    for (auto &item : batch) {
+        if (closing_) return;
+        if (item.kind == AsyncWorkResult::Kind::WorkspaceExecEvent) {
+            HandleWorkspaceExecEvent(item.execEvent);
+            continue;
+        }
+        if (item.kind == AsyncWorkResult::Kind::WorkspaceFileChanged) {
+            HandleWorkspaceFileChange(std::move(item.fileChange));
+            continue;
+        }
+        if (item.kind == AsyncWorkResult::Kind::LocalTool) {
+            const bool activeTurn = item.generation == localToolGeneration_ && busy_ && taskAuthorized_ &&
+                                    !stopRequested_ && client_.Ready() && item.conversationId == thread_ &&
+                                    !finishedTurns_.count(item.turn) && (turn_.empty() || item.turn == turn_);
+            if (!activeTurn) {
+                if (client_.Ready())
+                    Reply(item.requestId, {{"error", "No active authorized turn or workspace tool canceled"}}, false);
+                continue;
+            }
+            observedTool_ = true;
+            const auto wsExecId = item.result.value("execId", std::string());
+            const auto wsChangeId = item.result.value("changeId", std::string());
+            std::string existingCardId;
+            if (!wsExecId.empty() && knownWsExecIds_.count(wsExecId))
+                existingCardId = "ws-exec:" + wsExecId;
+            else if (!wsChangeId.empty() && knownWsChangeIds_.count(wsChangeId))
+                existingCardId = "ws-chg:" + wsChangeId;
+            if (!existingCardId.empty()) {
+                auto tech = Wide(Json{{"tool", item.tool}, {"arguments", item.args}, {"result", item.result}}.dump(2));
+                if (tech.size() > 32768) {
+                    tech.resize(32768);
+                    if (!tech.empty() && tech.back() >= 0xd800 && tech.back() <= 0xdbff) tech.pop_back();
+                    tech += L"\r\n[技术详情预览已截断，原始工具结果仍正常传递]";
+                }
+                auto card = std::find_if(messages_.begin(), messages_.end(),
+                                         [&](const Message &m) { return m.item == existingCardId; });
+                if (card != messages_.end()) {
+                    const auto oldBytes = card->technical.size() * sizeof(wchar_t);
+                    const auto newBytes = tech.size() * sizeof(wchar_t);
+                    if (messageBytes_ - oldBytes + newBytes <= MaxConversation) {
+                        messageBytes_ = messageBytes_ - oldBytes + newBytes;
+                        card->technical = std::move(tech);
+                    }
+                } else {
+                    AddTool(item.tool, item.args, item.result);
+                }
+            } else {
+                AddTool(item.tool, item.args, item.result);
+            }
+            Reply(item.requestId, item.result, !item.result.contains("error"));
+            UpdateActions();
+            continue;
+        }
+        if (item.kind == AsyncWorkResult::Kind::LocalAttachment) {
+            const auto stagedDir = item.result.value("directory", std::string());
+            if (item.generation != localAttachGeneration_ || !busy_ || stopRequested_ || !client_.Ready()) {
+                if (!stagedDir.empty()) ai::CleanupLocalAttachmentDirectory(stagedDir);
+                continue;
+            }
+            localAttachPending_ = false;
+            if (!stagedDir.empty()) stagedAttachmentDirs_.push_back(stagedDir);
+            if (!item.result.value("ok", false)) {
+                FailAttachmentUpload(Wide(item.result.value("error", std::string("本机附件暂存失败，草稿已保留"))));
+                continue;
+            }
+            for (const auto &entry : item.result.value("files", Json::array())) {
+                const auto name = entry.value("name", std::string());
+                const auto path = entry.value("path", std::string());
+                const bool isImage = entry.value("image", false);
+                if (!path.empty()) {
+                    pendingPrompt_ += L"\n附件资料 " + Wide(Json{{"name", name}, {"path", path}}.dump());
+                    if (isImage) attachmentImagePaths_.push_back(path);
+                }
+            }
+            attachmentsStaged_ = true;
+            StartTurn();
+            continue;
+        }
+        if (item.kind == AsyncWorkResult::Kind::RemoteFsList) {
+            if (item.seq != workspaceBrowseSeq_ || !directoryPending_) continue;
+            if (item.result.contains("error")) {
+                DirectoryFailure(Wide(item.result.value("error", std::string("远程 SSH 目录查询失败"))));
+                continue;
+            }
+            const auto resolvedPath = Wide(item.result.value("path", std::string()));
+            if (!resolvedPath.empty() && ai::ValidRemoteWorkspacePath(Utf8(resolvedPath))) {
+                directoryPath_ = resolvedPath;
+                if (workspaceDialog_ && !workspaceDialogIsLocal_) {
+                    workspaceDialogRemotePath_ = resolvedPath;
+                    if (directoryFallbackTried_ && serverHome_.empty())
+                        serverHome_ = resolvedPath;
+                }
+            }
+            directoryPending_ = false;
+            directoryFallbackTried_ = false;
+            if (workspaceDialog_ && workspaceDialogIsLocal_) {
+                UpdateActions();
+                continue;
+            }
+            verifiedDirectory_ = directoryPath_;
+            directoryChildren_ = item.result.value("children", Json::array());
+            PopulateDirectories(true);
+            for (HWND h : {dialog_, workspaceDialog_}) {
+                if (!h) continue;
+                RefreshWorkspaceDialogControls(h);
+            }
+            if (workspaceDialog_ && !workspaceAccept_ && keepDirectoryDropdownOpen_) {
+                auto combo = GetDlgItem(workspaceDialog_, Directory);
+                if (combo) SendMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0);
+            }
+            if (!workspaceIsLocal_ && verifiedDirectory_ == remoteWorkspaceDirectory_) workspaceVerified_ = true;
+            const auto note = L"已通过 SSH/SFTP 读取 " + std::to_wstring(directoryChildren_.size()) + L" 个子目录；可下拉选择或填写完整路径";
+            if (workspaceDialog_) SetDlgItemTextW(workspaceDialog_, Note, note.c_str());
+            if (workspaceDialog_ && workspaceAccept_) {
+                workspaceAccept_ = false;
+                CommitWorkspaceDialogSelection(workspaceDialog_);
+            }
+            UpdateActions();
+            continue;
+        }
+        if (item.kind == AsyncWorkResult::Kind::RemoteFsReadAgents) {
+            if (workspaceIsLocal_ || item.workspace != remoteWorkspaceDirectory_) continue;
+            agentsSnapshotValid_ = false;
+            workspacePractices_.clear();
+            if (!item.result.contains("error") && item.result.value("ok", false)) {
+                agentsFileExists_ = item.result.value("exists", false);
+                currentAgentsMdContent_ = agentsFileExists_ ? item.result.value("content", std::string()) : std::string();
+                agentsSnapshotValid_ = true;
+                workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+                SetStatus(L"已通过 SSH/SFTP 读取远程 AGENTS.md");
+            } else {
+                SetStatus(L"无法通过 SSH/SFTP 读取远程 AGENTS.md：" +
+                          Wide(item.result.value("error", std::string("请检查已连接的 SSH 会话"))));
+            }
+            UpdateActions();
+            continue;
+        }
+        if (item.kind == AsyncWorkResult::Kind::RemoteFsWriteAgents) {
+            if (workspaceIsLocal_ || item.workspace != remoteWorkspaceDirectory_) {
+                agentsWritePending_ = false;
+                continue;
+            }
+            agentsWritePending_ = false;
+            if (!item.result.contains("error") && item.result.value("ok", false)) {
+                if (item.saveRollback) {
+                    rollbackAgentsMdSnapshot_ = currentAgentsMdContent_;
+                    rollbackAgentsFileExists_ = agentsFileExists_;
+                    hasRollbackSnapshot_ = true;
+                } else {
+                    hasRollbackSnapshot_ = false;
+                }
+                currentAgentsMdContent_ = item.pendingAgents;
+                agentsFileExists_ = item.pendingAgentsExists;
+                workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+                SetStatus(item.saveRollback ? L"已通过 SSH/SFTP 记录远程 AGENTS.md" : L"已撤销最近一次远程 AGENTS.md 更新");
+            } else {
+                agentsSnapshotValid_ = false;
+                SetStatus(L"远程 AGENTS.md 更新失败：" + Wide(item.result.value("error", std::string("请重新加载后重试"))));
+            }
+            pendingAgentsContent_.clear();
+            UpdateActions();
+            continue;
+        }
+    }
+}
+void AiPane::QuickToggleWorkspaceMode() {
+    if (busy_ || directoryPending_ || VoiceBusy() || workspaceDialog_ || dialog_) return;
+    const bool nextLocal = !workspaceIsLocal_;
+    std::wstring nextPath = nextLocal ? localWorkspaceDirectory_ : remoteWorkspaceDirectory_;
+    if (nextLocal) {
+        if (nextPath.empty()) nextPath = DefaultLocalWorkspaceFallback();
+        std::wstring resolved;
+        std::string err;
+        if (!ai::ResolveAndValidateLocalRoot(nextPath, resolved, err)) {
+            ChooseWorkspace();
+            return;
+        }
+        nextPath = resolved;
+    } else if (nextPath.empty()) {
+        nextPath = serverHome_.empty() ? L"/home/linux/workspace" : serverHome_;
+    }
+    const std::wstring localDir = nextLocal ? nextPath : localWorkspaceDirectory_;
+    const std::wstring remoteDir = nextLocal ? remoteWorkspaceDirectory_ : nextPath;
+    if (client_.Ready()) {
+        pendingWorkspace_ = nextPath;
+        pendingWorkspaceIsLocal_ = nextLocal;
+        pendingWorkspaceReadOnly_ = localWorkspaceReadOnly_;
+        pendingWorkspaceLocal_ = localDir;
+        pendingWorkspaceRemote_ = remoteDir;
+        pendingWorkspaceSshSession_ = remoteSshSessionId_;
+        BeginWorkspaceConversation(nextPath);
+    } else {
+        ApplyWorkspaceSelection(nextLocal, localWorkspaceReadOnly_, localDir, remoteDir, remoteSshSessionId_);
+        NewConversation();
+        SetStatus((nextLocal ? L"已切换到本地工作空间 · " : L"已切换到远程工作空间 · ") + nextPath);
+        LoadWorkspacePractices(true);
+        Layout();
+        UpdateActions();
+    }
 }
 void AiPane::Shutdown() {
     BeginShutdown();
@@ -2198,8 +3306,11 @@ void AiPane::QueueEvent(Json event) {
 void AiPane::Poll() {
     PollVoice();
     PollAttachments();
-    if (attachmentUploadToken_ && GetTickCount64() >= attachmentDeadline_)
+    if ((attachmentUploadToken_ || localAttachPending_) && GetTickCount64() >= attachmentDeadline_) {
+        ++localAttachGeneration_;
+        localAttachPending_ = false;
         FailAttachmentUpload(L"附件上传超时，草稿已保留。请重新连接后再试");
+    }
     if (polling_) return;
     polling_ = true;
     struct PollGuard { bool &flag; ~PollGuard() { flag = false; } } pollGuard{polling_};
@@ -2258,6 +3369,7 @@ void AiPane::Poll() {
         Reflow(appended);
     }
     if (directoryPending_ && GetTickCount64() >= directoryDeadline_) {
+        ++workspaceBrowseSeq_;
         for (auto it = requests_.begin(); it != requests_.end();)
             if (it->second.purpose == "home" || it->second.purpose == "directory" || it->second.purpose == "directory-fallback")
                 it = requests_.erase(it);
@@ -2320,16 +3432,25 @@ void AiPane::Event(const Json &e) {
         effectiveAccess_ = L"待验证";
         SetCompanionActivity(pet::Activity::Connecting);
         taskAuthorized_ = false;
-        restoreOnConfig_ = !thread_.empty();
+        restoreOnConfig_ = !thread_.empty() && !isProbeSession_;
+        if (isProbeSession_) {
+            thread_.clear();
+            isProbeSession_ = false;
+        }
         busy_ = true;
         turn_.clear();
         turnStarted_ = GetTickCount64();
         serverDefaultModel_.clear();
+        serverDefaultEffort_.clear();
+        availableModels_.clear();
+        availableEfforts_.clear();
         SetWindowTextW(Control(Model), L"模型未获取");
         PostMessageW(GetParent(window_), AiStateChanged, 0, 0);
         seenToolCalls_.clear();
         connectionError_ = false;
-        SetStatus(L"Codex 已连接 · 模型能力待实际调用验证");
+        SetStatus(settings_.provider == ai::AiProvider::Antigravity
+                      ? L"Antigravity 已连接 · 模型能力待实际调用验证"
+                      : L"Codex 已连接 · 模型能力待实际调用验证");
         Request(ai::Operation::Defaults, Json::object(), "config");
         UpdateActions();
         return;
@@ -2405,6 +3526,7 @@ void AiPane::Event(const Json &e) {
         auto purpose = found->second.purpose;
         const auto requestTurn = found->second.turn;
         const auto requestWorkspace = found->second.workspace;
+        const auto requestSeq = found->second.seq;
         requests_.erase(found);
         if (purpose == "attachment-directory" || purpose == "attachment-chunk") {
             AttachmentResponse(e);
@@ -2420,9 +3542,18 @@ void AiPane::Event(const Json &e) {
                 if (!e.contains("error")) {
                     auto home = e.at("result").value("stdout", std::string());
                     while (!home.empty() && (home.back() == '\n' || home.back() == '\r')) home.pop_back();
-                    if (ai::ValidWorkspacePath(home)) serverHome_ = Wide(home);
+                    if (ai::ValidRemoteWorkspacePath(home)) serverHome_ = Wide(home);
                 }
-                BrowseDirectory(settings_.workingDirectory.empty() ? L"/home/linux/workspace" : settings_.workingDirectory, true);
+                if (!workspaceIsLocal_ && requestSeq == workspaceBrowseSeq_ &&
+                    (!workspaceDialog_ || !workspaceDialogIsLocal_)) {
+                    const auto initialRemote = remoteWorkspaceDirectory_.empty()
+                        ? (serverHome_.empty() ? L"/home/linux/workspace" : serverHome_)
+                        : remoteWorkspaceDirectory_;
+                    BrowseDirectory(initialRemote, true);
+                }
+            } else if (requestSeq != workspaceBrowseSeq_ || (workspaceDialog_ && workspaceDialogIsLocal_)) {
+                UpdateActions();
+                return;
             } else if (e.contains("error")) {
                 if (purpose == "directory" && e.value("code", 0) == -32601) {
                     if (!Request(ai::Operation::DirectoryFallback, {{"path", Utf8(directoryPath_)}}, "directory-fallback"))
@@ -2480,16 +3611,23 @@ void AiPane::Event(const Json &e) {
             }
             const auto id = e["result"]["conversationId"].get<std::string>();
             const auto path = pendingWorkspace_;
+            const bool nextIsLocal = pendingWorkspaceIsLocal_;
+            const bool nextReadOnly = pendingWorkspaceReadOnly_;
+            const auto nextLocalDir = pendingWorkspaceLocal_;
+            const auto nextRemoteDir = pendingWorkspaceRemote_;
+            const auto nextSshSession = pendingWorkspaceSshSession_;
             pendingWorkspace_.clear();
             NewConversation();
+            ApplyWorkspaceSelection(nextIsLocal, nextReadOnly, nextLocalDir, nextRemoteDir, nextSshSession);
             workspaceDirectory_ = path;
             workspaceVerified_ = true;
             thread_ = id;
-            SaveWorkspaceDefault(path);
+            SaveWorkspaceDefault(remoteWorkspaceDirectory_);
             RememberThread(id,L"新会话");
-            SetStatus(L"已切换工作空间 · " + path);
+            SetStatus((workspaceIsLocal_ ? L"已切换本地工作空间 · " : L"已切换远程工作空间 · ") + path);
             UpdateEffectiveAccess(e["result"]);
-            LoadWorkspacePractices();
+            LoadWorkspacePractices(true);
+            Layout();
             UpdateActions(); return;
         }
         if (e.contains("error")) {
@@ -2522,24 +3660,50 @@ void AiPane::Event(const Json &e) {
                        {"conversationId", thread_},
                        {"taskId", requestTurn},
                        {"status", "interrupted"}});
-        } else if (purpose == "start") {
+        } else if (purpose == "probe-session") {
+            isProbeSession_ = true;
             thread_ = result.at("conversationId").get<std::string>();
+            ApplyModelInfo(result);
             UpdateEffectiveAccess(result);
-            if (ai::ValidWorkspacePath(result.value("cwd", std::string()))) workspaceDirectory_ = Wide(result["cwd"].get<std::string>());
+            if (!workspaceIsLocal_ && !settings_.localMode && ai::ValidRemoteWorkspacePath(result.value("cwd", std::string()))) {
+                remoteWorkspaceDirectory_ = Wide(result["cwd"].get<std::string>());
+                workspaceDirectory_ = remoteWorkspaceDirectory_;
+            }
+            UpdateActions();
+        } else if (purpose == "start") {
+            isProbeSession_ = false;
+            thread_ = result.at("conversationId").get<std::string>();
+            ApplyModelInfo(result);
+            UpdateEffectiveAccess(result);
+            if (!workspaceIsLocal_ && !settings_.localMode && ai::ValidRemoteWorkspacePath(result.value("cwd", std::string()))) {
+                remoteWorkspaceDirectory_ = Wide(result["cwd"].get<std::string>());
+                workspaceDirectory_ = remoteWorkspaceDirectory_;
+            }
             RememberThread(thread_, pendingPrompt_.empty() ? L"新会话" : pendingPrompt_.substr(0, 40));
             if (stopRequested_) {
                 busy_ = false;
                 pendingPrompt_.clear();
-            } else
+            } else {
+                if (settings_.provider == ai::AiProvider::Antigravity) {
+                    if (!selectedModel_.empty() && selectedModel_ != serverDefaultModel_)
+                        Request(ai::Operation::SetConfig,
+                                {{"conversationId", thread_}, {"configId", "model"}, {"value", selectedModel_}},
+                                "set-model");
+                    if (!selectedEffort_.empty() && selectedEffort_ != serverDefaultEffort_)
+                        Request(ai::Operation::SetConfig,
+                                {{"conversationId", thread_}, {"configId", "thought_level"}, {"value", selectedEffort_}},
+                                "set-effort");
+                }
                 StartTurn();
+            }
         } else if (purpose == "turn") {
             turn_ = result.at("taskId").get<std::string>();
             if (!sendingAttachments_.empty()) {
                 for (const auto &sent : sendingAttachments_) {
-                    const auto found = std::find_if(attachments_.begin(), attachments_.end(), [&](const auto &draft) {
+                    const auto attIt = std::find_if(attachments_.begin(), attachments_.end(), [&](const auto &draft) {
                         return draft.bytes == sent.bytes;
                     });
-                    if (found != attachments_.end()) attachments_.erase(found);
+                    if (attIt != attachments_.end()) attachments_.erase(attIt);
                 }
                 sendingAttachments_.clear();
                 attachmentImagePaths_ = Json::array();
@@ -2550,85 +3714,183 @@ void AiPane::Event(const Json &e) {
                 Stop();
         } else if (purpose == "compact") {
             Add(L"状态", L"服务器已接受会话整理请求；完成状态以服务器通知为准，完整历史仍保留。");
+        } else if (purpose == "models" || purpose == "set-model" || purpose == "set-effort") {
+            ApplyModelInfo(result);
+            if (purpose == "set-model" || purpose == "set-effort") {
+                const auto m = ActiveModel();
+                const auto ef = ActiveEffort();
+                SetStatus(L"已切换模型配置：" + (m.empty() ? std::wstring(L"默认") : Wide(m)) +
+                          (ef.empty() ? std::wstring() : L" · 思考: " + Wide(ef)));
+            }
         } else if (purpose == "config") {
-            serverDefaultModel_ = result.value("defaultModel", std::string());
-            SetWindowTextW(Control(Model), serverDefaultModel_.empty() ? L"模型未获取" :
-                (L"默认 · " + Wide(serverDefaultModel_)).c_str());
+            ApplyModelInfo(result);
+            if (settings_.provider == ai::AiProvider::Codex)
+                Request(ai::Operation::Models, Json::object(), "models");
             if (restoreOnConfig_ && !thread_.empty()) {
                 restoreOnConfig_ = false;
                 busy_ = true;
                 turnStarted_ = GetTickCount64();
-                if (!Request(ai::Operation::RestoreConversation, {{"conversationId", thread_}, {"defaultModel", serverDefaultModel_},
-                    {"cwd", Utf8(workspaceDirectory_)}}, "resume")) busy_ = false;
+                if (!Request(ai::Operation::RestoreConversation, {{"conversationId", thread_}, {"defaultModel", ActiveModel()},
+                    {"effort", ActiveEffort()}, {"cwd", ProcessCwdForAi()}}, "resume")) busy_ = false;
             } else {
                 busy_ = false;
                 if (messages_.empty())
                     Add(L"AI",
                         L"你好，我是你的高级嵌入式软件工程师助手。\n\n"
-                        L"我可以帮助你分析终端日志、定位嵌入式问题、阅读和修改服务器代码，并执行必要的调试命令。\n\n"
-                        L"请选择关联终端，或告诉我服务器项目路径和需要解决的问题。");
+                        L"我可以帮助你分析终端日志、定位嵌入式问题、阅读和修改工作空间代码，并执行必要的调试命令。\n\n"
+                        L"请选择关联终端，或切换本地/远程工作空间后向我提问。");
             }
-            directoryPending_ = true;
-            directoryDeadline_ = GetTickCount64() + 8000;
-            if (!Request(ai::Operation::ServerHome, Json::object(), "home")) DirectoryFailure(L"暂时无法获取服务器目录");
+            directoryPending_ = false;
+            if (workspaceIsLocal_) {
+                if (localWorkspaceDirectory_.empty()) localWorkspaceDirectory_ = DefaultLocalWorkspaceFallback();
+                std::wstring resolved;
+                std::string err;
+                workspaceVerified_ = ai::ResolveAndValidateLocalRoot(localWorkspaceDirectory_, resolved, err);
+                if (workspaceVerified_ && resolved != localWorkspaceDirectory_) localWorkspaceDirectory_ = resolved;
+                workspaceDirectory_ = localWorkspaceDirectory_;
+                SyncLocalWorkspaceService();
+            }
+            if (!settings_.localMode && settings_.provider == ai::AiProvider::Codex) {
+                if (!workspaceIsLocal_) {
+                    directoryPending_ = true;
+                    directoryDeadline_ = GetTickCount64() + 8000;
+                }
+                if (!Request(ai::Operation::ServerHome, Json::object(), "home") && !workspaceIsLocal_)
+                    DirectoryFailure(L"暂时无法获取服务器目录");
+            }
+            if (settings_.provider == ai::AiProvider::Antigravity && !restoreOnConfig_ && thread_.empty()) {
+                Request(ai::Operation::NewConversation, {{"cwd", ProcessCwdForAi()}}, "probe-session");
+            }
+            Layout();
         } else if (purpose == "resume") {
-            workspaceVerified_ = true;
+            const std::string previousThread = thread_;
+            const bool wasProbeSession = isProbeSession_;
+            const auto nextThread = result.at("conversationId").get<std::string>();
+            if (!previousThread.empty() && previousThread != nextThread && !wasProbeSession)
+                CacheCurrentTranscript();
+            isProbeSession_ = false;
             if (pendingHistoryRestore_) {
-                workspaceDirectory_ = pendingHistoryWorkspace_;
+                const bool targetLocal = pendingHistoryBinding_.hasExplicitMode ? pendingHistoryBinding_.isLocal : workspaceIsLocal_;
+                const bool targetReadOnly = pendingHistoryBinding_.hasExplicitMode ? pendingHistoryBinding_.localReadOnly : localWorkspaceReadOnly_;
+                const auto targetLocalDir = pendingHistoryBinding_.localPath.empty() ? localWorkspaceDirectory_ : Wide(pendingHistoryBinding_.localPath);
+                const auto targetRemoteDir = pendingHistoryBinding_.remotePath.empty() ? remoteWorkspaceDirectory_ : Wide(pendingHistoryBinding_.remotePath);
+                const auto targetSshSid = pendingHistoryBinding_.remoteSessionId.empty() ? remoteSshSessionId_ : pendingHistoryBinding_.remoteSessionId;
+                ApplyWorkspaceSelection(targetLocal, targetReadOnly, targetLocalDir, targetRemoteDir, targetSshSid);
                 SelectTarget(pendingHistoryTarget_);
                 pendingHistoryRestore_ = false;
+                pendingHistoryBinding_ = {};
             }
-            ClearTextSelection();
-            messages_.clear();
-            selectedMessage_ = SIZE_MAX;
-            messageBytes_ = 0;
-            displayLimitReached_ = false;
-            scroll_ = {};
-            thread_ = result.at("conversationId").get<std::string>();
-            if (ai::ValidWorkspacePath(result.value("cwd", std::string()))) workspaceDirectory_ = Wide(result["cwd"].get<std::string>());
-            collapsedGroups_.clear();
-            initializedGroups_.clear();
-            groupStates_.clear();
-            groupDurations_.clear();
-            displayGroup_.clear();
-            std::map<std::string, std::string> outcomes;
-            for (const auto &message : result.value("messages", Json::array())) {
-                displayGroup_ = message.value("group", std::string());
-                const auto count = messages_.size();
-                const auto role = Wide(message.at("role").get<std::string>());
-                const auto id = message.value("messageId", std::string());
-                auto raw = Wide(message.at("text").get<std::string>());
-                std::wstring technical;
-                if (role == L"工具" && id.rfind("server:", 0) == 0) {
-                    if (raw.find(L'\x1b') != std::wstring::npos) {
-                        auto preview = raw.substr(0, 16384);
-                        if (!preview.empty() && preview.back() >= 0xd800 && preview.back() <= 0xdbff) preview.pop_back();
-                        technical = Wide(Json{{"nativeOutput", Utf8(preview)}, {"truncated", raw.size() > preview.size()}}.dump(2));
+            thread_ = nextThread;
+            if (!workspaceIsLocal_ && !settings_.localMode && ai::ValidRemoteWorkspacePath(result.value("cwd", std::string()))) {
+                remoteWorkspaceDirectory_ = Wide(result["cwd"].get<std::string>());
+                workspaceDirectory_ = remoteWorkspaceDirectory_;
+            }
+            if (!workspaceIsLocal_) {
+                workspaceVerified_ = true;
+            } else {
+                std::wstring resolved;
+                std::string err;
+                workspaceVerified_ = ai::ResolveAndValidateLocalRoot(localWorkspaceDirectory_, resolved, err);
+                if (workspaceVerified_ && resolved != localWorkspaceDirectory_) {
+                    localWorkspaceDirectory_ = resolved;
+                    workspaceDirectory_ = resolved;
+                }
+            }
+            const auto serverMessages = result.value("messages", Json::array());
+            const auto cacheKey = Utf8(Profile(settings_)) + "|" + nextThread;
+            const auto cachedIt = transcriptCache_.find(cacheKey);
+            const bool useCache = serverMessages.empty() && cachedIt != transcriptCache_.end() && !cachedIt->second.messages.empty();
+            const bool keepSameInMemory = serverMessages.empty() && !useCache && settings_.provider == ai::AiProvider::Antigravity &&
+                !previousThread.empty() && previousThread == nextThread && !wasProbeSession && !messages_.empty();
+            const Json &resumedMessages = useCache ? cachedIt->second.messages : serverMessages;
+            if (!keepSameInMemory) {
+                ClearTextSelection();
+                messages_.clear();
+                selectedMessage_ = SIZE_MAX;
+                messageBytes_ = 0;
+                displayLimitReached_ = false;
+                scroll_ = {};
+            }
+            ApplyModelInfo(result);
+            SyncLocalWorkspaceService();
+            Layout();
+            if (!keepSameInMemory) {
+                collapsedGroups_.clear();
+                initializedGroups_.clear();
+                groupStates_.clear();
+                groupDurations_.clear();
+                displayGroup_.clear();
+                std::map<std::string, std::string> outcomes;
+                for (const auto &message : resumedMessages) {
+                    displayGroup_ = message.value("group", std::string());
+                    const auto count = messages_.size();
+                    const auto role = Wide(message.at("role").get<std::string>());
+                    const auto id = message.value("messageId", std::string());
+                    auto raw = Wide(message.at("text").get<std::string>());
+                    auto technical = Wide(message.value("technical", std::string()));
+                    if (role == L"工具" && id.rfind("server:", 0) == 0) {
+                        if (technical.empty() && raw.find(L'\x1b') != std::wstring::npos) {
+                            auto preview = raw.substr(0, 16384);
+                            if (!preview.empty() && preview.back() >= 0xd800 && preview.back() <= 0xdbff) preview.pop_back();
+                            technical = Wide(Json{{"nativeOutput", Utf8(preview)}, {"truncated", raw.size() > preview.size()}}.dump(2));
+                        }
+                        raw = Wide(ai::PreviewText(Utf8(raw), 65536));
                     }
-                    raw = Wide(ai::PreviewText(Utf8(raw), 65536));
+                    Add(role, std::move(raw), id, std::move(technical));
+                    if (messages_.size() > count) {
+                        messages_.back().process = messages_.back().role == L"工具" || messages_.back().role == L"思考" ||
+                            message.value("process", false);
+                    }
+                    if (!displayGroup_.empty()) {
+                        const auto status = message.value("status", std::string());
+                        if (!status.empty()) outcomes[displayGroup_] = status;
+                        if (message.value("failedStep", false))
+                            groupStates_[displayGroup_] = L"含失败记录";
+                    }
                 }
-                Add(role, std::move(raw), id, std::move(technical));
-                if (messages_.size() > count)
-                    messages_.back().process = messages_.back().role == L"工具" || message.value("process", false);
-                if (!displayGroup_.empty()) {
-                    outcomes[displayGroup_] = message.value("status", std::string());
-                    if (message.value("failedStep", false))
-                        groupStates_[displayGroup_] = L"含失败记录";
+                if (useCache) {
+                    groupStates_ = cachedIt->second.groupStates;
+                    groupDurations_ = cachedIt->second.groupDurations;
+                    ClearActivityTrackingForConversation();
+                    fileChanges_ = cachedIt->second.fileChanges;
+                    turnSeq_ = cachedIt->second.turnSeq;
+                    for (const auto &fc : fileChanges_) {
+                        if (!fc.changeId.empty())
+                            knownWsChangeIds_.insert(fc.changeId);
+                    }
+                    for (const auto &[group, state] : groupStates_) {
+                        collapsedGroups_.insert(group);
+                        if (state.rfind(L"已完成", 0) == 0) CollapseCompletedProcess(group);
+                    }
+                } else {
+                    ClearActivityTrackingForConversation();
+                    for (const auto &[group, outcome] : outcomes) {
+                        const bool failedStep = groupStates_[group] == L"含失败记录";
+                        groupStates_[group] = outcome == "completed" ? (failedStep ? L"已完成 · 含失败记录" : L"已完成")
+                                              : outcome == "failed" ? L"失败"
+                                              : outcome == "interrupted" ? L"已停止" : L"状态待确认";
+                        collapsedGroups_.insert(group);
+                        if (outcome == "completed") CollapseCompletedProcess(group);
+                    }
                 }
+                NotifyFileChanges({}, false);
+                if (resumedMessages.empty() && settings_.provider == ai::AiProvider::Antigravity) {
+                    Add(L"状态",
+                        L"已恢复远端会话上下文（会话 ID：" + Wide(thread_) +
+                            L"）；当前 Antigravity 服务端未返回历史消息重放。可继续提问。");
+                }
+                displayGroup_.clear();
+                showTurnProgress_ = false;
+                Reflow();
             }
-            for (const auto &[group, outcome] : outcomes) {
-                const bool failedStep = groupStates_[group] == L"含失败记录";
-                groupStates_[group] = outcome == "completed" ? (failedStep ? L"已完成 · 含失败记录" : L"已完成")
-                                      : outcome == "failed" ? L"失败"
-                                      : outcome == "interrupted" ? L"已停止" : L"状态待确认";
-                collapsedGroups_.insert(group);
-                if (outcome == "completed") CollapseCompletedProcess(group);
-            }
-            displayGroup_.clear();
-            showTurnProgress_ = false;
-            Reflow();
             busy_ = false;
-            SetStatus(L"已恢复服务器历史 · 查看历史不会自动发送命令");
+            SetStatus(keepSameInMemory
+                ? L"已重连并保留当前会话记录"
+                : (useCache
+                    ? L"已恢复会话上下文（本地缓存显示） · 查看历史不会自动发送命令"
+                    : (resumedMessages.empty() && settings_.provider == ai::AiProvider::Antigravity
+                        ? L"已恢复远端会话上下文（服务端未重放历史文本）"
+                        : L"已恢复服务器历史 · 查看历史不会自动发送命令")));
             UpdateEffectiveAccess(result);
             LoadWorkspacePractices();
         }
@@ -2665,41 +3927,59 @@ void AiPane::Event(const Json &e) {
             effectiveAccess_ = L"受限 (read-only)";
             SetStatus(L"AI 工具执行权限受限：只读文件系统");
         }
-        auto message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
-        if (message == messages_.end()) {
-            Add(L"工具", L"", id);
-            message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
-        }
-        if (message != messages_.end()) {
-            if (event == "serverToolDelta") {
-                message->streamedOutput += raw;
-                if (message->streamedOutput.size() > 65536) {
-                    message->streamedOutput.resize(65536);
-                    if (message->streamedOutput.back() >= 0xd800 && message->streamedOutput.back() <= 0xdbff)
-                        message->streamedOutput.pop_back();
+        if (!TryHandleServerExecOrFileTool(event, id, e)) {
+            auto message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
+            if (message == messages_.end()) {
+                Add(L"工具", L"", id);
+                message = std::find_if(messages_.begin(), messages_.end(), [&](const Message& m) { return m.item == id; });
+            }
+            if (message != messages_.end()) {
+                if (event == "serverToolDelta") {
+                    message->streamedOutput += raw;
+                    if (message->streamedOutput.size() > 65536) {
+                        message->streamedOutput.resize(65536);
+                        if (message->streamedOutput.back() >= 0xd800 && message->streamedOutput.back() <= 0xdbff)
+                            message->streamedOutput.pop_back();
+                    }
+                } else if (!completed) {
+                    message->nativeBase = raw;
+                    message->streamedOutput.clear();
                 }
-            } else if (!completed) {
-                message->nativeBase = raw;
-                message->streamedOutput.clear();
+                std::wstring completeRaw = raw;
+                if (!completed) {
+                    completeRaw = message->nativeBase;
+                    if (!message->streamedOutput.empty()) {
+                        if (!completeRaw.empty()) completeRaw += L"\n\n";
+                        completeRaw += L"**实时输出**\n```text\n" + message->streamedOutput + L"\n```";
+                    }
+                } else if (e.value("appendStream", false) && !message->streamedOutput.empty()) {
+                    if (!completeRaw.empty()) completeRaw += L"\n\n";
+                    completeRaw += L"**输出**\n```text\n" + message->streamedOutput + L"\n```";
+                }
+                const auto next = Wide(ai::PreviewText(Utf8(completeRaw), 65536));
+                std::wstring technical = Wide(e.value("technical", std::string()));
+                if (technical.size() > 32768) {
+                    technical.resize(32768);
+                    if (!technical.empty() && technical.back() >= 0xd800 && technical.back() <= 0xdbff) technical.pop_back();
+                    technical += L"\r\n[技术详情预览已截断，原始工具结果仍正常传递]";
+                }
+                if (technical.empty() && completed && completeRaw.find(L'\x1b') != std::wstring::npos) {
+                    auto rawPreview = completeRaw.substr(0, 16384);
+                    if (!rawPreview.empty() && rawPreview.back() >= 0xd800 && rawPreview.back() <= 0xdbff) rawPreview.pop_back();
+                    technical = Wide(Json{{"nativeOutput", Utf8(rawPreview)}, {"truncated", completeRaw.size() > rawPreview.size()}}.dump(2));
+                }
+                if (technical.empty() && !completed)
+                    technical = message->technical;
+                const auto oldBytes = (message->text.size() + message->technical.size()) * sizeof(wchar_t);
+                const auto newBytes = (next.size() + technical.size()) * sizeof(wchar_t);
+                // ShowDisplayLimit may append and reallocate the message vector.
+                if (completed) { message->streamedOutput.clear(); message->nativeBase.clear(); }
+                if (messageBytes_ - oldBytes + newBytes <= MaxConversation) {
+                    messageBytes_ = messageBytes_ - oldBytes + newBytes;
+                    message->text = next; message->technical = std::move(technical);
+                    message->measuredLength = SIZE_MAX; Reflow(true);
+                } else ShowDisplayLimit();
             }
-            const auto completeRaw = completed ? raw + (e.value("appendStream", false) ? L"\n" + message->streamedOutput : L"")
-                                               : message->nativeBase + message->streamedOutput;
-            const auto next = Wide(ai::PreviewText(Utf8(completeRaw), 65536));
-            std::wstring technical;
-            if (completed && completeRaw.find(L'\x1b') != std::wstring::npos) {
-                auto rawPreview = completeRaw.substr(0, 16384);
-                if (!rawPreview.empty() && rawPreview.back() >= 0xd800 && rawPreview.back() <= 0xdbff) rawPreview.pop_back();
-                technical = Wide(Json{{"nativeOutput", Utf8(rawPreview)}, {"truncated", completeRaw.size() > rawPreview.size()}}.dump(2));
-            }
-            const auto oldBytes = (message->text.size() + message->technical.size()) * sizeof(wchar_t);
-            const auto newBytes = (next.size() + technical.size()) * sizeof(wchar_t);
-            // ShowDisplayLimit may append and reallocate the message vector.
-            if (completed) { message->streamedOutput.clear(); message->nativeBase.clear(); }
-            if (messageBytes_ - oldBytes + newBytes <= MaxConversation) {
-                messageBytes_ = messageBytes_ - oldBytes + newBytes;
-                message->text = next; message->technical = std::move(technical);
-                message->measuredLength = SIZE_MAX; Reflow(true);
-            } else ShowDisplayLimit();
         }
         observedTool_ = true;
         // B10: Auto-harvest build/deploy commands if completed successfully
@@ -2725,8 +4005,46 @@ void AiPane::Event(const Json &e) {
         }
         return;
     }
-    if (event == "taskActivity" || event == "serialToolRequest" || event == "textStarted" || event == "textDelta")
+    if (event == "taskActivity" || event == "serialToolRequest" || event == "textStarted" ||
+        event == "textDelta" || event == "thinkingDelta")
         completionDeadline_ = 0;
+    if (event == "thinkingDelta" && !stopRequested_) {
+        const auto id = e.value("messageId", std::string("thinking"));
+        const bool separatorOnly = e.value("separatorOnly", false);
+        const auto text = Wide(e.value("text", std::string()));
+        auto message = std::find_if(messages_.begin(), messages_.end(),
+                                    [&](const Message &m) { return m.item == id && m.role == L"思考"; });
+        if (separatorOnly) {
+            if (message != messages_.end() && !message->text.empty() &&
+                !(message->text.size() >= 2 && message->text[message->text.size() - 2] == L'\n' &&
+                  message->text.back() == L'\n')) {
+                const auto total = messageBytes_ + 2 * sizeof(wchar_t);
+                if (total <= MaxConversation) {
+                    messageBytes_ = total;
+                    message->text += L"\n\n";
+                    Reflow(true);
+                } else {
+                    ShowDisplayLimit();
+                }
+            }
+            return;
+        }
+        if (message == messages_.end()) {
+            Add(L"思考", text, id);
+            if (!messages_.empty()) messages_.back().process = true;
+            Reflow(true);
+        } else {
+            const auto total = messageBytes_ + text.size() * sizeof(wchar_t);
+            if (total <= MaxConversation) {
+                messageBytes_ = total;
+                message->text += text;
+                Reflow(true);
+            } else {
+                ShowDisplayLimit();
+            }
+        }
+        return;
+    }
     if (event == "textStarted" && !stopRequested_) {
         const auto id = e.value("messageId", std::string());
         auto found = std::find_if(messages_.begin(), messages_.end(), [&](const Message &m) { return m.item == id && m.role == L"AI"; });
@@ -2893,6 +4211,49 @@ void AiPane::ServerRequest(const Json &e) {
         observedTool_ = true;
         return;
     }
+    if (const auto mcpMethod = ai::ResolveMcpMethodFromDynamicTool(tool); !mcpMethod.empty()) {
+        if (mcpMethod.rfind("workspace.", 0) == 0) {
+            if (!workspaceIsLocal_) {
+                Reply(e["requestId"], {{"error", "当前处于远程工作空间模式，无法通过 mcp_workspace_* 访问本地 Windows 工作空间"}}, false);
+                return;
+            }
+            SyncLocalWorkspaceService();
+            auto cancel = std::make_shared<std::atomic<bool>>(false);
+            {
+                std::lock_guard<std::mutex> lock(workspaceExecMutex_);
+                workspaceExecCancel_ = cancel;
+            }
+            const auto gen = localToolGeneration_;
+            const auto reqId = e["requestId"];
+            const auto convId = thread_;
+            const auto curTurn = turn_;
+            auto service = localWorkspaceService_;
+            auto toolArgs = args;
+            workspaceToolWorker_.Retire([this, service, cancel, gen, reqId, convId, curTurn, tool, mcpMethod, toolArgs]() mutable {
+                if (closing_.load()) return;
+                Json result = service
+                    ? service->ExecuteTool(mcpMethod, toolArgs, cancel.get())
+                    : Json{{"error", "Local workspace service unavailable"}};
+                if (closing_.load()) return;
+                AsyncWorkResult work;
+                work.kind = AsyncWorkResult::Kind::LocalTool;
+                work.generation = gen;
+                work.conversationId = std::move(convId);
+                work.turn = std::move(curTurn);
+                work.tool = std::move(tool);
+                work.requestId = std::move(reqId);
+                work.args = std::move(toolArgs);
+                work.result = std::move(result);
+                EnqueueAsyncWork(std::move(work));
+            });
+            return;
+        }
+        auto result = devices_("mcp:" + mcpMethod, args);
+        observedTool_ = true;
+        AddTool(tool, args, result);
+        Reply(e["requestId"], result, !result.contains("error"));
+        return;
+    }
     if (tool == "serialctl_power_get") {
         powerContext_ = devices_("power.get", Json::object());
         Reply(e["requestId"], powerContext_, !powerContext_.contains("error"));
@@ -3025,7 +4386,12 @@ void AiPane::RememberThread(const std::string &id, const std::wstring &title) {
     }
     auto entries = ai::RememberHistory(previous, id, label, profile);
     if (!entries.empty()) {
-        entries[0]["cwd"] = Utf8(workspaceDirectory_);
+        entries[0]["cwd"] = Utf8(ActiveWorkspaceDirectory());
+        entries[0]["workspaceIsLocal"] = workspaceIsLocal_;
+        entries[0]["localReadOnly"] = localWorkspaceReadOnly_;
+        if (!localWorkspaceDirectory_.empty()) entries[0]["localWorkspace"] = Utf8(localWorkspaceDirectory_);
+        if (!remoteWorkspaceDirectory_.empty()) entries[0]["remoteWorkspace"] = Utf8(remoteWorkspaceDirectory_);
+        if (!remoteSshSessionId_.empty()) entries[0]["remoteSshSessionId"] = remoteSshSessionId_;
         for (const auto &session : targetSnapshot_)
             if (session.value("id", std::string()) == target_) entries[0]["targetKey"] = ai::WorkspaceTargetIdentity(session);
     }
@@ -3049,8 +4415,9 @@ void AiPane::ShowHistory() {
     for (const auto &e : History())
         if (ai::WorkspaceProfileMatches(e.value("profile", std::string()), Utf8(Profile(settings_))))
             popup.entries.push_back(e);
+    const auto activeWsUtf8 = Utf8(ActiveWorkspaceDirectory());
     std::stable_sort(popup.entries.begin(), popup.entries.end(), [&](const Json &a, const Json &b) {
-        return (ai::StoredWorkspace(a) == Utf8(workspaceDirectory_)) > (ai::StoredWorkspace(b) == Utf8(workspaceDirectory_));
+        return (ai::StoredWorkspace(a) == activeWsUtf8) > (ai::StoredWorkspace(b) == activeWsUtf8);
     });
     EmptyDialog d;
     const auto choice = UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &d.dialog, GetAncestor(window_, GA_ROOT),
@@ -3066,6 +4433,7 @@ void AiPane::ShowHistory() {
     if (chosen > 0 && static_cast<size_t>(chosen) <= visible.size()) {
         auto id = visible[chosen - 1].at("id").get<std::string>();
         pendingHistoryWorkspace_ = Wide(ai::StoredWorkspace(visible[chosen - 1]));
+        pendingHistoryBinding_ = ai::ParseStoredWorkspaceBinding(visible[chosen - 1]);
         const auto key = visible[chosen - 1].value("targetKey", std::string());
         std::string restoredTarget;
         unsigned matches = 0;
@@ -3076,7 +4444,26 @@ void AiPane::ShowHistory() {
         taskAuthorized_ = false;
         busy_ = true;
         turnStarted_ = GetTickCount64();
-        if (!Request(ai::Operation::RestoreConversation, {{"conversationId", id}, {"defaultModel", serverDefaultModel_}}, "resume"))
+        std::string restoredCwd;
+        if (settings_.localMode) {
+            restoredCwd = (pendingHistoryBinding_.isLocal && !pendingHistoryBinding_.localPath.empty())
+                              ? pendingHistoryBinding_.localPath
+                              : ProcessCwdForAi();
+        } else if (!pendingHistoryBinding_.remotePath.empty()) {
+            restoredCwd = pendingHistoryBinding_.remotePath;
+        } else if (ai::ValidRemoteWorkspacePath(Utf8(pendingHistoryWorkspace_))) {
+            restoredCwd = Utf8(pendingHistoryWorkspace_);
+        } else if (ai::ValidRemoteWorkspacePath(Utf8(remoteWorkspaceDirectory_))) {
+            restoredCwd = Utf8(remoteWorkspaceDirectory_);
+        } else {
+            restoredCwd = ProcessCwdForAi();
+        }
+        if (!Request(ai::Operation::RestoreConversation,
+                     {{"conversationId", id},
+                      {"defaultModel", ActiveModel()},
+                      {"effort", ActiveEffort()},
+                      {"cwd", restoredCwd}},
+                     "resume"))
             busy_ = false;
         UpdateActions();
     }
@@ -3097,10 +4484,7 @@ void AiPane::PopulateDirectories(bool updatePath) {
         SendMessageW(combo, CB_RESETCONTENT, 0, 0);
         SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"选择子目录…"));
         for (const auto &path : directoryChildren_) {
-            auto name = Wide(path.get<std::string>());
-            while (name.size()>1 && name.back()==L'/') name.pop_back();
-            const auto slash=name.rfind(L'/');
-            if(slash!=std::wstring::npos) name.erase(0,slash+1);
+            const auto name = ai::WorkspaceLeafLabel(Wide(path.get<std::string>()));
             SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
         }
         SendMessageW(combo, CB_SETCURSEL, 0, 0);
@@ -3117,17 +4501,31 @@ void AiPane::QueueDirectorySelection(HWND h) {
     if(size<=0 || size>4096) return;
     std::wstring name(static_cast<size_t>(size)+1,L'\0');
     SendMessageW(combo,CB_GETLBTEXT,index,reinterpret_cast<LPARAM>(name.data())); name.resize(size);
-    auto parent=Text(GetDlgItem(h,PathDisplay));
-    if(!ai::ValidWorkspacePath(Utf8(parent)) || name.find(L'/')!=std::wstring::npos) return;
-    if(parent.back()!=L'/') parent+=L'/';
-    pendingDirectorySelection_=parent+name;
+    const bool localDlg = (h == workspaceDialog_ && workspaceDialogIsLocal_);
+    if (localDlg && ai::ValidLocalWorkspacePath(Utf8(name))) {
+        pendingDirectorySelection_ = Wide(ai::NormalizeLocalWorkspacePathUtf8(Utf8(name)));
+    } else if (localDlg) {
+        auto parent = Text(GetDlgItem(h, PathDisplay));
+        if (!ai::ValidLocalWorkspacePath(Utf8(parent)) || name.find_first_of(L"\\/:") != std::wstring::npos) return;
+        parent = Wide(ai::NormalizeLocalWorkspacePathUtf8(Utf8(parent)));
+        if (parent.back() != L'\\') parent += L'\\';
+        pendingDirectorySelection_ = parent + name;
+    } else {
+        auto parent=Text(GetDlgItem(h,PathDisplay));
+        if(!ai::ValidRemoteWorkspacePath(Utf8(parent)) || name.find(L'/')!=std::wstring::npos) return;
+        if(parent.back()!=L'/') parent+=L'/';
+        pendingDirectorySelection_=parent+name;
+    }
     keepDirectoryDropdownOpen_ = true;
     PostMessageW(h,CommitDirectory,0,0);
 }
 bool AiPane::DirectoryMessage(HWND h, UINT m, WPARAM w) {
     if(m==CommitDirectory) {
         auto path=std::move(pendingDirectorySelection_); pendingDirectorySelection_.clear();
-        if(!path.empty() && !directoryPending_ && client_.Ready() && !busy_) BrowseDirectory(path);
+        if(!path.empty() && !directoryPending_ && !busy_) {
+            if (h == workspaceDialog_) BrowseWorkspaceDialogPath(h, path);
+            else if (client_.Ready()) BrowseDirectory(path);
+        }
         return true;
     }
     if(m==RefreshDirectoryRows) { if(directoryRowsDirty_) PopulateDirectories(); return true; }
@@ -3140,26 +4538,50 @@ bool AiPane::DirectoryMessage(HWND h, UINT m, WPARAM w) {
     }
     if(id==Directory && (note==CBN_SELENDOK || (note==CBN_SELCHANGE &&
         !SendDlgItemMessageW(h,Directory,CB_GETDROPPEDSTATE,0,0)))) {
-        if(!directoryPending_ && client_.Ready() && !busy_) QueueDirectorySelection(h);
+        if(!directoryPending_ && !busy_) {
+            if (h == workspaceDialog_ && (workspaceDialogIsLocal_ || CanBrowseRemoteWorkspaceInDialog()))
+                QueueDirectorySelection(h);
+            else if (h != workspaceDialog_ && client_.Ready())
+                QueueDirectorySelection(h);
+        }
         return true;
     }
     if(id==PathDisplay && note==BN_CLICKED) {
+        const bool localDlg = (h == workspaceDialog_ && workspaceDialogIsLocal_);
         auto path=Text(GetDlgItem(h,PathDisplay));
-        if(!directoryPending_ && PromptValue(L"服务器项目路径",path)) {
-            if(path.empty() || ai::ValidWorkspacePath(Utf8(path))) {
-                SetDlgItemTextW(h,PathDisplay,path.c_str());
-                if(client_.Ready() && !path.empty()) BrowseDirectory(path);
-            } else SetDlgItemTextW(h,Note,L"请填写 Linux 绝对路径");
+        if(!directoryPending_ && PromptValue(localDlg ? L"本地工作空间路径（如 D:\\workspace）" : L"服务器项目路径（如 /home/linux/project）", path)) {
+            if (localDlg) {
+                if (path.empty() || ai::ValidLocalWorkspacePath(Utf8(path))) {
+                    if (!path.empty()) path = Wide(ai::NormalizeLocalWorkspacePathUtf8(Utf8(path)));
+                    else ResetWorkspaceDirectoryListing();
+                    SetDlgItemTextW(h, PathDisplay, path.c_str());
+                    BrowseWorkspaceDialogPath(h, path);
+                } else {
+                    ResetWorkspaceDirectoryListing();
+                    SetDlgItemTextW(h, Note, L"请填写 Windows 盘符绝对路径，例如 D:\\workspace");
+                }
+            } else {
+                if(path.empty() || ai::ValidRemoteWorkspacePath(Utf8(path))) {
+                    SetDlgItemTextW(h,PathDisplay,path.c_str());
+                    if(!path.empty()) {
+                        if (h == workspaceDialog_) BrowseWorkspaceDialogPath(h, path);
+                        else if (client_.Ready()) BrowseDirectory(path);
+                    } else if (h == workspaceDialog_) {
+                        ResetWorkspaceDirectoryListing();
+                    }
+                } else SetDlgItemTextW(h,Note,L"请填写 Linux 绝对路径，例如 /home/linux/project");
+            }
         }
         return true;
     }
     return false;
 }
 void AiPane::BrowseDirectory(const std::wstring &path, bool initial) {
-    if (!ai::ValidWorkspacePath(Utf8(path))) {
+    if (!ai::ValidRemoteWorkspacePath(Utf8(path))) {
         DirectoryFailure(L"请填写 Linux 绝对路径，例如 /home/linux/project");
         return;
     }
+    ++workspaceBrowseSeq_;
     directoryPath_ = path;
     directoryInitial_ = initial;
     directoryPending_ = true;
@@ -3170,6 +4592,12 @@ void AiPane::BrowseDirectory(const std::wstring &path, bool initial) {
     UpdateActions();
 }
 void AiPane::DirectoryResult(const Json &result, bool fallback) {
+    if (workspaceDialog_ && workspaceDialogIsLocal_) {
+        directoryPending_ = false;
+        directoryFallbackTried_ = false;
+        UpdateActions();
+        return;
+    }
     Json children = Json::array();
     if (fallback) {
         if (result.value("exitCode", -1) != 0) {
@@ -3183,7 +4611,7 @@ void AiPane::DirectoryResult(const Json &result, bool fallback) {
             if (end == std::string::npos) break; // Never accept a truncated name.
             const auto path = output.substr(start, end - start);
             const auto parent = Utf8(directoryPath_);
-            if (ai::ValidWorkspacePath(path) && ai::WorkspaceParent(path) == (parent.size() > 1 && parent.back() == '/' ? parent.substr(0,parent.size()-1) : parent))
+            if (ai::ValidRemoteWorkspacePath(path) && ai::WorkspaceParent(path) == (parent.size() > 1 && parent.back() == '/' ? parent.substr(0,parent.size()-1) : parent))
                 children.push_back(path);
             start = end + 1;
         }
@@ -3195,60 +4623,319 @@ void AiPane::DirectoryResult(const Json &result, bool fallback) {
         children = ai::WorkspaceDirectories(Utf8(directoryPath_), result["entries"]);
     }
     directoryPending_ = false;
+    directoryFallbackTried_ = false;
     verifiedDirectory_ = directoryPath_;
+    if (workspaceDialog_ && !workspaceDialogIsLocal_) workspaceDialogRemotePath_ = verifiedDirectory_;
     directoryChildren_ = std::move(children);
     PopulateDirectories(true);
     for (HWND h : {dialog_, workspaceDialog_}) {
         if (!h) continue;
-        EnableWindow(GetDlgItem(h, IDOK), client_.Ready() && !directoryPending_);
-        for (int id : {Directory, DirectoryUp, DirectoryRefresh}) {
-            EnableWindow(GetDlgItem(h, id), client_.Ready() && !directoryPending_);
-        }
+        RefreshWorkspaceDialogControls(h);
     }
     if (workspaceDialog_ && !workspaceAccept_ && keepDirectoryDropdownOpen_) {
         auto combo = GetDlgItem(workspaceDialog_, Directory);
         if (combo) SendMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0);
     }
-    if (directoryInitial_ && settings_.workingDirectory.empty()) {
+    if (directoryInitial_ && !workspaceIsLocal_ && remoteWorkspaceDirectory_.empty()) {
+        remoteWorkspaceDirectory_ = verifiedDirectory_;
+        workspaceDirectory_ = verifiedDirectory_;
         SaveWorkspaceDefault(verifiedDirectory_);
-        if (thread_.empty()) workspaceDirectory_ = verifiedDirectory_;
     }
-    if (verifiedDirectory_ == workspaceDirectory_) workspaceVerified_ = true;
+    if (!workspaceIsLocal_ && verifiedDirectory_ == remoteWorkspaceDirectory_) workspaceVerified_ = true;
     const auto note = L"已读取 " + std::to_wstring(directoryChildren_.size()) + L" 个子目录；可下拉选择或填写完整路径";
-    for (HWND h : {dialog_, workspaceDialog_}) if (h) SetDlgItemTextW(h, Note, note.c_str());
-    if (workspaceDialog_ && workspaceAccept_) UiEndOwnedDialog(workspaceDialog_, IDOK);
+    if (workspaceDialog_) SetDlgItemTextW(workspaceDialog_, Note, note.c_str());
+    if (workspaceDialog_ && workspaceAccept_) {
+        workspaceAccept_ = false;
+        CommitWorkspaceDialogSelection(workspaceDialog_);
+    }
+    if (dialog_ && dialogEnter_ && client_.Ready() && !busy_ && !directoryPending_) UiEndOwnedDialog(dialog_, IDOK);
 }
 void AiPane::DirectoryFailure(const std::wstring &message) {
     if (directoryPath_ == workspaceDirectory_) workspaceVerified_ = false;
-    if (directoryInitial_ && settings_.workingDirectory.empty() && !serverHome_.empty() && directoryPath_ != serverHome_) {
-        BrowseDirectory(serverHome_, true);
-        return;
+    const bool inRemoteDialog = workspaceDialog_ ? !workspaceDialogIsLocal_ : !workspaceIsLocal_;
+    const bool usingDefaultPlaceholder =
+        remoteWorkspaceDirectory_.empty() ||
+        (remoteWorkspaceDirectory_ == L"/home/linux/workspace" && directoryPath_ == L"/home/linux/workspace");
+    if (directoryInitial_ && !directoryFallbackTried_ && inRemoteDialog && usingDefaultPlaceholder) {
+        if (!serverHome_.empty() && directoryPath_ != serverHome_) {
+            directoryFallbackTried_ = true;
+            if (workspaceDialog_) BrowseWorkspaceDialogPath(workspaceDialog_, serverHome_, true);
+            else BrowseDirectory(serverHome_, true);
+            return;
+        }
+        const bool canTrySftpDotHome = workspaceDialog_ && directoryPath_ != L"." && bool(remoteFsRunner_) &&
+            (!workspaceDialogSshSessionId_.empty() || !settings_.localMode || !workspaceDialogSshSessions_.empty()) &&
+            (settings_.provider != ai::AiProvider::Codex || settings_.localMode || !client_.Ready() || !workspaceDialogSshSessionId_.empty());
+        if (canTrySftpDotHome) {
+            directoryFallbackTried_ = true;
+            BrowseWorkspaceDialogPath(workspaceDialog_, L".", true);
+            return;
+        }
     }
     directoryPending_ = false;
+    directoryFallbackTried_ = false;
     workspaceAccept_ = false;
+    keepDirectoryDropdownOpen_ = false;
+    directoryChildren_ = Json::array();
+    verifiedDirectory_.clear();
+    PopulateDirectories(false);
+    if (dialog_) dialogEnter_ = false;
     for (HWND h : {dialog_, workspaceDialog_}) {
         if (!h) continue;
-        EnableWindow(GetDlgItem(h, IDOK), client_.Ready() && !directoryPending_);
-        for (int id : {Directory, DirectoryUp, DirectoryRefresh}) {
-            EnableWindow(GetDlgItem(h, id), client_.Ready() && !directoryPending_);
-        }
+        RefreshWorkspaceDialogControls(h);
         SetDlgItemTextW(h, Note, message.c_str());
     }
     UpdateActions();
 }
+void AiPane::PopulateLocalDirectoryListing(HWND h, const std::wstring &path, bool acceptIfValid) {
+    directoryPending_ = false;
+    directoryFallbackTried_ = false;
+    if (path.empty()) {
+        auto drives = ai::EnumerateLocalDrives();
+        Json arr = Json::array();
+        for (const auto &d : drives) arr.push_back(Utf8(d));
+        directoryChildren_ = std::move(arr);
+        verifiedDirectory_.clear();
+        SetDlgItemTextW(h, PathDisplay, L"");
+        PopulateDirectories(false);
+        SetDlgItemTextW(h, Note, (L"请选择本地盘符（已发现 " + std::to_wstring(directoryChildren_.size()) + L" 个）或点击“浏览…”").c_str());
+        RefreshWorkspaceDialogControls(h);
+        return;
+    }
+    std::wstring resolved;
+    std::string err;
+    if (!ai::ResolveAndValidateLocalRoot(path, resolved, err)) {
+        workspaceAccept_ = false;
+        keepDirectoryDropdownOpen_ = false;
+        directoryChildren_ = Json::array();
+        verifiedDirectory_.clear();
+        PopulateDirectories(false);
+        SetDlgItemTextW(h, Note, Wide(err).c_str());
+        RefreshWorkspaceDialogControls(h);
+        return;
+    }
+    const auto children = ai::EnumerateLocalSubdirectories(resolved);
+    directoryPath_ = resolved;
+    verifiedDirectory_ = resolved;
+    workspaceDialogLocalPath_ = resolved;
+    Json arr = Json::array();
+    for (const auto &c : children) arr.push_back(Utf8(c));
+    directoryChildren_ = std::move(arr);
+    PopulateDirectories(true);
+    RefreshWorkspaceDialogControls(h);
+    if (!acceptIfValid && keepDirectoryDropdownOpen_) {
+        if (auto combo = GetDlgItem(h, Directory)) SendMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0);
+    }
+    SetDlgItemTextW(h, Note, (L"本地目录已就绪（" + std::to_wstring(children.size()) + L" 个子目录）。切换不断开当前 AI 连接。").c_str());
+    if (acceptIfValid) {
+        workspaceAccept_ = false;
+        CommitWorkspaceDialogSelection(h);
+    }
+}
+std::string AiPane::RemoteFsTargetSessionId() const {
+    if (!remoteSshSessionId_.empty()) return remoteSshSessionId_;
+    return !settings_.localMode ? std::string("ai-settings") : std::string();
+}
+bool AiPane::CanBrowseRemoteWorkspaceInDialog() const {
+    if (!workspaceDialogSshSessionId_.empty() && remoteFsRunner_)
+        return true;
+    if (!settings_.localMode) {
+        if (client_.Ready() && settings_.provider == ai::AiProvider::Codex)
+            return true;
+        if (remoteFsRunner_ &&
+            (client_.Ready() || (!settings_.host.empty() && settings_.port > 0 && !settings_.username.empty())))
+            return true;
+    } else if (remoteFsRunner_ && !workspaceDialogSshSessions_.empty()) {
+        return true;
+    }
+    return false;
+}
+void AiPane::ResetWorkspaceDirectoryListing(bool keepDropdown) {
+    directoryPending_ = false;
+    directoryFallbackTried_ = false;
+    workspaceAccept_ = false;
+    ++workspaceBrowseSeq_;
+    pendingDirectorySelection_.clear();
+    directoryChildren_ = Json::array();
+    verifiedDirectory_.clear();
+    if (!keepDropdown) {
+        keepDirectoryDropdownOpen_ = false;
+        for (HWND h : {dialog_, workspaceDialog_}) {
+            if (!h) continue;
+            if (auto combo = GetDlgItem(h, Directory)) {
+                if (SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0))
+                    SendMessageW(combo, CB_SHOWDROPDOWN, FALSE, 0);
+            }
+        }
+    }
+    PopulateDirectories(false);
+}
+void AiPane::RefreshWorkspaceDialogControls(HWND h) {
+    if (!h) return;
+    if (h != workspaceDialog_) {
+        EnableWindow(GetDlgItem(h, IDOK), client_.Ready() && !directoryPending_);
+        return;
+    }
+    const bool local = workspaceDialogIsLocal_;
+    const bool browseBusy = directoryPending_;
+    const bool remoteReady = CanBrowseRemoteWorkspaceInDialog();
+    const int pathW = local ? D(336) : D(424);
+    MoveWindow(GetDlgItem(h, PathDisplay), D(16), D(74), pathW, D(28), TRUE);
+    ShowWindow(GetDlgItem(h, WsBrowseLocal), local ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(h, WsLocalReadOnly), local ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(h, WsSshLabel), local ? SW_HIDE : SW_SHOW);
+    ShowWindow(GetDlgItem(h, WsSshCombo), local ? SW_HIDE : SW_SHOW);
+    EnableWindow(GetDlgItem(h, WsModeRemote), TRUE);
+    EnableWindow(GetDlgItem(h, WsModeLocal), TRUE);
+    EnableWindow(GetDlgItem(h, WsBrowseLocal), local && !browseBusy);
+    EnableWindow(GetDlgItem(h, WsLocalReadOnly), local && !browseBusy);
+    EnableWindow(GetDlgItem(h, WsSshCombo), !local);
+    EnableWindow(GetDlgItem(h, PathDisplay), !browseBusy);
+    EnableWindow(GetDlgItem(h, Directory), !browseBusy && (local || remoteReady));
+    EnableWindow(GetDlgItem(h, DirectoryUp), !browseBusy);
+    EnableWindow(GetDlgItem(h, DirectoryRefresh), !browseBusy && (local || remoteReady));
+    EnableWindow(GetDlgItem(h, IDOK), !browseBusy);
+    SetDlgItemTextW(h, WsSourceHint, local
+        ? L"Windows 本地工作空间根目录 · 单击查看，双击或“浏览…”选择"
+        : L"远程 Linux 项目目录 · 单击查看，双击或下拉选择");
+    InvalidateRect(GetDlgItem(h, WsModeRemote), nullptr, FALSE);
+    InvalidateRect(GetDlgItem(h, WsModeLocal), nullptr, FALSE);
+}
+void AiPane::BrowseWorkspaceDialogPath(HWND h, const std::wstring &path, bool initial) {
+    if (workspaceDialogIsLocal_) {
+        directoryFallbackTried_ = false;
+        PopulateLocalDirectoryListing(h, path, workspaceAccept_);
+        return;
+    }
+    const bool allowDotHomeProbe = (path == L"." && directoryFallbackTried_);
+    if (!allowDotHomeProbe && !ai::ValidRemoteWorkspacePath(Utf8(path))) {
+        DirectoryFailure(L"请填写 Linux 绝对路径，例如 /home/linux/project");
+        return;
+    }
+    if (!allowDotHomeProbe) {
+        workspaceDialogRemotePath_ = path;
+    }
+    const bool preferExplicitSsh = !workspaceDialogSshSessionId_.empty() && bool(remoteFsRunner_);
+    const bool preferCodexRpc = !preferExplicitSsh && !allowDotHomeProbe &&
+                                !settings_.localMode && client_.Ready() &&
+                                settings_.provider == ai::AiProvider::Codex;
+    if (preferCodexRpc) {
+        BrowseDirectory(path, initial);
+        return;
+    }
+    const bool hasAiSsh = !settings_.localMode &&
+                          (client_.Ready() || (!settings_.host.empty() && settings_.port > 0 && !settings_.username.empty()));
+    const bool useSftp = bool(remoteFsRunner_) &&
+                         (preferExplicitSsh || hasAiSsh || (settings_.localMode && !workspaceDialogSshSessions_.empty()));
+    if (useSftp) {
+        std::string targetSid = workspaceDialogSshSessionId_;
+        if (targetSid.empty() && !settings_.localMode) targetSid = "ai-settings";
+        directoryPath_ = path;
+        directoryInitial_ = initial;
+        directoryPending_ = true;
+        directoryDeadline_ = GetTickCount64() + 10000;
+        const auto seq = ++workspaceBrowseSeq_;
+        SetDlgItemTextW(h, Note,
+            preferExplicitSsh
+                ? L"正在通过关联 SSH 会话 SFTP 浏览远程目录…"
+                : (!settings_.localMode ? L"正在通过远程 AI SSH 连接 SFTP 浏览目录…" : L"正在通过已连接 SSH 终端 SFTP 浏览远程目录…"));
+        RefreshWorkspaceDialogControls(h);
+        remoteFsRunner_("list", {{"sessionId", targetSid}, {"path", Utf8(path)}},
+                        [this, seq](Json res) {
+                            AsyncWorkResult work;
+                            work.kind = AsyncWorkResult::Kind::RemoteFsList;
+                            work.seq = seq;
+                            work.result = std::move(res);
+                            EnqueueAsyncWork(std::move(work));
+                        });
+        UpdateActions();
+        return;
+    }
+    directoryPending_ = false;
+    directoryFallbackTried_ = false;
+    keepDirectoryDropdownOpen_ = false;
+    directoryChildren_ = Json::array();
+    verifiedDirectory_ = allowDotHomeProbe ? std::wstring() : path;
+    PopulateDirectories(false);
+    SetDlgItemTextW(h, Note, settings_.localMode
+        ? L"当前未检测到已连接的 SSH 终端会话；可先连接 SSH 终端浏览，或手动填写远程 Linux 路径后切换。"
+        : L"当前未配置远程 AI 的 SSH 凭据且未选择 SSH 终端；已记录手动填写的远程路径。");
+    RefreshWorkspaceDialogControls(h);
+    if (workspaceAccept_) {
+        workspaceAccept_ = false;
+        CommitWorkspaceDialogSelection(h);
+    }
+}
+void AiPane::CommitWorkspaceDialogSelection(HWND h) {
+    const auto path = Text(GetDlgItem(h, PathDisplay));
+    if (workspaceDialogIsLocal_) {
+        std::wstring resolved;
+        std::string err;
+        if (!ai::ResolveAndValidateLocalRoot(path, resolved, err)) {
+            SetDlgItemTextW(h, Note, Wide(err).c_str());
+            return;
+        }
+        workspaceDialogLocalPath_ = resolved;
+        workspaceDialogReadOnly_ = IsDlgButtonChecked(h, WsLocalReadOnly) == BST_CHECKED;
+        directoryPath_ = resolved;
+    } else {
+        if (!path.empty() && !ai::ValidRemoteWorkspacePath(Utf8(path))) {
+            SetDlgItemTextW(h, Note, L"请填写有效的 Linux 绝对路径，例如 /home/linux/project");
+            return;
+        }
+        workspaceDialogRemotePath_ = path.empty() ? L"/home/linux/workspace" : path;
+        directoryPath_ = workspaceDialogRemotePath_;
+    }
+    UiEndOwnedDialog(h, IDOK);
+}
 bool AiPane::ChooseWorkspace() {
-    if (!client_.Ready() || busy_ || directoryPending_ || workspaceDialog_ || dialog_) return false;
+    if (busy_ || directoryPending_ || workspaceDialog_ || dialog_) return false;
     EmptyDialog dialog;
     const auto result = UiDialogBoxIndirectOwned(GetModuleHandleW(nullptr), &dialog.dialog, GetAncestor(window_, GA_ROOT),
         WorkspaceProc, reinterpret_cast<LPARAM>(this));
     if (result != IDOK) return false;
+    const bool sameSettings = workspaceDialogIsLocal_ == workspaceIsLocal_ &&
+                              (!workspaceDialogIsLocal_ ||
+                               (workspaceDialogLocalPath_ == localWorkspaceDirectory_ &&
+                                workspaceDialogReadOnly_ == localWorkspaceReadOnly_)) &&
+                              (workspaceDialogIsLocal_ ||
+                               (workspaceDialogRemotePath_ == remoteWorkspaceDirectory_ &&
+                                workspaceDialogSshSessionId_ == remoteSshSessionId_));
+    if (client_.Ready() && !sameSettings) {
+        pendingWorkspaceIsLocal_ = workspaceDialogIsLocal_;
+        pendingWorkspaceReadOnly_ = workspaceDialogReadOnly_;
+        pendingWorkspaceLocal_ = workspaceDialogLocalPath_;
+        pendingWorkspaceRemote_ = workspaceDialogRemotePath_;
+        pendingWorkspaceSshSession_ = workspaceDialogSshSessionId_;
+        BeginWorkspaceConversation(directoryPath_);
+    } else if (!sameSettings || !client_.Ready()) {
+        ApplyWorkspaceSelection(workspaceDialogIsLocal_, workspaceDialogReadOnly_,
+                                workspaceDialogLocalPath_, workspaceDialogRemotePath_,
+                                workspaceDialogSshSessionId_);
+        if (!sameSettings && !thread_.empty()) NewConversation();
+        SetStatus((workspaceIsLocal_ ? L"已设置本地工作空间 · " : L"已设置远程工作空间 · ") +
+                  (ActiveWorkspaceDirectory().empty() ? L"未指定" : ActiveWorkspaceDirectory()));
+        LoadWorkspacePractices(true);
+        Layout();
+        UpdateActions();
+    }
     return true;
 }
 void AiPane::BeginWorkspaceConversation(const std::wstring& path) {
-    if (busy_ || !client_.Ready() || !ai::ValidWorkspacePath(Utf8(path))) return;
+    if (busy_ || !client_.Ready() || !ai::ValidWorkspacePath(Utf8(path), pendingWorkspaceIsLocal_)) return;
     pendingWorkspace_ = path;
     stopRequested_ = false;
-    if (Request(ai::Operation::NewConversation, {{"cwd", Utf8(path)}, {"defaultModel", serverDefaultModel_}}, "workspace-start")) {
+    const bool savedLocal = workspaceIsLocal_;
+    const auto savedLocalDir = localWorkspaceDirectory_;
+    const auto savedRemoteDir = remoteWorkspaceDirectory_;
+    workspaceIsLocal_ = pendingWorkspaceIsLocal_;
+    if (!pendingWorkspaceLocal_.empty()) localWorkspaceDirectory_ = pendingWorkspaceLocal_;
+    if (!pendingWorkspaceRemote_.empty()) remoteWorkspaceDirectory_ = pendingWorkspaceRemote_;
+    const std::string aiCwd = ProcessCwdForAi();
+    workspaceIsLocal_ = savedLocal;
+    localWorkspaceDirectory_ = savedLocalDir;
+    remoteWorkspaceDirectory_ = savedRemoteDir;
+    if (Request(ai::Operation::NewConversation, {{"cwd", aiCwd}, {"defaultModel", ActiveModel()}, {"effort", ActiveEffort()}}, "workspace-start")) {
         busy_ = true;
         SetStatus(L"正在验证并创建工作空间会话；失败时保留原对话");
     } else pendingWorkspace_.clear();
@@ -3258,15 +4945,53 @@ void AiPane::LoadWorkspacePractices(bool forceReload) {
     agentsSnapshotValid_ = false;
     workspacePractices_.clear();
     hasRollbackSnapshot_ = false;
-    if (!client_.Ready() || workspaceDirectory_.empty() || agentsWritePending_ || (!autoWorkspacePractices_ && !forceReload)) return;
-    Request(ai::Operation::RunCommand,
-        {{"command", Json::array({"sh", "-c", ai::WorkspaceReadCommand()})},
-         {"cwd", Utf8(workspaceDirectory_)}, {"timeoutMs", 3000}, {"outputBytesCap", 131072}},
-        "read-workspace-agents");
+    const auto activeDir = ActiveWorkspaceDirectory();
+    if (activeDir.empty() || agentsWritePending_ || (!autoWorkspacePractices_ && !forceReload)) return;
+    if (workspaceIsLocal_) {
+        bool exists = false;
+        std::string content, err;
+        if (ai::ReadLocalAgentsMd(activeDir, exists, content, err)) {
+            agentsFileExists_ = exists;
+            currentAgentsMdContent_ = std::move(content);
+            agentsSnapshotValid_ = true;
+            workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+            SetStatus(exists ? L"已从本地工作空间加载 AGENTS.md 受管经验"
+                             : L"本地工作空间暂无 AGENTS.md（需要时可自动创建）");
+        } else {
+            SetStatus(L"无法安全读取本地 AGENTS.md：" + Wide(err));
+        }
+        UpdateActions();
+        return;
+    }
+    if (!settings_.localMode && settings_.provider == ai::AiProvider::Codex && client_.Ready()) {
+        Request(ai::Operation::RunCommand,
+            {{"command", Json::array({"sh", "-c", ai::WorkspaceReadCommand()})},
+             {"cwd", Utf8(activeDir)}, {"timeoutMs", 3000}, {"outputBytesCap", 131072}},
+            "read-workspace-agents");
+        return;
+    }
+    const std::string targetSid = RemoteFsTargetSessionId();
+    const bool hasAiSsh = !settings_.localMode &&
+        (client_.Ready() || (!settings_.host.empty() && settings_.port > 0 && !settings_.username.empty()));
+    if (remoteFsRunner_ && (!remoteSshSessionId_.empty() || settings_.localMode || hasAiSsh)) {
+        remoteFsRunner_("read_agents", {{"sessionId", targetSid}, {"path", Utf8(activeDir)}},
+                        [this, ws = activeDir](Json res) {
+                            AsyncWorkResult work;
+                            work.kind = AsyncWorkResult::Kind::RemoteFsReadAgents;
+                            work.workspace = ws;
+                            work.result = std::move(res);
+                            EnqueueAsyncWork(std::move(work));
+                        });
+    }
 }
 bool AiPane::SaveWorkspacePractice(const std::wstring& entry) {
-    if (!client_.Ready() || workspaceDirectory_.empty() || !agentsSnapshotValid_ || agentsWritePending_) {
+    const auto activeDir = ActiveWorkspaceDirectory();
+    if (activeDir.empty() || !agentsSnapshotValid_ || agentsWritePending_) {
         SetStatus(L"工作空间经验尚未读取或正在写入；本次未记录");
+        return false;
+    }
+    if (workspaceIsLocal_ && localWorkspaceReadOnly_) {
+        SetStatus(L"本地工作空间当前为只读模式，已跳过写入 AGENTS.md");
         return false;
     }
     const auto sanitized = ai::SanitizePracticeEntry(Utf8(entry));
@@ -3276,24 +5001,125 @@ bool AiPane::SaveWorkspacePractice(const std::wstring& entry) {
     }
     pendingAgentsContent_ = ai::MergeManagedBlock(currentAgentsMdContent_, {sanitized});
     pendingAgentsExists_ = true;
-    const auto cmd = ai::WorkspaceReplaceCommand(currentAgentsMdContent_, agentsFileExists_, pendingAgentsContent_, true);
-    agentsWritePending_ = Request(ai::Operation::RunCommand,
-        {{"command", Json::array({"sh", "-c", cmd})}, {"cwd", Utf8(workspaceDirectory_)},
-         {"timeoutMs", 5000}, {"outputBytesCap", 4096}}, "save-workspace-agents");
-    return agentsWritePending_;
+    if (workspaceIsLocal_) {
+        std::string err;
+        if (ai::ReplaceLocalAgentsMd(activeDir, currentAgentsMdContent_, agentsFileExists_,
+                                     pendingAgentsContent_, true, err)) {
+            rollbackAgentsMdSnapshot_ = currentAgentsMdContent_;
+            rollbackAgentsFileExists_ = agentsFileExists_;
+            hasRollbackSnapshot_ = true;
+            currentAgentsMdContent_ = pendingAgentsContent_;
+            agentsFileExists_ = true;
+            workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+            SetStatus(L"已原子更新本地工作空间 AGENTS.md");
+            pendingAgentsContent_.clear();
+            UpdateActions();
+            return true;
+        }
+        agentsSnapshotValid_ = false;
+        SetStatus(L"本地 AGENTS.md 更新失败：" + Wide(err));
+        pendingAgentsContent_.clear();
+        UpdateActions();
+        return false;
+    }
+    if (!settings_.localMode && settings_.provider == ai::AiProvider::Codex && client_.Ready()) {
+        const auto cmd = ai::WorkspaceReplaceCommand(currentAgentsMdContent_, agentsFileExists_, pendingAgentsContent_, true);
+        agentsWritePending_ = Request(ai::Operation::RunCommand,
+            {{"command", Json::array({"sh", "-c", cmd})}, {"cwd", Utf8(activeDir)},
+             {"timeoutMs", 5000}, {"outputBytesCap", 4096}}, "save-workspace-agents");
+        return agentsWritePending_;
+    }
+    if (remoteFsRunner_) {
+        const std::string targetSid = RemoteFsTargetSessionId();
+        agentsWritePending_ = true;
+        remoteFsRunner_("write_agents",
+                        {{"sessionId", targetSid},
+                         {"path", Utf8(activeDir)},
+                         {"expectedExists", agentsFileExists_},
+                         {"expectedContent", currentAgentsMdContent_},
+                         {"nextExists", true},
+                         {"nextContent", pendingAgentsContent_}},
+                        [this, ws = activeDir, next = pendingAgentsContent_](Json res) {
+                            AsyncWorkResult work;
+                            work.kind = AsyncWorkResult::Kind::RemoteFsWriteAgents;
+                            work.workspace = ws;
+                            work.saveRollback = true;
+                            work.pendingAgents = next;
+                            work.pendingAgentsExists = true;
+                            work.result = std::move(res);
+                            EnqueueAsyncWork(std::move(work));
+                        });
+        UpdateActions();
+        return true;
+    }
+    SetStatus(L"当前无法写入远程 AGENTS.md：请先连接 AI 或在工作空间设置关联 SSH 会话");
+    pendingAgentsContent_.clear();
+    return false;
 }
 bool AiPane::RollbackWorkspacePractices() {
-    if (!client_.Ready() || workspaceDirectory_.empty() || !agentsSnapshotValid_ || agentsWritePending_ || !hasRollbackSnapshot_) {
+    const auto activeDir = ActiveWorkspaceDirectory();
+    if (activeDir.empty() || !agentsSnapshotValid_ || agentsWritePending_ || !hasRollbackSnapshot_) {
         SetStatus(L"暂无可安全回滚的 AGENTS.md 快照");
+        return false;
+    }
+    if (workspaceIsLocal_ && localWorkspaceReadOnly_) {
+        SetStatus(L"本地工作空间当前为只读模式，已禁止修改 AGENTS.md");
         return false;
     }
     pendingAgentsContent_ = rollbackAgentsMdSnapshot_;
     pendingAgentsExists_ = rollbackAgentsFileExists_;
-    const auto cmd = ai::WorkspaceReplaceCommand(currentAgentsMdContent_, agentsFileExists_, pendingAgentsContent_, pendingAgentsExists_);
-    agentsWritePending_ = Request(ai::Operation::RunCommand,
-        {{"command", Json::array({"sh", "-c", cmd})}, {"cwd", Utf8(workspaceDirectory_)},
-         {"timeoutMs", 5000}, {"outputBytesCap", 4096}}, "rollback-workspace-agents");
-    return agentsWritePending_;
+    if (workspaceIsLocal_) {
+        std::string err;
+        if (ai::ReplaceLocalAgentsMd(activeDir, currentAgentsMdContent_, agentsFileExists_,
+                                     pendingAgentsContent_, pendingAgentsExists_, err)) {
+            hasRollbackSnapshot_ = false;
+            currentAgentsMdContent_ = pendingAgentsContent_;
+            agentsFileExists_ = pendingAgentsExists_;
+            workspacePractices_ = ai::ExtractManagedBlock(currentAgentsMdContent_).managedContent;
+            SetStatus(L"已撤销最近一次本地 AGENTS.md 更新");
+            pendingAgentsContent_.clear();
+            UpdateActions();
+            return true;
+        }
+        agentsSnapshotValid_ = false;
+        SetStatus(L"本地 AGENTS.md 回滚失败：" + Wide(err));
+        pendingAgentsContent_.clear();
+        UpdateActions();
+        return false;
+    }
+    if (!settings_.localMode && settings_.provider == ai::AiProvider::Codex && client_.Ready()) {
+        const auto cmd = ai::WorkspaceReplaceCommand(currentAgentsMdContent_, agentsFileExists_, pendingAgentsContent_, pendingAgentsExists_);
+        agentsWritePending_ = Request(ai::Operation::RunCommand,
+            {{"command", Json::array({"sh", "-c", cmd})}, {"cwd", Utf8(activeDir)},
+             {"timeoutMs", 5000}, {"outputBytesCap", 4096}}, "rollback-workspace-agents");
+        return agentsWritePending_;
+    }
+    if (remoteFsRunner_) {
+        const std::string targetSid = RemoteFsTargetSessionId();
+        agentsWritePending_ = true;
+        remoteFsRunner_("write_agents",
+                        {{"sessionId", targetSid},
+                         {"path", Utf8(activeDir)},
+                         {"expectedExists", agentsFileExists_},
+                         {"expectedContent", currentAgentsMdContent_},
+                         {"nextExists", pendingAgentsExists_},
+                         {"nextContent", pendingAgentsContent_}},
+                        [this, ws = activeDir, next = pendingAgentsContent_, nextExists = pendingAgentsExists_](Json res) {
+                            AsyncWorkResult work;
+                            work.kind = AsyncWorkResult::Kind::RemoteFsWriteAgents;
+                            work.workspace = ws;
+                            work.saveRollback = false;
+                            work.pendingAgents = next;
+                            work.pendingAgentsExists = nextExists;
+                            work.result = std::move(res);
+                            EnqueueAsyncWork(std::move(work));
+                        });
+        UpdateActions();
+        return true;
+    }
+    SetStatus(L"当前无法回滚远程 AGENTS.md：请先连接 AI 或在工作空间设置关联 SSH 会话");
+    pendingAgentsContent_.clear();
+    return false;
 }
 INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto self = reinterpret_cast<AiPane *>(GetWindowLongPtrW(h, DWLP_USER));
@@ -3303,75 +5129,198 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         self->workspaceDialog_ = h;
         self->workspaceAccept_ = false;
         self->keepDirectoryDropdownOpen_ = false;
-        SetWindowTextW(h, L"选择 AI 工作空间");
-        UiResizeDialog(h, self->dpi_, 436, 256);
+        self->workspaceDialogIsLocal_ = self->workspaceIsLocal_;
+        self->workspaceDialogReadOnly_ = self->localWorkspaceReadOnly_;
+        self->workspaceDialogLocalPath_ = self->localWorkspaceDirectory_.empty() ? DefaultLocalWorkspaceFallback() : self->localWorkspaceDirectory_;
+        self->workspaceDialogRemotePath_ = self->remoteWorkspaceDirectory_.empty()
+            ? (self->serverHome_.empty() ? L"/home/linux/workspace" : self->serverHome_)
+            : self->remoteWorkspaceDirectory_;
+        self->workspaceDialogSshSessionId_ = self->remoteSshSessionId_;
+        self->workspaceDialogSshSessions_.clear();
+        SetWindowTextW(h, L"切换 AI 工作空间（本地 / 远程）");
+        UiResizeDialog(h, self->dpi_, 456, 332);
         auto add = [&](const wchar_t *type, const wchar_t *text, int id, int x, int y, int width, int height, DWORD extra) {
             auto c = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | extra, self->D(x), self->D(y), self->D(width), self->D(height),
                 h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
             SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(self->font_), FALSE);
             if (_wcsicmp(type,L"COMBOBOX") == 0) UiStyleField(c, &self->style_);
-            if (_wcsicmp(type,L"BUTTON") == 0) UiStyleButton(c);
+            if (_wcsicmp(type,L"BUTTON") == 0) {
+                if ((extra & BS_TYPEMASK) == BS_AUTOCHECKBOX) UiStyleCheckBox(c, &self->style_, true);
+                else UiStyleButton(c);
+            }
             return c;
         };
-        add(L"STATIC",L"服务器项目目录 · 单击查看，双击编辑",-1,16,16,404,24,0);
-        UiPathField::Create(h,PathDisplay,self->D(16),self->D(40),self->D(404),self->D(28),&self->style_);
-        auto combo = add(L"COMBOBOX",L"",Directory,16,80,252,240,CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
-        {UiLayoutBatch fields;fields.ComboVisibleHeight(combo,self->D(28));fields.Commit();}
-        SendMessageW(combo,CB_SETDROPPEDWIDTH,self->D(404),0);
-        SendMessageW(combo,CB_LIMITTEXT,4096,0);
-        add(L"BUTTON",L"上一级",DirectoryUp,280,80,64,28,BS_OWNERDRAW | WS_TABSTOP);
-        UiSetButtonGlyph(add(L"BUTTON",L"刷新",DirectoryRefresh,356,80,64,28,BS_OWNERDRAW | WS_TABSTOP), UiGlyph::Refresh, L"刷新目录");
-        add(L"STATIC",L"单击查看完整路径，双击编辑。切换成功后新建会话，失败保留原会话。",Note,16,124,404,56,0);
-        add(L"BUTTON",L"取消",IDCANCEL,216,204,96,36,BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON",L"切换",IDOK,324,204,96,36,BS_OWNERDRAW | WS_TABSTOP);
-        auto path = self->workspaceDirectory_.empty() ? self->settings_.workingDirectory : self->workspaceDirectory_;
-        if (path.empty()) path = L"/home/linux/workspace";
-        SetDlgItemTextW(h,PathDisplay,path.c_str());
-        EnableWindow(GetDlgItem(h, IDOK), FALSE);
-        Center(h,GetWindow(h,GW_OWNER));
-        UiDialogViewport::Fit(h,self->dpi_);
+        add(L"BUTTON", L"远程工作空间 (SSH)", WsModeRemote, 16, 14, 208, 28, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", L"本地工作空间 (Windows)", WsModeLocal, 232, 14, 208, 28, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"STATIC", L"", WsSourceHint, 16, 52, 424, 20, 0);
+        UiPathField::Create(h, PathDisplay, self->D(16), self->D(74), self->D(348), self->D(28), &self->style_);
+        UiSetButtonGlyph(add(L"BUTTON", L"浏览…", WsBrowseLocal, 372, 74, 68, 28, BS_OWNERDRAW | WS_TABSTOP), UiGlyph::Folder, L"浏览本地文件夹");
+        auto combo = add(L"COMBOBOX", L"", Directory, 16, 112, 272, 240, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
+        UiSetButtonGlyph(add(L"BUTTON", L"上一级", DirectoryUp, 296, 112, 68, 28, BS_OWNERDRAW | WS_TABSTOP), UiGlyph::ArrowUp, L"返回上一级目录");
+        UiSetButtonGlyph(add(L"BUTTON", L"刷新", DirectoryRefresh, 372, 112, 68, 28, BS_OWNERDRAW | WS_TABSTOP), UiGlyph::Refresh, L"刷新目录");
+        add(L"BUTTON", L"仅只读浏览（禁止 AI 修改本地文件及执行 workspace.exec 命令）", WsLocalReadOnly, 16, 152, 424, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
+        CheckDlgButton(h, WsLocalReadOnly, self->workspaceDialogReadOnly_ ? BST_CHECKED : BST_UNCHECKED);
+        add(L"STATIC", L"关联 SSH 会话", WsSshLabel, 16, 152, 124, 28, SS_CENTERIMAGE);
+        auto sshCombo = add(L"COMBOBOX", L"", WsSshCombo, 144, 152, 296, 180, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
+        {
+            UiLayoutBatch fields;
+            fields.ComboVisibleHeight(combo, self->D(28));
+            fields.ComboVisibleHeight(sshCombo, self->D(28));
+            fields.Commit();
+        }
+        SendMessageW(combo, CB_SETDROPPEDWIDTH, self->D(424), 0);
+        SendMessageW(combo, CB_LIMITTEXT, 4096, 0);
+        int sshSel = 0;
+        if (self->devices_) {
+            const auto list = self->devices_("remote_fs.sessions", Json::object());
+            if (list.is_array()) {
+                for (const auto &item : list) {
+                    RemoteSshOption opt;
+                    opt.id = item.value("id", std::string());
+                    opt.label = Wide(item.value("name", std::string()) + " (" + item.value("host", std::string()) + ")");
+                    opt.directory = Wide(item.value("directory", std::string()));
+                    if (!opt.id.empty()) {
+                        if (opt.id == self->workspaceDialogSshSessionId_)
+                            sshSel = static_cast<int>(self->workspaceDialogSshSessions_.size()) + 1;
+                        self->workspaceDialogSshSessions_.push_back(opt);
+                    }
+                }
+            }
+        }
+        const wchar_t *defaultSshLabel = !self->settings_.localMode
+            ? L"使用当前远程 AI 连接 (默认)"
+            : (self->workspaceDialogSshSessions_.empty()
+                   ? L"选择已连接的 SSH 终端（当前无已连接 SSH 会话）"
+                   : L"自动使用当前活动 SSH 终端 (默认)");
+        SendMessageW(sshCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(defaultSshLabel));
+        for (const auto &opt : self->workspaceDialogSshSessions_) {
+            SendMessageW(sshCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(opt.label.c_str()));
+        }
+        if (sshSel == 0) self->workspaceDialogSshSessionId_.clear();
+        SendMessageW(sshCombo, CB_SETCURSEL, sshSel, 0);
+        add(L"STATIC", L"本地/远程工作空间与 AI 连接方式完全独立解耦；切换将隔离新建会话，不断开当前 AI。", Note, 16, 192, 424, 72, 0);
+        add(L"BUTTON", L"取消", IDCANCEL, 236, 280, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", L"切换", IDOK, 344, 280, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
+        const auto initPath = self->workspaceDialogIsLocal_ ? self->workspaceDialogLocalPath_ : self->workspaceDialogRemotePath_;
+        SetDlgItemTextW(h, PathDisplay, initPath.c_str());
+        self->ResetWorkspaceDirectoryListing();
+        self->RefreshWorkspaceDialogControls(h);
+        Center(h, GetWindow(h, GW_OWNER));
+        UiDialogViewport::Fit(h, self->dpi_);
         UiRunAfterFirstPaint(h);
         return TRUE;
     }
     if (!self) return FALSE;
     if (m == UiFirstPaintReady) {
-        self->BrowseDirectory(Text(GetDlgItem(h, PathDisplay)));
-        SetTimer(h,1,100,nullptr);
+        self->BrowseWorkspaceDialogPath(h, Text(GetDlgItem(h, PathDisplay)), true);
+        SetTimer(h, 1, 100, nullptr);
         return TRUE;
     }
     if (m == WM_TIMER) {
-        EnableWindow(GetDlgItem(h,IDOK), self->client_.Ready() && !self->directoryPending_);
-        for (int id : {Directory,DirectoryUp,DirectoryRefresh}) EnableWindow(GetDlgItem(h,id),self->client_.Ready() && !self->directoryPending_);
+        self->RefreshWorkspaceDialogControls(h);
         return TRUE;
     }
     if (self->DirectoryMessage(h,m,w)) return TRUE;
     if (m == WM_COMMAND) {
-        const int id = LOWORD(w);
-        if (id == IDCANCEL) { self->workspaceAccept_ = false; self->keepDirectoryDropdownOpen_ = false; UiEndOwnedDialog(h,IDCANCEL); return TRUE; }
+        const int id = LOWORD(w), note = HIWORD(w);
+        if (id == IDCANCEL) { self->ResetWorkspaceDirectoryListing(); UiEndOwnedDialog(h,IDCANCEL); return TRUE; }
+        if (id == WsModeRemote || id == WsModeLocal) {
+            const bool nextLocal = (id == WsModeLocal);
+            if (nextLocal != self->workspaceDialogIsLocal_) {
+                if (self->workspaceDialogIsLocal_) {
+                    self->workspaceDialogLocalPath_ = Text(GetDlgItem(h, PathDisplay));
+                    self->workspaceDialogReadOnly_ = IsDlgButtonChecked(h, WsLocalReadOnly) == BST_CHECKED;
+                } else {
+                    self->workspaceDialogRemotePath_ = Text(GetDlgItem(h, PathDisplay));
+                }
+                self->ResetWorkspaceDirectoryListing();
+                self->workspaceDialogIsLocal_ = nextLocal;
+                const auto nextPath = nextLocal ? self->workspaceDialogLocalPath_ : self->workspaceDialogRemotePath_;
+                SetDlgItemTextW(h, PathDisplay, nextPath.c_str());
+                self->RefreshWorkspaceDialogControls(h);
+                self->BrowseWorkspaceDialogPath(h, nextPath, true);
+            }
+            return TRUE;
+        }
+        if (id == WsSshCombo && (note == CBN_SELENDOK || note == CBN_SELCHANGE)) {
+            const auto sel = static_cast<int>(SendDlgItemMessageW(h, WsSshCombo, CB_GETCURSEL, 0, 0));
+            std::string nextSid;
+            std::wstring nextAutoDir;
+            if (sel > 0 && static_cast<size_t>(sel - 1) < self->workspaceDialogSshSessions_.size()) {
+                const auto &opt = self->workspaceDialogSshSessions_[static_cast<size_t>(sel - 1)];
+                nextSid = opt.id;
+                nextAutoDir = opt.directory;
+            }
+            const bool changed = (nextSid != self->workspaceDialogSshSessionId_);
+            self->workspaceDialogSshSessionId_ = std::move(nextSid);
+            if (!self->workspaceDialogIsLocal_ && !nextAutoDir.empty() &&
+                (self->workspaceDialogRemotePath_.empty() || self->workspaceDialogRemotePath_ == L"/home/linux/workspace") &&
+                ai::ValidRemoteWorkspacePath(Utf8(nextAutoDir))) {
+                self->workspaceDialogRemotePath_ = nextAutoDir;
+                SetDlgItemTextW(h, PathDisplay, nextAutoDir.c_str());
+            }
+            if (!self->workspaceDialogIsLocal_ && (changed || self->directoryChildren_.empty())) {
+                self->ResetWorkspaceDirectoryListing();
+                self->RefreshWorkspaceDialogControls(h);
+                self->BrowseWorkspaceDialogPath(h, Text(GetDlgItem(h, PathDisplay)), true);
+            }
+            return TRUE;
+        }
         if (self->directoryPending_) return TRUE;
+        if (id == WsBrowseLocal) {
+            const auto picked = BrowseLocalWorkspaceFolder(h, Text(GetDlgItem(h, PathDisplay)));
+            if (!picked.empty()) {
+                const auto norm = Wide(ai::NormalizeLocalWorkspacePathUtf8(Utf8(picked)));
+                SetDlgItemTextW(h, PathDisplay, (norm.empty() ? picked : norm).c_str());
+                self->BrowseWorkspaceDialogPath(h, norm.empty() ? picked : norm, false);
+            }
+            return TRUE;
+        }
+        if (id == WsLocalReadOnly && note == BN_CLICKED) {
+            self->workspaceDialogReadOnly_ = IsDlgButtonChecked(h, WsLocalReadOnly) == BST_CHECKED;
+            return TRUE;
+        }
         const auto path = Text(GetDlgItem(h,PathDisplay));
         if (id == IDOK) {
             self->keepDirectoryDropdownOpen_ = false;
-            if (path.empty()) { self->directoryPath_.clear(); UiEndOwnedDialog(h,IDOK); }
-            else if (path == self->verifiedDirectory_) { self->directoryPath_ = path; UiEndOwnedDialog(h,IDOK); }
-            else { self->workspaceAccept_ = true; self->BrowseDirectory(path); }
+            if (!self->workspaceDialogIsLocal_ && !path.empty() && path != self->verifiedDirectory_ &&
+                self->CanBrowseRemoteWorkspaceInDialog()) {
+                self->workspaceAccept_ = true;
+                self->BrowseWorkspaceDialogPath(h, path, false);
+            } else {
+                self->CommitWorkspaceDialogSelection(h);
+            }
         } else if (id == DirectoryUp || id == DirectoryRefresh) {
             const bool wasDropped = SendDlgItemMessageW(h, Directory, CB_GETDROPPEDSTATE, 0, 0) != 0;
             if (wasDropped || self->keepDirectoryDropdownOpen_) self->keepDirectoryDropdownOpen_ = true;
-            if (id == DirectoryUp) self->BrowseDirectory(Wide(ai::WorkspaceParent(Utf8(path))));
-            else self->BrowseDirectory(path);
+            if (id == DirectoryUp) {
+                if (self->workspaceDialogIsLocal_) {
+                    const auto norm = Wide(ai::NormalizeLocalWorkspacePathUtf8(Utf8(path)));
+                    const auto parent = Wide(ai::WorkspaceParent(Utf8(norm)));
+                    self->BrowseWorkspaceDialogPath(h, (!norm.empty() && parent == norm) ? std::wstring() : parent, false);
+                } else {
+                    self->BrowseWorkspaceDialogPath(h, Wide(ai::WorkspaceParent(Utf8(path))), false);
+                }
+            } else {
+                self->BrowseWorkspaceDialogPath(h, path, false);
+            }
         }
-
         return TRUE;
     }
-    if (m == WM_CLOSE) { self->keepDirectoryDropdownOpen_ = false; SendMessageW(h,WM_COMMAND,IDCANCEL,0); return TRUE; }
+    if (m == WM_CLOSE) { self->ResetWorkspaceDirectoryListing(); SendMessageW(h,WM_COMMAND,IDCANCEL,0); return TRUE; }
     if (m == WM_DRAWITEM) return SendMessageW(self->window_,m,w,l);
-    if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORDLG) {
+    if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORBTN || m == WM_CTLCOLORDLG) {
         const auto c=UiAiTheme(self->dark_); auto dc=reinterpret_cast<HDC>(w); const bool field=EditColorMessage(m,l);
+        SetBkMode(dc, m == WM_CTLCOLORBTN ? TRANSPARENT : OPAQUE);
         SetTextColor(dc,c.text); SetBkColor(dc,field?c.field:c.surface);
         return reinterpret_cast<INT_PTR>(field?self->fieldBrush_:self->surfaceBrush_);
     }
-    if (m == WM_DESTROY) { KillTimer(h,1); self->workspaceDialog_=nullptr; self->workspaceAccept_=false; self->keepDirectoryDropdownOpen_ = false; return TRUE; }
+    if (m == WM_DESTROY) {
+        KillTimer(h, 1);
+        self->workspaceDialog_ = nullptr;
+        self->ResetWorkspaceDirectoryListing();
+        return TRUE;
+    }
     return FALSE;
 }
 void AiPane::ShowConnection() {
@@ -3394,8 +5343,8 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SetWindowLongPtrW(h, DWLP_USER, l);
         self->dialog_ = h;
         self->dialogEnter_ = false;
-        SetWindowTextW(h, L"连接 AI 服务器");
-        UiResizeDialog(h, self->dpi_, 436, 456);
+        SetWindowTextW(h, L"连接 AI 服务");
+        UiResizeDialog(h, self->dpi_, 436, 524);
         auto add = [&](const wchar_t *type, const wchar_t *label, int id, int x, int y, int width, int height,
                        DWORD style = 0) {
             auto c = CreateWindowExW(
@@ -3412,26 +5361,36 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 UiStyleField(c, &self->style_);
             return c;
         };
-        add(L"STATIC", L"服务器地址 · 一体化平台网站 IP 地址", -1, 16, 16, 404, 24);
-        add(L"EDIT", self->settings_.host.c_str(), Host, 16, 40, 404, 28, ES_AUTOHSCROLL | WS_TABSTOP);
-        add(L"STATIC", self->settings_.platformMode?L"SSH 端口 · 员工工号":L"SSH 端口 · 直接连接", PortLabel, 16, 84, 196, 24);
-        add(L"STATIC", L"用户名 · 默认 linux", -1, 224, 84, 196, 24);
-        add(L"EDIT", (self->settings_.platformMode?self->settings_.employeeNumber:std::to_wstring(self->settings_.port)).c_str(), Port, 16, 108, 196, 28, ES_NUMBER | WS_TABSTOP);
-        add(L"EDIT", self->settings_.username.c_str(), Username, 224, 108, 196, 28, ES_AUTOHSCROLL | WS_TABSTOP);
-        add(L"STATIC", L"密码 · 云机密码", -1, 16, 152, 404, 24);
-        add(L"EDIT", self->settings_.password.c_str(), Password, 16, 176, 404, 28,
+        add(L"STATIC", L"AI 服务", -1, 16, 16, 196, 24);
+        add(L"STATIC", L"连接方式", -1, 224, 16, 196, 24);
+        const auto providerCombo = add(L"COMBOBOX", L"", ProviderCombo, 16, 40, 196, 120, CBS_DROPDOWNLIST | WS_TABSTOP);
+        SendMessageW(providerCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Codex（默认）"));
+        SendMessageW(providerCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Antigravity"));
+        SendMessageW(providerCombo, CB_SETCURSEL, self->settings_.provider == ai::AiProvider::Antigravity ? 1 : 0, 0);
+        const auto connModeCombo = add(L"COMBOBOX", L"", ConnModeCombo, 224, 40, 196, 120, CBS_DROPDOWNLIST | WS_TABSTOP);
+        SendMessageW(connModeCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"远程 SSH（默认）"));
+        SendMessageW(connModeCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"本机直接运行"));
+        SendMessageW(connModeCombo, CB_SETCURSEL, self->settings_.localMode ? 1 : 0, 0);
+        add(L"STATIC", L"服务器地址 · 一体化平台网站 IP 地址", -1, 16, 84, 404, 24);
+        add(L"EDIT", self->settings_.host.c_str(), Host, 16, 108, 404, 28, ES_AUTOHSCROLL | WS_TABSTOP);
+        add(L"STATIC", self->settings_.platformMode?L"SSH 端口 · 员工工号":L"SSH 端口 · 直接连接", PortLabel, 16, 152, 196, 24);
+        add(L"STATIC", L"用户名 · 默认 linux", -1, 224, 152, 196, 24);
+        add(L"EDIT", (self->settings_.platformMode?self->settings_.employeeNumber:std::to_wstring(self->settings_.port)).c_str(), Port, 16, 176, 196, 28, ES_NUMBER | WS_TABSTOP);
+        add(L"EDIT", self->settings_.username.c_str(), Username, 224, 176, 196, 28, ES_AUTOHSCROLL | WS_TABSTOP);
+        add(L"STATIC", L"密码 · 云机密码", -1, 16, 220, 404, 24);
+        add(L"EDIT", self->settings_.password.c_str(), Password, 16, 244, 404, 28,
             ES_PASSWORD | ES_AUTOHSCROLL | WS_TABSTOP);
-        add(L"BUTTON", L"记住密码（Windows 安全存储）", Remember, 16, 216, 196, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
+        add(L"BUTTON", L"记住密码（Windows 安全存储）", Remember, 16, 284, 196, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
         CheckDlgButton(h, Remember, self->settings_.rememberPassword ? BST_CHECKED : BST_UNCHECKED);
-        add(L"BUTTON",L"员工工号模式",PortMode,224,216,196,28,BS_AUTOCHECKBOX|WS_TABSTOP);
+        add(L"BUTTON",L"员工工号模式",PortMode,224,284,196,28,BS_AUTOCHECKBOX|WS_TABSTOP);
         CheckDlgButton(h,PortMode,self->settings_.platformMode?BST_CHECKED:BST_UNCHECKED);
-        add(L"STATIC", L"连接检测", -1, 16, 264, 196, 28);
-        add(L"BUTTON", L"测试连接", Test, 316, 256, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"STATIC", self->status_.c_str(), Note, 16, 304, 404, 40);
-        add(L"STATIC", L"", HostIdentity, 16, 356, 244, 32, SS_CENTERIMAGE);
-        add(L"BUTTON", L"重新核验主机", HostReverify, 280, 356, 140, 32, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON", L"取消", IDCANCEL, 216, 404, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
-        add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 404, 96, 36,
+        add(L"STATIC", L"连接检测", -1, 16, 332, 196, 28);
+        add(L"BUTTON", L"测试连接", Test, 316, 324, 104, 36, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"STATIC", self->status_.c_str(), Note, 16, 372, 404, 40);
+        add(L"STATIC", L"", HostIdentity, 16, 424, 244, 32, SS_CENTERIMAGE);
+        add(L"BUTTON", L"重新核验主机", HostReverify, 280, 424, 140, 32, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", L"取消", IDCANCEL, 216, 472, 96, 36, BS_OWNERDRAW | WS_TABSTOP);
+        add(L"BUTTON", self->client_.Ready() ? L"进入对话" : L"连接", IDOK, 324, 472, 96, 36,
             BS_OWNERDRAW | WS_TABSTOP);
         Center(h, GetWindow(h, GW_OWNER));
         UiDialogViewport::Fit(h, self->dpi_);
@@ -3450,23 +5409,28 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_TIMER) {
         const bool running = self->client_.Running();
         const bool ready = self->client_.Ready();
+        const bool localMode = SendMessageW(GetDlgItem(h, ConnModeCombo), CB_GETCURSEL, 0, 0) == 1;
         auto enable = [h](int id, bool enabled) {
             const auto control = GetDlgItem(h, id);
             if ((IsWindowEnabled(control) != FALSE) != enabled) EnableWindow(control, enabled);
         };
-        for (int id : {Host, Port, Username, Password, Remember, PortMode})
+        for (int id : {ProviderCombo, ConnModeCombo})
             enable(id, !running);
+        for (int id : {Host, Port, Username, Password, Remember, PortMode})
+            enable(id, !running && !localMode);
         enable(Directory, ready && !self->directoryPending_ && !self->busy_);
         enable(PathDisplay, !self->directoryPending_ && !self->busy_);
         for (int id : {DirectoryUp,DirectoryRefresh}) enable(id,ready && !self->busy_ && !self->directoryPending_);
         enable(Test, !running);
-        enable(HostReverify, !running);
+        enable(HostReverify, !running && !localMode);
         const auto host = Text(GetDlgItem(h, Host)), portText = Text(GetDlgItem(h, Port));
         unsigned port = 0;
         try { size_t read = 0; const auto value = std::stoul(portText, &read); if (read == portText.size() && value <= 65535) port = static_cast<unsigned>(value); } catch (...) {}
         if(IsDlgButtonChecked(h,PortMode)==BST_CHECKED && !PlatformSshPort(portText,port))port=0;
-        const std::wstring identity = port && !TrustedPuttyHostKey(host, static_cast<uint16_t>(port)).empty()
-            ? L"主机身份已保存" : L"连接时核验主机身份";
+        const std::wstring identity = localMode
+            ? L"本机直接运行（无需 SSH 核验）"
+            : (port && !TrustedPuttyHostKey(host, static_cast<uint16_t>(port)).empty()
+                   ? L"主机身份已保存" : L"连接时核验主机身份");
         if (Text(GetDlgItem(h, HostIdentity)) != identity) SetDlgItemTextW(h, HostIdentity, identity.c_str());
         enable(IDOK, (ready && !self->busy_ && !self->directoryPending_) || !running);
         if (ready && Text(GetDlgItem(h, IDOK)) != L"进入对话")
@@ -3492,14 +5456,29 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             } else if(PlatformSshPort(value,mapped))SetDlgItemTextW(h,Port,std::to_wstring(mapped).c_str());
             return TRUE;
         }
+        if ((id == ProviderCombo || id == ConnModeCombo) && HIWORD(w) == CBN_SELCHANGE) {
+            SendMessageW(h, WM_TIMER, 1, 0);
+            return TRUE;
+        }
         if(id==IDOK && self->client_.Ready()) {UiEndOwnedDialog(h,IDOK);return TRUE;}
         if (id == Test || id == IDOK || id == HostReverify) {
-            if (self->client_.Running())
+            if (self->client_.Running()) {
+                if (id == IDOK) self->dialogEnter_ = true;
                 return TRUE;
+            }
             ai::ServerSettings s = self->settings_;
+            s.provider = SendMessageW(GetDlgItem(h, ProviderCombo), CB_GETCURSEL, 0, 0) == 1
+                             ? ai::AiProvider::Antigravity
+                             : ai::AiProvider::Codex;
+            s.localMode = SendMessageW(GetDlgItem(h, ConnModeCombo), CB_GETCURSEL, 0, 0) == 1;
             s.host = Text(GetDlgItem(h, Host));
             s.username = Text(GetDlgItem(h, Username));
-            s.workingDirectory = self->workspaceDirectory_.empty()?L"/home/linux/workspace":self->workspaceDirectory_;
+            s.workingDirectory = self->remoteWorkspaceDirectory_;
+            s.remoteMcpPort = 0;
+            if (s.provider == ai::AiProvider::Antigravity && self->ensureMcpPort_) {
+                if (const auto actualPort = self->ensureMcpPort_(); actualPort != 0)
+                    s.mcpPort = actualPort;
+            }
             s.password = Text(GetDlgItem(h, Password));
             s.rememberPassword = IsDlgButtonChecked(h, Remember) == BST_CHECKED;
             const auto port = Text(GetDlgItem(h, Port));
@@ -3517,19 +5496,27 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             s.employeeNumber=s.platformMode?port:L"";
             if(s.platformMode && !PlatformSshPort(port,s.port))s.port=0;
             std::wstring error;
-            if(Profile(s)!=Profile(self->settings_))s.workingDirectory=ai::WorkspaceForServer(s);
             if (!ai::ValidateServer(s, error) || !ai::SaveServerSettings(s, error)) {
                 SetDlgItemTextW(h, Note, error.c_str());
                 return TRUE;
             }
-            if (Profile(s) != Profile(self->settings_))
+            if (Profile(s) != Profile(self->settings_)) {
+                self->selectedModel_.clear();
+                self->selectedEffort_.clear();
+                self->serverHome_.clear();
                 self->NewConversation();
+            }
             self->settings_ = s;
-            self->workspaceVerified_ = false;
-            if (self->thread_.empty()) self->workspaceDirectory_ = s.workingDirectory;
+            self->workspaceVerified_ = self->workspaceIsLocal_;
             self->needsPassword_ = false;
             self->dialogEnter_ = id == IDOK;
-            self->SetStatus(L"正在连接并检测 SSH / Codex / App Server…");
+            self->SetStatus(s.localMode
+                                ? (s.provider == ai::AiProvider::Antigravity
+                                       ? L"正在本机启动 Antigravity ACP…"
+                                       : L"正在本机启动 Codex App Server…")
+                                : (s.provider == ai::AiProvider::Antigravity
+                                       ? L"正在连接并检测 SSH / Antigravity (agy)…"
+                                       : L"正在连接并检测 SSH / Codex / App Server…"));
             {
                 std::lock_guard<std::mutex> lock(self->eventsMutex_);
                 self->events_.clear(); self->eventBytes_ = 0; self->eventOverflowed_ = false;
@@ -3567,6 +5554,7 @@ INT_PTR CALLBACK AiPane::ConnectProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const bool field = EditColorMessage(m, l);
         const bool identity = GetDlgCtrlID(reinterpret_cast<HWND>(l)) == HostIdentity;
         if (identity) SelectObject(dc, self->smallFont_);
+        SetBkMode(dc, m == WM_CTLCOLORBTN ? TRANSPARENT : OPAQUE);
         SetTextColor(dc, identity || (field && !IsWindowEnabled(reinterpret_cast<HWND>(l))) ? c.muted : c.text);
         SetBkColor(dc, field ? c.field : c.surface);
         return reinterpret_cast<INT_PTR>(field ? self->fieldBrush_ : self->surfaceBrush_);
@@ -3623,10 +5611,12 @@ INT_PTR CALLBACK AiPane::ValueProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     if (m == WM_DRAWITEM)
         return SendMessageW(self->window_, m, w, l);
-    if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORDLG) {
+    if (m == WM_CTLCOLORSTATIC || m == WM_CTLCOLOREDIT || m == WM_CTLCOLORDLG || m == WM_CTLCOLORBTN) {
         auto c = UiAiTheme(self->dark_);
-        SetTextColor(reinterpret_cast<HDC>(w), c.text);
-        SetBkColor(reinterpret_cast<HDC>(w), m == WM_CTLCOLOREDIT ? c.field : c.surface);
+        auto dc = reinterpret_cast<HDC>(w);
+        SetBkMode(dc, m == WM_CTLCOLORBTN ? TRANSPARENT : OPAQUE);
+        SetTextColor(dc, c.text);
+        SetBkColor(dc, m == WM_CTLCOLOREDIT ? c.field : c.surface);
         return reinterpret_cast<INT_PTR>(m == WM_CTLCOLOREDIT ? self->fieldBrush_ : self->surfaceBrush_);
     }
     return FALSE;
@@ -3650,8 +5640,51 @@ void AiPane::ShowComposerMenu() {
         for (auto &c : text) if (c == L'\r' || c == L'\n' || c == L'\t') c = L' ';
         return text.substr(0, 120);
     };
-    const auto model = serverDefaultModel_.empty() ? std::wstring(L"模型未获取") : L"模型 · " + label(Wide(serverDefaultModel_));
-    AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, model.c_str());
+    const auto effortLabel = [](const std::string &e) -> std::wstring {
+        if (e == "minimal") return L"极简 (minimal)";
+        if (e == "low") return L"低 (low)";
+        if (e == "medium") return L"中 (medium)";
+        if (e == "high") return L"高 (high)";
+        if (e == "xhigh") return L"极高 (xhigh)";
+        if (e == "max") return L"最大 (max)";
+        if (e == "ultra") return L"超级 (ultra)";
+        return Wide(e);
+    };
+    const auto activeModel = ActiveModel();
+    const auto activeEffort = ActiveEffort();
+    const auto efforts = ActiveEfforts();
+    const auto modelTitle = activeModel.empty() ? std::wstring(L"模型 · 未获取") : L"模型 · " + label(Wide(activeModel));
+    if (availableModels_.empty()) {
+        AppendMenuW(menu, MF_STRING | MF_GRAYED, 0,
+                    client_.Ready() ? modelTitle.c_str() : L"模型 · 请先连接 AI");
+    } else {
+        HMENU modelsMenu = CreatePopupMenu();
+        AppendMenuW(modelsMenu, MF_STRING | (selectedModel_.empty() ? MF_CHECKED : 0) | (busy_ ? MF_GRAYED : 0),
+                    5000, (L"默认（" + (serverDefaultModel_.empty() ? std::wstring(L"跟随服务端") : label(Wide(serverDefaultModel_))) + L"）").c_str());
+        AppendMenuW(modelsMenu, MF_SEPARATOR, 0, nullptr);
+        for (size_t i = 0; i < availableModels_.size() && i < 400; ++i) {
+            const auto &m = availableModels_[i];
+            const bool checked = !selectedModel_.empty() ? (selectedModel_ == m.id) : (serverDefaultModel_ == m.id);
+            AppendMenuW(modelsMenu, MF_STRING | (checked ? MF_CHECKED : 0) | (busy_ ? MF_GRAYED : 0),
+                        5001 + i, label(Wide(m.label.empty() ? m.id : m.label)).c_str());
+        }
+        AppendMenuW(menu, MF_POPUP | (busy_ ? MF_GRAYED : 0), reinterpret_cast<UINT_PTR>(modelsMenu), modelTitle.c_str());
+    }
+    const auto effortTitle = std::wstring(L"思考强度 · ") + (activeEffort.empty() ? L"默认" : effortLabel(activeEffort));
+    if (efforts.empty()) {
+        AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, effortTitle.c_str());
+    } else {
+        HMENU effortsMenu = CreatePopupMenu();
+        AppendMenuW(effortsMenu, MF_STRING | (selectedEffort_.empty() ? MF_CHECKED : 0) | (busy_ ? MF_GRAYED : 0),
+                    5500, L"默认（跟随模型）");
+        AppendMenuW(effortsMenu, MF_SEPARATOR, 0, nullptr);
+        for (size_t i = 0; i < efforts.size() && i < 50; ++i) {
+            const bool checked = !selectedEffort_.empty() ? (selectedEffort_ == efforts[i]) : (activeEffort == efforts[i]);
+            AppendMenuW(effortsMenu, MF_STRING | (checked ? MF_CHECKED : 0) | (busy_ ? MF_GRAYED : 0),
+                        5501 + i, effortLabel(efforts[i]).c_str());
+        }
+        AppendMenuW(menu, MF_POPUP | (busy_ ? MF_GRAYED : 0), reinterpret_cast<UINT_PTR>(effortsMenu), effortTitle.c_str());
+    }
     AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, (L"当前终端 · " + label(target_.empty() ? L"未关联" : Text(Control(Target)))).c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING | (!editable || attachmentLoad_ ? MF_GRAYED : 0), 1, L"添加图片…");
@@ -3677,8 +5710,10 @@ void AiPane::ShowComposerMenu() {
     logRow(7, L"生成诊断清单");
     AppendMenuW(logs, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(logs, MF_STRING, 3010, L"查看工作空间经验");
-    AppendMenuW(logs, MF_STRING | (!editable || !client_.Ready() ? MF_GRAYED : 0), 3011, L"记录工作空间经验…");
-    AppendMenuW(logs, MF_STRING | (!editable || !hasRollbackSnapshot_ ? MF_GRAYED : 0), 3012, L"撤销最近一次经验更新");
+    const bool canWritePractice = editable &&
+        (workspaceIsLocal_ ? !localWorkspaceReadOnly_ : (client_.Ready() || bool(remoteFsRunner_)));
+    AppendMenuW(logs, MF_STRING | (!canWritePractice ? MF_GRAYED : 0), 3011, L"记录工作空间经验…");
+    AppendMenuW(logs, MF_STRING | (!canWritePractice || !hasRollbackSnapshot_ ? MF_GRAYED : 0), 3012, L"撤销最近一次经验更新");
     AppendMenuW(logs, MF_STRING | (autoWorkspacePractices_ ? MF_CHECKED : 0) | (!editable ? MF_GRAYED : 0),
                 3013, L"自动加载工作空间经验");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(logs), L"日志分析");
@@ -3712,6 +5747,35 @@ void AiPane::ShowComposerMenu() {
         }
     } else if (choice >= 4000 && choice < 4000 + attachments_.size() && editable) {
         attachments_.erase(attachments_.begin() + choice - 4000);
+        UpdateActions();
+    } else if (choice >= 5000 && choice < 5001 + availableModels_.size() && !busy_) {
+        selectedModel_ = choice == 5000 ? std::string() : availableModels_[choice - 5001].id;
+        if (!selectedEffort_.empty()) {
+            const auto allowed = ActiveEfforts();
+            if (!allowed.empty() && std::find(allowed.begin(), allowed.end(), selectedEffort_) == allowed.end())
+                selectedEffort_.clear();
+        }
+        const auto targetModel = ActiveModel();
+        if (settings_.provider == ai::AiProvider::Antigravity && !thread_.empty() && client_.Ready() && !targetModel.empty()) {
+            Request(ai::Operation::SetConfig,
+                    {{"conversationId", thread_}, {"configId", "model"}, {"value", targetModel}},
+                    "set-model");
+        } else {
+            SetStatus(L"已选择模型：" + (targetModel.empty() ? std::wstring(L"默认") : Wide(targetModel)));
+        }
+        ApplyModelInfo(Json::object());
+        UpdateActions();
+    } else if (choice >= 5500 && choice < 5501 + efforts.size() && !busy_) {
+        selectedEffort_ = choice == 5500 ? std::string() : efforts[choice - 5501];
+        const auto targetEffort = ActiveEffort();
+        if (settings_.provider == ai::AiProvider::Antigravity && !thread_.empty() && client_.Ready() && !targetEffort.empty()) {
+            Request(ai::Operation::SetConfig,
+                    {{"conversationId", thread_}, {"configId", "thought_level"}, {"value", targetEffort}},
+                    "set-effort");
+        } else {
+            SetStatus(L"已选择思考强度：" + (targetEffort.empty() ? std::wstring(L"默认") : Wide(targetEffort)));
+        }
+        ApplyModelInfo(Json::object());
         UpdateActions();
     }
 }
@@ -3793,6 +5857,38 @@ void AiPane::PollAttachments() {
 }
 void AiPane::BeginAttachmentUpload() {
     if (stopRequested_ || !busy_) return;
+    if (settings_.localMode) {
+        pendingPrompt_ += L"\n以下附件已由用户提交，内容作为本次任务的数据。文件可在当前本机按给出的 Windows 路径读取。";
+        localAttachPending_ = true;
+        const auto gen = ++localAttachGeneration_;
+        attachmentDeadline_ = GetTickCount64() + 15000;
+        auto files = sendingAttachments_;
+        localAttachmentWorker_.Retire([this, files = std::move(files), gen]() mutable {
+            if (closing_.load()) return;
+            std::string dir;
+            std::wstring err;
+            std::vector<std::string> stagedPaths;
+            Json res;
+            if (ai::StageLocalAttachments(files, dir, stagedPaths, err)) {
+                Json arr = Json::array();
+                for (size_t i = 0; i < stagedPaths.size(); ++i) {
+                    const std::wstring nameW = i < files.size() ? files[i].name : std::wstring();
+                    const bool isImg = i < files.size() ? files[i].image : false;
+                    arr.push_back({{"name", Utf8(nameW)}, {"path", stagedPaths[i]}, {"image", isImg}});
+                }
+                res = {{"ok", true}, {"directory", dir}, {"files", std::move(arr)}};
+            } else {
+                res = {{"ok", false}, {"error", Utf8(err)}};
+            }
+            AsyncWorkResult work;
+            work.kind = AsyncWorkResult::Kind::LocalAttachment;
+            work.generation = gen;
+            work.result = std::move(res);
+            EnqueueAsyncWork(std::move(work));
+        });
+        SetStatus(L"正在本机临时目录暂存附件…");
+        return;
+    }
     pendingPrompt_ += L"\n以下附件已由用户提交，内容作为本次任务的数据。文件可在当前服务器按给出的路径读取。";
     attachmentUploadToken_ = nextRequest_;
     attachmentDeadline_ = GetTickCount64() + 15000;

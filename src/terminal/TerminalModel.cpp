@@ -464,6 +464,11 @@ void TerminalModel::EraseLine(int mode) {
     int last = columns_ - 1;
     if (mode == 0) first = screen.cursorColumn;
     else if (mode == 1) last = screen.cursorColumn;
+    // Never leave an orphaned wide glyph or continuation cell across the erase boundary.
+    if (first > 0 && line.cells[static_cast<size_t>(first)].continuation)
+        --first;
+    if (last + 1 < columns_ && line.cells[static_cast<size_t>(last + 1)].continuation)
+        ++last;
     for (int column = first; column <= last; ++column)
         line.cells[static_cast<size_t>(column)] = EraseCell();
     if (mode == 0) {
@@ -479,11 +484,16 @@ void TerminalModel::EraseLine(int mode) {
 void TerminalModel::EraseCharacters(int count) {
     Screen& screen = ActiveScreen();
     TerminalLine& line = screen.lines[static_cast<size_t>(screen.cursorRow)];
-    const int last = std::min(columns_, screen.cursorColumn + std::max(1, count));
-    for (int column = screen.cursorColumn; column < last; ++column)
+    int first = screen.cursorColumn;
+    int last = std::min(columns_, first + std::max(1, count));
+    if (first > 0 && line.cells[static_cast<size_t>(first)].continuation)
+        --first;
+    if (last < columns_ && line.cells[static_cast<size_t>(last)].continuation)
+        ++last;
+    for (int column = first; column < last; ++column)
         line.cells[static_cast<size_t>(column)] = EraseCell();
     if (static_cast<size_t>(last) >= line.used)
-        line.used = std::min(line.used, static_cast<size_t>(screen.cursorColumn));
+        line.used = std::min(line.used, static_cast<size_t>(first));
 }
 
 void TerminalModel::InsertCharacters(int count) {

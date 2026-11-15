@@ -157,13 +157,31 @@ std::wstring PickFolderDialog(HWND owner, const std::wstring& initialDir) {
 } // namespace
 
 TftpPane::~TftpPane() {
-    if (remoteListShared_) {
-        std::lock_guard<std::mutex> lock(remoteListShared_->mutex);
-        remoteListShared_->hwnd = nullptr;
-    }
+    BeginShutdown();
     if (window_) DestroyWindow(window_);
+    WaitForBackground();
     if (surface_) DeleteObject(surface_);
     if (field_) DeleteObject(field_);
+    if (monoFont_) DeleteObject(monoFont_);
+}
+
+void TftpPane::BeginShutdown() {
+    remoteListSeq_.fetch_add(1);
+    if (remoteListShared_) {
+        std::lock_guard<std::mutex> lock(remoteListShared_->mutex);
+        remoteListShared_->cancel.store(true);
+        remoteListShared_->hwnd = nullptr;
+    }
+    if (window_) {
+        MSG pending{};
+        while (PeekMessageW(&pending, window_, kMsgRemoteDirDone, kMsgRemoteDirDone, PM_REMOVE)) {
+            delete reinterpret_cast<AsyncRemoteListingResult*>(pending.lParam);
+        }
+    }
+}
+
+void TftpPane::WaitForBackground() {
+    remoteListWorkers_.Drain();
 }
 
 HWND TftpPane::Control(int id) const {
@@ -248,7 +266,8 @@ bool TftpPane::Create(HWND parent, std::shared_ptr<TftpServer> server,
     // Directory file list & Transfer progress
     dirListNotice_ = L"(请选择或输入目录后自动列出文件)";
     add(DirFilesLabel, L"STATIC", L"目录文件列表 (已排除子目录):", SS_LEFT | SS_NOPREFIX);
-    add(DirFilesList, L"EDIT", dirListNotice_.c_str(), ES_LEFT | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL);
+    add(DirFilesList, L"LISTBOX", L"", LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT | WS_TABSTOP);
+    SetWindowSubclass(Control(DirFilesList), DirListProc, DirFilesList, reinterpret_cast<DWORD_PTR>(this));
     add(TransfersLabel, L"STATIC", L"实时传输任务:", SS_LEFT | SS_NOPREFIX);
     add(TransferCount, L"STATIC", L"等待传输", SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS);
     auto transferDetail = add(TransferDetail, L"STATIC", L"(无活动传输)", SS_LEFT | SS_NOPREFIX | SS_EDITCONTROL | SS_NOTIFY);
@@ -268,6 +287,9 @@ void TftpPane::Theme(bool dark, int dpi, HFONT font) {
 
     if (surface_) DeleteObject(surface_);
     if (field_) DeleteObject(field_);
+    if (monoFont_) { DeleteObject(monoFont_); monoFont_ = nullptr; }
+    monoFont_ = CreateFontW(-D(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
     const auto c = UiTheme(dark_);
     surface_ = CreateSolidBrush(c.surface);
     field_ = CreateSolidBrush(c.field);
@@ -277,7 +299,7 @@ void TftpPane::Theme(bool dark, int dpi, HFONT font) {
     for (int id = ServiceStatus; id <= CancelTransferBtn; ++id) {
         HWND h = Control(id);
         if (!h) continue;
-        SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font_), FALSE);
+        SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(id == TransferCount && monoFont_ ? monoFont_ : font_), FALSE);
         wchar_t cls[32]{};
         GetClassNameW(h, cls, 32);
         if (_wcsicmp(cls, L"EDIT") == 0 || _wcsicmp(cls, L"COMBOBOX") == 0) {
@@ -302,11 +324,11 @@ void TftpPane::Layout() {
 
     const int lane = D(16);
     const int contentWidth = std::max(D(80), width - lane);
-    const int hField = D(26);
-    const int hLabel = D(18);
-    const int gap = D(6);
+    const int hField = D(28);
+    const int hLabel = D(20);
+    const int gap = D(8);
     const int btnWidth = D(28);
-    const int btnGap = D(6);
+    const int btnGap = D(8);
 
     const bool isRemote = (selectedSourceType_ == 1);
 
@@ -331,8 +353,8 @@ void TftpPane::Layout() {
     place(BindIp, hField, -1, D(150));
 
     place(PortLabel, hLabel);
-    place(Port, hField, D(90));
-    place(ToggleService, D(30), contentWidth);
+    place(Port, hField, D(92));
+    place(ToggleService, D(32), contentWidth);
 
     int boardTipHeight = std::max(D(36), MeasureText(body_, font_, ControlText(Control(BoardTip)), contentWidth));
     place(BoardTip, boardTipHeight);
@@ -372,17 +394,27 @@ void TftpPane::Layout() {
     const int progressLogicalY = y;
     y += D(6) + gap;
     place(TransferCount, hLabel);
-    place(TransferDetail, D(34));
-    place(CancelTransferBtn, D(28));
+    place(TransferDetail, D(36));
+    place(CancelTransferBtn, D(32));
 
     contentHeight_ = y + D(20);
     offset_ = std::clamp(offset_, 0, std::max(0, contentHeight_ - bodyHeight_));
     progressTop_ = progressLogicalY - offset_;
 
+    dirListFrame_ = {};
     for (const auto& field : positions) {
         const auto control = Control(field.id);
-        layout.Move(control, field.x, field.y - offset_, std::max(1, field.width),
-                    field.dropHeight ? field.dropHeight : field.height);
+        if (field.id == DirFilesList) {
+            dirListFrame_ = {field.x, field.y - offset_, field.x + std::max(1, field.width),
+                             field.y - offset_ + field.height};
+            const int inset = D(2);
+            layout.Move(control, dirListFrame_.left + inset, dirListFrame_.top + inset,
+                        std::max(1, static_cast<int>(dirListFrame_.right - dirListFrame_.left) - inset * 2),
+                        std::max(1, static_cast<int>(dirListFrame_.bottom - dirListFrame_.top) - inset * 2));
+        } else {
+            layout.Move(control, field.x, field.y - offset_, std::max(1, field.width),
+                        field.dropHeight ? field.dropHeight : field.height);
+        }
         if (field.dropHeight) layout.ComboVisibleHeight(control, field.height);
     }
     layout.Commit();
@@ -563,18 +595,33 @@ void TftpPane::Refresh() {
     }
     SetTextIfChanged(Control(DirFilesLabel), filesLabel);
 
-    std::wstring filesText;
+    std::wstring signature;
     if (dirEntries_.empty()) {
-        filesText = dirListNotice_.empty() ? L"(目录下无常规文件，已排除子目录)" : dirListNotice_;
+        signature = L"notice:" + (dirListNotice_.empty() ? L"(目录下无常规文件，已排除子目录)" : dirListNotice_);
     } else {
-        for (size_t i = 0; i < dirEntries_.size(); ++i) {
-            if (i > 0) filesText += L"\r\n";
-            const auto& entry = dirEntries_[i];
-            filesText += Utf8ToWide(entry.name) + L"  (" +
-                (entry.sizeKnown ? FormatByteSize(entry.size) : L"大小未知") + L")";
+        signature = L"entries:" + std::to_wstring(dirEntries_.size()) + L":";
+        for (const auto& entry : dirEntries_) {
+            signature += Utf8ToWide(entry.name) + L"|" +
+                (entry.sizeKnown ? std::to_wstring(entry.size) : L"?") + L"\n";
         }
     }
-    SetTextIfChanged(Control(DirFilesList), filesText);
+    if (signature != cachedDirListSignature_) {
+        cachedDirListSignature_ = signature;
+        HWND list = Control(DirFilesList);
+        SendMessageW(list, WM_SETREDRAW, FALSE, 0);
+        SendMessageW(list, LB_RESETCONTENT, 0, 0);
+        if (dirEntries_.empty()) {
+            const std::wstring notice = dirListNotice_.empty() ? L"(目录下无常规文件，已排除子目录)" : dirListNotice_;
+            SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(notice.c_str()));
+        } else {
+            for (const auto& entry : dirEntries_) {
+                const std::wstring name = Utf8ToWide(entry.name);
+                SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
+            }
+        }
+        SendMessageW(list, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(list, nullptr, TRUE);
+    }
 
     // 4. Transfer progress (Xfer style)
     auto trans = server_->ListTransfers();
@@ -783,7 +830,7 @@ void TftpPane::ApplyRemoteDirectory(bool allowAsyncFetch, bool persistState) {
         return;
     }
 
-    if (sshProvider_ && cachedSshSessions_.empty()) {
+    if (sshProvider_) {
         cachedSshSessions_ = sshProvider_();
     }
     const TftpSshSessionInfo* session = nullptr;
@@ -794,7 +841,13 @@ void TftpPane::ApplyRemoteDirectory(bool allowAsyncFetch, bool persistState) {
         }
     }
     if (!session && !cachedSshSessions_.empty()) {
-        session = &cachedSshSessions_.front();
+        for (const auto& s : cachedSshSessions_) {
+            if (s.connected) {
+                session = &s;
+                break;
+            }
+        }
+        if (!session) session = &cachedSshSessions_.front();
         selectedRemoteSessionId_ = session->sessionId;
     }
     if (!session) {
@@ -845,21 +898,23 @@ void TftpPane::ApplyRemoteDirectory(bool allowAsyncFetch, bool persistState) {
 
     auto shared = remoteListShared_;
     std::string sessionId = session->sessionId;
-    std::thread([shared, reqId, cfg = std::move(cfg), sessionId = std::move(sessionId)]() mutable {
-        auto result = std::make_unique<AsyncRemoteListingResult>();
-        result->requestId = reqId;
-        result->remoteDir = cfg.remotePath;
-        result->sessionId = std::move(sessionId);
-        result->config = cfg;
-        result->ok = ListRemoteTftpDirectory(cfg, result->entries, result->error);
-        if (shared) {
+    if (shared) {
+        shared->cancel.store(false);
+        remoteListWorkers_.Retire([shared, reqId, cfg = std::move(cfg), sessionId = std::move(sessionId)]() mutable {
+            if (shared->cancel.load()) return;
+            auto result = std::make_unique<AsyncRemoteListingResult>();
+            result->requestId = reqId;
+            result->remoteDir = cfg.remotePath;
+            result->sessionId = std::move(sessionId);
+            result->config = cfg;
+            result->ok = ListRemoteTftpDirectory(cfg, result->entries, result->error);
             std::lock_guard<std::mutex> lock(shared->mutex);
-            if (shared->hwnd && PostMessageW(shared->hwnd, kMsgRemoteDirDone, 0,
-                                             reinterpret_cast<LPARAM>(result.get()))) {
+            if (!shared->cancel.load() && shared->hwnd &&
+                PostMessageW(shared->hwnd, kMsgRemoteDirDone, 0, reinterpret_cast<LPARAM>(result.get()))) {
                 result.release();
             }
-        }
-    }).detach();
+        });
+    }
 }
 
 void TftpPane::OnRemoteDirDone(LPARAM lParam) {
@@ -888,11 +943,13 @@ void TftpPane::OnRemoteDirDone(LPARAM lParam) {
 }
 
 void TftpPane::RefreshDirectory(bool userTriggered) {
+    if (userTriggered && !UiTryAcquireActionCooldown(Control(RefreshDirBtn), RefreshDirBtn, 300)) return;
     ApplySelectedSource(userTriggered);
 }
 
 void TftpPane::OnToggleService() {
     if (!server_) return;
+    if (!UiTryAcquireActionCooldown(Control(ToggleService), ToggleService, 300)) return;
     localNotice_.clear();
     if (server_->IsListening()) {
         server_->Stop();
@@ -939,6 +996,9 @@ void TftpPane::Paint(HDC target) {
     FillRect(dc, &rc, surface_);
 
     const auto c = UiTheme(dark_);
+    if (dirListFrame_.right > dirListFrame_.left && dirListFrame_.bottom > dirListFrame_.top) {
+        UiBox(dc, dirListFrame_, c.field, c.border, D(8));
+    }
     if (progressTop_ >= 0 && progressRight_ > progressLeft_) {
         UiDrawProgressBar(dc, progressLeft_, progressTop_, progressRight_, dpi_,
                           displayBytes_, displayTotal_, transferActive_ && displayTotal_ == 0,
@@ -948,7 +1008,7 @@ void TftpPane::Paint(HDC target) {
     if (contentHeight_ > bodyHeight_) {
         const int thumb = std::max(D(28), bodyHeight_ * bodyHeight_ / std::max(1, contentHeight_));
         const int y = offset_ * (bodyHeight_ - thumb) / std::max(1, contentHeight_ - bodyHeight_);
-        UiBox(dc, {rc.right - D(5), y, rc.right, y + thumb}, c.border, c.border, D(2));
+        UiDrawScrollbarThumb(dc, {rc.right - D(5), y, rc.right, y + thumb}, dpi_, c);
     }
 }
 
@@ -1021,6 +1081,17 @@ LRESULT CALLBACK TftpPane::Proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
         return 0;
     }
+    case WM_CTLCOLORBTN: {
+        if (self) {
+            HDC dc = reinterpret_cast<HDC>(wParam);
+            const auto c = UiTheme(self->dark_);
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, c.text);
+            SetBkColor(dc, c.surface);
+            return reinterpret_cast<LRESULT>(self->surface_);
+        }
+        break;
+    }
     case WM_MOUSEWHEEL: {
         if (self) {
             int delta = GET_WHEEL_DELTA_WPARAM(wParam);
@@ -1049,11 +1120,13 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
     case WM_MEASUREITEM: {
         if (self) {
-            reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight = self->D(28);
+            auto mis = reinterpret_cast<MEASUREITEMSTRUCT*>(lParam);
+            mis->itemHeight = mis->CtlID == DirFilesList ? self->D(30) : self->D(28);
             return TRUE;
         }
         break;
     }
+    case WM_CTLCOLORBTN:
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORLISTBOX: {
@@ -1068,6 +1141,11 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                 const bool enabled = IsWindowEnabled(ctrl) != FALSE;
                 const bool readOnly = (GetWindowLongPtrW(ctrl, GWL_STYLE) & ES_READONLY) != 0;
                 SetTextColor(dc, (!enabled || readOnly) ? c.muted : c.text);
+                SetBkColor(dc, c.field);
+                return reinterpret_cast<INT_PTR>(self->field_);
+            }
+            if (ctrl == self->Control(DirFilesList)) {
+                SetTextColor(dc, c.text);
                 SetBkColor(dc, c.field);
                 return reinterpret_cast<INT_PTR>(self->field_);
             }
@@ -1087,6 +1165,67 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         if (self) {
             if (item->CtlType == ODT_COMBOBOX) {
                 UiDrawComboItem(*item, self->style_);
+                return TRUE;
+            }
+            if (item->CtlType == ODT_LISTBOX && item->CtlID == DirFilesList) {
+                if (item->itemID == static_cast<UINT>(-1)) return TRUE;
+                UiBufferedPaint paint(item->hDC, item->rcItem);
+                auto dc = paint.Dc();
+                const auto c = UiTheme(self->dark_);
+                const RECT row = item->rcItem;
+                if (self->dirEntries_.empty()) {
+                    HBRUSH bg = CreateSolidBrush(c.field);
+                    FillRect(dc, &row, bg);
+                    DeleteObject(bg);
+                    const std::wstring notice = self->dirListNotice_.empty() ? L"(目录下无常规文件，已排除子目录)" : self->dirListNotice_;
+                    const auto old = SelectObject(dc, self->font_);
+                    SetBkMode(dc, TRANSPARENT);
+                    SetTextColor(dc, c.muted);
+                    RECT textRect{row.left + self->D(8), row.top, row.right - self->D(8), row.bottom};
+                    DrawTextW(dc, notice.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                    SelectObject(dc, old);
+                    return TRUE;
+                }
+                if (item->itemID >= self->dirEntries_.size()) return TRUE;
+                const auto& entry = self->dirEntries_[item->itemID];
+                const bool selected = (item->itemState & ODS_SELECTED) != 0;
+                HBRUSH rowBrush = CreateSolidBrush(selected ? c.accent : c.field);
+                FillRect(dc, &row, rowBrush);
+                DeleteObject(rowBrush);
+                // Reuse SFTP's UiGlyph::Document icon
+                const COLORREF iconColor = selected ? RGB(255, 255, 255) : c.muted;
+                const int iconSize = self->D(18);
+                const int iconBoxLeft = row.left + self->D(4);
+                const int iconBoxRight = row.left + self->D(28);
+                const int ix = (iconBoxLeft + iconBoxRight - iconSize) / 2;
+                const int iy = (row.top + row.bottom - iconSize) / 2;
+                UiDrawGlyph(dc, {ix, iy, ix + iconSize, iy + iconSize}, iconColor, UiGlyph::Document);
+
+                const std::wstring sizeText = entry.sizeKnown ? FormatByteSize(entry.size) : L"大小未知";
+                RECT listRc{};
+                GetClientRect(item->hwndItem, &listRc);
+                const int itemH = std::max(1, static_cast<int>(row.bottom - row.top));
+                const int count = static_cast<int>(SendMessageW(item->hwndItem, LB_GETCOUNT, 0, 0));
+                const int pageItems = std::max(1, static_cast<int>(listRc.bottom) / itemH);
+                const int rightInset = count > pageItems ? self->D(8) : 0;
+                const int sizeWidth = self->D(68);
+                const auto oldFont = SelectObject(dc, self->font_);
+                SetBkMode(dc, TRANSPARENT);
+                SetTextColor(dc, selected ? RGB(255, 255, 255) : c.text);
+                RECT nameRect{row.left + self->D(30), row.top, row.right - rightInset - sizeWidth - self->D(10), row.bottom};
+                DrawTextW(dc, Utf8ToWide(entry.name).c_str(), -1, &nameRect,
+                          DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                SetTextColor(dc, selected ? RGB(235, 240, 255) : c.muted);
+                RECT sizeRect{row.right - rightInset - sizeWidth - self->D(6), row.top, row.right - rightInset - self->D(8), row.bottom};
+                DrawTextW(dc, sizeText.c_str(), -1, &sizeRect, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                SelectObject(dc, oldFont);
+
+                HPEN divider = CreatePen(PS_SOLID, 1, c.border);
+                HPEN oldDivider = reinterpret_cast<HPEN>(SelectObject(dc, divider));
+                MoveToEx(dc, row.left, row.bottom - 1, nullptr);
+                LineTo(dc, row.right, row.bottom - 1);
+                SelectObject(dc, oldDivider);
+                DeleteObject(divider);
                 return TRUE;
             }
             UiBufferedPaint paint(item->hDC, item->rcItem);
@@ -1110,8 +1249,9 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                 const auto old = SelectObject(dc, self->font_);
                 SetBkMode(dc, TRANSPARENT);
                 SetTextColor(dc, inkColor);
-                auto r = item->rcItem;
-                DrawTextW(dc, ControlText(item->hwndItem).c_str(), -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                auto r = UiCapsuleContentRect(item->rcItem, self->dpi_);
+                DrawTextW(dc, ControlText(item->hwndItem).c_str(), -1, &r,
+                          DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 SelectObject(dc, old);
             }
             return TRUE;
@@ -1138,6 +1278,8 @@ LRESULT CALLBACK TftpPane::BodyProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                 if (self->selectedSourceType_ == 1) {
                     self->ApplyRemoteDirectory(true, true);
                 }
+            } else if ((id == BindIp || id == SourceType || id == RemoteSession) && code == CBN_CLOSEUP) {
+                self->Refresh();
             } else if (id == LocalPath && code == EN_CHANGE && !self->suppressEditNotify_) {
                 self->OnLocalPathTyped();
             } else if (id == LocalPath && code == EN_KILLFOCUS && !self->suppressEditNotify_) {
@@ -1181,6 +1323,97 @@ LRESULT CALLBACK TftpPane::FieldProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
         break;
     }
     return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK TftpPane::DirListProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                        UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    auto self = reinterpret_cast<TftpPane*>(dwRefData);
+    auto getMetrics = [hwnd, self](int& count, int& pageItems, int& maxTop, int& topIndex, int& thumbY, int& thumbH, int& clientH) -> bool {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        clientH = rc.bottom - rc.top;
+        count = static_cast<int>(SendMessageW(hwnd, LB_GETCOUNT, 0, 0));
+        const int itemH = std::max(1, static_cast<int>(SendMessageW(hwnd, LB_GETITEMHEIGHT, 0, 0)));
+        pageItems = std::max(1, clientH / itemH);
+        if (count <= pageItems || clientH <= 0) return false;
+        maxTop = std::max(1, count - pageItems);
+        topIndex = std::clamp(static_cast<int>(SendMessageW(hwnd, LB_GETTOPINDEX, 0, 0)), 0, maxTop);
+        thumbH = std::max(self->D(24), clientH * pageItems / count);
+        thumbY = topIndex * std::max(0, clientH - thumbH) / maxTop;
+        return true;
+    };
+    if (self && msg == WM_MOUSEWHEEL) {
+        int count = 0, pageItems = 0, maxTop = 0, topIndex = 0, thumbY = 0, thumbH = 0, clientH = 0;
+        if (getMetrics(count, pageItems, maxTop, topIndex, thumbY, thumbH, clientH)) {
+            const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            const int notches = std::max(1, std::abs(delta) / WHEEL_DELTA);
+            const int target = std::clamp(topIndex + (delta > 0 ? -1 : 1) * notches * 3, 0, maxTop);
+            SendMessageW(hwnd, LB_SETTOPINDEX, target, 0);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            UpdateWindow(hwnd);
+            return 0;
+        }
+        self->Scroll(-GET_WHEEL_DELTA_WPARAM(wParam) / 2);
+        return 0;
+    }
+    if (self && (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK)) {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        const POINT pt{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        int count = 0, pageItems = 0, maxTop = 0, topIndex = 0, thumbY = 0, thumbH = 0, clientH = 0;
+        if (getMetrics(count, pageItems, maxTop, topIndex, thumbY, thumbH, clientH) && pt.x >= rc.right - self->D(8)) {
+            SetFocus(hwnd);
+            if (pt.y >= thumbY && pt.y < thumbY + thumbH) {
+                self->dirListDragging_ = true;
+                self->dirListDragOffset_ = pt.y - thumbY;
+                SetCapture(hwnd);
+            } else {
+                const int target = std::clamp(topIndex + (pt.y < thumbY ? -pageItems : pageItems), 0, maxTop);
+                SendMessageW(hwnd, LB_SETTOPINDEX, target, 0);
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+            return 0;
+        }
+    }
+    if (self && msg == WM_MOUSEMOVE && self->dirListDragging_) {
+        int count = 0, pageItems = 0, maxTop = 0, topIndex = 0, thumbY = 0, thumbH = 0, clientH = 0;
+        if (getMetrics(count, pageItems, maxTop, topIndex, thumbY, thumbH, clientH)) {
+            const int travel = std::max(1, clientH - thumbH);
+            const int desired = std::clamp(static_cast<int>(GET_Y_LPARAM(lParam)) - self->dirListDragOffset_, 0, travel);
+            const int target = std::clamp(desired * maxTop / travel, 0, maxTop);
+            SendMessageW(hwnd, LB_SETTOPINDEX, target, 0);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            UpdateWindow(hwnd);
+        }
+        return 0;
+    }
+    if (self && ((msg == WM_LBUTTONUP || msg == WM_CAPTURECHANGED) && self->dirListDragging_)) {
+        self->dirListDragging_ = false;
+        self->dirListDragOffset_ = 0;
+        if (msg == WM_LBUTTONUP && GetCapture() == hwnd) ReleaseCapture();
+        InvalidateRect(hwnd, nullptr, FALSE);
+        if (msg == WM_LBUTTONUP) return 0;
+    }
+    const LRESULT res = DefSubclassProc(hwnd, msg, wParam, lParam);
+    if (self && msg == WM_PAINT) {
+        int count = 0, pageItems = 0, maxTop = 0, topIndex = 0, thumbY = 0, thumbH = 0, clientH = 0;
+        if (getMetrics(count, pageItems, maxTop, topIndex, thumbY, thumbH, clientH)) {
+            RECT rc{};
+            GetClientRect(hwnd, &rc);
+            HDC dc = GetDC(hwnd);
+            if (dc) {
+                const auto c = UiTheme(self->dark_);
+                UiDrawScrollbarThumb(dc, {rc.right - self->D(5), thumbY, rc.right, thumbY + thumbH}, self->dpi_, c);
+                ReleaseDC(hwnd, dc);
+            }
+        }
+    } else if (msg == WM_KEYDOWN || msg == WM_SIZE || msg == LB_SETTOPINDEX) {
+        InvalidateRect(hwnd, nullptr, FALSE);
+    } else if (msg == LB_ADDSTRING || msg == LB_DELETESTRING || msg == LB_RESETCONTENT) {
+        InvalidateRect(hwnd, nullptr, TRUE);
+    }
+    if (msg == WM_NCDESTROY) RemoveWindowSubclass(hwnd, DirListProc, uIdSubclass);
+    return res;
 }
 
 } // namespace serialctl

@@ -62,6 +62,14 @@ public:
     void Cancel(const std::shared_ptr<Context>&);
     void Stop();
 
+    static void SetVisible(const std::shared_ptr<Context>&, bool visible);
+    static bool IsVisible(const std::shared_ptr<Context>& context) {
+        return !context || context->visible.load(std::memory_order_acquire);
+    }
+    static bool CopySnapshot(const std::shared_ptr<Context>&, TerminalModel& model, std::uint64_t& sequence);
+    static bool StageCoalescedUpdate(const std::shared_ptr<Context>&, std::unique_ptr<Update> update);
+    static std::unique_ptr<Update> TakeCoalescedUpdate(const std::shared_ptr<Context>&);
+
     struct Statistics {
         size_t pendingBytes = 0;
         size_t highWaterBytes = 0;
@@ -96,11 +104,17 @@ public:
         TerminalDecoder decoder;
         LogSink log;
         std::mutex mutex;
+        std::mutex modelMutex;
         std::deque<Job> jobs;
         size_t pendingBytes = 0;
         std::uint64_t nextSequence = 0;
+        std::uint64_t completedSequence = 0;
+        std::atomic<bool> visible{true};
         bool scheduled = false;
         bool canceled = false;
+        std::mutex uiPublishMutex;
+        std::unique_ptr<Update> coalescedUpdate;
+        bool uiMessagePosted = false;
     };
 
 private:

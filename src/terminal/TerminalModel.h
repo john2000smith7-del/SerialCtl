@@ -118,6 +118,8 @@ public:
     // but omit unused padding and wide-character continuation cells.
     std::wstring SelectedText(size_t firstLine, int firstColumn, size_t lastLine, int lastColumn) const;
 
+    static bool IsWideCharacter(wchar_t character);
+
 private:
     enum class ParserState {
         Ground,
@@ -179,7 +181,6 @@ private:
     std::vector<int> ParseParameters(std::wstring text, wchar_t& prefix) const;
     int Parameter(const std::vector<int>& parameters, size_t index, int fallback) const;
     void EnsureTimestamp(TerminalLine& line, const std::wstring& timestamp);
-    static bool IsWideCharacter(wchar_t character);
     static bool IsCombiningCharacter(wchar_t character);
     wchar_t MapSpecialGraphics(wchar_t character) const;
 

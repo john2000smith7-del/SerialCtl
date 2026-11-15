@@ -205,10 +205,11 @@ private:
             const auto visual = UiButtonVisual(c, enabled, (item.itemState & ODS_SELECTED) != 0,
                 GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
             FillRect(dc, &item.rcItem, self->surface_);
-            UiBox(dc, item.rcItem, visual.fill, visual.border, self->D(10));
+            UiBox(dc, item.rcItem, visual.fill, visual.border, UiCapsuleRadius(item.rcItem));
             wchar_t text[64]{}; GetWindowTextW(item.hwndItem, text, 64);
             auto old = SelectObject(dc, self->font_); SetBkMode(dc, TRANSPARENT); SetTextColor(dc, visual.ink);
-            RECT r = item.rcItem; DrawTextW(dc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            RECT r = UiCapsuleContentRect(item.rcItem, self->dpi_);
+            DrawTextW(dc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             SelectObject(dc, old);
             UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->dpi_, UiFocusInk(self->dark_, primary && enabled));
             return TRUE;

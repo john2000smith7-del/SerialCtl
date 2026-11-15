@@ -194,6 +194,8 @@ Json ApiServer::Metrics() const {
     return Json{
         {"bindAddress", bindAddress_},
         {"port", port_},
+        {"readOnly", readOnly_.load()},
+        {"authRequired", !accessToken_.empty()},
         {"activeClients", clients_.size()},
         {"publishedEvents", totalPublishedEvents_.load()},
         {"historyTrims", historyTrimsCount_.load()},
@@ -424,13 +426,42 @@ void ApiServer::Client(const std::shared_ptr<ClientState> &c) {
         upgraded = true;
         ws::SocketOptions(c->socket);
         c->sender = std::thread(&ApiServer::Send, this, c);
+        bool authRequired = false;
+        std::string expectedToken;
+        {
+            std::lock_guard<std::mutex> l(mutex_);
+            expectedToken = accessToken_;
+            authRequired = !expectedToken.empty();
+        }
+        bool tokenMatched = !authRequired;
+        if (authRequired) {
+            auto constantEq = [](const std::string &a, const std::string &b) {
+                if (a.size() != b.size()) return false;
+                unsigned diff = 0;
+                for (size_t i = 0; i < a.size(); ++i)
+                    diff |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+                return diff == 0;
+            };
+            auto authIt = h.fields.find("authorization");
+            if (authIt != h.fields.end() && authIt->second.rfind("Bearer ", 0) == 0 &&
+                constantEq(authIt->second.substr(7), expectedToken)) {
+                tokenMatched = true;
+            }
+            auto tokIt = h.fields.find("x-serialctl-token");
+            if (!tokenMatched && tokIt != h.fields.end() && constantEq(tokIt->second, expectedToken)) {
+                tokenMatched = true;
+            }
+        }
+        c->authenticated = tokenMatched;
         Queue(c, Json{{"type", "hello"},
                       {"version", 1},
                       {"instance", instance_},
                       {"maxClients", MaxClients},
                       {"maxInput", 65536},
                       {"maxMessage", ws::MaxMessage},
-                      {"historyBytes", MaxHistoryBytes}});
+                      {"historyBytes", MaxHistoryBytes},
+                      {"readOnly", readOnly_.load()},
+                      {"authRequired", authRequired}});
         Trace(c, "upgraded");
         ws::Stream stream(c->socket, false, std::move(tail), c->readCancel);
         // Idle monitoring clients are legal; only started-but-unfinished frames time out.
@@ -564,12 +595,46 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
     } else
         try {
             const auto &p = j["params"];
+            bool authOk = c->authenticated;
+            std::string expectedToken;
+            {
+                std::lock_guard<std::mutex> l(mutex_);
+                if (accessToken_.empty()) authOk = true;
+                else expectedToken = accessToken_;
+            }
+            if (op == "auth") {
+                if (!expectedToken.empty() && Keys(p, {"token"}) && Text(p, "token", 512)) {
+                    const std::string supplied = p["token"].get<std::string>();
+                    unsigned diff = supplied.size() == expectedToken.size() ? 0u : 1u;
+                    const size_t n = (std::min)(supplied.size(), expectedToken.size());
+                    for (size_t i = 0; i < n; ++i)
+                        diff |= static_cast<unsigned char>(supplied[i]) ^ static_cast<unsigned char>(expectedToken[i]);
+                    if (diff == 0) {
+                        c->authenticated = true;
+                        result = {{"authenticated", true}};
+                    } else {
+                        result = Failure("UNAUTHORIZED", "Invalid access token");
+                    }
+                } else if (expectedToken.empty()) {
+                    c->authenticated = true;
+                    result = {{"authenticated", true}};
+                } else {
+                    result = Failure("UNAUTHORIZED", "Token required");
+                }
+            } else if (!authOk) {
+                result = Failure("UNAUTHORIZED", "SerialShare access token authentication required");
+            } else {
+            const bool writeBlocked = readOnly_.load() &&
+                (op == "input" || op == "power.output" || op == RemotePowerSubmitOp ||
+                 op == "transfer.begin" || op == "transfer.write" || op == "transfer.end");
             bool session = false;
             {
                 std::lock_guard<std::mutex> l(mutex_);
                 session = sessions_.count(target) != 0;
             }
-            if (op == "resources" && target.empty() && p.empty())
+            if (writeBlocked)
+                result = Failure("READ_ONLY_SHARE", u8"当前串口共享处于只读观察模式，禁止远端写入或控制电源");
+            else if (op == "resources" && target.empty() && p.empty())
                 result = handler_(op, target, p);
             else if (op == "action.get" && target.empty() && Keys(p, {"id"}) && Text(p, "id"))
                 result = handler_(op, target, p);
@@ -665,6 +730,7 @@ void ApiServer::Request(const std::shared_ptr<ClientState> &c, const Json &j) {
                 result = session ? Events(target, p["after"]) : Failure("TARGET_NOT_FOUND", "Session absent");
             else
                 result = Failure("OPERATION_DENIED", "Unknown operation, excess fields, or invalid parameters");
+            }
         } catch (const std::exception &e) {
             result = Failure("INVALID_PARAMETERS", e.what());
         }
@@ -697,17 +763,52 @@ bool ApiServer::EnqueuePublish(const std::string& target, const Bytes& data, con
     std::lock_guard<std::mutex> lock(publicationMutex_);
     if (publicationStopping_) return false;
     if (!publisher_.joinable()) publisher_ = std::thread(&ApiServer::PublishPending, this);
-    if (publicationGap_) return false;
-    if (publications_.size() >= 4096 || data.size() > 8 * 1024 * 1024 - publicationBytes_) {
-        // Local terminal/logging continue. Remote observers must reconnect and
-        // receive an explicit history gap rather than silently lose output.
-        publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
-        publicationBacklogBytes_ = 0; publicationBacklogItems_ = 0;
+    if (publicationGap_ || gapSessionsPending_.count(target)) return false;
+
+    const size_t sessionBacklog = publicationBytesBySession_[target];
+    auto dropSessionQueue = [&](const std::string &sessionId) {
+        size_t removedBytes = 0;
+        for (auto it = publications_.begin(); it != publications_.end();) {
+            if (!it->sessions && it->resource == sessionId) {
+                removedBytes += it->charge;
+                it = publications_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        publicationBytes_ -= (std::min)(publicationBytes_, removedBytes);
+        publicationBytesBySession_.erase(sessionId);
+        gapSessionsPending_.insert(sessionId);
+        publicationBacklogBytes_ = publicationBytes_;
+        publicationBacklogItems_ = publications_.size();
         publicationWake_.notify_one();
+    };
+
+    if (sessionBacklog + data.size() > MaxSessionPendingBytes) {
+        // Local terminal/logging continue. Isolate gap to ONLY this session.
+        dropSessionQueue(target);
         return false;
+    }
+    if (publications_.size() >= MaxGlobalPendingItems ||
+        data.size() > MaxGlobalPendingBytes - publicationBytes_) {
+        std::string heaviest = target;
+        size_t heaviestBytes = sessionBacklog + data.size();
+        for (const auto &entry : publicationBytesBySession_) {
+            if (entry.second > heaviestBytes) {
+                heaviestBytes = entry.second;
+                heaviest = entry.first;
+            }
+        }
+        dropSessionQueue(heaviest);
+        if (heaviest == target || publications_.size() >= MaxGlobalPendingItems ||
+            data.size() > MaxGlobalPendingBytes - publicationBytes_) {
+            if (heaviest != target) dropSessionQueue(target);
+            return false;
+        }
     }
     publications_.push_back({target, source, kind, data, codePage, {}, data.size()});
     publicationBytes_ += data.size();
+    publicationBytesBySession_[target] += data.size();
     publicationBacklogBytes_ = publicationBytes_;
     publicationBacklogItems_ = publications_.size();
     if (publicationBytes_ > publicationHighWaterMark_)
@@ -718,11 +819,10 @@ bool ApiServer::EnqueuePublish(const std::string& target, const Bytes& data, con
 bool ApiServer::EnqueueSessions(std::vector<std::string> sessions) {
     // Allocate the immutable snapshot before locking the short handoff mutex.
     auto snapshot = std::make_shared<const std::vector<std::string>>(std::move(sessions));
-    constexpr size_t maximum = 8 * 1024 * 1024;
     size_t charge = sizeof(Publication);
     for (const auto &id : *snapshot) {
-        if (charge > maximum || id.size() + sizeof(std::string) > maximum - charge) {
-            charge = maximum + 1;
+        if (charge > MaxGlobalPendingBytes || id.size() + sizeof(std::string) > MaxGlobalPendingBytes - charge) {
+            charge = MaxGlobalPendingBytes + 1;
             break;
         }
         charge += id.size() + sizeof(std::string);
@@ -731,8 +831,10 @@ bool ApiServer::EnqueueSessions(std::vector<std::string> sessions) {
     if (publicationStopping_) return false;
     if (!publisher_.joinable()) publisher_ = std::thread(&ApiServer::PublishPending, this);
     latestPublicationSessions_ = snapshot;
-    if (publicationGap_ || publications_.size() >= 4096 || charge > maximum - publicationBytes_) {
-        publications_.clear(); publicationBytes_ = 0; publicationGap_ = true;
+    if (publicationGap_ || publications_.size() >= MaxGlobalPendingItems ||
+        charge > MaxGlobalPendingBytes - publicationBytes_) {
+        publications_.clear(); publicationBytes_ = 0; publicationBytesBySession_.clear();
+        gapSessionsPending_.clear(); publicationGap_ = true;
         publicationBacklogBytes_ = 0; publicationBacklogItems_ = 0;
     } else {
         Publication update;
@@ -750,19 +852,34 @@ void ApiServer::PublishPending() {
     for (;;) {
         Publication event;
         bool gap = false;
+        std::vector<std::string> sessionGaps;
         std::shared_ptr<const std::vector<std::string>> gapSessions;
         {
             std::unique_lock<std::mutex> lock(publicationMutex_);
             publicationWake_.wait(lock, [this] {
-                return publicationStopping_ || publicationGap_ || !publications_.empty();
+                return publicationStopping_ || publicationGap_ || !gapSessionsPending_.empty() || !publications_.empty();
             });
             if (publicationStopping_) return;
             gap = publicationGap_;
             publicationGap_ = false;
-            if (gap) gapSessions = latestPublicationSessions_;
-            else {
+            if (gap) {
+                gapSessions = latestPublicationSessions_;
+                gapSessionsPending_.clear();
+            } else if (!gapSessionsPending_.empty()) {
+                sessionGaps.assign(gapSessionsPending_.begin(), gapSessionsPending_.end());
+                gapSessionsPending_.clear();
+            } else {
                 event = std::move(publications_.front()); publications_.pop_front();
-                publicationBytes_ -= event.charge;
+                publicationBytes_ -= (std::min)(publicationBytes_, event.charge);
+                if (!event.sessions && !event.resource.empty()) {
+                    auto it = publicationBytesBySession_.find(event.resource);
+                    if (it != publicationBytesBySession_.end()) {
+                        if (it->second <= event.charge)
+                            publicationBytesBySession_.erase(it);
+                        else
+                            it->second -= event.charge;
+                    }
+                }
             }
             publicationBacklogBytes_ = publicationBytes_;
             publicationBacklogItems_ = publications_.size();
@@ -771,6 +888,9 @@ void ApiServer::PublishPending() {
             if (gap) {
                 if (gapSessions) SetSessions(*gapSessions);
                 PublicationGap();
+            } else if (!sessionGaps.empty()) {
+                for (const auto &sessionId : sessionGaps)
+                    SessionPublicationGap(sessionId);
             } else if (event.sessions) SetSessions(*event.sessions);
             else Publish(event.resource, event.data, event.source.c_str(), event.kind.c_str(), event.codePage);
         } catch (...) {
@@ -779,6 +899,20 @@ void ApiServer::PublishPending() {
             try { PublicationGap(); } catch (...) {}
         }
     }
+}
+void ApiServer::SessionPublicationGap(const std::string &sessionId) {
+    publicationGapCount_++;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (sessions_.count(sessionId)) {
+        auto &history = histories_[sessionId];
+        historyBytes_ -= history.bytes;
+        history.bytes = 0;
+        history.events.clear();
+        ++history.seq;
+    }
+    for (const auto &client : clients_)
+        if (client->subscriptions.count(sessionId) != 0)
+            Close(client, 1013, "HISTORY_GAP: session backlog exceeded; reconnect with cursor");
 }
 void ApiServer::PublicationGap() {
     publicationGapCount_++;

@@ -3,8 +3,10 @@
 #include <climits>
 #include <cstdint>
 #include <map>
+#include <mutex>
 #include <new>
 #include <string>
+#include <utility>
 #include <vector>
 #include <windows.h>
 #include <commctrl.h>
@@ -22,6 +24,55 @@ inline UiColors UiTheme(bool dark) {
                            RGB(245, 245, 247), RGB(229, 241, 255)};
 }
 inline int UiCapsuleRadius(const RECT& r) {return std::max(1L,std::min(r.right-r.left,r.bottom-r.top)/2);}
+inline int UiCardRadius(int dpi) { return MulDiv(12, dpi, 96); }
+inline int UiControlRadius(int dpi) { return MulDiv(8, dpi, 96); }
+inline int UiInnerRadius(int dpi) { return MulDiv(6, dpi, 96); }
+inline int UiButtonRadius(const RECT& r, bool /*capsule*/ = true, int /*dpi*/ = 96) {
+    return UiCapsuleRadius(r);
+}
+inline bool UiIsCompactIconRect(const RECT& r, int dpi) {
+    const long w = r.right - r.left, h = r.bottom - r.top;
+    return w > 0 && h > 0 && w <= h + MulDiv(8, dpi, 96);
+}
+inline int UiButtonHorizontalPad(const RECT& r, int dpi) {
+    if (UiIsCompactIconRect(r, dpi)) return 0;
+    const long w = r.right - r.left, h = r.bottom - r.top;
+    const int preferred = h >= MulDiv(34, dpi, 96) ? MulDiv(16, dpi, 96) : MulDiv(12, dpi, 96);
+    return static_cast<int>(std::min<long>(preferred, std::max<long>(0, (w - 4) / 3)));
+}
+inline RECT UiCapsuleContentRect(const RECT& r, int dpi) {
+    RECT out = r;
+    const int padX = UiButtonHorizontalPad(r, dpi);
+    out.left += padX;
+    out.right -= padX;
+    if (out.right < out.left) {
+        const long mid = (r.left + r.right) / 2;
+        out.left = mid;
+        out.right = mid;
+    }
+    return out;
+}
+inline bool UiTryAcquireActionCooldown(HWND hwnd, UINT_PTR actionId = 0, ULONGLONG cooldownMs = 250) {
+    if (!hwnd || cooldownMs == 0) return true;
+    static std::mutex cooldownMutex;
+    static std::map<std::pair<HWND, UINT_PTR>, ULONGLONG> lastTriggeredAt;
+    const ULONGLONG now = GetTickCount64();
+    std::lock_guard<std::mutex> lock(cooldownMutex);
+    if (lastTriggeredAt.size() > 128) {
+        for (auto it = lastTriggeredAt.begin(); it != lastTriggeredAt.end(); ) {
+            if (!IsWindow(it->first.first) || (now - it->second) > 60000ULL)
+                it = lastTriggeredAt.erase(it);
+            else
+                ++it;
+        }
+    }
+    const auto key = std::make_pair(hwnd, actionId);
+    auto it = lastTriggeredAt.find(key);
+    if (it != lastTriggeredAt.end() && (now - it->second) < cooldownMs)
+        return false;
+    lastTriggeredAt[key] = now;
+    return true;
+}
 inline COLORREF UiAccentInset() {
     return RGB(25, 63, 175);
 }
@@ -330,6 +381,19 @@ inline void UiSeparator(HDC dc, int left, int right, int y, COLORREF color) {
     FillRect(dc, &line, brush);
     DeleteObject(brush);
 }
+inline void UiCardBox(HDC dc, RECT rect, COLORREF fill, COLORREF border, int radius, bool dark) {
+    UiBox(dc, rect, fill, border, radius);
+    if (dark && rect.right - rect.left > radius * 2 && rect.bottom - rect.top > 4) {
+        const int inset = std::max(2, radius / 2);
+        UiSeparator(dc, rect.left + inset, rect.right - inset, rect.top + 1, RGB(68, 68, 72));
+    }
+}
+inline void UiDrawScrollbarThumb(HDC dc, const RECT& thumb, int dpi, const UiColors& c, bool active = false) {
+    if (!dc || thumb.right <= thumb.left || thumb.bottom <= thumb.top) return;
+    const COLORREF tone = active ? c.muted : c.border;
+    const int radius = std::min(UiCapsuleRadius(thumb), std::max(1, MulDiv(3, dpi, 96)));
+    UiBox(dc, thumb, tone, tone, radius);
+}
 inline void UiPolyline(HDC dc, const POINT *points, int count, COLORREF color, float width = 1.0f) {
     if (!dc || !points || count < 2)
         return;
@@ -354,6 +418,14 @@ inline UiColors UiFieldColors(const UiFieldStyle& style) { return style.ai ? UiA
 inline COLORREF UiControlBackdrop(HWND control, COLORREF fallback) {
     const auto value = reinterpret_cast<UINT_PTR>(GetPropW(control, L"SerialCtl.Backdrop"));
     return value ? static_cast<COLORREF>(value - 1) : fallback;
+}
+inline void UiSetControlBackdrop(HWND control, COLORREF color) {
+    if (control)
+        SetPropW(control, L"SerialCtl.Backdrop", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(color) + 1));
+}
+inline void UiClearControlBackdrop(HWND control) {
+    if (control)
+        RemovePropW(control, L"SerialCtl.Backdrop");
 }
 // Keep native COMBOBOX/ComboLBox windows, selection notifications, keyboard
 // handling and accessibility. Only painting and the scrollbar lane are shared.
@@ -407,7 +479,7 @@ inline void UiComboRegion(HWND list, int dpi) {
         popup=reinterpret_cast<UiComboPopup *>(reference);
         if (popup->regionSize.cx==size.cx && popup->regionSize.cy==size.cy && popup->regionDpi==dpi) return;
     }
-    const int radius = MulDiv(10, dpi, 96);
+    const int radius = UiControlRadius(dpi);
     HRGN region = CreateRoundRectRgn(-2,-2,size.cx+2,size.cy+2,(radius+2)*2,(radius+2)*2);
     if (!region) return;
     if (popup) { popup->regionSize=size; popup->regionDpi=dpi; }
@@ -431,7 +503,7 @@ inline void UiPaintComboRow(HDC dc, HWND combo, int index, RECT row, bool select
     if (selected) {
         RECT highlight = row;
         InflateRect(&highlight, 0, -1);
-        UiBox(dc, highlight, colors.accent, colors.accent, d(8));
+        UiBox(dc, highlight, colors.accent, colors.accent, UiInnerRadius(style.dpi));
     }
     const int length = static_cast<int>(SendMessageW(combo, CB_GETLBTEXTLEN, index, 0));
     if (length < 0 || length > 65536)
@@ -471,7 +543,7 @@ inline void UiPaintComboField(HWND combo, HDC target, const UiFieldStyle &style)
                                                                                   : colors.border;
     const bool composer = GetPropW(combo, L"SerialCtl.Composer") != nullptr;
     if (!composer)
-        UiBox(dc, bounds, colors.field, border, GetPropW(combo,L"SerialCtl.Capsule")?UiCapsuleRadius(bounds):d(10));
+        UiBox(dc, bounds, colors.field, border, GetPropW(combo,L"SerialCtl.Capsule")?UiCapsuleRadius(bounds):UiControlRadius(style.dpi));
     else if (focused)
         UiButtonKeyboardFocus(dc, bounds, ODS_FOCUS, style.dpi, UiFocusInk(*style.dark));
     const int selected = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));
@@ -563,9 +635,9 @@ inline void UiPaintComboPopup(HWND list, HDC target, const UiComboPopup &data) {
         UiPaintComboRow(dc, data.combo, i, row, i == selected, *data.style, scrolling ? &scroll : nullptr);
     }
     if (scrolling)
-        UiBox(dc, scroll.thumb, colors.border, colors.border, d(3));
+        UiDrawScrollbarThumb(dc, scroll.thumb, data.style->dpi, colors);
     // The shared coverage stroke preserves the rows and scales with the DPI.
-    UiFocusOutline(dc, bounds, d(10), data.style->dpi, colors.border);
+    UiFocusOutline(dc, bounds, UiControlRadius(data.style->dpi), data.style->dpi, colors.border);
     RestoreDC(dc, saved);
     if (bitmap) {
         BitBlt(target, 0, 0, bounds.right, bounds.bottom, buffer, 0, 0, SRCCOPY);
@@ -1121,7 +1193,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         HBRUSH outside = CreateSolidBrush(outsideColor);
         FillRect(dc, &bounds, outside);
         DeleteObject(outside);
-        UiBox(dc, bounds, colors.field, GetFocus() == h ? UiAccentInk(*style->dark) : colors.border, d(10));
+        UiBox(dc, bounds, colors.field, GetFocus() == h ? UiAccentInk(*style->dark) : colors.border, UiControlRadius(style->dpi));
         POINT origin{};
         GetViewportOrgEx(dc, &origin);
         POINT clientOrigin{}; ClientToScreen(h,&clientOrigin);
@@ -1149,7 +1221,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
         const bool focused = enabled && GetFocus() == h;
         const COLORREF border = focused ? UiAccentInk(*style->dark)
                                   : enabled && GetPropW(h, L"SerialCtl.FieldHover") ? colors.muted : colors.border;
-        UiBox(dc, rect, colors.field, border, d(10));
+        UiBox(dc, rect, colors.field, border, UiControlRadius(style->dpi));
         RestoreDC(dc, saved);
         ReleaseDC(h, dc);
         return 0;
@@ -1157,6 +1229,7 @@ inline LRESULT CALLBACK UiFieldProc(HWND h, UINT message, WPARAM w, LPARAM l, UI
     if (message == WM_NCDESTROY) {
         RemovePropW(h, L"SerialCtl.FieldSurface");
         RemovePropW(h, L"SerialCtl.FieldHover");
+        RemovePropW(h, L"SerialCtl.Backdrop");
         RemoveWindowSubclass(h, UiFieldProc, id);
         return DefSubclassProc(h, message, w, l);
     }

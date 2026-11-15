@@ -8,8 +8,10 @@
 #include <vector>
 #include <atomic>
 #include <sddl.h>
+#include <filesystem>
 #include <aclapi.h>
 
+#include "LocalWorkspace.h"
 #include "McpProtocol.h"
 #include "McpSecurity.h"
 #include "McpDispatcher.h"
@@ -780,6 +782,176 @@ void TestStatelessHttpResponseIntegrity() {
     server.Stop();
 }
 
+void TestWorkspaceLoopbackBoundary() {
+    std::cout << "[Test 6] Testing Windows local workspace loopback boundary, ephemeral MCP port and HTTP exec..." << std::endl;
+    wchar_t tmpBuf[MAX_PATH]{};
+    const DWORD tmpLen = GetTempPathW(MAX_PATH, tmpBuf);
+    Expect(tmpLen > 0 && tmpLen < MAX_PATH, "GetTempPathW failed in workspace test");
+    const std::wstring rootDir =
+        std::wstring(tmpBuf, tmpLen) + L"serialctl-mcptest-" + std::to_wstring(GetCurrentProcessId());
+    std::error_code ec;
+    std::filesystem::remove_all(rootDir, ec);
+    Expect(std::filesystem::create_directories(rootDir, ec), "Failed to create workspace HTTP test root");
+
+    auto cleanup = [&] {
+        std::error_code remEc;
+        std::filesystem::remove_all(rootDir, remEc);
+    };
+
+    try {
+        ai::LocalWorkspaceService ws;
+        std::string cfgErr;
+        Expect(ws.Configure(true, rootDir, false, cfgErr), "Failed to configure LocalWorkspaceService");
+
+        McpDispatcher dispatcher;
+        dispatcher.SetGuiStatusChecker([] { return true; });
+        dispatcher.SetWorkspaceExecutor([&ws](const std::string& method, const Json& arguments) {
+            return ws.ExecuteTool(method, arguments);
+        });
+
+        // 1. Non-loopback client IP MUST be denied (-32007 PERMISSION_DENIED) for every workspace.* tool.
+        McpAuditLog::Instance().Clear();
+        const Json lanBlocked = dispatcher.CallTool("192.168.1.50", "workspace.info", Json::object());
+        Expect(lanBlocked.contains("error") && lanBlocked["error"]["code"] == ErrPermissionDenied,
+               "Non-loopback workspace.info call must be blocked with -32007");
+        const Json lanExecBlocked =
+            dispatcher.CallTool("10.0.0.8", "workspace.exec", {{"command", "echo PWN"}});
+        Expect(lanExecBlocked.contains("error") && lanExecBlocked["error"]["code"] == ErrPermissionDenied,
+               "Non-loopback workspace.exec call must be blocked with -32007");
+
+        // 2. Loopback ephemeral HTTP listener (allowEphemeralPort = true) serves workspace.* over /mcp
+        McpHttpServer server;
+        std::wstring err;
+        Expect(server.Start(
+                   "127.0.0.1", 0,
+                   [&dispatcher](const std::string& ip, const std::string& body) {
+                       return dispatcher.Dispatch(ip, body);
+                   },
+                   [] { return std::string("{\"status\":\"ok\"}"); },
+                   err, true),
+               "Ephemeral loopback MCP HTTP server failed to start");
+        const uint16_t port = server.Port();
+        Expect(port != 0, "Ephemeral MCP port must resolve to non-zero port");
+
+        auto callHttpTool = [&](int id, const std::string& name, const Json& args) {
+            const Json req = {{"jsonrpc", "2.0"},
+                              {"id", id},
+                              {"method", "tools/call"},
+                              {"params", {{"name", name}, {"arguments", args}}}};
+            const std::string raw = HttpPost(port, "/mcp", req.dump());
+            Expect(!raw.empty(), "HTTP tools/call response empty for workspace tool");
+            return Json::parse(raw);
+        };
+
+        const Json writeResp = callHttpTool(1, "workspace.write_file",
+                                            {{"path", "hello.txt"}, {"content", "SECRET_BODY_XYZ"}});
+        Expect(!writeResp["result"].value("isError", false), "HTTP workspace.write_file failed");
+        const Json execResp = callHttpTool(2, "workspace.exec", {{"command", "echo MCP_WS_EXEC_OK"}});
+        const auto execJson = Json::parse(execResp["result"]["content"][0]["text"].get<std::string>());
+        Expect(execJson["ok"] == true && execJson["exitCode"] == 0 &&
+                   execJson["stdout"].get<std::string>().find("MCP_WS_EXEC_OK") != std::string::npos,
+               "HTTP workspace.exec output mismatch");
+
+        // Audit log must redact large file content on workspace.write_file
+        const Json audit = McpAuditLog::Instance().ToJson();
+        bool sawSanitizedWrite = false;
+        for (const auto& entry : audit) {
+            if (entry.value("toolName", "") == "workspace.write_file") {
+                const auto contentVal = entry["arguments"].value("content", std::string());
+                Expect(contentVal.find("SECRET_BODY_XYZ") == std::string::npos &&
+                           contentVal.rfind("[TEXT:", 0) == 0,
+                       "Audit log leaked raw workspace.write_file file body");
+                sawSanitizedWrite = true;
+            }
+        }
+        Expect(sawSanitizedWrite, "workspace.write_file missing from MCP audit log");
+
+        // 3. Read-only mode denies workspace.write_file / exec over HTTP while permitting read_file
+        Expect(ws.Configure(true, rootDir, true, cfgErr), "Reconfigure read-only failed");
+        const Json readRo = callHttpTool(3, "workspace.read_file", {{"path", "hello.txt"}});
+        const auto readJson = Json::parse(readRo["result"]["content"][0]["text"].get<std::string>());
+        Expect(readJson["ok"] == true && readJson["content"] == "SECRET_BODY_XYZ",
+               "Read-only blocked HTTP workspace.read_file");
+        const Json writeRo = callHttpTool(4, "workspace.write_file", {{"path", "ro2.txt"}, {"content", "x"}});
+        const auto writeRoJson = Json::parse(writeRo["result"]["content"][0]["text"].get<std::string>());
+        Expect(writeRoJson["ok"] == false && writeRoJson["code"] == "LOCAL_WORKSPACE_READ_ONLY",
+               "Read-only permitted HTTP workspace.write_file");
+
+        server.Stop();
+    } catch (...) {
+        cleanup();
+        throw;
+    }
+    cleanup();
+    std::cout << "PASS: workspace.* loopback-only boundary, ephemeral HTTP port, audit sanitization and readOnly gating\n";
+}
+
+void TestProtocolVersionAndHeaderTolerance() {
+    std::cout << "Running TestProtocolVersionAndHeaderTolerance...\n";
+    auto dispatcher = std::make_shared<McpDispatcher>();
+
+    McpHttpServer server;
+    std::wstring err;
+    Expect(server.Start(
+               "127.0.0.1", 0,
+               [dispatcher](const std::string& ip, const std::string& body) {
+                   return dispatcher->Dispatch(ip, body);
+               },
+               [] { return std::string("{\"status\":\"ok\"}"); },
+               err, true),
+           "McpHttpServer failed to start for protocol header test");
+    const uint16_t port = server.Port();
+
+    auto sendRawPost = [port](const std::string& extraHeaders) -> std::string {
+        SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        Expect(s != INVALID_SOCKET, "socket failed");
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+        Expect(connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0, "connect failed");
+        const std::string body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}";
+        const std::string req =
+            "POST /mcp HTTP/1.1\r\n"
+            "Host: 127.0.0.1:" + std::to_string(port) + "\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: " + std::to_string(body.size()) + "\r\n" +
+            extraHeaders + "\r\n" + body;
+        send(s, req.data(), static_cast<int>(req.size()), 0);
+        std::string resp;
+        char buf[4096];
+        int n = 0;
+        while ((n = recv(s, buf, sizeof(buf), 0)) > 0)
+            resp.append(buf, n);
+        closesocket(s);
+        return resp;
+    };
+
+    for (const char* ver : {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}) {
+        const std::string resp = sendRawPost(std::string("MCP-Protocol-Version: ") + ver + "\r\n");
+        Expect(resp.find("HTTP/1.1 200 OK") == 0, "Supported MCP-Protocol-Version must return 200 OK");
+    }
+    {
+        const std::string resp = sendRawPost("MCP-Protocol-Version: 1999-01-01\r\n");
+        Expect(resp.find("HTTP/1.1 400 Bad Request") == 0, "Unsupported MCP-Protocol-Version must return 400");
+    }
+    {
+        const std::string resp = sendRawPost("Accept: application/json\r\nAccept: text/event-stream\r\n");
+        Expect(resp.find("HTTP/1.1 200 OK") == 0, "Benign repeated Accept headers must not fail with 400");
+    }
+    {
+        const std::string resp = sendRawPost("Origin: http://127.0.0.1:1\r\nOrigin: http://127.0.0.1:2\r\n");
+        Expect(resp.find("HTTP/1.1 400 Bad Request") == 0, "Duplicate Origin header must still return 400");
+    }
+    {
+        const std::string resp = sendRawPost("MCP-Protocol-Version: 2025-03-26\r\nMCP-Protocol-Version: 2025-06-18\r\n");
+        Expect(resp.find("HTTP/1.1 400 Bad Request") == 0, "Duplicate MCP-Protocol-Version must return 400");
+    }
+
+    server.Stop();
+    std::cout << "PASS: MCP-Protocol-Version negotiation and header hardening\n";
+}
+
 } // namespace
 
 int main() {
@@ -796,9 +968,11 @@ int main() {
     TestResidentLifecycle();
     TestStatelessHttpResponseIntegrity();
     TestIpcAccessAndCancellation();
+    TestWorkspaceLoopbackBoundary();
+    TestProtocolVersionAndHeaderTolerance();
 
     std::cout << "========================================" << std::endl;
-    std::cout << "All 5 MCP Server Test Suites PASSED 100%!" << std::endl;
+    std::cout << "All 7 MCP Server Test Suites PASSED 100%!" << std::endl;
     std::cout << "========================================" << std::endl;
     return 0;
 }

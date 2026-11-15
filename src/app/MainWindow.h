@@ -2,6 +2,7 @@
 #include "BootInterrupt.h"
 
 #include "AiPane.h"
+#include "AiChangesPane.h"
 #include "AiPetPane.h"
 #include "ApiServer.h"
 #include "CmdLineEditor.h"
@@ -28,6 +29,7 @@
 #include "XferPane.h"
 #include "TftpServer.h"
 #include "TftpPane.h"
+#include "LocalWorkspace.h"
 #include "ToolbarIcons.h"
 #include "SessionReceiveDispatcher.h"
 #include "McpIpc.h"
@@ -79,7 +81,7 @@ private:
         std::uint64_t sessionId = 0;
         int initialEncoding = 0;
         wchar_t exportTip[2048]{};
-        bool mcpEnabled = false;
+        bool mcpEnabled = true;
         uint16_t mcpPort = 7080;
     };
 
@@ -128,6 +130,7 @@ private:
         std::wstring username;
         std::wstring password;
         std::uint16_t port = 0;
+        std::vector<std::uint8_t> localEchoWidths;
 
     };
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
@@ -199,6 +202,8 @@ private:
     void RefreshConnectionActions();
     std::uint64_t pendingReconnectId_ = 0;
     void DisconnectAll();
+    bool ConfirmActiveTransfers(const wchar_t* actionLabel, bool activeSessionOnly) const;
+    void TouchPowerTestActivity();
     void SwitchSession(size_t index, SessionFocus focus = SessionFocus::Terminal);
     void ShowPowerPage();
     void ShowAiPage(bool connect = true);
@@ -271,9 +276,31 @@ private:
     bool SidebarCollapsed() const;
     int SidebarWidth() const;
     void SyncAiTerminal();
+    bool HasRunningAiExec() const;
+    void SyncAiTargetBinding();
+    enum class AiSidebarTab { Compile, Terminal, Changes };
+    struct AiExecHistoryEntry;
+    bool ShowingAiExecTerminal() const;
+    TerminalViewport::State* ActiveTerminalViewState();
+    const TerminalViewport::State* ActiveTerminalViewState() const;
+    void SelectAiSidebarTab(AiSidebarTab tab, bool userInitiated = true);
+    void UpdateAiChangesTabBadge();
+    void EnsureAiExecParser();
+    void ResetAiExecTerminalToEntry(const AiExecHistoryEntry &entry);
+    void RefreshAiExecCombo();
+    bool CopyTextToClipboard(HWND owner, const std::wstring &text, const wchar_t *notice);
+    void CopyAiExecOutput();
+    void HandleAiTurnStarted(std::uint64_t turnSeq);
+    void HandleAiExecEvent(const ai::ExecProgressEvent &event);
+    void FocusAiExecInSidebar(const std::string &execId);
+    void HandleAiFileChanges(const std::vector<ai::FileChangeRecord> &records,
+                             std::uint64_t turnSeq,
+                             const std::string &focusChangeId,
+                             bool autoSwitch);
     void RefreshPowerTargets();
     std::shared_ptr<PowerKeywordRun> CreatePowerKeywordRun(const PowerKeywordConfig &config);
     void SyncPowerTerminal();
+    void SyncTerminalVisibility();
     bool LiveMonitorPage() const { return aiVisible_ || powerVisible_; }
 
     void ShowSftpPanel(bool show,bool preserveXfer=false);
@@ -392,6 +419,34 @@ private:
     bool aiMonitorWrap_ = false;
     HWND aiWrapButton_ = nullptr;
     HWND aiTerminalHeader_ = nullptr;
+    HWND aiCompileTabButton_ = nullptr;
+    HWND aiTerminalTabButton_ = nullptr;
+    HWND aiChangesTabButton_ = nullptr;
+    HWND aiExecCombo_ = nullptr;
+    HWND aiExecCopyButton_ = nullptr;
+    AiChangesPane aiChangesPane_;
+    AiSidebarTab aiSidebarTab_ = AiSidebarTab::Terminal;
+    bool userOverrodeRightViewInTurn_ = false;
+    std::string aiPreviewSessionId_;
+    struct AiExecHistoryEntry {
+        std::string execId;
+        std::string command;
+        std::string cwd;
+        std::string rawLog;
+        std::string utf8Carry;
+        bool running = true;
+        bool failed = false;
+        bool timedOut = false;
+        bool cancelled = false;
+        int exitCode = 0;
+        std::uint64_t durationMs = 0;
+    };
+    TerminalViewport::State aiExecTerminalState_;
+    std::shared_ptr<TerminalParseScheduler::Context> aiExecParser_;
+    std::uint64_t aiExecMinimumSequence_ = 0;
+    std::uint64_t aiExecSnapshotSequence_ = 0;
+    std::vector<AiExecHistoryEntry> aiExecHistory_;
+    std::string aiExecSelectedId_;
     bool aiRemoteConnect_ = false;
     HWND aiButton_ = nullptr;
     bool powerVisible_ = false;
@@ -495,6 +550,16 @@ private:
     ULONGLONG leftPanelAnimationAt_ = 0;
     bool rightPanelAutoCollapsed_ = false;
     bool rightPanelDragging_ = false, leftPanelDragging_ = false;
+    HWND dragFrozenOverlay_ = nullptr;
+    HDC dragSnapshotDc_ = nullptr;
+    HBITMAP dragSnapshotBmp_ = nullptr;
+    HGDIOBJ dragSnapshotOldBmp_ = nullptr;
+    int dragSnapshotWidth_ = 0, dragSnapshotHeight_ = 0, dragSnapshotTop_ = 0;
+    int dragOrigLeftWidth_ = 0, dragOrigCenterLeft_ = 0, dragOrigCenterRight_ = 0, dragOrigRightLeft_ = 0;
+    void BeginFrozenSplitterDrag(bool showOverlay = true);
+    void EndFrozenSplitterDrag();
+    void PaintFrozenDragOverlay(HDC dc);
+    static LRESULT CALLBACK FrozenDragOverlayProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     int leftPanelWidth_ = 190;
     std::wstring clipboardNotice_;
     void ShowClipboardNotice(const std::wstring&);
@@ -539,6 +604,9 @@ private:
     bool startupUpdateDeferred_ = false;
     SessionReceiveDispatcher receiveDispatcher_;
     bool measurePaint_ = false;
+    bool terminalPaintPending_ = false;
+    ULONGLONG lastTerminalPaintTick_ = 0;
+    ULONGLONG lastSplitterLayoutTick_ = 0;
     bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.
     std::atomic<HWND> receiveWindow_{nullptr};
     std::set<std::uint64_t> loggerErrorsShown_;
@@ -583,17 +651,24 @@ private:
 
     std::unique_ptr<mcp::McpIpcServer> mcpIpcServer_;
     std::unique_ptr<mcp::McpHttpServer> mcpEmbeddedServer_;
+    std::unique_ptr<mcp::McpHttpServer> aiLoopbackMcpServer_;
     std::unique_ptr<mcp::McpDispatcher> mcpDispatcher_;
+    std::shared_ptr<ai::LocalWorkspaceService> localWorkspace_ = std::make_shared<ai::LocalWorkspaceService>();
+    BackgroundCleanup aiRemoteFsWorker_;
     std::atomic<bool> mcpStopping_{false};
-    bool mcpEnabled_ = false;
+    bool mcpEnabled_ = true;
     uint16_t mcpPort_ = 7080;
     std::string mcpBindIp_ = "0.0.0.0";
+    std::string mcpAuthToken_;
+    ULONGLONG powerTestLastActivityTick_ = 0;
 
     void StartMcpIpc();
     void StopMcpIpc();
     std::unique_ptr<mcp::McpDispatcher> CreateMcpDispatcher(bool http);
     void StartEmbeddedMcpServer();
     void StopEmbeddedMcpServer();
+    uint16_t EnsureAiMcpPort();
+    void RunAiRemoteFs(const std::string& op, const Json& params, AiPane::RemoteFsCallback done);
     void ApplyMcpSettings(bool enabled, uint16_t port);
     Json DispatchMcpToUi(const std::string& method, const Json& params, bool http);
     Json McpExecute(const std::string& method, const Json& params);

@@ -38,6 +38,8 @@ class PowerPane {
     void ObserveKeywords(std::uint64_t session, const Bytes &bytes);
     void KeywordTargetDisconnected(std::uint64_t session);
     bool KeywordListening(std::uint64_t session) const;
+    static Json EncodeKeywords(const PowerKeywordConfig &config);
+    static PowerKeywordConfig DecodeKeywords(const Json &config);
 
   private:
     bool closing_ = false; // UI thread only.
@@ -88,9 +90,9 @@ class PowerPane {
     void ThemeKeywords();
     static INT_PTR CALLBACK KeywordConfigProc(HWND, UINT, WPARAM, LPARAM);
     static INT_PTR CALLBACK KeywordRuleProc(HWND, UINT, WPARAM, LPARAM);
-    static Json EncodeKeywords(const PowerKeywordConfig &config);
-    static PowerKeywordConfig DecodeKeywords(const Json &config);
-    static constexpr int KeywordMode = 5, KeywordConfigId = 138, KeywordStatsId = 139, KeywordStatusId = 140;
+    static INT_PTR CALLBACK KeywordCommandProc(HWND, UINT, WPARAM, LPARAM);
+    static constexpr int MaxAutomationMode = 4, KeywordConfigId = 138, KeywordStatsId = 139, KeywordStatusId = 140,
+                         KeywordEnableId = 141, KeywordResumeId = 142;
     HWND window_ = nullptr;
     HWND body_ = nullptr;
     HWND lastFocus_ = nullptr;
@@ -133,6 +135,7 @@ class PowerPane {
     Json state_ = Json::object();
     PowerKeywordConfig keywordConfig_;
     std::wstring keywordConfigError_;
+    bool keywordEnabled_ = false;
     KeywordTarget keywordTarget_;
     std::shared_ptr<PowerKeywordRun> keywordRun_; // Atomic access from terminal receive workers.
     std::atomic<std::uint64_t> keywordSession_{0};

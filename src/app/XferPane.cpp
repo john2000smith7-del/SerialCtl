@@ -13,7 +13,7 @@ int Measure(HWND h,HFONT font,const std::wstring& text,int width){
     SelectObject(dc,old);ReleaseDC(h,dc);return r.bottom;
 }
 }
-XferPane::~XferPane(){if(window_)DestroyWindow(window_);if(surface_)DeleteObject(surface_);if(field_)DeleteObject(field_);}
+XferPane::~XferPane(){if(window_)DestroyWindow(window_);if(surface_)DeleteObject(surface_);if(field_)DeleteObject(field_);if(monoFont_)DeleteObject(monoFont_);}
 HWND XferPane::Control(int id)const{return GetDlgItem(id==Start||id==Cancel?window_:body_,id);}
 bool XferPane::Create(HWND parent,xfer::TransferController& controller,std::function<Target()> target,HFONT font,bool dark,int dpi) {
     controller_=&controller;target_=std::move(target);font_=font;dark_=dark;dpi_=dpi;style_={&dark_,font_,dpi_,false};
@@ -58,10 +58,12 @@ bool XferPane::Create(HWND parent,xfer::TransferController& controller,std::func
 void XferPane::Theme(bool dark,int dpi,HFONT font) {
     dark_=dark;dpi_=dpi;font_=font;style_={&dark_,font_,dpi_,false};
     if(surface_)DeleteObject(surface_);if(field_)DeleteObject(field_);
+    if(monoFont_){DeleteObject(monoFont_);monoFont_=nullptr;}
+    monoFont_=CreateFontW(-D(13),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,FIXED_PITCH|FF_MODERN,L"Consolas");
     const auto c=UiTheme(dark_);surface_=CreateSolidBrush(c.surface);field_=CreateSolidBrush(c.field);
     if(!window_)return;
     for(int id=Direction;id<=LengthLabel;++id) {
-        auto h=Control(id);SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(font_),FALSE);
+        auto h=Control(id);SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(id==Count&&monoFont_?monoFont_:font_),FALSE);
         wchar_t cls[24]{};GetClassNameW(h,cls,24);
         if(_wcsicmp(cls,L"EDIT")==0||_wcsicmp(cls,L"COMBOBOX")==0) {
             UiStyleField(h,&style_);
@@ -269,6 +271,7 @@ void XferPane::Begin() {
         else Refresh();
         return;
     }
+    if(!UiTryAcquireActionCooldown(Control(Start),Start,300))return;
     if(state.busy)return;
     if(!target.unavailable.empty()){localNotice_=target.unavailable;Refresh();return;}
     xfer::TransferController::Request request;request.session=target.id;request.source=target.name;request.path=Text(Control(File));request.connection=target.connection;
@@ -293,7 +296,7 @@ void XferPane::Paint(HDC target) {
     if(contentHeight_>bodyHeight_) {
         const int thumb=std::max(D(28),bodyHeight_*bodyHeight_/std::max(1,contentHeight_));
         const int y=offset_*(bodyHeight_-thumb)/std::max(1,contentHeight_-bodyHeight_);
-        UiBox(dc,{r.right-D(5),y,r.right,y+thumb},c.border,c.border,D(2));
+        UiDrawScrollbarThumb(dc,{r.right-D(5),y,r.right,y+thumb},dpi_,c);
     }
 }
 LRESULT CALLBACK XferPane::FocusProc(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR id,DWORD_PTR data) {
@@ -328,7 +331,7 @@ LRESULT CALLBACK XferPane::BodyProc(HWND h,UINT m,WPARAM w,LPARAM l) {
         self->Layout();return 0;
     }
     if(m==WM_LBUTTONUP||m==WM_CAPTURECHANGED||m==WM_CANCELMODE){self->dragging_=false;if(m!=WM_CAPTURECHANGED&&GetCapture()==h)ReleaseCapture();}
-    if(m==WM_COMMAND||m==WM_DRAWITEM||m==WM_MEASUREITEM||m==WM_CTLCOLORSTATIC||m==WM_CTLCOLOREDIT||m==WM_CTLCOLORLISTBOX)
+    if(m==WM_COMMAND||m==WM_DRAWITEM||m==WM_MEASUREITEM||m==WM_CTLCOLORBTN||m==WM_CTLCOLORSTATIC||m==WM_CTLCOLOREDIT||m==WM_CTLCOLORLISTBOX)
         return SendMessageW(self->window_,m,w,l);
     return DefWindowProcW(h,m,w,l);
 }
@@ -352,7 +355,7 @@ LRESULT CALLBACK XferPane::Proc(HWND h,UINT m,WPARAM w,LPARAM l) {
         self->localNotice_.clear();self->Refresh();return 0;
     }
     if(m==WM_ERASEBKGND){RECT r{};GetClientRect(h,&r);if(self->surface_)FillRect(reinterpret_cast<HDC>(w),&r,self->surface_);return 1;}
-    if(m==WM_CTLCOLORSTATIC||m==WM_CTLCOLOREDIT||m==WM_CTLCOLORLISTBOX) {
+    if(m==WM_CTLCOLORBTN||m==WM_CTLCOLORSTATIC||m==WM_CTLCOLOREDIT||m==WM_CTLCOLORLISTBOX) {
         const auto c=UiTheme(self->dark_);auto dc=reinterpret_cast<HDC>(w);
         HWND controlHwnd=reinterpret_cast<HWND>(l);
         const bool isEdit=(m==WM_CTLCOLOREDIT)||(controlHwnd==self->Control(File))||(controlHwnd==self->Control(Length));
@@ -363,6 +366,7 @@ LRESULT CALLBACK XferPane::Proc(HWND h,UINT m,WPARAM w,LPARAM l) {
             SetBkColor(dc,c.field);
             return reinterpret_cast<LRESULT>(self->field_);
         }
+        SetBkMode(dc,TRANSPARENT);
         SetTextColor(dc,c.text);SetBkColor(dc,c.surface);
         return reinterpret_cast<LRESULT>(self->surface_);
     }
@@ -395,7 +399,8 @@ LRESULT CALLBACK XferPane::Proc(HWND h,UINT m,WPARAM w,LPARAM l) {
             UiButtonKeyboardFocus(dc,item.rcItem,item.itemState,self->dpi_,flat?UiFocusInk(self->dark_):v.ink);
             if(!UiDrawButtonGlyph(dc,item,item.CtlID==Cancel&&enabled?c.danger:v.ink,self->dpi_)) {
                 const auto old=SelectObject(dc,self->font_);SetBkMode(dc,TRANSPARENT);SetTextColor(dc,item.CtlID==Cancel&&enabled?c.danger:v.ink);
-                auto r=item.rcItem;DrawTextW(dc,Text(item.hwndItem).c_str(),-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);SelectObject(dc,old);
+                auto r=UiCapsuleContentRect(item.rcItem,self->dpi_);
+                DrawTextW(dc,Text(item.hwndItem).c_str(),-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);SelectObject(dc,old);
             }
             return TRUE;
         }

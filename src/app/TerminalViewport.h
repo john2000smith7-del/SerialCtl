@@ -3,17 +3,25 @@
 #include "TerminalDecoder.h"
 #include "PaintBuffer.h"
 #include <array>
+#include <memory>
+#include <string>
+#include <string_view>
 #include <windows.h>
 namespace serialctl {
 class PerformanceMetrics;
 class TerminalViewport {
 public:
+    TerminalViewport();
+    ~TerminalViewport();
+    TerminalViewport(const TerminalViewport&) = delete;
+    TerminalViewport& operator=(const TerminalViewport&) = delete;
     struct State : TerminalViewportController::State { TerminalDecoder decoder; };
     struct Options {
         bool dark = false, timestamps = false, liveMonitor = false, measure = false;
         int mode = -1;
         HFONT font = nullptr, smallFont = nullptr;
         PerformanceMetrics* performance = nullptr;
+        std::wstring_view emptyHint{};
     };
     auto& Metrics() { return controller_.Metrics(); }
     const auto& Metrics() const { return controller_.Metrics(); }
@@ -46,6 +54,7 @@ private:
         int mode = -1;
         HFONT font = nullptr, smallFont = nullptr;
         std::wstring draft;
+        std::wstring emptyHint;
         size_t draftCursor = 0;
         bool valid = false;
     } cache_;
@@ -58,6 +67,8 @@ private:
     std::array<RECT, 32> registerBitBounds_{};
     TerminalViewportController controller_;
     PaintBuffer paintBuffer_;
+    struct AsyncRasterizer;
+    std::unique_ptr<AsyncRasterizer> rasterizer_;
     std::uint64_t paintSample_ = 0;
 };
 } // namespace serialctl

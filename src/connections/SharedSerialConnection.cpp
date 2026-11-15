@@ -11,11 +11,32 @@ struct Probe {
     std::vector<std::wstring> names, descriptions;
 };
 constexpr ULONGLONG DiscoveryBudgetMs = 1500;
+std::string ShareAccessToken() {
+    wchar_t buf[512]{};
+    DWORD len = GetEnvironmentVariableW(L"SERIALCTL_SHARE_TOKEN", buf, static_cast<DWORD>(std::size(buf)));
+    if (len > 0 && len < std::size(buf))
+        return WideToMultiByte(std::wstring(buf, len), CP_UTF8);
+    wchar_t modulePath[MAX_PATH]{};
+    DWORD modLen = GetModuleFileNameW(nullptr, modulePath, static_cast<DWORD>(std::size(modulePath)));
+    if (modLen > 0 && modLen < std::size(modulePath)) {
+        std::wstring ini(modulePath, modLen);
+        auto slash = ini.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) {
+            ini = ini.substr(0, slash + 1) + L"settings.ini";
+            DWORD iniLen = GetPrivateProfileStringW(L"SerialShare", L"AccessToken", L"", buf,
+                                                    static_cast<DWORD>(std::size(buf)), ini.c_str());
+            if (iniLen > 0 && iniLen < std::size(buf) - 1)
+                return WideToMultiByte(std::wstring(buf, iniLen), CP_UTF8);
+        }
+    }
+    return {};
+}
 Probe Query(const std::wstring &host, unsigned port, const TcpAddresses &addresses,
             ULONGLONG deadline, const std::atomic_bool *cancel = nullptr) {
     Probe p;
     try {
         GatewayClient c;
+        c.SetAccessToken(ShareAccessToken());
         c.ConnectUntil(host, port, addresses, cancel, deadline);
         p.port = port;
         p.instance = c.Hello()["instance"];
@@ -149,6 +170,7 @@ bool SharedSerialConnection::Start(DataCallback data, StatusCallback status, std
             if (!DiscoverAuto(host_, port_, names, error, &cancel_, 0, nullptr, &expectedInstance_))
                 return false;
         }
+        client_.SetAccessToken(ShareAccessToken());
         client_.ConnectUntil(host_, port_, &cancel_, deadline);
         if (!expectedInstance_.empty() && client_.Hello()["instance"] != expectedInstance_)
             throw std::runtime_error("INSTANCE_MISMATCH: discover again; server restarted or port reused");

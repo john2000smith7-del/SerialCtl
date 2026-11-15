@@ -6,6 +6,7 @@
 #include <atomic>
 #include <functional>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -17,7 +18,12 @@ namespace serialctl
 class SessionLogger
 {
   public:
+    SessionLogger();
     ~SessionLogger();
+    static std::wstring DefaultLogDirectory();
+    static void EmergencyFlushAll();
+    void EmergencyFlush();
+    void ConfigureRotation(size_t maxPartsPerSession, std::uint64_t splitThresholdBytes);
     bool Start(const std::wstring &mode, std::wstring &error, bool csv = false);
     // After a connection is stopped, reopen the same log/parts rather than discard
     // history and the user's continuous-save destination.
@@ -66,7 +72,10 @@ class SessionLogger
         std::vector<Part> parts;
         std::uint64_t length = 0;
     };
-    bool CaptureSnapshot(ExportPoint, const std::atomic<bool> *, Snapshot &, std::wstring &);
+    bool CaptureSnapshot(ExportPoint, const std::atomic<bool> *, Snapshot &, std::wstring &, bool pinParts = false);
+    void UnpinSnapshot(const Snapshot &snapshot);
+    std::vector<std::wstring> EvictExcessPartsLocked();
+    static void DeletePathsBestEffort(const std::vector<std::wstring> &paths);
     static bool CopySnapshot(const Snapshot &, const std::wstring &, std::wstring &,
                              const std::atomic<bool> *, const ExportProgress &);
     bool CopyCompletedRange(ExportPoint, std::uint64_t from, HANDLE output, std::wstring& error);
@@ -83,10 +92,16 @@ class SessionLogger
     std::condition_variable wake_;
 
     HANDLE file_ = INVALID_HANDLE_VALUE;
+    std::atomic<HANDLE> activeFileHandle_{INVALID_HANDLE_VALUE};
     mutable std::mutex mutex_;
     std::mutex encodeMutex_;
     std::wstring path_;
     std::vector<Part> parts_;
+    std::map<std::wstring, size_t> pinnedParts_;
+    size_t maxPartsPerSession_ = 10;
+    std::uint64_t splitThresholdBytes_ = 16ull * 1024 * 1024;
+    std::uint64_t nextPartNumber_ = 2;
+    std::uint64_t evictedBytes_ = 0;
     mutable std::mutex continuousMutex_;
     std::condition_variable continuousWake_;
     std::thread continuousWorker_;
