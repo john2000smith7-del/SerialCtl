@@ -618,6 +618,7 @@ foreach ($architecture in @('x64')) {
                 Click-Control $application.MainWindowHandle 125
                 Start-Sleep -Milliseconds 200
             }
+            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))) { throw 'Collapsed AI exposed monitor terminal.' }
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-collapsed"
             Click-Control $application.MainWindowHandle 125
             $expandUntil = [DateTime]::UtcNow.AddSeconds(2)
@@ -631,7 +632,13 @@ foreach ($architecture in @('x64')) {
                 [SerialCtlUiSmoke]::GetWindowText([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,125),$toggleCaption,64) | Out-Null
                 throw "AI monitor header did not expand; toggle=$toggleCaption"
             }
-            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))) { throw 'AI exposed unselected terminal.' }
+            # In V2.0.21+, the expanded AI live-terminal tab renders child 107 as the empty
+            # placeholder ("请在上方选择已连接的实时终端") until a target session is chosen.
+            $aiTarget = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,307)
+            if (-not [SerialCtlUiSmoke]::IsWindowVisible($aiTarget) -or
+                [SerialCtlUiSmoke]::Send($aiTarget,0x147,[IntPtr]::Zero,[IntPtr]::Zero).ToInt64() -ne 0) {
+                throw 'AI monitor target selector was missing or preselected a terminal.'
+            }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
             [SerialCtlUiSmoke]::AssertAiHeader($application.MainWindowHandle)
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-expanded"
