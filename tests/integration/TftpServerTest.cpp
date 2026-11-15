@@ -533,14 +533,18 @@ void TestRemoteStreamingBoundedMemory(uint16_t testPort) {
             Require(pkt[4 + i] == expected, "Payload byte must match expected pattern");
         }
 
-        client.SendAck(serverTid, static_cast<uint16_t>(b & 0xFFFF));
+        if (b < 100) {
+            client.SendAck(serverTid, static_cast<uint16_t>(b & 0xFFFF));
+        }
     }
 
     // Verify memory bounds & zero disk files
     Require(RemoteSshTftpFileSource::MaxBufferCapacity() <= 4 * 1024 * 1024, "Max buffer must be <= 4 MiB");
 
-    // Test remote stream failure / disconnect midway
+    // Inject the remote stream failure before acknowledging block 100 so
+    // the server's next Read() deterministically observes the failure rather than racing DATA(101).
     mockSource->InjectError(L"Remote SSH connection disconnected");
+    client.SendAck(serverTid, 100);
     recvd = client.RecvPacket(pkt, serverTid);
     // Server should send ERROR packet
     Require(recvd >= 4, "Must receive response after error");
