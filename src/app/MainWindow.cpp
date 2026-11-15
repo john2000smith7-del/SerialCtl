@@ -6070,7 +6070,7 @@ void MainWindow::SendTerminalText(const std::wstring& text) {
     if (selectedMode_ == 4) {
         if (!activeSession_->cmdEditor.Insert(text))
             AppendStatus(L"CMD 输入超过 8191 字符", true);
-        InvalidateRect(terminal_, nullptr, FALSE);
+        ScrollTerminalToBottom();
         return;
     }
     const auto bytes = EncodeTerminalText(text);
