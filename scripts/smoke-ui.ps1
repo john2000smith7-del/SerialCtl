@@ -528,14 +528,30 @@ foreach ($architecture in @('x64')) {
             Capture-Window $application.MainWindowHandle "$architecture-$theme-collapsed"
             Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 200
+            $unifiedSerial = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 103) -eq [IntPtr]::Zero
             foreach ($mode in 0..3) {
-                Click-Control $application.MainWindowHandle (100+$mode)
-                $dialog = Wait-Dialog $application.Id $titles[$mode]
+                if ($mode -eq 3 -and $unifiedSerial) {
+                    Click-Control $application.MainWindowHandle 101
+                    $dialog = Wait-Dialog $application.Id $titles[1]
+                    Start-Sleep -Milliseconds 300
+                    if ([SerialCtlUiSmoke]::GetDlgItem($dialog, 1036) -eq [IntPtr]::Zero) { throw 'Unified serial form is missing location selector.' }
+                    Select-ControlOption $application.MainWindowHandle $dialog $application.Id 1036 1 "$architecture-$theme-serial-location"
+                    $dialog = Wait-Dialog $application.Id $titles[3]
+                } else {
+                    Click-Control $application.MainWindowHandle (100+$mode)
+                    $dialog = Wait-Dialog $application.Id $titles[$mode]
+                }
                 Start-Sleep -Milliseconds 300
                 [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
                 Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-connection-$mode"
                 Capture-Window $dialog "$architecture-$theme-connection-$mode"
                 if ($mode -eq 3) {
+                    if ($unifiedSerial) {
+                        if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($dialog, 1014)) -or
+                            [SerialCtlUiSmoke]::GetDlgItem($dialog, 9010) -ne [IntPtr]::Zero) {
+                            throw 'Remote serial mode did not switch cleanly without manual port dialog.'
+                        }
+                    } else {
                     if ($ActualMouse) {
                         # 9010 is a context-menu command, not a child button.
                         # Open its real user entry on the Refresh button.
@@ -565,6 +581,7 @@ foreach ($architecture in @('x64')) {
                     Capture-Window $portDialog "$architecture-$theme-shared-port"
                     Click-Control $portDialog 2
                     Start-Sleep -Milliseconds 200
+                    }
                 }
                 Click-Control $dialog 2
                 Start-Sleep -Milliseconds 200
