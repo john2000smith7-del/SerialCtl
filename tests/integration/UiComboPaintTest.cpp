@@ -1,5 +1,7 @@
 #include "UiStyle.h"
+#ifndef SERIALCTL_HISTORICAL_COMBO_RENDERER
 #include "UiPathField.h"
+#endif
 #include "UiTestEvidence.h"
 #include <iostream>
 #include <stdexcept>
@@ -120,6 +122,8 @@ void RunLongList(HWND parent,bool editable) {
         SendMessageW(combo,CB_SETCURSEL,0,0);
     }
     DestroyWindow(combo);
+#ifndef SERIALCTL_HISTORICAL_COMBO_RENDERER
+    // The historical dropdown renderer predates the independent path control.
     auto path=UiPathField::Create(parent,12,20,40,320,40,&style);
     const auto value=L"/home/linux/"+std::wstring(200,L'x')+L"/firmware-source";
     SetWindowTextW(path,value.c_str());RedrawWindow(path,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW);
@@ -131,6 +135,7 @@ void RunLongList(HWND parent,bool editable) {
     Require(before!=Snapshot(path),"Long path has no horizontal viewport movement");
     std::vector<wchar_t> actual(value.size()+1);GetWindowTextW(path,actual.data(),static_cast<int>(actual.size()));
     Require(value==actual.data(),"Horizontal viewing changed the stored full path");DestroyWindow(path);
+#endif
 }
 std::vector<DWORD> Snapshot(HWND combo) {
     RECT bounds{};
