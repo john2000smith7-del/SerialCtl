@@ -616,7 +616,12 @@ foreach ($architecture in @('x64')) {
             # First launch defaults to a 50/50 monitor; later launches may restore its saved state.
             if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321))) {
                 Click-Control $application.MainWindowHandle 125
-                Start-Sleep -Milliseconds 200
+                $collapseUntil = [DateTime]::UtcNow.AddSeconds(2)
+                do {
+                    Start-Sleep -Milliseconds 25
+                    $collapsed = -not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321)) -and
+                                 -not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))
+                } while (-not $collapsed -and [DateTime]::UtcNow -lt $collapseUntil)
             }
             if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))) { throw 'Collapsed AI exposed monitor terminal.' }
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-collapsed"
