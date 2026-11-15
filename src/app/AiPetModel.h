@@ -9,7 +9,7 @@ enum class Activity { Offline, Connecting, Idle, Thinking, Working, Replying, Do
 enum class Action { None, Idle, Wave, Boxing };
 struct Settings {
     bool enabled = true, follow = true, opening = true;
-    bool desktop = true, topmost = true, roaming = true;
+    bool desktop = true, topmost = true, roaming = false;
     int desktopX = -2147483647, desktopY = -2147483647;
     int size = 144, x = 500, y = 500;
     void Normalize() {

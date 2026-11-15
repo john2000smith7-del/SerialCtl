@@ -64,6 +64,25 @@ def approved_v219_ssh_layout(before, after):
             "historyAndSeparateRemember": "PASS", "boundsAndNonoverlap": "PASS"}
 
 
+def serial_location_layout(before, after, remote):
+    width, height = after["size"]
+    require(width == before["size"][0], "Serial form changed its width")
+    rows = {row[0]: row for row in after["geometry"]}
+    required = (1036, 1002, 1024, 1, 2) + ((1014,) if remote else (1004, 1006, 1008, 1010, 1012))
+    hidden = (1016, 1004, 1006, 1008, 1010, 1012) if remote else (1014, 1016)
+    require(all(i in rows for i in required) and all(i not in rows for i in hidden),
+            "Serial form shows the wrong fields for its selected location")
+    fields = [rows[i][2:6] for i in required]
+    for index, (left, top, right, bottom) in enumerate(fields):
+        require(0 <= left < right <= width and 0 <= top < bottom <= height, "Serial form control escaped its bounds")
+        for x1, y1, x2, y2 in fields[index+1:]:
+            require(max(left, x1) >= min(right, x2) or max(top, y1) >= min(bottom, y2),
+                    "Serial form controls overlap")
+    require(rows[1036][1].lower() == "combobox" and rows[1036][5] <= min(field[1] for field in fields[1:]),
+            "Location chooser must precede the connection fields")
+    return {"status": "PASS", "visibleControls": list(required), "hiddenControls": list(hidden)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline', type=Path, required=True)
@@ -133,8 +152,9 @@ def main():
             text = c.create_unicode_buffer(128); user.GetWindowTextW(child,text,len(text))
             # Disconnect/close and the new reconnect action intentionally hide
             # on the blank main page; they are exercised on real cards elsewhere.
-            approved = main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,105,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310,311) or
-                                 text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))
+            approved = (user.GetDlgCtrlID(child) == 9010 or
+                        (main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,105,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310,311,312) or
+                                   text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))))
             if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
                 name = c.create_unicode_buffer(128); user.GetClassNameW(child, name, 128)
@@ -215,13 +235,24 @@ def main():
             desktop = DesktopActions(SimpleNamespace(window=main_window, pid=process.pid, output=args.output,
                                                      prefix='freeze-'+label, mode='desktop'))
             report['dpi'] = desktop.dpi
+            unified_serial = not user.GetDlgItem(main_window, 103)
             for theme in ['light', 'dark']:
                 if theme == 'dark': user.PostMessageW(main_window, 0x111, 104, 0)
-                for name, command in [('main', None), ('ssh', 100), ('serial', 101), ('telnet', 102), ('remote', 103), ('settings', 303)]:
+                for name, command in [('main', None), ('ssh', 100), ('serial', 101), ('telnet', 102),
+                                      ('remote', 101 if unified_serial else 103), ('settings', 303)]:
                     target = main_window
                     if command:
                         user.PostMessageW(main_window, 0x111, command, 0)
                         target = wait(lambda: (windows(process.pid, '#32770') or [None])[0])
+                        if name == 'remote' and unified_serial:
+                            selector = user.GetDlgItem(target, 1036)
+                            require(selector, 'Unified serial form is missing its location chooser')
+                            user.SendMessageW(selector, 0x14E, 1, 0)  # CB_SETCURSEL
+                            user.SendMessageW(target, 0x111, 1036 | (1 << 16), selector)
+                            require(user.IsWindowVisible(user.GetDlgItem(target, 1014)) and not user.GetDlgItem(target, 9010),
+                                    'Remote serial must have an IP field and no manual port action')
+                            require(user.SetWindowTextW(user.GetDlgItem(target, 1014), '127.0.0.1'),
+                                    'Cannot enter loopback IP for serial discovery')
                         # Select Cancel through native focus navigation to remove
                         # any text caret from the deterministic pixel comparison.
                         user.PostMessageW(target, 0x28, user.GetDlgItem(target, 2), 1)
@@ -323,7 +354,15 @@ def main():
             process.wait(timeout=15); process = None
         for key, before in baseline.items():
             after = candidate[key]
-            if key[1]=="ssh" and version=="V2.0.19":
+            if key[1] in ("serial", "remote") and any(row[0] == 1036 for row in after["geometry"]):
+                contract = serial_location_layout(before, after, key[1] == "remote")
+                report["cases"].append({"theme": key[0], "view": key[1], "comparison": "approved-layout",
+                    "layoutContract": contract, "geometryEqual": before["geometry"] == after["geometry"],
+                    "baselineSize": before["size"], "candidateSize": after["size"],
+                    "baselineFrame": before["frame"], "candidateFrame": after["frame"],
+                    "pixelComparison": "Serial form adds a location chooser; visual review required"})
+                continue
+            if key[1]=="ssh" and version in ("V2.0.19", "V2.0.20"):
                 # Explicit user approval adds history + secure-remember rows
                 # and repositions all four input fields. Preserve both actual
                 # screenshots; do not claim these unequal layouts are frozen.
@@ -342,6 +381,9 @@ def main():
                 after['geometry']=[row for row in after['geometry'] if row[0] in fixed_ids]
                 common_height=min(before['size'][1],after['size'][1],round((90 if key[1]=='ssh' else 440)*report['dpi']/96))
                 require(before['size'][0]==after['size'][0], 'Approved dialog changed its width')
+                if key[1]=='settings':
+                    after.setdefault('approvedRegions',[]).append(
+                        [before['size'][0]-round(10*report['dpi']/96),0,before['size'][0],common_height])
                 for capture in (before,after):
                     capture['pixels']=capture['pixels'][:capture['size'][0]*common_height*4]
                     capture['rawPixels']=capture['rawPixels'][:capture['size'][0]*common_height*4]

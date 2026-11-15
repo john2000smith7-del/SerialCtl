@@ -116,7 +116,10 @@ int main(int argc, char **) {
             std::vector<std::wstring> names;
             Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr, 0),
                    "multiple instances must report ambiguity");
-            Expect(error.find(L"多个") != std::wstring::npos, "ambiguity is distinguishable from no opened COM");
+            Expect(error.find(L"多个") != std::wstring::npos &&
+                       error.find(std::to_wstring(firstInstance.server.Port())) != std::wstring::npos &&
+                       error.find(std::to_wstring(secondInstance.server.Port())) != std::wstring::npos,
+                   "ambiguity reports both candidate ports");
             Expect(SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr,
                                                         static_cast<std::uint16_t>(secondInstance.server.Port())),
                    "explicit port selects instance");
@@ -128,6 +131,17 @@ int main(int argc, char **) {
             std::atomic_bool cancel{true};
             Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, &cancel),
                    "discovery cancel");
+            const auto missing = static_cast<std::uint16_t>(secondInstance.server.Port());
+            secondInstance.server.Stop();
+            std::string instance;
+            Expect(!SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr, missing,
+                                                         nullptr, &instance) && names.empty() && instance.empty() &&
+                       error.find(std::to_wstring(missing)) != std::wstring::npos &&
+                       error.find(L"7000–7015") == std::wstring::npos,
+                   "missing explicit port names the queried port and exposes no stale result");
+            Expect(SharedSerialConnection::DiscoverAuto(L"127.0.0.1", port, names, error, nullptr, 0,
+                                                        nullptr, &instance) && port == firstInstance.server.Port() &&
+                       instance == firstInstance.server.Instance(), "return to auto discovers the remaining instance");
         }
         std::cout << "Two AI plus desktop, multi-COM isolation, target removal, fallback and local survival passed\n";
     } catch (const std::exception &e) {

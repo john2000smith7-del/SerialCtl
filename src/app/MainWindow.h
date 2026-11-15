@@ -2,6 +2,7 @@
 #include "BootInterrupt.h"
 
 #include "AiPane.h"
+#include "AiChangesPane.h"
 #include "AiPetPane.h"
 #include "ApiServer.h"
 #include "CmdLineEditor.h"
@@ -15,8 +16,10 @@
 #include "SftpModel.h"
 #include "TerminalDecoder.h"
 #include "TerminalModel.h"
+#include "TerminalParseScheduler.h"
 #include "TerminalViewport.h"
 #include "PaintBuffer.h"
+#include "PerformanceMetrics.h"
 #include "BackgroundCleanup.h"
 #include "CommandMacroController.h"
 #include "CommandNotebook.h"
@@ -24,7 +27,14 @@
 #include "UiSettingsWriter.h"
 #include "SshConnectionHistory.h"
 #include "XferPane.h"
+#include "TftpServer.h"
+#include "TftpPane.h"
+#include "LocalWorkspace.h"
 #include "ToolbarIcons.h"
+#include "SessionReceiveDispatcher.h"
+#include "McpIpc.h"
+#include "McpHttpServer.h"
+#include "McpDispatcher.h"
 #include <deque>
 #include <functional>
 #include <future>
@@ -47,6 +57,7 @@ class UiLayoutBatch;
 
 class MainWindow {
 public:
+    MainWindow();
     ~MainWindow();
     bool Create(HINSTANCE instance, int showCommand);
     void StartStartupUpdate();
@@ -63,13 +74,15 @@ private:
     using SftpTransferDirection = SftpController::Direction;
     using SftpTransferState = SftpController::TransferState;
     using SftpMutationKind = SftpController::Mutation;
-    enum class SftpInputPurpose { Name, Mode, Path, Port };
+    enum class SftpInputPurpose { Name, Mode, Path };
 
     struct SettingsDialogState {
         MainWindow* owner = nullptr;
         std::uint64_t sessionId = 0;
         int initialEncoding = 0;
         wchar_t exportTip[2048]{};
+        bool mcpEnabled = true;
+        uint16_t mcpPort = 7080;
     };
 
     struct LogExportJob {
@@ -88,13 +101,7 @@ private:
         std::wstring path;
     };
 
-    struct ReceivedItem {
-        std::uint64_t sessionId = 0;
-        Bytes data;
-        UINT codePage = 0;
-        std::string source; // empty for output, nonempty for accepted input
-        LONGLONG arrival = 0;
-    };
+    using ReceivedItem = serialctl::ReceivedItem;
     struct SessionState : AiDeviceBridge::State, TerminalViewport::State, SftpController::Session {
         bool disconnected = false, disconnecting = false, closeAfterStop = false;
         std::shared_ptr<std::atomic_bool> cleanupDone;
@@ -109,11 +116,13 @@ private:
         std::wstring name;
         std::shared_ptr<IConnection> connection;
         std::shared_ptr<SessionLogger> logger;
+        std::shared_ptr<TerminalParseScheduler::Context> terminalParser;
+        std::uint64_t terminalSnapshotSequence = 0;
+        std::uint64_t terminalMinimumSequence = 0;
         int lineEndingIndex = 0;
         UINT codePage = CP_UTF8;
         bool rawTrace = false;
         bool saveSshHistory = false;
-        bool rememberSshPassword = false;
         std::wstring employeeNumber;
         std::wstring host;
         std::wstring remoteCom;
@@ -121,6 +130,7 @@ private:
         std::wstring username;
         std::wstring password;
         std::uint16_t port = 0;
+        std::vector<std::uint8_t> localEchoWidths;
 
     };
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
@@ -153,6 +163,8 @@ private:
     static INT_PTR CALLBACK CommandDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static INT_PTR CALLBACK SftpInputDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
     static INT_PTR CALLBACK SettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
+    static INT_PTR CALLBACK ShortcutSettingsDialogProc(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam);
+    void ShowShortcutSettings(HWND owner);
     static void PrepareDialogEditField(HWND dialog, HWND edit, MainWindow* self);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     static INT_PTR CALLBACK UpdateDialogProc(HWND, UINT, WPARAM, LPARAM);
@@ -173,7 +185,8 @@ private:
     void DrawOwnerItem(const DRAWITEMSTRUCT& item);
     void ApplyTheme();
     void OpenConnectionDialog(int mode);
-    void ConfigureConnectionDialog(HWND dialog);
+    void ConfigureConnectionDialog(HWND dialog, bool initialize = true);
+    bool DeleteSshHistoryEntry(HWND dialog, size_t historyIndex);
     void RefreshConnectionHostIdentity(HWND dialog);
     void RefreshSerialPorts(HWND dialog);
     void CompleteSerialPortScan(HWND dialog);
@@ -189,6 +202,8 @@ private:
     void RefreshConnectionActions();
     std::uint64_t pendingReconnectId_ = 0;
     void DisconnectAll();
+    bool ConfirmActiveTransfers(const wchar_t* actionLabel, bool activeSessionOnly) const;
+    void TouchPowerTestActivity();
     void SwitchSession(size_t index, SessionFocus focus = SessionFocus::Terminal);
     void ShowPowerPage();
     void ShowAiPage(bool connect = true);
@@ -196,6 +211,7 @@ private:
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {}, std::function<bool()> allowed = {});
     void SendTerminalCharacter(wchar_t character);
+    void SendTerminalText(const std::wstring& text);
     void SendTerminalKey(WPARAM key, bool shift, bool control, bool alt);
     void PasteToTerminal();
     void PaintTerminal(HDC dc);
@@ -210,21 +226,25 @@ private:
     void ClearTerminalSelection();
     bool HasTerminalSelection() const;
     std::wstring TerminalSelectionText(bool selectAll) const;
-    void CopyTerminalSelection(bool selectAll);
+    void CopyTerminalSelection(bool selectAll, bool inspectRegister = false);
     void SendCommand(size_t index);
     void SendNextCommandStep();
     using CommandSequenceEnd = CommandMacroController::End;
     void StopCommandSequence(CommandSequenceEnd end, const std::wstring& detail = {});
     void PostData(std::uint64_t sessionId, const Bytes& data, UINT codePage);
     void PostStatus(std::uint64_t sessionId, const std::wstring& text, bool isError);
-    void AppendData(std::uint64_t sessionId, const Bytes &data, UINT codePage = 0, LONGLONG arrival = 0);
+    void AppendData(std::uint64_t sessionId, Bytes data, UINT codePage = 0, LONGLONG arrival = 0);
+    void CompleteTerminalParse(std::unique_ptr<TerminalParseScheduler::Update>);
+    std::shared_ptr<TerminalParseScheduler::Context> CreateTerminalParser(SessionState&);
     void QueueReceived(ReceivedItem);
+    bool PostReceiveNotification();
     void AppendInput(const ReceivedItem &);
-    std::wstring DecodeTerminalData(SessionState& session, const Bytes& data);
-    void SyncSftpDirectoryFromTerminal(SessionState& session);
+    void SyncSftpDirectoryFromTerminal(SessionState& session, bool receivedOscDirectory = false);
     void AppendStatus(const std::wstring& text, bool isError);
+    void RefreshStatusDisplay();
     void SaveCurrentLog(HWND owner = nullptr);
     void StartLogExport(const std::wstring &, const std::wstring &, std::uint64_t, LogExportTask);
+    void ToggleContinuousLogSave(HWND owner);
     void PollLogExport();
     void CancelLogExport();
     void StopLogExport();
@@ -239,12 +259,15 @@ private:
     void ExecuteTerminalAction(UINT command, HWND owner = nullptr);
     UINT SelectedCodePage() const;
     std::string EncodeTerminalText(const std::wstring &);
-    std::wstring SelectedLineEnding() const;
+    static std::wstring LineEnding(int index);
+    std::wstring SelectedLineEnding() const { return LineEnding(lineEndingIndex_); }
     void SetConnectedUi(bool connected);
     void RefreshConnectionList();
+    static std::wstring ConnectionCardTitle(const SessionState&);
 
     void LoadUiState();
     void SaveUiState();
+    void LoadTftpState();
     void SetRightPanelCollapsed(bool collapsed);
     void SetLeftPanelCollapsed(bool collapsed);
     int LeftWidth() const;
@@ -253,15 +276,41 @@ private:
     bool SidebarCollapsed() const;
     int SidebarWidth() const;
     void SyncAiTerminal();
+    bool HasRunningAiExec() const;
+    void SyncAiTargetBinding();
+    enum class AiSidebarTab { Compile, Terminal, Changes };
+    struct AiExecHistoryEntry;
+    bool ShowingAiExecTerminal() const;
+    TerminalViewport::State* ActiveTerminalViewState();
+    const TerminalViewport::State* ActiveTerminalViewState() const;
+    void SelectAiSidebarTab(AiSidebarTab tab, bool userInitiated = true);
+    void UpdateAiChangesTabBadge();
+    void EnsureAiExecParser();
+    void ResetAiExecTerminalToEntry(const AiExecHistoryEntry &entry);
+    void RefreshAiExecCombo();
+    bool CopyTextToClipboard(HWND owner, const std::wstring &text, const wchar_t *notice);
+    void CopyAiExecOutput();
+    void HandleAiTurnStarted(std::uint64_t turnSeq);
+    void HandleAiExecEvent(const ai::ExecProgressEvent &event);
+    void FocusAiExecInSidebar(const std::string &execId);
+    void HandleAiFileChanges(const std::vector<ai::FileChangeRecord> &records,
+                             std::uint64_t turnSeq,
+                             const std::string &focusChangeId,
+                             bool autoSwitch);
     void RefreshPowerTargets();
+    std::shared_ptr<PowerKeywordRun> CreatePowerKeywordRun(const PowerKeywordConfig &config);
     void SyncPowerTerminal();
+    void SyncTerminalVisibility();
     bool LiveMonitorPage() const { return aiVisible_ || powerVisible_; }
 
     void ShowSftpPanel(bool show,bool preserveXfer=false);
     void ShowXferPanel();
+    void ShowTftpPanel(bool show=true);
+    std::vector<TftpSshSessionInfo> GetTftpSshSessions() const;
     XferPane::Target XferTarget();
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
-    void RefreshSftp(const std::wstring& directory = {});
+    void RefreshSftp(const std::wstring& directory = {}, bool followTerminal = false);
+    bool RefreshPendingSftpDirectory();
     static SftpController::Endpoint SftpEndpoint(const SessionState&);
     void EditSftpPath();
     void QueryTerminalDirectory(bool installHook);
@@ -346,6 +395,9 @@ private:
     UINT selectedCodePage_ = CP_UTF8;
     bool localEchoEnabled_ = false;
     bool timestampEnabled_ = true;
+    // Missing INI key defaults to the user-requested ASCII shortcut.
+    bool serialF2CustomEnabled_ = true;
+    wchar_t pendingHighSurrogate_ = 0;
     UiFieldStyle dialogFieldStyle_{&darkMode_, nullptr, 96};
 
     std::vector<HWND> toolbarButtons_;
@@ -367,6 +419,34 @@ private:
     bool aiMonitorWrap_ = false;
     HWND aiWrapButton_ = nullptr;
     HWND aiTerminalHeader_ = nullptr;
+    HWND aiCompileTabButton_ = nullptr;
+    HWND aiTerminalTabButton_ = nullptr;
+    HWND aiChangesTabButton_ = nullptr;
+    HWND aiExecCombo_ = nullptr;
+    HWND aiExecCopyButton_ = nullptr;
+    AiChangesPane aiChangesPane_;
+    AiSidebarTab aiSidebarTab_ = AiSidebarTab::Terminal;
+    bool userOverrodeRightViewInTurn_ = false;
+    std::string aiPreviewSessionId_;
+    struct AiExecHistoryEntry {
+        std::string execId;
+        std::string command;
+        std::string cwd;
+        std::string rawLog;
+        std::string utf8Carry;
+        bool running = true;
+        bool failed = false;
+        bool timedOut = false;
+        bool cancelled = false;
+        int exitCode = 0;
+        std::uint64_t durationMs = 0;
+    };
+    TerminalViewport::State aiExecTerminalState_;
+    std::shared_ptr<TerminalParseScheduler::Context> aiExecParser_;
+    std::uint64_t aiExecMinimumSequence_ = 0;
+    std::uint64_t aiExecSnapshotSequence_ = 0;
+    std::vector<AiExecHistoryEntry> aiExecHistory_;
+    std::string aiExecSelectedId_;
     bool aiRemoteConnect_ = false;
     HWND aiButton_ = nullptr;
     bool powerVisible_ = false;
@@ -388,15 +468,18 @@ private:
     HWND disconnectAllButton_ = nullptr;
     bool windowResizing_ = false;
     bool disconnectAllPending_ = false;
+    std::string powerDisconnectActionId_;
+    std::wstring powerAlert_;
     bool disconnectAllInProgress_ = false;
     HWND terminal_ = nullptr;
     HWND status_ = nullptr;
     HWND statusTip_ = nullptr;
-    std::wstring statusText_;
+    std::wstring statusText_, displayedStatusText_;
     int statusHeight_ = 0;
     HWND commandHeader_ = nullptr;
     HWND sftpTabButton_ = nullptr;
     HWND xferTabButton_ = nullptr;
+    HWND tftpTabButton_ = nullptr;
     HWND rightPanelToggleButton_ = nullptr;
     CommandNotebook notebook_;
     HWND commandHint_ = nullptr;
@@ -467,6 +550,16 @@ private:
     ULONGLONG leftPanelAnimationAt_ = 0;
     bool rightPanelAutoCollapsed_ = false;
     bool rightPanelDragging_ = false, leftPanelDragging_ = false;
+    HWND dragFrozenOverlay_ = nullptr;
+    HDC dragSnapshotDc_ = nullptr;
+    HBITMAP dragSnapshotBmp_ = nullptr;
+    HGDIOBJ dragSnapshotOldBmp_ = nullptr;
+    int dragSnapshotWidth_ = 0, dragSnapshotHeight_ = 0, dragSnapshotTop_ = 0;
+    int dragOrigLeftWidth_ = 0, dragOrigCenterLeft_ = 0, dragOrigCenterRight_ = 0, dragOrigRightLeft_ = 0;
+    void BeginFrozenSplitterDrag(bool showOverlay = true);
+    void EndFrozenSplitterDrag();
+    void PaintFrozenDragOverlay(HDC dc);
+    static LRESULT CALLBACK FrozenDragOverlayProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     int leftPanelWidth_ = 190;
     std::wstring clipboardNotice_;
     void ShowClipboardNotice(const std::wstring&);
@@ -478,6 +571,9 @@ private:
     XferPane xferPane_;
     bool xferPanelVisible_ = false;
     bool sftpPanelVisible_ = false;
+    std::shared_ptr<TftpServer> tftpServer_;
+    TftpPane tftpPane_;
+    bool tftpPanelVisible_ = false;
     std::vector<SftpBreadcrumbHit> sftpBreadcrumbHits_;
     int sftpNameWidth_ = 180;
     int sftpColumnDragging_ = 0;
@@ -491,6 +587,8 @@ private:
     BackgroundCleanup connectionCleanup_;
     PaintBuffer windowPaintBuffer_;
     TerminalViewport terminalViewport_;
+    mutable PerformanceMetrics performanceMetrics_;
+    TerminalParseScheduler terminalParser_;
     std::atomic_bool connectionCancel_{false};
     bool cancelledConnectionPending_ = false;
     bool connectionResultReady_ = false, connectionResultSuccess_ = false;
@@ -504,14 +602,13 @@ private:
     std::thread updateThread_;
     std::atomic<bool> updateCancel_{false};
     bool startupUpdateDeferred_ = false;
-    std::mutex receivedMutex_;
-    std::deque<ReceivedItem> received_;
-    std::map<std::uint64_t, size_t> receivedBytes_;
+    SessionReceiveDispatcher receiveDispatcher_;
     bool measurePaint_ = false;
-    std::set<std::uint64_t> receiveOverflow_;
-    bool receivePosted_ = false;
+    bool terminalPaintPending_ = false;
+    ULONGLONG lastTerminalPaintTick_ = 0;
+    ULONGLONG lastSplitterLayoutTick_ = 0;
     bool receiveContinuation_ = false; // UI thread: continue at the next paint opportunity, with no timer delay.
-    unsigned receiveFairness_ = 0;
+    std::atomic<HWND> receiveWindow_{nullptr};
     std::set<std::uint64_t> loggerErrorsShown_;
 
     std::thread discoveryThread_;
@@ -519,11 +616,10 @@ private:
     std::atomic_bool discoveryFinished_{true};
     unsigned discoveryGeneration_ = 0;
     HWND discoveryDialog_ = nullptr;
-    std::uint16_t discoveryExplicitPort_ = 0;
+    std::uint16_t discoveredSerialPort_ = 0;
     int pendingMode_ = 0;
     bool pendingHostKeyReverify_ = false;
     bool pendingSaveSshHistory_ = false;
-    bool pendingRememberSshPassword_ = false;
     std::wstring loadedSshCredentialTarget_;
     std::wstring pendingEmployeeNumber_;
     Json sshHistory_ = Json::array();
@@ -552,6 +648,32 @@ private:
     int editingCommandIndex_ = -1;
     std::vector<HWND> commandDialogStepEdits_;
     std::vector<HWND> commandDialogRemoveButtons_;
+
+    std::unique_ptr<mcp::McpIpcServer> mcpIpcServer_;
+    std::unique_ptr<mcp::McpHttpServer> mcpEmbeddedServer_;
+    std::unique_ptr<mcp::McpHttpServer> aiLoopbackMcpServer_;
+    std::unique_ptr<mcp::McpDispatcher> mcpDispatcher_;
+    std::shared_ptr<ai::LocalWorkspaceService> localWorkspace_ = std::make_shared<ai::LocalWorkspaceService>();
+    BackgroundCleanup aiRemoteFsWorker_;
+    std::atomic<bool> mcpStopping_{false};
+    bool mcpEnabled_ = true;
+    uint16_t mcpPort_ = 7080;
+    std::string mcpBindIp_ = "0.0.0.0";
+    std::string mcpAuthToken_;
+    ULONGLONG powerTestLastActivityTick_ = 0;
+
+    void StartMcpIpc();
+    void StopMcpIpc();
+    std::unique_ptr<mcp::McpDispatcher> CreateMcpDispatcher(bool http);
+    void StartEmbeddedMcpServer();
+    void StopEmbeddedMcpServer();
+    uint16_t EnsureAiMcpPort();
+    void RunAiRemoteFs(const std::string& op, const Json& params, AiPane::RemoteFsCallback done);
+    void ApplyMcpSettings(bool enabled, uint16_t port);
+    Json DispatchMcpToUi(const std::string& method, const Json& params, bool http);
+    Json McpExecute(const std::string& method, const Json& params);
+    SessionState* ResolveTargetSession(const Json& params, std::string& err);
+    uint64_t mcpRequestSeq_ = 0;
 };
 
 } // namespace serialctl

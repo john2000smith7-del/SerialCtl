@@ -1,5 +1,6 @@
 #include "AiDeviceBridge.h"
 #include "AiProtocol.h"
+#include "OperationAuditLogger.h"
 #include "Win32Helpers.h"
 #include <algorithm>
 #include <cctype>
@@ -17,12 +18,21 @@ Json AiDeviceBridge::Send(Target &session, const Bytes &bytes) {
     if (bytes.empty() || bytes.size() > 65536 || !session.connection || !session.connection->IsConnected())
         return {{"error", "Terminal is disconnected or input exceeds its bound"}};
     const auto id = "session-" + std::to_string(session.id);
+    Json res;
     if (session.mode == 1 || session.mode == 4)
-        return sessions_.Input(id, bytes, "ai:desktop");
-    std::wstring error;
-    if (!session.connection->Send(bytes, error)) return {{"error", WideToMultiByte(error, CP_UTF8)}};
-    return {{"accepted", bytes.size()}, {"state", "queued"}, {"execution", "unknown"},
-        {"scope", "existing-selected-terminal-connection"}, {"automaticRetry", false}};
+        res = sessions_.Input(id, bytes, "ai:desktop");
+    else {
+        std::wstring error;
+        if (!session.connection->Send(bytes, error))
+            res = {{"error", WideToMultiByte(error, CP_UTF8)}};
+        else
+            res = {{"accepted", bytes.size()}, {"state", "queued"}, {"execution", "unknown"},
+                   {"scope", "existing-selected-terminal-connection"}, {"automaticRetry", false}};
+    }
+    OperationAuditLogger::Instance().Record(
+        "AI", "device.send", id, "bytes=" + std::to_string(bytes.size()),
+        res.contains("error") ? res["error"].dump() : "queued");
+    return res;
 }
 Json AiDeviceBridge::Request(const std::string& method, const Json& params, std::vector<Target>& targets,
                              const Context& context, ULONGLONG now, bool& armBootPulse) {

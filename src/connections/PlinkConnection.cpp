@@ -356,7 +356,7 @@ void PlinkConnection::CloseResizeChannel() {
 
 bool PlinkConnection::CreatePuttySession() {
     puttySessionName_ = L"SerialCtl-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
-        std::to_wstring(GetTickCount()) + L"-" + std::to_wstring(reinterpret_cast<UINT_PTR>(this));
+        std::to_wstring(GetTickCount64()) + L"-" + std::to_wstring(reinterpret_cast<UINT_PTR>(this));
     const std::wstring path = L"Software\\SimonTatham\\PuTTY\\Sessions\\" + puttySessionName_;
     HKEY key = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, path.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE,

@@ -1,4 +1,5 @@
 #pragma once
+#include "ByteTypes.h"
 
 #include <windows.h>
 #include <winsock2.h>
@@ -6,11 +7,9 @@
 #include <cstdint>
 #include <functional>
 #include <string>
-#include <vector>
 
 namespace serialctl {
 
-using Bytes = std::vector<std::uint8_t>;
 using DataCallback = std::function<void(const Bytes &)>;
 using StatusCallback = std::function<void(const std::wstring &, bool)>;
 
@@ -22,6 +21,12 @@ class IConnection {
     virtual void CancelStart() {}
     virtual void Stop() = 0;
     virtual bool Send(const Bytes &data, std::wstring &error) = 0;
+    // Out-of-band interrupt for interactive transports (e.g. local CMD).
+    // It must not be queued behind ordinary terminal input.
+    virtual bool Interrupt(std::wstring &error) {
+        error = L"当前连接不支持中断";
+        return false;
+    }
     virtual bool SendConditional(const Bytes& data,std::wstring& error,std::function<bool()> allowed) {
         return !allowed||allowed()?Send(data,error):true;
     }

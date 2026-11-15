@@ -60,6 +60,9 @@ Url ParseUrl(const std::wstring& text) {
             parts.nScheme == INTERNET_SCHEME_HTTPS};
 }
 
+// WinHTTP session timeout relaxed to 90 seconds to tolerate weak network jitter / packet retransmission.
+constexpr int kHttpTimeoutMs = 90000;
+
 // WinHTTP asynchronous completions let the worker enforce one wall-clock deadline
 // even if a server drips headers/body forever. On cancellation the request closes;
 // its callback-owned state (including the pending read buffer) survives until the
@@ -206,7 +209,7 @@ HINTERNET Session(bool secure) {
             : handle(WinHttpOpen(L"SerialCtl updater/1", WINHTTP_ACCESS_TYPE_NO_PROXY,
                                  WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC)) {
             // The async wall-clock deadline bounds DNS as well as the response.
-            if (!WinHttpSetTimeouts(handle.value, 0, 2000, 2000, 2000))
+            if (!WinHttpSetTimeouts(handle.value, 0, kHttpTimeoutMs, kHttpTimeoutMs, kHttpTimeoutMs))
                 throw std::runtime_error("Cannot set update HTTP timeouts");
             if (tls) {
                 DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
@@ -228,52 +231,66 @@ HINTERNET Session(bool secure) {
 std::vector<unsigned char> Download(const Url &url, std::size_t limit, const std::atomic<bool> &cancel,
                                     const std::chrono::steady_clock::time_point deadline,
                                     HANDLE output = INVALID_HANDLE_VALUE, const UpdateCallbacks *callbacks = nullptr) {
-    CheckCancelled(cancel);
-    InternetHandle connection(WinHttpConnect(Session(url.secure), url.host.c_str(), url.port, 0));
-    AsyncRequest request(connection.value, url);
-    DWORD disabled = WINHTTP_DISABLE_REDIRECTS | WINHTTP_DISABLE_AUTHENTICATION | WINHTTP_DISABLE_COOKIES;
-    DWORD autologon = WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH;
-    if (!WinHttpSetOption(request.Get(), WINHTTP_OPTION_DISABLE_FEATURE, &disabled, sizeof(disabled)) ||
-        !WinHttpSetOption(request.Get(), WINHTTP_OPTION_AUTOLOGON_POLICY, &autologon, sizeof(autologon)))
-        throw std::runtime_error("Cannot restrict update HTTP request");
-    request.Send(cancel, deadline);
-    request.Receive(cancel, deadline);
-    DWORD status = 0, size = sizeof(status);
-    if (!WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX) ||
-        status != 200)
-        throw std::runtime_error("Update server must return HTTP 200 without a redirect");
-    // Restrict declared length before allocation, and enforce the actual byte bound
-    // even for a chunked body or a dishonest Content-Length.
-    DWORD declared = 0;
-    size = sizeof(declared);
-    bool hasLength =
-        WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
-                            WINHTTP_HEADER_NAME_BY_INDEX, &declared, &size, WINHTTP_NO_HEADER_INDEX) != FALSE;
-    if (hasLength && declared > limit)
-        throw std::runtime_error("HTTP update body exceeds size limit");
-    std::vector<unsigned char> data;
-    size_t received = 0;
-    for (;;) {
-        const DWORD count = request.Read(cancel, deadline);
-        if (!count)
-            break;
-        if (count > limit - received)
-            throw std::runtime_error("HTTP update body exceeds size limit");
-        received += count;
-        if (callbacks && callbacks->progress)
-            callbacks->progress(received, limit, UpdatePhase::Download);
-        if (output == INVALID_HANDLE_VALUE)
-            data.insert(data.end(), request.Bytes(), request.Bytes() + count);
-        else {
-            DWORD written = 0;
-            if (!WriteFile(output, request.Bytes(), count, &written, nullptr) || written != count)
-                throw std::runtime_error("Cannot save update archive; check disk space and permissions");
+    constexpr int kMaxAttempts = 3;
+    for (int attempt = 0;; ++attempt) {
+        CheckCancelled(cancel);
+        InternetHandle connection(WinHttpConnect(Session(url.secure), url.host.c_str(), url.port, 0));
+        AsyncRequest request(connection.value, url);
+        DWORD disabled = WINHTTP_DISABLE_REDIRECTS | WINHTTP_DISABLE_AUTHENTICATION | WINHTTP_DISABLE_COOKIES;
+        DWORD autologon = WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH;
+        if (!WinHttpSetOption(request.Get(), WINHTTP_OPTION_DISABLE_FEATURE, &disabled, sizeof(disabled)) ||
+            !WinHttpSetOption(request.Get(), WINHTTP_OPTION_AUTOLOGON_POLICY, &autologon, sizeof(autologon)))
+            throw std::runtime_error("Cannot restrict update HTTP request");
+        request.Send(cancel, deadline);
+        request.Receive(cancel, deadline);
+        DWORD status = 0, size = sizeof(status);
+        if (!WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                                 WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX))
+            throw std::runtime_error("Update server must return HTTP 200 without a redirect");
+        if ((status == 503 || status == 429) && attempt + 1 < kMaxAttempts &&
+            std::chrono::steady_clock::now() < deadline) {
+            const DWORD backoffMs = static_cast<DWORD>(500u << attempt);
+            const auto retryAt = (std::min)(deadline, std::chrono::steady_clock::now() + std::chrono::milliseconds(backoffMs));
+            while (std::chrono::steady_clock::now() < retryAt) {
+                CheckCancelled(cancel);
+                Sleep(25);
+            }
+            continue;
         }
+        if (status != 200)
+            throw std::runtime_error("Update server must return HTTP 200 without a redirect");
+        // Restrict declared length before allocation, and enforce the actual byte bound
+        // even for a chunked body or a dishonest Content-Length.
+        DWORD declared = 0;
+        size = sizeof(declared);
+        bool hasLength =
+            WinHttpQueryHeaders(request.Get(), WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+                                WINHTTP_HEADER_NAME_BY_INDEX, &declared, &size, WINHTTP_NO_HEADER_INDEX) != FALSE;
+        if (hasLength && declared > limit)
+            throw std::runtime_error("HTTP update body exceeds size limit");
+        std::vector<unsigned char> data;
+        size_t received = 0;
+        for (;;) {
+            const DWORD count = request.Read(cancel, deadline);
+            if (!count)
+                break;
+            if (count > limit - received)
+                throw std::runtime_error("HTTP update body exceeds size limit");
+            received += count;
+            if (callbacks && callbacks->progress)
+                callbacks->progress(received, limit, UpdatePhase::Download);
+            if (output == INVALID_HANDLE_VALUE)
+                data.insert(data.end(), request.Bytes(), request.Bytes() + count);
+            else {
+                DWORD written = 0;
+                if (!WriteFile(output, request.Bytes(), count, &written, nullptr) || written != count)
+                    throw std::runtime_error("Cannot save update archive; check disk space and permissions");
+            }
+        }
+        if (hasLength && received != declared)
+            throw std::runtime_error("Update body is truncated");
+        return data;
     }
-    if (hasLength && received != declared)
-        throw std::runtime_error("Update body is truncated");
-    return data;
 }
 
 void WriteNew(const std::filesystem::path& path, const std::vector<unsigned char>& bytes) {

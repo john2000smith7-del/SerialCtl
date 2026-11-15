@@ -948,10 +948,11 @@ INT_PTR CALLBACK AiPetPane::SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const auto visual =
             UiButtonVisual(c, IsWindowEnabled(item.hwndItem) != FALSE, (item.itemState & ODS_SELECTED) != 0,
                            GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, item.CtlID == IDOK);
-        UiBox(dc, item.rcItem, visual.fill, visual.border, self->D(10));
+        UiBox(dc, item.rcItem, visual.fill, visual.border, UiCapsuleRadius(item.rcItem));
         wchar_t text[128]{};
         GetWindowTextW(item.hwndItem, text, 128);
-        Label(dc, self->font_, visual.ink, text, item.rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        Label(dc, self->font_, visual.ink, text, UiCapsuleContentRect(item.rcItem, self->dpi_),
+              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->dpi_, UiFocusInk(self->dark_));
         return TRUE;
     }

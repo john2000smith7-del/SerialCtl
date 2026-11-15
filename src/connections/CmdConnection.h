@@ -12,6 +12,7 @@ class CmdConnection final : public IConnection {
     bool Start(DataCallback data, StatusCallback status, std::wstring &error) override;
     void Stop() override;
     bool Send(const Bytes &bytes, std::wstring &error) override;
+    bool Interrupt(std::wstring &error) override;
     Bytes PrepareInput(const Bytes &) override;
     bool SendPrepared(const Bytes &, std::wstring &) override;
     unsigned InputCodePage() const override {
@@ -34,10 +35,10 @@ class CmdConnection final : public IConnection {
     std::atomic<unsigned> inputCodePage_{0}, outputCodePage_{0};
     unsigned consoleInputCodePage_ = 0, consoleOutputCodePage_ = 0;
     std::atomic_bool manualCodePage_{false}, knownCodePage_{false};
-    HANDLE process_ = nullptr, job_ = nullptr, input_ = nullptr, output_ = nullptr;
+    HANDLE process_ = nullptr, job_ = nullptr, input_ = nullptr, output_ = nullptr, interrupt_ = nullptr;
     std::atomic_bool connected_{false}, stopping_{false};
     std::thread reader_;
-    std::mutex write_;
+    std::mutex write_, interruptWrite_;
     DataCallback data_;
     StatusCallback status_;
 };

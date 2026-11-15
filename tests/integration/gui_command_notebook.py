@@ -34,6 +34,31 @@ def main():
         cmd=active[-1];snap=client.events_since(cmd,(1<<64)-1);client.subscribe(cmd,snap['cursor'])
         pane=t.control(112);edit=t.user.GetDlgItem(pane,410)
         require(edit,'native notebook text control missing')
+        # Send actual Windows mouse-wheel events to both the RichEdit body and
+        # notebook gutter. Observe first-visible-line through a read-only API.
+        fixture='\r\n'.join('rem wheel row %03d' % i for i in range(120))
+        t.click_window(edit);t.chord(0x11,ord('A'));t.set_clipboard(fixture);t.chord(0x11,ord('V'))
+        t.wait(lambda:'rem wheel row 119' in t.native_control_text(edit),'long notebook fixture inserted')
+        t.chord(0x11,0x24)  # Ctrl+Home: restore the viewport to the first line.
+        first=t.query(edit,0x00ce)  # EM_GETFIRSTVISIBLELINE is read-only.
+        bounds=t.rect(edit)
+        body=((bounds[0]+bounds[2])//2,(bounds[1]+bounds[3])//2)
+        require(t.user.WindowFromPoint(POINT(*body))==edit,'notebook body is covered at the wheel target')
+        t.move_mouse(body)
+        t.user.mouse_event(0x800,0,0,c.c_uint32(-120).value,0)
+        t.wait(lambda:t.query(edit,0x00ce)>first,'real mouse wheel scrolls notebook body down')
+        bodyScrolled=t.query(edit,0x00ce)
+        gutter=(bounds[0]-min(16,max(6,(bounds[0]-t.rect(pane)[0])//2)),body[1])
+        require(t.user.WindowFromPoint(POINT(*gutter))==pane,'notebook gutter is covered at the wheel target')
+        t.move_mouse(gutter)
+        t.user.mouse_event(0x800,0,0,c.c_uint32(-120).value,0)
+        t.wait(lambda:t.query(edit,0x00ce)>bodyScrolled,'real mouse wheel scrolls notebook gutter down')
+        gutterScrolled=t.query(edit,0x00ce)
+        t.move_mouse(body)
+        t.user.mouse_event(0x800,0,0,c.c_uint32(120).value,0)
+        t.wait(lambda:t.query(edit,0x00ce)<gutterScrolled,'real mouse wheel scrolls notebook body up')
+        t.check('actual notebook body and gutter wheel scrolling',first=first,
+                after_body=bodyScrolled,after_gutter=gutterScrolled,after_up=t.query(edit,0x00ce))
         token='NB_'+uuid.uuid4().hex[:8]
         text='# selection fixture\r\necho '+token+'_A\r\necho '+token+'_B\r\necho '+token+'_C'
         t.click_window(edit);t.chord(0x11,ord('A'));t.set_clipboard(text);t.chord(0x11,ord('V'))

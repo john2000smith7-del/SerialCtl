@@ -1,6 +1,8 @@
 #include "GatewayFixture.h"
 #include "NetworkConnect.h"
 #include "SharedSerialConnection.h"
+#include "RemotePowerClient.h"
+#include "RemotePowerProtocol.h"
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -129,6 +131,71 @@ ULONGLONG TestGatewayBudget() {
     if (serverError) std::rethrow_exception(serverError);
     return elapsed;
 }
+
+void TestRemotePowerGateway() {
+    std::atomic_bool replacement{false}, output{false}, released{false};
+    std::wstring error;
+    ApiServer server;
+    Require(server.Start([&](const std::string &op, const std::string &, const Json &params) -> Json {
+        const char *connection = replacement ? "replacement" : "original";
+        if (op == RemotePowerStateOp)
+            return {{"powerState", {{"connected", true}, {"backend", "serial"}, {"mode", "independent"},
+                     {"connectionId", connection}, {"task", {{"running", false}}},
+                     {"channels", {{{"output", output.load()}}, Json::object(), Json::object()}}}}};
+        if (op == RemotePowerSubmitOp) {
+            const auto &command = params.at("command");
+            if (params.at("connectionId") != connection || command.at("type") != "output")
+                return {{"action", {{"error", "Unexpected device or command"}}}};
+            output = command.at("enabled").get<bool>();
+            return {{"action", {{"id", "device-action"}}}};
+        }
+        if (op == RemotePowerActionOp)
+            return {{"action", {{"state", "completed"}}}};
+        if (op == RemotePowerReleaseOp) {
+            released = true;
+            return {{"released", true}};
+        }
+        return {{"error", "Unexpected operation"}};
+    }, error, 7000, 7015, "127.0.0.1"), "Start remote power fixture");
+
+    GatewayClient unlisted;
+    unlisted.Connect(L"127.0.0.1", server.Port());
+    bool denied = false;
+    try {
+        unlisted.Request(RemotePowerStateOp, "power-1");
+    } catch (const std::exception &e) {
+        denied = std::string(e.what()).find("POWER_SOURCE_DENIED") != std::string::npos;
+    }
+    Require(denied, "Unlisted clients cannot access the remote power panel");
+    unlisted.Close();
+    server.SetAllowedClients({"127.0.0.1"});
+
+    std::atomic_bool cancel{false};
+    auto target = RemotePowerClient::Discover(L"127.0.0.1", cancel);
+    Require(target.port == server.Port() && target.connectionId == "original", "Discover bound local power device");
+    RemotePowerClient client;
+    client.Attach(target);
+    auto until = [](auto predicate) {
+        const auto deadline = GetTickCount64() + 3000;
+        do {
+            if (predicate()) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        } while (GetTickCount64() < deadline);
+        return false;
+    };
+    Require(until([&] { return client.State().value("connected", false); }), "Attach to discovered device");
+    auto action = client.Submit({{"type", "output"}, {"channels", {1}}, {"enabled", true}}, "independent");
+    const auto id = action.at("id").get<std::string>();
+    Require(until([&] { return client.Action(id).value("state", "") == "completed"; }) && output,
+            "Send output request and observe remote completion");
+    Require(client.Submit({{"type", "diagnostic"}, {"operation", "scpi"}, {"line", "*RST"}}, "independent").contains("error"),
+            "Raw SCPI stays local");
+    replacement = true;
+    Require(until([&] { return !client.Active(); }) && client.State().value("remoteLost", false),
+            "Physical reconnection invalidates the remote session");
+    client.Join();
+    Require(until([&] { return released.load(); }) && output, "Release remote owner without changing output");
+}
 } // namespace
 
 int wmain(int argc, wchar_t **argv) {
@@ -167,13 +234,18 @@ int wmain(int argc, wchar_t **argv) {
         TestFallback(AF_INET);
         TestFallback(AF_INET6);
         const auto gatewayMs = TestGatewayBudget();
+        TestRemotePowerGateway();
         {
+            ApiServer idle;
+            Require(idle.Start([](const std::string &, const std::string &, const Json &) {
+                return Json{{"resources", Json::array()}};
+            }, error, 7000, 7015, "127.0.0.1"), "Start an instance without open serial ports");
             test::Fixture fixture(7000, 7015);
             *counter = 0;
             std::uint16_t port = 0; std::vector<std::wstring> names;
             Require(SharedSerialConnection::DiscoverAuto(L"localhost", port, names, error) &&
                     port == fixture.server.Port() && names.size() == 2,
-                    "Automatic discovery failed with resolved localhost");
+                    "Automatic discovery must select the instance sharing serial ports over an idle instance");
             Require(*counter == 1, "Automatic discovery performed repeated DNS lookups");
         }
         auto blackhole = [&](bool cancelRequest) {

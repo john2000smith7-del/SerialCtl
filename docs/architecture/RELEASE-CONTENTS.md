@@ -6,7 +6,7 @@
 
 | 文件或目录 | 用途与保留原因 |
 | --- | --- |
-| serialctl.exe | C++17／Win32 x64 主程序；Win7 SP1、/MT、子系统6.01 |
+| serialctl.exe | C++17／Win32 x64 主程序；Win7 SP1、/MT、子系统6.01；内置离线语音引擎和模型，保持旧更新客户端的 32 MiB 单文件上限 |
 | plink.exe、psftp.exe | 已固定并定制的 SSH／SFTP 运行工具，必须与主程序同目录 |
 | update.ini | 用户批准的更新地址模板；已有安装升级时保护原配置 |
 | VERSION | 唯一版本来源的随包副本，更新器核对已签名版本 |

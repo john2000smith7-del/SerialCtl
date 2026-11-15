@@ -34,6 +34,8 @@ struct SessionLoggerTestAccess {
         std::unique_lock<std::mutex> lock(logger.mutex_);
         return logger.wake_.wait_for(lock, 2s, [&] { return !logger.writerAlive_; });
     }
+    static void FailFlushCopy(bool fail) { SessionLogger::testFailFlushCopy_.store(fail); }
+    static void FailFlushStop(bool fail) { SessionLogger::testFailFlushStop_.store(fail); }
 };
 }
 namespace {
@@ -118,6 +120,12 @@ int main() {
         const auto second = root.parent_path() / (root.stem().wstring() + L".part2" + root.extension().wstring());
         roots.push_back(second);
         const auto third = root.parent_path() / (root.stem().wstring() + L".part3" + root.extension().wstring());
+        const auto fourth = root.parent_path() / (root.stem().wstring() + L".part4" + root.extension().wstring());
+        const auto fifth = root.parent_path() / (root.stem().wstring() + L".part5" + root.extension().wstring());
+        const auto sixth = root.parent_path() / (root.stem().wstring() + L".part6" + root.extension().wstring());
+        roots.push_back(third);
+        roots.push_back(fourth);
+        roots.push_back(fifth);
         Bytes block(65536, 'A');
         for (int i = 0; i < 65 * 16; ++i) {
             logger.WriteRaw(block);
@@ -155,7 +163,8 @@ int main() {
             {"later_bytes_excluded", 1024 * 1024}, {"progress_final", lastProgress}});
         Check(!logger.SaveCopy(root.wstring(), point, error, nullptr), "protect source root");
         Check(!logger.SaveCopy(second.wstring(), point, error, nullptr), "protect existing part");
-        Check(!logger.SaveCopy(third.wstring(), point, error, nullptr) && !fs::exists(third), "protect future part");
+        Check(!logger.SaveCopy(third.wstring(), point, error, nullptr) && fs::exists(third), "protect rotated part3 at 16 MiB split");
+        Check(!logger.SaveCopy(sixth.wstring(), point, error, nullptr) && !fs::exists(sixth), "protect future part");
         evidence["cases"].push_back({{"name", "source root/current/future rotation protected"}});
 
         const auto old = directory / L"preserved.log";
@@ -212,6 +221,103 @@ int main() {
         auto readPaths = std::async(std::launch::async, [&] { for (int i = 0; i < 10000; ++i) logger.Path(); });
         logger.Stop(); readPaths.get();
         evidence["cases"].push_back({{"name", "actual readonly source handle rejects WriteFile; writer exits and exporter wakes; concurrent Path/Stop"}});
+
+        // FlushFileBuffers fault injection on SaveCopy: target preserved, temporary deleted, logger healthy
+        Check(logger.Start(L"flush-copy-failure", error, true), "start flush copy fixture");
+        roots.push_back(logger.Path());
+        logger.WriteRaw(Bytes{'k', 'e', 'e', 'p'});
+        Check(SessionLoggerTestAccess::Drained(logger), "drained");
+        const auto flushPoint = logger.CaptureExportPoint();
+        const auto flushTarget = directory / L"flush_target.log";
+        const std::string preservedData = "PRESERVED_TARGET_DATA";
+        Put(flushTarget, preservedData);
+        SessionLoggerTestAccess::FailFlushCopy(true);
+        std::wstring flushError;
+        const bool flushExportResult = logger.SaveCopy(flushTarget.wstring(), flushPoint, flushError, nullptr);
+        SessionLoggerTestAccess::FailFlushCopy(false);
+        Check(!flushExportResult && !flushError.empty(), "flush failure causes SaveCopy to fail");
+        Check(flushError.find(L"日志副本刷新失败") != std::wstring::npos, "expected flush error message");
+        Check(Read(flushTarget) == preservedData, "flush failure preserves target file atomically");
+        NoTemporary(flushTarget);
+        Check(logger.Error().empty(), "export flush failure does not taint logger");
+        evidence["cases"].push_back({{"name", "FlushFileBuffers fault injection on SaveCopy: target preserved, temporary deleted, logger healthy"}});
+
+        // FlushFileBuffers fault injection on Stop: non-blocking, returns boundedly, observable error
+        Check(logger.Start(L"flush-stop-failure", error, true), "start flush stop fixture");
+        roots.push_back(logger.Path());
+        logger.WriteRaw(Bytes{'s', 't', 'o', 'p'});
+        Check(SessionLoggerTestAccess::Drained(logger), "drained");
+        SessionLoggerTestAccess::FailFlushStop(true);
+        const auto stopStart = Clock::now();
+        logger.Stop();
+        const auto stopElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - stopStart);
+        SessionLoggerTestAccess::FailFlushStop(false);
+        Check(stopElapsed < 2000ms, "Stop with flush failure does not hang");
+        Check(logger.Error().find(L"日志刷新失败") != std::wstring::npos, "Stop flush error is observable");
+        evidence["cases"].push_back({{"name", "FlushFileBuffers fault injection on Stop: bounded return and observable error"}});
+
+        Check(logger.Start(L"ordered-batch", error, true), "start ordered batch fixture");
+        const auto batchPath = fs::path(logger.Path());
+        roots.push_back(batchPath);
+        logger.WriteBatch({{false, L"first\r\n"}, {true, L"status"}, {false, L"last\r\n"}});
+        Check(SessionLoggerTestAccess::Drained(logger), "ordered batch drained");
+        const auto batchStats = logger.Stats();
+        logger.Stop();
+        const auto batchText = Read(batchPath);
+        const auto firstAt = batchText.find("first"), statusAt = batchText.find("status"), lastAt = batchText.find("last");
+        Check(firstAt != std::string::npos && statusAt != std::string::npos && lastAt != std::string::npos &&
+              firstAt < statusAt && statusAt < lastAt, "batch conversion preserves exact entry order");
+        Check(batchStats.acceptedBytes == batchStats.completedBytes && batchStats.highWaterBytes > 0 &&
+              batchStats.overflowEvents == 0, "batch logger metrics describe complete delivery");
+        evidence["cases"].push_back({{"name", "ordered batch conversion and backlog metrics"},
+            {"bytes", batchStats.completedBytes}, {"high_water_bytes", batchStats.highWaterBytes}});
+
+        // Slow disk bounded queue test: WriteBytes never blocks producer thread, rejects beyond 8MB
+        Check(logger.Start(L"slow-disk-bounded", error, true), "start slow disk fixture");
+        roots.push_back(logger.Path());
+        const auto queueStart = Clock::now();
+        logger.WriteRaw(Bytes(8 * 1024 * 1024 + 1024, 'q'));
+        const auto queueElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - queueStart);
+        Check(queueElapsed < 500ms, "WriteRaw beyond queue limit returns immediately without blocking");
+        Check(logger.Error().find(L"日志队列已满") != std::wstring::npos, "queue saturation triggers error");
+        logger.Stop();
+        evidence["cases"].push_back({{"name", "slow disk bounded queue: producer never blocks, rejects >8MB without hang"}});
+
+        // A disconnected session can be exported, and reconnect retains the
+        // identical source log plus the user's continuously saved mirror.
+        Check(logger.Start(L"continuous-reconnect", error, true), "start resumable log");
+        const auto resumable = fs::path(logger.Path());
+        roots.push_back(resumable);
+        const auto mirror = directory / L"continuous-mirror.log";
+        roots.push_back(mirror);
+        Check(logger.StartContinuousSave(mirror.wstring(), error), "start live mirror");
+        logger.WriteRaw(Bytes{'A', 'B'});
+        Check(SessionLoggerTestAccess::Drained(logger), "initial source drained");
+        logger.Stop();
+        const auto disconnected = directory / L"disconnected-snapshot.log";
+        roots.push_back(disconnected);
+        Check(logger.SaveCopy(disconnected.wstring(), error), "save disconnected source");
+        Check(Read(disconnected) == "AB", "disconnected snapshot preserves source");
+        Check(logger.Resume(L"serial", error), "reopen original log on reconnect");
+        Check(fs::path(logger.Path()) == resumable, "reconnect retains original log path");
+        logger.WriteRaw(Bytes{'C', 'D'});
+        Check(SessionLoggerTestAccess::Drained(logger), "reconnected source drained");
+        logger.Stop();
+        const auto deadline = Clock::now() + 5s;
+        bool mirrored = false;
+        while (Clock::now() < deadline) {
+            if (fs::exists(mirror) && fs::file_size(mirror) == fs::file_size(resumable)) {
+                mirrored = Read(mirror) == Read(resumable);
+                if (mirrored) break;
+            }
+            std::this_thread::sleep_for(25ms);
+        }
+        Check(mirrored, "continuous mirror includes all pre/post reconnect bytes, once, in order");
+        logger.StopContinuousSave();
+        Check(!logger.ContinuousSaving() && logger.ContinuousSaveError().empty(), "mirror exits cleanly");
+        evidence["cases"].push_back({{"name", "continuous copy + disconnected save + reconnect history"},
+            {"source_bytes", fs::file_size(resumable)}});
+
         evidence["success"] = true;
     } catch (const std::exception &error) {
         evidence["success"] = false;

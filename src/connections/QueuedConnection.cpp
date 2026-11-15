@@ -20,14 +20,17 @@ bool QueuedConnection::Start(DataCallback data, StatusCallback status, std::wstr
 }
 void QueuedConnection::Stop() {
     connected_ = false;
+    std::deque<Write> canceled;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         stopping_ = true;
-        queue_.clear();
+        canceled.swap(queue_);
         queued_ = 0;
         resizePending_ = false;
         wake_.notify_all();
     }
+    for (auto &write : canceled)
+        if (write.completion) write.completion(WriteResult::NotWritten, L"连接已断开，指令未写出");
     if (worker_.joinable())
         CancelSynchronousIo(reinterpret_cast<HANDLE>(worker_.native_handle()));
     inner_->Stop(); // Cancel transport I/O before joining a possibly blocked writer.
@@ -41,20 +44,34 @@ void QueuedConnection::Stop() {
 bool QueuedConnection::Send(const Bytes &data, std::wstring &error) {
     return SendObserved(data, error, {});
 }
-bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std::function<void()> accepted, std::function<bool()> allowed) {
-    return Enqueue(data,error,std::move(accepted),std::move(allowed));
+bool QueuedConnection::Interrupt(std::wstring &error) {
+    if (!IsConnected()) {
+        error = L"连接已断开";
+        return false;
+    }
+    // Bypass the regular writer FIFO: a long-running CMD command must remain interruptible.
+    return inner_->Interrupt(error);
+}
+bool QueuedConnection::SendObserved(const Bytes &data, std::wstring &error, std::function<void()> accepted,
+                                    std::function<bool()> allowed, WriteCompletion completion) {
+    return Enqueue(data, error, std::move(accepted), std::move(allowed), std::move(completion));
 }
 bool QueuedConnection::SendConditional(const Bytes& data,std::wstring& error,std::function<bool()> allowed) {
-    return Enqueue(data,error,{},std::move(allowed));
+    return Enqueue(data, error, {}, std::move(allowed), {});
 }
-bool QueuedConnection::Enqueue(const Bytes &data,std::wstring& error,std::function<void()> accepted,std::function<bool()> allowed) {
+bool QueuedConnection::Enqueue(const Bytes &data, std::wstring &error, std::function<void()> accepted,
+                               std::function<bool()> allowed, WriteCompletion completion) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (stopping_ || !IsConnected()) {
         error = L"连接已断开";
         return false;
     }
     if(!transferOwner_.empty()) {error=L"该串口正在传输文件，其他输入暂时禁用";return false;}
-    if(allowed&&!allowed())return true;
+    if (allowed && !allowed()) {
+        if (!completion) return true;
+        error = L"任务已停止，指令未写出";
+        return false;
+    }
     if (data.size() > 8 * 1024 * 1024) {
         error = L"发送队列已满，请稍后重试";
         return false;
@@ -74,7 +91,7 @@ bool QueuedConnection::Enqueue(const Bytes &data,std::wstring& error,std::functi
     if (!data.empty()) {
         if (accepted)
             accepted();
-        queue_.push_back({std::move(prepared),std::move(allowed)});
+        queue_.push_back({std::move(prepared), std::move(allowed), std::move(completion)});
         queued_ += queue_.back().bytes.size();
         wake_.notify_one();
     }
@@ -100,8 +117,7 @@ void QueuedConnection::ResizeTerminal(int columns, int rows) {
 }
 void QueuedConnection::Run() {
     for (;;) {
-        Bytes bytes;
-        std::function<bool()> allowed;
+        Write write;
         bool resize = false, hasData = false;
         int columns = 0, rows = 0;
         {
@@ -117,27 +133,32 @@ void QueuedConnection::Run() {
             // repeated layout cannot create an unbounded queue or starve input.
             hasData = !queue_.empty();
             if (hasData) {
-                bytes = std::move(queue_.front().bytes);
-                allowed = std::move(queue_.front().allowed);
+                write = std::move(queue_.front());
                 queue_.pop_front();
-                queued_ -= bytes.size();
+                queued_ -= write.bytes.size();
                 writeInFlight_=true;
             }
         }
         if (resize) inner_->ResizeTerminal(columns, rows);
         if (!hasData) continue;
-        if(allowed&&!allowed()) {std::lock_guard<std::mutex> lock(mutex_);writeInFlight_=false;continue;}
         std::wstring error;
-        const bool sent=inner_->SendPrepared(bytes,error);
+        const bool canceled = write.allowed && !write.allowed();
+        const bool sent = !canceled && inner_->SendPrepared(write.bytes, error);
         {std::lock_guard<std::mutex> lock(mutex_);writeInFlight_=false;}
-        if (!sent) {
+        if (write.completion)
+            write.completion(sent ? WriteResult::Written : canceled ? WriteResult::NotWritten : WriteResult::Unknown,
+                             canceled ? L"任务已停止，指令未写出" : error);
+        if (!sent && !canceled) {
+            std::deque<Write> discarded;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                queue_.clear();
+                discarded.swap(queue_);
                 queued_ = 0;
                 stopping_ = true;
             }
             connected_ = false;
+            for (auto &item : discarded)
+                if (item.completion) item.completion(WriteResult::NotWritten, L"前序写入失败，指令未写出");
             if (status_)
                 status_(error, true);
             break;

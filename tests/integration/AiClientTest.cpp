@@ -47,6 +47,19 @@ int main() {
         Require(!ValidateServer(settings, validation), "Multiline project directory accepted");
         settings.workingDirectory = L"/srv/fixture code";
         Require(ValidateServer(settings, validation), "Absolute directory with spaces rejected");
+        Require(settings.provider == AiProvider::Codex && !settings.localMode,
+                "ServerSettings must default to Codex and remote SSH mode");
+        {
+            ServerSettings localSettings;
+            localSettings.localMode = true;
+            localSettings.provider = AiProvider::Antigravity;
+            localSettings.workingDirectory = L"D:\\workspace\\proj";
+            Require(ValidateServer(localSettings, validation),
+                    "Local mode must allow empty SSH host/user/password");
+            localSettings.workingDirectory = L"D:\\bad\npath";
+            Require(!ValidateServer(localSettings, validation),
+                    "Local mode must still reject multiline working directory");
+        }
         Require(client.Connect(
                     settings,
                     [&](Json e) {
@@ -138,9 +151,158 @@ int main() {
         });
         session.Shutdown();
         Require(!session.Ready() && !session.Running(), "Domain session did not shut down");
+
+        // Verify Antigravity SSH reverse MCP tunnel (-R) without exposing plaintext passwords
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            events.clear();
+        }
+        ServerSettings agySettings = settings;
+        agySettings.provider = AiProvider::Antigravity;
+        agySettings.mcpPort = 7081;
+        agySettings.remoteMcpPort = 17081;
+        Require(client.Connect(
+                    agySettings,
+                    [&](Json e) {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        events.push_back(std::move(e));
+                        wake.notify_all();
+                    },
+                    [](const serialctl::HostKeyChallenge&) { return false; }),
+                "Antigravity fixture connect rejected");
+        wait([](const Json &e) { return e.value("event", std::string()) == "ready"; });
+        wait([](const Json &e) {
+            return e.value("method", std::string()) == "fixture/reverseTunnel" &&
+                   e.contains("params") &&
+                   e["params"].value("spec", std::string()) == "127.0.0.1:17081:127.0.0.1:7081" &&
+                   e["params"].value("hasProcessPerSessionProbe", false) == true;
+        });
+        client.Shutdown();
+
+        {
+            struct EnvGuard {
+                ~EnvGuard() {
+                    SetEnvironmentVariableW(L"SERIALCTL_FIXTURE_MCP_HTTP_FALSE", nullptr);
+                    SetEnvironmentVariableW(L"SERIALCTL_FIXTURE_FWD_FAILED", nullptr);
+                }
+            } envGuard;
+            SetEnvironmentVariableW(L"SERIALCTL_FIXTURE_MCP_HTTP_FALSE", L"1");
+            SetEnvironmentVariableW(L"SERIALCTL_FIXTURE_FWD_FAILED", L"1");
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                events.clear();
+            }
+            ServerSettings diagSettings = settings;
+            diagSettings.provider = AiProvider::Antigravity;
+            diagSettings.localMode = false;
+            diagSettings.mcpPort = 7081;
+            diagSettings.remoteMcpPort = 17081;
+            Require(client.Connect(
+                        diagSettings,
+                        [&](Json e) {
+                            std::lock_guard<std::mutex> lock(mutex);
+                            events.push_back(std::move(e));
+                            wake.notify_all();
+                        },
+                        [](const serialctl::HostKeyChallenge&) { return false; }),
+                    "Antigravity diagnostics fixture connect rejected");
+            wait([](const Json &e) {
+                return e.value("event", std::string()) == "status" &&
+                       e.value("message", std::string()).find("AllowTcpForwarding") != std::string::npos;
+            });
+            wait([](const Json &e) {
+                return e.value("event", std::string()) == "status" &&
+                       e.value("message", std::string()).find("mcpCapabilities.http=false") != std::string::npos;
+            });
+            wait([](const Json &e) { return e.value("event", std::string()) == "ready"; });
+            client.Shutdown();
+        }
+
+        // Verify Antigravity ACP session/load replay and -32601 fallback to session/resume
+        {
+            struct AcpEnvGuard {
+                CodexSession &session;
+                ~AcpEnvGuard() {
+                    session.Shutdown();
+                    SetEnvironmentVariableW(L"SERIALCTL_FIXTURE_ACP_LOAD", nullptr);
+                }
+            } acpGuard{session};
+
+            SetEnvironmentVariableW(L"SERIALCTL_FIXTURE_ACP_LOAD", L"1");
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                events.clear();
+            }
+            ServerSettings acpSettings = settings;
+            acpSettings.provider = AiProvider::Antigravity;
+            acpSettings.mcpPort = 7081;
+            acpSettings.remoteMcpPort = 17081;
+            Require(session.Connect(
+                        acpSettings,
+                        [&](Json e) {
+                            std::lock_guard<std::mutex> lock(mutex);
+                            events.push_back(std::move(e));
+                            wake.notify_all();
+                        },
+                        [](const serialctl::HostKeyChallenge &) { return false; }),
+                    "Antigravity ACP loadSession fixture connect rejected");
+            wait([](const Json &e) {
+                return e.value("event", std::string()) == "ready" && e.value("acpLoadSession", false);
+            });
+            Require(session.Request(Operation::RestoreConversation, 31,
+                                    {{"conversationId", "acp-hist-7"}, {"cwd", "/srv/proj"}}),
+                    "Antigravity session/load RestoreConversation rejected");
+            wait([](const Json &e) {
+                return e.value("token", Json()) == 31 && e.contains("result") &&
+                       e["result"].value("conversationId", std::string()) == "acp-hist-7" &&
+                       e["result"].value("messages", Json::array()).size() == 5;
+            });
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                auto it = std::find_if(events.begin(), events.end(), [](const Json &e) {
+                    return e.value("token", Json()) == 31 && e.contains("result");
+                });
+                Require(it != events.end(), "Missing ACP RestoreConversation response");
+                const auto &msgs = (*it)["result"]["messages"];
+                Require(msgs[0]["role"] == u8"我" && msgs[0]["text"] == u8"分析工程" &&
+                            msgs[1]["role"] == u8"思考" &&
+                            msgs[2]["role"] == "AI" && msgs[2]["process"] == true &&
+                            msgs[3]["role"] == u8"工具" &&
+                            msgs[3]["text"].get<std::string>().find("CMakeLists.txt") != std::string::npos &&
+                            msgs[3].contains("technical") &&
+                            msgs[4]["role"] == "AI" && msgs[4]["process"] == false,
+                        "ACP session/load replay must decode user, thought, commentary, tool output and final answer");
+            }
+            session.Shutdown();
+
+            SetEnvironmentVariableW(L"SERIALCTL_FIXTURE_ACP_LOAD", L"fallback");
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                events.clear();
+            }
+            Require(session.Connect(
+                        acpSettings,
+                        [&](Json e) {
+                            std::lock_guard<std::mutex> lock(mutex);
+                            events.push_back(std::move(e));
+                            wake.notify_all();
+                        },
+                        [](const serialctl::HostKeyChallenge &) { return false; }),
+                    "Antigravity ACP fallback fixture connect rejected");
+            wait([](const Json &e) { return e.value("event", std::string()) == "ready"; });
+            Require(session.Request(Operation::RestoreConversation, 32,
+                                    {{"conversationId", "acp-hist-8"}, {"cwd", "/srv/proj"}}),
+                    "Antigravity fallback RestoreConversation rejected");
+            wait([](const Json &e) {
+                return e.value("token", Json()) == 32 && e.contains("result") &&
+                       e["result"].value("conversationId", std::string()) == "acp-hist-8";
+            });
+            session.Shutdown();
+        }
+
         std::cout
             << "AiClient: secure password pipe, explicit host verification, handshake, model discovery, UTF-8 "
-               "streaming, dynamic tool request, cancellation and UI domain adapter passed (offline process fixture)\n";
+               "streaming, dynamic tool request, cancellation, SSH -R MCP tunnel and UI domain adapter passed (offline process fixture)\n";
     } catch (const std::exception &e) {
         session.Shutdown();
         client.Shutdown();

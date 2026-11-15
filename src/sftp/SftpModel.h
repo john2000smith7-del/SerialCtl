@@ -48,4 +48,9 @@ void SortSftpEntries(std::vector<SftpEntry>& entries, SftpSortColumn column, boo
 // when the fragment does not contain one.
 int ParsePsftpProgressPercent(std::wstring_view output);
 
+// Attempts to extract the remote working directory from a Shell prompt line
+// (e.g. "user@host:/path$", "renhongyujie2866:~$", "(venv) [user@host /tmp]#").
+// Returns true and populates directory on match; returns false on normal output or guard rejection.
+bool TryExtractPromptDirectory(const std::wstring& line, std::wstring& directory);
+
 } // namespace serialctl
