@@ -822,15 +822,23 @@ foreach ($architecture in @('x64')) {
             $splitX=$commandRect.Left-22 # 16 px card padding and half of the 12 px gap (runner DPI 100%).
             $mouseY=$commandRect.Top+100
             [SerialCtlUiSmoke]::SetCursorPos($splitX,$mouseY)|Out-Null
+            Start-Sleep -Milliseconds 40
             [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
-            foreach($frame in 0..11){
-                [SerialCtlUiSmoke]::SetCursorPos(($splitX-($frame%6)*18),$mouseY)|Out-Null
-                Start-Sleep -Milliseconds 16
-                Capture-Desktop "$architecture-$theme-drag-frame-$frame"
+            try {
+                foreach($frame in 0..11){
+                    [SerialCtlUiSmoke]::SetCursorPos(($splitX-($frame%6)*18),$mouseY)|Out-Null
+                    Start-Sleep -Milliseconds 16
+                    Capture-Desktop "$architecture-$theme-drag-frame-$frame"
+                }
+            } finally {
+                [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
             }
-            [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
-            $afterDrag=New-Object SerialCtlUiSmoke+RECT
-            [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112),[ref]$afterDrag)|Out-Null
+            $dragDeadline = [DateTime]::UtcNow.AddSeconds(2)
+            $afterDrag = New-Object SerialCtlUiSmoke+RECT
+            do {
+                Start-Sleep -Milliseconds 25
+                [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112),[ref]$afterDrag)|Out-Null
+            } while ($afterDrag.Left -eq $commandRect.Left -and [DateTime]::UtcNow -lt $dragDeadline)
             if($afterDrag.Left -eq $commandRect.Left){throw 'Actual mouse did not drag sidebar splitter.'}
             foreach($frame in 0..9){
                 Click-Control $application.MainWindowHandle 125
