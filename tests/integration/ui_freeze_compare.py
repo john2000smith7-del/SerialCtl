@@ -90,7 +90,7 @@ def combo_glyph_regions(geometry,dpi):
     return regions
 
 
-def approved_v219_ssh_layout(before, after):
+def approved_v219_ssh_layout(before, after, version=None):
     """The approved history/credential form changes field positions, not semantics."""
     require(before["size"][0] == after["size"][0], "Approved SSH form changed its width")
     old = {row[0]: row for row in before["geometry"]}
@@ -98,10 +98,12 @@ def approved_v219_ssh_layout(before, after):
     fields = (1014, 1016, 1018, 1020)
     require(all(i in old and i in new and old[i][1].lower() == new[i][1].lower() == "edit"
                 and new[i][6] for i in fields), "SSH lost an editable host/port/user/password field")
-    require(all(i in new for i in (1028, 1029, 1031)), "SSH lost history/save/remember controls")
+    # V2.0.20 removed the separate 1031 password checkbox and unified saving into 1029 + 1032/1033/1034.
+    credential_controls = (1028, 1029, 1032, 1033, 1034) if (version is not None and parse_version(version) >= (2, 0, 20)) else (1028, 1029, 1031)
+    require(all(i in new for i in credential_controls), "SSH lost history/save/remember controls")
     heights = [new[i][5]-new[i][3] for i in fields]
     require(min(heights)>0 and max(heights)-min(heights)<=1, "SSH field heights differ")
-    for i in (*fields, 1028, 1029, 1031, 1, 2):
+    for i in (*fields, *credential_controls, 1, 2):
         require(i in new, "SSH control missing")
         _, _, left, top, right, bottom, _ = new[i]
         require(0<=left<right<=after["size"][0] and 0<=top<bottom<=after["size"][1],
@@ -431,7 +433,7 @@ def main():
                 # Explicit user approval adds history + secure-remember rows
                 # and repositions all four input fields. Preserve both actual
                 # screenshots; do not claim these unequal layouts are frozen.
-                contract=approved_v219_ssh_layout(before,after)
+                contract=approved_v219_ssh_layout(before,after,version)
                 report["cases"].append({"theme":key[0],"view":"ssh","comparison":"approved-layout",
                     "layoutContract":contract,"geometryEqual":before["geometry"]==after["geometry"],
                     "baselineSize":before["size"],"candidateSize":after["size"],

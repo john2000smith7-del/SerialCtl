@@ -47,6 +47,25 @@ class GlyphComparisonTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             approved_v219_ssh_layout(before,after)
 
+    def test_approved_ssh_layout_v220_requires_unified_credential_controls(self):
+        before_rows = [[i, "Edit", 10+(n%2)*120, 70+(n//2)*50, 110+(n%2)*120, 98+(n//2)*50, True]
+                       for n, i in enumerate((1014, 1016, 1018, 1020))]
+        after_rows = list(before_rows) + [
+            [1028, "ComboBox", 10, 200, 180, 228, True],
+            [1033, "Static", 10, 180, 100, 198, True],
+            [1034, "Button", 190, 200, 220, 228, False],
+            [1029, "Button", 10, 240, 120, 268, True],
+            [1032, "Static", 10, 270, 260, 290, True],
+            [1, "Button", 110, 310, 190, 342, True],
+            [2, "Button", 200, 310, 280, 342, True],
+        ]
+        before = {"size": [300, 400], "geometry": before_rows}
+        after = {"size": [300, 400], "geometry": after_rows}
+        self.assertEqual(approved_v219_ssh_layout(before, after, "V2.0.21")["status"], "PASS")
+        missing_note = {"size": [300, 400], "geometry": [r for r in after_rows if r[0] != 1032]}
+        with self.assertRaises(AssertionError):
+            approved_v219_ssh_layout(before, missing_note, "V2.0.21")
+
     def test_parse_version_covers_v2021_and_rejects_garbage(self):
         self.assertGreaterEqual(parse_version("V2.0.21"), (2, 0, 19))
         self.assertGreaterEqual(parse_version("2.0.21"), (2, 0, 21))
