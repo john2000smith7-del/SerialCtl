@@ -6841,18 +6841,22 @@ void MainWindow::SaveCurrentLog(HWND owner) {
         const bool ok = WriteFile(file, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr) && written == utf8.size();
         const std::wstring error = ok ? std::wstring() : Win32ErrorMessage();
         CloseHandle(file);
-        AppendStatus(ok ? L"已保存当前终端屏幕日志" : L"保存终端日志失败：" + error, !ok);
+        if (!ok) {
+            AppendStatus(L"保存终端日志失败：" + error, true);
+        } else {
+            logExportNotice_ = L"已保存当前终端屏幕日志";
+            if (!statusIsError_ && macro_.RunningIndex() < 0)
+                AppendStatus(logExportNotice_, false);
+        }
         return;
     }
     auto logger = activeSession_->logger;
-    if (logger->ContinuousSaving()) logger->StopContinuousSave();
-    std::wstring error;
-    if (!logger->StartContinuousSave(destination, error)) {
-        AppendStatus(L"日志保存失败：" + error, true);
-        return;
-    }
-    logExportNotice_ = L"日志已保存，后续输出将持续追加到该文件";
-    AppendStatus(L"日志已保存，后续输出将持续追加到指定文件", false);
+    const auto point = logger->CaptureExportPoint();
+    StartLogExport(L"会话日志 · " + activeSession_->name, destination, point.bytes,
+        [logger, point, destination](std::wstring& error, const std::atomic<bool>* cancel,
+                                     const SessionLogger::ExportProgress& progress) {
+            return logger->SaveCopy(destination, point, error, cancel, progress);
+        });
 }
 
 void MainWindow::SaveNetworkDiagnostics(HWND owner) {
