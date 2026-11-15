@@ -536,7 +536,12 @@ foreach ($architecture in @('x64')) {
                     Start-Sleep -Milliseconds 300
                     if ([SerialCtlUiSmoke]::GetDlgItem($dialog, 1036) -eq [IntPtr]::Zero) { throw 'Unified serial form is missing location selector.' }
                     Select-ControlOption $application.MainWindowHandle $dialog $application.Id 1036 1 "$architecture-$theme-serial-location"
-                    $dialog = Wait-Dialog $application.Id $titles[3]
+                    $remoteDeadline = [DateTime]::UtcNow.AddSeconds(5)
+                    do {
+                        Start-Sleep -Milliseconds 50
+                        $remoteHost = [SerialCtlUiSmoke]::GetDlgItem($dialog, 1014)
+                        $remoteBaud = [SerialCtlUiSmoke]::GetDlgItem($dialog, 1004)
+                    } while ((-not [SerialCtlUiSmoke]::IsWindowVisible($remoteHost) -or [SerialCtlUiSmoke]::IsWindowVisible($remoteBaud)) -and [DateTime]::UtcNow -lt $remoteDeadline)
                 } else {
                     Click-Control $application.MainWindowHandle (100+$mode)
                     $dialog = Wait-Dialog $application.Id $titles[$mode]
@@ -548,6 +553,7 @@ foreach ($architecture in @('x64')) {
                 if ($mode -eq 3) {
                     if ($unifiedSerial) {
                         if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($dialog, 1014)) -or
+                            [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($dialog, 1004)) -or
                             [SerialCtlUiSmoke]::GetDlgItem($dialog, 9010) -ne [IntPtr]::Zero) {
                             throw 'Remote serial mode did not switch cleanly without manual port dialog.'
                         }
