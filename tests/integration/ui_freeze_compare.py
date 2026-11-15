@@ -304,8 +304,13 @@ def main():
                             user.SendMessageW(target, 0x111, 1036 | (1 << 16), selector)
                             require(user.IsWindowVisible(user.GetDlgItem(target, 1014)) and not user.GetDlgItem(target, 9010),
                                     'Remote serial must have an IP field and no manual port action')
-                            require(user.SetWindowTextW(user.GetDlgItem(target, 1014), '127.0.0.1'),
+                            host_field = user.GetDlgItem(target, 1014)
+                            # SetWindowTextW across processes does not update the target Edit buffer or fire EN_CHANGE.
+                            host_buffer = c.create_unicode_buffer('127.0.0.1')
+                            require(user.SendMessageW(host_field, 0x000C, 0, c.addressof(host_buffer)),
                                     'Cannot enter loopback IP for serial discovery')
+                            require(user.SendMessageW(host_field, 0x000E, 0, 0) == len('127.0.0.1'),
+                                    'Remote IP field did not receive loopback address')
                         # Select Cancel through native focus navigation to remove
                         # any text caret from the deterministic pixel comparison.
                         user.PostMessageW(target, 0x28, user.GetDlgItem(target, 2), 1)
