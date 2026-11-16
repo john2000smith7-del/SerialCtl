@@ -225,19 +225,35 @@ def main():
                 observations = deque(maxlen=16)
                 next_observation = 0.0
 
-                def installed():
+                stage = install / '.serialctl-update'
+
+                def committed():
                     nonlocal next_observation
                     if time.monotonic() >= next_observation:
                         next_observation = time.monotonic() + 0.5
                         state = update_ui()
                         if not observations or state != observations[-1]:
                             observations.append(state)
-                    try:return hashlib.sha256((install/'serialctl.exe').read_bytes()).hexdigest()==expected_exe and (install/'VERSION').read_bytes()==expected_version
-                    except OSError:return False
+                    for log in stage.glob('*/update.log'):
+                        try:
+                            if 'COMMITTED ' + payload['version'] in log.read_text(errors='replace'):
+                                return True
+                        except OSError:
+                            continue
+                    return False
+
                 try:
-                    wait(installed,180)
-                except RuntimeError:
-                    stage = install / '.serialctl-update'
+                    # Windows file handles opened by Path.read_bytes() deny delete
+                    # sharing. Observe the installer log before opening the targets,
+                    # so the fixture cannot block their atomic replacement.
+                    wait(committed,180)
+                    process.wait(timeout=30)
+                    wait(lambda:windows('SerialCtlWin7NativeWindowV3'),30)
+                    require(hashlib.sha256((install/'serialctl.exe').read_bytes()).hexdigest()==expected_exe,
+                            'Committed update executable does not match the candidate')
+                    require((install/'VERSION').read_bytes()==expected_version,
+                            'Committed update VERSION does not match the candidate')
+                except (OSError, RuntimeError, subprocess.TimeoutExpired):
                     log_paths = list(stage.glob('*/update.log')) + [stage / 'last-install-error.log']
                     logs = {}
                     for filename in log_paths[:8]:
@@ -254,12 +270,7 @@ def main():
                         'logs': logs,
                     }
                     raise
-                process.wait(timeout=30);process=None
-                wait(lambda:windows('SerialCtlWin7NativeWindowV3'),30)
-                def committed():
-                    logs=list((install/'.serialctl-update').glob('*/update.log'))
-                    return any('COMMITTED '+payload['version'] in f.read_text(errors='replace') for f in logs)
-                wait(committed,30)
+                process=None
                 require((install/'update.ini').read_bytes()==ini,'Update URL changed')
                 require((config/'command-notebook.txt').read_bytes()==note,'Notebook changed')
                 require((install/'drivers'/'keep.txt').read_text()=='DRIVER_PRESERVED','Driver data changed')
