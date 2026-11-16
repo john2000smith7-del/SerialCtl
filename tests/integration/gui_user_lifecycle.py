@@ -352,8 +352,17 @@ def run(c):
     click(301)
     wait(lambda:u.SendMessageW(listing,0x18b,0,0)>0 and
          u.SendMessageW(listing,0x188,0,0)==u.SendMessageW(listing,0x18b,0,0)-1 and
+         u.IsWindowVisible(power_pane))
+    monitor_selector=u.GetDlgItem(window,307)
+    was_expanded=bool(u.IsWindowVisible(monitor_selector))
+    # Selecting power may keep a connected CMD in the live monitor. The
+    # navigation fixture uses power with its monitor collapsed in both themes.
+    if was_expanded:
+        click(125)
+    wait(lambda:not u.IsWindowVisible(monitor_selector) and
          not u.IsWindowVisible(u.GetDlgItem(window,107)) and u.IsWindowVisible(power_pane))
-    observations.append({'action':'power-row-setup','method':'system mouse click on toolbar control 301',
+    observations.append({'action':'power-row-setup','method':'system mouse clicks on toolbar and monitor toggle',
+                         'monitor_was_expanded':was_expanded,
                          'power_row':u.SendMessageW(listing,0x188,0,0),'terminal_visible':False,
                          'power_hwnd':int(power_pane),'power_pid':power_owner.value,'power_visible':True})
     baseline_rows=u.SendMessageW(listing,0x18b,0,0)

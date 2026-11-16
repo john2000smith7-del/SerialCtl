@@ -709,8 +709,24 @@ foreach ($architecture in @('x64')) {
                     Capture-Desktop "$architecture-$theme-ai-divider-$direction-released"
                 }
             }
-            Click-Control $application.MainWindowHandle 125
-            Start-Sleep -Milliseconds 300
+            if ($ActualMouse) {
+                # The later navigation fixture verifies End on the power row.
+                # Close the disconnected AI card while its own page is active.
+                $list = [SerialCtlUiSmoke]::GetDlgItem($mainWindowHandle,106)
+                $rowsBefore = [SerialCtlUiSmoke]::Send($list,0x18b,[IntPtr]::Zero,[IntPtr]::Zero).ToInt64()
+                Click-Control $mainWindowHandle 105
+                $closeDeadline = [DateTime]::UtcNow.AddSeconds(2)
+                do {
+                    Start-Sleep -Milliseconds 25
+                    $rowsAfter = [SerialCtlUiSmoke]::Send($list,0x18b,[IntPtr]::Zero,[IntPtr]::Zero).ToInt64()
+                } while (($rowsAfter -ne ($rowsBefore-1) -or [SerialCtlUiSmoke]::IsWindowVisible($aiPane)) -and [DateTime]::UtcNow -lt $closeDeadline)
+                if ($rowsAfter -ne ($rowsBefore-1) -or [SerialCtlUiSmoke]::IsWindowVisible($aiPane)) {
+                    throw "Closing the disconnected AI card failed. Rows before=$rowsBefore, after=$rowsAfter."
+                }
+            } else {
+                Click-Control $application.MainWindowHandle 125
+                Start-Sleep -Milliseconds 300
+            }
             # New power pane occupies the central terminal area. It keeps independent connection/output actions.
             Click-Control $application.MainWindowHandle 301
             Start-Sleep -Milliseconds 250
