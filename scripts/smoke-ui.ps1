@@ -38,6 +38,19 @@ public static class SerialCtlUiSmoke {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
     [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
+    [StructLayout(LayoutKind.Sequential)] struct GuiThreadInfo {
+        public int Size; public uint Flags;
+        public IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret;
+        public RECT CaretRect;
+    }
+    [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+    public static IntPtr CaptureOwner(IntPtr window) {
+        uint pid;
+        uint thread=GetWindowThreadProcessId(window,out pid);
+        var info=new GuiThreadInfo { Size=Marshal.SizeOf(typeof(GuiThreadInfo)) };
+        if (thread==0 || !GetGUIThreadInfo(thread,ref info)) throw new Exception("Cannot inspect mouse capture");
+        return info.Capture;
+    }
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string className,string caption);
     [DllImport("user32.dll")] public static extern bool GetMenuItemRect(IntPtr window,IntPtr menu,uint item,out RECT rect);
@@ -648,23 +661,36 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::AssertAiHeader($application.MainWindowHandle)
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-expanded"
             if ($ActualMouse) {
-                foreach ($direction in @(-1,1)) {
+                $monitor = [SerialCtlUiSmoke]::GetDlgItem($mainWindowHandle,107)
+                if (-not [SerialCtlUiSmoke]::IsWindowVisible($monitor)) { throw 'AI monitor terminal is not visible for divider drag.' }
+                # The initial split is near the minimum AI-pane width in a 980 px window.
+                # Widen the AI pane first, then reverse on the same native divider.
+                foreach ($direction in @(1,-1)) {
                     $paneRect = New-Object SerialCtlUiSmoke+RECT
-                    $headerRect = New-Object SerialCtlUiSmoke+RECT
+                    $monitorRect = New-Object SerialCtlUiSmoke+RECT
                     $windowRect = New-Object SerialCtlUiSmoke+RECT
-                    [SerialCtlUiSmoke]::GetWindowRect($aiPane,[ref]$paneRect)|Out-Null
-                    [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321),[ref]$headerRect)|Out-Null
-                    [SerialCtlUiSmoke]::GetWindowRect($application.MainWindowHandle,[ref]$windowRect)|Out-Null
-                    $startX = [int](($paneRect.Right+$headerRect.Left)/2)
-                    $y = $paneRect.Top+100
+                    if (-not [SerialCtlUiSmoke]::GetWindowRect($aiPane,[ref]$paneRect) -or
+                        -not [SerialCtlUiSmoke]::GetWindowRect($monitor,[ref]$monitorRect) -or
+                        -not [SerialCtlUiSmoke]::GetWindowRect($mainWindowHandle,[ref]$windowRect)) { throw 'Missing AI divider bounds.' }
+                    $startX = [int](($paneRect.Right+$monitorRect.Left)/2)
+                    $y = [int](([Math]::Max($paneRect.Top,$monitorRect.Top)+[Math]::Min($paneRect.Bottom,$monitorRect.Bottom))/2)
                     $endX = if ($direction -lt 0) { $windowRect.Left+210 } else { $windowRect.Right-32 }
                     $point = New-Object SerialCtlUiSmoke+POINT
                     $point.X=$startX; $point.Y=$y
-                    if ([SerialCtlUiSmoke]::WindowFromPoint($point) -ne $application.MainWindowHandle) { throw 'AI divider is not exposed.' }
+                    if ([SerialCtlUiSmoke]::WindowFromPoint($point) -ne $mainWindowHandle) { throw "AI divider is not exposed at ($startX,$y)." }
+                    $beforeWidth = $paneRect.Right-$paneRect.Left
+                    Write-Host "AI divider input: theme=$theme direction=$direction paneBefore=$beforeWidth monitorLeft=$($monitorRect.Left) start=($startX,$y) end=($endX,$y)"
                     [SerialCtlUiSmoke]::SetCursorPos($startX,$y)|Out-Null
                     Start-Sleep -Milliseconds 40
                     [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
                     try {
+                        $captureDeadline = [DateTime]::UtcNow.AddMilliseconds(500)
+                        do {
+                            $capture = [SerialCtlUiSmoke]::CaptureOwner($mainWindowHandle)
+                            if ($capture -eq $mainWindowHandle) { break }
+                            Start-Sleep -Milliseconds 10
+                        } while ([DateTime]::UtcNow -lt $captureDeadline)
+                        if ($capture -ne $mainWindowHandle) { throw "AI divider did not capture the actual mouse: $capture." }
                         foreach ($frame in 1..12) {
                             [SerialCtlUiSmoke]::SetCursorPos([int]($startX+($endX-$startX)*$frame/12),$y)|Out-Null
                             Start-Sleep -Milliseconds 40
@@ -673,8 +699,12 @@ foreach ($architecture in @('x64')) {
                     } finally { [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero) }
                     Start-Sleep -Milliseconds 200
                     $afterPane = New-Object SerialCtlUiSmoke+RECT
-                    [SerialCtlUiSmoke]::GetWindowRect($aiPane,[ref]$afterPane)|Out-Null
-                    if ([Math]::Abs(($afterPane.Right-$afterPane.Left)-($paneRect.Right-$paneRect.Left)) -lt 32) { throw 'AI divider drag did not resize the pane.' }
+                    if (-not [SerialCtlUiSmoke]::GetWindowRect($aiPane,[ref]$afterPane)) { throw 'Missing AI pane bounds after mouse release.' }
+                    $afterWidth = $afterPane.Right-$afterPane.Left
+                    $capture = [SerialCtlUiSmoke]::CaptureOwner($mainWindowHandle)
+                    Write-Host "AI divider result: theme=$theme direction=$direction before=$beforeWidth after=$afterWidth captureAfter=$capture"
+                    if ($capture -eq $mainWindowHandle) { throw 'AI divider retained mouse capture after release.' }
+                    if ([Math]::Abs($afterWidth-$beforeWidth) -lt 32) { throw 'AI divider drag did not resize the pane.' }
                     [SerialCtlUiSmoke]::AssertAiHeader($application.MainWindowHandle)
                     Capture-Desktop "$architecture-$theme-ai-divider-$direction-released"
                 }

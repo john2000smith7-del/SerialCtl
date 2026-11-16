@@ -29,6 +29,11 @@ on:
         required: false
         type: boolean
         default: false
+      ui_actual_mouse:
+        description: Run the actual mouse and keyboard desktop fixture on an existing matching build
+        required: false
+        type: boolean
+        default: false
       ui_endurance:
         description: Only inspect actual endurance using independent screen recording
         required: false
@@ -350,16 +355,18 @@ jobs:
       - name: Inspect packaged main window and dialogs
         if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_focus && !inputs.ui_endurance }}
         shell: powershell
-        run: ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/smoke"
+        env:
+          UI_ACTUAL_MOUSE: ${{ inputs.ui_actual_mouse }}
+        run: ./scripts/smoke-ui.ps1 -OutputDirectory "$env:RUNNER_TEMP/gui-evidence/smoke" -ActualMouse:($env:UI_ACTUAL_MOUSE -eq 'true')
       - name: Inspect approved controls and continuous power scroll
-        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_endurance }}
+        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_endurance && !inputs.ui_actual_mouse }}
         shell: powershell
         run: |
           $archive = @(Get-ChildItem bin -Filter '*.zip')
           python tests/integration/optimization_fixture.py --archive $archive[0].FullName --output "$env:RUNNER_TEMP/gui-evidence/optimization"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compare unchanged UI against accepted baseline
-        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_endurance }}
+        if: ${{ always() && steps.source.outcome == 'success' && !inputs.ui_endurance && !inputs.ui_actual_mouse }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: powershell
@@ -394,7 +401,7 @@ jobs:
             ${{ runner.temp }}/gui-evidence/**/*.log
             ${{ runner.temp }}/gui-evidence/**/*.txt
       - uses: ./.github/actions/ci-evidence
-        if: ${{ always() && !inputs.ui_endurance }}
+        if: ${{ always() && !inputs.ui_endurance && !inputs.ui_actual_mouse }}
         with:
           mode: save
           name: SerialCtl-approved-ui-review
