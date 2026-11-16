@@ -285,6 +285,15 @@ int main() {
             Require(svc.ExecuteTool("workspace.delete",
                                     {{"path", "src/obs_moved.txt"}, {"confirm", true}})["ok"] == true,
                     "Observer delete failed");
+            const auto commandWrite = svc.ExecuteTool(
+                "workspace.exec", {{"command", ">src\\command.txt echo before"}});
+            Require(commandWrite["exitCode"] == 0, "Command failed to create test file");
+            const auto commandEdit = svc.ExecuteTool(
+                "workspace.exec", {{"command", ">src\\command.txt echo after& exit /b 7"}});
+            Require(commandEdit["exitCode"] == 7, "Command failed to exercise nonzero exit");
+            const auto commandDelete = svc.ExecuteTool(
+                "workspace.exec", {{"command", "del src\\command.txt"}});
+            Require(commandDelete["exitCode"] == 0, "Command failed to delete test file");
             svc.RemoveObserver(obsToken);
 
             bool sawStarted = false, sawDelta = false, sawCompleted = false;
@@ -302,7 +311,7 @@ int main() {
                         streamCombined.find("STREAM_OBS_B") != std::string::npos,
                     "Exec observer must emit Started, OutputDelta and Completed events with stdout");
 
-            Require(fileChanges.size() == 4 &&
+            Require(fileChanges.size() == 7 &&
                         fileChanges[0].action == "create" && fileChanges[0].path == "src/obs_test.txt" &&
                         fileChanges[0].addedLines == 2 &&
                         fileChanges[1].action == "edit" && fileChanges[1].path == "src/obs_test.txt" &&
@@ -313,6 +322,57 @@ int main() {
                         fileChanges[2].path == "src/obs_moved.txt" &&
                         fileChanges[3].action == "delete" && fileChanges[3].path == "src/obs_moved.txt",
                     "FileChange observer must record create/edit/move/delete with accurate unifiedDiff and counts");
+            Require(fileChanges[4].detectedByCommand && fileChanges[4].action == "create" &&
+                        fileChanges[4].path == "src/command.txt" &&
+                        fileChanges[5].detectedByCommand && fileChanges[5].action == "edit" &&
+                        fileChanges[5].diffText.find("-before") != std::string::npos &&
+                        fileChanges[5].diffText.find("+after") != std::string::npos &&
+                        fileChanges[6].detectedByCommand && fileChanges[6].action == "delete",
+                    "Commands must report created, edited and deleted files, including after nonzero exit");
+        }
+
+        const auto gitProbe = svc.ExecuteTool("workspace.exec", {{"command", "git --version"}});
+        if (gitProbe.value("exitCode", 1) == 0) {
+            const auto runGitFixture = [&](const std::string &command) {
+                const auto result = svc.ExecuteTool("workspace.exec", {{"command", command}});
+                Require(result.value("exitCode", 1) == 0, "Failed to prepare temporary Git fixture");
+            };
+            runGitFixture("git init --template= -q");
+            runGitFixture("git add -- src/hello.c");
+            runGitFixture("git -c user.name=Fixture -c user.email=fixture@example.invalid "
+                          "-c commit.gpgsign=false -c core.hooksPath=NUL commit -qm fixture");
+            runGitFixture(">>src\\hello.c echo // staged");
+            runGitFixture("git add -- src/hello.c");
+            runGitFixture(">>src\\hello.c echo // unstaged");
+            Require(svc.ExecuteTool("workspace.write_file",
+                        {{"path", u8"src/新 文件.txt"}, {"content", "untracked\n"}}).value("ok", false),
+                    "Failed to prepare Unicode Git path");
+            const auto status = svc.ReadGitFileChanges(svc.Snapshot(), false);
+            using Layer = FileChangeRecord::GitLayer;
+            const auto checkGitPatch = [&](const char *path, Layer layer, const char *expected, const char *excluded) {
+                const auto entry = std::find_if(status.records.begin(), status.records.end(), [&](const auto &record) {
+                    return record.path == path && record.gitLayer == layer;
+                });
+                Require(entry != status.records.end(), "Git status is missing a file or change layer");
+                const auto refreshed = svc.ReadGitFileChanges(svc.Snapshot(), false, entry->changeId);
+                const auto preview = std::find_if(refreshed.records.begin(), refreshed.records.end(), [&](const auto &record) {
+                    return record.changeId == refreshed.previewId;
+                });
+                Require(refreshed.previewId == entry->changeId && preview != refreshed.records.end() &&
+                            preview->diffText.find(expected) != std::string::npos &&
+                            (!excluded || preview->diffText.find(excluded) == std::string::npos),
+                        "Git status must show the selected file's actual patch for its change layer");
+            };
+            checkGitPatch("src/hello.c", Layer::Staged, "+// staged", "+// unstaged");
+            checkGitPatch("src/hello.c", Layer::Unstaged, "+// unstaged", "+// staged");
+            checkGitPatch(u8"src/新 文件.txt", Layer::Untracked, "+untracked", nullptr);
+            const auto history = svc.ReadGitFileChanges(svc.Snapshot(), true);
+            Require(history.records.size() == 1 && history.records.front().path == "src/hello.c" &&
+                        history.records.front().action == "create" &&
+                        history.records.front().detail.find("fixture") != std::string::npos &&
+                        history.records.front().diffText.find("+int main(void)") != std::string::npos &&
+                        history.records.front().diffText.find("+// staged") == std::string::npos,
+                    "Git history must show the selected commit's actual patch");
         }
 
         // Read-only enforcement

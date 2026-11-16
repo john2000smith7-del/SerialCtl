@@ -20,6 +20,12 @@ struct LocalWorkspaceSnapshot {
     std::wstring canonicalRoot;
 };
 
+struct GitFileChanges {
+    std::vector<FileChangeRecord> records;
+    std::string notice;
+    std::string previewId;
+};
+
 // Pure Win32/C++ helpers for Windows local workspace validation, browsing,
 // AGENTS.md persistence, and safe sandboxed execution (Win7 SP1 compatible).
 bool ResolveAndValidateLocalRoot(const std::wstring &root, std::wstring &canonicalOut, std::string &errorOut);
@@ -46,6 +52,8 @@ class LocalWorkspaceService {
     // Returns false with errorOut if active==true and root cannot be resolved/opened.
     bool Configure(bool active, const std::wstring &root, bool readOnly, std::string &errorOut);
     LocalWorkspaceSnapshot Snapshot() const;
+    GitFileChanges ReadGitFileChanges(const LocalWorkspaceSnapshot &snap, bool history,
+                                      const std::string &previewId = {});
 
     // Signals any running workspace.exec (and long searches) to abort promptly.
     void CancelAllExecs();
@@ -76,6 +84,11 @@ class LocalWorkspaceService {
     Json ToolDelete(const LocalWorkspaceSnapshot &snap, const Json &args) const;
     Json ToolExec(const LocalWorkspaceSnapshot &snap, const Json &args,
                   const std::atomic<bool> *externalCancel);
+    Json RunWorkspaceProcess(const LocalWorkspaceSnapshot &snap, const std::wstring &cwd,
+                             std::wstring commandLine, const std::string &command, int timeoutMs,
+                             const std::atomic<bool> *externalCancel, const wchar_t *application = nullptr);
+    Json RunGitCommand(const LocalWorkspaceSnapshot &snap, const std::wstring &arguments);
+    void ReadGitFileDiff(const LocalWorkspaceSnapshot &snap, FileChangeRecord &record);
 
     mutable std::mutex mutex_;
     LocalWorkspaceSnapshot snapshot_;

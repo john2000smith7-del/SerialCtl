@@ -1309,11 +1309,25 @@ struct AiDeviceTestAccess {
                     modeComboRect.right < fileComboRect.left && fileComboRect.right < searchComboRect.left &&
                     searchComboRect.right < prevBtnRect.left && prevBtnRect.right < nextBtnRect.left &&
                     main.aiChangesPane_.TopCardHeight() == Ui::Scale(6) + Ui::CompactHeight + Ui::Scale(6) &&
-                    SendMessageW(modeComboHwnd, CB_GETCOUNT, 0, 0) == 2 &&
+                    SendMessageW(modeComboHwnd, CB_GETCOUNT, 0, 0) == 4 &&
                     compactLabel && *compactLabel == L"DIFF" &&
                     !IsWindowEnabled(prevBtnHwnd) && !IsWindowEnabled(nextBtnHwnd) &&
                     toggleBtnRect.right <= changesHostRect.right,
                 "AI Changes Row 2 controls must align on one row with DIFF compact label and search nav buttons");
+        const auto selectChangesScope = [&](AiChangesPane::Scope scope) {
+            SendMessageW(modeComboHwnd, CB_SETCURSEL, static_cast<WPARAM>(scope), 0);
+            SendMessageW(main.aiChangesPane_.Handle(), WM_COMMAND,
+                         MAKEWPARAM(AiChangesPane::ModeComboBox, CBN_SELCHANGE),
+                         reinterpret_cast<LPARAM>(modeComboHwnd));
+            Require(main.aiChangesPane_.CurrentScope() == scope, "Changes scope did not follow dropdown selection");
+        };
+        selectChangesScope(AiChangesPane::Scope::GitStatus);
+        Require(*compactLabel == L"Git 状态", "Git status scope must update the compact label");
+        selectChangesScope(AiChangesPane::Scope::GitHistory);
+        Require(*compactLabel == L"Git 历史", "Git history scope must update the compact label");
+        selectChangesScope(AiChangesPane::Scope::CurrentTurn);
+        Require(main.aiChangesPane_.SelectedChangeId() == change.changeId,
+                "Switching back from Git must restore the AI change list");
         main.aiChangesPane_.SetSearchQuery(L"middle_needle_token");
         Require(main.aiChangesPane_.SearchMatchCount() == 1 &&
                     IsWindowEnabled(prevBtnHwnd) && IsWindowEnabled(nextBtnHwnd),

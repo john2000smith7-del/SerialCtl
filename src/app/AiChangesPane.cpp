@@ -7,6 +7,7 @@
 #include <cwctype>
 #include <sstream>
 #include <string_view>
+#include <thread>
 #include <windowsx.h>
 
 namespace serialctl {
@@ -159,11 +160,6 @@ void DrawRoundedBorderStroke(HDC dc, const RECT &rect, int radius, COLORREF bord
     }
     Gdiplus::Pen pen(UiColor(borderColor), 1.0f);
     graphics.DrawPath(&pen, &path);
-}
-
-const std::wstring *DiffModeLabel() {
-    static const auto *const kLabel = new std::wstring(L"DIFF");
-    return kLabel;
 }
 
 enum class SyntaxLang { Plain, Cpp, Python, PowerShell, Script, Shell, Json, Markdown, CMake, Config };
@@ -724,9 +720,8 @@ bool AiChangesPane::Create(HWND parent, HFONT font, bool dark, int dpi) {
     if (modeCombo_) {
         SendMessageW(modeCombo_, WM_SETFONT, reinterpret_cast<WPARAM>(smallFont_), TRUE);
         UiStyleField(modeCombo_, &fieldStyle_);
-        SetPropW(modeCombo_, L"SerialCtl.CompactLabel",
-                 const_cast<void *>(reinterpret_cast<const void *>(DiffModeLabel())));
-        UiSetControlTooltip(modeCombo_, L"DIFF 视图：下拉选择「本轮」或「全部」文件修改");
+        SetPropW(modeCombo_, L"SerialCtl.CompactLabel", reinterpret_cast<HANDLE>(&compactScopeLabel_));
+        UiSetControlTooltip(modeCombo_, L"选择本轮、全部、Git 状态或 Git 历史");
     }
 
     fileCombo_ = CreateWindowExW(0, L"COMBOBOX", L"",
@@ -870,6 +865,10 @@ void AiChangesPane::SetChanges(const std::vector<ai::FileChangeRecord> &records,
                                const std::string &selectChangeId) {
     records_ = records;
     currentTurnSeq_ = currentTurnSeq;
+    if (IsGitScope()) {
+        UpdateButtons();
+        return;
+    }
     UpdateButtons();
     RebuildFilteredList(selectChangeId);
     Layout();
@@ -882,6 +881,8 @@ void AiChangesPane::SetCurrentTurnSeq(std::uint64_t currentTurnSeq) {
         return;
     currentTurnSeq_ = currentTurnSeq;
     UpdateButtons();
+    if (IsGitScope())
+        return;
     RebuildFilteredList();
     Layout();
     if (window_)
@@ -902,6 +903,8 @@ void AiChangesPane::FocusChange(const std::string &changeId) {
     }
     if (!found)
         return;
+    if (IsGitScope())
+        SetScope(inCurrentTurn ? Scope::CurrentTurn : Scope::All);
     if (scope_ == Scope::CurrentTurn && !inCurrentTurn)
         scope_ = Scope::All;
     UpdateButtons();
@@ -915,11 +918,93 @@ void AiChangesPane::SetScope(Scope scope) {
     if (scope_ == scope)
         return;
     scope_ = scope;
+    gitChanges_ = {};
+    gitRoot_.clear();
+    nextGitRefresh_ = 0;
+    if (IsGitScope()) {
+        SetTimer(window_, 1, 250, nullptr);
+        RefreshGitChanges();
+    }
     UpdateButtons();
     RebuildFilteredList();
     Layout();
     if (window_)
         RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+}
+
+void AiChangesPane::SetGitWorkspace(std::shared_ptr<ai::LocalWorkspaceService> workspace) {
+    gitWorkspace_ = std::move(workspace);
+    UpdateButtons();
+}
+
+bool AiChangesPane::IsGitScope() const {
+    return scope_ == Scope::GitStatus || scope_ == Scope::GitHistory;
+}
+
+const std::vector<ai::FileChangeRecord> &AiChangesPane::VisibleRecords() const {
+    return IsGitScope() ? gitChanges_.records : records_;
+}
+
+void AiChangesPane::RefreshGitChanges() {
+    if (!IsGitScope() || !gitWorkspace_) {
+        KillTimer(window_, 1);
+        return;
+    }
+    const auto workspace = gitWorkspace_->Snapshot();
+    const auto &root = workspace.canonicalRoot;
+    if (gitRoot_ != root || (gitChanges_.notice.empty() && gitChanges_.records.empty() && !gitQuery_.valid())) {
+        gitRoot_ = root;
+        gitChanges_ = {{}, workspace.active ? u8"正在读取 Git 数据…" : u8"请先选择本地工作区", {}};
+        nextGitRefresh_ = 0;
+        RebuildFilteredList();
+    }
+    if (SendMessageW(fileCombo_, CB_GETDROPPEDSTATE, 0, 0) ||
+        SendMessageW(modeCombo_, CB_GETDROPPEDSTATE, 0, 0))
+        return;
+    if (gitQuery_.valid()) {
+        if (gitQuery_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+            return;
+        ai::GitFileChanges result;
+        try {
+            result = gitQuery_.get();
+        } catch (const std::exception &) {
+            result.notice = u8"无法读取 Git 数据";
+        }
+        if (gitQueryScope_ == scope_ && gitQueryRoot_ == root) {
+            const bool same = result.notice == gitChanges_.notice &&
+                result.previewId == gitChanges_.previewId &&
+                std::equal(result.records.begin(), result.records.end(), gitChanges_.records.begin(),
+                    gitChanges_.records.end(), [](const auto &a, const auto &b) {
+                        return a.changeId == b.changeId && a.detail == b.detail && a.diffText == b.diffText;
+                    });
+            if (!same) {
+                gitChanges_ = std::move(result);
+                RebuildFilteredList();
+                Layout();
+                RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+            }
+            nextGitRefresh_ = !selectedChangeId_.empty() && selectedChangeId_ != gitChanges_.previewId
+                ? 0 : GetTickCount64() + 5000;
+        }
+    }
+    if (!workspace.active || !IsWindowVisible(window_) || GetTickCount64() < nextGitRefresh_)
+        return;
+    gitQueryRoot_ = root;
+    gitQueryScope_ = scope_;
+    try {
+        std::packaged_task<ai::GitFileChanges()> query([service = gitWorkspace_, workspace,
+                                                      history = scope_ == Scope::GitHistory,
+                                                      selected = selectedChangeId_] {
+            return service->ReadGitFileChanges(workspace, history, selected);
+        });
+        auto result = query.get_future();
+        std::thread(std::move(query)).detach();
+        gitQuery_ = std::move(result);
+    } catch (const std::exception &) {
+        gitChanges_.notice = u8"无法启动 Git 查询";
+        nextGitRefresh_ = GetTickCount64() + 5000;
+        RebuildFilteredList();
+    }
 }
 
 void AiChangesPane::SetViewMode(ViewMode mode) {
@@ -1064,7 +1149,7 @@ void AiChangesPane::DestroyFonts() {
 void AiChangesPane::SyncModeComboSelection() {
     if (!modeCombo_)
         return;
-    const int idx = (scope_ == Scope::All) ? 1 : 0;
+    const int idx = static_cast<int>(scope_);
     if (SendMessageW(modeCombo_, CB_GETCURSEL, 0, 0) != idx) {
         SendMessageW(modeCombo_, CB_SETCURSEL, idx, 0);
         InvalidateRect(modeCombo_, nullptr, FALSE);
@@ -1095,17 +1180,22 @@ void AiChangesPane::CommitSearchHistory(const std::wstring &query) {
 
 void AiChangesPane::UpdateButtons() {
     if (modeCombo_) {
+        compactScopeLabel_ = scope_ == Scope::GitStatus ? L"Git 状态"
+                           : scope_ == Scope::GitHistory ? L"Git 历史" : L"DIFF";
         const size_t turnCount = CurrentTurnCount();
         const size_t allCount = records_.size();
-        const std::wstring items[2] = {
+        const std::wstring items[] = {
             L"本轮 (" + std::to_wstring(turnCount) + L")",
             L"全部 (" + std::to_wstring(allCount) + L")",
+            L"Git 状态",
+            L"Git 历史",
         };
-        const int targetIdx = (scope_ == Scope::All) ? 1 : 0;
+        const int targetIdx = static_cast<int>(scope_);
         SendMessageW(modeCombo_, WM_SETREDRAW, FALSE, 0);
         SendMessageW(modeCombo_, CB_RESETCONTENT, 0, 0);
-        for (const auto &entry : items)
-            SendMessageW(modeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(entry.c_str()));
+        const int itemCount = gitWorkspace_ ? 4 : 2;
+        for (int i = 0; i < itemCount; ++i)
+            SendMessageW(modeCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(items[i].c_str()));
         SendMessageW(modeCombo_, CB_SETCURSEL, targetIdx, 0);
         SendMessageW(modeCombo_, CB_SETDROPPEDWIDTH, D(116), 0);
         SendMessageW(modeCombo_, WM_SETREDRAW, TRUE, 0);
@@ -1127,10 +1217,11 @@ void AiChangesPane::UpdateSearchControls() {
 }
 
 void AiChangesPane::RebuildFilteredList(const std::string &preferSelectId) {
+    const auto &records = VisibleRecords();
     filteredIndices_.clear();
-    for (size_t i = records_.size(); i > 0; --i) {
+    for (size_t i = records.size(); i > 0; --i) {
         const size_t idx = i - 1;
-        const auto &rec = records_[idx];
+        const auto &rec = records[idx];
         if (scope_ == Scope::CurrentTurn && currentTurnSeq_ > 0 && rec.turnSeq != currentTurnSeq_)
             continue;
         filteredIndices_.push_back(idx);
@@ -1139,21 +1230,23 @@ void AiChangesPane::RebuildFilteredList(const std::string &preferSelectId) {
     std::string target = preferSelectId.empty() ? selectedChangeId_ : preferSelectId;
     bool targetPresent = false;
     for (size_t idx : filteredIndices_) {
-        if (records_[idx].changeId == target) {
+        if (records[idx].changeId == target) {
             targetPresent = true;
             break;
         }
     }
     if (!targetPresent)
-        target = filteredIndices_.empty() ? std::string() : records_[filteredIndices_.front()].changeId;
+        target = filteredIndices_.empty() ? std::string() : records[filteredIndices_.front()].changeId;
 
     const bool selectionChanged = (target != selectedChangeId_);
     selectedChangeId_ = target;
 
     if (fileCombo_) {
+        const auto notice = IsGitScope() ? ToWideText(gitChanges_.notice) : std::wstring{};
+        UiSetControlTooltip(fileCombo_, notice.empty() ? L"切换查看修改的文件" : notice.c_str());
         SendMessageW(fileCombo_, CB_RESETCONTENT, 0, 0);
         if (filteredIndices_.empty()) {
-            const wchar_t *emptyItem = (scope_ == Scope::CurrentTurn && !records_.empty())
+            const wchar_t *emptyItem = !notice.empty() ? notice.c_str() : (scope_ == Scope::CurrentTurn && !records.empty())
                                            ? L"本轮暂无文件修改（可切回「全部」）"
                                            : L"暂无修改的文件";
             SendMessageW(fileCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(emptyItem));
@@ -1162,7 +1255,7 @@ void AiChangesPane::RebuildFilteredList(const std::string &preferSelectId) {
         } else {
             int selIndex = 0;
             for (size_t i = 0; i < filteredIndices_.size(); ++i) {
-                const auto &rec = records_[filteredIndices_[i]];
+                const auto &rec = records[filteredIndices_[i]];
                 if (rec.changeId == selectedChangeId_)
                     selIndex = static_cast<int>(i);
                 std::string fileName, dirName;
@@ -1173,6 +1266,13 @@ void AiChangesPane::RebuildFilteredList(const std::string &preferSelectId) {
                 }
                 if (!dirName.empty())
                     item += L" · " + ToWideText(dirName);
+                if (scope_ == Scope::GitHistory)
+                    item += L" · " + ToWideText(rec.detail.substr(0, 8));
+                else if (scope_ == Scope::GitStatus) {
+                    using Layer = ai::FileChangeRecord::GitLayer;
+                    item += rec.gitLayer == Layer::Staged ? L" · 已暂存"
+                          : rec.gitLayer == Layer::Unstaged ? L" · 未暂存" : L" · 未跟踪";
+                }
                 SendMessageW(fileCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.c_str()));
             }
             SendMessageW(fileCombo_, CB_SETCURSEL, selIndex, 0);
@@ -1196,9 +1296,10 @@ void AiChangesPane::RebuildFilteredList(const std::string &preferSelectId) {
 const ai::FileChangeRecord *AiChangesPane::SelectedRecord() const {
     if (selectedChangeId_.empty())
         return nullptr;
+    const auto &records = VisibleRecords();
     for (size_t idx : filteredIndices_) {
-        if (records_[idx].changeId == selectedChangeId_)
-            return &records_[idx];
+        if (records[idx].changeId == selectedChangeId_)
+            return &records[idx];
     }
     return nullptr;
 }
@@ -1310,12 +1411,15 @@ void AiChangesPane::RebuildLogicalLines() {
         return;
     }
 
-    const std::string rawDiff = !rec->diffText.empty() ? rec->diffText : (!rec->contentPreview.empty() ? rec->contentPreview : rec->detail);
+    std::string rawDiff = !rec->diffText.empty() ? rec->diffText : (!rec->contentPreview.empty() ? rec->contentPreview : rec->detail);
+    if (IsGitScope() && rec->changeId != gitChanges_.previewId)
+        rawDiff += u8"\n正在读取 Git 补丁…";
     if (rec->diffText.empty()) {
         const auto lines = SplitUtf8LinesWide(rawDiff, [](const std::string &s) { return ToWideText(s); });
-        const DiffLineKind defaultKind = (rec->action == "create") ? DiffLineKind::Added
-                                       : (rec->action == "delete") ? DiffLineKind::Removed
-                                                                   : DiffLineKind::Normal;
+        const DiffLineKind defaultKind = IsGitScope() ? DiffLineKind::Normal
+                                       : rec->action == "create" ? DiffLineKind::Added
+                                       : rec->action == "delete" ? DiffLineKind::Removed
+                                                                 : DiffLineKind::Normal;
         std::vector<LogicalLine> segment;
         segment.reserve(lines.size());
         for (size_t i = 0; i < lines.size(); ++i) {
@@ -1391,6 +1495,12 @@ void AiChangesPane::RebuildLogicalLines() {
 
     int cursorNewLine = 1;
     int cursorOldLine = 1;
+    if (IsGitScope() && rec->truncated) {
+        LogicalLine notice;
+        notice.kind = DiffLineKind::Header;
+        notice.text = L"补丁达到显示上限";
+        logicalLines_.push_back(std::move(notice));
+    }
 
     auto appendGap = [&](int targetNewStart, int keepTop, int keepBottom) {
         if (targetNewStart <= cursorNewLine)
@@ -2300,6 +2410,12 @@ LRESULT CALLBACK AiChangesPane::HostProc(HWND h, UINT message, WPARAM w, LPARAM 
         return DefWindowProcW(h, message, w, l);
 
     switch (message) {
+    case WM_TIMER:
+        if (w == 1) {
+            self->RefreshGitChanges();
+            return 0;
+        }
+        break;
     case WM_ERASEBKGND:
         return 1;
     case WM_SIZE:
@@ -2377,8 +2493,8 @@ LRESULT CALLBACK AiChangesPane::HostProc(HWND h, UINT message, WPARAM w, LPARAM 
         }
         if (id == ModeComboBox && code == CBN_SELCHANGE && self->modeCombo_) {
             const int sel = static_cast<int>(SendMessageW(self->modeCombo_, CB_GETCURSEL, 0, 0));
-            if (sel == 0 || sel == 1) {
-                self->SetScope(sel == 1 ? Scope::All : Scope::CurrentTurn);
+            if (sel >= 0 && sel <= static_cast<int>(Scope::GitHistory)) {
+                self->SetScope(static_cast<Scope>(sel));
                 self->SetViewMode(ViewMode::Diff);
             }
             return 0;
@@ -2386,9 +2502,11 @@ LRESULT CALLBACK AiChangesPane::HostProc(HWND h, UINT message, WPARAM w, LPARAM 
         if (id == FileComboBox && code == CBN_SELCHANGE && self->fileCombo_) {
             const int sel = static_cast<int>(SendMessageW(self->fileCombo_, CB_GETCURSEL, 0, 0));
             if (sel >= 0 && static_cast<size_t>(sel) < self->filteredIndices_.size()) {
-                const auto &rec = self->records_[self->filteredIndices_[static_cast<size_t>(sel)]];
+                const auto &rec = self->VisibleRecords()[self->filteredIndices_[static_cast<size_t>(sel)]];
                 if (rec.changeId != self->selectedChangeId_) {
                     self->selectedChangeId_ = rec.changeId;
+                    if (self->IsGitScope())
+                        self->nextGitRefresh_ = 0;
                     self->viewerScrollY_ = 0;
                     self->viewerScrollX_ = 0;
                     self->hasSelection_ = false;

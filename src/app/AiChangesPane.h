@@ -4,9 +4,11 @@
 #include "UiMetrics.h"
 #include "UiStyle.h"
 #include "WorkspaceActivity.h"
+#include "LocalWorkspace.h"
 
 #include <cstdint>
 #include <functional>
+#include <future>
 #include <string>
 #include <vector>
 
@@ -14,14 +16,14 @@ namespace serialctl {
 
 // Embedded child pane hosted inside the AI right sidebar under the "修改" tab.
 // Uses a two-card rounded layout synchronized with the 2-row top card of the
-// Terminal / Compile tabs: Row 2 hosts the scope dropdown ("本轮/全部", displayed
-// as "DIFF"), narrowed changed-file dropdown, editable search dropdown ("search"
+// Terminal / Compile tabs: Row 2 hosts the AI/Git scope dropdown,
+// narrowed changed-file dropdown, editable search dropdown ("search"
 // placeholder), and prev/next match buttons; Card 2 renders the sticky file
 // header, line-number gutter, git-style +/- bands, VS Code-like syntax
 // highlighting, collapsible unchanged sections (+N more lines), and selection.
 class AiChangesPane {
   public:
-    enum class Scope { CurrentTurn, All };
+    enum class Scope { CurrentTurn, All, GitStatus, GitHistory };
     enum class ViewMode { Diff, Content };
 
     enum ControlId {
@@ -43,6 +45,7 @@ class AiChangesPane {
     bool Wrap() const { return wrap_; }
 
     void SetCopyCallback(std::function<void(const std::wstring &text, const wchar_t *notice)> callback);
+    void SetGitWorkspace(std::shared_ptr<ai::LocalWorkspaceService> workspace);
     void SetChanges(const std::vector<ai::FileChangeRecord> &records, std::uint64_t currentTurnSeq,
                     const std::string &selectChangeId = {});
     void SetCurrentTurnSeq(std::uint64_t currentTurnSeq);
@@ -133,6 +136,9 @@ class AiChangesPane {
     void CommitSearchHistory(const std::wstring &query);
     void UpdateSearchControls();
     void RebuildFilteredList(const std::string &preferSelectId = {});
+    bool IsGitScope() const;
+    const std::vector<ai::FileChangeRecord> &VisibleRecords() const;
+    void RefreshGitChanges();
     void RebuildLogicalLines();
     void RebuildDisplayRows();
     void RebuildSearchMatches(bool jumpToFirst);
@@ -185,10 +191,18 @@ class AiChangesPane {
     int dpi_ = 96;
 
     Scope scope_ = Scope::CurrentTurn;
+    std::wstring compactScopeLabel_ = L"DIFF";
     ViewMode viewMode_ = ViewMode::Diff;
     std::uint64_t currentTurnSeq_ = 0;
 
     std::vector<ai::FileChangeRecord> records_;
+    std::shared_ptr<ai::LocalWorkspaceService> gitWorkspace_;
+    ai::GitFileChanges gitChanges_;
+    std::future<ai::GitFileChanges> gitQuery_;
+    std::wstring gitRoot_;
+    std::wstring gitQueryRoot_;
+    Scope gitQueryScope_ = Scope::CurrentTurn;
+    ULONGLONG nextGitRefresh_ = 0;
     std::vector<size_t> filteredIndices_;
     std::string selectedChangeId_;
 

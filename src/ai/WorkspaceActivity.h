@@ -26,6 +26,7 @@ struct ExecProgressEvent {
 };
 
 struct FileChangeRecord {
+    enum class GitLayer { None, Staged, Unstaged, Untracked, Commit };
     std::string changeId;
     std::string path;
     std::string action; // "create", "edit", "move", "delete"
@@ -36,6 +37,9 @@ struct FileChangeRecord {
     size_t removedLines = 0;
     std::uint64_t turnSeq = 0;
     bool truncated = false;
+    bool detectedByCommand = false;
+    GitLayer gitLayer = GitLayer::None;
+    std::string gitRevision;
 };
 
 inline void TruncateUtf8Safe(std::string &text, size_t maxBytes, const std::string &suffix = {}) {

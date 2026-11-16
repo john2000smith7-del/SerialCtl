@@ -11,6 +11,7 @@
 #include <cwctype>
 #include <deque>
 #include <iomanip>
+#include <map>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -458,7 +459,7 @@ std::string FileTimeToIsoUtc(const FILETIME &ft) {
 }
 
 bool ReadFileBoundedBytes(const std::wstring &path, size_t maxBytes, std::string &bytesOut,
-                          bool &truncatedOut, std::string &errorOut) {
+                          bool &truncatedOut, std::string &errorOut, const std::wstring *workspaceRoot = nullptr) {
     bytesOut.clear();
     truncatedOut = false;
     HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -482,6 +483,13 @@ bool ReadFileBoundedBytes(const std::wstring &path, size_t maxBytes, std::string
     if (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
         errorOut = "Symlink/reparse file blocked by sandbox";
         return false;
+    }
+    if (workspaceRoot) {
+        std::wstring canonical;
+        if (!FinalPathFromHandle(h, canonical, errorOut) || !IsSameOrChildCanonicalPath(*workspaceRoot, canonical)) {
+            errorOut = "File is outside the active workspace";
+            return false;
+        }
     }
     if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
         errorOut = "Target is a directory, not a file";
@@ -754,6 +762,108 @@ std::string FlushConsoleChunkUtf8(std::string &pending, UINT consoleCp, bool flu
 
 Json ErrorJson(const std::string &code, const std::string &message) {
     return {{"ok", false}, {"error", message}, {"code", code}};
+}
+
+struct CommandFile {
+    WIN32_FIND_DATAW metadata{};
+    std::string content;
+    bool hasContent = false;
+};
+
+struct CommandFileSnapshot {
+    std::map<std::string, CommandFile> files;
+    bool incomplete = false;
+};
+
+CommandFileSnapshot CaptureCommandFiles(const std::wstring &root) {
+    CommandFileSnapshot result;
+    const auto started = GetTickCount64();
+    size_t bytesRemaining = 16 * 1024 * 1024;
+    size_t entries = 0;
+    std::vector<std::wstring> directories{root};
+    while (!directories.empty()) {
+        auto dir = std::move(directories.back());
+        directories.pop_back();
+        std::wstring verified;
+        std::string pathError;
+        if (!ResolvePathInsideRoot(root, MakeRelativeUtf8(root, dir), true, verified, pathError)) {
+            result.incomplete = true;
+            continue;
+        }
+        WIN32_FIND_DATAW data{};
+        if (dir.back() != L'\\')
+            dir += L'\\';
+        const HANDLE search = FindFirstFileW((dir + L"*").c_str(), &data);
+        if (search == INVALID_HANDLE_VALUE) {
+            result.incomplete |= GetLastError() != ERROR_FILE_NOT_FOUND;
+            continue;
+        }
+        do {
+            if (++entries > 20000 || GetTickCount64() - started > 2000) {
+                result.incomplete = true;
+                FindClose(search);
+                return result;
+            }
+            const std::wstring name = data.cFileName;
+            if (name == L"." || name == L".." || _wcsicmp(name.c_str(), L".git") == 0 ||
+                (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+                continue;
+            const auto path = dir + name;
+            if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                directories.push_back(path);
+                continue;
+            }
+            CommandFile file;
+            file.metadata = data;
+            if (!data.nFileSizeHigh && data.nFileSizeLow <= 64 * 1024 && data.nFileSizeLow <= bytesRemaining) {
+                bool truncated = false;
+                std::string error;
+                file.hasContent = ReadFileBoundedBytes(path, data.nFileSizeLow, file.content, truncated, error, &root) && !truncated;
+                bytesRemaining -= data.nFileSizeLow;
+                if (!file.hasContent)
+                    file.content.clear();
+            }
+            result.files.emplace(MakeRelativeUtf8(root, path), std::move(file));
+        } while (FindNextFileW(search, &data));
+        result.incomplete |= GetLastError() != ERROR_NO_MORE_FILES;
+        FindClose(search);
+    }
+    return result;
+}
+
+bool SameCommandFile(const CommandFile &left, const CommandFile &right) {
+    if (left.hasContent && right.hasContent)
+        return left.content == right.content;
+    return left.metadata.nFileSizeHigh == right.metadata.nFileSizeHigh &&
+           left.metadata.nFileSizeLow == right.metadata.nFileSizeLow &&
+           CompareFileTime(&left.metadata.ftLastWriteTime, &right.metadata.ftLastWriteTime) == 0;
+}
+
+bool CommandFileText(const CommandFile *file, std::string &text) {
+    if (!file)
+        return true;
+    if (!file->hasContent)
+        return false;
+    const auto &bytes = file->content;
+    const bool littleEndian = bytes.compare(0, 2, "\xFF\xFE") == 0;
+    const bool bigEndian = bytes.compare(0, 2, "\xFE\xFF") == 0;
+    if (littleEndian || bigEndian) {
+        if (bytes.size() % 2)
+            return false;
+        std::wstring wide;
+        wide.reserve(bytes.size() / 2 - 1);
+        for (size_t i = 2; i < bytes.size(); i += 2) {
+            const auto first = static_cast<unsigned char>(bytes[i]);
+            const auto second = static_cast<unsigned char>(bytes[i + 1]);
+            wide.push_back(static_cast<wchar_t>(littleEndian ? first | (second << 8) : (first << 8) | second));
+        }
+        text = WideToUtf8(wide);
+        return !ContainsNulByte(text);
+    }
+    if (ContainsNulByte(bytes) || !IsValidUtf8String(bytes))
+        return false;
+    text = bytes.compare(0, 3, "\xEF\xBB\xBF") == 0 ? bytes.substr(3) : bytes;
+    return true;
 }
 
 } // namespace
@@ -1815,16 +1925,23 @@ Json LocalWorkspaceService::ToolExec(const LocalWorkspaceSnapshot &snap, const J
     if (!Utf8ToWideStrict(command, wideCommand))
         return ErrorJson("INVALID_PARAMS", "command must be valid UTF-8");
 
+    wchar_t comspecBuf[MAX_PATH]{};
+    const DWORD comspecLen = GetEnvironmentVariableW(L"ComSpec", comspecBuf, MAX_PATH);
+    const std::wstring comspec = (comspecLen > 0 && comspecLen < MAX_PATH) ? std::wstring(comspecBuf, comspecLen) : L"cmd.exe";
+    std::wstring cmdLine = QuoteWin32Arg(comspec) + L" /d /s /c \"" + wideCommand + L"\"";
+    return RunWorkspaceProcess(snap, execCwd, std::move(cmdLine), command, timeoutMs, externalCancel);
+}
+
+Json LocalWorkspaceService::RunWorkspaceProcess(const LocalWorkspaceSnapshot &snap, const std::wstring &execCwd,
+                                                std::wstring cmdLine, const std::string &command, int timeoutMs,
+                                                const std::atomic<bool> *externalCancel, const wchar_t *application) {
     std::shared_ptr<std::atomic<bool>> epochCancel;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         epochCancel = execAbortEpoch_;
     }
-
-    wchar_t comspecBuf[MAX_PATH]{};
-    const DWORD comspecLen = GetEnvironmentVariableW(L"ComSpec", comspecBuf, MAX_PATH);
-    const std::wstring comspec = (comspecLen > 0 && comspecLen < MAX_PATH) ? std::wstring(comspecBuf, comspecLen) : L"cmd.exe";
-    std::wstring cmdLine = QuoteWin32Arg(comspec) + L" /d /s /c \"" + wideCommand + L"\"";
+    const bool trackChanges = application == nullptr && !snap.readOnly;
+    const auto before = trackChanges ? CaptureCommandFiles(snap.canonicalRoot) : CommandFileSnapshot{};
 
     SECURITY_ATTRIBUTES sa{};
     sa.nLength = sizeof(sa);
@@ -1862,7 +1979,7 @@ Json LocalWorkspaceService::ToolExec(const LocalWorkspaceSnapshot &snap, const J
     si.hStdError = errWrite;
 
     PROCESS_INFORMATION pi{};
-    const BOOL created = CreateProcessW(nullptr, cmdLine.data(), nullptr, nullptr, TRUE,
+    const BOOL created = CreateProcessW(application, cmdLine.data(), nullptr, nullptr, TRUE,
                                         CREATE_NO_WINDOW, nullptr, execCwd.c_str(), &si, &pi);
     CloseHandle(outWrite);
     CloseHandle(errWrite);
@@ -1875,7 +1992,7 @@ Json LocalWorkspaceService::ToolExec(const LocalWorkspaceSnapshot &snap, const J
         CloseHandle(errRead);
         if (hJob)
             CloseHandle(hJob);
-        return ErrorJson("SPAWN_FAILED", "Failed to launch cmd.exe: " + Win32ErrorUtf8(lastErr));
+        return ErrorJson("SPAWN_FAILED", "Failed to launch process: " + Win32ErrorUtf8(lastErr));
     }
 
     if (hJob && !AssignProcessToJobObject(hJob, pi.hProcess)) {
@@ -1888,7 +2005,8 @@ Json LocalWorkspaceService::ToolExec(const LocalWorkspaceSnapshot &snap, const J
     const UINT consoleCp = GetOEMCP();
     const ULONGLONG startedAt = GetTickCount64();
 
-    EmitExecEvent({ExecProgressEvent::Phase::Started, execId, "workspace.exec", command, relCwd, {}, 0, false, false, false, false, 0});
+    if (!application)
+        EmitExecEvent({ExecProgressEvent::Phase::Started, execId, "workspace.exec", command, relCwd, {}, 0, false, false, false, false, 0});
 
     std::string stdoutRaw, stderrRaw;
     std::string streamOutPending, streamErrPending;
@@ -1903,7 +2021,8 @@ Json LocalWorkspaceService::ToolExec(const LocalWorkspaceSnapshot &snap, const J
         if (!errChunk.empty())
             chunk += errChunk;
         if (!chunk.empty()) {
-            EmitExecEvent({ExecProgressEvent::Phase::OutputDelta, execId, "workspace.exec", command, relCwd,
+            if (!application)
+                EmitExecEvent({ExecProgressEvent::Phase::OutputDelta, execId, "workspace.exec", command, relCwd,
                            std::move(chunk), 0, false, false, false, false, GetTickCount64() - startedAt});
             lastEmit = GetTickCount64();
         }
@@ -1955,22 +2074,248 @@ Json LocalWorkspaceService::ToolExec(const LocalWorkspaceSnapshot &snap, const J
         CloseHandle(hJob);
 
     const ULONGLONG durationMs = GetTickCount64() - startedAt;
+    bool fileChangesIncomplete = false;
+    if (trackChanges && !epochCancel->load()) {
+        const auto after = CaptureCommandFiles(snap.canonicalRoot);
+        size_t emitted = 0;
+        bool limited = false;
+        const auto report = [&](const std::string &path, const CommandFile *oldFile, const CommandFile *newFile) {
+            if (epochCancel->load())
+                return;
+            if (emitted >= 100) {
+                limited = true;
+                return;
+            }
+            ++emitted;
+            FileChangeRecord record;
+            record.changeId = "ws-chg-" + std::to_string(nextChangeSeq_.fetch_add(1));
+            record.path = path;
+            record.action = !oldFile ? "create" : !newFile ? "delete" : "edit";
+            record.detectedByCommand = true;
+            std::string oldText, newText;
+            if (CommandFileText(oldFile, oldText) && CommandFileText(newFile, newText)) {
+                record.diffText = ComputeUnifiedDiff(path, oldText, newText, 48 * 1024,
+                    &record.addedLines, &record.removedLines, &record.truncated);
+            }
+            if (record.diffText.empty()) {
+                record.detail = u8"文件已修改，文本预览不可用";
+            }
+            EmitFileChange(record);
+        };
+        for (const auto &[path, file] : after.files) {
+            const auto old = before.files.find(path);
+            if (old == before.files.end()) {
+                if (!before.incomplete)
+                    report(path, nullptr, &file);
+            } else if (!SameCommandFile(old->second, file)) {
+                report(path, &old->second, &file);
+            }
+        }
+        if (!after.incomplete) {
+            for (const auto &[path, file] : before.files)
+                if (after.files.count(path) == 0)
+                    report(path, &file, nullptr);
+        }
+        fileChangesIncomplete = before.incomplete || after.incomplete || limited;
+        if (fileChangesIncomplete) {
+            const std::string notice = u8"\n[工作区文件变更检测达到扫描限制或无法读取部分目录，结果可能不完整]\n";
+            EmitExecEvent({ExecProgressEvent::Phase::OutputDelta, execId, "workspace.exec", command, relCwd, notice});
+        }
+    }
     const bool failed = timedOut || cancelled || exitCode != 0;
-    EmitExecEvent({ExecProgressEvent::Phase::Completed, execId, "workspace.exec", command, relCwd, {},
+    if (!application)
+        EmitExecEvent({ExecProgressEvent::Phase::Completed, execId, "workspace.exec", command, relCwd, {},
                    static_cast<int>(exitCode), timedOut, cancelled, stdoutTrunc || stderrTrunc, failed, durationMs});
 
-    return {
+    Json result = {
         {"ok", !timedOut && !cancelled},
         {"execId", execId},
         {"exitCode", static_cast<int>(exitCode)},
         {"durationMs", durationMs},
-        {"stdout", SanitizeToValidUtf8(stdoutRaw, consoleCp)},
+        {"stdout", application ? std::move(stdoutRaw) : SanitizeToValidUtf8(stdoutRaw, consoleCp)},
         {"stderr", SanitizeToValidUtf8(stderrRaw, consoleCp)},
         {"timedOut", timedOut},
         {"cancelled", cancelled},
         {"truncated", stdoutTrunc || stderrTrunc},
         {"workingDirectory", relCwd}
     };
+    if (fileChangesIncomplete)
+        result["fileChangesIncomplete"] = true;
+    return result;
+}
+
+Json LocalWorkspaceService::RunGitCommand(const LocalWorkspaceSnapshot &snap, const std::wstring &arguments) {
+    const DWORD pathSize = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    std::wstring path(pathSize, L'\0');
+    if (!pathSize || !GetEnvironmentVariableW(L"PATH", path.data(), pathSize))
+        return ErrorJson("GIT_NOT_FOUND", u8"未找到 Git，请检查 PATH");
+    wchar_t git[MAX_PATH]{};
+    const DWORD found = SearchPathW(path.c_str(), L"git.exe", nullptr, MAX_PATH, git, nullptr);
+    if (!found || found >= MAX_PATH)
+        return ErrorJson("GIT_NOT_FOUND", u8"未找到 Git，请检查 PATH");
+
+    auto command = QuoteWin32Arg(git) +
+        L" --no-pager --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false " + arguments;
+    return RunWorkspaceProcess(snap, snap.canonicalRoot, std::move(command), {}, 5000, nullptr, git);
+}
+
+GitFileChanges LocalWorkspaceService::ReadGitFileChanges(const LocalWorkspaceSnapshot &snap, bool history,
+                                                         const std::string &previewId) {
+    if (!snap.active)
+        return {{}, u8"请先选择本地工作区", {}};
+    const auto output = RunGitCommand(snap, history
+        ? L"log -30 --encoding=UTF-8 --format=%x00%H%x09%s --name-status --no-renames --no-relative -z -- ."
+        : L"status --porcelain=v1 -z --no-renames --untracked-files=all --ignore-submodules=dirty -- .");
+    if (!output.value("ok", false) || output.value("exitCode", 1) != 0) {
+        if (output.value("code", std::string()) == "GIT_NOT_FOUND")
+            return {{}, u8"未找到 Git，请检查 PATH", {}};
+        const auto error = output.value("stderr", output.value("error", std::string()));
+        if (error.find("not a git repository") != std::string::npos)
+            return {{}, u8"当前工作区不在 Git 仓库中", {}};
+        if (history && error.find("does not have any commits yet") != std::string::npos)
+            return {{}, u8"仓库暂无提交", {}};
+        return {{}, u8"无法读取 Git 数据" + (error.empty() ? std::string() : "\n" + error), {}};
+    }
+
+    GitFileChanges result;
+    const auto bytes = output.value("stdout", std::string());
+    size_t pos = 0;
+    const auto nextToken = [&]() {
+        const size_t end = bytes.find('\0', pos);
+        if (end == std::string::npos) {
+            pos = bytes.size();
+            return std::string{};
+        }
+        auto token = SanitizeToValidUtf8(bytes.substr(pos, end - pos), GetOEMCP());
+        pos = end + 1;
+        return token;
+    };
+    std::string commit;
+    std::string subject;
+    constexpr size_t maxRecords = 500;
+    while (pos < bytes.size() && result.records.size() < maxRecords) {
+        auto status = nextToken();
+        if (status.empty())
+            continue;
+        if (history) {
+            if (status.front() == '\n')
+                status.erase(0, 1);
+            const auto tab = status.find('\t');
+            if (tab != std::string::npos) {
+                commit = status.substr(0, tab);
+                subject = status.substr(tab + 1);
+                continue;
+            }
+            if (status.empty() || commit.empty())
+                continue;
+        } else if (status.size() < 4 || status[2] != ' ') {
+            continue;
+        }
+        const auto path = history ? nextToken() : status.substr(3);
+        if (path.empty())
+            continue;
+        const auto addRecord = [&](FileChangeRecord::GitLayer layer, char change, std::string detail) {
+            if (result.records.size() >= maxRecords)
+                return;
+            FileChangeRecord record;
+            record.path = path;
+            record.gitLayer = layer;
+            record.gitRevision = history ? commit : std::string{};
+            record.changeId = "git:" + std::to_string(static_cast<int>(layer)) + ":" + record.gitRevision + ":" + path;
+            record.action = change == 'A' || change == '?' ? "create" : change == 'D' ? "delete" : "edit";
+            record.detail = std::move(detail);
+            result.records.push_back(std::move(record));
+        };
+        using Layer = FileChangeRecord::GitLayer;
+        if (history) {
+            if ((commit.size() == 40 || commit.size() == 64) &&
+                commit.find_first_not_of("0123456789abcdef") == std::string::npos)
+                addRecord(Layer::Commit, status.front(), commit + "  " + subject + "\n" + status + "  " + path);
+        } else if (status.compare(0, 2, "??") == 0) {
+            addRecord(Layer::Untracked, '?', u8"未跟踪\n" + path);
+        } else {
+            if (status[0] != ' ')
+                addRecord(Layer::Staged, status[0], u8"暂存区  " + status.substr(0, 1) + "\n" + path);
+            if (status[1] != ' ')
+                addRecord(Layer::Unstaged, status[1], u8"工作区  " + status.substr(1, 1) + "\n" + path);
+        }
+    }
+    if (!result.records.empty()) {
+        auto selected = std::find_if(result.records.begin(), result.records.end(), [&](const auto &record) {
+            return record.changeId == previewId;
+        });
+        if (selected == result.records.end())
+            selected = result.records.begin();
+        result.previewId = selected->changeId;
+        ReadGitFileDiff(snap, *selected);
+    }
+    std::reverse(result.records.begin(), result.records.end());
+    if (pos < bytes.size() || output.value("truncated", false))
+        result.notice = u8"Git 结果超过显示上限，仅显示部分文件";
+    else if (result.records.empty())
+        result.notice = history ? u8"暂无已提交的文件改动" : u8"Git 工作区干净";
+    return result;
+}
+
+void LocalWorkspaceService::ReadGitFileDiff(const LocalWorkspaceSnapshot &snap, FileChangeRecord &record) {
+    using Layer = FileChangeRecord::GitLayer;
+    if (record.gitLayer == Layer::Untracked) {
+        const auto prefixResult = RunGitCommand(snap, L"rev-parse --show-prefix");
+        auto prefix = prefixResult.value("stdout", std::string());
+        if (!prefix.empty() && prefix.back() == '\n')
+            prefix.pop_back();
+        if (!prefix.empty() && prefix.back() == '\r')
+            prefix.pop_back();
+        std::wstring path;
+        std::string error;
+        CommandFile file;
+        if (!prefixResult.value("ok", false) || prefixResult.value("exitCode", 1) != 0 ||
+            record.path.rfind(prefix, 0) != 0 ||
+            !ResolvePathInsideRoot(snap.canonicalRoot, record.path.substr(prefix.size()), false, path, error) ||
+            !ReadFileBoundedBytes(path, kMaxExecOutputBytes, file.content, record.truncated, error, &snap.canonicalRoot)) {
+            record.detail += u8"\n无法读取未跟踪文件";
+            return;
+        }
+        file.hasContent = !record.truncated;
+        std::string text;
+        if (!CommandFileText(&file, text)) {
+            record.detail += record.truncated ? u8"\n文件超过文本预览上限" : u8"\n文件没有可显示的文本差异";
+            return;
+        }
+        record.diffText = ComputeUnifiedDiff(record.path, {}, text, 48 * 1024,
+            &record.addedLines, &record.removedLines, &record.truncated);
+        return;
+    }
+
+    std::wstring path;
+    if (!Utf8ToWideStrict(record.path, path))
+        return;
+    const bool history = record.gitLayer == Layer::Commit;
+    std::wstring command = history ? L"show --format= " : L"diff ";
+    if (record.gitLayer == Layer::Staged)
+        command += L"--cached ";
+    command += L"--patch --no-color --no-ext-diff --no-textconv --no-renames --no-relative --submodule=short ";
+    if (history)
+        command += std::wstring(record.gitRevision.begin(), record.gitRevision.end()) + L" ";
+    const auto patch = RunGitCommand(snap, command + L"-- " + QuoteWin32Arg(L":(top,literal)" + path));
+    if (!patch.value("ok", false) || patch.value("exitCode", 1) != 0) {
+        record.detail += u8"\n无法读取 Git 补丁";
+        const auto error = patch.value("stderr", patch.value("error", std::string()));
+        if (!error.empty())
+            record.detail += "\n" + error;
+        return;
+    }
+    record.truncated = patch.value("truncated", false);
+    if (record.truncated) {
+        record.detail += u8"\n补丁达到显示上限";
+    }
+    auto bytes = patch.value("stdout", std::string());
+    if (record.truncated) {
+        const auto lineEnd = bytes.rfind('\n');
+        bytes.resize(lineEnd == std::string::npos ? 0 : lineEnd + 1);
+    }
+    record.diffText = SanitizeToValidUtf8(bytes, GetOEMCP());
+    CountDiffChanges(record.diffText, record.addedLines, record.removedLines);
 }
 
 } // namespace serialctl::ai

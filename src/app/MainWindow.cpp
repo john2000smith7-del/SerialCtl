@@ -3191,6 +3191,7 @@ void MainWindow::CreateControls() {
     UiSetButtonGlyph(aiExecCopyButton_, UiGlyph::Copy, L"复制全部输出");
     addTip(aiExecCopyButton_);
     aiChangesPane_.Create(window_, smallFont_, darkMode_, Ui::Dpi);
+    aiChangesPane_.SetGitWorkspace(localWorkspace_);
     aiChangesPane_.SetWrap(aiMonitorWrap_);
     aiChangesPane_.SetCopyCallback([this](const std::wstring& text, const wchar_t* notice) {
         CopyTextToClipboard(window_, text, notice ? notice : L"已复制");

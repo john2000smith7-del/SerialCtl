@@ -772,6 +772,12 @@ void AiPane::HandleWorkspaceFileChange(ai::FileChangeRecord rec) {
     EnsureTurnSeqActive();
     knownWsChangeIds_.insert(rec.changeId);
     rec.turnSeq = turnSeq_;
+    const auto previous = std::find_if(fileChanges_.rbegin(), fileChanges_.rend(), [&](const auto &other) {
+        return other.turnSeq == rec.turnSeq && other.path == rec.path;
+    });
+    if (previous != fileChanges_.rend() && previous->detectedByCommand != rec.detectedByCommand &&
+        previous->action == rec.action && !rec.diffText.empty() && previous->diffText == rec.diffText)
+        return;
     RecordFileChange(rec, "ws-chg:" + rec.changeId, {}, true);
     observedTool_ = true;
     NotifyFileChanges({}, false);
