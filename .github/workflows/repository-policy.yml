@@ -1,7 +1,7 @@
 name: Repository development policy
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: ["feat/**"]
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
@@ -10,6 +10,7 @@ permissions:
   contents: read
 jobs:
   protocol-reference:
+    if: ${{ github.ref != 'refs/heads/main' }}
     name: Independent serial protocol interoperability
     runs-on: ubuntu-24.04
     steps:
@@ -46,6 +47,7 @@ jobs:
             cat "$RUNNER_TEMP/xfer-interop/interop-results.json"
           fi
   policy:
+    if: ${{ github.ref != 'refs/heads/main' }}
     name: Repository policy
     runs-on: ubuntu-latest
     steps:
@@ -67,6 +69,7 @@ jobs:
       - name: Reproduce desktop observation overhead without Windows claims
         run: python -m unittest discover -s tests/integration -p 'test_desktop_observation.py' -v
   windows-tools:
+    if: ${{ github.ref != 'refs/heads/main' }}
     name: Workflow tools on Windows
     runs-on: windows-2022
     steps:

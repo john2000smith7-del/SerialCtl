@@ -1,9 +1,11 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet('Release')]
     [string]$Configuration = 'Release',
 
-    [switch]$SkipCheck
+    [switch]$SkipCheck,
+
+    [switch]$ProductionOnly
 )
 
 Set-StrictMode -Version Latest
@@ -54,7 +56,7 @@ $cmakePath = Get-RequiredCommandPath -Name 'cmake.exe'
 $binaryVerifier = Join-Path $repositoryRoot 'tools\verify_win7_binary.ps1'
 
 if (-not $SkipCheck) {
-    & (Join-Path $PSScriptRoot 'check.ps1') -Architecture All -Configuration $Configuration
+    & (Join-Path $PSScriptRoot 'check.ps1') -Architecture All -Configuration $Configuration -ProductionOnly:$ProductionOnly
 }
 
 $buildRoot = Get-SerialCtlBuildRoot -RepositoryRoot $repositoryRoot
@@ -186,7 +188,7 @@ $manifest = [ordered]@{
         [ordered]@{ name = $_.name; version = $_.version }
     })
     verification = [ordered]@{
-        automated_tests = 'passed-before-packaging'
+        automated_tests = if ($ProductionOnly) { 'not-run-in-production-build' } else { 'passed-before-packaging' }
         archive_reopened = $true
         windows_7_hardware = 'not-run'
     }

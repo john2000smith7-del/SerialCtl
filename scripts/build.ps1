@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet('x64', 'All')]
     [string]$Architecture = 'All',
@@ -7,6 +7,8 @@ param(
     [string]$Configuration = 'Release',
 
     [switch]$Clean,
+
+    [switch]$ProductionOnly,
 
     # Optional production-only compilation. The default still builds all targets.
     [ValidateSet('serialctl')]
@@ -21,6 +23,7 @@ $repositoryRoot = Get-SerialCtlRepositoryRoot
 $buildRoot = Get-SerialCtlBuildRoot -RepositoryRoot $repositoryRoot
 $cmakePath = Get-RequiredCommandPath -Name 'cmake.exe'
 $generator = Get-SerialCtlVisualStudioGenerator -CMakePath $cmakePath
+$buildTesting = if ($ProductionOnly) { 'OFF' } else { 'ON' }
 
 foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture)) {
     $buildDirectory = Get-SerialCtlBuildDirectory -Architecture $item -RepositoryRoot $repositoryRoot
@@ -34,7 +37,7 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         '-B', $buildDirectory,
         '-G', $generator,
         '-A', $platform,
-        '-DBUILD_TESTING=ON'
+        "-DBUILD_TESTING=$buildTesting"
     )
     $buildArguments = @(
         '--build', $buildDirectory,

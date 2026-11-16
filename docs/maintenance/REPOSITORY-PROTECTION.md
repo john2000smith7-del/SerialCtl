@@ -49,7 +49,7 @@ main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Rep
 2. commit与PR标题为 类型(Vx.y.z): 修改摘要；正文有“修改内容、验证情况、兼容性”三节。PR模板支持Markdown标题。
 3. 推送触发现有Windows流程与Repository policy。PR检查版本、分支和提交格式、固定Actions SHA及基本秘密模式；它不是完整秘密扫描，更不能替代真实Windows或硬件验收。
 4. 查看全部适用验证及真实截图，保留失败和未执行记录。按 AGENTS.md 的现行性能门槛验收，禁止跳过检查、删除断言或临时改用宽松阈值来制造通过。只读诊断不构成产品修复授权。
-5. 所需检查成功、差异审查及用户授权满足后，通过PR squash合并；PR标题／正文生成结构化main提交。新main重新执行完整正式验收；合并后实际删除远端和对应可安全删除的本地分支。
+5. 所需检查成功、差异审查及用户授权满足后，通过PR squash合并；PR标题／正文生成结构化main提交。新 main 执行生产编译打包和旧版升级测试；合并后实际删除远端和对应可安全删除的本地分支。
 6. 若CI或审查未通过，保留未合并PR和临时分支供修复；“只保留main”指唯一长期主线，不授权删除未合并工作或绕过失败检查。未启用服务器规则时仍按同样规范操作，并如实报告其限制。
 
 模板位于 [.github/pull_request_template.md](../../.github/pull_request_template.md) 与 [.github/ISSUE_TEMPLATE](../../.github/ISSUE_TEMPLATE)。发现疑似秘密问题按 [SECURITY.md](../../SECURITY.md) 私下处理，不在反馈中粘贴正文。
@@ -59,11 +59,11 @@ main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Rep
 发布仅保留 main 的 workflow_dispatch 入口，拥有者身份明确触发；不再通过 release/** 分支中的请求文件自动发版。触发是一次明确发布操作，不等于购买服务或换钥授权；AI仍须有本次正式发布授权。
 
 1. 正式版本必须高于最新Release；保持原签名身份、原客户端兼容、Win7 SP1／x64／MT／6.01和双文件交付。此维护提交的V2.0.18不能再次作为新版本发布。
-2. windows-build.yml须在精确当前main全部成功，含8个必需作业；单次native编译或部分成功不够。
-3. desktop-interaction.yml手动输入本次build_run，不再提供旧编号默认值。测试源码和程序构建SHA必须完全一致。实际鼠标／键盘测试全部成功后生成SerialCtl-release-desktop-receipt。
+2. windows-build.yml 的 package 作业须在精确当前 main 成功，保留生产 PE 检查和完整 ZIP 白名单。
+3. 桌面交互、性能、CTest 等验证在开发分支执行。main 的唯一测试为原身份旧客户端升级。
 4. 在仓库外用原私钥签署最终ZIP。verify-release-upgrade.yml自动选择最新正式Release为previous，也允许显式previous_tag但必须与最新一致；较老原身份客户端仍为V2.0.6。测试从实际归档VERSION读取版本，要求older < previous < candidate。
 5. 两个真实旧客户端各执行无效签名、损坏ZIP、有效安装／健康重启／配置和用户数据保留，共六种情形。全部通过才生成SerialCtl-release-upgrade-receipt，记录ZIP SHA-256、原始update.json字节SHA-256、来源构建及真实版本。
-6. publish-release.yml增加desktop_run_id、upgrade_run_id，下载对应收据，与build_run_id、精确main、ZIP哈希和JSON字节哈希共同核对。任一失败、跳过、过期、缺收据或不匹配都拒绝发布。现有签名工具再验证原公钥与完整ZIP，最后才创建新的Release。
+6. publish-release.yml 使用 upgrade_run_id 恢复签名升级收据，与build_run_id、精确main、ZIP哈希和JSON字节哈希共同核对。任一失败、跳过、过期、缺收据或不匹配都拒绝发布。现有签名工具再验证原公钥与完整ZIP，最后才创建新的Release。
 7. 发布后重新下载两个资产，核对签名、文件、版本、标签与构建来源，并向用户说明未运行的Win7实机、现场SSH／AI网关、板卡、电源及长时间测试。客户端更新协议及信任头未作修改。
 
 发布在同一并发组串行执行；不覆盖旧标签和资产。GitHub Environment人工审批的可用性受私有仓库套餐限制，本次没有建立一个无人审批的Environment来冒充批准门槛。当前控制为拥有者从main手动触发、用户授权和真实证据校验；不宣称GitHub已强制第三人审批。

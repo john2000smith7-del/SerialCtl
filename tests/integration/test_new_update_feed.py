@@ -315,6 +315,24 @@ class FeedTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             feed.verify_archive_feed(self.output / "update.json", archive, self.header, self.openssl)
 
+    def test_production_only_package_requires_reopened_archive_and_clean_source(self):
+        manifest = {
+            "product": "SerialCtl", "version": "V1.0.8",
+            "verification": {"automated_tests": "not-run-in-production-build", "archive_reopened": True},
+            "source": {"state": "clean", "revision": "1" * 40},
+        }
+        self.write_metadata(manifest)
+        self.assertEqual(feed.describe_archive(self.make_archive())["version"], "V1.0.8")
+        manifest["source"]["state"] = "dirty"
+        self.write_metadata(manifest)
+        with self.assertRaises(ValueError):
+            feed.describe_archive(self.make_archive())
+        manifest["source"]["state"] = "clean"
+        manifest["verification"]["archive_reopened"] = False
+        self.write_metadata(manifest)
+        with self.assertRaises(ValueError):
+            feed.describe_archive(self.make_archive())
+
     def test_archive_requires_verified_release(self):
         self.write_metadata({"product": "SerialCtl", "version": "V1.0.8", "verification": {}})
         with self.assertRaises(ValueError):

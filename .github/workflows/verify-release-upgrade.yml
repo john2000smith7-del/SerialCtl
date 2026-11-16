@@ -20,6 +20,7 @@ permissions:
   actions: read
 jobs:
   upgrade:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -43,7 +44,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
-          if ($run.conclusion -ne 'success' -or $run.head_branch -ne 'main' -or $run.name -ne 'Windows Win7 release build') { throw 'Requires a successful main release build' }
+          if ($LASTEXITCODE -ne 0 -or $run.status -ne 'completed' -or $run.conclusion -ne 'success' -or $run.head_branch -ne 'main' -or $run.path -ne '.github/workflows/windows-build.yml') { throw 'Requires successful main packaging' }
           if ((git rev-parse HEAD).Trim() -ne $run.head_sha) { throw 'Upgrade evidence must run from the exact main source' }
           git checkout --detach $run.head_sha
           if ($LASTEXITCODE -ne 0) { throw 'Cannot load exact build source' }

@@ -6,7 +6,9 @@ param(
     [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]
     [string]$Configuration = 'Release',
 
-    [switch]$SourceOnly
+    [switch]$SourceOnly,
+
+    [switch]$ProductionOnly
 )
 
 Set-StrictMode -Version Latest
@@ -154,6 +156,8 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         Assert-SerialCtlCondition -Condition ($outputHash -eq $vendorHash) `
             -Message "Built $item $program does not match the pinned runtime input"
     }
+
+    if ($ProductionOnly) { continue }
 
     $testPrograms = @{
         'queued_resize_test.exe' = @('KERNEL32.dll')

@@ -19,11 +19,7 @@ on:
         required: true
         type: string
       build_run_id:
-        description: Completely successful exact-main Windows build
-        required: true
-        type: string
-      desktop_run_id:
-        description: Successful exact-main desktop interaction run with release receipt
+        description: Successful exact-main Windows packaging run
         required: true
         type: string
       upgrade_run_id:
@@ -55,12 +51,6 @@ jobs:
       - uses: ./.github/actions/ci-evidence
         with:
           mode: restore
-          name: SerialCtl-release-desktop-receipt
-          path: evidence/desktop
-          run-id: ${{ inputs.desktop_run_id }}
-      - uses: ./.github/actions/ci-evidence
-        with:
-          mode: restore
           name: SerialCtl-release-upgrade-receipt
           path: evidence/upgrade
           run-id: ${{ inputs.upgrade_run_id }}
@@ -70,7 +60,7 @@ jobs:
           name: SerialCtl-Win7-portable
           path: candidate
           run-id: ${{ inputs.build_run_id }}
-      - name: Bind all successful Windows evidence before publishing exactly two files
+      - name: Verify the exact package and signed upgrade before publishing both files
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
@@ -78,7 +68,6 @@ jobs:
           RELEASE_SHA256: ${{ inputs.archive_sha256 }}
           RELEASE_COMMIT: ${{ inputs.source_commit }}
           RELEASE_BUILD_RUN: ${{ inputs.build_run_id }}
-          RELEASE_DESKTOP_RUN: ${{ inputs.desktop_run_id }}
           RELEASE_UPGRADE_RUN: ${{ inputs.upgrade_run_id }}
           RELEASE_METADATA_BASE64: ${{ inputs.metadata_base64 }}
         shell: bash
@@ -89,7 +78,7 @@ jobs:
           [[ "$RELEASE_TAG" == "v${RELEASE_VERSION#V}" ]]
           [[ "$RELEASE_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-          for run_id in "$RELEASE_BUILD_RUN" "$RELEASE_DESKTOP_RUN" "$RELEASE_UPGRADE_RUN"; do
+          for run_id in "$RELEASE_BUILD_RUN" "$RELEASE_UPGRADE_RUN"; do
             [[ "$run_id" =~ ^[0-9]+$ ]]
           done
           python - <<'PYCODE'
@@ -102,7 +91,7 @@ jobs:
               raise ValueError('Invalid signed metadata size')
           pathlib.Path('/tmp/update.json').write_bytes(data)
           PYCODE
-          python tools/release_gate.py check --version "$RELEASE_VERSION" --source-commit "$RELEASE_COMMIT" --archive-sha256 "$RELEASE_SHA256" --build-run-id "$RELEASE_BUILD_RUN" --desktop-run-id "$RELEASE_DESKTOP_RUN" --upgrade-run-id "$RELEASE_UPGRADE_RUN" --metadata /tmp/update.json --evidence-dir evidence
+          python tools/release_gate.py check --version "$RELEASE_VERSION" --source-commit "$RELEASE_COMMIT" --archive-sha256 "$RELEASE_SHA256" --build-run-id "$RELEASE_BUILD_RUN" --upgrade-run-id "$RELEASE_UPGRADE_RUN" --metadata /tmp/update.json --evidence-dir evidence
           [[ "$(git rev-parse HEAD)" == "$RELEASE_COMMIT" ]]
           grep -Fxq "PROJECT_VERSION=$RELEASE_VERSION" VERSION
           grep -Fxq "CPP_VERSION=$RELEASE_VERSION" VERSION

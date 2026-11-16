@@ -33,13 +33,12 @@ class ReleaseGateTests(unittest.TestCase):
         self.sha = "1" * 40
         self.archive = "2" * 64
         self.request = {"version": "V2.0.19", "source_commit": self.sha, "archive_sha256": self.archive,
-                        "build_run_id": "101", "desktop_run_id": "102", "upgrade_run_id": "103"}
+                        "build_run_id": "101", "upgrade_run_id": "103"}
         self.metadata = json.dumps({"schema": 2, "payload": json.dumps(
             {"version": "V2.0.19", "archive": {"sha256": self.archive}}),
             "signature": "controlled-public-envelope-fixture"}).encode()
         self.runs = {}
-        for kind, filename, jobs in (("build", "windows-build.yml", gate.WINDOWS_JOBS),
-                                     ("desktop", "desktop-interaction.yml", {"desktop"}),
+        for kind, filename, jobs in (("build", "windows-build.yml", {gate.PACKAGE_JOB}),
                                      ("upgrade", "verify-release-upgrade.yml", {"upgrade"})):
             self.runs[kind] = {"id": int(self.request[kind + "_run_id"]), "status": "completed",
                                "conclusion": "success", "head_sha": self.sha, "head_branch": "main",
@@ -47,7 +46,7 @@ class ReleaseGateTests(unittest.TestCase):
                                "jobs": [{"name": name, "status": "completed", "conclusion": "success"} for name in jobs]}
         self.receipts = {kind: {"schema": 1, "kind": kind, "status": "PASS", "build_run_id": "101",
                                 "source_commit": self.sha, "archive_sha256": self.archive}
-                         for kind in ("desktop", "upgrade")}
+                         for kind in ("upgrade",)}
         self.receipts["upgrade"].update(metadata_sha256=hashlib.sha256(self.metadata).hexdigest(),
                                         previous_version="V2.0.18", older_version="V2.0.6")
 
@@ -69,13 +68,14 @@ class ReleaseGateTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         self.check(runs=runs)
 
-    def test_skipped_mandatory_windows_jobs_reject(self):
-        for name in gate.WINDOWS_JOBS:
-            with self.subTest(job=name):
-                runs = copy.deepcopy(self.runs)
-                next(job for job in runs["build"]["jobs"] if job["name"] == name)["conclusion"] = "skipped"
-                with self.assertRaises(ValueError):
-                    self.check(runs=runs)
+    def test_skipped_main_package_rejected_even_if_development_build_passed(self):
+        runs = copy.deepcopy(self.runs)
+        runs["build"]["jobs"] = [
+            {"name": gate.PACKAGE_JOB, "status": "completed", "conclusion": "skipped"},
+            {"name": "build", "status": "completed", "conclusion": "success"},
+        ]
+        with self.assertRaises(ValueError):
+            self.check(runs=runs)
 
     def test_wrong_workflow_source_branch_run_or_event_rejects(self):
         for kind in self.runs:

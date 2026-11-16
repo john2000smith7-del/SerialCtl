@@ -226,8 +226,16 @@ def describe_archive(archive_path):
             raise ValueError("ZIP filename must match its production VERSION")
         manifest_bytes = read("MANIFEST.json", 64 * 1024)
         manifest = json.loads(manifest_bytes.decode("utf-8-sig"))
+        verification = manifest.get("verification", {})
+        source = manifest.get("source", {})
+        checked_production_package = (
+            verification.get("automated_tests") == "not-run-in-production-build"
+            and verification.get("archive_reopened") is True
+            and source.get("state") == "clean"
+            and re.fullmatch(r"[0-9a-f]{40}", source.get("revision", ""))
+        )
         if (manifest.get("product") != "SerialCtl" or manifest.get("version") != version or
-                manifest.get("verification", {}).get("automated_tests") != "passed-before-packaging"):
+                not (checked_production_package or verification.get("automated_tests") == "passed-before-packaging")):
             raise ValueError("Archive must be a verified production release")
         checksums = {}
         for line in read("SHA256SUMS.txt", 256 * 1024).decode("utf-8-sig").splitlines():

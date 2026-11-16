@@ -13,8 +13,60 @@ permissions:
   contents: read
   actions: read
 jobs:
+  package:
+    if: ${{ github.ref == 'refs/heads/main' && !inputs.evidence_run }}
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Cache pinned official VISA offline installer
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/SerialCtl-NIVISA1800runtime.zip
+          key: visa18-e6df76035af73d0bafb78becb1ecc238702ad9e318768f421bc9b5e03562a517
+      - name: Compile and package x64 release
+        shell: powershell
+        env:
+          SERIALCTL_VISA_CACHE: ${{ runner.temp }}/SerialCtl-NIVISA1800runtime.zip
+        run: ./scripts/release.ps1 -ProductionOnly
+      - name: Preserve the exact package for signed upgrade verification and publication
+        uses: ./.github/actions/ci-evidence
+        with:
+          mode: save
+          name: SerialCtl-Win7-portable
+          path: bin/SerialCtl-*-Win7-x64.zip
+      - name: Describe the exact verified ZIP for offline signing
+        id: describe
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = @(Get-ChildItem bin -Filter 'SerialCtl-*-Win7-x64.zip')
+          if ($archive.Count -ne 1) { throw 'Expected exactly one verified release archive.' }
+          $descriptor = python tools/new_update_feed.py --describe-archive $archive[0].FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $line = @($descriptor | Where-Object { $_.StartsWith('SERIALCTL_UPDATE_PAYLOAD_BASE64=') })
+          if ($line.Count -ne 1) { throw 'Expected one exact public archive descriptor.' }
+          $encoded = $line[0].Substring('SERIALCTL_UPDATE_PAYLOAD_BASE64='.Length)
+          for ($offset=0; $offset -lt $encoded.Length; $offset+=2048) {
+            Write-Host ('SERIALCTL_UPDATE_PAYLOAD_CHUNK=' + $encoded.Substring($offset,[Math]::Min(2048,$encoded.Length-$offset)))
+          }
+          $sha = (Get-FileHash $archive[0].FullName -Algorithm SHA256).Hash
+          Write-Host "::notice title=Verified portable ZIP::$($archive[0].Name) SHA256=$sha"
+          $version = $archive[0].BaseName -replace '^SerialCtl-|-Win7-x64$', ''
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "archive_path=bin/$($archive[0].Name)`nartifact_name=SerialCtl-$version-main-package`n", (New-Object Text.UTF8Encoding($false)))
+      - name: Export the unsigned main package for offline signing
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.describe.outputs.artifact_name }}
+          path: ${{ steps.describe.outputs.archive_path }}
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
   build:
-    if: ${{ !inputs.evidence_run }}
+    if: ${{ github.ref != 'refs/heads/main' && !inputs.evidence_run }}
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
@@ -55,7 +107,7 @@ jobs:
             throw $failure
           } finally { if ($transcriptOpen) { Stop-Transcript } }
       # Preserve the exact native-verified ZIP for diagnostics if a later GUI
-      # fixture fails. Publication still requires the complete main run success.
+      # fixture fails. This workflow is used for development validation.
       - name: Upload verified portable bundle
         uses: ./.github/actions/ci-evidence
         with:
@@ -252,7 +304,7 @@ jobs:
   ui-review:
     name: UI screenshots - ${{ matrix.page }}
     needs: build
-    if: ${{ always() }}
+    if: ${{ github.ref != 'refs/heads/main' && always() }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -324,7 +376,7 @@ jobs:
   endurance:
     name: Packaged frequent-click and layout endurance
     needs: build
-    if: ${{ !inputs.evidence_run }}
+    if: ${{ github.ref != 'refs/heads/main' && !inputs.evidence_run }}
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
@@ -381,7 +433,7 @@ jobs:
 
   viewport-address-sanitizer:
     name: Native callback destruction memory safety
-    if: ${{ !inputs.evidence_run }}
+    if: ${{ github.ref != 'refs/heads/main' && !inputs.evidence_run }}
     runs-on: windows-2022
     timeout-minutes: 10
     steps:

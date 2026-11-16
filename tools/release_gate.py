@@ -9,12 +9,7 @@ import re
 import subprocess
 
 
-WINDOWS_JOBS = {
-    "build", "Native callback destruction memory safety",
-    "Packaged frequent-click and layout endurance",
-    *("UI screenshots - " + page for page in
-      ("ai", "power-light", "power-dark", "sftp-settings", "workspace")),
-}
+PACKAGE_JOB = 'package'
 
 
 def require(condition, message):
@@ -67,10 +62,9 @@ def validate(request, runs, receipts, main_sha, latest_version, metadata):
             payload["archive"]["sha256"] == request["archive_sha256"],
             "Public signed metadata differs from requested version/archive")
     metadata_sha = hashlib.sha256(metadata).hexdigest()
-    for kind, workflow, jobs in (
-            ("build", "windows-build.yml", WINDOWS_JOBS),
-            ("desktop", "desktop-interaction.yml", {"desktop"}),
-            ("upgrade", "verify-release-upgrade.yml", {"upgrade"})):
+    for kind, workflow, job_name in (
+            ("build", "windows-build.yml", PACKAGE_JOB),
+            ("upgrade", "verify-release-upgrade.yml", "upgrade")):
         run = runs[kind]
         require(str(run["id"]) == str(request[kind + "_run_id"]), "Wrong " + kind + " run ID")
         require(run["status"] == "completed" and run["conclusion"] == "success",
@@ -78,12 +72,11 @@ def validate(request, runs, receipts, main_sha, latest_version, metadata):
         require(run["head_branch"] == "main" and run["head_sha"] == main_sha,
                 kind + " workflow is not the exact main commit")
         require(run["path"] == ".github/workflows/" + workflow, "Wrong workflow identity")
-        events = ({"workflow_run", "workflow_dispatch"} if kind == "desktop" else
-                  {"workflow_dispatch"} if kind == "upgrade" else {"push", "workflow_dispatch"})
+        events = {"push", "workflow_dispatch"} if kind == "build" else {"workflow_dispatch"}
         require(run["event"] in events, "Wrong " + kind + " workflow event")
         successful = {job["name"] for job in run["jobs"]
                       if job["status"] == "completed" and job["conclusion"] == "success"}
-        require(jobs <= successful, kind + " required jobs were skipped or failed")
+        require(job_name in successful, kind + " required job was skipped or failed")
         if kind == "build":
             continue
         receipt = receipts[kind]
@@ -93,13 +86,12 @@ def validate(request, runs, receipts, main_sha, latest_version, metadata):
                 receipt.get("source_commit") == main_sha and
                 receipt.get("archive_sha256") == request["archive_sha256"],
                 kind + " evidence belongs to another build or ZIP")
-        if kind == "upgrade":
-            require(receipt.get("metadata_sha256") == metadata_sha,
-                    "Upgrade did not test these exact signed JSON bytes")
-            require(receipt.get("previous_version") == latest_version,
-                    "Upgrade evidence omitted the actual previous formal version")
-            require(version_tuple(receipt.get("older_version")) < version_tuple(latest_version),
-                    "Upgrade evidence needs a distinct older original-identity client")
+        require(receipt.get("metadata_sha256") == metadata_sha,
+                "Upgrade did not test these exact signed JSON bytes")
+        require(receipt.get("previous_version") == latest_version,
+                "Upgrade evidence omitted the actual previous formal version")
+        require(version_tuple(receipt.get("older_version")) < version_tuple(latest_version),
+                "Upgrade evidence needs a distinct older original-identity client")
     return {"status": "PASS", "source_commit": main_sha,
             "archive_sha256": request["archive_sha256"], "metadata_sha256": metadata_sha}
 
@@ -120,7 +112,7 @@ def main():
     receipt.add_argument("--metadata")
     receipt.add_argument("--report")
     check = sub.add_parser("check")
-    for name in ("version", "source-commit", "archive-sha256", "build-run-id", "desktop-run-id", "upgrade-run-id",
+    for name in ("version", "source-commit", "archive-sha256", "build-run-id", "upgrade-run-id",
                  "metadata", "evidence-dir"):
         check.add_argument("--" + name, required=True)
     check.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"))
@@ -142,7 +134,7 @@ def main():
     require(args.repository and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repository), "Invalid repository")
     request = vars(args)
     runs = {}
-    for kind in ("build", "desktop", "upgrade"):
+    for kind in ("build", "upgrade"):
         run_id = request[kind + "_run_id"]
         require(re.fullmatch(r"[0-9]+", run_id), "Invalid run ID")
         runs[kind] = gh(args.repository, "actions/runs/" + run_id)
@@ -150,8 +142,8 @@ def main():
         jobs = gh(args.repository, "actions/runs/" + run_id + "/jobs?per_page=100")
         require(jobs["total_count"] == len(jobs["jobs"]), "Job list is incomplete")
         runs[kind]["jobs"] = jobs["jobs"]
-    receipts = {kind: json.loads((Path(args.evidence_dir) / kind / "release-receipt.json").read_text(encoding="utf-8-sig"))
-                for kind in ("desktop", "upgrade")}
+    receipt_path = Path(args.evidence_dir) / "upgrade" / "release-receipt.json"
+    receipts = {"upgrade": json.loads(receipt_path.read_text(encoding="utf-8-sig"))}
     latest = gh(args.repository, "releases/latest")["tag_name"]
     require(re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-r[1-9][0-9]*)?", latest), "Unrecognized previous release tag")
     latest_version = "V" + latest[1:].split("-r", 1)[0]

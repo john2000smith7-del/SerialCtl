@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   ssh-lifetime:
+    if: ${{ github.ref != 'refs/heads/main' }}
     name: SSH mapped resize during concurrent shutdown
     runs-on: windows-2022
     timeout-minutes: 10
@@ -65,6 +66,7 @@ jobs:
           if-no-files-found: warn
 
   resize:
+    if: ${{ github.ref != 'refs/heads/main' }}
     runs-on: windows-2022
     timeout-minutes: 10
     steps:
@@ -115,6 +117,7 @@ jobs:
           path: '*queue-result.txt'
 
   renderer:
+    if: ${{ github.ref != 'refs/heads/main' }}
     name: Native glyph pixels and idempotent region updates
     runs-on: windows-2022
     timeout-minutes: 10

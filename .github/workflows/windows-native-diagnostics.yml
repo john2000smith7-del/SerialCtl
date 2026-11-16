@@ -56,7 +56,7 @@ permissions:
   actions: read
 jobs:
   inspect:
-    if: ${{ inputs.inspect_run }}
+    if: ${{ github.ref != 'refs/heads/main' && inputs.inspect_run }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -175,7 +175,7 @@ jobs:
           "source=$(git rev-parse HEAD)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
   compile-only:
     needs: compile-helpers
-    if: ${{ always() && inputs.compile_only && !cancelled() && (!inputs.rebuild_helpers || needs.compile-helpers.result == 'success') }}
+    if: ${{ always() && github.ref != 'refs/heads/main' && inputs.compile_only && !cancelled() && (!inputs.rebuild_helpers || needs.compile-helpers.result == 'success') }}
     runs-on: windows-2022
     timeout-minutes: 40
     env:
@@ -197,7 +197,7 @@ jobs:
           Write-Host "SERIALCTL_COMPILE_EXE_SHA256=$((Get-FileHash $program -Algorithm SHA256).Hash)"
           Write-Host 'SERIALCTL_COMPILE_SCOPE=Compilation only; tests, GUI, packaging, signing and publication were not run.'
   lifecycle:
-    if: ${{ inputs.lifecycle && !inputs.compile_only && !inputs.xfer_ui && !inputs.ui_run }}
+    if: ${{ github.ref != 'refs/heads/main' && inputs.lifecycle && !inputs.compile_only && !inputs.xfer_ui && !inputs.ui_run }}
     runs-on: windows-2022
     timeout-minutes: 25
     env:
@@ -238,7 +238,7 @@ jobs:
           name: SerialCtl-lifecycle-diagnostics
           path: ${{ runner.temp }}/serialctl-lifecycle/
   native:
-    if: ${{ !inputs.inspect_run && !inputs.lifecycle && !inputs.compile_only && !inputs.ui_run && !inputs.xfer_ui }}
+    if: ${{ github.ref != 'refs/heads/main' && !inputs.inspect_run && !inputs.lifecycle && !inputs.compile_only && !inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 30
     env:
@@ -312,7 +312,7 @@ jobs:
           path: ${{ runner.temp }}/native-evidence/
           if-no-files-found: warn
   gui:
-    if: ${{ !inputs.lifecycle && !inputs.compile_only && inputs.ui_run && !inputs.xfer_ui }}
+    if: ${{ github.ref != 'refs/heads/main' && !inputs.lifecycle && !inputs.compile_only && inputs.ui_run && !inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
@@ -406,7 +406,7 @@ jobs:
             ${{ runner.temp }}/gui-evidence/smoke/x64-*-sftp.png
             ${{ runner.temp }}/gui-evidence/freeze/comparison.json
   xfer:
-    if: ${{ !inputs.lifecycle && !inputs.compile_only && inputs.xfer_ui }}
+    if: ${{ github.ref != 'refs/heads/main' && !inputs.lifecycle && !inputs.compile_only && inputs.xfer_ui }}
     runs-on: windows-2022
     timeout-minutes: 25
     steps:

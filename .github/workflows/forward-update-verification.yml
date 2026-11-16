@@ -8,7 +8,7 @@ on:
         options: [prepare, verify]
         required: true
       build_run_id:
-        description: Successful exact-main production build under review
+        description: Successful exact Windows build from this development branch
         type: string
         required: true
       future_run_id:
@@ -24,7 +24,7 @@ permissions:
   actions: read
 jobs:
   prepare:
-    if: ${{ github.ref == 'refs/heads/main' && inputs.phase == 'prepare' }}
+    if: ${{ (startsWith(github.ref, 'refs/heads/feat/') || startsWith(github.ref, 'refs/heads/feature/')) && inputs.phase == 'prepare' }}
     runs-on: windows-2022
     timeout-minutes: 15
     env:
@@ -51,7 +51,8 @@ jobs:
           $root = (Get-Location).Path
           $head = (git rev-parse HEAD).Trim()
           $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
-          if ($LASTEXITCODE -or $run.conclusion -ne 'success' -or $run.head_branch -ne 'main' -or $run.head_sha -ne $head -or $run.name -ne 'Windows Win7 release build') { throw 'Requires successful exact-main production build' }
+          if ($LASTEXITCODE -or $run.status -ne 'completed' -or $run.conclusion -ne 'success' -or $run.head_sha -ne $head) { throw 'Requires a completely successful exact source run' }
+          if ($run.head_branch -ne $env:GITHUB_REF_NAME -or $run.path -ne '.github/workflows/windows-build.yml') { throw 'Requires the same development branch build' }
           $archive = @(Get-ChildItem candidate -Filter '*.zip')
           if ($archive.Count -ne 1) { throw 'Expected one verified production ZIP' }
           $scratch = Join-Path $env:RUNNER_TEMP 'serialctl-forward-source'
@@ -79,7 +80,7 @@ jobs:
           name: SerialCtl-forward-test-fixture
           path: ${{ runner.temp }}/serialctl-forward-fixture/*
   verify:
-    if: ${{ github.ref == 'refs/heads/main' && inputs.phase == 'verify' }}
+    if: ${{ (startsWith(github.ref, 'refs/heads/feat/') || startsWith(github.ref, 'refs/heads/feature/')) && inputs.phase == 'verify' }}
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -110,9 +111,10 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $head = (git rev-parse HEAD).Trim()
           $build = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -or $build.status -ne 'completed' -or $build.conclusion -ne 'success' -or $build.head_sha -ne $head) { throw 'Requires a completely successful exact source run' }
+          if ($build.head_branch -ne $env:GITHUB_REF_NAME -or $build.path -ne '.github/workflows/windows-build.yml') { throw 'Requires the same development branch build' }
           $future = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:FUTURE_RUN" | ConvertFrom-Json
-          if ($LASTEXITCODE -or $build.conclusion -ne 'success' -or $build.head_branch -ne 'main' -or $build.head_sha -ne $head -or $build.name -ne 'Windows Win7 release build') { throw 'Invalid production build identity' }
-          if ($future.conclusion -ne 'success' -or $future.head_sha -ne $head -or $future.path -ne '.github/workflows/forward-update-verification.yml') { throw 'Invalid forward prepare run' }
+          if ($LASTEXITCODE -or $future.status -ne 'completed' -or $future.conclusion -ne 'success' -or $future.head_branch -ne $env:GITHUB_REF_NAME -or $future.head_sha -ne $head -or $future.path -ne '.github/workflows/forward-update-verification.yml') { throw 'Invalid forward prepare run' }
           $archive = @(Get-ChildItem current -Filter '*.zip')
           $fixture = @(Get-ChildItem future -Filter 'SerialCtl-TEST-forward-*.zip')
           if ($archive.Count -ne 1 -or $fixture.Count -ne 1) { throw 'Expected exact production and test-only ZIPs' }

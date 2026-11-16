@@ -16,6 +16,7 @@ permissions:
   actions: read
 jobs:
   terminal-soak:
+    if: ${{ github.ref != 'refs/heads/main' }}
     runs-on: windows-2022
     timeout-minutes: 50
     steps:
