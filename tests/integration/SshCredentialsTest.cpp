@@ -28,6 +28,14 @@ int main() {
         Require(ReadSshCredential(target,password,error)==SshCredentialResult::Missing&&password.empty(),"forgotten password cannot refill");
         const auto history=NormalizeSshHistory(nlohmann::json::array({{{"host","example"},{"port",22u},{"username","fixture"},{"password","must-not-persist"}}}));
         Require(history.size()==1&&!history[0].contains("password"),"history must never serialize passwords");
+        auto mutableHistory = history;
+        const auto histTarget = SshCredentialTarget(L"example", 22, L"fixture");
+        Require(SaveSshCredential(histTarget, L"fixture", L"histSecret", error), "save hist credential");
+        Require(ReadSshCredential(histTarget, password, error) == SshCredentialResult::Loaded, "read hist credential");
+        Require(ForgetSshCredential(histTarget, error), "forget hist credential on history deletion");
+        mutableHistory.clear();
+        Require(mutableHistory.empty(), "history cleared");
+        Require(ReadSshCredential(histTarget, password, error) == SshCredentialResult::Missing, "credential forgotten after history deletion");
         ClearSshSecret(password);
         std::cout<<"PASS: isolated Windows SSH credential save/read/update/forget and history isolation\n";
         return 0;

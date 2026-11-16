@@ -1,9 +1,11 @@
 #include "PowerService.h"
+#include "OperationAuditLogger.h"
 #include <wincrypt.h>
 #include "Win32Helpers.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <fstream>
 #include <locale>
 #include <set>
 #include <shlobj.h>
@@ -60,6 +62,19 @@ std::string Decimal(double value) {
     text << value;
     return text.str();
 }
+std::string ScpiHexPreview(const std::string &bytes) {
+    static constexpr char digits[] = "0123456789ABCDEF";
+    std::string hex;
+    const auto limit = std::min<size_t>(bytes.size(), 64);
+    for (size_t i = 0; i < limit; ++i) {
+        if (i) hex.push_back(' ');
+        auto ch = static_cast<unsigned char>(bytes[i]);
+        hex.push_back(digits[ch >> 4]);
+        hex.push_back(digits[ch & 15]);
+    }
+    if (bytes.size() > limit) hex += " ...";
+    return hex;
+}
 Json ValidateChannels(const Json &command) {
     Require(command.contains("channels") && command["channels"].is_array() && !command["channels"].empty() &&
                 command["channels"].size() <= 3,
@@ -89,7 +104,28 @@ struct PowerService::Transport {
     bool simulated = false;
 #ifdef SERIALCTL_POWER_TESTING
     bool testFailOutputReadback = false;
+    bool testFailOutputOffWrite = false;
+    bool testFailRemoteWrite = false;
+    std::string testFailQuery;
 #endif
+    Json scpiTrace = Json::array();
+    void RecordScpi(const char *direction, const std::string &command, const std::string &value = "",
+                    std::uint64_t elapsedMs = 0) {
+        Json row = {{"direction", direction}, {"command", command}};
+        if (direction[0] != 'T') {
+            row["elapsedMs"] = elapsedMs;
+            if (direction[0] == 'R') {
+                row["bytes"] = value.size();
+                row["hex"] = ScpiHexPreview(value);
+                std::string printable = value.substr(0, 96);
+                for (auto &ch : printable)
+                    if (static_cast<unsigned char>(ch) < 32 || static_cast<unsigned char>(ch) > 126) ch = '.';
+                row["reply"] = std::move(printable);
+            } else row["error"] = value;
+        }
+        scpiTrace.push_back(std::move(row));
+        if (scpiTrace.size() > 64) scpiTrace.erase(scpiTrace.begin());
+    }
     int failAfter = -1;
     Json simulation =
         Json::array({Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}, {"ovp", 30.0}, {"ovpEnabled", false}},
@@ -109,9 +145,18 @@ struct PowerService::Transport {
         if (serial != INVALID_HANDLE_VALUE)
             CloseHandle(serial);
     }
-    void Write(std::string command) {
+    void Write(std::string command, bool record = true) {
+        if (record) RecordScpi("TX", command);
         if (simulated) {
             writes.push_back(command);
+#ifdef SERIALCTL_POWER_TESTING
+            if (testFailOutputOffWrite && command == "CHAN:OUTP OFF") {
+                testFailOutputOffWrite = false;
+                throw std::runtime_error("Simulated OFF write failure");
+            }
+            if (testFailRemoteWrite && command == "SYST:REM")
+                throw std::runtime_error("Simulated remote-mode write failure");
+#endif
             if (command == "OUTP:PAR ON")
                 mode = "parallel";
             else if (command == "OUTP:SER ON")
@@ -197,9 +242,23 @@ struct PowerService::Transport {
                         count == command.size(),
                     "Serial write failed");
     }
-    std::string Query(std::string command) {
+    std::string Query(const std::string &command) {
+        const auto started = GetTickCount64();
+        RecordScpi("TX", command);
+        try {
+            auto reply = QueryRaw(command);
+            RecordScpi("RX", command, reply, GetTickCount64() - started);
+            return reply;
+        } catch (const std::exception &e) {
+            RecordScpi("ERROR", command, e.what(), GetTickCount64() - started);
+            throw std::runtime_error("SCPI query '" + command + "': " + e.what());
+        }
+    }
+    std::string QueryRaw(std::string command) {
         if (simulated) {
 #ifdef SERIALCTL_POWER_TESTING
+            if (!testFailQuery.empty() && command == testFailQuery)
+                throw std::runtime_error("Simulated SCPI query timeout");
             if (testFailOutputReadback && command == "CHAN:OUTP?") {
                 testFailOutputReadback = false;
                 throw std::runtime_error("Simulated output readback timeout");
@@ -260,7 +319,7 @@ struct PowerService::Transport {
                 return "0";
             return "0";
         }
-        Write(command);
+        Write(command, false);
         std::string result;
         auto end = GetTickCount64() + 2500;
         while (GetTickCount64() < end && result.size() < 4096) {
@@ -282,10 +341,80 @@ struct PowerService::Transport {
                 return result;
             }
         }
-        throw std::runtime_error("SCPI query timed out");
+        throw std::runtime_error("SCPI response timed out after 2500 ms (received " +
+                                 std::to_string(result.size()) + " bytes; hex=" + ScpiHexPreview(result) + ")");
     }
 };
 std::atomic<bool> PowerService::testEnabled_{false};
+namespace {
+std::mutex &PowerRegistryMutex() {
+    static auto *m = new std::mutex();
+    return *m;
+}
+std::set<PowerService *> &PowerRegistry() {
+    static auto *s = new std::set<PowerService *>();
+    return *s;
+}
+} // namespace
+
+std::wstring PowerService::RecoveryFilePath() {
+    return SessionLogger::DefaultLogDirectory() + L"\\power-recovery.json";
+}
+
+void PowerService::ClearRecoveryFile() {
+    DeleteFileW(RecoveryFilePath().c_str());
+}
+
+void PowerService::SyncEmergencyFlagsLocked() {
+    const bool connected = state_.value("connected", false);
+    const bool taskRunning = state_.contains("task") && state_["task"].value("running", false);
+    bool anyOn = false;
+    if (state_.contains("channels") && state_["channels"].is_array()) {
+        for (int i = 0; i < 3 && i < static_cast<int>(state_["channels"].size()); ++i) {
+            const auto &out = state_["channels"][i]["output"];
+            const bool active = out.is_boolean() ? out.get<bool>() : false;
+            emergencyOutputActive_[i].store(active, std::memory_order_relaxed);
+            anyOn = anyOn || active;
+        }
+    }
+    emergencyActionInFlight_.store(connected || !queue_.empty() || taskRunning || anyOn, std::memory_order_relaxed);
+}
+
+void PowerService::MarkEmergencyRecoveryNeededAll() {
+    std::unique_lock<std::mutex> lock(PowerRegistryMutex(), std::try_to_lock);
+    if (!lock.owns_lock()) return;
+    bool needed = false;
+    Json channels = Json::array();
+    bool seen[3]{};
+    for (PowerService *svc : PowerRegistry()) {
+        if (!svc) continue;
+        if (svc->emergencyActionInFlight_.load(std::memory_order_relaxed)) needed = true;
+        for (int i = 0; i < 3; ++i) {
+            if (svc->emergencyOutputActive_[i].load(std::memory_order_relaxed)) {
+                needed = true;
+                if (!seen[i]) {
+                    seen[i] = true;
+                    channels.push_back(i + 1);
+                }
+            }
+        }
+    }
+    if (!needed) return;
+    const auto dir = SessionLogger::DefaultLogDirectory();
+    CreateDirectoryW(dir.c_str(), nullptr);
+    const auto path = dir + L"\\power-recovery.json";
+    Json marker = {{"unconfirmedPowerOff", true}, {"timestamp", Timestamp()}, {"channels", channels}};
+    const std::string payload = marker.dump();
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                              FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
+    if (file != INVALID_HANDLE_VALUE) {
+        DWORD written = 0;
+        WriteFile(file, payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr);
+        FlushFileBuffers(file);
+        CloseHandle(file);
+    }
+}
+
 bool PowerService::AuthorizeTest(const std::wstring& password) {
     if(password.size()>128)return false;
     const BYTE expected[32]={0x8e,0xf3,0x61,0x9e,0x00,0x68,0x8b,0x1d,0x9b,0x05,0xc8,0x89,0xe1,0xab,0x38,0x7e,0xb1,0xfd,0xa8,0x70,0xd8,0xe7,0x10,0x83,0x1e,0x0b,0xdd,0x5f,0xa4,0x9d,0xcc,0xc1};
@@ -306,7 +435,8 @@ bool PowerService::AuthorizeTest(const std::wstring& password) {
 void PowerService::DisableTest() {
     testEnabled_=false;++recoveryCancelEpoch_;
     std::lock_guard<std::mutex> lock(mutex_);
-    for(const auto& item:queue_)actions_[item.first]["state"]="canceled";
+    CancelKeywordCycle(L"电源 Test 已锁定");
+    for(const auto& item:queue_)actions_[item.id]["state"]="canceled";
     queue_.clear();lockRequested_=true;wake_.notify_all();
 }
 bool PowerService::VisaAvailable() {
@@ -350,10 +480,31 @@ PowerService::PowerService() {
                                       {"power", nullptr},
                                       {"output", nullptr},
                                       {"timestamp", nullptr}});
+    {
+        std::ifstream recovery(std::filesystem::path(RecoveryFilePath()), std::ios::binary);
+        if (recovery) {
+            try {
+                Json marker = Json::parse(recovery);
+                if (marker.is_object() && marker.value("unconfirmedPowerOff", false)) {
+                    state_["unconfirmedPowerOff"] = true;
+                    if (marker.contains("channels") && marker["channels"].is_array())
+                        state_["unconfirmedPowerOffChannels"] = marker["channels"];
+                    state_["error"] = u8"上次运行异常退出时电源仍处于活动状态，请核查硬件输出状态";
+                }
+            } catch (...) {
+            }
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(PowerRegistryMutex());
+        PowerRegistry().insert(this);
+    }
     thread_ = std::thread(&PowerService::Run, this);
 }
 PowerService::~PowerService() {
     Shutdown();
+    std::lock_guard<std::mutex> lock(PowerRegistryMutex());
+    PowerRegistry().erase(this);
 }
 Json PowerService::State() {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -378,9 +529,26 @@ Json PowerService::Action(const std::string &id) {
     }
     return result;
 }
-Json PowerService::Submit(const Json &command) {
+void PowerService::CancelRemotePending(const std::string &source) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto &entry : actions_) {
+        auto &action = entry.second;
+        if (action["state"] == "queued" && action["command"].value("source", std::string()) == source)
+            action["state"] = "canceled";
+    }
+    queue_.erase(std::remove_if(queue_.begin(), queue_.end(), [&](const auto &job) {
+        return job.command.value("source", std::string()) == source;
+    }), queue_.end());
+}
+void PowerService::CancelKeywordCycle(const wchar_t *reason) {
+    if (auto cycle = keywordCycle_.lock()) cycle->Cancel(reason);
+}
+
+Json PowerService::Submit(const Json &command, const std::string &connectionId, const std::string &expectedMode,
+                          std::shared_ptr<PowerCycleObserver> cycle) {
     try {
         const std::string type = command.at("type").get<std::string>();
+        Require(!cycle || (type == "task" && connectionId.empty()), "Keyword rules require a local power cycle");
         if (!ConnectionAvailable()) {
 #ifdef SERIALCTL_POWER_TESTING
             // Only controlled test targets may exercise the in-memory backend
@@ -446,6 +614,9 @@ Json PowerService::Submit(const Json &command) {
                         command.at("mode") == "series" || command.at("mode") == "tracking",
                     "Unknown channel mode");
         if (type == "batch") {
+            const auto src = command.value("source", std::string("local"));
+            Require(connectionId.empty() && (src == "local" || src == "gui"),
+                    "Batch parameter updates require local GUI authorization");
             Require(command.at("settings").is_array() && !command["settings"].empty() &&
                         command["settings"].size() <= 3,
                     "Invalid parameter batch");
@@ -574,6 +745,12 @@ Json PowerService::Submit(const Json &command) {
         }
         std::lock_guard<std::mutex> lock(mutex_);
         Require(!stopping_, "Power service is shutting down");
+        if (!connectionId.empty()) {
+            Require(state_.value("connected", false) && state_.value("connectionId", std::string()) == connectionId,
+                    u8"远端电源连接已变化");
+            Require(type == "stop" || state_.value("mode", std::string()) == expectedMode,
+                    u8"远端工作模式已变化，操作未执行");
+        }
 #ifndef SERIALCTL_POWER_TESTING
         Require(ConnectionAvailable(),ConnectionUnavailableMessage());
 #endif
@@ -603,6 +780,10 @@ Json PowerService::Submit(const Json &command) {
         const int scope = safetyScope(command);
         const bool priority = scope != 0;
         Require(priority || queue_.size() < 128, "Power command queue full");
+        if (cycle) {
+            const auto current = keywordCycle_.lock();
+            Require(!current || !current->Healthy(), "A keyword test is already active");
+        }
         std::string id = "power-action-" + std::to_string(next_++);
         Json action = {{"id", id},
                        {"state", "queued"},
@@ -612,21 +793,28 @@ Json PowerService::Submit(const Json &command) {
         // Invalidate in-flight recovery at acceptance, even while the worker is
         // waiting for a device readback. A queued Stop must not wait for ON.
         if (priority || type == "connect" || type == "mode") ++recoveryCancelEpoch_;
+        if (priority) CancelKeywordCycle(L"电源测试已停止或断开");
+        if (cycle) keywordCycle_ = cycle;
         auto queued = command;
+        if (!connectionId.empty()) {
+            queued["_connectionId"] = connectionId;
+            if (type != "stop") queued["_connectionMode"] = expectedMode;
+        }
         if (type == "recover") queued["_recoveryEpoch"] = recoveryCancelEpoch_.load();
         if (priority) {
             for (auto it = queue_.begin(); it != queue_.end();) {
-                const auto t = it->second.value("type", std::string());
+                const auto t = it->command.value("type", std::string());
                 if (t == "task" || t == "sequence" || t == "schedule" || t == "recover" ||
-                    (t == "output" && it->second.value("enabled", false)) || safetyScope(it->second) == scope) {
-                    actions_[it->first]["state"] = "canceled";
+                    (t == "output" && it->command.value("enabled", false)) || safetyScope(it->command) == scope) {
+                    actions_[it->id]["state"] = "canceled";
                     it = queue_.erase(it);
                 } else
                     ++it;
             }
-            queue_.emplace_front(id, std::move(queued));
+            queue_.push_front({id, std::move(queued), {}});
         } else
-            queue_.emplace_back(id, std::move(queued));
+            queue_.push_back({id, std::move(queued), std::move(cycle)});
+        SyncEmergencyFlagsLocked();
         while (actions_.size() > 256) {
             // Evict the oldest finished action (lowest numeric id). Map key order is
             // lexicographic ("power-action-10" < "power-action-9"), so it cannot be
@@ -657,7 +845,11 @@ void PowerService::Command(const std::string &command) {
     Require(ConnectionAvailable(),ConnectionUnavailableMessage());
 #endif
     Require(transport_ != nullptr, "Power supply disconnected");
-    transport_->Write(command);
+    try {
+        transport_->Write(command);
+    } catch (const std::exception &e) {
+        throw std::runtime_error("SCPI command '" + command + "': " + e.what());
+    }
 }
 std::string PowerService::Query(const std::string &command) {
 #ifndef SERIALCTL_POWER_TESTING
@@ -672,9 +864,11 @@ double PowerService::Number(const std::string &command) {
     input.imbue(std::locale::classic());
     double number = 0;
     input >> number;
-    Require(!input.fail() && std::isfinite(number), "Invalid measurement response");
+    if (input.fail() || !std::isfinite(number))
+        throw std::runtime_error("Invalid numeric SCPI response to '" + command + "'; hex=" + ScpiHexPreview(value));
     input >> std::ws;
-    Require(input.eof(), "Unexpected SCPI response");
+    if (!input.eof())
+        throw std::runtime_error("Unexpected SCPI response to '" + command + "'; hex=" + ScpiHexPreview(value));
     return number;
 }
 void PowerService::Select(int channel) {
@@ -783,7 +977,11 @@ void PowerService::Outputs(const Json &channels, bool enabled, Json &result) {
     if (failed)
         throw std::runtime_error("Output operation incomplete; inspect per-channel result");
 }
-void PowerService::StopTask() {
+void PowerService::StopTask(Json *offResults, bool finished, bool preserveOutputs) {
+    auto cycle = std::move(activeCycle_);
+    cyclePaused_ = false;
+    cyclePausedRemaining_ = 0;
+    if (cycle && !finished) cycle->Cancel(L"电源测试已停止");
     if (owned_.empty())
         return;
     Json channels = owned_;
@@ -802,41 +1000,106 @@ void PowerService::StopTask() {
         if (completed.is_object())
             state_["task"] = completed;
         state_["task"]["running"] = false;
+        state_["task"]["paused"] = false;
     }
-    if (transport_) {
-        Json result;
-        Outputs(channels, false, result);
+    if (!preserveOutputs) {
+        try {
+            if (transport_) {
+                Json result;
+                Outputs(channels, false, offResults ? *offResults : result);
+            }
+        } catch (...) {
+            if (cycle) cycle->Cancel(L"电源掉电未确认，测试已停止");
+            throw;
+        }
     }
+    if (cycle && finished) cycle->Finish();
     owned_ = Json::array();
     {
         std::lock_guard<std::mutex> lock(mutex_);
         state_["ownedChannels"] = owned_;
     }
 }
-void PowerService::Disconnect(bool preserveOutputs) {
-    if(preserveOutputs) {
-        owned_=Json::array();task_=Json();
+void PowerService::Disconnect(bool preserveOutputs, Json *action) {
+    const auto ownedChannels = owned_;
+    Json offResults = Json::array();
+    bool stopFailed = false;
+    std::string stopError;
+    if (preserveOutputs) {
+        if (activeCycle_) activeCycle_->Cancel(L"电源连接已断开");
+        activeCycle_.reset();
+        owned_ = Json::array();
+        task_ = Json();
+        const auto disconnectId = action ? action->at("id").get<std::string>() : std::string();
         std::lock_guard<std::mutex> lock(mutex_);
-        state_["task"]={{"running",false}};state_["ownedChannels"]=owned_;
-        for(auto& item:actions_)if(item.second.value("state",std::string())=="running")item.second["state"]="canceled";
+        state_["task"] = {{"running", false}};
+        state_["ownedChannels"] = owned_;
+        // The disconnect receipt stays running until Execute publishes the result.
+        for (auto &entry : actions_) {
+            if (entry.first != disconnectId && entry.second.value("state", std::string()) == "running")
+                entry.second["state"] = "canceled";
+        }
+    } else {
+        try {
+            StopTask(&offResults);
+        } catch (const std::exception &e) {
+            stopFailed = true;
+            stopError = e.what();
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["error"] = e.what();
+        }
     }
-    try {
-        StopTask();
-    } catch (const std::exception &e) {
+#ifdef SERIALCTL_POWER_TESTING
+    if (transport_ && transport_->simulated) {
         std::lock_guard<std::mutex> lock(mutex_);
-        state_["error"] = e.what();
+        state_["testWrites"] = transport_->writes;
     }
+#endif
     transport_.reset();
     log_.Stop();
     measurements_.Stop();
     std::lock_guard<std::mutex> lock(mutex_);
     state_["connected"] = false;
+    state_.erase("connectionId");
     state_["task"]["running"] = false;
     task_ = Json();
     owned_ = Json::array();
     state_["ownedChannels"] = owned_;
     state_["readbackStale"] = preserveOutputs && std::any_of(state_["channels"].begin(),state_["channels"].end(),[](const Json& channel){return channel["output"].is_boolean();});
-    if (preserveOutputs) return;
+
+    Json unconfirmed = Json::array();
+    if (stopFailed) {
+        for (const auto &channel : ownedChannels) {
+            const auto confirmed = std::any_of(offResults.begin(), offResults.end(), [&](const Json &result) {
+                return result["channel"] == channel && result["state"] == "confirmed";
+            });
+            if (!confirmed) unconfirmed.push_back(channel);
+        }
+        state_["unconfirmedPowerOff"] = true;
+        state_["unconfirmedPowerOffChannels"] = unconfirmed;
+    }
+
+    if (action) {
+        (*action)["transportDisconnected"] = true;
+        (*action)["offResults"] = std::move(offResults);
+        if (preserveOutputs) {
+            (*action)["offConfirmation"] = "preserved";
+            (*action)["state"] = "completed";
+        } else if (stopFailed) {
+            (*action)["offConfirmation"] = "failed";
+            (*action)["state"] = "failed";
+            (*action)["error"] = stopError;
+            (*action)["unconfirmedChannels"] = unconfirmed;
+        } else {
+            (*action)["offConfirmation"] = ownedChannels.empty() ? "not_required" : "confirmed";
+            (*action)["state"] = "completed";
+        }
+    }
+
+    if (preserveOutputs) {
+        SyncEmergencyFlagsLocked();
+        return;
+    }
     for (auto &channel : state_["channels"]) {
         channel["output"] = nullptr;
         channel["voltage"] = nullptr;
@@ -844,24 +1107,46 @@ void PowerService::Disconnect(bool preserveOutputs) {
         channel["power"] = nullptr;
         channel.erase("protection");
     }
+    SyncEmergencyFlagsLocked();
+    if (!stopFailed && !state_.value("unconfirmedPowerOff", false)) ClearRecoveryFile();
 }
-void PowerService::Execute(const std::string &id, const Json &command) {
+void PowerService::Execute(const std::string &id, const Json &command,
+                           const std::shared_ptr<PowerCycleObserver> &cycle) {
     Json action;
     bool communication = false;
+    std::string connectStage;
+    std::unique_ptr<Transport> connectingTransport;
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (actions_[id]["state"] == "canceled") return;
+        if (command.contains("_connectionId") &&
+            (!state_.value("connected", false) || state_.value("connectionId", std::string()) != command["_connectionId"])) {
+            actions_[id]["state"] = "canceled";
+            return;
+        }
+        if (command.contains("_connectionMode") && state_.value("mode", std::string()) != command["_connectionMode"]) {
+            actions_[id]["state"] = "failed";
+            actions_[id]["error"] = u8"远端工作模式已变化，操作未执行";
+            return;
+        }
         actions_[id]["state"] = "running";
         action = actions_[id];
     }
     try {
         std::string type = command["type"];
         if (type == "connect") {
+            connectStage = "open_transport";
             Require(!transport_, "Already connected");
-            auto transport = std::make_unique<Transport>();
+            connectingTransport = std::make_unique<Transport>();
+            auto *transport = connectingTransport.get();
             std::string backend = command.at("backend");
             if (backend == "simulation") {
                 transport->simulated = true;
                 transport->failAfter = command.value("testFailAfterReads", -1);
+#ifdef SERIALCTL_POWER_TESTING
+                transport->testFailQuery = command.value("testFailQuery", std::string());
+                transport->testFailRemoteWrite = command.value("testFailRemoteWrite", false);
+#endif
             } else if (backend == "usb") {
                 Require(transport->visa.dll != nullptr, "Install bundled VISA runtime first");
                 Require(transport->visa.openRM(&transport->rm) >= 0, "VISA unavailable");
@@ -900,6 +1185,7 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 PurgeComm(transport->serial, PURGE_RXCLEAR | PURGE_TXCLEAR);
             } else
                 throw std::runtime_error("Unknown connection backend");
+            connectStage = "identify";
             std::string identity = transport->Query("*IDN?");
             auto comma = identity.find(',');
             auto nextComma = comma == std::string::npos ? std::string::npos : identity.find(',', comma + 1);
@@ -909,8 +1195,14 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 std::remove_if(model.begin(), model.end(), [](unsigned char c) { return std::isspace(c) != 0; }),
                 model.end());
             Require(model == "IT6332A", "Instrument is not IT6332A");
-            transport_ = std::move(transport);
+            // Request remote operation only after identifying the intended supply.
+            // No reset or output enable occurs during connection.
+            connectStage = "enter_remote";
+            transport->Write("SYST:REM");
+            transport_ = std::move(connectingTransport);
+            connectStage = "select_channel";
             Select(1);
+            connectStage = "read_mode";
             ReadMode();
             std::wstring error;
             log_.Start(L"IT6332A", error);
@@ -933,10 +1225,18 @@ void PowerService::Execute(const std::string &id, const Json &command) {
                 if (!error.empty())
                     state_["logError"] = WideToMultiByte(error, CP_UTF8);
             }
+            connectStage = "initial_poll";
             Poll();
             pollAt_ = GetTickCount64() + pollInterval_;
+            action["scpiTrace"] = transport_->scpiTrace;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                state_["connectionId"] = id;
+                state_["lastConnectDiagnostic"] = {{"stage", "complete"}, {"trace", action["scpiTrace"]}};
+            }
+            connectStage.clear();
         } else if (type == "disconnect")
-            Disconnect(command.value("preserveOutputs",false));
+            Disconnect(command.value("preserveOutputs", false), &action);
         else if (type == "stop")
             StopTask();
         else if (type == "recover") {
@@ -978,6 +1278,8 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             }
             if (!command["enabled"].get<bool>()) {
                 if (task_.is_object() && task_.value("type", std::string()) == "recover") StopTask();
+                if (activeCycle_) activeCycle_->Cancel(L"电源输出已手动关闭");
+                activeCycle_.reset();
                 task_ = Json();
                 std::lock_guard<std::mutex> lock(mutex_);
                 state_["task"]["running"] = false;
@@ -1027,11 +1329,15 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             Require(transport_ != nullptr, "Supply disconnected");
             Require(task_.is_null() || task_.empty(), "A task is already running");
             Require(owned_.empty(), "Stop and power off the previous canceled task first");
+            Require(!cycle || cycle->Healthy(), "Keyword test canceled or terminal disconnected");
             task_ = command;
+            activeCycle_ = cycle;
             owned_ = command["channels"];
             task_["completed"] = 0;
             task_["phase"] = "off";
             task_["index"] = 0;
+            cyclePaused_ = false;
+            cyclePausedRemaining_ = 0;
             taskAt_ = GetTickCount64() + command.value("startMs", 0ull);
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -1044,18 +1350,27 @@ void PowerService::Execute(const std::string &id, const Json &command) {
             communication = type != "interval";
             Extended(command, action);
         }
-        if (type != "recover") action["state"] = "completed";
+        if (type != "recover" && (!action.contains("state") || action["state"] != "failed")) action["state"] = "completed";
     } catch (const std::exception &e) {
+        if (cycle) cycle->Cancel(L"关键字测试未能启动");
         action["state"] = "failed";
         if(command.value("type",std::string()) == "recover" && command.contains("_recoveryEpoch") &&
             command["_recoveryEpoch"].get<std::uint64_t>() != recoveryCancelEpoch_.load()) action["state"] = "canceled";
-        action["error"] = e.what();
+        const auto failure = connectStage.empty() ? std::string(e.what()) :
+                             "Power connect [" + connectStage + "]: " + e.what();
+        action["error"] = failure;
+        if (command.value("type", std::string()) == "connect") {
+            action["stage"] = connectStage;
+            const auto *failedTransport = transport_ ? transport_.get() : connectingTransport.get();
+            action["scpiTrace"] = failedTransport ? failedTransport->scpiTrace : Json::array();
+        }
         action["timestamp"] = Timestamp();
         if (command.value("type", std::string()) == "connect" || communication) {
             Disconnect();
             std::lock_guard<std::mutex> lock(mutex_);
+            CancelKeywordCycle(L"电源通信失败");
             for (auto &job : queue_)
-                actions_[job.first]["state"] = "canceled";
+                actions_[job.id]["state"] = "canceled";
             queue_.clear();
         }
         // A canceled recovery keeps its "canceled" state and must not pollute the
@@ -1063,7 +1378,10 @@ void PowerService::Execute(const std::string &id, const Json &command) {
         // is written once, after the common record below.
         if (action["state"] == "failed") {
             std::lock_guard<std::mutex> lock(mutex_);
-            state_["error"] = e.what();
+            state_["error"] = failure;
+            if (command.value("type", std::string()) == "connect")
+                state_["lastConnectDiagnostic"] = {{"stage", connectStage}, {"error", failure},
+                                                    {"trace", action["scpiTrace"]}};
         }
     }
     action["timestamp"] = Timestamp();
@@ -1072,15 +1390,27 @@ void PowerService::Execute(const std::string &id, const Json &command) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         actions_[id] = action;
-        state_["records"].push_back({{"timestamp", action["timestamp"]},
-                                     {"source", command.value("source", std::string("local"))},
-                                     {"operation", command["type"]},
-                                     {"result", action.value("error", action.value("state", std::string()))}});
+        auto record = Json{{"timestamp", action["timestamp"]},
+                           {"source", command.value("source", std::string("local"))},
+                           {"operation", command["type"]},
+                           {"result", action.value("error", action.value("state", std::string()))}};
+        if (action.contains("unconfirmedChannels")) {
+            record["unconfirmedChannels"] = action["unconfirmedChannels"];
+            record["offResults"] = action["offResults"];
+        }
+        if (command["type"] == "disconnect") state_["lastDisconnectActionId"] = id;
+        state_["records"].push_back(std::move(record));
         if (state_["records"].size() > 200)
             state_["records"].erase(state_["records"].begin());
         if (transport_ && transport_->simulated)
             state_["testWrites"] = transport_->writes;
+        SyncEmergencyFlagsLocked();
     }
+    const auto src = command.value("source", std::string("local"));
+    const std::string category = src.rfind("ai:", 0) == 0 ? "AI" : (src == "mcp" ? "MCP" : "MANUAL");
+    OperationAuditLogger::Instance().Record(
+        category, "power." + command.value("type", std::string()),
+        src, action.dump(), action.value("state", std::string("unknown")));
 }
 void PowerService::Poll() {
     ReadMode();
@@ -1125,6 +1455,10 @@ void PowerService::Poll() {
     std::lock_guard<std::mutex> lock(mutex_);
     state_["channels"] = channels;
     state_["readbackStale"] = false;
+    state_["unconfirmedPowerOff"] = false;
+    state_.erase("unconfirmedPowerOffChannels");
+    SyncEmergencyFlagsLocked();
+    ClearRecoveryFile();
     if (!measurements_.Error().empty())
         state_["logError"] = WideToMultiByte(measurements_.Error(), CP_UTF8);
     if (!log_.Error().empty())
@@ -1136,10 +1470,15 @@ void PowerService::FailNextOutputReadbackForTest() {
     Require(testWorkerPaused_ && transport_ && transport_->simulated, "Pause the simulation before fault injection");
     transport_->testFailOutputReadback = true;
 }
+void PowerService::FailNextOutputOffWriteForTest() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Require(testWorkerPaused_ && transport_ && transport_->simulated, "Pause the simulation before fault injection");
+    transport_->testFailOutputOffWrite = true;
+}
 #endif
 void PowerService::Run() {
     for (;;) {
-        std::pair<std::string, Json> job;
+        Job job;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             wake_.wait_for(lock, std::chrono::milliseconds(50), [this] {
@@ -1168,11 +1507,11 @@ void PowerService::Run() {
                 queue_.pop_front();
             }
         }
-        if (!job.first.empty()) {
+        if (!job.id.empty()) {
 #ifndef SERIALCTL_POWER_TESTING
-            if(!ConnectionAvailable()) {std::lock_guard<std::mutex> guard(mutex_);actions_[job.first]["state"]="canceled";continue;}
+            if(!ConnectionAvailable()) {std::lock_guard<std::mutex> guard(mutex_);actions_[job.id]["state"]="canceled";continue;}
 #endif
-            Execute(job.first, job.second);
+            Execute(job.id, job.command, job.cycle);
         }
         #ifndef SERIALCTL_POWER_TESTING
         if(!ConnectionAvailable())continue;
@@ -1181,8 +1520,43 @@ void PowerService::Run() {
             continue;
         try {
             auto now = GetTickCount64();
-            if (!task_.is_null() && !task_.empty() && now >= taskAt_)
+            if (activeCycle_) {
+                if (!activeCycle_->Healthy()) {
+                    StopTask();
+                } else {
+                    using CycleAction = PowerCycleObserver::CycleAction;
+                    const auto cycleAction = activeCycle_->PollAction();
+                    if (cycleAction == CycleAction::StopPowerOff) {
+                        StopTask(nullptr, true, false);
+                    } else if (cycleAction == CycleAction::StopKeepPower) {
+                        StopTask(nullptr, true, true);
+                    } else if (cycleAction == CycleAction::Pause) {
+                        if (!cyclePaused_) {
+                            cyclePaused_ = true;
+                            cyclePausedRemaining_ = taskAt_ > now ? taskAt_ - now : 0;
+                            std::lock_guard<std::mutex> lock(mutex_);
+                            if (state_["task"].is_object()) state_["task"]["paused"] = true;
+                        }
+                        taskAt_ = now + cyclePausedRemaining_;
+                    } else {
+                        if (cyclePaused_) {
+                            cyclePaused_ = false;
+                            taskAt_ = now + cyclePausedRemaining_;
+                            std::lock_guard<std::mutex> lock(mutex_);
+                            if (state_["task"].is_object()) state_["task"]["paused"] = false;
+                        }
+                        if (cycleAction == CycleAction::PowerOffContinue &&
+                            task_.is_object() && task_.value("type", std::string()) == "task" &&
+                            task_.value("phase", std::string()) == "on") {
+                            AdvanceTask(true);
+                        } else if (!task_.is_null() && !task_.empty() && now >= taskAt_) {
+                            AdvanceTask();
+                        }
+                    }
+                }
+            } else if (!task_.is_null() && !task_.empty() && now >= taskAt_) {
                 AdvanceTask();
+            }
             if (now >= pollAt_) {
                 Poll();
                 pollAt_ = GetTickCount64() + pollInterval_;
@@ -1211,6 +1585,7 @@ void PowerService::RequestShutdown() {
             stopping_ = true;
             ++recoveryCancelEpoch_;
         }
+        CancelKeywordCycle(L"应用正在退出");
         queue_.clear();
         wake_.notify_all();
     }
@@ -1549,7 +1924,7 @@ void PowerService::Extended(const Json &command, Json &action) {
         }
     }
 }
-void PowerService::AdvanceTask() {
+void PowerService::AdvanceTask(bool forcePowerOff) {
     const auto type = task_.value("type", std::string("task"));
     Json result;
     if (type == "recover") {
@@ -1622,14 +1997,18 @@ void PowerService::AdvanceTask() {
         task_["phase"] = "on";
         taskAt_ = GetTickCount64() + task_["durationMs"].get<std::uint64_t>();
     } else {
-        bool on = task_["phase"] == "off";
+        bool on = !forcePowerOff && task_["phase"] == "off";
+        if (activeCycle_ && !forcePowerOff) {
+            if (on && (!activeCycle_->BeginRound() || !activeCycle_->Healthy())) { StopTask(); return; }
+            if (!on && !activeCycle_->EndRound()) return;
+        }
         Outputs(owned_, on, result);
         task_["phase"] = on ? "on" : "off";
         taskAt_ = GetTickCount64() + task_[on ? "onMs" : "offMs"].get<std::uint64_t>();
         if (!on) {
             task_["completed"] = task_["completed"].get<int>() + 1;
             if (task_["completed"] >= task_["count"]) {
-                StopTask();
+                StopTask(nullptr, true);
                 return;
             }
         }

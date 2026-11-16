@@ -45,9 +45,19 @@ int main() {
               session.sftpHomeDirectory == L"/controlled" && controller.Directory() == L"/controlled" &&
               controller.Entries().size() == 1, "directory completion updates model and first home identity");
         std::wstring error;
+        // MCP overwrite permission must be explicitly passed into the queue.
+        const auto denied = controller.EnqueueUpload(1, L"file", L"/controlled", error, false);
+        Check(!denied, "MCP upload must reject existing target when overwrite is disallowed");
+        const auto allowed = controller.EnqueueUpload(1, L"file", L"/controlled", error, true);
+        Check(allowed && controller.Transfers().back().replaceExisting &&
+            controller.Transfers().back().skipOverwritePrompt,
+            "Explicit remote permission can skip the GUI overwrite prompt");
+        controller.Cancel(allowed);
+        controller.ClearFinished();
         const auto download = controller.EnqueueDownload(1, L"/controlled/file", L"controller-destination.tmp", 100, false, error);
         Check(download && !controller.EnqueueDownload(1, L"/other", L"CONTROLLER-DESTINATION.TMP", 100, false, error),
               "queued writes to same local destination are rejected");
+        Check(!controller.Transfers()[0].skipOverwritePrompt, "GUI queue retains overwrite confirmation");
         SftpControllerTestAccess::Control(controller, [](auto& done, const auto*, const auto& progress) {
             for (int percent = 0; percent <= 100; ++percent) {
                 SftpTransferProgress value{}; value.total = 100; value.transferred = percent; value.percent = percent;

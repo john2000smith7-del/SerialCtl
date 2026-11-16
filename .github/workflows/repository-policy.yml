@@ -32,6 +32,12 @@ jobs:
         run: |
           g++ -std=c++17 -O2 -pthread -Isrc/xfer tests/integration/XferInteropProbePosix.cpp src/xfer/TransferProtocol.cpp -o "$RUNNER_TEMP/xfer-interop-probe"
           python tests/integration/protocol_interop_posix.py --probe "$RUNNER_TEMP/xfer-interop-probe" --reference-dir "$RUNNER_TEMP/serialctl-reference/usr/bin" --output "$RUNNER_TEMP/xfer-interop"
+      - name: Exercise production workspace transactions on the remote-side OS
+        shell: bash
+        run: |
+          g++ -std=c++17 -O2 -DNDEBUG -Isrc/ai tests/unit/WorkspaceInstructionsTest.cpp -o "$RUNNER_TEMP/workspace-probe"
+          "$RUNNER_TEMP/workspace-probe"
+          python tests/integration/workspace_transaction_posix.py --probe "$RUNNER_TEMP/workspace-probe"
       - name: Preserve bounded reference result in workflow log
         if: always()
         shell: bash

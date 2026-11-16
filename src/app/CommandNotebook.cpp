@@ -22,6 +22,12 @@ void Fill(HDC dc, RECT r, COLORREF color) {
     DeleteObject(b);
 }
 } // namespace
+CommandNotebook::~CommandNotebook() {
+    if (surfaceBrush_) {
+        DeleteObject(surfaceBrush_);
+        surfaceBrush_ = nullptr;
+    }
+}
 bool CommandNotebook::Create(HWND parent, int id) {
     static const auto rich = [] {
         wchar_t path[MAX_PATH]{};
@@ -61,6 +67,9 @@ void CommandNotebook::Style(bool dark, int dpi, HFONT ui, HFONT mono) {
         SendMessageW(b, WM_SETFONT, reinterpret_cast<WPARAM>(ui), FALSE);
     SendMessageW(editor_, WM_SETFONT, reinterpret_cast<WPARAM>(mono), FALSE);
     const auto c = UiTheme(dark);
+    if (surfaceBrush_)
+        DeleteObject(surfaceBrush_);
+    surfaceBrush_ = CreateSolidBrush(c.surface);
     SendMessageW(editor_, EM_SETBKGNDCOLOR, 0, c.surface);
     CHARFORMAT2W cf{};
     cf.cbSize = sizeof(cf);
@@ -182,21 +191,35 @@ void CommandNotebook::Refresh(bool edit) {
     if (changed && !loading_)
         changed();
 }
+void CommandNotebook::SetDeferLayout(bool defer) {
+    if (deferLayout_ == defer) return;
+    deferLayout_ = defer;
+    if (!deferLayout_) Layout();
+}
+
 void CommandNotebook::Layout() {
-    if (!editor_)
+    if (!editor_ || deferLayout_)
         return;
     RECT r{};
     GetClientRect(window_, &r);
     const int w = r.right;
+    if (w == lastLayoutWidth_ && r.bottom == lastLayoutHeight_ && dpi_ == lastLayoutDpi_ && gutter_ == lastLayoutGutter_)
+        return;
+    lastLayoutWidth_ = w;
+    lastLayoutHeight_ = r.bottom;
+    lastLayoutDpi_ = dpi_;
+    lastLayoutGutter_ = gutter_;
     const int height = D(Ui::CompactIconButtonSize), gap = D(8);
-    MoveWindow(more_, std::max(0, w - D(28)), D(2), D(28), D(28), TRUE);
+    UiLayoutBatch batch(true);
+    batch.Move(more_, std::max(0, w - D(28)), D(2), D(28), D(28));
     const int width=std::max(D(28),std::min(D(64),(w-3*gap)/4));
     const int start=std::max(0,(w-width*4-gap*3)/2);
     for (int i = 0; i < 4; ++i)
-        MoveWindow(buttons_[i],start+i*(width+gap),D(40),width,height,TRUE);
+        batch.Move(buttons_[i],start+i*(width+gap),D(40),width,height);
     top_ = D(80);
     bottom_ = std::max(top_ + D(24), static_cast<int>(r.bottom) - D(48));
-    MoveWindow(editor_, gutter_, top_, std::max(1, w - gutter_ - D(16)), std::max(1, bottom_ - top_ - D(16)), TRUE);
+    batch.Move(editor_, gutter_, top_, std::max(1, w - gutter_ - D(16)), std::max(1, bottom_ - top_ - D(16)));
+    batch.Commit();
     RECT format{};
     GetClientRect(editor_, &format);
     format.left = D(4);
@@ -219,29 +242,33 @@ void CommandNotebook::Paint(HDC dc) {
     POINT scroll{};
     SendMessageW(editor_, EM_GETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&scroll));
     const auto range = SelectedRows();
-    for (size_t line = static_cast<size_t>(std::max<LONG>(0, scroll.y / std::max(1, rowHeight_))); line < lines_.size();
-         ++line) {
-        const auto nativeStart = SendMessageW(editor_, EM_LINEINDEX, line, 0);
-        if (nativeStart < 0)
-            break;
-        POINTL point{};
-        SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&point), nativeStart);
-        if (line > 0 && lines_[line].start == lines_[line].end) {
-            POINTL previous{};
-            const auto prev = SendMessageW(editor_, EM_LINEINDEX, line - 1, 0);
-            SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&previous), prev);
-            if (point.y <= previous.y)
-                point.y = previous.y + rowHeight_;
+    const int step = std::max(1, rowHeight_);
+    const size_t firstLine = static_cast<size_t>(std::max<LONG>(0, scroll.y / step));
+    int y = top_ - (scroll.y % step);
+    if (firstLine < lines_.size()) {
+        const auto nativeStart = SendMessageW(editor_, EM_LINEINDEX, firstLine, 0);
+        if (nativeStart >= 0) {
+            POINTL point{};
+            SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&point), nativeStart);
+            if (firstLine > 0 && lines_[firstLine].start == lines_[firstLine].end) {
+                POINTL previous{};
+                const auto prev = SendMessageW(editor_, EM_LINEINDEX, firstLine - 1, 0);
+                SendMessageW(editor_, EM_POSFROMCHAR, reinterpret_cast<WPARAM>(&previous), prev);
+                if (point.y <= previous.y)
+                    point.y = previous.y + step;
+            }
+            y = top_ + point.y;
         }
-        const int y = top_ + point.y;
+    }
+    for (size_t line = firstLine; line < lines_.size(); ++line, y += step) {
         if (y >= bottom_ - D(16))
             break;
-        if (y + rowHeight_ <= top_)
+        if (y + step <= top_)
             continue;
-        RECT nr{D(18), y, gutter_ - D(6), y + rowHeight_};
+        RECT nr{D(18), y, gutter_ - D(6), y + step};
         TextAt(dc, mono_, nr, std::to_wstring(line + 1), c.muted, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
         if (line >= range.first && line <= range.second && !CommandLineText(text_, lines_[line]).empty())
-            UiDrawGlyph(dc, {D(1), y + (rowHeight_ - D(12)) / 2, D(13), y + (rowHeight_ + D(12)) / 2},
+            UiDrawGlyph(dc, {D(1), y + (step - D(12)) / 2, D(13), y + (step + D(12)) / 2},
                         writable_ ? UiAccentInk(dark_) : c.muted, UiGlyph::Run);
     }
     vertical_ = {};
@@ -255,7 +282,7 @@ void CommandNotebook::Paint(HDC dc) {
         const int y = top_ + MulDiv(std::clamp<int>(scroll.y, 0, std::max(1, fullHeight - viewHeight)), track - thumb,
                                     std::max(1, fullHeight - viewHeight));
         vertical_ = {r.right - D(8), y, r.right - D(3), y + thumb};
-        UiRoundedSurface(dc, vertical_, c.border, c.border, D(3), dpi_);
+        UiDrawScrollbarThumb(dc, vertical_, dpi_, c);
     }
     // RichEdit keeps native horizontal ranges even with system chrome omitted.
     SCROLLINFO info{sizeof(info), SIF_RANGE | SIF_PAGE | SIF_POS};
@@ -268,7 +295,7 @@ void CommandNotebook::Paint(HDC dc) {
         const int x = gutter_ + MulDiv(std::max<LONG>(0, scroll.x), track - thumb,
                                        std::max(1, fullWidth - static_cast<int>(info.nPage)));
         horizontal_ = {x, bottom_ - D(8), x + thumb, bottom_ - D(3)};
-        UiRoundedSurface(dc, horizontal_, c.border, c.border, D(3), dpi_);
+        UiDrawScrollbarThumb(dc, horizontal_, dpi_, c);
     }
     Fill(dc, {0, bottom_, r.right, bottom_ + 1}, c.border);
     RECT footer{0, bottom_ + D(4), r.right, bottom_ + D(24)};
@@ -296,7 +323,31 @@ void CommandNotebook::Scroll(int x, int y) {
     POINT p{std::max(0, x), std::max(0, y)};
     SendMessageW(editor_, EM_SETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&p));
     Refresh();
-    InvalidateRect(editor_, nullptr, FALSE);
+}
+void CommandNotebook::Wheel(WPARAM wParam) {
+    if (!editor_) return;
+    UINT lines = 3;
+    if (!SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0)) lines = 3;
+    if (lines == 0) { wheelRemainder_ = 0; return; }
+    // RichEdit has no native scrollbar: move its actual scroll origin, rather
+    // than forwarding WM_MOUSEWHEEL to a control with no WS_VSCROLL style.
+    wheelRemainder_ += GET_WHEEL_DELTA_WPARAM(wParam);
+    const int notches = wheelRemainder_ / WHEEL_DELTA;
+    wheelRemainder_ %= WHEEL_DELTA;
+    if (!notches) return;
+    RECT view{};
+    GetClientRect(editor_, &view);
+    const int height = std::max(1, static_cast<int>(view.bottom - view.top));
+    const long long documentHeight = static_cast<long long>(
+        SendMessageW(editor_, EM_GETLINECOUNT, 0, 0)) * std::max(1, rowHeight_);
+    const long long maximum = std::max(0LL, documentHeight - height);
+    POINT current{};
+    SendMessageW(editor_, EM_GETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&current));
+    const long long pixelsPerNotch = lines == WHEEL_PAGESCROLL
+        ? height : static_cast<long long>(std::min<UINT>(lines, 100)) * std::max(1, rowHeight_);
+    const long long target = std::clamp(static_cast<long long>(current.y) - notches * pixelsPerNotch,
+                                        0LL, maximum);
+    Scroll(current.x, static_cast<int>(target));
 }
 void CommandNotebook::Menu() {
     HMENU menu = CreatePopupMenu();
@@ -434,6 +485,12 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
         SendMessageW(self->window_, m, w, l);
         return 0;
     }
+    if (m == WM_MOUSEWHEEL) {
+        // The document surface and its non-client gutter must scroll alike.
+        // Consume the event so RichEdit cannot double-scroll it.
+        self->Wheel(w);
+        return 0;
+    }
     if (m == WM_KEYDOWN && (GetKeyState(VK_CONTROL) & 0x8000) && (w == 'S' || w == 'O')) {
         if (self->action)
             self->action(w == 'S' ? 2 : 3);
@@ -502,13 +559,15 @@ LRESULT CALLBACK CommandNotebook::EditProc(HWND h, UINT m, WPARAM w, LPARAM l, U
         self->SelectionInk(dc);
         ReleaseDC(h, dc);
     }
-    if (m == WM_MOUSEWHEEL || m == WM_HSCROLL || m == WM_VSCROLL || m == WM_KEYUP || m == WM_LBUTTONUP)
+    if (m == WM_HSCROLL || m == WM_VSCROLL || m == WM_KEYUP || m == WM_LBUTTONUP)
         self->Refresh();
     return result;
 }
 LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
     switch (m) {
     case WM_CREATE: {
+        if (!surfaceBrush_)
+            surfaceBrush_ = CreateSolidBrush(UiTheme(dark_).surface);
         editor_ =
             CreateWindowExW(0, MSFTEDIT_CLASS, L"",
                             WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_NOOLEDRAGDROP | ES_MULTILINE | ES_AUTOVSCROLL |
@@ -617,7 +676,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
             }
             const bool selected = (it.itemState & ODS_SELECTED) != 0;
             if (selected)
-                UiRoundedSurface(dc, it.rcItem, c.accent, c.accent, D(10), dpi_);
+                UiRoundedSurface(dc, it.rcItem, c.accent, c.accent, UiControlRadius(dpi_), dpi_);
             const auto ink = (it.itemState & ODS_DISABLED) ? c.muted : selected ? RGB(255, 255, 255) : c.text;
             if (it.itemState & ODS_CHECKED)
                 UiDrawGlyph(dc, {D(8), it.rcItem.top + D(8), D(24), it.rcItem.top + D(24)}, ink, UiGlyph::Check);
@@ -657,7 +716,7 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
         return TRUE;
     }
     case WM_MOUSEWHEEL:
-        SendMessageW(editor_, m, w, l);
+        Wheel(w);
         return 0;
     case WM_LBUTTONDOWN: {
         POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
@@ -741,6 +800,22 @@ LRESULT CommandNotebook::Message(UINT m, WPARAM w, LPARAM l) {
         return 0;
     case WM_ERASEBKGND:
         return 1;
+    case WM_CTLCOLORBTN: {
+        const auto c = UiTheme(dark_);
+        HDC dc = reinterpret_cast<HDC>(w);
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, c.text);
+        SetBkColor(dc, c.surface);
+        if (!surfaceBrush_)
+            surfaceBrush_ = CreateSolidBrush(c.surface);
+        return reinterpret_cast<LRESULT>(surfaceBrush_);
+    }
+    case WM_DESTROY:
+        if (surfaceBrush_) {
+            DeleteObject(surfaceBrush_);
+            surfaceBrush_ = nullptr;
+        }
+        return 0;
     case WM_PAINT: {
         PAINTSTRUCT ps{};
         auto dc = BeginPaint(window_, &ps);

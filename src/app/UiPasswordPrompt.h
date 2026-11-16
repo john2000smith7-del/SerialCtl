@@ -44,13 +44,14 @@ private:
         if(m==WM_DRAWITEM) {
             const auto& i=*reinterpret_cast<DRAWITEMSTRUCT*>(l);const auto c=UiTheme(s->dark);
             UiBufferedPaint paint(i.hDC,i.rcItem);auto dc=paint.Dc();auto v=UiButtonVisual(c,IsWindowEnabled(i.hwndItem)!=FALSE,(i.itemState&ODS_SELECTED)!=0,false,i.CtlID==IDOK);
-            UiBox(dc,i.rcItem,v.fill,v.border,MulDiv(18,s->dpi,96));SetTextColor(dc,v.ink);SetBkMode(dc,TRANSPARENT);SelectObject(dc,s->font);
-            DrawTextW(dc,i.CtlID==IDOK?L"验证":L"取消",-1,const_cast<RECT*>(&i.rcItem),DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            UiBox(dc,i.rcItem,v.fill,v.border,UiCapsuleRadius(i.rcItem));SetTextColor(dc,v.ink);SetBkMode(dc,TRANSPARENT);SelectObject(dc,s->font);
+            RECT r=UiCapsuleContentRect(i.rcItem,s->dpi);
+            DrawTextW(dc,i.CtlID==IDOK?L"验证":L"取消",-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
             UiButtonKeyboardFocus(dc,i.rcItem,i.itemState,s->dpi);return TRUE;
         }
-        if(m==WM_CTLCOLORDLG || m==WM_CTLCOLORSTATIC || m==WM_CTLCOLOREDIT) {
-            const auto c=UiTheme(s->dark);SetTextColor(reinterpret_cast<HDC>(w),c.text);const auto bg=m==WM_CTLCOLOREDIT?c.field:c.surface;
-            SetBkColor(reinterpret_cast<HDC>(w),bg);SetDCBrushColor(reinterpret_cast<HDC>(w),bg);return reinterpret_cast<INT_PTR>(GetStockObject(DC_BRUSH));
+        if(m==WM_CTLCOLORDLG || m==WM_CTLCOLORSTATIC || m==WM_CTLCOLOREDIT || m==WM_CTLCOLORBTN) {
+            const auto c=UiTheme(s->dark);HDC dc=reinterpret_cast<HDC>(w);if(m==WM_CTLCOLORBTN)SetBkMode(dc,TRANSPARENT);SetTextColor(dc,c.text);const auto bg=m==WM_CTLCOLOREDIT?c.field:c.surface;
+            SetBkColor(dc,bg);SetDCBrushColor(dc,bg);return reinterpret_cast<INT_PTR>(GetStockObject(DC_BRUSH));
         }
         return FALSE;
     }

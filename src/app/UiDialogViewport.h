@@ -27,14 +27,13 @@ class UiDialogViewport {
     void PaintThumb(HDC dc) const {
         const HWND window = window_;
         const auto thumb = Thumb();
-        const int radius = D(3);
         // Use the dialog's own theme rather than a system scrollbar track.
         auto brush = reinterpret_cast<HBRUSH>(SendMessageW(window_, WM_CTLCOLORDLG,
                                                           reinterpret_cast<WPARAM>(dc), reinterpret_cast<LPARAM>(window_)));
         if (!Attached(window, this)) return;
         LOGBRUSH color{};
         const bool dark = brush && GetObjectW(brush, sizeof(color), &color) && GetRValue(color.lbColor) < 128;
-        UiBox(dc, thumb, UiTheme(dark).border, UiTheme(dark).border, radius);
+        UiDrawScrollbarThumb(dc, thumb, dpi_, UiTheme(dark));
     }
     void Scroll(int position) {
         const HWND window = window_;

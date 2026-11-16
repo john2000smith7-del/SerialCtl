@@ -13,24 +13,30 @@ std::mutex consoleQueryMutex;
 bool CmdConnection::Start(DataCallback data, StatusCallback status, std::wstring &error) {
     Stop();
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    HANDLE inRead = nullptr, outWrite = nullptr;
+    HANDLE inRead = nullptr, outWrite = nullptr, interruptRead = nullptr;
     auto fail = [&] {
         if (inRead)
             CloseHandle(inRead);
         if (outWrite)
             CloseHandle(outWrite);
+        if (interruptRead)
+            CloseHandle(interruptRead);
         Stop();
         return false;
     };
-    if (!CreatePipe(&inRead, &input_, &sa, 0) || !CreatePipe(&output_, &outWrite, &sa, 0)) {
+    if (!CreatePipe(&inRead, &input_, &sa, 0) || !CreatePipe(&output_, &outWrite, &sa, 0) ||
+        !CreatePipe(&interruptRead, &interrupt_, &sa, 0)) {
         error = Win32ErrorMessage();
         return fail();
     }
     if (!SetHandleInheritable(input_, false, L"CMD stdin", error) ||
-        !SetHandleInheritable(output_, false, L"CMD stdout", error))
+        !SetHandleInheritable(output_, false, L"CMD stdout", error) ||
+        !SetHandleInheritable(interrupt_, false, L"CMD interrupt", error))
         return fail();
     RestrictedProcessStartup startup;
-    if (!startup.Initialize(inRead, outWrite, outWrite, {}, error))
+    // The private bridge reads its interrupt pipe from its saved stderr handle.
+    // Actual cmd.exe stderr is still redirected into childOutputWrite by the bridge.
+    if (!startup.Initialize(inRead, outWrite, interruptRead, {}, error))
         return fail();
     wchar_t module[MAX_PATH]{};
     GetModuleFileNameW(nullptr, module, MAX_PATH);
@@ -69,7 +75,8 @@ bool CmdConnection::Start(DataCallback data, StatusCallback status, std::wstring
     CloseHandle(pi.hThread);
     CloseHandle(inRead);
     CloseHandle(outWrite);
-    inRead = outWrite = nullptr;
+    CloseHandle(interruptRead);
+    inRead = outWrite = interruptRead = nullptr;
     data_ = std::move(data);
     status_ = std::move(status);
     connected_ = true;
@@ -90,12 +97,21 @@ void CmdConnection::Stop() {
         CancelSynchronousIo(reinterpret_cast<HANDLE>(reader_.native_handle()));
         reader_.join();
     }
-    std::lock_guard<std::mutex> writer(write_);
-    for (HANDLE *handle : {&input_, &output_, &process_})
-        if (*handle) {
-            CloseHandle(*handle);
-            *handle = nullptr;
+    {
+        std::lock_guard<std::mutex> writer(write_);
+        for (HANDLE *handle : {&input_, &output_, &process_})
+            if (*handle) {
+                CloseHandle(*handle);
+                *handle = nullptr;
+            }
+    }
+    {
+        std::lock_guard<std::mutex> writer(interruptWrite_);
+        if (interrupt_) {
+            CloseHandle(interrupt_);
+            interrupt_ = nullptr;
         }
+    }
     data_ = {};
     status_ = {};
 }
@@ -123,6 +139,22 @@ Bytes CmdConnection::PrepareInput(const Bytes &bytes) {
     std::memcpy(packet.data(), &payload, sizeof(payload));
     std::memcpy(packet.data() + sizeof(payload), text.data(), payload);
     return packet;
+}
+bool CmdConnection::Interrupt(std::wstring &error) {
+    std::lock_guard<std::mutex> lock(interruptWrite_);
+    if (!connected_ || !interrupt_) {
+        error = L"CMD 已结束";
+        return false;
+    }
+    // One-byte control request on a dedicated pipe, independent of the line
+    // submission FIFO and of potentially blocked normal input writes.
+    const std::uint8_t request = 3;
+    DWORD written = 0;
+    if (!WriteFile(interrupt_, &request, sizeof(request), &written, nullptr) || written != sizeof(request)) {
+        error = Win32ErrorMessage();
+        return false;
+    }
+    return true;
 }
 bool CmdConnection::Send(const Bytes &bytes, std::wstring &error) {
     try {
