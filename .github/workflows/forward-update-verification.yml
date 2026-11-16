@@ -79,7 +79,7 @@ jobs:
           name: SerialCtl-forward-test-fixture
           path: ${{ runner.temp }}/serialctl-forward-fixture/*
   verify:
-    if: ${{ github.ref == 'refs/heads/main' && inputs.phase == 'verify' }}
+    if: ${{ inputs.phase == 'verify' }}
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -110,14 +110,24 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $head = (git rev-parse HEAD).Trim()
           $build = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -or $build.conclusion -ne 'success' -or $build.head_branch -ne 'main' -or $build.name -ne 'Windows Win7 release build') { throw 'Invalid production build identity' }
+          $source = $build.head_sha
+          if ($env:GITHUB_REF -eq 'refs/heads/main') {
+            if ($source -ne $head) { throw 'Requires exact main source' }
+          } elseif ($env:GITHUB_REF.StartsWith('refs/heads/feat/')) {
+            git merge-base --is-ancestor $source $head
+            if ($LASTEXITCODE) { throw 'Diagnostic branch must descend from the production build' }
+            git diff --exit-code $source $head -- src third_party CMakeLists.txt VERSION scripts/build.ps1 scripts/check.ps1 scripts/package.ps1 scripts/common.ps1
+            if ($LASTEXITCODE) { throw 'Production source changed; diagnostic requires the matching program' }
+            Write-Host "DIAGNOSTIC_ONLY program=$source test=$head"
+          } else { throw 'Requires main or a feature diagnostic branch' }
           $future = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:FUTURE_RUN" | ConvertFrom-Json
-          if ($LASTEXITCODE -or $build.conclusion -ne 'success' -or $build.head_branch -ne 'main' -or $build.head_sha -ne $head -or $build.name -ne 'Windows Win7 release build') { throw 'Invalid production build identity' }
-          if ($future.conclusion -ne 'success' -or $future.head_sha -ne $head -or $future.path -ne '.github/workflows/forward-update-verification.yml') { throw 'Invalid forward prepare run' }
+          if ($LASTEXITCODE -or $future.conclusion -ne 'success' -or $future.head_branch -ne 'main' -or $future.head_sha -ne $source -or $future.path -ne '.github/workflows/forward-update-verification.yml') { throw 'Invalid forward prepare run' }
           $archive = @(Get-ChildItem current -Filter '*.zip')
           $fixture = @(Get-ChildItem future -Filter 'SerialCtl-TEST-forward-*.zip')
           if ($archive.Count -ne 1 -or $fixture.Count -ne 1) { throw 'Expected exact production and test-only ZIPs' }
           [IO.File]::WriteAllBytes((Join-Path $pwd 'future/update.json'),[Convert]::FromBase64String($env:PUBLIC_METADATA))
-          python tests/integration/forward_update_fixture.py validate --candidate $archive[0].FullName --source-commit $head --build-run $env:BUILD_RUN --output future --metadata future/update.json
+          python tests/integration/forward_update_fixture.py validate --candidate $archive[0].FullName --source-commit $source --build-run $env:BUILD_RUN --output future --metadata future/update.json
           if ($LASTEXITCODE) { throw 'Future fixture metadata/provenance mismatch' }
           $previous = (gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name).Trim()
           gh release download $previous --repo $env:GITHUB_REPOSITORY --pattern '*.zip' --dir previous

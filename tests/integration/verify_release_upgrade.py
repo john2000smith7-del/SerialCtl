@@ -6,6 +6,7 @@ and immutable ZIP are inputs. This program never receives a signing key.
 import argparse
 import ctypes as c
 from ctypes import wintypes as w
+from collections import deque
 import hashlib
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -52,6 +53,10 @@ def main():
     user.GetDlgItem.argtypes,user.GetDlgItem.restype=(w.HWND,c.c_int),w.HWND
     user.GetWindowRect.argtypes=(w.HWND,c.c_void_p)
     user.PostMessageW.argtypes=(w.HWND,w.UINT,c.c_size_t,c.c_ssize_t)
+    user.GetWindow.argtypes, user.GetWindow.restype = (w.HWND, w.UINT), w.HWND
+    user.SendMessageTimeoutW.argtypes = (w.HWND, w.UINT, c.c_size_t, c.c_ssize_t,
+                                         w.UINT, w.UINT, c.POINTER(c.c_size_t))
+    user.SendMessageTimeoutW.restype = c.c_ssize_t
     user.SetForegroundWindow.argtypes=(w.HWND,)
     def windows(cls=None):
         result=[]
@@ -74,6 +79,36 @@ def main():
         rect=(c.c_long*4)();require(user.GetWindowRect(h,c.byref(rect)),'Cannot find update confirmation bounds')
         user.SetForegroundWindow(h);user.SetCursorPos((rect[0]+rect[2])//2,(rect[1]+rect[3])//2)
         user.mouse_event(2,0,0,0,0);time.sleep(.025);user.mouse_event(4,0,0,0,0)
+    def control_text(handle):
+        text = c.create_unicode_buffer(512)
+        result = c.c_size_t()
+        if handle and user.SendMessageTimeoutW(handle, 0x000D, len(text), c.addressof(text),
+                                              0x0002, 100, c.byref(result)):
+            return text.value
+        return ''
+
+    def update_ui():
+        state = {}
+        for dialog in windows('#32770'):
+            title = control_text(dialog)
+            if '更新' not in title:
+                continue
+            messages = []
+            control = user.GetWindow(dialog, 5)
+            for _ in range(12):
+                if not control:
+                    break
+                text = control_text(control)
+                if text:
+                    messages.append(text)
+                control = user.GetWindow(control, 2)
+            state[title] = messages
+        for main_window in windows('SerialCtlWin7NativeWindowV3'):
+            status = control_text(user.GetDlgItem(main_window, 111))
+            if status:
+                state['mainStatus'] = status
+        return state
+
     def shutdown_apps():
         for h in windows('SerialCtlWin7NativeWindowV3'):user.PostMessageW(h,0x10,0,0)
         wait(lambda:not windows('SerialCtlWin7NativeWindowV3'),20)
@@ -187,10 +222,38 @@ def main():
                     click(user.GetDlgItem(failed,2));process.wait(timeout=20);process=None
                     report['cases'].append({'from':label,'corruptArchive':'PASS','oldExecutablePreserved':'PASS'})
                     continue
+                observations = deque(maxlen=16)
+                next_observation = 0.0
+
                 def installed():
+                    nonlocal next_observation
+                    if time.monotonic() >= next_observation:
+                        next_observation = time.monotonic() + 0.5
+                        state = update_ui()
+                        if not observations or state != observations[-1]:
+                            observations.append(state)
                     try:return hashlib.sha256((install/'serialctl.exe').read_bytes()).hexdigest()==expected_exe and (install/'VERSION').read_bytes()==expected_version
                     except OSError:return False
-                wait(installed,180)
+                try:
+                    wait(installed,180)
+                except RuntimeError:
+                    stage = install / '.serialctl-update'
+                    log_paths = list(stage.glob('*/update.log')) + [stage / 'last-install-error.log']
+                    logs = {}
+                    for filename in log_paths[:8]:
+                        try:
+                            with filename.open('rb') as source:
+                                logs[filename.relative_to(stage).as_posix()] = source.read(4096).decode(errors='replace')
+                        except OSError:
+                            pass
+                    report['installationFailure'] = {
+                        'from': label,
+                        'clientExitCode': process.poll(),
+                        'visibleUpdateStates': list(observations),
+                        'transactionPresent': (stage / 'transaction.txt').exists(),
+                        'logs': logs,
+                    }
+                    raise
                 process.wait(timeout=30);process=None
                 wait(lambda:windows('SerialCtlWin7NativeWindowV3'),30)
                 def committed():
