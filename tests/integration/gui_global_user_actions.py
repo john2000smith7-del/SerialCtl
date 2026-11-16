@@ -440,13 +440,8 @@ class GlobalActions(DesktopActions):
         # Restore the user's original form state through actual keyboard input.
         if before >= 0 and before != target:
             time.sleep(self.user.GetDoubleClickTime() / 1000 + .02)
-            self.click_window(window, point)
-            self.wait(lambda: self.query(window, 0x157) != 0, 'reopen dropdown')
-            self.key(0x24)
-            for _ in range(before):
-                self.key(0x28)
-            self.key(0x0d)
-            self.wait(lambda: self.query(window, 0x147) == before, 'restore original selection')
+            # Changing the serial location can move the control before restoration.
+            self.select_combo(window, before)
         self.screenshot('combo-' + str(identifier) + '-closed')
 
     def find_control(self, parent, identifier):
@@ -590,13 +585,13 @@ class GlobalActions(DesktopActions):
         bounds = self.rect(window)
         self.click_window(window, (bounds[2] - max(8, round(16 * self.scale)),
                                    (bounds[1] + bounds[3]) // 2))
-        self.wait(lambda: self.query(window, 0x157) != 0, 'Settings dropdown opens')
+        self.wait(lambda: self.query(window, 0x157) != 0, 'Actual dropdown opens for requested selection')
         self.key(0x24)
         for _ in range(target):
             self.key(0x28)
         self.key(0x0d)
         self.wait(lambda: self.query(window, 0x157) == 0 and self.query(window, 0x147) == target,
-                  'Settings keyboard selection is committed to its draft')
+                  'Actual dropdown commits the requested keyboard selection')
 
     def set_settings(self, dialog, values):
         for identifier, value in values.items():
