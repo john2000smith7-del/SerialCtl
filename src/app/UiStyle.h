@@ -52,25 +52,38 @@ inline RECT UiCapsuleContentRect(const RECT& r, int dpi) {
     }
     return out;
 }
+struct UiActionCooldownState {
+    std::mutex mutex;
+    std::map<std::pair<HWND, UINT_PTR>, ULONGLONG> lastTriggeredAt;
+};
+inline UiActionCooldownState& UiActionCooldownStore() {
+    static UiActionCooldownState store;
+    return store;
+}
+inline void UiResetActionCooldown(HWND hwnd, UINT_PTR actionId = 0) {
+    if (!hwnd) return;
+    auto& store = UiActionCooldownStore();
+    std::lock_guard<std::mutex> lock(store.mutex);
+    store.lastTriggeredAt.erase(std::make_pair(hwnd, actionId));
+}
 inline bool UiTryAcquireActionCooldown(HWND hwnd, UINT_PTR actionId = 0, ULONGLONG cooldownMs = 250) {
     if (!hwnd || cooldownMs == 0) return true;
-    static std::mutex cooldownMutex;
-    static std::map<std::pair<HWND, UINT_PTR>, ULONGLONG> lastTriggeredAt;
+    auto& store = UiActionCooldownStore();
     const ULONGLONG now = GetTickCount64();
-    std::lock_guard<std::mutex> lock(cooldownMutex);
-    if (lastTriggeredAt.size() > 128) {
-        for (auto it = lastTriggeredAt.begin(); it != lastTriggeredAt.end(); ) {
+    std::lock_guard<std::mutex> lock(store.mutex);
+    if (store.lastTriggeredAt.size() > 128) {
+        for (auto it = store.lastTriggeredAt.begin(); it != store.lastTriggeredAt.end(); ) {
             if (!IsWindow(it->first.first) || (now - it->second) > 60000ULL)
-                it = lastTriggeredAt.erase(it);
+                it = store.lastTriggeredAt.erase(it);
             else
                 ++it;
         }
     }
     const auto key = std::make_pair(hwnd, actionId);
-    auto it = lastTriggeredAt.find(key);
-    if (it != lastTriggeredAt.end() && (now - it->second) < cooldownMs)
+    auto it = store.lastTriggeredAt.find(key);
+    if (it != store.lastTriggeredAt.end() && (now - it->second) < cooldownMs)
         return false;
-    lastTriggeredAt[key] = now;
+    store.lastTriggeredAt[key] = now;
     return true;
 }
 inline COLORREF UiAccentInset() {

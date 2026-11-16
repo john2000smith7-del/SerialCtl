@@ -5660,6 +5660,9 @@ void MainWindow::ShowAiPage(bool connect) {
     KillTimer(window_, SideAnimationTimerId);
     rightPanelAnimating_ = false; rightPanelAnimatedWidth_ = -1;
     powerVisible_ = false; aiVisible_ = true; aiPageOpened_ = true;
+    // Entering or returning to the AI page is a new action context; an earlier
+    // close-card/disconnect cooldown must not swallow closing this page.
+    UiResetActionCooldown(disconnectButton_, IdDisconnect);
     SyncAiTargetBinding();
     if (aiChangesPane_.Handle()) {
         aiChangesPane_.SetChanges(aiPane_.FileChanges(), aiPane_.CurrentTurnSeq());
@@ -5965,6 +5968,7 @@ void MainWindow::ShowPowerPage() {
     rightPanelAnimatedWidth_ = -1;
     powerVisible_ = true;
     powerPageOpened_ = true;
+    UiResetActionCooldown(disconnectButton_, IdDisconnect);
     if (powerMonitorSession_.empty() && activeSession_ && !activeSession_->disconnecting &&
         activeSession_->connection && activeSession_->connection->IsConnected())
         powerMonitorSession_ = "session-" + std::to_string(activeSession_->id);
