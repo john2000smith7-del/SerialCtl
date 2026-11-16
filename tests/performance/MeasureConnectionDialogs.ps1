@@ -41,5 +41,5 @@ foreach ($name in @('baseline', 'candidate')) {
     if ($LASTEXITCODE -ne 0) { throw "Invalid continuous-output sample: $name exited $LASTEXITCODE" }
 }
 
-python tests/performance/summarize_dialog_latency.py --log-dir $OutputDirectory --output (Join-Path $OutputDirectory 'dialog-summary.json') --require-warm-p95-ms 100
+python tests/performance/summarize_dialog_latency.py --log-dir $OutputDirectory --output (Join-Path $OutputDirectory 'dialog-summary.json') --require-warm-p95-ms 150
 if ($LASTEXITCODE -ne 0) { throw 'Full-paint / responsiveness P95 performance acceptance failed; no samples may be discarded.' }

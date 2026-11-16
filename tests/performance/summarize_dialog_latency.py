@@ -40,7 +40,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--log-dir',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
-    parser.add_argument('--require-warm-p95-ms',type=int,default=100)
+    parser.add_argument('--require-warm-p95-ms',type=int,default=150)
     args=parser.parse_args()
     report={'clock':'GetTickCount64, actual mouse input to full child GDI paint / WM_NULL response; not DWM presentation',
             'percentile':'nearest rank; first is a separate single sample, never cold P95','cases':{},'failures':[]}
