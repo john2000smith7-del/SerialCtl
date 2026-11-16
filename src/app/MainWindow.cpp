@@ -3753,6 +3753,26 @@ void MainWindow::BeginFrozenSplitterDrag(bool showOverlay) {
             SetWindowSubclass(dragFrozenOverlay_, FrozenDragOverlayProc, 1, reinterpret_cast<DWORD_PTR>(this));
     }
     if (dragFrozenOverlay_ && showOverlay) {
+        // Keep the real sidebar buttons visible and clickable during a reversal.
+        // Clipping the overlay preserves the buttons' existing focus order.
+        HRGN overlayRegion = CreateRectRgn(0, 0, w, h);
+        if (!overlayRegion) return;
+        for (HWND toggle : {connectionHeader_, rightPanelToggleButton_}) {
+            RECT bounds{};
+            if (!IsWindowVisible(toggle) || !GetWindowRect(toggle, &bounds)) continue;
+            OffsetRect(&bounds, -origin.x, -origin.y);
+            HRGN toggleRegion = CreateRectRgnIndirect(&bounds);
+            const int result = toggleRegion ? CombineRgn(overlayRegion, overlayRegion, toggleRegion, RGN_DIFF) : ERROR;
+            if (toggleRegion) DeleteObject(toggleRegion);
+            if (result == ERROR) {
+                DeleteObject(overlayRegion);
+                return;
+            }
+        }
+        if (!SetWindowRgn(dragFrozenOverlay_, overlayRegion, FALSE)) {
+            DeleteObject(overlayRegion);
+            return;
+        }
         SetWindowPos(dragFrozenOverlay_, HWND_TOP, 0, cardTop, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE);
         InvalidateRect(dragFrozenOverlay_, nullptr, FALSE);
         UpdateWindow(dragFrozenOverlay_);
