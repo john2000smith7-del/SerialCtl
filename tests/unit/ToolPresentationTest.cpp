@@ -42,6 +42,28 @@ int main() {
         text = ToolText("serialctl_screen", Json::object(), {{"error", "Connection closed"}}, "SSH");
         Check(text.find(u8"失败") != std::string::npos && text.find(u8"已读取") == std::string::npos,
               "Failed read appeared successful");
+        text = ToolText("mcp_workspace_list", {{"depth", 2}},
+                        {{"ok", true},
+                         {"entries", Json::array({{{"path", "src"}, {"isDirectory", true}},
+                                                  {{"path", "CMakeLists.txt"}, {"isDirectory", false}}})}},
+                        "D:/proj");
+        Check(text.find(u8"共 2 项") != std::string::npos &&
+                  text.find("src/\nCMakeLists.txt") != std::string::npos,
+              "mcp_workspace_list did not include readable entries preview");
+        text = ToolText("mcp_workspace_search_text", {{"query", "Build"}},
+                        {{"ok", true},
+                         {"matches", Json::array({{{"path", "src/main.cpp"}, {"line", 42}, {"text", "int Build()"}}})}},
+                        "D:/proj");
+        Check(text.find(u8"命中 1 处") != std::string::npos &&
+                  text.find("src/main.cpp:42: int Build()") != std::string::npos,
+              "mcp_workspace_search_text did not include match preview");
+        text = ToolText("mcp_workspace_exec", {{"command", "cmake --version"}},
+                        {{"ok", true}, {"exitCode", 0}, {"stdout", "cmake version 3.28.0"}, {"stderr", ""}},
+                        "D:/proj");
+        Check(text.find(u8"退出码 0") != std::string::npos &&
+                  text.find("cmake --version") != std::string::npos &&
+                  text.find("cmake version 3.28.0") != std::string::npos,
+              "mcp_workspace_exec did not include command and stdout");
         std::cout << "Readable tool summaries, actual newlines, ANSI isolation, bounded UTF-8 and unchanged evidence PASS\n";
     } catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }
 }

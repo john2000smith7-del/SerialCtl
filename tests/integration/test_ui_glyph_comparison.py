@@ -1,6 +1,13 @@
 """Mutation checks for the narrowly scoped actual-screen glyph comparison."""
 import unittest
-from ui_freeze_compare import glyph_rounding_equivalent, combo_glyph_regions, approved_v219_ssh_layout
+from ui_freeze_compare import (
+    approved_v219_ssh_layout,
+    approved_v221_main_geometry,
+    combo_glyph_regions,
+    field_corner_regions,
+    glyph_rounding_equivalent,
+    parse_version,
+)
 
 
 class GlyphComparisonTest(unittest.TestCase):
@@ -39,6 +46,65 @@ class GlyphComparisonTest(unittest.TestCase):
         after["geometry"]=after["geometry"][1:]
         with self.assertRaises(AssertionError):
             approved_v219_ssh_layout(before,after)
+
+    def test_approved_ssh_layout_v220_requires_unified_credential_controls(self):
+        before_rows = [[i, "Edit", 10+(n%2)*120, 70+(n//2)*50, 110+(n%2)*120, 98+(n//2)*50, True]
+                       for n, i in enumerate((1014, 1016, 1018, 1020))]
+        after_rows = list(before_rows) + [
+            [1028, "ComboBox", 10, 200, 180, 228, True],
+            [1033, "Static", 10, 180, 100, 198, True],
+            [1034, "Button", 190, 200, 220, 228, False],
+            [1029, "Button", 10, 240, 120, 268, True],
+            [1032, "Static", 10, 270, 260, 290, True],
+            [1, "Button", 110, 310, 190, 342, True],
+            [2, "Button", 200, 310, 280, 342, True],
+        ]
+        before = {"size": [300, 400], "geometry": before_rows}
+        after = {"size": [300, 400], "geometry": after_rows}
+        self.assertEqual(approved_v219_ssh_layout(before, after, "V2.0.21")["status"], "PASS")
+        missing_note = {"size": [300, 400], "geometry": [r for r in after_rows if r[0] != 1032]}
+        with self.assertRaises(AssertionError):
+            approved_v219_ssh_layout(before, missing_note, "V2.0.21")
+
+    def test_parse_version_covers_v2021_and_rejects_garbage(self):
+        self.assertGreaterEqual(parse_version("V2.0.21"), (2, 0, 19))
+        self.assertGreaterEqual(parse_version("2.0.21"), (2, 0, 21))
+        with self.assertRaises(AssertionError):
+            parse_version("V2.0.21-dirty")
+
+    def test_field_corner_regions_only_cover_corners(self):
+        corners = field_corner_regions([10, 20, 210, 48], 96)
+        self.assertEqual(corners, [
+            [10, 20, 21, 31],
+            [199, 20, 210, 31],
+            [10, 37, 21, 48],
+            [199, 37, 210, 48],
+        ])
+        # Interior center pixel is not inside any corner box.
+        self.assertFalse(any(l <= 110 < r and t <= 34 < b for l, t, r, b in corners))
+
+    def test_approved_v221_main_geometry_tracks_inset_and_rejects_horizontal_drift(self):
+        before = [
+            [107, "RichEdit50W", 218, 84, 834, 822, True],
+            [125, "Button", 1150, 86, 1178, 114, True],
+            [302, "Button", 28, 790, 174, 822, False],
+        ]
+        after = [
+            [107, "RichEdit50W", 218, 86, 834, 822, True],
+            [125, "Button", 1150, 88, 1178, 116, True],
+            [302, "Button", 28, 790, 174, 822, False],
+        ]
+        contract = approved_v221_main_geometry(before, after, 96)
+        self.assertEqual(contract["status"], "PASS")
+        bad_width = [list(r) for r in after]
+        bad_width[0][4] = 852
+        with self.assertRaises(AssertionError):
+            approved_v221_main_geometry(before, bad_width, 96)
+        bad_shift = [list(r) for r in after]
+        bad_shift[1][3] += 6
+        bad_shift[1][5] += 6
+        with self.assertRaises(AssertionError):
+            approved_v221_main_geometry(before, bad_shift, 96)
 
 
 if __name__=='__main__':unittest.main()

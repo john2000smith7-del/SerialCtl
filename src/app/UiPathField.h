@@ -80,7 +80,7 @@ class UiPathField {
                 auto brush = CreateSolidBrush(c.surface);
                 FillRect(dc, &r, brush);
                 DeleteObject(brush);
-                UiBox(dc, r, c.field, GetFocus() == h ? UiAccentInk(*d->style->dark) : c.border, D(*d, 10));
+                UiBox(dc, r, c.field, GetFocus() == h ? UiAccentInk(*d->style->dark) : c.border, UiControlRadius(d->style->dpi));
                 const auto old = SelectObject(dc, d->style->font);
                 SetBkMode(dc, TRANSPARENT);
                 SetTextColor(dc, IsWindowEnabled(h) ? c.text : c.muted);
@@ -109,7 +109,7 @@ class UiPathField {
                 RestoreDC(dc, saved);
                 if (d->expanded && d->maximum) {
                     const auto t = Thumb(h, *d);
-                    UiBox(dc, t, c.border, c.border, D(*d, 3));
+                    UiDrawScrollbarThumb(dc, t, d->style->dpi, c);
                 }
                 SelectObject(dc, old);
             } // Commit the buffer while the BeginPaint DC is still valid.

@@ -4,6 +4,33 @@
   "path_base": "repository-root",
   "dependencies": [
     {
+      "name": "whisper.cpp and Whisper tiny",
+      "version": "1.7.6",
+      "upstream": "https://github.com/ggml-org/whisper.cpp/releases/tag/v1.7.6",
+      "files": [
+        {
+          "path": "third_party/whisper/whisper.cpp-1.7.6.tar.gz",
+          "role": "source-archive",
+          "sha256": "166140e9a6d8a36f787a2bd77f8f44dd64874f12dd8359ff7c1f4f9acb86202e"
+        },
+        {
+          "path": "third_party/whisper/ggml-tiny-q4_0.bin",
+          "role": "model-weights",
+          "sha256": "b19643e85a695ac4bd0576d43ae26641ca6d2f9cf3768ae57f20cfb7ade6fe56"
+        },
+        {
+          "path": "third_party/whisper/LICENSE",
+          "role": "license",
+          "sha256": "e562a2ddfaf8280537795ac5ecd34e3012b6582a147ef69ba6a6a5c08c84757d"
+        },
+        {
+          "path": "third_party/whisper/OPENAI-LICENSE",
+          "role": "license",
+          "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
+        }
+      ]
+    },
+    {
       "name": "PuTTY",
       "version": "0.85",
       "upstream": "https://www.chiark.greenend.org.uk/~sgtatham/putty/",

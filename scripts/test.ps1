@@ -4,12 +4,32 @@ param(
     [string]$Architecture = 'All',
 
     [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+
+    [ValidateSet('All', 'Fast', 'Integration', 'Full', 'Module')]
+    [string]$Scope = 'All',
+
+    [string]$Module = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
+
+$labelArgs = @()
+switch ($Scope) {
+    'Fast'        { $labelArgs = @('-L', '^tier:fast$') }
+    'Integration' { $labelArgs = @('-L', '^tier:(fast|integration)$') }
+    'Full'        { $labelArgs = @('-L', '^tier:(fast|integration|desktop_full)$') }
+    'Module' {
+        if ([string]::IsNullOrWhiteSpace($Module)) {
+            throw "-Scope Module requires a non-empty -Module name (e.g. -Module tftp)."
+        }
+        $escapedModule = [regex]::Escape($Module.Trim())
+        $labelArgs = @('-L', "^mod:$escapedModule$")
+    }
+    default { }
+}
 
 $repositoryRoot = Get-SerialCtlRepositoryRoot
 $ctestPath = Get-RequiredCommandPath -Name 'ctest.exe'
@@ -26,12 +46,13 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
     }
 
     try {
-    Invoke-SerialCtlExternalCommand -FilePath $ctestPath -Description "Test $item $Configuration" -Arguments @(
+    $ctestArgs = @(
         '--test-dir', $buildDirectory,
         '-C', $Configuration,
         '--output-on-failure',
         '--no-tests=error'
-    )
+    ) + $labelArgs
+    Invoke-SerialCtlExternalCommand -FilePath $ctestPath -Description "Test $item $Configuration ($Scope)" -Arguments $ctestArgs
     } finally {
         if($env:SERIALCTL_EVIDENCE_DIR){
             New-Item -ItemType Directory -Path $env:SERIALCTL_EVIDENCE_DIR -Force | Out-Null

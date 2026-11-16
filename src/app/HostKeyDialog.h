@@ -133,9 +133,14 @@ private:
         EnableWindow(GetDlgItem(h, IDOK), FALSE);
         UiResizeDialog(h, dpi_, width_, y + 36 + 16);
         RECT bounds{}, owner{}; GetWindowRect(h, &bounds); GetWindowRect(GetWindow(h, GW_OWNER), &owner);
-        SetWindowPos(h, nullptr, owner.left + ((owner.right - owner.left) - (bounds.right - bounds.left)) / 2,
-            owner.top + ((owner.bottom - owner.top) - (bounds.bottom - bounds.top)) / 2,
-            0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        const LONG margin = D(12);
+        const LONG width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
+        const LONG left = monitor.rcWork.left + margin, top = monitor.rcWork.top + margin;
+        const LONG x = std::clamp(owner.left + (owner.right - owner.left - width) / 2, left,
+                                  std::max(left, monitor.rcWork.right - margin - width));
+        const LONG yPosition = std::clamp(owner.top + (owner.bottom - owner.top - height) / 2, top,
+                                          std::max(top, monitor.rcWork.bottom - margin - height));
+        SetWindowPos(h, nullptr, x, yPosition, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
         // Consent and actions stay together on small work areas; only the
         // fingerprint/body region scrolls, so no partial checkbox can paint
         // across the footer or disappear while confirming.
@@ -200,10 +205,11 @@ private:
             const auto visual = UiButtonVisual(c, enabled, (item.itemState & ODS_SELECTED) != 0,
                 GetPropW(item.hwndItem, L"SerialCtl.PowerHover") != nullptr, primary);
             FillRect(dc, &item.rcItem, self->surface_);
-            UiBox(dc, item.rcItem, visual.fill, visual.border, self->D(10));
+            UiBox(dc, item.rcItem, visual.fill, visual.border, UiCapsuleRadius(item.rcItem));
             wchar_t text[64]{}; GetWindowTextW(item.hwndItem, text, 64);
             auto old = SelectObject(dc, self->font_); SetBkMode(dc, TRANSPARENT); SetTextColor(dc, visual.ink);
-            RECT r = item.rcItem; DrawTextW(dc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            RECT r = UiCapsuleContentRect(item.rcItem, self->dpi_);
+            DrawTextW(dc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             SelectObject(dc, old);
             UiButtonKeyboardFocus(dc, item.rcItem, item.itemState, self->dpi_, UiFocusInk(self->dark_, primary && enabled));
             return TRUE;

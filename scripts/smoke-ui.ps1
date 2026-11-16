@@ -152,7 +152,7 @@ public static class SerialCtlUiSmoke {
         double scale=(ssh.Bottom-ssh.Top)/36.0;
         int padding=(int)Math.Round(16*scale), gap=(int)Math.Round(12*scale);
         int horizontal=terminal.Left-padding-left.Right-padding;
-        int vertical=terminal.Top-padding-ssh.Bottom-(int)Math.Round(2*scale);
+        int vertical=terminal.Top-padding-ssh.Bottom-(int)Math.Round(4*scale);
         int other=right.Left-padding-terminal.Right-padding;
         if(Math.Abs(horizontal-gap)>1 || Math.Abs(vertical-gap)>1 || Math.Abs(other-gap)>1)
             throw new Exception("Unequal main card gaps: left="+horizontal+" top="+vertical+" right="+other);
@@ -245,14 +245,21 @@ public static class SerialCtlUiSmoke {
             throw new Exception("Power geometry mismatch id="+id+" actual="+rect.Left+","+rect.Top+","+(rect.Right-rect.Left)+","+(rect.Bottom-rect.Top)+" expected="+x+","+y+","+width+","+height);
     }
     public static void AssertAiHeader(IntPtr window) {
-        RECT title,wrap,toggle,theme;
-        GetWindowRect(GetDlgItem(window,305),out title);
-        GetWindowRect(GetDlgItem(window,306),out wrap);
-        GetWindowRect(GetDlgItem(window,125),out toggle);
-        GetWindowRect(GetDlgItem(window,104),out theme);
-        int gap=(int)Math.Round((theme.Bottom-theme.Top)/3.0);
-        if(title.Right+gap>wrap.Left || wrap.Right+gap>toggle.Left)
-            throw new Exception("AI monitor title/wrap/toggle areas overlap or lose the shared gap");
+        IntPtr tabFirst = GetDlgItem(window, 321);
+        IntPtr tabLast = GetDlgItem(window, 320);
+        IntPtr wrapCtrl = GetDlgItem(window, 306);
+        IntPtr toggleCtrl = GetDlgItem(window, 125);
+        if (!IsWindowVisible(tabFirst) || !IsWindowVisible(tabLast) || !IsWindowVisible(wrapCtrl) || !IsWindowVisible(toggleCtrl))
+            throw new Exception("AI monitor header controls are not visible when expanded");
+        RECT tabsLeft, tabsRight, wrap, toggle, theme;
+        GetWindowRect(tabFirst, out tabsLeft);
+        GetWindowRect(tabLast, out tabsRight);
+        GetWindowRect(wrapCtrl, out wrap);
+        GetWindowRect(toggleCtrl, out toggle);
+        GetWindowRect(GetDlgItem(window, 104), out theme);
+        int gap = (int)Math.Round(8.0 * (theme.Bottom - theme.Top) / 28.0);
+        if (tabsLeft.Right > tabsRight.Left || tabsRight.Right + gap > wrap.Left || wrap.Right + gap > toggle.Left)
+            throw new Exception("AI monitor tabs/wrap/toggle areas overlap or lose the shared gap");
     }
     public static void AssertPowerGap(IntPtr pane, int leftId, int rightId) {
         RECT left, right; GetWindowRect(GetDlgItem(pane,leftId),out left); GetWindowRect(GetDlgItem(pane,rightId),out right);
@@ -521,14 +528,36 @@ foreach ($architecture in @('x64')) {
             Capture-Window $application.MainWindowHandle "$architecture-$theme-collapsed"
             Click-Control $application.MainWindowHandle 125
             Start-Sleep -Milliseconds 200
+            $unifiedSerial = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle, 103) -eq [IntPtr]::Zero
             foreach ($mode in 0..3) {
-                Click-Control $application.MainWindowHandle (100+$mode)
-                $dialog = Wait-Dialog $application.Id $titles[$mode]
+                if ($mode -eq 3 -and $unifiedSerial) {
+                    Click-Control $application.MainWindowHandle 101
+                    $dialog = Wait-Dialog $application.Id $titles[1]
+                    Start-Sleep -Milliseconds 300
+                    if ([SerialCtlUiSmoke]::GetDlgItem($dialog, 1036) -eq [IntPtr]::Zero) { throw 'Unified serial form is missing location selector.' }
+                    Select-ControlOption $application.MainWindowHandle $dialog $application.Id 1036 1 "$architecture-$theme-serial-location"
+                    $remoteDeadline = [DateTime]::UtcNow.AddSeconds(5)
+                    do {
+                        Start-Sleep -Milliseconds 50
+                        $remoteHost = [SerialCtlUiSmoke]::GetDlgItem($dialog, 1014)
+                        $remoteBaud = [SerialCtlUiSmoke]::GetDlgItem($dialog, 1004)
+                    } while ((-not [SerialCtlUiSmoke]::IsWindowVisible($remoteHost) -or [SerialCtlUiSmoke]::IsWindowVisible($remoteBaud)) -and [DateTime]::UtcNow -lt $remoteDeadline)
+                } else {
+                    Click-Control $application.MainWindowHandle (100+$mode)
+                    $dialog = Wait-Dialog $application.Id $titles[$mode]
+                }
                 Start-Sleep -Milliseconds 300
                 [SerialCtlUiSmoke]::AssertLabels($dialog, $expectedUiFace)
                 Test-GlobalControls $application.MainWindowHandle $dialog $application.Id "$architecture-$theme-connection-$mode"
                 Capture-Window $dialog "$architecture-$theme-connection-$mode"
                 if ($mode -eq 3) {
+                    if ($unifiedSerial) {
+                        if (-not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($dialog, 1014)) -or
+                            [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($dialog, 1004)) -or
+                            [SerialCtlUiSmoke]::GetDlgItem($dialog, 9010) -ne [IntPtr]::Zero) {
+                            throw 'Remote serial mode did not switch cleanly without manual port dialog.'
+                        }
+                    } else {
                     if ($ActualMouse) {
                         # 9010 is a context-menu command, not a child button.
                         # Open its real user entry on the Refresh button.
@@ -558,13 +587,14 @@ foreach ($architecture in @('x64')) {
                     Capture-Window $portDialog "$architecture-$theme-shared-port"
                     Click-Control $portDialog 2
                     Start-Sleep -Milliseconds 200
+                    }
                 }
                 Click-Control $dialog 2
                 Start-Sleep -Milliseconds 200
             }
             # Production AI page and connection dialog; never contact a real server.
             Click-Control $application.MainWindowHandle 304
-            $aiDialog = Wait-Dialog $application.Id '连接 AI 服务器'
+            $aiDialog = Wait-Dialog $application.Id '连接 AI 服务'
             [SerialCtlUiSmoke]::AssertLabels($aiDialog, $expectedUiFace)
             if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,208) -ne [IntPtr]::Zero -or [SerialCtlUiSmoke]::GetDlgItem($aiDialog,213) -ne [IntPtr]::Zero) { throw 'AI connection form still owns workspace controls.' }
             if ([SerialCtlUiSmoke]::GetDlgItem($aiDialog,214) -eq [IntPtr]::Zero) { throw 'AI platform mode field missing.' }
@@ -584,16 +614,22 @@ foreach ($architecture in @('x64')) {
             [SerialCtlUiSmoke]::GetClassName([SerialCtlUiSmoke]::GetDlgItem($aiPane,12),$modelClass,32) | Out-Null
             if ($modelClass.ToString() -ne 'Static' -or [SerialCtlUiSmoke]::GetDlgItem($aiPane,13) -ne [IntPtr]::Zero) { throw 'AI still exposes model selection.' }
             # First launch defaults to a 50/50 monitor; later launches may restore its saved state.
-            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))) {
+            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321))) {
                 Click-Control $application.MainWindowHandle 125
-                Start-Sleep -Milliseconds 200
+                $collapseUntil = [DateTime]::UtcNow.AddSeconds(2)
+                do {
+                    Start-Sleep -Milliseconds 25
+                    $collapsed = -not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321)) -and
+                                 -not [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))
+                } while (-not $collapsed -and [DateTime]::UtcNow -lt $collapseUntil)
             }
+            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))) { throw 'Collapsed AI exposed monitor terminal.' }
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-collapsed"
             Click-Control $application.MainWindowHandle 125
             $expandUntil = [DateTime]::UtcNow.AddSeconds(2)
             do {
                 Start-Sleep -Milliseconds 25
-                $expanded = [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305))
+                $expanded = [SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321))
             } while (-not $expanded -and [DateTime]::UtcNow -lt $expandUntil)
             if (-not $expanded) {
                 Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-expand-failed"
@@ -601,7 +637,13 @@ foreach ($architecture in @('x64')) {
                 [SerialCtlUiSmoke]::GetWindowText([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,125),$toggleCaption,64) | Out-Null
                 throw "AI monitor header did not expand; toggle=$toggleCaption"
             }
-            if ([SerialCtlUiSmoke]::IsWindowVisible([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,107))) { throw 'AI exposed unselected terminal.' }
+            # In V2.0.21+, the expanded AI live-terminal tab renders child 107 as the empty
+            # placeholder ("请在上方选择已连接的实时终端") until a target session is chosen.
+            $aiTarget = [SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,307)
+            if (-not [SerialCtlUiSmoke]::IsWindowVisible($aiTarget) -or
+                [SerialCtlUiSmoke]::Send($aiTarget,0x147,[IntPtr]::Zero,[IntPtr]::Zero).ToInt64() -ne 0) {
+                throw 'AI monitor target selector was missing or preselected a terminal.'
+            }
             [SerialCtlUiSmoke]::AssertPanel($application.MainWindowHandle, $false)
             [SerialCtlUiSmoke]::AssertAiHeader($application.MainWindowHandle)
             Capture-Window $application.MainWindowHandle "$architecture-$theme-ai-expanded"
@@ -611,7 +653,7 @@ foreach ($architecture in @('x64')) {
                     $headerRect = New-Object SerialCtlUiSmoke+RECT
                     $windowRect = New-Object SerialCtlUiSmoke+RECT
                     [SerialCtlUiSmoke]::GetWindowRect($aiPane,[ref]$paneRect)|Out-Null
-                    [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,305),[ref]$headerRect)|Out-Null
+                    [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,321),[ref]$headerRect)|Out-Null
                     [SerialCtlUiSmoke]::GetWindowRect($application.MainWindowHandle,[ref]$windowRect)|Out-Null
                     $startX = [int](($paneRect.Right+$headerRect.Left)/2)
                     $y = $paneRect.Top+100
@@ -780,15 +822,23 @@ foreach ($architecture in @('x64')) {
             $splitX=$commandRect.Left-22 # 16 px card padding and half of the 12 px gap (runner DPI 100%).
             $mouseY=$commandRect.Top+100
             [SerialCtlUiSmoke]::SetCursorPos($splitX,$mouseY)|Out-Null
+            Start-Sleep -Milliseconds 40
             [SerialCtlUiSmoke]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
-            foreach($frame in 0..11){
-                [SerialCtlUiSmoke]::SetCursorPos(($splitX-($frame%6)*18),$mouseY)|Out-Null
-                Start-Sleep -Milliseconds 16
-                Capture-Desktop "$architecture-$theme-drag-frame-$frame"
+            try {
+                foreach($frame in 0..11){
+                    [SerialCtlUiSmoke]::SetCursorPos(($splitX-($frame%6)*18),$mouseY)|Out-Null
+                    Start-Sleep -Milliseconds 16
+                    Capture-Desktop "$architecture-$theme-drag-frame-$frame"
+                }
+            } finally {
+                [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
             }
-            [SerialCtlUiSmoke]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
-            $afterDrag=New-Object SerialCtlUiSmoke+RECT
-            [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112),[ref]$afterDrag)|Out-Null
+            $dragDeadline = [DateTime]::UtcNow.AddSeconds(2)
+            $afterDrag = New-Object SerialCtlUiSmoke+RECT
+            do {
+                Start-Sleep -Milliseconds 25
+                [SerialCtlUiSmoke]::GetWindowRect([SerialCtlUiSmoke]::GetDlgItem($application.MainWindowHandle,112),[ref]$afterDrag)|Out-Null
+            } while ($afterDrag.Left -eq $commandRect.Left -and [DateTime]::UtcNow -lt $dragDeadline)
             if($afterDrag.Left -eq $commandRect.Left){throw 'Actual mouse did not drag sidebar splitter.'}
             foreach($frame in 0..9){
                 Click-Control $application.MainWindowHandle 125

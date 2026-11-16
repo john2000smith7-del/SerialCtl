@@ -20,6 +20,58 @@ import zipfile
 from desktop_user_actions import DesktopActions, RECT, POINT, require
 
 
+def parse_version(version):
+    """Parse SerialCtl release tags like V2.0.21 into numeric tuples."""
+    match = re.fullmatch(r'V?(\d+)\.(\d+)\.(\d+)', version.strip())
+    require(match is not None, f'Unexpected version format: {version}')
+    return tuple(int(part) for part in match.groups())
+
+
+def field_corner_regions(box, dpi):
+    """Return only the four corner squares affected by the approved radius 10->8 polish."""
+    left, top, right, bottom = box
+    if right <= left or bottom <= top:
+        return []
+    corner = min((right - left) // 2, (bottom - top) // 2, (11 * dpi + 48) // 96)
+    if corner <= 0:
+        return []
+    return [
+        [left, top, left + corner, top + corner],
+        [right - corner, top, right, top + corner],
+        [left, bottom - corner, left + corner, bottom],
+        [right - corner, bottom - corner, right, bottom],
+    ]
+
+
+def approved_v221_main_geometry(before_rows, after_rows, dpi):
+    """Verify V2.0.21 main controls match baseline except the +2px navigation optical inset."""
+    before_by_id = {row[0]: row for row in before_rows}
+    after_by_id = {row[0]: row for row in after_rows}
+    require(set(before_by_id) == set(after_by_id) and len(before_rows) == len(after_rows),
+            'Main window non-exempt control set changed')
+    shifted_ids = (107, 125)
+    for ctrl_id, before_row in before_by_id.items():
+        if ctrl_id not in shifted_ids:
+            require(after_by_id[ctrl_id] == before_row, f'Main control {ctrl_id} geometry changed unexpectedly')
+    expected_shift = (2 * dpi + 48) // 96
+    shifts = {}
+    for ctrl_id in shifted_ids:
+        require(ctrl_id in before_by_id and ctrl_id in after_by_id, f'Missing main control {ctrl_id}')
+        _, before_cls, b_left, b_top, b_right, b_bottom, b_enabled = before_by_id[ctrl_id]
+        _, after_cls, a_left, a_top, a_right, a_bottom, a_enabled = after_by_id[ctrl_id]
+        require(before_cls == after_cls and b_enabled == a_enabled, f'Main control {ctrl_id} state changed')
+        require(a_left == b_left and a_right == b_right, f'Main control {ctrl_id} shifted horizontally')
+        require(a_right > a_left and a_bottom > a_top, f'Main control {ctrl_id} collapsed')
+        top_delta = a_top - b_top
+        require(abs(top_delta - expected_shift) <= 1, f'Main control {ctrl_id} top delta {top_delta} != {expected_shift}')
+        if ctrl_id == 107:
+            require(a_bottom == b_bottom, 'Terminal bottom edge shifted unexpectedly')
+        else:
+            require((a_bottom - a_top) == (b_bottom - b_top), 'Sidebar toggle button height changed')
+        shifts[str(ctrl_id)] = top_delta
+    return {'status': 'PASS', 'expectedTopShift': expected_shift, 'observedTopShifts': shifts}
+
+
 def glyph_rounding_equivalent(before, after, pixel, width, regions):
     """Only original glyph resampling may differ by at most two RGB levels."""
     x,y=pixel%width,pixel//width
@@ -38,7 +90,7 @@ def combo_glyph_regions(geometry,dpi):
     return regions
 
 
-def approved_v219_ssh_layout(before, after):
+def approved_v219_ssh_layout(before, after, version=None):
     """The approved history/credential form changes field positions, not semantics."""
     require(before["size"][0] == after["size"][0], "Approved SSH form changed its width")
     old = {row[0]: row for row in before["geometry"]}
@@ -46,10 +98,12 @@ def approved_v219_ssh_layout(before, after):
     fields = (1014, 1016, 1018, 1020)
     require(all(i in old and i in new and old[i][1].lower() == new[i][1].lower() == "edit"
                 and new[i][6] for i in fields), "SSH lost an editable host/port/user/password field")
-    require(all(i in new for i in (1028, 1029, 1031)), "SSH lost history/save/remember controls")
+    # V2.0.20 removed the separate 1031 password checkbox and unified saving into 1029 + 1032/1033/1034.
+    credential_controls = (1028, 1029, 1032, 1033, 1034) if (version is not None and parse_version(version) >= (2, 0, 20)) else (1028, 1029, 1031)
+    require(all(i in new for i in credential_controls), "SSH lost history/save/remember controls")
     heights = [new[i][5]-new[i][3] for i in fields]
     require(min(heights)>0 and max(heights)-min(heights)<=1, "SSH field heights differ")
-    for i in (*fields, 1028, 1029, 1031, 1, 2):
+    for i in (*fields, *credential_controls, 1, 2):
         require(i in new, "SSH control missing")
         _, _, left, top, right, bottom, _ = new[i]
         require(0<=left<right<=after["size"][0] and 0<=top<bottom<=after["size"][1],
@@ -62,6 +116,25 @@ def approved_v219_ssh_layout(before, after):
                     "SSH input fields overlap")
     return {"status": "PASS", "preservedEditableFields": list(fields), "fieldHeights": heights,
             "historyAndSeparateRemember": "PASS", "boundsAndNonoverlap": "PASS"}
+
+
+def serial_location_layout(before, after, remote):
+    width, height = after["size"]
+    require(width == before["size"][0], "Serial form changed its width")
+    rows = {row[0]: row for row in after["geometry"]}
+    required = (1036, 1002, 1024, 1, 2) + ((1014,) if remote else (1004, 1006, 1008, 1010, 1012))
+    hidden = (1016, 1004, 1006, 1008, 1010, 1012) if remote else (1014, 1016)
+    require(all(i in rows for i in required) and all(i not in rows for i in hidden),
+            "Serial form shows the wrong fields for its selected location")
+    fields = [rows[i][2:6] for i in required]
+    for index, (left, top, right, bottom) in enumerate(fields):
+        require(0 <= left < right <= width and 0 <= top < bottom <= height, "Serial form control escaped its bounds")
+        for x1, y1, x2, y2 in fields[index+1:]:
+            require(max(left, x1) >= min(right, x2) or max(top, y1) >= min(bottom, y2),
+                    "Serial form controls overlap")
+    require(rows[1036][1].lower() == "combobox" and rows[1036][5] <= min(field[1] for field in fields[1:]),
+            "Location chooser must precede the connection fields")
+    return {"status": "PASS", "visibleControls": list(required), "hiddenControls": list(hidden)}
 
 
 def main():
@@ -97,6 +170,7 @@ def main():
     user.SendMessageW.argtypes, user.SendMessageW.restype = user.PostMessageW.argtypes, c.c_ssize_t
     user.SetFocus.argtypes = (w.HWND,)
     user.IsChild.argtypes = (w.HWND,w.HWND)
+    user.GetPropW.argtypes, user.GetPropW.restype = (w.HWND, w.LPCWSTR), w.HANDLE
     shell.SHGetFolderPathW.argtypes = (w.HWND, c.c_int, w.HANDLE, w.DWORD, w.LPWSTR)
     profile = c.create_unicode_buffer(260)
     require(shell.SHGetFolderPathW(None, 0x1A, None, 0, profile) == 0, 'Cannot resolve test profile')
@@ -133,8 +207,9 @@ def main():
             text = c.create_unicode_buffer(128); user.GetWindowTextW(child,text,len(text))
             # Disconnect/close and the new reconnect action intentionally hide
             # on the blank main page; they are exercised on real cards elsewhere.
-            approved = main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,105,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310,311) or
-                                 text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))
+            approved = (user.GetDlgCtrlID(child) == 9010 or
+                        (main and (user.GetDlgCtrlID(child) in (100,101,102,103,104,105,106,111,112,113,114,115,116,117,118,132,300,301,303,304,308,309,310,311,312) or
+                                   text.value == '连接' or user.IsChild(user.GetDlgItem(hwnd,112),child))))
             if user.IsWindowVisible(child) and not approved:
                 rect = RECT(); user.GetWindowRect(child, c.byref(rect))
                 name = c.create_unicode_buffer(128); user.GetClassNameW(child, name, 128)
@@ -206,7 +281,7 @@ def main():
             config.mkdir()
             fixture_owned = True
             (config / 'commands.txt').write_text('#Fixture\necho FIXTURE\n', encoding='utf-8')
-            (config / 'settings.ini').write_text('[Pet]\nEnabled=0\n[Layout]\nRightPanelWidth=320\n', encoding='ascii')
+            (config / 'settings.ini').write_text('[Pet]\nEnabled=0\n[Layout]\nRightPanelWidth=338\n', encoding='ascii')
             app = args.output / (label + '-app'); version = extract(archive, app)
             process = subprocess.Popen([str(app / 'serialctl.exe')], cwd=app)
             main_window = wait(lambda: (windows(process.pid, 'SerialCtlWin7NativeWindowV3') or [None])[0])
@@ -215,13 +290,29 @@ def main():
             desktop = DesktopActions(SimpleNamespace(window=main_window, pid=process.pid, output=args.output,
                                                      prefix='freeze-'+label, mode='desktop'))
             report['dpi'] = desktop.dpi
+            unified_serial = not user.GetDlgItem(main_window, 103)
             for theme in ['light', 'dark']:
                 if theme == 'dark': user.PostMessageW(main_window, 0x111, 104, 0)
-                for name, command in [('main', None), ('ssh', 100), ('serial', 101), ('telnet', 102), ('remote', 103), ('settings', 303)]:
+                for name, command in [('main', None), ('ssh', 100), ('serial', 101), ('telnet', 102),
+                                      ('remote', 101 if unified_serial else 103), ('settings', 303)]:
                     target = main_window
                     if command:
                         user.PostMessageW(main_window, 0x111, command, 0)
                         target = wait(lambda: (windows(process.pid, '#32770') or [None])[0])
+                        if name == 'remote' and unified_serial:
+                            selector = user.GetDlgItem(target, 1036)
+                            require(selector, 'Unified serial form is missing its location chooser')
+                            user.SendMessageW(selector, 0x14E, 1, 0)  # CB_SETCURSEL
+                            user.SendMessageW(target, 0x111, 1036 | (1 << 16), selector)
+                            require(user.IsWindowVisible(user.GetDlgItem(target, 1014)) and not user.GetDlgItem(target, 9010),
+                                    'Remote serial must have an IP field and no manual port action')
+                            host_field = user.GetDlgItem(target, 1014)
+                            # SetWindowTextW across processes does not update the target Edit buffer or fire EN_CHANGE.
+                            host_buffer = c.create_unicode_buffer('127.0.0.1')
+                            require(user.SendMessageW(host_field, 0x000C, 0, c.addressof(host_buffer)),
+                                    'Cannot enter loopback IP for serial discovery')
+                            require(user.SendMessageW(host_field, 0x000E, 0, 0) == len('127.0.0.1'),
+                                    'Remote IP field did not receive loopback address')
                         # Select Cancel through native focus navigation to remove
                         # any text caret from the deterministic pixel comparison.
                         user.PostMessageW(target, 0x28, user.GetDlgItem(target, 2), 1)
@@ -283,15 +374,22 @@ def main():
                             capture['approvedRegions'].extend([
                                 [left,top,right,top+band], [left,bottom-band,right,bottom],
                                 [left,top,left+band,bottom], [right-band,top,right,bottom]])
-                    # V2.0.16 explicitly changes button silhouettes. Keep every
-                    # field/label pixel frozen outside the actual button bounds.
+                    # V2.0.16 explicitly changes button silhouettes; V2.0.21 adjusts
+                    # dialog field corner radius (10->8) while keeping field interiors frozen.
                     capture.setdefault('approvedRegions', [])
                     @callback
                     def button_region(child, _):
                         classname=c.create_unicode_buffer(128);user.GetClassNameW(child,classname,128)
-                        if classname.value=='Button' and user.IsWindowVisible(child):
-                            box=RECT();user.GetWindowRect(child,c.byref(box))
-                            capture['approvedRegions'].append([box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y])
+                        if user.IsWindowVisible(child):
+                            if classname.value=='Button':
+                                box=RECT();user.GetWindowRect(child,c.byref(box))
+                                capture['approvedRegions'].append([box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y])
+                            elif target!=main_window and classname.value in ('ComboBox','Edit'):
+                                frame=user.GetPropW(child,'SerialCtl.FieldFrame') if classname.value=='Edit' else None
+                                handle=frame or child
+                                box=RECT();user.GetWindowRect(handle,c.byref(box))
+                                capture['approvedRegions'].extend(field_corner_regions(
+                                    [box.left-point.x,box.top-point.y,box.right-point.x,box.bottom-point.y],report['dpi']))
                         return True
                     user.EnumChildWindows(target,button_region,0)
                     if name=='main':
@@ -323,11 +421,19 @@ def main():
             process.wait(timeout=15); process = None
         for key, before in baseline.items():
             after = candidate[key]
-            if key[1]=="ssh" and version=="V2.0.19":
+            if key[1] in ("serial", "remote") and any(row[0] == 1036 for row in after["geometry"]):
+                contract = serial_location_layout(before, after, key[1] == "remote")
+                report["cases"].append({"theme": key[0], "view": key[1], "comparison": "approved-layout",
+                    "layoutContract": contract, "geometryEqual": before["geometry"] == after["geometry"],
+                    "baselineSize": before["size"], "candidateSize": after["size"],
+                    "baselineFrame": before["frame"], "candidateFrame": after["frame"],
+                    "pixelComparison": "Serial form adds a location chooser; visual review required"})
+                continue
+            if key[1]=="ssh" and parse_version(version) >= (2, 0, 19):
                 # Explicit user approval adds history + secure-remember rows
                 # and repositions all four input fields. Preserve both actual
                 # screenshots; do not claim these unequal layouts are frozen.
-                contract=approved_v219_ssh_layout(before,after)
+                contract=approved_v219_ssh_layout(before,after,version)
                 report["cases"].append({"theme":key[0],"view":"ssh","comparison":"approved-layout",
                     "layoutContract":contract,"geometryEqual":before["geometry"]==after["geometry"],
                     "baselineSize":before["size"],"candidateSize":after["size"],
@@ -342,6 +448,9 @@ def main():
                 after['geometry']=[row for row in after['geometry'] if row[0] in fixed_ids]
                 common_height=min(before['size'][1],after['size'][1],round((90 if key[1]=='ssh' else 440)*report['dpi']/96))
                 require(before['size'][0]==after['size'][0], 'Approved dialog changed its width')
+                if key[1]=='settings':
+                    after.setdefault('approvedRegions',[]).append(
+                        [before['size'][0]-round(10*report['dpi']/96),0,before['size'][0],common_height])
                 for capture in (before,after):
                     capture['pixels']=capture['pixels'][:capture['size'][0]*common_height*4]
                     capture['rawPixels']=capture['rawPixels'][:capture['size'][0]*common_height*4]
@@ -377,7 +486,10 @@ def main():
             unexpected=changed-rounded
             unexpected_raw=unexempt-raw_rounded
             residual=[pixel for pixel in normalized_changes if not rounding(pixel)]
-            report['cases'].append({'theme': key[0], 'view': key[1], 'changedPixels': changed,
+            main_contract = None
+            if key[1] == 'main' and parse_version(version) >= (2, 0, 21):
+                main_contract = approved_v221_main_geometry(before['geometry'], after['geometry'], report['dpi'])
+            case_entry = {'theme': key[0], 'view': key[1], 'changedPixels': changed,
                 'glyphRoundingPixels':rounded,'glyphRoundingRegions':glyph_regions,'glyphMaxChannelDifference':
                     max((max(abs(before['pixels'][p*4+k]-after['pixels'][p*4+k]) for k in range(3)) for p in normalized_changes if rounding(p)),default=0),
                 'unexpectedChangedPixels':unexpected,'unexpectedRawChangedPixels':unexpected_raw,
@@ -389,10 +501,14 @@ def main():
                     'orderOnly':before['geometry']!=after['geometry'] and sorted(before['geometry'])==sorted(after['geometry'])},
                 'baselineFrame': before['frame'], 'candidateFrame': after['frame'],
                 'baselineVersion': before.get('version'), 'candidateVersion': after.get('version'),
-                'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')})
+                'baselineNormalizedFrame': before.get('normalizedFrame'), 'candidateNormalizedFrame': after.get('normalizedFrame')}
+            if main_contract is not None:
+                case_entry['geometryContract'] = main_contract
+            report['cases'].append(case_entry)
         require(all((case.get("comparison")=="approved-layout" and case["layoutContract"]["status"]=="PASS") or
                     (case.get("comparison")!="approved-layout" and case['unexpectedChangedPixels']==0 and
-                     case['unexpectedRawChangedPixels']==0 and case['geometryEqual'])
+                     case['unexpectedRawChangedPixels']==0 and
+                     (case['geometryEqual'] or case.get('geometryContract', {}).get('status') == 'PASS'))
                     for case in report['cases']), 'UI freeze pixel/geometry or approved-layout contract mismatch')
         report['status'] = 'PASS'
     except Exception as error:
@@ -406,7 +522,7 @@ def main():
             os.replace(backup, config)
         (args.output / 'ui-freeze-comparison.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
         for case in report['cases']:
-            fields=('theme','view','comparison','layoutContract','unexpectedChangedPixels','unexpectedRawChangedPixels','geometryEqual','geometryDifferences')
+            fields=('theme','view','comparison','layoutContract','geometryContract','unexpectedChangedPixels','unexpectedRawChangedPixels','geometryEqual','geometryDifferences')
             print('UI_FREEZE_CASE_JSON='+json.dumps({k:case[k] for k in fields if k in case},separators=(',',':')))
         print('::notice title=UI freeze comparison::'+json.dumps(report, separators=(',', ':')))
     return 0 if report['status'] == 'PASS' else 1

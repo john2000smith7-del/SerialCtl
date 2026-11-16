@@ -1,20 +1,151 @@
 #include "GatewayFixture.h"
 #include "GatewayHistoryBoundary.h"
 #include "SharedSerialConnection.h"
+#include <algorithm>
 #include <future>
+#include <psapi.h>
 namespace serialctl {
 struct ApiServerTestAccess {
+    struct Retained {
+        size_t bytes, count, lastBytes;
+        std::uint64_t first, last;
+    };
+    static std::map<std::string, Retained> RetainedHistory(ApiServer& server, bool verifyAccounting = false) {
+        std::lock_guard<std::mutex> lock(server.mutex_);
+        std::map<std::string, Retained> result;
+        size_t total = 0;
+        for (const auto& [id, history] : server.histories_) {
+            if (verifyAccounting) {
+                size_t bytes = 0;
+                auto sequence = history.events.empty() ? history.seq : history.seq - history.events.size();
+                for (const auto& event : history.events) {
+                    const auto actual = event.event.dump().size();
+                    test::Expect(actual == event.bytes && event.event["seq"] == ++sequence,
+                                 "retained history charge and sequence match serialized events");
+                    bytes += actual;
+                }
+                test::Expect(bytes == history.bytes, "per-resource accounting matches retained events");
+            }
+            total += history.bytes;
+            result.emplace(id, Retained{history.bytes, history.events.size(),
+                history.events.empty() ? 0 : history.events.back().bytes,
+                history.events.empty() ? 0 : history.events.front().event["seq"].get<std::uint64_t>(),
+                history.seq});
+        }
+        test::Expect(total == server.historyBytes_, "global accounting matches all retained histories");
+        return result;
+    }
     static std::unique_lock<std::mutex> HoldPublication(ApiServer& server) {
         return std::unique_lock<std::mutex>(server.mutex_);
     }
 };
 }
 using namespace test;
+namespace {
+Json SampleHistoryMemory() {
+    PROCESS_MEMORY_COUNTERS_EX memory{};
+    Expect(GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory),
+                                sizeof(memory)) != FALSE, "sample Windows process memory");
+    return {{"privateBytes", memory.PrivateUsage}, {"workingSetBytes", memory.WorkingSetSize}};
+}
+
+void TestHistoryFairness() {
+    constexpr size_t budget = 16 * 1024 * 1024;
+    const Bytes hot(16384, 'H');
+    for (int count : {1, 4, 16, 32}) {
+        Fixture fixture(19120, 19135);
+        auto& server = fixture.server;
+        std::vector<std::string> resources;
+        for (int i = 0; i < count; ++i)
+            resources.push_back("session-budget-" + std::to_string(100 + i));
+        const auto& cold = resources.front();
+        const auto& local = resources.back();
+        server.SetSessions(resources);
+        const auto beforeMemory = SampleHistoryMemory();
+        server.Publish(cold, Bytes{'c'});
+        const auto low = server.Events(cold, 0);
+        Expect(low["gap"] == false && low["cursor"] == 1 &&
+               Decode64(low["events"][0]["data"]) == Bytes{'c'}, "low-load history preserves the first event");
+
+        for (int i = 0; i < 1100; ++i) server.Publish(local, Bytes{'n'});
+        auto retained = ApiServerTestAccess::RetainedHistory(server, true).at(local);
+        Expect(retained.count == 1024 && retained.bytes < ApiServer::MaxHistoryBytes &&
+               retained.first == retained.last - 1023, "event cap retains the latest 1024 contiguous events");
+        for (int i = 0; i < 64; ++i) server.Publish(local, hot);
+        retained = ApiServerTestAccess::RetainedHistory(server, true).at(local);
+        Expect(retained.bytes <= ApiServer::MaxHistoryBytes && retained.count < 64 &&
+               server.Events(local, 0)["gap"] == true, "byte cap trims oldest events and reports a stale cursor");
+
+        size_t beforeCrossing = 0;
+        size_t proposed = 0;
+        std::string evicted;
+        for (int i = 1; i < count - 1 && evicted.empty(); ++i) {
+            const auto& target = resources[i];
+            for (int j = 0; j < 46 && evicted.empty(); ++j) {
+                const auto before = server.Metrics();
+                auto candidates = ApiServerTestAccess::RetainedHistory(server);
+                server.Publish(target, hot);
+                const auto after = server.Metrics();
+                if (after["historyTrims"] == before["historyTrims"]) continue;
+                const auto state = ApiServerTestAccess::RetainedHistory(server, true);
+                const auto incoming = state.at(target).lastBytes;
+                beforeCrossing = before["historyBytes"].get<size_t>();
+                proposed = beforeCrossing + incoming;
+                candidates[target].bytes += incoming;
+                Expect(candidates[target].bytes <= ApiServer::MaxHistoryBytes && beforeCrossing <= budget &&
+                       proposed > budget && after["historyBytes"].get<size_t>() <= budget,
+                       "global trim crosses the budget without a per-resource overflow");
+                const auto largest = std::max_element(candidates.begin(), candidates.end(),
+                    [](const auto& a, const auto& b) { return a.second.bytes < b.second.bytes; });
+                evicted = largest->first;
+                Expect(evicted != cold && state.at(evicted).first == largest->second.first + 1 &&
+                       after["historyTrims"].get<size_t>() == before["historyTrims"].get<size_t>() + 1,
+                       "only the oldest event from the largest retained history is trimmed");
+                Peer subscriber(server.Port());
+                Expect(subscriber.Request("subscribe", evicted, {{"after", largest->second.first - 1}}, "old")
+                           ["error"]["code"] == "HISTORY_GAP", "wire subscriber receives explicit HISTORY_GAP");
+                const auto latest = server.Events(evicted, state.at(evicted).last - 1);
+                Expect(latest["gap"] == false && latest["events"].size() == 1 &&
+                       latest["events"][0]["seq"] == state.at(evicted).last,
+                       "latest cursor resumes without skipping or renumbering events");
+            }
+        }
+        Expect((count == 32) == !evicted.empty(), "only the 32-resource fixture crosses the global budget");
+        if (count > 1)
+            Expect(server.Events(cold, 0) == low, "hot sessions do not evict the cold session");
+        const auto filledMemory = SampleHistoryMemory();
+        const auto filledBytes = server.Metrics()["historyBytes"];
+        server.SetSessions({});
+        const auto removedMemory = SampleHistoryMemory();
+        for (unsigned cycle = 0; cycle < 32; ++cycle) {
+            server.SetSessions(resources);
+            for (const auto& id : resources) {
+                server.Publish(id, Bytes{static_cast<std::uint8_t>(cycle)});
+                const auto fresh = server.Events(id, 0);
+                Expect(fresh["cursor"] == 1 && fresh["gap"] == false && fresh["events"].size() == 1 &&
+                       Decode64(fresh["events"][0]["data"]) == Bytes{static_cast<std::uint8_t>(cycle)},
+                       "recreated history has fresh sequence and payload");
+            }
+            ApiServerTestAccess::RetainedHistory(server, true);
+            server.SetSessions({});
+            Expect(ApiServerTestAccess::RetainedHistory(server, true).empty() &&
+                   server.Metrics()["historyBytes"] == 0, "resource removal clears retained data and its charge");
+        }
+        const Json evidence{{"resources", count}, {"chargedBytesBeforeCrossing", beforeCrossing},
+            {"proposedBytes", proposed}, {"chargedBytesAfterFill", filledBytes}, {"evictedResource", evicted},
+            {"before", beforeMemory}, {"filled", filledMemory}, {"removed", removedMemory},
+            {"after32ChurnCycles", SampleHistoryMemory()}};
+        std::cout << "HISTORY_FAIRNESS " << evidence.dump() << '\n';
+    }
+}
+}
+
 int stage = 0;
 int main() {
     Wsa wsa;
     try {
         TestHistoryMessageBoundaries();
+        TestHistoryFairness();
         Fixture f;
         {
             const auto before = f.server.Events("session-3", 0)["cursor"].get<std::uint64_t>();
@@ -324,6 +455,201 @@ int main() {
                    "native discovery preserves explicit capacity refusal");
             held.clear();
             std::cerr << "stage=" << ++stage << " capacity clients cleared" << std::endl;
+        }
+        {
+            std::cerr << "stage=" << ++stage << " testing bind, allowlist, CSWSH origin and metrics" << std::endl;
+            Fixture secureFixture(18920, 18935);
+            auto &secServer = secureFixture.server;
+
+            // 1. IP Allowlist
+            secServer.SetAllowedClients({"192.168.1.100"}); // exclude loopback 127.0.0.1
+            {
+                std::wstring error;
+                auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(secServer.Port()), error);
+                Expect(s != INVALID_SOCKET, "connect to allowlist test server");
+                char buf[512]{};
+                int n = recv(s, buf, sizeof(buf), 0);
+                closesocket(s);
+                Expect(n > 0 && std::string(buf, n).find("403 Forbidden") != std::string::npos &&
+                       std::string(buf, n).find("CLIENT_NOT_ALLOWED") != std::string::npos,
+                       "unlisted IP is rejected with HTTP 403 CLIENT_NOT_ALLOWED");
+            }
+            secServer.SetAllowedClients({"127.0.0.1"});
+            {
+                std::wstring error;
+                auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(secServer.Port()), error);
+                Expect(s != INVALID_SOCKET, "connect with allowed IP");
+                closesocket(s);
+            }
+            secServer.SetAllowedClients({}); // empty allows all
+
+            // 2. CSWSH Origin validation
+            {
+                // Disallowed origin
+                std::wstring error;
+                auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(secServer.Port()), error);
+                ws::SocketOptions(s, 2000);
+                std::string req =
+                    "GET /serialctl HTTP/1.1\r\n"
+                    "Host: 127.0.0.1\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    "Sec-WebSocket-Protocol: serialctl.v1\r\n"
+                    "Origin: https://evil.attacker.com\r\n\r\n";
+                ws::SendAll(s, req.data(), req.size());
+                char buf[512]{};
+                int n = recv(s, buf, sizeof(buf), 0);
+                closesocket(s);
+                Expect(n > 0 && std::string(buf, n).find("403 Forbidden") != std::string::npos &&
+                       std::string(buf, n).find("ORIGIN_NOT_ALLOWED") != std::string::npos,
+                       "untrusted Origin rejected with HTTP 403 ORIGIN_NOT_ALLOWED");
+            }
+            {
+                // Disallowed subdomain spoof origin (https://localhost.evil.com)
+                std::wstring error;
+                auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(secServer.Port()), error);
+                ws::SocketOptions(s, 2000);
+                std::string req =
+                    "GET /serialctl HTTP/1.1\r\n"
+                    "Host: 127.0.0.1\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    "Sec-WebSocket-Protocol: serialctl.v1\r\n"
+                    "Origin: https://localhost.evil.com\r\n\r\n";
+                ws::SendAll(s, req.data(), req.size());
+                char buf[512]{};
+                int n = recv(s, buf, sizeof(buf), 0);
+                closesocket(s);
+                Expect(n > 0 && std::string(buf, n).find("403 Forbidden") != std::string::npos &&
+                       std::string(buf, n).find("ORIGIN_NOT_ALLOWED") != std::string::npos,
+                       "spoofed localhost.evil.com Origin rejected with HTTP 403 ORIGIN_NOT_ALLOWED");
+            }
+            {
+                // Allowed origin (localhost)
+                std::wstring error;
+                auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(secServer.Port()), error);
+                ws::SocketOptions(s, 2000);
+                std::string req =
+                    "GET /serialctl HTTP/1.1\r\n"
+                    "Host: 127.0.0.1\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    "Sec-WebSocket-Protocol: serialctl.v1\r\n"
+                    "Origin: http://localhost:8080\r\n\r\n";
+                ws::SendAll(s, req.data(), req.size());
+                char buf[512]{};
+                int n = recv(s, buf, sizeof(buf), 0);
+                closesocket(s);
+                Expect(n > 0 && std::string(buf, n).find("101 Switching Protocols") != std::string::npos,
+                       "localhost Origin accepted");
+            }
+            {
+                // Allowed origin (127.0.0.1)
+                std::wstring error;
+                auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(secServer.Port()), error);
+                ws::SocketOptions(s, 2000);
+                std::string req =
+                    "GET /serialctl HTTP/1.1\r\n"
+                    "Host: 127.0.0.1\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                    "Sec-WebSocket-Version: 13\r\n"
+                    "Sec-WebSocket-Protocol: serialctl.v1\r\n"
+                    "Origin: http://127.0.0.1:3000\r\n\r\n";
+                ws::SendAll(s, req.data(), req.size());
+                char buf[512]{};
+                int n = recv(s, buf, sizeof(buf), 0);
+                closesocket(s);
+                Expect(n > 0 && std::string(buf, n).find("101 Switching Protocols") != std::string::npos,
+                       "127.0.0.1 Origin accepted");
+            }
+
+            for (const auto& authority : {"rebound.example", "127.0.0.1:0", "localhost/other"}) {
+                std::wstring error;
+                auto s = ConnectTcpSocket(L"127.0.0.1", static_cast<std::uint16_t>(secServer.Port()), error);
+                Expect(s != INVALID_SOCKET, "connect for browser Host rejection");
+                ws::SocketOptions(s, 2000);
+                const std::string upgradeRequest = std::string("GET /serialctl HTTP/1.1\r\nHost: ") + authority +
+                    "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"
+                    "Sec-WebSocket-Protocol: serialctl.v1\r\nOrigin: http://localhost:8080\r\n\r\n";
+                Expect(ws::SendAll(s, upgradeRequest.data(), upgradeRequest.size()), "send browser Host probe");
+                char response[512]{};
+                const int count = recv(s, response, sizeof(response), 0);
+                closesocket(s);
+                Expect(count > 0 && std::string(response, count).find("403 Forbidden") != std::string::npos,
+                       "browser handshake must reject untrusted or invalid Host before upgrade");
+            }
+            // 3. Metrics() and O(1) History Eviction Fairness across 18 sessions (> 16 MiB global cap)
+            auto metrics0 = secServer.Metrics();
+            Expect(metrics0.contains("publishedEvents") && metrics0.contains("historyTrims") &&
+                   metrics0.contains("publicationHighWaterMark") && metrics0.contains("historyBytes") &&
+                   metrics0.contains("historyEvents") && metrics0.contains("rejectedClients") &&
+                   metrics0.contains("rejectedOrigins"),
+                   "Metrics contains all required observability keys");
+            Expect(metrics0["rejectedClients"].get<uint64_t>() >= 1 &&
+                   metrics0["rejectedOrigins"].get<uint64_t>() >= 2,
+                   "Metrics tracks rejected client IPs and origins");
+
+            std::vector<std::string> manySessions = {"session-3", "session-5"};
+            for (int sIdx = 10; sIdx < 28; ++sIdx)
+                manySessions.push_back("session-" + std::to_string(sIdx));
+            secServer.SetSessions(manySessions);
+
+            // Publish ~950 KB to each of 18 hot sessions (total ~17.1 MiB > 16 MiB global limit)
+            for (int sIdx = 10; sIdx < 28; ++sIdx) {
+                const std::string resName = "session-" + std::to_string(sIdx);
+                for (int i = 0; i < 60; ++i)
+                    secServer.Publish(resName, Bytes(12000, 'H'));
+            }
+            // Publish moderately to cold session-5
+            for (int i = 0; i < 20; ++i) {
+                secServer.Publish("session-5", Bytes(200, 'B'));
+            }
+
+            auto metrics1 = secServer.Metrics();
+            Expect(metrics1["publishedEvents"].get<uint64_t>() >= 1100, "metrics tracks published events");
+            Expect(metrics1["historyTrims"].get<uint64_t>() > 0, "metrics tracks history trims");
+            Expect(metrics1["historyBytes"].get<size_t>() <= 16 * 1024 * 1024, "history bytes bounded by 16MB");
+            auto events5 = secServer.Events("session-5", 0);
+            Expect(!events5["gap"].get<bool>(), "smaller cold session not trimmed when 16MB largest-first fairness applies");
+
+            // 4. WebSocket stream multi-continuation fragmentation & interleaved control (Issue #22)
+            {
+                Peer fragPeer(secServer.Port());
+                std::string reqBody = fragPeer.Envelope("resources", "", Json::object(), "multi-frag").dump();
+                size_t part1 = reqBody.size() / 3;
+                size_t part2 = reqBody.size() / 3;
+                Bytes b1(reqBody.begin(), reqBody.begin() + part1);
+                Bytes b2(reqBody.begin() + part1, reqBody.begin() + part1 + part2);
+                Bytes b3(reqBody.begin() + part1 + part2, reqBody.end());
+
+                fragPeer.stream->Send(1, b1, false); // Opcode 1, FIN=0
+                fragPeer.stream->Send(9, Bytes{'h', 'i'}); // Interleaved Ping
+                auto pongResp = fragPeer.stream->Receive();
+                Expect(pongResp.opcode == 10 && pongResp.data == Bytes({'h', 'i'}), "Ping processed during multi-continuation");
+                fragPeer.stream->Send(0, b2, false); // Opcode 0, FIN=0
+                fragPeer.stream->Send(0, b3, true);  // Opcode 0, FIN=1
+                auto res = fragPeer.Receive();
+                Expect(res["type"] == "response" && res["requestId"] == "multi-frag" && res["ok"] == true &&
+                       res["result"].contains("resources"),
+                       "multi-continuation frame reassembly succeeds");
+
+                // Oversized continuation exceeding MaxMessage triggers 1009
+                fragPeer.stream->Send(1, Bytes(60000, 'x'), false);
+                fragPeer.stream->Send(0, Bytes(75000, 'y'), true); // total 135000 > 128KB
+                auto closeMsg = fragPeer.stream->Receive();
+                Expect(closeMsg.opcode == 8, "oversized continuation stream closed with code 1009");
+                unsigned code = (static_cast<unsigned>(closeMsg.data[0]) << 8) | closeMsg.data[1];
+                Expect(code == 1009, "close code is 1009 MESSAGE_TOO_BIG");
+            }
         }
         std::cout << "Unified gateway scope, RFC6455, legacy rejection, byte integrity, replay and lifecycle passed\n";
     } catch (const std::exception &e) {

@@ -28,11 +28,14 @@ class GatewayClient {
     }
     nlohmann::json Request(const std::string &op, const std::string &resource = "",
                            nlohmann::json params = nlohmann::json::object());
+    nlohmann::json RequestUntil(const std::string &op, const std::string &resource,
+                                nlohmann::json params, ULONGLONG deadline);
     std::string SendRequest(const std::string &op, const std::string &resource, nlohmann::json params);
     nlohmann::json Receive();
     const nlohmann::json &Hello() const {
         return hello_;
     }
+    void SetAccessToken(std::string token) { accessToken_ = std::move(token); }
     void Live() {
         ws::SocketOptions(socket_);
         stream_->Deadline(0);
@@ -49,5 +52,6 @@ class GatewayClient {
     std::mutex send_;
     std::mutex cancelMutex_; // cancellation cannot race HANDLE/socket destruction
     std::uint64_t request_ = 0;
+    std::string accessToken_;
 };
 } // namespace serialctl

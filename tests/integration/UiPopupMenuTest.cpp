@@ -13,6 +13,8 @@ struct Probe {
     DWORD started=0;
     unsigned positions=0;
     bool observed=false,region=false,nestedRejected=false,navigated=false;
+    DWORD navigationAt=0;
+    unsigned menuSelections=0;
     std::string error;
 };
 thread_local Probe* active=nullptr;
@@ -21,6 +23,7 @@ LRESULT CALLBACK Observe(int code,WPARAM w,LPARAM l) {
         const auto& message=*reinterpret_cast<CWPSTRUCT*>(l);
         wchar_t name[24]{};GetClassNameW(message.hwnd,name,24);
         if(wcscmp(name,L"#32768")==0&&message.message==WM_WINDOWPOSCHANGED)++active->positions;
+        if(message.hwnd==active->owner&&message.message==WM_MENUSELECT)++active->menuSelections;
     }
     return CallNextHookEx(nullptr,code,w,l);
 }
@@ -53,9 +56,29 @@ void CALLBACK Tick(HWND owner,UINT,UINT_PTR timer,DWORD) {
         auto nested=CreatePopupMenu();AppendMenuW(nested,MF_STRING,99,L"Nested should be rejected");
         p->nestedRejected=UiPopupMenu::Track(nested,TPM_RETURNCMD,10,10,owner,UiFieldStyle{&p->dark,nullptr,p->dpi})==0;
         DestroyMenu(nested);
-        if(p->accept&&!p->navigated){p->navigated=true;Key(VK_DOWN);return;}
+        const auto foreground=GetForegroundWindow();
+        if(foreground!=owner&&foreground!=menu) {
+            std::cerr<<"native menu foreground="<<foreground<<" owner="<<owner<<" menu="<<menu<<" focus="<<GetFocus()<<'\n';
+            throw std::runtime_error("native menu test window does not own foreground keyboard input");
+        }
+        if(p->accept&&!p->navigated) {
+            p->navigated=true;
+            p->navigationAt=GetTickCount();
+            POINT cursor{};GetCursorPos(&cursor);
+            std::cout<<"menu navigation before SendInput: dark="<<p->dark<<" dpi="<<p->dpi
+                <<" foreground="<<GetForegroundWindow()<<" owner="<<owner<<" focus="<<GetFocus()
+                <<" cursor="<<cursor.x<<','<<cursor.y<<" inside="<<PtInRect(&box,cursor)
+                <<" firstState="<<GetMenuState(p->menu,1,MF_BYCOMMAND)
+                <<" lastState="<<GetMenuState(p->menu,3,MF_BYCOMMAND)<<'\n';
+            Key(VK_DOWN);
+            return;
+        }
         KillTimer(owner,timer);
         if(p->accept) {
+            std::cout<<"menu navigation after SendInput: elapsed="<<GetTickCount()-p->navigationAt
+                <<" foreground="<<GetForegroundWindow()<<" focus="<<GetFocus()
+                <<" menuSelections="<<p->menuSelections<<" firstState="<<GetMenuState(p->menu,1,MF_BYCOMMAND)
+                <<" lastState="<<GetMenuState(p->menu,3,MF_BYCOMMAND)<<'\n';
             Check((GetMenuState(p->menu,1,MF_BYCOMMAND)&MF_HILITE)!=0,"native menu keyboard selection missing");
             RedrawWindow(menu,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_UPDATENOW);
             RECT row{};Check(GetMenuItemRect(owner,p->menu,0,&row)!=FALSE,"native menu item bounds");

@@ -613,7 +613,8 @@ class DesktopActions:
                         require(previous_point is None or abs(point[0] - previous_point[0]) > double_click_width,
                                 "Toggle is too narrow to disambiguate consecutive single clicks")
                     target = self.user.WindowFromPoint(POINT(*point))
-                    require(target == toggle, "Rapid-click point is obstructed or outside the actual toggle")
+                    require(target == toggle, f"Rapid-click point {point} is obstructed or outside the actual toggle: "
+                            f"click {index}, bounds {bounds}, expected HWND {toggle}, hit HWND {target}")
                     before_caption = self.caption(toggle)
                     require(before_caption, "Cannot read native toggle caption before single click")
                     observation = {**self.timestamp(), "index": index, "bounds": bounds,

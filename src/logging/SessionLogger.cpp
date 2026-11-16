@@ -10,31 +10,146 @@
 namespace serialctl
 {
 
+namespace {
+std::mutex& LoggerRegistryMutex() {
+    static auto* m = new std::mutex();
+    return *m;
+}
+
+std::vector<SessionLogger*>& LoggerRegistry() {
+    static auto* r = new std::vector<SessionLogger*>();
+    return *r;
+}
+
+bool EnsureDirectoryWritable(const std::wstring& dir) {
+    if (dir.empty()) return false;
+    if (SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr) != ERROR_SUCCESS &&
+        GetFileAttributesW(dir.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        return false;
+    }
+    const std::wstring probe = dir + L"\\.serialctl_probe_" + std::to_wstring(GetCurrentProcessId()) + L"_" +
+                               std::to_wstring(GetTickCount64());
+    HANDLE h = CreateFileW(probe.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    CloseHandle(h);
+    return true;
+}
+} // namespace
+
+SessionLogger::SessionLogger() {
+    std::lock_guard<std::mutex> lock(LoggerRegistryMutex());
+    LoggerRegistry().push_back(this);
+}
+
 SessionLogger::~SessionLogger()
 {
+    {
+        std::lock_guard<std::mutex> lock(LoggerRegistryMutex());
+        auto& reg = LoggerRegistry();
+        reg.erase(std::remove(reg.begin(), reg.end(), this), reg.end());
+    }
+    StopContinuousSave();
     Stop();
+}
+
+std::wstring SessionLogger::DefaultLogDirectory() {
+    std::array<wchar_t, 32768> envDir{};
+    const DWORD envLen = GetEnvironmentVariableW(L"SERIALCTL_LOG_DIR", envDir.data(), static_cast<DWORD>(envDir.size()));
+    if (envLen > 0 && envLen < envDir.size()) {
+        std::wstring custom(envDir.data(), envLen);
+        if (EnsureDirectoryWritable(custom)) return custom;
+    }
+    std::array<wchar_t, 32768> exePath{};
+    const DWORD exeLen = GetModuleFileNameW(nullptr, exePath.data(), static_cast<DWORD>(exePath.size()));
+    if (exeLen > 0 && exeLen < exePath.size()) {
+        std::wstring full(exePath.data(), exeLen);
+        const size_t slash = full.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) {
+            const std::wstring exeLogs = full.substr(0, slash) + L"\\logs";
+            if (EnsureDirectoryWritable(exeLogs)) return exeLogs;
+        }
+    }
+    std::array<wchar_t, MAX_PATH> appData{};
+    if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, appData.data()))) {
+        const std::wstring fallback = std::wstring(appData.data()) + L"\\SerialCtl\\logs";
+        if (SHCreateDirectoryExW(nullptr, fallback.c_str(), nullptr) == ERROR_SUCCESS ||
+            GetFileAttributesW(fallback.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            return fallback;
+        }
+        return fallback;
+    }
+    return {};
+}
+
+void SessionLogger::ConfigureRotation(size_t maxPartsPerSession, std::uint64_t splitThresholdBytes) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    maxPartsPerSession_ = maxPartsPerSession;
+    if (splitThresholdBytes > 0) splitThresholdBytes_ = splitThresholdBytes;
+}
+
+void SessionLogger::EmergencyFlush() {
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (lock.owns_lock()) {
+        if (file_ != INVALID_HANDLE_VALUE) {
+            while (!queue_.empty()) {
+                const auto& front = queue_.front();
+                size_t offset = 0;
+                while (offset < front.size()) {
+                    DWORD written = 0;
+                    if (!WriteFile(file_, front.data() + offset, static_cast<DWORD>(front.size() - offset), &written, nullptr) ||
+                        !written) {
+                        break;
+                    }
+                    offset += written;
+                    written_ += written;
+                    completed_ += written;
+                }
+                if (!parts_.empty()) parts_.back().length += offset;
+                if (offset < front.size()) break;
+                queue_.pop_front();
+            }
+            queued_ = 0;
+            FlushFileBuffers(file_);
+        }
+        return;
+    }
+    const HANDLE handle = activeFileHandle_.load();
+    if (handle != INVALID_HANDLE_VALUE) FlushFileBuffers(handle);
+}
+
+void SessionLogger::EmergencyFlushAll() {
+    std::unique_lock<std::mutex> lock(LoggerRegistryMutex(), std::try_to_lock);
+    if (!lock.owns_lock()) return;
+    for (SessionLogger* logger : LoggerRegistry()) {
+        if (logger) logger->EmergencyFlush();
+    }
 }
 
 bool SessionLogger::Start(const std::wstring &mode, std::wstring &error, bool csv)
 {
+    StopContinuousSave();
     Stop();
     {
         std::lock_guard<std::mutex> lock(mutex_);
         ++generation_;
         path_.clear();
         parts_.clear();
+        pinnedParts_.clear();
+        nextPartNumber_ = 2;
+        evictedBytes_ = 0;
         accepted_ = completed_ = written_ = 0;
+        queued_ = highWaterQueued_ = 0;
+        overflowEvents_ = 0;
         failure_.clear();
         wake_.notify_all();
     }
-    std::array<wchar_t, MAX_PATH> appData{};
-    if (FAILED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT,
-                                appData.data())))
+    const std::wstring directory = DefaultLogDirectory();
+    if (directory.empty())
     {
-        error = L"无法找到本地应用数据目录";
+        error = L"无法找到可用的日志目录";
         return false;
     }
-    std::wstring directory = std::wstring(appData.data()) + L"\\SerialCtl\\logs";
     if (SHCreateDirectoryExW(nullptr, directory.c_str(), nullptr) != ERROR_SUCCESS &&
         GetFileAttributesW(directory.c_str()) == INVALID_FILE_ATTRIBUTES)
     {
@@ -67,6 +182,7 @@ bool SessionLogger::Start(const std::wstring &mode, std::wstring &error, bool cs
         std::lock_guard<std::mutex> lock(mutex_);
         path_ = std::move(createdPath);
         parts_.push_back({path_, 0});
+        activeFileHandle_.store(file_);
         stopping_ = false;
         writerAlive_ = true;
     }
@@ -77,6 +193,7 @@ bool SessionLogger::Start(const std::wstring &mode, std::wstring &error, bool cs
             std::lock_guard<std::mutex> lock(mutex_);
             stopping_ = true;
             writerAlive_ = false;
+            activeFileHandle_.store(INVALID_HANDLE_VALUE);
             failure_ = error = L"无法启动日志写入线程";
             wake_.notify_all();
         }
@@ -86,6 +203,54 @@ bool SessionLogger::Start(const std::wstring &mode, std::wstring &error, bool cs
     }
     if (!csv)
         WriteStatus(L"SerialCtl 会话开始，模式：" + mode);
+    return true;
+}
+
+bool SessionLogger::Resume(const std::wstring &mode, std::wstring &error) {
+    Stop();
+    std::wstring lastPath;
+    std::uint64_t expected = 0;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (path_.empty() || parts_.empty() || !failure_.empty()) {
+            error = failure_.empty() ? L"没有可恢复的会话日志" : failure_;
+            return false;
+        }
+        lastPath = parts_.back().path;
+        expected = parts_.back().length;
+    }
+    HANDLE file = CreateFileW(lastPath.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) { error = L"无法重新打开历史日志：" + Win32ErrorMessage(); return false; }
+    LARGE_INTEGER actual{}, end{};
+    end.QuadPart = 0;
+    if (!GetFileSizeEx(file, &actual) || actual.QuadPart < 0 ||
+        static_cast<std::uint64_t>(actual.QuadPart) != expected ||
+        !SetFilePointerEx(file, end, nullptr, FILE_END)) {
+        CloseHandle(file);
+        error = L"历史日志文件已发生外部变化，拒绝重连追加";
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        file_ = file;
+        activeFileHandle_.store(file);
+        written_ = expected;
+        stopping_ = false;
+        writerAlive_ = true;
+    }
+    try { worker_ = std::thread(&SessionLogger::Run, this); }
+    catch (...) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true; writerAlive_ = false; file_ = INVALID_HANDLE_VALUE;
+            activeFileHandle_.store(INVALID_HANDLE_VALUE);
+        }
+        CloseHandle(file);
+        error = L"无法启动历史日志续写线程";
+        return false;
+    }
+    WriteStatus(L"SerialCtl 会话重新连接，模式：" + mode);
     return true;
 }
 
@@ -100,27 +265,45 @@ void SessionLogger::WriteRaw(const Bytes &data)
 
 void SessionLogger::WriteText(const std::wstring &text)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (stopping_ || text.empty())
-        return;
-    const std::string utf8 = WideToMultiByte(text, CP_UTF8);
-    WriteBytes(utf8.data(), static_cast<DWORD>(utf8.size()));
+    if (!text.empty()) WriteBatch({{false, text}});
 }
 
 void SessionLogger::WriteStatus(const std::wstring &text)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (stopping_)
-    {
-        return;
+    WriteBatch({{true, text}});
+}
+
+void SessionLogger::WriteBatch(const std::vector<std::pair<bool, std::wstring>>& entries)
+{
+    if (entries.empty()) return;
+    std::lock_guard<std::mutex> encodeLock(encodeMutex_);
+    std::wstring combined;
+    size_t reserve = 0;
+    for (const auto& entry : entries) reserve += entry.second.size() + (entry.first ? 32 : 0);
+    combined.reserve(reserve);
+    for (const auto& entry : entries) {
+        if (!entry.first) {
+            combined += entry.second;
+            continue;
+        }
+        SYSTEMTIME now{};
+        GetLocalTime(&now);
+        wchar_t prefix[32]{};
+        swprintf_s(prefix, L"\r\n[%02u:%02u:%02u.%03u] ", now.wHour, now.wMinute, now.wSecond,
+                   now.wMilliseconds);
+        combined += prefix;
+        combined += entry.second;
+        combined += L"\r\n";
     }
-    SYSTEMTIME now{};
-    GetLocalTime(&now);
-    wchar_t prefix[32]{};
-    swprintf_s(prefix, L"\r\n[%02u:%02u:%02u.%03u] ", now.wHour, now.wMinute, now.wSecond,
-               now.wMilliseconds);
-    const std::string utf8 = WideToMultiByte(std::wstring(prefix) + text + L"\r\n", CP_UTF8);
+    const std::string utf8 = WideToMultiByte(combined, CP_UTF8);
+    std::lock_guard<std::mutex> lock(mutex_);
     WriteBytes(utf8.data(), static_cast<DWORD>(utf8.size()));
+}
+
+SessionLogger::Statistics SessionLogger::Stats() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return {queued_, highWaterQueued_, accepted_, completed_, overflowEvents_};
 }
 
 namespace {
@@ -191,6 +374,8 @@ bool IsLogFamily(const std::wstring &name, const std::wstring &root) {
 
 #ifdef SERIALCTL_LOGGER_TESTING
 std::atomic<std::int64_t> SessionLogger::testCopyFailureAfter_{-1};
+std::atomic<bool> SessionLogger::testFailFlushCopy_{false};
+std::atomic<bool> SessionLogger::testFailFlushStop_{false};
 #endif
 
 SessionLogger::ExportPoint SessionLogger::CaptureExportPoint() {
@@ -199,7 +384,7 @@ SessionLogger::ExportPoint SessionLogger::CaptureExportPoint() {
 }
 
 bool SessionLogger::CaptureSnapshot(ExportPoint point, const std::atomic<bool> *cancel,
-                                    Snapshot &snapshot, std::wstring &error) {
+                                    Snapshot &snapshot, std::wstring &error, bool pinParts) {
     std::unique_lock<std::mutex> lock(mutex_);
     if (point.generation != generation_ || point.bytes > accepted_ || path_.empty() || point.root != path_) {
         error = L"原日志已切换或尚未开始，未导出";
@@ -223,20 +408,67 @@ bool SessionLogger::CaptureSnapshot(ExportPoint point, const std::atomic<bool> *
         error = L"日志写入尚未达到快照截止点，未导出";
         return false;
     }
+    if (point.bytes < evictedBytes_) {
+        error = L"所选日志范围已因环形滚动被覆盖，未导出";
+        return false;
+    }
     snapshot.root = path_;
-    snapshot.length = point.bytes;
-    auto remaining = point.bytes;
+    auto remaining = point.bytes - evictedBytes_;
+    snapshot.length = remaining;
     for (const auto &part : parts_) {
         if (!remaining) break;
         const auto length = std::min(remaining, part.length);
-        if (length) snapshot.parts.push_back({part.path, length});
+        if (length) {
+            snapshot.parts.push_back({part.path, length});
+            if (pinParts) ++pinnedParts_[part.path];
+        }
         remaining -= length;
     }
     if (remaining) {
+        if (pinParts) {
+            for (const auto &part : snapshot.parts) {
+                auto it = pinnedParts_.find(part.path);
+                if (it != pinnedParts_.end() && --it->second == 0) pinnedParts_.erase(it);
+            }
+            snapshot.parts.clear();
+        }
         error = L"日志分卷快照不完整，未导出";
         return false;
     }
     return true;
+}
+
+void SessionLogger::UnpinSnapshot(const Snapshot &snapshot) {
+    if (snapshot.parts.empty()) return;
+    std::vector<std::wstring> toDelete;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const auto &part : snapshot.parts) {
+            auto it = pinnedParts_.find(part.path);
+            if (it != pinnedParts_.end() && --it->second == 0) pinnedParts_.erase(it);
+        }
+        toDelete = EvictExcessPartsLocked();
+    }
+    DeletePathsBestEffort(toDelete);
+}
+
+std::vector<std::wstring> SessionLogger::EvictExcessPartsLocked() {
+    std::vector<std::wstring> toDelete;
+    if (maxPartsPerSession_ == 0) return toDelete;
+    while (parts_.size() > maxPartsPerSession_) {
+        const auto &oldest = parts_.front();
+        if (pinnedParts_.find(oldest.path) != pinnedParts_.end()) break;
+        evictedBytes_ += oldest.length;
+        toDelete.push_back(oldest.path);
+        parts_.erase(parts_.begin());
+    }
+    return toDelete;
+}
+
+void SessionLogger::DeletePathsBestEffort(const std::vector<std::wstring> &paths) {
+    for (const auto &p : paths) {
+        DeleteFileW(p.c_str());
+    }
 }
 
 bool SessionLogger::SaveCopy(const std::wstring &destination, std::wstring &error) {
@@ -246,7 +478,12 @@ bool SessionLogger::SaveCopy(const std::wstring &destination, std::wstring &erro
 bool SessionLogger::SaveCopy(const std::wstring &destination, ExportPoint point, std::wstring &error,
                              const std::atomic<bool> *cancel, const ExportProgress &progress) {
     Snapshot snapshot;
-    if (!CaptureSnapshot(point, cancel, snapshot, error)) return false;
+    if (!CaptureSnapshot(point, cancel, snapshot, error, true)) return false;
+    struct PinGuard {
+        SessionLogger *owner;
+        const Snapshot &snapshot;
+        ~PinGuard() { owner->UnpinSnapshot(snapshot); }
+    } pinGuard{this, snapshot};
     return CopySnapshot(snapshot, destination, error, cancel, progress);
 }
 
@@ -330,7 +567,11 @@ bool SessionLogger::CopySnapshot(const Snapshot &snapshot, const std::wstring &d
             }
         }
         if (ExportCancelled(cancel)) return CancelExport(error);
-        if (!FlushFileBuffers(output.value)) {
+        bool flushOk = FlushFileBuffers(output.value) != FALSE;
+#ifdef SERIALCTL_LOGGER_TESTING
+        if (testFailFlushCopy_.load()) flushOk = false;
+#endif
+        if (!flushOk) {
             const auto code = GetLastError();
             if (ExportCancelled(cancel)) return CancelExport(error);
             error = L"日志副本刷新失败：" + Win32ErrorMessage(code);
@@ -358,6 +599,130 @@ bool SessionLogger::CopySnapshot(const Snapshot &snapshot, const std::wstring &d
 }
 
 
+bool SessionLogger::CopyCompletedRange(ExportPoint point, std::uint64_t from,
+                                       HANDLE output, std::wstring& error) {
+    Snapshot snapshot;
+    if (from > point.bytes || !CaptureSnapshot(point, nullptr, snapshot, error, true)) return false;
+    struct PinGuard {
+        SessionLogger *owner;
+        const Snapshot &snapshot;
+        ~PinGuard() { owner->UnpinSnapshot(snapshot); }
+    } pinGuard{this, snapshot};
+    std::array<char, 65536> buffer{};
+    auto skip = from >= evictedBytes_ ? (from - evictedBytes_) : 0;
+    for (const auto& part : snapshot.parts) {
+        if (skip >= part.length) { skip -= part.length; continue; }
+        HANDLE input = CreateFileW(part.path.c_str(), GENERIC_READ,
+                                   FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                                   FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (input == INVALID_HANDLE_VALUE) {
+            error = L"持续保存无法读取日志分卷：" + Win32ErrorMessage(); return false;
+        }
+        LARGE_INTEGER distance{}; distance.QuadPart = static_cast<LONGLONG>(skip);
+        if (!SetFilePointerEx(input, distance, nullptr, FILE_BEGIN)) {
+            error = L"持续保存定位源日志失败：" + Win32ErrorMessage(); CloseHandle(input); return false;
+        }
+        auto remaining = part.length - skip;
+        skip = 0;
+        while (remaining) {
+            DWORD count = 0;
+            const auto required = static_cast<DWORD>(std::min<std::uint64_t>(remaining, buffer.size()));
+            if (!ReadFile(input, buffer.data(), required, &count, nullptr) || !count) {
+                error = L"持续保存读取源日志失败：" + Win32ErrorMessage(); CloseHandle(input); return false;
+            }
+            DWORD pos = 0;
+            while (pos < count) {
+                DWORD written = 0;
+                if (!WriteFile(output, buffer.data() + pos, count - pos, &written, nullptr) || !written) {
+                    error = L"持续保存写入目标失败：" + Win32ErrorMessage(); CloseHandle(input); return false;
+                }
+                pos += written;
+            }
+            remaining -= count;
+        }
+        CloseHandle(input);
+    }
+    return true;
+}
+
+std::wstring SessionLogger::ContinuousSaveError() const {
+    std::lock_guard<std::mutex> lock(continuousMutex_);
+    return continuousError_;
+}
+
+bool SessionLogger::StartContinuousSave(const std::wstring &destination, std::wstring &error) {
+    if (continuousActive_.load()) { error = L"已经在持续保存日志"; return false; }
+    if (continuousWorker_.joinable()) continuousWorker_.join();
+    std::wstring fullDestination, fullSource, parent, sourceParent;
+    const auto source = Path();
+    if (source.empty() || !FullExportPath(destination, fullDestination, error) ||
+        !FullExportPath(source, fullSource, error) ||
+        !ExportParent(fullDestination, parent, error) ||
+        !ExportParent(fullSource, sourceParent, error)) return false;
+    const auto filename = fullDestination.substr(fullDestination.find_last_of(L"\\/") + 1);
+    const auto sourceName = fullSource.substr(fullSource.find_last_of(L"\\/") + 1);
+    if (_wcsicmp(parent.c_str(), sourceParent.c_str()) == 0 && IsLogFamily(filename, sourceName)) {
+        error = L"不能将持续保存目标设为日志源文件或分卷"; return false;
+    }
+    HANDLE output = CreateFileW(fullDestination.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                                 nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (output == INVALID_HANDLE_VALUE) {
+        error = L"无法创建持续保存目标：" + Win32ErrorMessage(); return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(continuousMutex_);
+        continuousPath_ = fullDestination;
+        continuousError_.clear();
+    }
+    continuousStopAt_.store(0);
+    continuousStop_.store(false);
+    continuousActive_.store(true);
+    try { continuousWorker_ = std::thread(&SessionLogger::ContinuousSaveWorker, this, output); }
+    catch (...) {
+        CloseHandle(output); continuousActive_.store(false);
+        error = L"无法启动持续日志保存线程"; return false;
+    }
+    return true;
+}
+
+void SessionLogger::StopContinuousSave() {
+    if (!continuousWorker_.joinable()) return;
+    continuousStopAt_.store(CaptureExportPoint().bytes);
+    continuousStop_.store(true);
+    continuousWake_.notify_all();
+    continuousWorker_.join();
+    continuousActive_.store(false);
+}
+
+void SessionLogger::ContinuousSaveWorker(HANDLE output) {
+    std::uint64_t offset = 0;
+    std::wstring error;
+    for (;;) {
+        const auto point = CaptureExportPoint();
+        auto end = point.bytes;
+        if (continuousStop_.load()) end = std::min(end, continuousStopAt_.load());
+        if (end > offset) {
+            if (!CopyCompletedRange({point.generation, end, point.root}, offset, output, error))
+                break;
+            offset = end;
+            if (!FlushFileBuffers(output)) {
+                error = L"持续保存刷新目标文件失败：" + Win32ErrorMessage(); break;
+            }
+        }
+        if (continuousStop_.load() && offset >= continuousStopAt_.load()) break;
+        std::unique_lock<std::mutex> lock(continuousMutex_);
+        continuousWake_.wait_for(lock, std::chrono::milliseconds(200));
+    }
+    if (!FlushFileBuffers(output) && error.empty())
+        error = L"持续保存最终刷新失败：" + Win32ErrorMessage();
+    CloseHandle(output);
+    {
+        std::lock_guard<std::mutex> lock(continuousMutex_);
+        if (!error.empty()) continuousError_ = error;
+    }
+    continuousActive_.store(false);
+}
+
 std::wstring SessionLogger::Error()
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -378,10 +743,15 @@ void SessionLogger::Stop()
         std::lock_guard<std::mutex> lock(mutex_);
         file = file_;
         file_ = INVALID_HANDLE_VALUE;
+        activeFileHandle_.store(INVALID_HANDLE_VALUE);
     }
     std::wstring failure;
     if (file != INVALID_HANDLE_VALUE) {
-        if (!FlushFileBuffers(file)) failure = L"日志刷新失败：" + Win32ErrorMessage();
+        bool flushOk = FlushFileBuffers(file) != FALSE;
+#ifdef SERIALCTL_LOGGER_TESTING
+        if (testFailFlushStop_.load()) flushOk = false;
+#endif
+        if (!flushOk) failure = L"日志刷新失败：" + Win32ErrorMessage();
         CloseHandle(file);
     }
     if (!failure.empty()) {
@@ -399,12 +769,17 @@ void SessionLogger::WriteBytes(const void *data, DWORD size)
     if (queued_ + size > 8 * 1024 * 1024)
     {
         failure_ = L"日志磁盘处理过慢，日志队列已满。";
+        ++overflowEvents_;
         wake_.notify_all();
         return;
     }
     const auto *bytes = static_cast<const std::uint8_t *>(data);
-    queue_.emplace_back(bytes, bytes + size);
+    if (!queue_.empty() && queue_.back().size() + size <= 256 * 1024)
+        queue_.back().insert(queue_.back().end(), bytes, bytes + size);
+    else
+        queue_.emplace_back(bytes, bytes + size);
     queued_ += size;
+    highWaterQueued_ = std::max(highWaterQueued_, queued_);
     accepted_ += size;
     wake_.notify_all();
 }
@@ -424,17 +799,29 @@ void SessionLogger::Run()
             queued_ -= bytes.size();
             writing_ = true;
         }
+        std::uint64_t splitThreshold = 16ull * 1024 * 1024;
+        std::uint64_t partNumber = 2;
+        std::wstring rootPath;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            splitThreshold = splitThresholdBytes_;
+            partNumber = nextPartNumber_;
+            rootPath = path_;
+        }
         size_t offset = 0;
         std::wstring failure;
-        if (written_ && written_ + bytes.size() > 64ull * 1024 * 1024)
+        std::vector<std::wstring> evictedPaths;
+        if (written_ && written_ + bytes.size() > splitThreshold)
         {
             if (!FlushFileBuffers(file_))
                 failure = L"日志刷新失败：" + Win32ErrorMessage();
             CloseHandle(file_);
             file_ = INVALID_HANDLE_VALUE;
-            const auto dot = path_.find_last_of(L'.');
-            std::wstring part = path_.substr(0, dot) + L".part" +
-                                std::to_wstring(parts_.size() + 1) + path_.substr(dot);
+            activeFileHandle_.store(INVALID_HANDLE_VALUE);
+            const auto dot = rootPath.find_last_of(L'.');
+            std::wstring part = (dot == std::wstring::npos)
+                ? (rootPath + L".part" + std::to_wstring(partNumber))
+                : (rootPath.substr(0, dot) + L".part" + std::to_wstring(partNumber) + rootPath.substr(dot));
             if (failure.empty())
                 file_ = CreateFileW(part.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
                                     CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -442,9 +829,15 @@ void SessionLogger::Run()
                 failure = L"日志分卷失败：" + Win32ErrorMessage();
             if (failure.empty())
             {
-                std::lock_guard<std::mutex> lock(mutex_);
-                parts_.push_back({std::move(part), 0});
-                written_ = 0;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    activeFileHandle_.store(file_);
+                    nextPartNumber_ = partNumber + 1;
+                    parts_.push_back({std::move(part), 0});
+                    written_ = 0;
+                    evictedPaths = EvictExcessPartsLocked();
+                }
+                DeletePathsBestEffort(evictedPaths);
             }
         }
         while (failure.empty() && offset < bytes.size())
