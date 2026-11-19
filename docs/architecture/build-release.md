@@ -42,9 +42,11 @@ compile → PE compatibility check → package → sign → signed upgrade test 
 
 正式包主目录直接包含 serialctl.exe、plink.exe、psftp.exe 和用户说明，驱动位于 drivers 子目录。旧 ADR 0001 记录的双架构外层目录是历史决策，当前 x64 平铺规则以本文件、AGENTS 和实际 package.ps1 为准。
 
-## 云端构建
+## 本地验证与云端构建
 
-main 的 windows-build.yml 使用 release.ps1 -ProductionOnly，编译目标禁用 BUILD_TESTING，保留静态兼容检查、归档白名单及重开验证。开发分支执行完整编译测试、性能与桌面冒烟。
+`main`、`feat/**` 和 `feature/**` 共用 `windows-build.yml` 的生产打包作业。它调用 `release.ps1 -ProductionOnly`，编译目标禁用 `BUILD_TESTING`，保留二进制兼容检查、归档白名单及重开验证。PR 和分支推送后的仓库策略、单元、集成、桌面、压测等测试由本地执行。
+
+在 Windows 开发机执行 `./scripts/release.ps1 -TestFixtureDirectory <仓库外的新目录>` 完成 MSVC 构建、全部 CTest、兼容检查、完整本地打包与临时签名抽取验证。规范校验、真机桌面操作、性能与诊断按本地验收范围执行。原 GitHub 测试作业的命令已移至 [本地执行参考](../testing/workflow-recipes/README.md)。
 
 发布工作流使用成功的 main 分支 Windows 构建 run ID、完整源码 SHA 和压缩包 SHA-256，从 Actions 下载已经验证的包再发布，不重新编译，不要求大压缩包进入 Git。正式版本 Vx.y.z 对应 vx.y.z 标签，保留历史发布；新正式交付递增版本。
 
@@ -57,14 +59,14 @@ gh workflow run windows-build.yml --repo john2000smith7-del/SerialCtl --ref main
 gh run list --repo john2000smith7-del/SerialCtl --workflow windows-build.yml --branch main --limit 10 --json databaseId,event,headSha,status,conclusion,url
 gh run view <本次构建ID> --repo john2000smith7-del/SerialCtl --json headSha,event,status,conclusion,jobs,url
 # 当前主流程由本地复合 action 自动恢复精确 run 的候选与收据，见下一节。
-gh workflow run desktop-interaction.yml --repo john2000smith7-del/SerialCtl --ref <开发分支> -f build_run=<同一开发提交的Windows构建ID>
+gh workflow run windows-build.yml --repo john2000smith7-del/SerialCtl --ref <开发分支>
 ```
 
-桌面审核在开发分支手动启动。main 的唯一测试入口是 verify-release-upgrade.yml，使用该提交的最终 ZIP 和对应签名。
+开发分支通过 forward-update-verification.yml 验证候选客户端的隔离升级路径。main 通过 verify-release-upgrade.yml 验证真实旧版客户端向精确正式候选的升级。两套流程均只接收公开签名数据。
 
 ### Actions 附件配额受限时的证据传递
 
-开发分支的 Windows 验证给 release.ps1 传入 TestFixtureDirectory，将已通过PE检查的Xfer原生辅助程序及源码／哈希收据保留到仓库外RUNNER_TEMP，供后续真实打包程序UI验收使用。release.ps1仍清理整个build目录；辅助程序不进入bin或用户ZIP。普通本地发布不指定该参数即可，实际UI验证仍按当次环境执行。
+本地完整验证给 release.ps1 传入 TestFixtureDirectory，将已通过 PE 检查的 Xfer 原生辅助程序及源码和哈希收据保留到仓库外，供后续本地包体验收使用。release.ps1 成功后清理构建目录，测试辅助程序始终保留在指定的仓库外目录。
 
 V2.0.19 主流程使用固定版本的官方 actions/cache save/restore，通过 .github/actions/ci-evidence 和 tools/ci_evidence.py 传递候选 ZIP、原始截图、录像及收据，不扩删历史附件、不增加付费预算。缓存与 artifact 使用不同存储机制；这项调整不是测试跳过或失败豁免。
 

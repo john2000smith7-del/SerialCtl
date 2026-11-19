@@ -39,7 +39,7 @@ python tools/configure_repository.py --apply --output /path/to/settings-applicat
 | 禁止其他仓库复用私有动作／工作流 | [actions-sharing.json](../../.github/actions-sharing.json) | [Actions](https://github.com/john2000smith7-del/SerialCtl/settings/actions) |
 | 允许GitHub官方动作及固定的MSVC初始化动作 | [actions-permissions.json](../../.github/actions-permissions.json)、[allowed-actions.json](../../.github/allowed-actions.json) | [Actions](https://github.com/john2000smith7-del/SerialCtl/settings/actions) |
 
-main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Repository policy、Workflow tools on Windows、build、Native callback destruction memory safety、Packaged frequent-click and layout endurance，以及五个 UI screenshots 页面作业。Windows流程工具单独运行流程回归和PowerShell语法解析，不等待完整应用性能测试；它不代表原生应用验收。严格检查最新 main，不用失败后仍能继续运行的截图作业代替完整构建成功。
+main 规则模板要求 GitHub Actions 的 package 检查（app ID 15368）。仓库策略、Windows 回归和桌面验证由开发机执行，结果写入 PR。升级与发布仍校验精确 main 生产包和升级收据。
 
 当前只有拥有者一位维护者，PR规则要求PR和讨论解决，但不设置必须由另一人批准，以免无法自批而锁死。CODEOWNERS负责归属和通知，不等于审批已发生；将来增加维护者后再明确所需批准人数和代码所有者审查。
 
@@ -47,7 +47,7 @@ main 规则的检查名称对应实际 GitHub Actions，限定 app ID15368：Rep
 
 1. 按 [AGENTS.md](../../AGENTS.md) 阅读规则、获取最新main，检查工作区，使用 feat/topic_vx.y.z_YYYYMMDD_HHMM 临时分支（北京时间）。
 2. commit与PR标题为 类型(Vx.y.z): 修改摘要；正文有“修改内容、验证情况、兼容性”三节。PR模板支持Markdown标题。
-3. 推送触发现有Windows流程与Repository policy。PR检查版本、分支和提交格式、固定Actions SHA及基本秘密模式；它不是完整秘密扫描，更不能替代真实Windows或硬件验收。
+3. 推送触发现有 Windows 生产编译打包。本地运行仓库策略，核对版本、分支、提交格式、固定 Actions SHA 和基本秘密模式。
 4. 查看全部适用验证及真实截图，保留失败和未执行记录。按 AGENTS.md 的现行性能门槛验收，禁止跳过检查、删除断言或临时改用宽松阈值来制造通过。只读诊断不构成产品修复授权。
 5. 所需检查成功、差异审查及用户授权满足后，通过PR squash合并；PR标题／正文生成结构化main提交。新 main 执行生产编译打包和旧版升级测试；合并后实际删除远端和对应可安全删除的本地分支。
 6. 若CI或审查未通过，保留未合并PR和临时分支供修复；“只保留main”指唯一长期主线，不授权删除未合并工作或绕过失败检查。未启用服务器规则时仍按同样规范操作，并如实报告其限制。
