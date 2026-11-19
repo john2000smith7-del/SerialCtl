@@ -294,13 +294,22 @@ void RunCase(HWND parent, bool ownerDrawn, bool composer = false) {
     SetFocus(parent);
     CheckSettled(combo, "focus lost");
     SetFocus(combo);
+    const auto repaint = [&] {
+        for (int i = 0; i < 30; ++i) {
+            SendMessageW(combo, CB_SETCURSEL, i % 3, 0);
+            CheckSettled(combo, "repeated selection");
+        }
+        GdiFlush();
+    };
+    // The first batch can populate process-wide GDI resources on a cold
+    // desktop. Check that the same workload stops allocating handles.
+    repaint();
     const auto resources = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
-    for (int i = 0; i < 30; ++i) {
-        SendMessageW(combo, CB_SETCURSEL, i % 3, 0);
-        CheckSettled(combo, "repeated selection");
+    for (int batch = 0; batch < 2; ++batch) {
+        repaint();
+        Require(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) == resources,
+                "Repeated field painting leaked GDI resources");
     }
-    Require(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) == resources,
-            "Repeated field painting leaked GDI resources");
 }
 } // namespace
 int main() {
