@@ -66,7 +66,7 @@ jobs:
           $future = "$($parts[0]).$($parts[1]).$([int]$parts[2]+1)"
           [IO.File]::WriteAllText((Join-Path $scratch 'VERSION'),"PROJECT_VERSION=V$future`nCPP_VERSION=V$future`n",(New-Object Text.UTF8Encoding($false)))
           Push-Location $scratch
-          try { ./scripts/build.ps1 -Architecture x64 -Configuration Release -Target serialctl -Clean } finally { Pop-Location }
+          try { ./scripts/build.ps1 -Architecture x64 -Configuration Release -ProductionOnly -Target serialctl -Clean } finally { Pop-Location }
           $delta = @(git -C $scratch diff --name-only)
           if ($LASTEXITCODE -or $delta.Count -ne 1 -or $delta[0] -ne 'VERSION') { throw 'Future source changed beyond VERSION' }
           $output = Get-SerialCtlBuildOutputDirectory -Architecture x64 -Configuration Release -RepositoryRoot $scratch
