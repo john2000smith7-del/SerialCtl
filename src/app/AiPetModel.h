@@ -182,10 +182,7 @@ class Model {
         if (due_ && now >= due_) {
             const auto entrance = settings_.character == Character::Whale ? Action::Boxing :
                                   settings_.character == Character::Lulu ? Action::Wave : Action::Stretch;
-            if (activity_ == Activity::Offline || activity_ == Activity::Idle || activity_ == Activity::Done)
-                Play(entrance, now, true);
-            else
-                due_ = 0;
+            Play(entrance, now, true);
         }
         if (action_ != Action::None && Age(now, actionAt_) >= (action_ == Action::Boxing ? BoxingDuration : 1800)) {
             action_ = Action::None;

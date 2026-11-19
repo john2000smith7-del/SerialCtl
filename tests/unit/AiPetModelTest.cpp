@@ -66,6 +66,12 @@ int main() {
     paused.Play(Action::Wave, 25000);
     assert(paused.At(25200).pose == 30); // New manual action must not inherit the old pause.
 
+    Model priorActivity;
+    priorActivity.SetActivity(Activity::Failed, 1);
+    priorActivity.Page(true, 100);
+    assert(priorActivity.At(4100).opening);
+    assert(priorActivity.CurrentAction() == Action::Boxing);
+
     Model changedWhilePaused;
     changedWhilePaused.Page(true, 0);
     changedWhilePaused.At(1000, false);
