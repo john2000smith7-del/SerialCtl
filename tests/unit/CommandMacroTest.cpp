@@ -33,6 +33,12 @@ int main() {
         Check(CommandSelection(document,rows[1].start,rows[2].start)==std::vector<std::wstring>{L"uname -a"},"selection ending at next line column one excludes that untouched line");
         Check(CommandSelection(document,rows[2].start+4,rows[2].start+4)==std::vector<std::wstring>{L"cat /proc/cmdline"},"empty selection uses caret line");
         Check(CommandSelection(L"# note\n\n[[macro interval=500]]\rhelp\r[[/macro]]",0,1000)==std::vector<std::wstring>{L"help"},"comments, blanks and legacy macro delimiters never sent");
+        const std::wstring notes = L"show version # board\r\ncat /proc/cmdline // note\r\n"
+                                   L"help /# note\r\necho \"a # b // c\" # note\r\n"
+                                   L"curl https://host/path#tag\r\n\\#literal\r\n// comment";
+        Check(CommandSelection(notes, 0, notes.size()) == std::vector<std::wstring>{
+                 L"show version", L"cat /proc/cmdline", L"help", L"echo \"a # b // c\"",
+                 L"curl https://host/path#tag", L"#literal"}, "strip only standalone inline remark markers");
         std::wstring documentError;
         const auto plain=directory/L"笔记.txt";
         Check(WriteCommandDocument(plain.wstring(),document,documentError),"atomic notebook UTF8 save");

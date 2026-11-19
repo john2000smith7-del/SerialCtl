@@ -95,11 +95,11 @@ private:
     void ListenerThread();
     void CleanCompletedSessions();
 
+    std::mutex lifecycleMutex_;
     mutable std::mutex mutex_;
     SOCKET listener_ = INVALID_SOCKET;
     std::thread listenerThread_;
     std::atomic<bool> running_{false};
-    std::atomic<bool> stopping_{false};
 
     std::string bindIp_ = "0.0.0.0";
     uint16_t port_ = 69;

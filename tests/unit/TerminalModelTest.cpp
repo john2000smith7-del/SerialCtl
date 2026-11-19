@@ -677,11 +677,12 @@ int main() {
     }
     TestSharedResponseOwnership();
     const auto parseRegister = serialctl::TerminalViewportController::ParseRegisterValue;
-    Expect(parseRegister(L"0x80000005") == 0x80000005u, "register bit 31, bit 2 and bit 0 survive parsing");
-    Expect(parseRegister(L" \t0Xf ") == 15u && parseRegister(L"0x0") == 0u, "short registers zero-extend");
+    Expect(parseRegister(L"80000005") == 0x80000005u, "register bit 31, bit 2 and bit 0 survive parsing");
+    Expect(parseRegister(L" \t10 ") == 16u && parseRegister(L"0") == 0u && parseRegister(L"F0") == 240u,
+           "short registers and digit strings are hexadecimal");
     Expect(parseRegister(L"DEADBEEF") == 0xdeadbeefu && parseRegister(L"80000005") == 0x80000005u &&
-           parseRegister(L"0xFFFFFFFF") == 0xffffffffu, "bare eight-digit registers and unsigned maximum");
-    for (const auto invalid : {L"", L"0x", L"face", L"0x100000000", L"0x1G", L"0x1\r\n0x2", L"0x1 0x2", L"-0x1"})
+           parseRegister(L"FFFFFFFF") == 0xffffffffu, "bare eight-digit registers and unsigned maximum");
+    for (const auto invalid : {L"", L"0x", L"0x10", L"0X10", L"face", L"100000000", L"0x100000000", L"0x1G", L"0x1\r\n0x2", L"0x1 0x2", L"-0x1"})
         Expect(!parseRegister(invalid), "only one complete 32-bit hexadecimal value is accepted");
     serialctl::TerminalModel selection(5, 5);
     selection.Feed(L"abc  def\r\n中 x ", L"timestamp");

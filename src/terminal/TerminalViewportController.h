@@ -66,18 +66,18 @@ public:
         const auto start = text.find_first_not_of(L" \t");
         if (start == std::wstring_view::npos) return {};
         text = text.substr(start, text.find_last_not_of(L" \t") - start + 1);
-        const bool prefixed = text.size() >= 2 && text[0] == L'0' && (text[1] == L'x' || text[1] == L'X');
-        if (prefixed) text.remove_prefix(2);
-        if (text.empty() || text.size() > 8 || (!prefixed && text.size() != 8)) return {};
+        if (text.size() > 8) return {};
+        bool hasDecimalDigit = false;
         std::uint32_t value = 0;
         for (const auto ch : text) {
             unsigned digit;
-            if (ch >= L'0' && ch <= L'9') digit = ch - L'0';
+            if (ch >= L'0' && ch <= L'9') { digit = ch - L'0'; hasDecimalDigit = true; }
             else if (ch >= L'A' && ch <= L'F') digit = ch - L'A' + 10;
             else if (ch >= L'a' && ch <= L'f') digit = ch - L'a' + 10;
             else return {};
             value = (value << 4) | digit;
         }
+        if (!hasDecimalDigit && text.size() != 8) return {};
         return value;
     }
     bool PointToCell(const State& state, int x, int y, int textLeft, int padding, int right,

@@ -941,7 +941,6 @@ void MainWindow::RequestShutdown() {
     aiPane_.BeginShutdown(); // Release its device binding while still on the UI thread.
     powerPane_.BeginShutdown();
     powerService_.RequestShutdown();
-    if (tftpServer_) tftpServer_->Stop();
     if (aiLoopbackMcpServer_) {
         aiLoopbackMcpServer_->Stop();
         aiLoopbackMcpServer_.reset();
@@ -966,6 +965,7 @@ void MainWindow::RequestShutdown() {
 void MainWindow::WaitForShutdown() {
     // MainWindow, its session models and HWND stay alive until this returns.
     // No worker retains a reference to a UI state that can be destroyed early.
+    if (tftpServer_) tftpServer_->Stop();
     connectionCleanup_.Drain();
     for (const auto &session : sessions_) {
         if (session->connection) session->connection->Stop();
@@ -10643,6 +10643,13 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         DisconnectAll();
         return {{"ok", true}};
     }
+    if (method.rfind("session.connect_", 0) == 0 && pendingSession_)
+        return error("Another connection is being established");
+    const auto connectCard = [&](const std::string& label) -> Json {
+        ConnectFromDialog();
+        if (!pendingSession_) return error("Unable to start connection");
+        return {{"ok", true}, {"connecting", label}, {"sessionId", "session-" + std::to_string(pendingSession_->id)}};
+    };
     if (method == "session.connect_serial") {
         std::string port = params.value("port", "");
         if (port.empty()) return error("port is required");
@@ -10652,8 +10659,7 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         pendingSerial_.dataBits = static_cast<BYTE>(params.value("dataBits", 8));
         pendingSerial_.parity = static_cast<BYTE>(params.value("parity", 0));
         pendingSerial_.stopBits = static_cast<BYTE>(params.value("stopBits", 0));
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", port}};
+        return connectCard(port);
     }
     if (method == "session.connect_shared_serial") {
         std::string host = params.value("host", "");
@@ -10665,8 +10671,7 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         pendingPort_ = port;
         pendingRemoteSerial_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(remoteCom.data()), remoteCom.size(), CP_UTF8);
         pendingRemoteInstance_ = params.value("instance", "");
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", host}};
+        return connectCard(host);
     }
     if (method == "session.connect_ssh") {
         std::string host = params.value("host", "");
@@ -10678,8 +10683,10 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         std::string password = params.value("password", "");
         pendingPassword_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(password.data()), password.size(), CP_UTF8);
         pendingPort_ = static_cast<uint16_t>(params.value("port", 22));
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", host}};
+        pendingSaveSshHistory_ = false;
+        pendingHostKeyReverify_ = false;
+        pendingEmployeeNumber_.clear();
+        return connectCard(host);
     }
     if (method == "session.connect_telnet") {
         std::string host = params.value("host", "");
@@ -10687,13 +10694,11 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         pendingMode_ = 2;
         pendingHost_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(host.data()), host.size(), CP_UTF8);
         pendingPort_ = static_cast<uint16_t>(params.value("port", 23));
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", host}};
+        return connectCard(host);
     }
     if (method == "session.connect_cmd") {
         pendingMode_ = 4;
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", "cmd"}};
+        return connectCard("cmd");
     }
     if (method == "ssh_history.list") {
         return {{"ok", true}, {"history", mcp::McpSecurity::SanitizeJson(sshHistory_)}};
@@ -11183,7 +11188,11 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
             {"rightCollapsed", rightPanelCollapsed_},
             {"tftpVisible", tftpPanelVisible_},
             {"sftpVisible", sftpPanelVisible_},
-            {"xferVisible", xferPanelVisible_}
+            {"xferVisible", xferPanelVisible_},
+            {"aiVisible", aiVisible_},
+            {"aiPanel", aiSidebarTab_ == AiSidebarTab::Terminal ? "live_terminal" :
+                        aiSidebarTab_ == AiSidebarTab::Compile ? "execution" : "changes"},
+            {"aiPreviewSessionId", aiPreviewSessionId_}
         };
     }
     if (method == "ui.theme") {
@@ -11193,13 +11202,35 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}, {"darkMode", darkMode_}};
     }
     if (method == "ui.panel") {
-        std::string panel = params.value("name", "commands");
-        if (panel == "tftp") ShowTftpPanel(true);
-        else if (panel == "sftp") ShowSftpPanel(true);
-        else if (panel == "xfer") ShowXferPanel();
-        else {
-            ShowSftpPanel(false);
+        const auto panel = params.value("name", std::string());
+        if (panel == "live_terminal" || panel == "execution" || panel == "changes") {
+            if (!aiVisible_) ShowAiPage(false);
+            SelectAiSidebarTab(panel == "live_terminal" ? AiSidebarTab::Terminal :
+                               panel == "execution" ? AiSidebarTab::Compile : AiSidebarTab::Changes, true);
+            return {{"ok", true}, {"panel", panel}, {"sessionId", aiPreviewSessionId_}};
         }
+        if (panel != "commands" && panel != "sftp" && panel != "xfer" && panel != "tftp")
+            return error("Unknown panel");
+        if (panel == "sftp" && (!connection_ || !connection_->IsConnected() ||
+                                selectedMode_ != 0 || !SftpClient::IsAvailable()))
+            return error("SFTP requires a connected SSH session");
+        if (panel == "xfer" && (!connection_ || !connection_->IsConnected() ||
+                                (selectedMode_ != 1 && selectedMode_ != 3) || !connection_->SupportsTransfer()))
+            return error("Xfer requires a connected serial session with file transfer support");
+        if (aiVisible_ || powerVisible_) {
+            aiVisible_ = false;
+            powerVisible_ = false;
+            RefreshConnectionList();
+            SyncTerminalVisibility();
+        }
+        SetRightPanelCollapsed(false);
+        if (panel == "tftp") ShowTftpPanel(true);
+        else if (panel == "sftp") { ShowSftpPanel(true); RefreshSftp(); }
+        else if (panel == "xfer") ShowXferPanel();
+        else ShowSftpPanel(false);
+        RECT client{};
+        GetClientRect(window_, &client);
+        LayoutControls(client.right, client.bottom);
         return {{"ok", true}, {"panel", panel}};
     }
     if (method == "log.status") {

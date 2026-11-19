@@ -329,7 +329,8 @@ bool ValidateRemoteSshConfig(SshRemoteConfig& config, std::wstring& error) {
 
 bool RunPlinkCommand(const SshRemoteConfig& config, const std::wstring& remoteCommand,
                      size_t maxOutputBytes, DWORD timeoutMs,
-                     std::string& output, DWORD& exitCode, std::wstring& error) {
+                     std::string& output, DWORD& exitCode, std::wstring& error,
+                     const std::atomic<bool>* cancelled = nullptr) {
     output.clear();
     exitCode = 1;
     PasswordPipe password;
@@ -343,7 +344,7 @@ bool RunPlinkCommand(const SshRemoteConfig& config, const std::wstring& remoteCo
     const auto deadline = GetTickCount64() + timeoutMs;
     bool exited = false;
     bool overflow = false;
-    while (GetTickCount64() < deadline) {
+    while (GetTickCount64() < deadline && !(cancelled && *cancelled)) {
         if (!config.password.empty()) {
             password.Poll();
             if (password.Failed()) break;
@@ -455,7 +456,7 @@ bool RemoteSshTftpFileSource::QueryRemoteAttributes(std::wstring& error) {
         std::wstring(RemoteStat) + L"\"$f\"";
     std::string output;
     DWORD exitCode = 1;
-    if (!RunPlinkCommand(config_, command, 512, 8000, output, exitCode, error)) {
+    if (!RunPlinkCommand(config_, command, 512, 8000, output, exitCode, error, &cancelled_)) {
         return false;
     }
     if (exitCode == 42) {
@@ -510,7 +511,7 @@ bool RemoteSshTftpFileSource::Open(std::wstring& error) {
         return false;
     }
 
-    cancelled_ = false;
+    if (cancelled_) { error = L"传输已取消"; return false; }
     streamEnded_ = false;
     streamError_.clear();
     buffer_.clear();
@@ -691,7 +692,10 @@ bool RemoteSshTftpFileSource::Read(uint64_t offset, void* buffer, size_t length,
 }
 
 void RemoteSshTftpFileSource::Cancel() {
-    Close();
+    cancelled_ = true;
+    // Synchronize with condition-variable waiters without waiting for SSH shutdown.
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    cvBuffer_.notify_all();
 }
 
 size_t RemoteSshTftpFileSource::CurrentBufferSize() const {

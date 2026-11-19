@@ -53,8 +53,7 @@ class AiPetPane {
     bool desktopMode_ = false, seenAi_ = false, interacting_ = false;
     bool walking_ = false;
     int roamDirection_ = 1;
-    ULONGLONG roamTurnUntil_ = 0;
-    double roamOffsetX_ = 0;
+    POINT roamOffset_{};
     pet::RoamingClock roaming_;
     RECT initialAnchor_{};
     POINT dragWindow_{};

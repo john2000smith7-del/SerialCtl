@@ -1,6 +1,7 @@
 #include "AiPane.h"
 #include "AiPetPane.h"
 #include "HostKeyDialog.h"
+#include "McpSecurity.h"
 #include "AiHistory.h"
 #include "Workspace.h"
 #include "ToolPresentation.h"
@@ -3918,6 +3919,32 @@ void AiPane::Event(const Json &e) {
         Add(L"状态", L"服务器已完成上下文整理；完整历史仍保留。");
         return;
     }
+    if (event == "turnDiff") {
+        if (workspaceIsLocal_ || !busy_ || stopRequested_) return;
+        EnsureTurnSeqActive();
+        const auto prefix = "turn-diff:" + std::to_string(turnSeq_) + ":";
+        fileChanges_.erase(std::remove_if(fileChanges_.begin(), fileChanges_.end(), [&](const auto &record) {
+            return record.changeId.rfind(prefix, 0) == 0;
+        }), fileChanges_.end());
+        for (const auto &change : e.at("fileChanges")) {
+            ai::FileChangeRecord record;
+            record.path = change.at("path").get<std::string>();
+            record.changeId = prefix + record.path;
+            record.action = change.at("action").get<std::string>();
+            record.diffText = change.at("diff").get<std::string>();
+            record.detail = change.at("detail").get<std::string>();
+            record.addedLines = change.at("addedLines").get<size_t>();
+            record.removedLines = change.at("removedLines").get<size_t>();
+            record.truncated = change.at("truncated").get<bool>();
+            record.turnSeq = turnSeq_;
+            const auto duplicate = std::find_if(fileChanges_.rbegin(), fileChanges_.rend(), [&](const auto &item) {
+                return item.turnSeq == turnSeq_ && item.path == record.path && item.diffText == record.diffText;
+            });
+            if (duplicate == fileChanges_.rend()) RecordFileChange(std::move(record), {}, {}, false);
+        }
+        NotifyFileChanges({}, false);
+        return;
+    }
     if ((event == "serverTool" || event == "serverToolDelta") && busy_ && !stopRequested_) {
         const bool completed = event == "serverTool" && e.value("completed", false);
         if (e.value("failed", false))
@@ -4205,7 +4232,7 @@ void AiPane::ServerRequest(const Json &e) {
         return;
     }
     if (args.is_string())
-        args = Json::parse(args.get<std::string>());
+        args = Json::parse(args.get_ref<const std::string&>(), nullptr, false);
     if (!args.is_object()) {
         Reply(e["requestId"], {{"error", "Invalid tool arguments"}}, false);
         return;
@@ -4254,9 +4281,14 @@ void AiPane::ServerRequest(const Json &e) {
             });
             return;
         }
-        auto result = devices_("mcp:" + mcpMethod, args);
+        Json result;
+        try {
+            result = devices_("mcp:" + mcpMethod, args);
+        } catch (const std::exception&) {
+            result = {{"error", "SerialCtl rejected invalid MCP arguments or the operation failed"}};
+        }
         observedTool_ = true;
-        AddTool(tool, args, result);
+        AddTool(tool, mcp::McpSecurity::SanitizeJson(args), mcp::McpSecurity::SanitizeJson(result));
         Reply(e["requestId"], result, !result.contains("error"));
         return;
     }

@@ -265,11 +265,12 @@ struct AiPetPaneTestAccess {
         roaming.desktopX=240;roaming.desktopY=240;roaming.roaming=true;
         pane.model_.Configure(roaming,GetTickCount64());pane.model_.Stop(GetTickCount64());
         pane.model_.SetActivity(pet::Activity::Idle,GetTickCount64());
-        pane.hover_=false;pane.roamOffsetX_=0;pane.roaming_={};pane.PlaceDesktop();pane.Tick();
+        pane.hover_=false;pane.roamOffset_={};pane.roaming_={};pane.PlaceDesktop();pane.Tick();
         RECT roamBefore{},roamAfter{};GetWindowRect(pane.Handle(),&roamBefore);
         for(int step=0;step<5;++step){Sleep(80);pane.Tick();}
         GetWindowRect(pane.Handle(),&roamAfter);
-        Check(roamAfter.left>roamBefore.left,"Desktop idle roaming did not move the real layered window");
+        Check(roamAfter.left > roamBefore.left && roamAfter.top != roamBefore.top,
+              "Desktop idle roaming must move the real layered window on both axes");
         const HWND previousForeground = GetForegroundWindow();
         const auto activateOwner = [](HWND target, POINT point) {
             EnableWindow(target, TRUE);
@@ -313,7 +314,7 @@ struct AiPetPaneTestAccess {
                       << " owner_bounds=" << actualOwner.left << ',' << actualOwner.top << ',' << actualOwner.right << ',' << actualOwner.bottom
                       << " pet_before=" << ownerInteractionBefore.left << ',' << ownerInteractionBefore.top
                       << " pet_after=" << ownerInteractionPosition.left << ',' << ownerInteractionPosition.top
-                      << " roam_offset=" << pane.roamOffsetX_ << " walking=" << pane.walking_ << '\n';
+                      << " roam_offset=" << pane.roamOffset_.x << " walking=" << pane.walking_ << '\n';
         }
         Check(EqualRect(&ownerInteractionPosition, &ownerInteractionBefore),
               "Active owner interaction did not pause the real desktop pet");
@@ -346,7 +347,7 @@ struct AiPetPaneTestAccess {
         RECT workingPosition{};GetWindowRect(pane.Handle(),&workingPosition);
         Check(EqualRect(&workingPosition,&roamAfter),"AI work did not pause desktop roaming");
         roaming.roaming=false;roaming.desktopX=roamAfter.left;roaming.desktopY=roamAfter.top;
-        pane.roamOffsetX_=0;pane.model_.Configure(roaming,GetTickCount64());
+        pane.roamOffset_={};pane.model_.Configure(roaming,GetTickCount64());
         pane.model_.SetActivity(pet::Activity::Idle,GetTickCount64());Sleep(80);pane.Tick();
         GetWindowRect(pane.Handle(),&workingPosition);
         Check(EqualRect(&workingPosition,&roamAfter),"Disabling roaming moved the pet");

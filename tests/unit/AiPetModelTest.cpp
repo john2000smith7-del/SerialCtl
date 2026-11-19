@@ -106,10 +106,22 @@ int main() {
     model.SetActivity(Activity::Working, 43000);
     assert(model.At(44000).pose == 28);
     RoamingClock roam;
-    assert(roam.Step(1000,true)==0);
-    assert(roam.Step(1040,true)>0);
-    assert(roam.Step(100000,false)==0);
-    assert(roam.Step(100040,true)<1); // Pause never accumulates a position jump.
+    assert(!roam.Step(1000, true).moving);
+    const auto first = roam.Step(1040, true);
+    assert(first.moving && first.x > 0 && first.y != 0);
+    const auto pausedPosition = roam.Step(100000, false);
+    assert(!pausedPosition.moving && pausedPosition.x == first.x && pausedPosition.y == first.y);
+    const auto resumedPosition = roam.Step(100040, true);
+    assert(std::hypot(resumedPosition.x - first.x, resumedPosition.y - first.y) < 1);
+    for (std::uint64_t now = 100080; now < 1000000; now += 40) {
+        const auto position = roam.Step(now, true);
+        assert(std::hypot(position.x, position.y) <= RoamingClock::Radius);
+    }
+    for (auto action : {Action::Hop, Action::Dance, Action::Cheer}) {
+        model.Play(action, 50000);
+        assert(model.At(50420).manual && model.At(50420).pose != 28);
+        assert(!model.At(51800).manual);
+    }
     Settings walking; assert(!walking.roaming); walking.opening=false; walking.roaming=true;
     Model roamModel;roamModel.Configure(walking,1);roamModel.Page(true,1);
     assert(roamModel.CanRoam());

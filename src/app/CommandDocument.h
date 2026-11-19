@@ -36,6 +36,35 @@ inline std::pair<size_t, size_t> CommandSelectedLines(const std::vector<CommandL
     };
     return {index(a), index(a == b ? b : b - 1)};
 }
+inline std::wstring StripCommandRemark(std::wstring command) {
+    wchar_t quote = 0;
+    for (size_t i = 0; i < command.size(); ++i) {
+        const wchar_t ch = command[i];
+        if (ch == L'\\' && i + 1 < command.size() &&
+            (command[i + 1] == L'\\' || command[i + 1] == L'"' ||
+             command[i + 1] == L'\'' || command[i + 1] == L'#' || command[i + 1] == L'/')) {
+            ++i;
+            continue;
+        }
+        if (quote) {
+            if (ch == quote) quote = 0;
+            continue;
+        }
+        if (ch == L'"' || ch == L'\'') {
+            quote = ch;
+            continue;
+        }
+        const bool boundary = i == 0 || command[i - 1] == L' ' || command[i - 1] == L'\t';
+        const bool slashComment = ch == L'/' && i + 1 < command.size() &&
+            (command[i + 1] == L'/' || command[i + 1] == L'#');
+        if (boundary && (ch == L'#' || slashComment)) {
+            const auto end = command.find_last_not_of(L" \t", i == 0 ? 0 : i - 1);
+            command.resize(i == 0 || end == std::wstring::npos ? 0 : end + 1);
+            break;
+        }
+    }
+    return command;
+}
 inline std::wstring CommandLineText(const std::wstring &text, const CommandLine &row) {
     auto s = text.substr(row.start, row.end - row.start);
     const auto first = s.find_first_not_of(L" \t");
@@ -44,6 +73,7 @@ inline std::wstring CommandLineText(const std::wstring &text, const CommandLine 
     const auto content = s.substr(first);
     if (content.front() == L'#' || content.rfind(L"[[macro", 0) == 0 || content == L"[[/macro]]")
         return {};
+    s = StripCommandRemark(std::move(s));
     // Old command files escape literal comment/marker commands with a backslash.
     if (content.rfind(L"\\#", 0) == 0 || content.rfind(L"\\[[", 0) == 0)
         s.erase(first, 1);

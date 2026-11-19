@@ -918,6 +918,27 @@ void TestLocalDirectoryRootMode(uint16_t testPort) {
     std::cout << "[PASS] Directory root mode, exclusion, subpath resolution, and deferred remote verified." << std::endl;
 }
 
+static void TestStopDuringNegotiation(uint16_t port) {
+    TftpServer server;
+    std::wstring error;
+    Require(server.PublishCustom("waiting.bin", std::make_shared<MockStreamTftpFileSource>(1024), false, error),
+            "Publish source for cancel test");
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        Require(server.Start("127.0.0.1", port, error), "Start (or restart) on the same UDP port");
+        TftpClientSimulator client;
+        client.SendRrq(port, "waiting.bin", {{"timeout", "60"}});
+        sockaddr_in peer{};
+        std::vector<uint8_t> packet;
+        Require(client.RecvPacket(packet, peer) >= 4 && packet[1] == 6, "Wait for OACK without acknowledging");
+        const auto start = GetTickCount64();
+        server.Stop();
+        Require(GetTickCount64() - start < 1500, "Stop must cancel long negotiated ACK wait");
+        const auto transfers = server.ListTransfers();
+        Require(!server.IsListening() && server.ActiveTransferCount() == 0 && !transfers.empty() &&
+                transfers.back().phase == "cancelled", "Stop joins cancelled transfers and retains diagnostics");
+    }
+}
+
 int main() {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -928,6 +949,7 @@ int main() {
     std::cout << "=== Running TFTP Server Integration Tests ===" << std::endl;
 
     TestBindAddressValidation(6981);
+    TestStopDuringNegotiation(6983);
     TestSecurityBoundaries(6970);
     TestStandard512Transfer(6971);
     TestOptionNegotiation(6972);

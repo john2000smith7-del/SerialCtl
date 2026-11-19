@@ -5,7 +5,7 @@
 
 namespace serialctl {
 namespace {
-enum Command { Toggle = 1, Idle, Wave, Boxing, Stop, Small, Medium, Large, Hide, Settings, DockMode, ShowMain };
+enum Command { Toggle = 1, Idle, Wave, Boxing, Hop, Dance, Cheer, Stop, Small, Medium, Large, Hide, Settings, DockMode, ShowMain };
 constexpr UINT_PTR PaintTimer = 1;
 void Label(HDC dc, HFONT font, COLORREF ink, const std::wstring &text, RECT r,
            UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
@@ -30,7 +30,7 @@ struct Popup {
         return D(16 + 32 * 7 + 8);
     }
     int SubCount() const {
-        return sub == 1 ? 4 : 3;
+        return sub == 1 ? 7 : 3;
     }
     int SubTop() const {
         return D(8 + 32 * (sub == 1 ? 1 : 2));
@@ -44,7 +44,7 @@ struct Popup {
         return i == 0 && !prefs.enabled ? L"显示宠物" : rows[i];
     }
     std::wstring SubText(int i) const {
-        const wchar_t *actions[] = {L"待机", L"挥手", L"前后跳步＋拳击", L"停止演示"};
+        const wchar_t *actions[] = {L"待机", L"挥手", L"前后跳步＋拳击", L"蹦跳", L"跳舞", L"欢呼", L"停止演示"};
         const wchar_t *sizes[] = {L"小（96）", L"中（120）", L"大（144）"};
         return sub == 1 ? actions[i] : sizes[i];
     }
@@ -378,20 +378,20 @@ void AiPetPane::Tick() {
     const bool ownerInUse = owner && owner == foregroundOwner && GetCursorPos(&pointer) &&
         ((GetWindowRect(owner, &ownerBounds) && PtInRect(&ownerBounds, pointer)) ||
          (GetWindowRect(foreground, &foregroundBounds) && PtInRect(&foregroundBounds, pointer)));
-    double distance = roaming_.Step(now, present && model_.CanRoam() && !dragging_ && !hover_ &&
-        !interacting_ && !ownerInUse && now>=roamTurnUntil_);
-    walking_ = distance > 0;
+    if (!Preferences().roaming) roaming_ = {};
+    const auto position = roaming_.Step(now, present && model_.CanRoam() && !dragging_ && !hover_ &&
+        !interacting_ && !ownerInUse);
+    walking_ = position.moving;
     if (walking_) {
-        RECT bounds{}; GetWindowRect(window_, &bounds);
-        MONITORINFO monitor{sizeof(monitor)};
-        GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&monitor);
-        if ((roamDirection_<0 && bounds.left<=monitor.rcWork.left+D(12)) ||
-            (roamDirection_>0 && bounds.right>=monitor.rcWork.right-D(12))) {
-            roamDirection_=-roamDirection_;roamTurnUntil_=now+600;distance=0;walking_=false;
-        }
-        roamOffsetX_ += distance * roamDirection_ * dpi_/96.0;
+        roamDirection_ = position.facingLeft ? -1 : 1;
+        sample_.pose = roaming_.Pose();
+        sample_.label.clear();
+    }
+    const POINT offset{static_cast<LONG>(std::lround(position.x * dpi_ / 96.0)),
+                       static_cast<LONG>(std::lround(position.y * dpi_ / 96.0))};
+    if (offset.x != roamOffset_.x || offset.y != roamOffset_.y) {
+        roamOffset_ = offset;
         PlaceDesktop();
-        if (walking_) { sample_.pose = roaming_.Pose(); sample_.label.clear(); }
     }
     if (present) {
         if (desktopMode_) PaintDesktop();
@@ -435,7 +435,6 @@ void AiPetPane::PlaceDesktop() {
     auto prefs = Preferences();
     const int width = D(224), height = DesiredHeight() + D(24);
     POINT point{prefs.desktopX, prefs.desktopY};
-    if (point.x != -2147483647) point.x += static_cast<LONG>(std::lround(roamOffsetX_));
     const bool initial = point.x == -2147483647 || point.y == -2147483647;
     MONITORINFO info{sizeof(info)};
     GetMonitorInfoW(initial ? MonitorFromWindow(parent_, MONITOR_DEFAULTTONEAREST)
@@ -446,13 +445,18 @@ void AiPetPane::PlaceDesktop() {
         : POINT{info.rcWork.left+margin,info.rcWork.bottom-height-margin};
     point.x = std::clamp(point.x, info.rcWork.left + margin, std::max(info.rcWork.left + margin, info.rcWork.right - width - margin));
     point.y = std::clamp(point.y, info.rcWork.top + margin, std::max(info.rcWork.top + margin, info.rcWork.bottom - height - margin));
+    const POINT anchor = point;
+    point.x = std::clamp(anchor.x + roamOffset_.x, info.rcWork.left + margin,
+                        std::max(info.rcWork.left + margin, info.rcWork.right - width - margin));
+    point.y = std::clamp(anchor.y + roamOffset_.y, info.rcWork.top + margin,
+                        std::max(info.rcWork.top + margin, info.rcWork.bottom - height - margin));
     RECT current{}; GetWindowRect(window_, &current);
     const auto ex = GetWindowLongPtrW(window_, GWL_EXSTYLE);
     if (current.left != point.x || current.top != point.y || current.right - current.left != width ||
         current.bottom - current.top != height || ((ex & WS_EX_TOPMOST) != 0) != prefs.topmost)
         SetWindowPos(window_, prefs.topmost ? HWND_TOPMOST : HWND_NOTOPMOST, point.x, point.y, width, height, SWP_NOACTIVATE);
-    if (roamOffsetX_ == 0 && (prefs.desktopX != point.x || prefs.desktopY != point.y)) {
-        prefs.desktopX = point.x; prefs.desktopY = point.y;
+    if (prefs.desktopX != anchor.x || prefs.desktopY != anchor.y) {
+        prefs.desktopX = anchor.x; prefs.desktopY = anchor.y;
         model_.Configure(prefs, GetTickCount64());
         if (!dragging_) Changed();
     }
@@ -623,10 +627,12 @@ void AiPetPane::Action(int action) {
         settings.size = action == Small ? 96 : action == Medium ? 120 : 144;
     else if (action == Stop)
         model_.Stop(now);
-    if (action >= Idle && action <= Boxing) {
+    if (action >= Idle && action <= Cheer) {
         settings.enabled = true;
         model_.Configure(settings, now);
-        model_.Play(action == Idle ? pet::Action::Idle : action == Wave ? pet::Action::Wave : pet::Action::Boxing, now);
+        constexpr pet::Action actions[] = {pet::Action::Idle, pet::Action::Wave, pet::Action::Boxing,
+                                            pet::Action::Hop, pet::Action::Dance, pet::Action::Cheer};
+        model_.Play(actions[action - Idle], now);
     } else
         model_.Configure(settings, now);
     Changed();
@@ -725,7 +731,8 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         if (PtInRect(&self->sprite_, p)) {
-            self->roamOffsetX_ = 0;
+            self->roaming_ = {};
+            self->roamOffset_ = {};
             if (self->desktopMode_) {
                 auto prefs=self->Preferences(); RECT actual{};GetWindowRect(h,&actual);
                 prefs.desktopX=actual.left;prefs.desktopY=actual.top;self->model_.Configure(prefs,GetTickCount64());

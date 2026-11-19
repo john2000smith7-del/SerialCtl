@@ -930,7 +930,9 @@ void PowerService::Outputs(const Json &channels, bool enabled, Json &result) {
                 if(enabled && task_.is_object() && task_.value("type",std::string())=="recover" &&
                     taskRecoveryEpoch_ != recoveryCancelEpoch_.load()) return;
                 Command(enabled ? "CHAN:OUTP ON" : "CHAN:OUTP OFF");
-                bool confirmed = Number("CHAN:OUTP?") != 0;
+                const double readback = Number("CHAN:OUTP?");
+                Require(readback == 0 || readback == 1, "Invalid channel output readback");
+                const bool confirmed = readback == 1;
                 Require(confirmed == enabled, "Output readback differs");
                 item["state"] = "confirmed";
                 item["output"] = confirmed;
@@ -1176,13 +1178,18 @@ void PowerService::Execute(const std::string &id, const Json &command,
                 dcb.fParity = dcb.Parity != NOPARITY;
                 dcb.fOutxCtsFlow = FALSE;
                 dcb.fOutxDsrFlow = FALSE;
+                dcb.fDsrSensitivity = FALSE;
                 dcb.fOutX = dcb.fInX = FALSE;
+                dcb.fErrorChar = FALSE;
+                dcb.fNull = FALSE;
+                dcb.fAbortOnError = FALSE;
                 dcb.fDtrControl = DTR_CONTROL_DISABLE;
                 dcb.fRtsControl = RTS_CONTROL_DISABLE;
                 Require(SetCommState(transport->serial, &dcb) != FALSE, "Invalid serial configuration");
                 COMMTIMEOUTS timeouts{MAXDWORD, 0, 250, 0, 2500};
                 Require(SetCommTimeouts(transport->serial, &timeouts) != FALSE, "Cannot set COM timeout");
-                PurgeComm(transport->serial, PURGE_RXCLEAR | PURGE_TXCLEAR);
+                Require(PurgeComm(transport->serial, PURGE_RXCLEAR | PURGE_TXCLEAR) != FALSE,
+                        "Cannot clear COM buffers");
             } else
                 throw std::runtime_error("Unknown connection backend");
             connectStage = "identify";
@@ -1420,7 +1427,9 @@ void PowerService::Poll() {
         auto &c = channels[i];
         c["setVoltage"] = Number("VOLT?");
         c["setCurrent"] = Number("CURR?");
-        c["output"] = Number("CHAN:OUTP?") != 0;
+        const double output = Number("CHAN:OUTP?");
+        Require(output == 0 || output == 1, "Invalid channel output readback");
+        c["output"] = output == 1;
         c["voltage"] = Number("MEAS:VOLT?");
         c["current"] = Number("MEAS:CURR?");
         c["power"] = c["voltage"].get<double>() * c["current"].get<double>();

@@ -6,7 +6,7 @@
 
 namespace serialctl::pet {
 enum class Activity { Offline, Connecting, Idle, Thinking, Working, Replying, Done, Failed, Stopped };
-enum class Action { None, Idle, Wave, Boxing };
+enum class Action { None, Idle, Wave, Boxing, Hop, Dance, Cheer };
 struct Settings {
     bool enabled = true, follow = true, opening = true;
     bool desktop = true, topmost = true, roaming = false;
@@ -31,16 +31,29 @@ struct Sample {
 // The Win32 component provides visibility and draws only this bounded result.
 class RoamingClock {
   public:
-    double Step(std::uint64_t now, bool allowed) {
-        const auto delta = last_ && now >= last_ ? std::min<std::uint64_t>(now-last_,100) : 0;
+    struct Position { double x = 0, y = 0; bool moving = false, facingLeft = false; };
+    static constexpr double Radius = 40;
+    Position Step(std::uint64_t now, bool allowed) {
+        const auto delta = last_ && now >= last_ ? std::min<std::uint64_t>(now - last_, 100) : 0;
         last_ = now;
-        if (!allowed) return 0;
-        phase_ = (phase_ + delta) % 12000;
-        return phase_ < 7000 ? delta * .012 : 0;
+        if (!allowed || !delta) return {x_, y_};
+        const auto walked = [](std::uint64_t t) { return t / 12000 * 7500 + std::min<std::uint64_t>(t % 12000, 7500); };
+        const auto previous = walked(elapsed_);
+        elapsed_ += delta;
+        const auto walking = walked(elapsed_);
+        if (walking == previous) return {x_, y_};
+        const double t = static_cast<double>(walking) / 3000;
+        const double radius = Radius * (.65 + .35 * std::cos(t * .61));
+        const double x = radius * std::sin(t) * std::min(t, 1.0);
+        y_ = radius * std::sin(t * .5) * std::cos(t) * std::min(t, 1.0);
+        const bool facingLeft = x < x_;
+        x_ = x;
+        return {x_, y_, true, facingLeft};
     }
-    unsigned Pose() const { constexpr unsigned gait[] = {4,5,7,6}; return gait[(phase_/160)%4]; }
+    unsigned Pose() const { constexpr unsigned gait[] = {4, 5, 7, 6}; return gait[(elapsed_ / 160) % 4]; }
   private:
-    std::uint64_t last_ = 0, phase_ = 0;
+    std::uint64_t last_ = 0, elapsed_ = 0;
+    double x_ = 0, y_ = 0;
 };
 
 class Model {
@@ -168,7 +181,21 @@ class Model {
                 sample.label = L"我在，随时可以继续排查";
             } else if (action_ == Action::Boxing)
                 sample = Boxing(time, opening_);
-            else
+            else if (action_ == Action::Hop) {
+                constexpr unsigned poses[] = {28, 2, 3, 4, 6, 8, 9, 28, 28};
+                sample.pose = poses[std::min<unsigned>(time / 100, 8)];
+                sample.lift = .18 * std::sin((time % 900) * 3.141592653589793 / 900);
+                sample.label = L"蹦跳";
+            } else if (action_ == Action::Dance) {
+                constexpr unsigned poses[] = {28, 4, 5, 7, 28, 7, 5, 4};
+                sample.pose = poses[(time / 150) % 8];
+                sample.x = .16 * std::sin(time * 6.283185307179586 / 1200);
+                sample.label = L"跳舞";
+            } else if (action_ == Action::Cheer) {
+                sample.pose = (time / 250) % 2 ? 31 : 34;
+                sample.lift = .12 * std::sin((time % 600) * 3.141592653589793 / 600);
+                sample.label = L"欢呼";
+            } else
                 sample.label = L"陪伴中";
             return sample;
         }
