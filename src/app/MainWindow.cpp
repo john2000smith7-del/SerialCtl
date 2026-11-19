@@ -11,6 +11,7 @@
 #include "UiPasswordPrompt.h"
 #include "SshCredentials.h"
 #include "UiPopupMenu.h"
+#include "RemoteWorkspaceSnapshot.h"
 #include "PlatformConnection.h"
 #include <ctime>
 
@@ -3157,7 +3158,7 @@ void MainWindow::CreateControls() {
     disconnectButton_ = CreateChild(L"BUTTON", L"断开", BS_OWNERDRAW, IdDisconnect);
     reconnectButton_ = CreateChild(L"BUTTON", L"重连", BS_OWNERDRAW, IdReconnect);
     UiSetButtonGlyph(disconnectButton_, UiGlyph::Disconnect, L"断开连接");
-    UiSetButtonGlyph(reconnectButton_, UiGlyph::Refresh, L"重新连接");
+    UiSetButtonGlyph(reconnectButton_, UiGlyph::Reconnect, L"重新连接");
 
     connectionHeader_ = CreateChild(L"BUTTON", leftPanelCollapsed_ ? L"展开连接栏" : L"收起连接栏", BS_OWNERDRAW, IdConnectionHeader);
     addTip(connectionHeader_);
@@ -8079,6 +8080,7 @@ void MainWindow::LoadUiState() {
     uiSettingsPath_ = JoinLocalPath(directory, L"settings.ini");
     const std::wstring &path = uiSettingsPath_;
     serialF2CustomEnabled_ = GetPrivateProfileIntW(L"Shortcuts", L"SerialF2Custom", 1, path.c_str()) != 0;
+    petSettings_.character = static_cast<pet::Character>(GetPrivateProfileIntW(L"Pet", L"Character", 0, path.c_str()));
     petSettings_.enabled = GetPrivateProfileIntW(L"Pet", L"Enabled", 1, path.c_str()) != 0;
     petSettings_.follow = GetPrivateProfileIntW(L"Pet", L"Follow", 1, path.c_str()) != 0;
     petSettings_.opening = GetPrivateProfileIntW(L"Pet", L"Opening", 1, path.c_str()) != 0;
@@ -8160,6 +8162,7 @@ void MainWindow::SaveUiState() {
     auto add = [&](const wchar_t *section, const wchar_t *key, int value) {
         snapshot.entries.push_back({section, key, std::to_wstring(value)});
     };
+    add(L"Pet", L"Character", static_cast<int>(petSettings_.character));
     add(L"Pet", L"Enabled", petSettings_.enabled); add(L"Pet", L"Follow", petSettings_.follow);
     add(L"Pet",L"LargeDefaultV216",1); add(L"Pet",L"Roaming",petSettings_.roaming);
     add(L"Pet", L"Opening", petSettings_.opening); add(L"Pet", L"Size", petSettings_.size);
@@ -10268,7 +10271,7 @@ void MainWindow::RunAiRemoteFs(const std::string& op, const Json& params, AiPane
         done({{"error", "未找到已连接的 SSH 终端会话，无法访问远程工作空间"}});
         return;
     }
-    if (!SftpClient::IsAvailable()) {
+    if (op != "snapshot" && !SftpClient::IsAvailable()) {
         done({{"error", "当前环境缺少 psftp.exe，无法访问远程工作空间"}});
         return;
     }
@@ -10281,6 +10284,38 @@ void MainWindow::RunAiRemoteFs(const std::string& op, const Json& params, AiPane
         auto toWide = [](const std::string& utf8) {
             return MultiByteToWide(reinterpret_cast<const uint8_t*>(utf8.data()), utf8.size(), CP_UTF8);
         };
+        if (op == "snapshot") {
+            const auto directory = toWide(params.value("path", std::string()));
+            if (directory.empty() || directory.size() > 4096 || directory.front() != L'/' ||
+                std::any_of(directory.begin(), directory.end(), [](wchar_t ch) { return ch < 32; })) {
+                finish({{"error", "远程工作区快照需要有效的绝对路径"}});
+                return;
+            }
+            const auto quote = [](std::wstring_view value) {
+                std::wstring result = L"'";
+                for (const auto ch : value) {
+                    if (ch == L'\'') result += L"'\\''";
+                    else result += ch;
+                }
+                return result + L"'";
+            };
+            std::string raw;
+            std::wstring error;
+            const auto command = L"python3 -I -B -c " + quote(ai::RemoteSnapshotProgram) + L" " + quote(directory);
+            if (!CaptureRemoteSshCommand({endpoint.host, endpoint.port, endpoint.username, endpoint.password, directory, {}},
+                                         command, 10 * 1024 * 1024, 6500, raw, error, &closing_)) {
+                finish({{"error", WideToMultiByte(error, CP_UTF8)}});
+                return;
+            }
+            auto snapshot = Json::parse(raw, nullptr, false);
+            if (!snapshot.is_object() || !snapshot.contains("files") || !snapshot["files"].is_object() ||
+                !snapshot.contains("complete") || !snapshot["complete"].is_boolean()) {
+                finish({{"error", "远程工作区快照格式无效"}});
+                return;
+            }
+            finish(std::move(snapshot));
+            return;
+        }
         auto joinRemote = [](const std::wstring& dir, const std::wstring& leaf) {
             if (dir.empty() || dir == L".") return leaf;
             return dir + (dir.back() == L'/' ? L"" : L"/") + leaf;

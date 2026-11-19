@@ -48,7 +48,7 @@ int main() {
     assert(model.OpeningDue() == 0);
     model.SetActivity(Activity::Working, 21500);
     assert(model.At(21600).manual);
-    assert(model.At(23000).pose == 33 && !model.At(23000).manual);
+    assert(model.At(23000).pose == PoseFor(Character::Whale, Action::Work) && !model.At(23000).manual);
 
     Model paused;
     paused.Page(true, 0);
@@ -70,8 +70,8 @@ int main() {
     changedWhilePaused.Page(true, 0);
     changedWhilePaused.At(1000, false);
     changedWhilePaused.SetActivity(Activity::Done, 3000);
-    assert(changedWhilePaused.At(5000, true).pose == 34);
-    assert(changedWhilePaused.At(6000, true).pose == 28);
+    assert(changedWhilePaused.At(5000, true).pose == PoseFor(Character::Whale, Action::Cheer));
+    assert(changedWhilePaused.At(6000, true).pose == PoseFor(Character::Whale, Action::Idle));
     Settings settings;
     settings.opening = false;
     model.Configure(settings, 24000);
@@ -82,14 +82,14 @@ int main() {
     assert(model.At(36001).manual);
     model.SetActivity(Activity::Failed, 36100);
     model.Stop(36500);
-    assert(model.At(36501).pose == 35);
+    assert(model.At(36501).pose == PoseFor(Character::Whale, Action::Concern));
     model.SetActivity(Activity::Stopped, 37000);
-    assert(model.At(37001).pose == 35);
+    assert(model.At(37001).pose == PoseFor(Character::Whale, Action::Settle));
     model.SetActivity(Activity::Done, 38000);
-    assert(model.At(38100).pose == 34);
-    assert(model.At(40000).pose == 28);
+    assert(model.At(38100).pose == PoseFor(Character::Whale, Action::Cheer));
+    assert(model.At(40000).pose == PoseFor(Character::Whale, Action::Idle));
     model.SetActivity(Activity::Done, 40100);
-    assert(model.At(40200).pose == 28);
+    assert(model.At(40200).pose == PoseFor(Character::Whale, Action::Idle));
 
     settings.enabled = false;
     model.Configure(settings, 41000);
@@ -104,7 +104,42 @@ int main() {
     assert(model.Preferences().size == 96);
     assert(model.Preferences().x == 0 && model.Preferences().y == 1000);
     model.SetActivity(Activity::Working, 43000);
-    assert(model.At(44000).pose == 28);
+    assert(model.At(44000).pose == PoseFor(Character::Whale, Action::Idle));
+    std::set<unsigned> spriteSlots;
+    for (const auto character : {Character::Whale, Character::Lulu, Character::Cat}) {
+        Settings preferences;
+        preferences.character = character;
+        preferences.opening = false;
+        Model companion;
+        companion.Configure(preferences, 1);
+        companion.Page(true, 1);
+        const auto actions = ActionsFor(character);
+        assert(actions.count == (character == Character::Whale ? 15u : 12u));
+        for (unsigned i = 0; i < actions.count; ++i) {
+            const auto action = actions.items[i].action;
+            assert(spriteSlots.insert(PoseFor(character, action)).second);
+            companion.Play(action, 2);
+            assert(companion.At(80).manual);
+            if (character != Character::Whale)
+                assert(companion.At(80).pose == PoseFor(character, action));
+        }
+        companion.Stop(100);
+        unsigned time = 101;
+        for (const auto &state : {std::pair{Activity::Connecting, Action::Listen},
+                                  std::pair{Activity::Thinking, Action::Think},
+                                  std::pair{Activity::Working, Action::Work},
+                                  std::pair{Activity::Replying, Action::Reply},
+                                  std::pair{Activity::Done, Action::Cheer},
+                                  std::pair{Activity::Failed, Action::Concern},
+                                  std::pair{Activity::Stopped, Action::Settle}}) {
+            companion.SetActivity(state.first, time);
+            assert(companion.At(time + 10).pose == PoseFor(character, state.second));
+            time += 100;
+        }
+        companion.SetActivity(Activity::Idle, time);
+        assert(companion.At(time + 45000).pose == PoseFor(character, Action::Sleep));
+    }
+    assert(spriteSlots.size() == 39);
     RoamingClock roam;
     assert(!roam.Step(1000, true).moving);
     const auto first = roam.Step(1040, true);

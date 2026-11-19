@@ -66,6 +66,6 @@ class AiPetPane {
     pet::Model model_;
     pet::Sample sample_;
     RECT sprite_{}, menu_{};
-    std::unique_ptr<UiResourceBitmap> image_;
+    std::unique_ptr<UiResourceBitmap> image_, actionImage_;
 };
 } // namespace serialctl

@@ -1,6 +1,7 @@
 #include "AiProtocol.h"
 #include "AiHistory.h"
 #include "CodexProtocol.h"
+#include "RemoteWorkspaceSnapshot.h"
 #include "AiReplyMarkup.h"
 #include "Workspace.h"
 #include "WorkspaceActivity.h"
@@ -104,6 +105,22 @@ int main() {
             {"params", {{"threadId", "t"}, {"turnId", "u"}, {"itemId", "cmd-1"}, {"delta", "stream"}}}});
         Require(serverDelta["event"] == "serverToolDelta" && serverDelta["messageId"] == "server:cmd-1" &&
             serverDelta["text"] == "stream", "Native command output delta not adapted");
+        const auto before = Json::parse(R"({"complete":true,"files":{
+            "shell.txt":{"stamp":[4,1,1],"digest":"old","text":"old\n"},
+            "deleted.txt":{"stamp":[2,1,1],"digest":"gone","text":"x\n"},
+            "same.txt":{"stamp":[2,1,1],"digest":"same","text":"y\n"}}})");
+        const auto after = Json::parse(R"({"complete":true,"files":{
+            "shell.txt":{"stamp":[4,2,2],"digest":"new","text":"new\n"},
+            "added.txt":{"stamp":[2,2,2],"digest":"added","text":"z\n"},
+            "same.txt":{"stamp":[2,2,2],"digest":"same","text":"y\n"}}})");
+        const auto observed = CompareRemoteWorkspaceSnapshots(before, after);
+        Require(observed.size() == 3 && observed[0].action == "create" && observed[2].action == "delete" &&
+                observed[1].path == "shell.txt" && observed[1].diffText.find("+new") != std::string::npos,
+                "workspace snapshots record remote filesystem changes independent of server notifications");
+        auto partial = after;
+        partial["complete"] = false;
+        Require(CompareRemoteWorkspaceSnapshots(before, partial).size() == 2,
+                "partial remote snapshot does not misreport missing files as deleted");
         const auto turnDiff = DecodeNotification({{"method", "turn/diff/updated"},
             {"params", {{"threadId", "remote"}, {"turnId", "turn-1"}, {"diff",
                 "diff --git a/board.txt b/board.txt\n--- a/board.txt\n+++ b/board.txt\n@@ -1 +1 @@\n-old\n+new\n"

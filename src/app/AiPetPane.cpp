@@ -5,7 +5,7 @@
 
 namespace serialctl {
 namespace {
-enum Command { Toggle = 1, Idle, Wave, Boxing, Hop, Dance, Cheer, Stop, Small, Medium, Large, Hide, Settings, DockMode, ShowMain };
+enum Command { Toggle = 1, Stop, Small, Medium, Large, Hide, Settings, DockMode, ShowMain, TapPet, FirstPose = 100 };
 constexpr UINT_PTR PaintTimer = 1;
 void Label(HDC dc, HFONT font, COLORREF ink, const std::wstring &text, RECT r,
            UINT flags = DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) {
@@ -30,28 +30,31 @@ struct Popup {
         return D(16 + 32 * 7 + 8);
     }
     int SubCount() const {
-        return sub == 1 ? 7 : 3;
+        return sub == 1 ? static_cast<int>(pet::ActionsFor(prefs.character).count) + 1 : 3;
     }
-    int SubTop() const {
-        return D(8 + 32 * (sub == 1 ? 1 : 2));
+    int SubTop() const { return D(8 + 32 * (sub == 1 ? 1 : 2)); }
+    int SubRow() const {
+        const int available = work.bottom - work.top - D(40) - SubTop();
+        return std::clamp(available / SubCount(), D(16), row);
     }
-    int Height() const {
-        return std::max(MainHeight(), sub ? SubTop() + D(16 + 32 * SubCount()) : 0);
-    }
+    int SubBottom() const { return SubTop() + D(16) + SubCount() * SubRow(); }
+    int Height() const { return std::max(MainHeight(), sub ? SubBottom() : 0); }
     std::wstring MainText(int i) const {
         const wchar_t *rows[] = {L"跟随 AI 状态", L"播放动作", L"宠物大小", L"", L"打开主窗口", L"收起宠物", L"宠物设置…"};
         if (i == 3) return prefs.desktop ? L"返回窗口内" : L"桌面悬浮";
         return i == 0 && !prefs.enabled ? L"显示宠物" : rows[i];
     }
     std::wstring SubText(int i) const {
-        const wchar_t *actions[] = {L"待机", L"挥手", L"前后跳步＋拳击", L"蹦跳", L"跳舞", L"欢呼", L"停止演示"};
         const wchar_t *sizes[] = {L"小（96）", L"中（120）", L"大（144）"};
-        return sub == 1 ? actions[i] : sizes[i];
+        if (sub != 1) return sizes[i];
+        const auto actions = pet::ActionsFor(prefs.character);
+        return static_cast<unsigned>(i) == actions.count ? L"停止演示" : actions.items[i].name;
     }
     RECT Row(int column, int index) const {
         const int left = column ? width + D(12) : 0, top = column ? SubTop() : 0;
-        const int y = top + D(8) + index * row + (!column && index == 6 ? D(8) : 0);
-        return {left + D(4), y, left + width - D(4), y + row};
+        const auto rowHeight = column ? SubRow() : row;
+        const int y = top + D(8) + index * rowHeight + (!column && index == 6 ? D(8) : 0);
+        return {left + D(4), y, left + width - D(4), y + rowHeight};
     }
     void Resize() {
         const int total = width + (sub ? D(12) + width : 0), height = Height();
@@ -65,7 +68,7 @@ struct Popup {
         HRGN region = CreateRoundRectRgn(0, 0, width, MainHeight(), D(24), D(24));
         if (sub) {
             HRGN other =
-                CreateRoundRectRgn(width + D(12), SubTop(), total, SubTop() + D(16 + 32 * SubCount()), D(24), D(24));
+                CreateRoundRectRgn(width + D(12), SubTop(), total, SubBottom(), D(24), D(24));
             CombineRgn(region, region, other, RGN_OR);
             DeleteObject(other);
         }
@@ -84,7 +87,8 @@ struct Popup {
     }
     void Pick(bool child, int index) {
         if (child) {
-            Close(sub == 1 ? static_cast<int>(Idle) + index : static_cast<int>(Small) + index);
+            const int action = index == SubCount() - 1 ? static_cast<int>(Stop) : FirstPose + index;
+            Close(sub == 1 ? action : static_cast<int>(Small) + index);
             return;
         }
         if (index == 1 || index == 2) {
@@ -107,7 +111,7 @@ struct Popup {
         DeleteObject(background);
         UiBox(dc, {0, 0, width, MainHeight()}, c.surface, c.border, D(12));
         if (sub)
-            UiBox(dc, {width + D(12), SubTop(), width * 2 + D(12), SubTop() + D(16 + 32 * SubCount())}, c.surface,
+            UiBox(dc, {width + D(12), SubTop(), width * 2 + D(12), SubBottom()}, c.surface,
                   c.border, D(12));
         for (int column = 0; column <= (sub ? 1 : 0); ++column)
             for (int i = 0; i < (column ? SubCount() : 7); ++i) {
@@ -120,16 +124,17 @@ struct Popup {
                 text.left += D(36);
                 text.right -= D(28);
                 Label(dc, font, ink, column ? SubText(i) : MainText(i), text);
-                RECT icon{r.left + D(10), r.top + (row - D(16)) / 2, r.left + D(26), r.top + (row + D(16)) / 2};
+                const int iconY = (r.top + r.bottom - D(16)) / 2;
+                RECT icon{r.left + D(10), iconY, r.left + D(26), iconY + D(16)};
                 if ((!column && i == 0 && prefs.enabled && prefs.follow) || (column && sub == 2 &&
                                                                              prefs.size == (i == 0   ? 96
                                                                                             : i == 1 ? 120
                                                                                                      : 144)))
                     UiDrawGlyph(dc, icon, ink, UiGlyph::Check);
-                else if ((!column && i == 1) || (column && sub == 1 && i != 3))
-                    UiDrawGlyph(dc, icon, ink, UiGlyph::Run);
-                else if (column && i == 3)
+                else if (column && sub == 1 && i == SubCount() - 1)
                     UiDrawGlyph(dc, icon, ink, UiGlyph::Stop);
+                else if ((!column && i == 1) || (column && sub == 1))
+                    UiDrawGlyph(dc, icon, ink, UiGlyph::Run);
                 else if (!column && i == 6)
                     UiDrawGlyph(dc, icon, ink, UiGlyph::Pet);
                 if (!column && (i == 1 || i == 2))
@@ -301,8 +306,11 @@ bool AiPetPane::Create(HWND parent, HFONT font, bool dark, pet::Settings setting
     small_ = CreateFontIndirectW(&lf);
     model_.Configure(settings, GetTickCount64());
     image_ = std::make_unique<UiResourceBitmap>(2013);
-    if (!image_->bitmap || image_->bitmap->GetWidth() != 2048 || image_->bitmap->GetHeight() != 1280) {
+    actionImage_ = std::make_unique<UiResourceBitmap>(2014);
+    if (!image_->bitmap || image_->bitmap->GetWidth() != 2048 || image_->bitmap->GetHeight() != 1280 ||
+        !actionImage_->bitmap || actionImage_->bitmap->GetWidth() != 1280 || actionImage_->bitmap->GetHeight() != 800) {
         image_.reset();
+        actionImage_.reset();
         return false;
     }
     WNDCLASSW wc{};
@@ -359,6 +367,7 @@ void AiPetPane::Shutdown() {
     window_ = nullptr;
     ReleaseDesktopPaint();
     image_.reset();
+    actionImage_.reset();
     if (small_)
         DeleteObject(small_);
     small_ = nullptr;
@@ -379,12 +388,16 @@ void AiPetPane::Tick() {
         ((GetWindowRect(owner, &ownerBounds) && PtInRect(&ownerBounds, pointer)) ||
          (GetWindowRect(foreground, &foregroundBounds) && PtInRect(&foregroundBounds, pointer)));
     if (!Preferences().roaming) roaming_ = {};
-    const auto position = roaming_.Step(now, present && model_.CanRoam() && !dragging_ && !hover_ &&
-        !interacting_ && !ownerInUse);
+    const auto sleepPose = pet::PoseFor(Preferences().character, pet::Action::Sleep);
+    const auto position = roaming_.Step(now, present && model_.CanRoam() && sample_.pose != sleepPose &&
+        !dragging_ && !hover_ && !interacting_ && !ownerInUse);
     walking_ = position.moving;
     if (walking_) {
         roamDirection_ = position.facingLeft ? -1 : 1;
-        sample_.pose = roaming_.Pose();
+        const auto character = Preferences().character;
+        sample_.pose = character == pet::Character::Whale ? roaming_.Pose() : pet::PoseFor(character, pet::Action::Walk);
+        if (character != pet::Character::Whale)
+            sample_.lift = .035 * std::abs(std::sin((now % 560) * 6.283185307179586 / 560));
         sample_.label.clear();
     }
     const POINT offset{static_cast<LONG>(std::lround(position.x * dpi_ / 96.0)),
@@ -506,12 +519,18 @@ void AiPetPane::PaintDesktop() {
         Gdiplus::SolidBrush shadow(Gdiplus::Color(32, 80, 85, 100));
         g.FillEllipse(&shadow, static_cast<float>(x - body * .32), static_cast<float>(base - D(2)),
                       static_cast<float>(body * .64), static_cast<float>(D(6)));
-        const unsigned pose = std::min(sample_.pose, 35u);
+        const unsigned pose = sample_.pose >= 36 ? sample_.pose - 36 : sample_.pose;
+        const auto &atlas = sample_.pose >= 36 ? actionImage_ : image_;
+        const float tile = static_cast<float>(atlas->bitmap->GetWidth() / 8);
         const auto spriteState = g.Save();
-        if (walking_ && roamDirection_ < 0) { g.TranslateTransform(static_cast<float>(2*x),0); g.ScaleTransform(-1,1); }
-        g.DrawImage(image_->bitmap.get(), Gdiplus::RectF(static_cast<float>(x - side / 2), static_cast<float>(top),
+        const bool facesLeft = Preferences().character == pet::Character::Cat;
+        if (walking_ && ((roamDirection_ < 0) != facesLeft)) {
+            g.TranslateTransform(static_cast<float>(2 * x), 0);
+            g.ScaleTransform(-1, 1);
+        }
+        g.DrawImage(atlas->bitmap.get(), Gdiplus::RectF(static_cast<float>(x - side / 2), static_cast<float>(top),
             static_cast<float>(side), static_cast<float>(side * sample_.breath)),
-            static_cast<float>((pose % 8) * 256), static_cast<float>((pose / 8) * 256), 256.f, 256.f, Gdiplus::UnitPixel);
+            (pose % 8) * tile, (pose / 8) * tile, tile, tile, Gdiplus::UnitPixel);
         g.Restore(spriteState);
         LOGFONTW lf{}; GetObjectW(small_, sizeof(lf), &lf);
         Gdiplus::Font font(desktopDc_, &lf);
@@ -566,12 +585,13 @@ void AiPetPane::Paint(HDC target) {
                          static_cast<float>(D(6)));
     graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
     graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
-    const unsigned pose = std::min(sample_.pose, 35u);
-    graphics.DrawImage(image_->bitmap.get(),
+    const unsigned pose = sample_.pose >= 36 ? sample_.pose - 36 : sample_.pose;
+    const auto &atlas = sample_.pose >= 36 ? actionImage_ : image_;
+    const float tile = static_cast<float>(atlas->bitmap->GetWidth() / 8);
+    graphics.DrawImage(atlas->bitmap.get(),
                        Gdiplus::RectF(static_cast<float>(x - side / 2), static_cast<float>(top),
                                       static_cast<float>(side), static_cast<float>(side * sample_.breath)),
-                       static_cast<float>((pose % 8) * 256), static_cast<float>((pose / 8) * 256), 256.f, 256.f,
-                       Gdiplus::UnitPixel);
+                       (pose % 8) * tile, (pose / 8) * tile, tile, tile, Gdiplus::UnitPixel);
     if (!sample_.label.empty()) {
         const int bubbleTop = std::max(D(4), static_cast<int>(base - body - lift) - D(36));
         RECT bubble{D(4), bubbleTop, width - D(4), bubbleTop + D(28)};
@@ -627,14 +647,13 @@ void AiPetPane::Action(int action) {
         settings.size = action == Small ? 96 : action == Medium ? 120 : 144;
     else if (action == Stop)
         model_.Stop(now);
-    if (action >= Idle && action <= Cheer) {
-        settings.enabled = true;
-        model_.Configure(settings, now);
-        constexpr pet::Action actions[] = {pet::Action::Idle, pet::Action::Wave, pet::Action::Boxing,
-                                            pet::Action::Hop, pet::Action::Dance, pet::Action::Cheer};
-        model_.Play(actions[action - Idle], now);
-    } else
-        model_.Configure(settings, now);
+    const auto actions = pet::ActionsFor(settings.character);
+    const bool chosenPose = action >= FirstPose && static_cast<unsigned>(action - FirstPose) < actions.count;
+    if (chosenPose || action == TapPet) settings.enabled = true;
+    model_.Configure(settings, now);
+    if (chosenPose) model_.Play(actions.items[action - FirstPose].action, now);
+    else if (action == TapPet)
+        model_.Play(settings.character == pet::Character::Cat ? pet::Action::Groom : pet::Action::Wave, now);
     Changed();
     DesktopMode();
     if (desktopMode_) PlaceDesktop();
@@ -758,7 +777,7 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (moved)
             self->Changed();
         else
-            self->Action(Wave);
+            self->Action(TapPet);
         return 0;
     }
     if (m == WM_CAPTURECHANGED && self->dragging_) {
@@ -787,7 +806,7 @@ LRESULT CALLBACK AiPetPane::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ClientToScreen(h, &p);
             self->ShowMenu(p);
         } else if (w == VK_SPACE || w == VK_RETURN)
-            self->Action(Wave);
+            self->Action(TapPet);
         else if (w == VK_ESCAPE) {
             if (self->dragging_) {
                 self->model_.Configure(self->dragStart_, GetTickCount64());
@@ -881,9 +900,15 @@ INT_PTR CALLBACK AiPetPane::SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                                     : BST_UNCHECKED,
                                 0);
         EnableWindow(GetDlgItem(h, 107), data->draft.desktop);
-        child(L"STATIC", L"宠物大小", -1, SS_LEFT, 16, 240, 328, 20);
-        HWND combo = child(L"COMBOBOX", L"", 104, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_TABSTOP,
-                           16, 264, 328, 180);
+        child(L"STATIC", L"宠物角色", -1, SS_LEFT, 16, 240, 156, 20);
+        child(L"STATIC", L"宠物大小", -1, SS_LEFT, 188, 240, 156, 20);
+        constexpr DWORD comboStyle = CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_TABSTOP;
+        HWND characters = child(L"COMBOBOX", L"", 109, comboStyle, 16, 264, 156, 180);
+        UiStyleField(characters, &data->style);
+        for (auto character : {pet::Character::Whale, pet::Character::Lulu, pet::Character::Cat})
+            SendMessageW(characters, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(pet::CharacterName(character)));
+        SendMessageW(characters, CB_SETCURSEL, static_cast<WPARAM>(data->draft.character), 0);
+        HWND combo = child(L"COMBOBOX", L"", 104, comboStyle, 188, 264, 156, 180);
         UiStyleField(combo, &data->style);
         for (const wchar_t *text : {L"小（96）", L"中（120）", L"大（144）"})
             SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text));
@@ -938,6 +963,8 @@ INT_PTR CALLBACK AiPetPane::SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             data->draft.roaming = IsDlgButtonChecked(h,108) == BST_CHECKED;
             const auto selected = SendDlgItemMessageW(h, 104, CB_GETCURSEL, 0, 0);
             data->draft.size = selected == 1 ? 120 : selected == 2 ? 144 : 96;
+            const auto character = SendDlgItemMessageW(h, 109, CB_GETCURSEL, 0, 0);
+            data->draft.character = character == CB_ERR ? pet::Character::Whale : static_cast<pet::Character>(character);
             data->draft.Normalize();
             EndDialog(h, IDOK);
             return TRUE;

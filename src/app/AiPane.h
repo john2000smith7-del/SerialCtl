@@ -173,6 +173,7 @@ class AiPane {
     bool Request(ai::Operation, Json, const std::string &purpose);
     void Reply(const Json &, Json, bool success = true);
     void StartTurn();
+    void FinishRemoteWorkspaceSnapshot();
     void NewConversation();
     bool ChooseWorkspace();
     void BeginWorkspaceConversation(const std::wstring&);
@@ -372,6 +373,8 @@ class AiPane {
             RemoteFsList,
             RemoteFsReadAgents,
             RemoteFsWriteAgents,
+            RemoteSnapshotBefore,
+            RemoteSnapshotAfter,
             WorkspaceExecEvent,
             WorkspaceFileChanged
         };
@@ -489,6 +492,9 @@ class AiPane {
     std::shared_ptr<ObserverBridge> observerBridge_ = std::make_shared<ObserverBridge>();
     std::uint64_t localWorkspaceObserverId_ = 0;
     std::uint64_t turnSeq_ = 0;
+    std::uint64_t remoteSnapshotGeneration_ = 0;
+    Json remoteSnapshotRequest_, remoteSnapshotBefore_;
+    bool remoteSnapshotPending_ = false;
     std::uint64_t nextServerChangeSeq_ = 0;
     std::vector<ai::FileChangeRecord> fileChanges_;
     std::set<std::string> knownWsExecIds_;

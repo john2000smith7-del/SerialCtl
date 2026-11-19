@@ -383,6 +383,17 @@ bool RunPlinkCommand(const SshRemoteConfig& config, const std::wstring& remoteCo
 }
 } // namespace
 
+bool CaptureRemoteSshCommand(SshRemoteConfig config, const std::wstring& command, size_t maxOutputBytes,
+                             DWORD timeoutMs, std::string& output, std::wstring& error,
+                             const std::atomic<bool>* cancelled) {
+    if (!ValidateRemoteSshConfig(config, error)) return false;
+    DWORD exitCode = 1;
+    if (!RunPlinkCommand(config, command, maxOutputBytes, timeoutMs, output, exitCode, error, cancelled)) return false;
+    if (exitCode == 0) return true;
+    error = L"远程 SSH 命令未完成，退出码 " + std::to_wstring(exitCode);
+    return false;
+}
+
 RemoteSshTftpFileSource::RemoteSshTftpFileSource(SshRemoteConfig config, StreamLauncher customLauncher, bool deferQuery)
     : config_(std::move(config)), launcher_(std::move(customLauncher)), deferQuery_(deferQuery) {
     info_.type = "remote";

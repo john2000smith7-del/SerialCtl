@@ -159,6 +159,8 @@ private:
     std::wstring injectedError_;
 };
 
+bool CaptureRemoteSshCommand(SshRemoteConfig config, const std::wstring& command, size_t maxOutputBytes,
+                             DWORD timeoutMs, std::string& output, std::wstring& error, const std::atomic<bool>* cancelled);
 bool ValidateLocalTftpDirectory(const std::wstring& dirPath, std::wstring& normalizedPath, std::wstring& error);
 bool ListLocalTftpDirectory(const std::wstring& dirPath, std::vector<TftpDirectoryEntry>& entries, std::wstring& error);
 bool ValidateRemoteTftpDirectoryConfig(SshRemoteConfig& config, std::wstring& error);

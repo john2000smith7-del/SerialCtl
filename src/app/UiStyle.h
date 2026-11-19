@@ -190,7 +190,9 @@ enum class UiGlyph {
     Disconnect,
     Close,
     ArrowUp,
-    Microphone
+    Microphone,
+    Reconnect,
+    ParentFolder
 };
 inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon) {
     if (UiResourceGlyph(dc, bounds, color, static_cast<int>(icon)))
@@ -219,9 +221,34 @@ inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon
         line(8, 5, 8, 19); line(16, 5, 16, 19);
         break;
     case UiGlyph::Disconnect:
-        line(4, 8, 9, 8); line(9, 8, 9, 4);
-        line(15, 20, 15, 16); line(15, 16, 20, 16);
-        line(4, 20, 20, 4);
+        pen.SetWidth(2.6f);
+        line(3, 11, 9, 5);
+        line(9, 5, 13, 5);
+        line(3, 11, 3, 15);
+        line(3, 15, 6, 18);
+        line(21, 13, 15, 19);
+        line(15, 19, 11, 19);
+        line(21, 13, 21, 9);
+        line(21, 9, 18, 6);
+        line(8, 16, 16, 8);
+        break;
+    case UiGlyph::Reconnect:
+        pen.SetWidth(2.6f);
+        g.DrawArc(&pen, 4.f, 4.f, 16.f, 16.f, 20.f, 304.f);
+        line(19, 9, 19, 4);
+        line(19, 9, 14, 9);
+        break;
+    case UiGlyph::ParentFolder:
+        pen.SetWidth(2.1f);
+        line(2, 19, 2, 6);
+        line(2, 6, 8, 6);
+        line(8, 6, 10, 8);
+        line(10, 8, 22, 8);
+        line(22, 8, 22, 19);
+        line(22, 19, 2, 19);
+        line(12, 17, 12, 11);
+        line(9, 14, 12, 11);
+        line(12, 11, 15, 14);
         break;
     case UiGlyph::Close:
         line(6, 6, 18, 18); line(6, 18, 18, 6);
