@@ -70,6 +70,47 @@ void CALLBACK ModalTimer(HWND, UINT, UINT_PTR timer, DWORD) {
 } // namespace
 namespace serialctl {
 struct AiPetPaneTestAccess {
+    static void RenderCharacters(AiPetPane &pane) {
+        for (const auto character : {pet::Character::Whale, pet::Character::Lulu, pet::Character::Cat}) {
+            auto prefs = pane.Preferences();
+            prefs.character = character;
+            prefs.opening = false;
+            pane.model_.Configure(prefs, 100);
+            pane.Present(true, true);
+            SetWindowPos(pane.Handle(), nullptr, 0, 0, 220, pane.DesiredHeight(), SWP_NOZORDER | SWP_SHOWWINDOW);
+            for (const bool dark : {false, true}) {
+                pane.Theme(dark);
+                const auto actions = pet::ActionsFor(character);
+                for (unsigned i = 0; i < actions.count; ++i) {
+                    pane.model_.Play(actions.items[i].action, 100);
+                    pane.sample_ = pane.model_.At(400);
+                    const unsigned pose = pane.sample_.pose;
+                    const auto &atlas = pose < 36 ? pane.image_ : pane.actionImage_;
+                    const unsigned cell = pose < 36 ? pose : pose - 36;
+                    Gdiplus::Color pixel;
+                    const unsigned tile = atlas->bitmap->GetWidth() / 8;
+                    unsigned opaque = 0;
+                    for (unsigned y = 0; y < tile; y += 5)
+                        for (unsigned x = 0; x < tile; x += 5) {
+                            atlas->bitmap->GetPixel((cell % 8) * tile + x, (cell / 8) * tile + y, &pixel);
+                            if (pixel.GetAlpha() > 128) ++opaque;
+                        }
+                    Check(opaque > 50, "Selected action is missing embedded sprite pixels");
+                    const auto dc = GetDC(pane.Handle());
+                    pane.Paint(dc);
+                    ReleaseDC(pane.Handle(), dc);
+                    Check(pane.sprite_.top > 0 && pane.sprite_.left >= 0 && pane.sprite_.right <= 220,
+                          "Selected companion exceeded the dock");
+                }
+                pane.model_.Stop(500);
+                pane.model_.SetActivity(pet::Activity::Working, 500);
+                pane.sample_ = pane.model_.At(600);
+                const std::wstring name = L"v223-companion-" + std::to_wstring(static_cast<int>(character)) +
+                                          (dark ? L"-dark.png" : L"-light.png");
+                ui_test::SaveUiEvidence(pane.Handle(), name, [&](HDC dc) { pane.Paint(dc); });
+            }
+        }
+    }
     static void Run(AiPetPane &pane, HWND parent) {
         const auto original = pane.Preferences();
         for (int dpi : {96, 120, 144, 192})
@@ -170,7 +211,7 @@ struct AiPetPaneTestAccess {
         pane.model_.Page(true, 18000);
         pane.model_.Play(pet::Action::Wave, 18001);
         pane.model_.SetActivity(pet::Activity::Working, 18100);
-        Check(pane.model_.At(20000).pose == 33, "Latest AI state was not restored");
+        Check(pane.model_.At(20000).pose == pet::PoseFor(pet::Character::Whale, pet::Action::Work), "Latest AI state was not restored");
         pane.model_.Configure(original, GetTickCount64());
         pane.model_.Stop(GetTickCount64());
         // The new 144px default needs room for the unchanged 8px drag assertion.
@@ -265,11 +306,12 @@ struct AiPetPaneTestAccess {
         roaming.desktopX=240;roaming.desktopY=240;roaming.roaming=true;
         pane.model_.Configure(roaming,GetTickCount64());pane.model_.Stop(GetTickCount64());
         pane.model_.SetActivity(pet::Activity::Idle,GetTickCount64());
-        pane.hover_=false;pane.roamOffsetX_=0;pane.roaming_={};pane.PlaceDesktop();pane.Tick();
+        pane.hover_=false;pane.roamOffset_={};pane.roaming_={};pane.PlaceDesktop();pane.Tick();
         RECT roamBefore{},roamAfter{};GetWindowRect(pane.Handle(),&roamBefore);
         for(int step=0;step<5;++step){Sleep(80);pane.Tick();}
         GetWindowRect(pane.Handle(),&roamAfter);
-        Check(roamAfter.left>roamBefore.left,"Desktop idle roaming did not move the real layered window");
+        Check(roamAfter.left > roamBefore.left && roamAfter.top != roamBefore.top,
+              "Desktop idle roaming must move the real layered window on both axes");
         const HWND previousForeground = GetForegroundWindow();
         const auto activateOwner = [](HWND target, POINT point) {
             EnableWindow(target, TRUE);
@@ -313,7 +355,7 @@ struct AiPetPaneTestAccess {
                       << " owner_bounds=" << actualOwner.left << ',' << actualOwner.top << ',' << actualOwner.right << ',' << actualOwner.bottom
                       << " pet_before=" << ownerInteractionBefore.left << ',' << ownerInteractionBefore.top
                       << " pet_after=" << ownerInteractionPosition.left << ',' << ownerInteractionPosition.top
-                      << " roam_offset=" << pane.roamOffsetX_ << " walking=" << pane.walking_ << '\n';
+                      << " roam_offset=" << pane.roamOffset_.x << " walking=" << pane.walking_ << '\n';
         }
         Check(EqualRect(&ownerInteractionPosition, &ownerInteractionBefore),
               "Active owner interaction did not pause the real desktop pet");
@@ -346,7 +388,7 @@ struct AiPetPaneTestAccess {
         RECT workingPosition{};GetWindowRect(pane.Handle(),&workingPosition);
         Check(EqualRect(&workingPosition,&roamAfter),"AI work did not pause desktop roaming");
         roaming.roaming=false;roaming.desktopX=roamAfter.left;roaming.desktopY=roamAfter.top;
-        pane.roamOffsetX_=0;pane.model_.Configure(roaming,GetTickCount64());
+        pane.roamOffset_={};pane.model_.Configure(roaming,GetTickCount64());
         pane.model_.SetActivity(pet::Activity::Idle,GetTickCount64());Sleep(80);pane.Tick();
         GetWindowRect(pane.Handle(),&workingPosition);
         Check(EqualRect(&workingPosition,&roamAfter),"Disabling roaming moved the pet");
@@ -385,7 +427,7 @@ struct AiPetPaneTestAccess {
     }
 };
 } // namespace serialctl
-int main() {
+int main(int argc, char **argv) {
     SetProcessDPIAware();
     INITCOMMONCONTROLSEX cc{sizeof(cc), ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&cc);
@@ -410,9 +452,14 @@ int main() {
         try {
             pet::Settings docked; docked.desktop = false;
             Check(pane.Create(parent, font, false, docked), "Cannot decode embedded native pet asset");
-            AiPetPaneTestAccess::Run(pane, parent);
-            std::cout << "AI pet: native asset, both themes/four DPI scales, bounded dock, delayed/cancelled opening "
-                         "and state restoration PASS\n";
+            if (argc > 1 && std::string(argv[1]) == "--render-only") {
+                AiPetPaneTestAccess::RenderCharacters(pane);
+                std::cout << "AI pet: all 39 actions rendered in both themes PASS\n";
+            } else {
+                AiPetPaneTestAccess::Run(pane, parent);
+                AiPetPaneTestAccess::RenderCharacters(pane);
+                std::cout << "AI pet: native assets, both themes/four DPI scales, dock and state restoration PASS\n";
+            }
         } catch (const std::exception &e) {
             std::cerr << e.what() << '\n';
             result = 1;

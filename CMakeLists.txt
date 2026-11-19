@@ -57,6 +57,7 @@ file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/serialctl-light.ico" SERI
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-black.png" SERIALCTL_TOOLBAR_BLACK_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-white.png" SERIALCTL_TOOLBAR_WHITE_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/ai-pet.png" SERIALCTL_AI_PET_PATH)
+file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/ai-pet-actions.png" SERIALCTL_AI_PET_ACTIONS_PATH)
 foreach(asset surface-fill surface-stroke utility-icons)
     string(REPLACE "-" "_" variable "${asset}")
     string(TOUPPER "${variable}" variable)

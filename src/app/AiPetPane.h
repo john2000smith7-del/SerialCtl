@@ -53,8 +53,7 @@ class AiPetPane {
     bool desktopMode_ = false, seenAi_ = false, interacting_ = false;
     bool walking_ = false;
     int roamDirection_ = 1;
-    ULONGLONG roamTurnUntil_ = 0;
-    double roamOffsetX_ = 0;
+    POINT roamOffset_{};
     pet::RoamingClock roaming_;
     RECT initialAnchor_{};
     POINT dragWindow_{};
@@ -67,6 +66,6 @@ class AiPetPane {
     pet::Model model_;
     pet::Sample sample_;
     RECT sprite_{}, menu_{};
-    std::unique_ptr<UiResourceBitmap> image_;
+    std::unique_ptr<UiResourceBitmap> image_, actionImage_;
 };
 } // namespace serialctl

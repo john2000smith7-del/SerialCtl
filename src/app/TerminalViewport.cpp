@@ -67,7 +67,7 @@ void DrawRegisterPreview(HDC dc, RECT client, const RECT& selection, std::uint32
     const int pad = Ui::Scale(10), gap = Ui::Scale(6);
     const int cellWidth = Ui::Scale(20), groupPad = Ui::Scale(3);
     const int groupWidth = 8 * cellWidth + 2 * groupPad;
-    const int groupHeight = Ui::Scale(39), headerHeight = Ui::Scale(24);
+    const int groupHeight = Ui::Scale(39), titleHeight = Ui::Scale(21), headerHeight = 2 * titleHeight;
     client.left += gap;
     client.right -= Ui::OverlayScrollLaneWidth + gap;
     client.top += gap;
@@ -95,9 +95,12 @@ void DrawRegisterPreview(HDC dc, RECT client, const RECT& selection, std::uint32
     UiBox(dc, card, colors.surface, colors.border, Ui::CardRadius);
     wchar_t hex[11]{};
     swprintf_s(hex, L"0x%08X", static_cast<unsigned>(value));
-    const RECT title{card.left + pad, card.top, card.right - pad, card.top + headerHeight};
+    const RECT title{card.left + pad, card.top, card.right - pad, card.top + titleHeight};
     DrawTextSimple(dc, hex, title, colors.text, options.smallFont, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     DrawTextSimple(dc, L"32 位", title, colors.muted, options.smallFont, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    const RECT decimal{title.left, title.bottom, title.right, title.bottom + titleHeight};
+    DrawTextSimple(dc, L"十进制  " + std::to_wstring(value), decimal, colors.text, options.smallFont,
+                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     for (int group = 0; group < 4; ++group) {
         const LONG x = card.left + pad + (group % columns) * (groupWidth + gap);
         const LONG y = card.top + headerHeight + (group / columns) * (groupHeight + gap);

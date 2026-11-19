@@ -68,7 +68,11 @@ public:
         text = text.substr(start, text.find_last_not_of(L" \t") - start + 1);
         const bool prefixed = text.size() >= 2 && text[0] == L'0' && (text[1] == L'x' || text[1] == L'X');
         if (prefixed) text.remove_prefix(2);
-        if (text.empty() || text.size() > 8 || (!prefixed && text.size() != 8)) return {};
+        if (text.empty() || text.size() > 8) return {};
+        const bool digitsOnly = std::all_of(text.begin(), text.end(), [](wchar_t ch) {
+            return ch >= L'0' && ch <= L'9';
+        });
+        if (!prefixed && !digitsOnly && text.size() != 8) return {};
         std::uint32_t value = 0;
         for (const auto ch : text) {
             unsigned digit;

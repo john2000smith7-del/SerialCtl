@@ -11,6 +11,7 @@
 #include "UiPasswordPrompt.h"
 #include "SshCredentials.h"
 #include "UiPopupMenu.h"
+#include "RemoteWorkspaceSnapshot.h"
 #include "PlatformConnection.h"
 #include <ctime>
 
@@ -941,7 +942,6 @@ void MainWindow::RequestShutdown() {
     aiPane_.BeginShutdown(); // Release its device binding while still on the UI thread.
     powerPane_.BeginShutdown();
     powerService_.RequestShutdown();
-    if (tftpServer_) tftpServer_->Stop();
     if (aiLoopbackMcpServer_) {
         aiLoopbackMcpServer_->Stop();
         aiLoopbackMcpServer_.reset();
@@ -966,6 +966,7 @@ void MainWindow::RequestShutdown() {
 void MainWindow::WaitForShutdown() {
     // MainWindow, its session models and HWND stay alive until this returns.
     // No worker retains a reference to a UI state that can be destroyed early.
+    if (tftpServer_) tftpServer_->Stop();
     connectionCleanup_.Drain();
     for (const auto &session : sessions_) {
         if (session->connection) session->connection->Stop();
@@ -3157,7 +3158,7 @@ void MainWindow::CreateControls() {
     disconnectButton_ = CreateChild(L"BUTTON", L"断开", BS_OWNERDRAW, IdDisconnect);
     reconnectButton_ = CreateChild(L"BUTTON", L"重连", BS_OWNERDRAW, IdReconnect);
     UiSetButtonGlyph(disconnectButton_, UiGlyph::Disconnect, L"断开连接");
-    UiSetButtonGlyph(reconnectButton_, UiGlyph::Refresh, L"重新连接");
+    UiSetButtonGlyph(reconnectButton_, UiGlyph::Reconnect, L"重新连接");
 
     connectionHeader_ = CreateChild(L"BUTTON", leftPanelCollapsed_ ? L"展开连接栏" : L"收起连接栏", BS_OWNERDRAW, IdConnectionHeader);
     addTip(connectionHeader_);
@@ -8079,6 +8080,7 @@ void MainWindow::LoadUiState() {
     uiSettingsPath_ = JoinLocalPath(directory, L"settings.ini");
     const std::wstring &path = uiSettingsPath_;
     serialF2CustomEnabled_ = GetPrivateProfileIntW(L"Shortcuts", L"SerialF2Custom", 1, path.c_str()) != 0;
+    petSettings_.character = static_cast<pet::Character>(GetPrivateProfileIntW(L"Pet", L"Character", 0, path.c_str()));
     petSettings_.enabled = GetPrivateProfileIntW(L"Pet", L"Enabled", 1, path.c_str()) != 0;
     petSettings_.follow = GetPrivateProfileIntW(L"Pet", L"Follow", 1, path.c_str()) != 0;
     petSettings_.opening = GetPrivateProfileIntW(L"Pet", L"Opening", 1, path.c_str()) != 0;
@@ -8160,6 +8162,7 @@ void MainWindow::SaveUiState() {
     auto add = [&](const wchar_t *section, const wchar_t *key, int value) {
         snapshot.entries.push_back({section, key, std::to_wstring(value)});
     };
+    add(L"Pet", L"Character", static_cast<int>(petSettings_.character));
     add(L"Pet", L"Enabled", petSettings_.enabled); add(L"Pet", L"Follow", petSettings_.follow);
     add(L"Pet",L"LargeDefaultV216",1); add(L"Pet",L"Roaming",petSettings_.roaming);
     add(L"Pet", L"Opening", petSettings_.opening); add(L"Pet", L"Size", petSettings_.size);
@@ -10268,7 +10271,7 @@ void MainWindow::RunAiRemoteFs(const std::string& op, const Json& params, AiPane
         done({{"error", "未找到已连接的 SSH 终端会话，无法访问远程工作空间"}});
         return;
     }
-    if (!SftpClient::IsAvailable()) {
+    if (op != "snapshot" && !SftpClient::IsAvailable()) {
         done({{"error", "当前环境缺少 psftp.exe，无法访问远程工作空间"}});
         return;
     }
@@ -10281,6 +10284,38 @@ void MainWindow::RunAiRemoteFs(const std::string& op, const Json& params, AiPane
         auto toWide = [](const std::string& utf8) {
             return MultiByteToWide(reinterpret_cast<const uint8_t*>(utf8.data()), utf8.size(), CP_UTF8);
         };
+        if (op == "snapshot") {
+            const auto directory = toWide(params.value("path", std::string()));
+            if (directory.empty() || directory.size() > 4096 || directory.front() != L'/' ||
+                std::any_of(directory.begin(), directory.end(), [](wchar_t ch) { return ch < 32; })) {
+                finish({{"error", "远程工作区快照需要有效的绝对路径"}});
+                return;
+            }
+            const auto quote = [](std::wstring_view value) {
+                std::wstring result = L"'";
+                for (const auto ch : value) {
+                    if (ch == L'\'') result += L"'\\''";
+                    else result += ch;
+                }
+                return result + L"'";
+            };
+            std::string raw;
+            std::wstring error;
+            const auto command = L"python3 -I -B -c " + quote(ai::RemoteSnapshotProgram) + L" " + quote(directory);
+            if (!CaptureRemoteSshCommand({endpoint.host, endpoint.port, endpoint.username, endpoint.password, directory, {}},
+                                         command, 10 * 1024 * 1024, 6500, raw, error, &closing_)) {
+                finish({{"error", WideToMultiByte(error, CP_UTF8)}});
+                return;
+            }
+            auto snapshot = Json::parse(raw, nullptr, false);
+            if (!snapshot.is_object() || !snapshot.contains("files") || !snapshot["files"].is_object() ||
+                !snapshot.contains("complete") || !snapshot["complete"].is_boolean()) {
+                finish({{"error", "远程工作区快照格式无效"}});
+                return;
+            }
+            finish(std::move(snapshot));
+            return;
+        }
         auto joinRemote = [](const std::wstring& dir, const std::wstring& leaf) {
             if (dir.empty() || dir == L".") return leaf;
             return dir + (dir.back() == L'/' ? L"" : L"/") + leaf;
@@ -10643,6 +10678,13 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         DisconnectAll();
         return {{"ok", true}};
     }
+    if (method.rfind("session.connect_", 0) == 0 && pendingSession_)
+        return error("Another connection is being established");
+    const auto connectCard = [&](const std::string& label) -> Json {
+        ConnectFromDialog();
+        if (!pendingSession_) return error("Unable to start connection");
+        return {{"ok", true}, {"connecting", label}, {"sessionId", "session-" + std::to_string(pendingSession_->id)}};
+    };
     if (method == "session.connect_serial") {
         std::string port = params.value("port", "");
         if (port.empty()) return error("port is required");
@@ -10652,8 +10694,7 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         pendingSerial_.dataBits = static_cast<BYTE>(params.value("dataBits", 8));
         pendingSerial_.parity = static_cast<BYTE>(params.value("parity", 0));
         pendingSerial_.stopBits = static_cast<BYTE>(params.value("stopBits", 0));
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", port}};
+        return connectCard(port);
     }
     if (method == "session.connect_shared_serial") {
         std::string host = params.value("host", "");
@@ -10665,8 +10706,7 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         pendingPort_ = port;
         pendingRemoteSerial_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(remoteCom.data()), remoteCom.size(), CP_UTF8);
         pendingRemoteInstance_ = params.value("instance", "");
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", host}};
+        return connectCard(host);
     }
     if (method == "session.connect_ssh") {
         std::string host = params.value("host", "");
@@ -10678,8 +10718,10 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         std::string password = params.value("password", "");
         pendingPassword_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(password.data()), password.size(), CP_UTF8);
         pendingPort_ = static_cast<uint16_t>(params.value("port", 22));
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", host}};
+        pendingSaveSshHistory_ = false;
+        pendingHostKeyReverify_ = false;
+        pendingEmployeeNumber_.clear();
+        return connectCard(host);
     }
     if (method == "session.connect_telnet") {
         std::string host = params.value("host", "");
@@ -10687,13 +10729,11 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         pendingMode_ = 2;
         pendingHost_ = MultiByteToWide(reinterpret_cast<const uint8_t*>(host.data()), host.size(), CP_UTF8);
         pendingPort_ = static_cast<uint16_t>(params.value("port", 23));
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", host}};
+        return connectCard(host);
     }
     if (method == "session.connect_cmd") {
         pendingMode_ = 4;
-        ConnectFromDialog();
-        return {{"ok", true}, {"connecting", "cmd"}};
+        return connectCard("cmd");
     }
     if (method == "ssh_history.list") {
         return {{"ok", true}, {"history", mcp::McpSecurity::SanitizeJson(sshHistory_)}};
@@ -11183,7 +11223,11 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
             {"rightCollapsed", rightPanelCollapsed_},
             {"tftpVisible", tftpPanelVisible_},
             {"sftpVisible", sftpPanelVisible_},
-            {"xferVisible", xferPanelVisible_}
+            {"xferVisible", xferPanelVisible_},
+            {"aiVisible", aiVisible_},
+            {"aiPanel", aiSidebarTab_ == AiSidebarTab::Terminal ? "live_terminal" :
+                        aiSidebarTab_ == AiSidebarTab::Compile ? "execution" : "changes"},
+            {"aiPreviewSessionId", aiPreviewSessionId_}
         };
     }
     if (method == "ui.theme") {
@@ -11193,13 +11237,35 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         return {{"ok", true}, {"darkMode", darkMode_}};
     }
     if (method == "ui.panel") {
-        std::string panel = params.value("name", "commands");
-        if (panel == "tftp") ShowTftpPanel(true);
-        else if (panel == "sftp") ShowSftpPanel(true);
-        else if (panel == "xfer") ShowXferPanel();
-        else {
-            ShowSftpPanel(false);
+        const auto panel = params.value("name", std::string());
+        if (panel == "live_terminal" || panel == "execution" || panel == "changes") {
+            if (!aiVisible_) ShowAiPage(false);
+            SelectAiSidebarTab(panel == "live_terminal" ? AiSidebarTab::Terminal :
+                               panel == "execution" ? AiSidebarTab::Compile : AiSidebarTab::Changes, true);
+            return {{"ok", true}, {"panel", panel}, {"sessionId", aiPreviewSessionId_}};
         }
+        if (panel != "commands" && panel != "sftp" && panel != "xfer" && panel != "tftp")
+            return error("Unknown panel");
+        if (panel == "sftp" && (!connection_ || !connection_->IsConnected() ||
+                                selectedMode_ != 0 || !SftpClient::IsAvailable()))
+            return error("SFTP requires a connected SSH session");
+        if (panel == "xfer" && (!connection_ || !connection_->IsConnected() ||
+                                (selectedMode_ != 1 && selectedMode_ != 3) || !connection_->SupportsTransfer()))
+            return error("Xfer requires a connected serial session with file transfer support");
+        if (aiVisible_ || powerVisible_) {
+            aiVisible_ = false;
+            powerVisible_ = false;
+            RefreshConnectionList();
+            SyncTerminalVisibility();
+        }
+        SetRightPanelCollapsed(false);
+        if (panel == "tftp") ShowTftpPanel(true);
+        else if (panel == "sftp") { ShowSftpPanel(true); RefreshSftp(); }
+        else if (panel == "xfer") ShowXferPanel();
+        else ShowSftpPanel(false);
+        RECT client{};
+        GetClientRect(window_, &client);
+        LayoutControls(client.right, client.bottom);
         return {{"ok", true}, {"panel", panel}};
     }
     if (method == "log.status") {

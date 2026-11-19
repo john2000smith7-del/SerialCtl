@@ -457,6 +457,75 @@ inline Json DecodeResponse(Operation operation, const Json &result) {
     }
     return decoded;
 }
+// Git quotes non-ASCII path bytes using octal escapes when core.quotePath is enabled.
+inline std::string TurnDiffPath(std::string_view path, std::string_view prefix) {
+    if (!path.empty() && path.back() == '\r') path.remove_suffix(1);
+    if (path == "/dev/null") return {};
+    std::string decoded;
+    if (path.size() >= 2 && path.front() == '"' && path.back() == '"') {
+        path.remove_prefix(1);
+        path.remove_suffix(1);
+        for (size_t i = 0; i < path.size(); ++i) {
+            if (path[i] != '\\') {
+                decoded += path[i];
+                continue;
+            }
+            if (++i >= path.size()) return {};
+            if (path[i] >= '0' && path[i] <= '3' && i + 2 < path.size() &&
+                path[i + 1] >= '0' && path[i + 1] <= '7' && path[i + 2] >= '0' && path[i + 2] <= '7') {
+                decoded += static_cast<char>((path[i] - '0') * 64 + (path[i + 1] - '0') * 8 + path[i + 2] - '0');
+                i += 2;
+            } else if (path[i] == '\\' || path[i] == '"') {
+                decoded += path[i];
+            } else {
+                return {};
+            }
+        }
+    } else {
+        decoded = path.substr(0, path.find('\t'));
+    }
+    if (decoded.compare(0, prefix.size(), prefix) == 0)
+        decoded.erase(0, prefix.size());
+    return decoded;
+}
+
+inline Json DecodeTurnDiff(const Json &params) {
+    const auto diff = params.value("diff", std::string());
+    constexpr std::string_view marker = "\ndiff --git ";
+    Json changes = Json::array();
+    size_t start = diff.rfind("diff --git ", 0) == 0 ? 0 : diff.find(marker);
+    if (start != 0 && start != std::string::npos) ++start;
+    while (start != std::string::npos && changes.size() < 200) {
+        const auto next = diff.find(marker, start);
+        const auto end = next == std::string::npos ? diff.size() : next + 1;
+        const std::string_view patch(diff.data() + start, end - start);
+        const auto oldHeader = patch.find("\n--- ");
+        const auto newHeader = oldHeader == std::string_view::npos ? std::string_view::npos :
+            patch.find('\n', oldHeader + 5);
+        if (newHeader != std::string_view::npos && patch.substr(newHeader, 5) == "\n+++ ") {
+            const auto newEnd = patch.find('\n', newHeader + 5);
+            const auto oldPath = TurnDiffPath(patch.substr(oldHeader + 5, newHeader - oldHeader - 5), "a/");
+            const auto newPath = TurnDiffPath(patch.substr(newHeader + 5, newEnd == std::string_view::npos ?
+                                                  newEnd : newEnd - newHeader - 5), "b/");
+            if (!oldPath.empty() || !newPath.empty()) {
+                std::string content(patch);
+                size_t added = 0, removed = 0;
+                CountDiffChanges(content, added, removed);
+                const bool truncated = content.size() > 65536;
+                TruncateUtf8Bytes(content, 65536, u8"\n[补丁预览已截断]");
+                changes.push_back({{"path", newPath.empty() ? oldPath : newPath},
+                                   {"action", oldPath.empty() ? "create" : newPath.empty() ? "delete" :
+                                              oldPath != newPath ? "move" : "edit"},
+                                   {"detail", oldPath != newPath && !oldPath.empty() && !newPath.empty() ? oldPath : ""},
+                                   {"diff", std::move(content)}, {"addedLines", added}, {"removedLines", removed},
+                                   {"truncated", truncated}});
+            }
+        }
+        start = next == std::string::npos ? next : end;
+    }
+    return changes;
+}
+
 inline Json DecodeNotification(const Json &wire) {
     if (wire.contains("event"))
         return wire; // transport state from CodexClient
@@ -466,7 +535,7 @@ inline Json DecodeNotification(const Json &wire) {
     if (!wire.contains("id") && method != "item/agentMessage/delta" && method != "item/completed" &&
         method != "item/started" && method != "item/reasoning/textDelta" &&
         method != "item/reasoning/summaryTextDelta" && method != "item/reasoning/summaryPartAdded" &&
-        method != "turn/started" && method != "turn/completed" &&
+        method != "turn/started" && method != "turn/completed" && method != "turn/diff/updated" &&
         method != "item/commandExecution/outputDelta" && method != "thread/compacted" && method != "error")
         return Json();
     const auto p = wire.value("params", Json::object());
@@ -488,6 +557,11 @@ inline Json DecodeNotification(const Json &wire) {
                 {"arguments", p.value("arguments", Json::object())}};
     }
     Json event = {{"conversationId", p.value("threadId", std::string())}, {"taskId", p.value("turnId", std::string())}};
+    if (method == "turn/diff/updated") {
+        event["event"] = "turnDiff";
+        event["fileChanges"] = DecodeTurnDiff(p);
+        return event;
+    }
     const auto itemType = p.value("item", Json::object()).value("type", std::string());
     if ((method == "item/started" || method == "item/completed") &&
         (itemType == "commandExecution" || itemType == "fileChange" ||

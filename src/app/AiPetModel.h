@@ -6,13 +6,47 @@
 
 namespace serialctl::pet {
 enum class Activity { Offline, Connecting, Idle, Thinking, Working, Replying, Done, Failed, Stopped };
-enum class Action { None, Idle, Wave, Boxing };
+enum class Action { None, Idle, Wave, Boxing, Hop, Dance, Cheer, Listen, Think, Work, Reply, Concern, Settle, Walk,
+                    Stretch, Sleep, Groom, Treat };
+enum class Character { Whale, Lulu, Cat };
+inline const wchar_t *CharacterName(Character character) {
+    constexpr const wchar_t *names[] = {L"鲸鱼娘", L"水豚噜噜", L"小猫"};
+    return names[static_cast<unsigned>(character)];
+}
+struct PoseAction { Action action; const wchar_t *name; };
+struct CharacterActions { const PoseAction *items; unsigned count; unsigned offset; };
+inline CharacterActions ActionsFor(Character character) {
+    static constexpr PoseAction whale[] = {
+        {Action::Idle,L"待机"}, {Action::Wave,L"挥手"}, {Action::Listen,L"侧耳听"}, {Action::Think,L"托腮思考"},
+        {Action::Work,L"操作笔电"}, {Action::Reply,L"递便笺"}, {Action::Cheer,L"举手欢呼"}, {Action::Concern,L"握手担心"},
+        {Action::Settle,L"摆手暂停"}, {Action::Walk,L"走路"}, {Action::Hop,L"蹦跳"}, {Action::Dance,L"转圈跳舞"},
+        {Action::Boxing,L"前后跳步＋拳击"}, {Action::Stretch,L"伸懒腰"}, {Action::Sleep,L"坐着打盹"}};
+    static constexpr PoseAction lulu[] = {
+        {Action::Idle,L"待机"}, {Action::Wave,L"挥手"}, {Action::Walk,L"走路"}, {Action::Listen,L"侧耳听"},
+        {Action::Think,L"托腮思考"}, {Action::Work,L"敲键盘"}, {Action::Reply,L"举书展示"}, {Action::Cheer,L"跳起庆祝"},
+        {Action::Concern,L"歪头担心"}, {Action::Settle,L"放下双手"}, {Action::Sleep,L"坐着打盹"}, {Action::Treat,L"吃冰淇淋"}};
+    static constexpr PoseAction cat[] = {
+        {Action::Idle,L"坐好"}, {Action::Listen,L"竖耳探身"}, {Action::Think,L"托腮"}, {Action::Work,L"敲键盘"},
+        {Action::Reply,L"举纸抬头"}, {Action::Cheer,L"举爪跳起"}, {Action::Concern,L"歪头垂耳"}, {Action::Settle,L"收爪坐定"},
+        {Action::Stretch,L"伸懒腰"}, {Action::Groom,L"舔爪洗脸"}, {Action::Walk,L"迈步"}, {Action::Sleep,L"蜷睡"}};
+    if (character == Character::Lulu) return {lulu, 12, 15};
+    if (character == Character::Cat) return {cat, 12, 27};
+    return {whale, 15, 0};
+}
+inline unsigned PoseFor(Character character, Action action) {
+    const auto actions = ActionsFor(character);
+    for (unsigned i = 0; i < actions.count; ++i)
+        if (actions.items[i].action == action) return 36 + actions.offset + i;
+    return 36 + actions.offset;
+}
 struct Settings {
+    Character character = Character::Whale;
     bool enabled = true, follow = true, opening = true;
     bool desktop = true, topmost = true, roaming = false;
     int desktopX = -2147483647, desktopY = -2147483647;
     int size = 144, x = 500, y = 500;
     void Normalize() {
+        if (static_cast<unsigned>(character) > static_cast<unsigned>(Character::Cat)) character = Character::Whale;
         if (size != 96 && size != 120 && size != 144)
             size = 96;
         x = std::clamp(x, 0, 1000);
@@ -31,16 +65,30 @@ struct Sample {
 // The Win32 component provides visibility and draws only this bounded result.
 class RoamingClock {
   public:
-    double Step(std::uint64_t now, bool allowed) {
-        const auto delta = last_ && now >= last_ ? std::min<std::uint64_t>(now-last_,100) : 0;
+    struct Position { double x = 0, y = 0; bool moving = false, facingLeft = false; };
+    static constexpr double Radius = 40;
+    Position Step(std::uint64_t now, bool allowed) {
+        const auto delta = last_ && now >= last_ ? std::min<std::uint64_t>(now - last_, 100) : 0;
         last_ = now;
-        if (!allowed) return 0;
-        phase_ = (phase_ + delta) % 12000;
-        return phase_ < 7000 ? delta * .012 : 0;
+        if (!allowed || !delta) return {x_, y_};
+        const auto walked = [](std::uint64_t t) { return t / 12000 * 7500 + std::min<std::uint64_t>(t % 12000, 7500); };
+        const auto previous = walked(elapsed_);
+        elapsed_ += delta;
+        const auto walking = walked(elapsed_);
+        if (walking == previous) return {x_, y_};
+        const double t = static_cast<double>(walking) / 3000;
+        const double radius = Radius * (.65 + .35 * std::cos(t * .61));
+        const double easeIn = std::min(3 * t, 1.0);
+        const double x = radius * std::sin(t) * easeIn;
+        y_ = radius * std::sin(t * .5) * std::cos(t) * easeIn;
+        const bool facingLeft = x < x_;
+        x_ = x;
+        return {x_, y_, true, facingLeft};
     }
-    unsigned Pose() const { constexpr unsigned gait[] = {4,5,7,6}; return gait[(phase_/160)%4]; }
+    unsigned Pose() const { constexpr unsigned gait[] = {4, 5, 7, 6}; return gait[(elapsed_ / 160) % 4]; }
   private:
-    std::uint64_t last_ = 0, phase_ = 0;
+    std::uint64_t last_ = 0, elapsed_ = 0;
+    double x_ = 0, y_ = 0;
 };
 
 class Model {
@@ -72,6 +120,7 @@ class Model {
     }
     void Configure(Settings settings, std::uint64_t now) {
         settings.Normalize();
+        if (settings.character != settings_.character) Stop(now);
         settings_ = settings;
         if (!settings_.enabled || (!settings_.opening && opening_))
             Stop(now);
@@ -130,8 +179,11 @@ class Model {
                 due_ = now + OpeningDelay;
             paused_ = false;
         }
-        if (due_ && now >= due_)
-            Play(Action::Boxing, now, true);
+        if (due_ && now >= due_) {
+            const auto entrance = settings_.character == Character::Whale ? Action::Boxing :
+                                  settings_.character == Character::Lulu ? Action::Wave : Action::Stretch;
+            Play(entrance, now, true);
+        }
         if (action_ != Action::None && Age(now, actionAt_) >= (action_ == Action::Boxing ? BoxingDuration : 1800)) {
             action_ = Action::None;
             opening_ = false;
@@ -162,58 +214,106 @@ class Model {
             sample.manual = true;
             sample.opening = opening_;
             const auto time = static_cast<unsigned>(Age(now, actionAt_));
-            if (action_ == Action::Wave) {
+            if (settings_.character != Character::Whale ||
+                (action_ != Action::Wave && action_ != Action::Boxing && action_ != Action::Hop &&
+                 action_ != Action::Dance && action_ != Action::Cheer)) {
+                const auto actions = ActionsFor(settings_.character);
+                const auto chosen = action_ == Action::Wave && settings_.character == Character::Cat ? Action::Groom : action_;
+                sample.pose = PoseFor(settings_.character, chosen);
+                sample.label = actions.items[sample.pose - 36 - actions.offset].name;
+                Motion(chosen, time, sample);
+            } else if (action_ == Action::Wave) {
                 constexpr unsigned poses[] = {29, 30, 31, 30, 29, 30, 31, 30, 29};
                 sample.pose = poses[std::min<unsigned>(time / 160, 8)];
                 sample.label = L"我在，随时可以继续排查";
             } else if (action_ == Action::Boxing)
                 sample = Boxing(time, opening_);
-            else
+            else if (action_ == Action::Hop) {
+                constexpr unsigned poses[] = {28, 2, 3, 4, 6, 8, 9, 28, 28};
+                sample.pose = poses[std::min<unsigned>(time / 100, 8)];
+                sample.lift = .18 * std::sin((time % 900) * 3.141592653589793 / 900);
+                sample.label = L"蹦跳";
+            } else if (action_ == Action::Dance) {
+                constexpr unsigned poses[] = {28, 4, 5, 7, 28, 7, 5, 4};
+                sample.pose = poses[(time / 150) % 8];
+                sample.x = .16 * std::sin(time * 6.283185307179586 / 1200);
+                sample.label = L"跳舞";
+            } else if (action_ == Action::Cheer) {
+                sample.pose = (time / 250) % 2 ? 31 : 34;
+                sample.lift = .12 * std::sin((time % 600) * 3.141592653589793 / 600);
+                sample.label = L"欢呼";
+            } else
                 sample.label = L"陪伴中";
             return sample;
         }
         const auto activity = settings_.follow ? activity_ : Activity::Idle;
         const auto age = Age(now, activityAt_);
+        Action pose = Action::Idle;
         switch (activity) {
         case Activity::Offline:
             sample.label = L"AI 未连接";
             break;
         case Activity::Connecting:
-            sample.pose = 32;
+            pose = Action::Listen;
             sample.label = L"正在连接 AI…";
             break;
         case Activity::Thinking:
-            sample.pose = 32;
+            pose = Action::Think;
             sample.label = L"正在思考…";
             break;
         case Activity::Working:
-            sample.pose = 33;
+            pose = Action::Work;
             sample.label = L"正在处理工具任务…";
             break;
         case Activity::Replying:
-            sample.pose = 33;
+            pose = Action::Reply;
             sample.label = L"正在整理回复…";
             break;
         case Activity::Done:
             if (age < 900) {
-                sample.pose = 34;
+                pose = Action::Cheer;
                 sample.lift = .10 * std::sin(age * 3.141592653589793 / 900);
             }
             if (age < 5500)
                 sample.label = L"任务已完成";
             break;
         case Activity::Failed:
-            sample.pose = 35;
+            pose = Action::Concern;
             sample.label = L"任务遇到问题，请查看对话";
             break;
         case Activity::Stopped:
-            sample.pose = 35;
+            pose = Action::Settle;
             sample.label = L"任务已停止";
             break;
         case Activity::Idle:
+            if (settings_.follow && age >= 45000) pose = Action::Sleep;
+            else if (settings_.follow && age >= 12000 && age % 12000 < 1700) {
+                pose = settings_.character == Character::Lulu ? Action::Treat :
+                       settings_.character == Character::Cat && age % 24000 >= 12000 ? Action::Groom : Action::Stretch;
+            }
             break;
         }
+        sample.pose = PoseFor(settings_.character, pose);
+        if (pose != Action::Cheer) Motion(pose, age, sample);
         return sample;
+    }
+    static void Motion(Action action, std::uint64_t time, Sample &sample) {
+        const auto phase = [](std::uint64_t tick, unsigned period) {
+            return (tick % period) * 6.283185307179586 / period;
+        };
+        if (action == Action::Cheer || action == Action::Walk) {
+            sample.lift = (action == Action::Cheer ? .15 : .045) * std::abs(std::sin(phase(time, 760)));
+            sample.x = .05 * std::sin(phase(time, 1050));
+        } else if (action == Action::Wave || action == Action::Listen || action == Action::Reply ||
+                   action == Action::Groom || action == Action::Treat) {
+            sample.x = .025 * std::sin(phase(time, 900));
+            sample.breath += .025 * std::sin(phase(time, 900));
+        } else if (action == Action::Work) {
+            sample.lift = .012 * std::abs(std::sin(phase(time, 300)));
+            sample.x = .009 * std::sin(phase(time, 625));
+        } else if (action == Action::Stretch || action == Action::Sleep) {
+            sample.breath += .045 * std::sin(phase(time, action == Action::Sleep ? 2600 : 1500));
+        }
     }
     static Sample Boxing(unsigned time, bool opening) {
         Sample s;

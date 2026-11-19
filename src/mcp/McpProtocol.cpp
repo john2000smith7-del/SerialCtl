@@ -414,9 +414,9 @@ const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
                 {"dark", {{"type", "boolean"}, {"description", "True for dark theme, false for light theme"}}}
             }}, {"required", {"dark"}}
         }},
-        {"ui.panel", "Switch right sidebar tab (commands, sftp, xfer, tftp)", {
+        {"ui.panel", "Open an application sidebar panel, including the AI live terminal, execution output and file changes", {
             {"type", "object"}, {"properties", {
-                {"name", {{"type", "string"}, {"enum", {"commands", "sftp", "xfer", "tftp"}}}}
+                {"name", {{"type", "string"}, {"enum", {"commands", "sftp", "xfer", "tftp", "live_terminal", "execution", "changes"}}}}
             }}, {"required", {"name"}}
         }},
 

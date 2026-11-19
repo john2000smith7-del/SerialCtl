@@ -1,8 +1,10 @@
 #include "AiPane.h"
 #include "AiPetPane.h"
 #include "HostKeyDialog.h"
+#include "McpSecurity.h"
 #include "AiHistory.h"
 #include "Workspace.h"
+#include "RemoteWorkspaceSnapshot.h"
 #include "ToolPresentation.h"
 #include "Win32Helpers.h"
 #include "UiDialogViewport.h"
@@ -633,6 +635,9 @@ void AiPane::UnregisterLocalWorkspaceObserver() {
 }
 void AiPane::ClearActivityTrackingForConversation() {
     turnSeq_ = 0;
+    ++remoteSnapshotGeneration_;
+    remoteSnapshotPending_ = false;
+    remoteSnapshotRequest_ = remoteSnapshotBefore_ = nullptr;
     nextServerChangeSeq_ = 0;
     fileChanges_.clear();
     knownWsExecIds_.clear();
@@ -2707,6 +2712,9 @@ void AiPane::SendPrompt(std::wstring text) {
     showTurnProgress_ = true;
     busy_ = true;
     ++turnSeq_;
+    ++remoteSnapshotGeneration_;
+    remoteSnapshotPending_ = false;
+    remoteSnapshotRequest_ = remoteSnapshotBefore_ = nullptr;
     if (sidebarCallbacks_.onTurnStarted)
         sidebarCallbacks_.onTurnStarted(turnSeq_);
     turn_.clear();
@@ -2742,6 +2750,22 @@ void AiPane::StartTurn() {
         BeginAttachmentUpload();
         return;
     }
+    if (!workspaceIsLocal_ && remoteFsRunner_ && remoteSnapshotRequest_.is_null()) {
+        const auto target = RemoteFsTargetSessionId();
+        const auto directory = ActiveWorkspaceDirectory();
+        if (!target.empty() && !directory.empty() && directory.front() == L'/') {
+            remoteSnapshotRequest_ = {{"sessionId", target}, {"path", Utf8(directory)}};
+            remoteSnapshotPending_ = true;
+            remoteFsRunner_("snapshot", remoteSnapshotRequest_, [this, generation = remoteSnapshotGeneration_](Json result) {
+                AsyncWorkResult work;
+                work.kind = AsyncWorkResult::Kind::RemoteSnapshotBefore;
+                work.generation = generation;
+                work.result = std::move(result);
+                EnqueueAsyncWork(std::move(work));
+            });
+            return;
+        }
+    }
     std::string wsContext;
     if (workspaceIsLocal_) {
         wsContext = "\n[SerialCtl active workspace: mode=local; root=" + Utf8(localWorkspaceDirectory_) +
@@ -2774,7 +2798,32 @@ void AiPane::StartTurn() {
     } else
         pendingPrompt_.clear();
 }
+void AiPane::FinishRemoteWorkspaceSnapshot() {
+    if (!remoteSnapshotBefore_.is_object() || !remoteSnapshotRequest_.is_object() || !remoteFsRunner_)
+        return;
+    remoteFsRunner_("snapshot", remoteSnapshotRequest_,
+                    [this, before = std::move(remoteSnapshotBefore_), conversation = thread_,
+                     workspace = ActiveWorkspaceDirectory(), seq = turnSeq_](Json result) mutable {
+        AsyncWorkResult work;
+        work.kind = AsyncWorkResult::Kind::RemoteSnapshotAfter;
+        work.conversationId = std::move(conversation);
+        work.workspace = std::move(workspace);
+        work.seq = seq;
+        work.args = std::move(before);
+        work.result = std::move(result);
+        EnqueueAsyncWork(std::move(work));
+    });
+    remoteSnapshotBefore_ = nullptr;
+}
 void AiPane::Stop() {
+    if (remoteSnapshotPending_) {
+        remoteSnapshotPending_ = false;
+        ++remoteSnapshotGeneration_;
+        pendingPrompt_.clear();
+        busy_ = false;
+        if (Text(Control(Input)).empty()) SetWindowTextW(Control(Input), submittedDraft_.c_str());
+        if (!displayGroup_.empty()) groupStates_[displayGroup_] = L"已停止";
+    }
     SetCompanionActivity(pet::Activity::Stopped);
     CancelWorkspaceTools();
     taskAuthorized_ = false;
@@ -3077,6 +3126,52 @@ void AiPane::ProcessAsyncWork() {
         }
         if (item.kind == AsyncWorkResult::Kind::WorkspaceFileChanged) {
             HandleWorkspaceFileChange(std::move(item.fileChange));
+            continue;
+        }
+        if (item.kind == AsyncWorkResult::Kind::RemoteSnapshotBefore) {
+            if (item.generation == remoteSnapshotGeneration_ && remoteSnapshotPending_ &&
+                busy_ && !stopRequested_ && !pendingPrompt_.empty()) {
+                remoteSnapshotPending_ = false;
+                if (item.result.contains("files")) remoteSnapshotBefore_ = std::move(item.result);
+                else Add(L"状态", L"远程文件自动记录暂不可用：" + Wide(item.result.value("error", std::string())));
+                StartTurn();
+            }
+            continue;
+        }
+        if (item.kind == AsyncWorkResult::Kind::RemoteSnapshotAfter) {
+            if (workspaceIsLocal_ || item.conversationId != thread_ || item.workspace != ActiveWorkspaceDirectory())
+                continue;
+            if (!item.result.contains("files")) {
+                Add(L"状态", L"远程文件变动复查失败：" + Wide(item.result.value("error", std::string())));
+                continue;
+            }
+            try {
+                if (item.args.at("root") != item.result.at("root")) {
+                    Add(L"状态", L"远程工作区在本轮任务中发生切换，无法比对文件");
+                    continue;
+                }
+                auto changes = ai::CompareRemoteWorkspaceSnapshots(item.args, item.result);
+                const auto seq = std::to_string(item.seq);
+                std::string card = u8"**远程工作区文件变动**";
+                for (auto &record : changes) {
+                    record.turnSeq = item.seq;
+                    record.changeId = "remote-workspace:" + seq + ":" + record.path;
+                    const auto aggregateId = "turn-diff:" + seq + ":" + record.path;
+                    fileChanges_.erase(std::remove_if(fileChanges_.begin(), fileChanges_.end(), [&](const auto &existing) {
+                        return existing.changeId == aggregateId;
+                    }), fileChanges_.end());
+                    card += "\n- " + ai::FormatFileChangeLinkMarkdown(record);
+                    RecordFileChange(std::move(record), {}, {}, false);
+                }
+                if (!changes.empty()) {
+                    UpsertToolCard("remote-workspace:" + seq, Wide(card), {}, false);
+                    NotifyFileChanges({}, false);
+                }
+                if (changes.size() >= 100 || !item.args.value("complete", false) || !item.result.value("complete", false))
+                    Add(L"状态", L"远程工作区快照达到扫描上限或有文件不可读，本轮记录可能不完整");
+            } catch (const Json::exception &) {
+                Add(L"状态", L"远程文件快照格式无效");
+            }
             continue;
         }
         if (item.kind == AsyncWorkResult::Kind::LocalTool) {
@@ -3918,6 +4013,32 @@ void AiPane::Event(const Json &e) {
         Add(L"状态", L"服务器已完成上下文整理；完整历史仍保留。");
         return;
     }
+    if (event == "turnDiff") {
+        if (workspaceIsLocal_ || !busy_ || stopRequested_) return;
+        EnsureTurnSeqActive();
+        const auto prefix = "turn-diff:" + std::to_string(turnSeq_) + ":";
+        fileChanges_.erase(std::remove_if(fileChanges_.begin(), fileChanges_.end(), [&](const auto &record) {
+            return record.changeId.rfind(prefix, 0) == 0;
+        }), fileChanges_.end());
+        for (const auto &change : e.at("fileChanges")) {
+            ai::FileChangeRecord record;
+            record.path = change.at("path").get<std::string>();
+            record.changeId = prefix + record.path;
+            record.action = change.at("action").get<std::string>();
+            record.diffText = change.at("diff").get<std::string>();
+            record.detail = change.at("detail").get<std::string>();
+            record.addedLines = change.at("addedLines").get<size_t>();
+            record.removedLines = change.at("removedLines").get<size_t>();
+            record.truncated = change.at("truncated").get<bool>();
+            record.turnSeq = turnSeq_;
+            const auto duplicate = std::find_if(fileChanges_.rbegin(), fileChanges_.rend(), [&](const auto &item) {
+                return item.turnSeq == turnSeq_ && item.path == record.path && item.diffText == record.diffText;
+            });
+            if (duplicate == fileChanges_.rend()) RecordFileChange(std::move(record), {}, {}, false);
+        }
+        NotifyFileChanges({}, false);
+        return;
+    }
     if ((event == "serverTool" || event == "serverToolDelta") && busy_ && !stopRequested_) {
         const bool completed = event == "serverTool" && e.value("completed", false);
         if (e.value("failed", false))
@@ -4104,6 +4225,7 @@ void AiPane::Event(const Json &e) {
                 Stop();
         }
     } else if (event == "taskFinished") {
+        FinishRemoteWorkspaceSnapshot();
         showTurnProgress_ = false;
         if(!displayGroup_.empty() && turnStarted_) groupDurations_[displayGroup_]=GetTickCount64()-turnStarted_;
         const auto outcome = e.value("status", std::string());
@@ -4153,6 +4275,7 @@ void AiPane::Event(const Json &e) {
         Add(L"状态", explanation);
         SetStatus(explanation);
         if (!e.value("willRetry", false)) {
+            FinishRemoteWorkspaceSnapshot();
             showTurnProgress_ = false;
             if (!displayGroup_.empty()) collapsedGroups_.insert(displayGroup_);
             Reflow();
@@ -4205,7 +4328,7 @@ void AiPane::ServerRequest(const Json &e) {
         return;
     }
     if (args.is_string())
-        args = Json::parse(args.get<std::string>());
+        args = Json::parse(args.get_ref<const std::string&>(), nullptr, false);
     if (!args.is_object()) {
         Reply(e["requestId"], {{"error", "Invalid tool arguments"}}, false);
         return;
@@ -4254,9 +4377,14 @@ void AiPane::ServerRequest(const Json &e) {
             });
             return;
         }
-        auto result = devices_("mcp:" + mcpMethod, args);
+        Json result;
+        try {
+            result = devices_("mcp:" + mcpMethod, args);
+        } catch (const std::exception&) {
+            result = {{"error", "SerialCtl rejected invalid MCP arguments or the operation failed"}};
+        }
         observedTool_ = true;
-        AddTool(tool, args, result);
+        AddTool(tool, mcp::McpSecurity::SanitizeJson(args), mcp::McpSecurity::SanitizeJson(result));
         Reply(e["requestId"], result, !result.contains("error"));
         return;
     }
@@ -5162,7 +5290,7 @@ INT_PTR CALLBACK AiPane::WorkspaceProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         UiPathField::Create(h, PathDisplay, self->D(16), self->D(74), self->D(348), self->D(28), &self->style_);
         UiSetButtonGlyph(add(L"BUTTON", L"浏览…", WsBrowseLocal, 372, 74, 68, 28, BS_OWNERDRAW | WS_TABSTOP), UiGlyph::Folder, L"浏览本地文件夹");
         auto combo = add(L"COMBOBOX", L"", Directory, 16, 112, 272, 240, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP);
-        UiSetButtonGlyph(add(L"BUTTON", L"上一级", DirectoryUp, 296, 112, 68, 28, BS_OWNERDRAW | WS_TABSTOP), UiGlyph::ArrowUp, L"返回上一级目录");
+        UiSetButtonGlyph(add(L"BUTTON", L"上一级", DirectoryUp, 296, 112, 68, 28, BS_OWNERDRAW | WS_TABSTOP), UiGlyph::ParentFolder, L"返回上一级目录");
         UiSetButtonGlyph(add(L"BUTTON", L"刷新", DirectoryRefresh, 372, 112, 68, 28, BS_OWNERDRAW | WS_TABSTOP), UiGlyph::Refresh, L"刷新目录");
         add(L"BUTTON", L"仅只读浏览（禁止 AI 修改本地文件及执行 workspace.exec 命令）", WsLocalReadOnly, 16, 152, 424, 28, BS_AUTOCHECKBOX | WS_TABSTOP);
         CheckDlgButton(h, WsLocalReadOnly, self->workspaceDialogReadOnly_ ? BST_CHECKED : BST_UNCHECKED);

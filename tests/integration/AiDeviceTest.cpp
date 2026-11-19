@@ -264,7 +264,7 @@ struct AiDeviceTestAccess {
         options.font = options.smallFont = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
         viewport.Measure(terminal, options.font, false);
         state.terminal.Resize(viewport.Metrics().columns, viewport.Metrics().rows);
-        state.terminal.Feed(L"0x80000005", L"");
+        state.terminal.Feed(L"80000005", L"");
         const auto point = [&](int column, int row) {
             return MAKELPARAM(Ui::TerminalPadding + column * viewport.Metrics().cellWidth + 1,
                              Ui::TerminalPadding + row * viewport.Metrics().lineHeight + 1);
@@ -290,7 +290,7 @@ struct AiDeviceTestAccess {
             const int group = (31 - bit) / 8, offset = (31 - bit) % 8;
             const int cell = Ui::Scale(20), gap = Ui::Scale(6), groupPad = Ui::Scale(3);
             const int left = Ui::TerminalPadding + Ui::Scale(10);
-            const int top = Ui::TerminalPadding + viewport.Metrics().lineHeight + gap + Ui::Scale(24);
+            const int top = Ui::TerminalPadding + viewport.Metrics().lineHeight + gap + 2 * Ui::Scale(21);
             return POINT{
                 left + (group % groupsPerRow) * (8 * cell + 2 * groupPad + gap) + groupPad + offset * cell + 4,
                 top + (group / groupsPerRow) * (Ui::Scale(39) + gap) + Ui::Scale(24)};
@@ -299,8 +299,8 @@ struct AiDeviceTestAccess {
             const POINT pt = digitPoint(bit, groupsPerRow);
             return GetPixel(dc, pt.x, pt.y);
         };
-        select(9, 0, 0);
-        Require(viewport.SelectionText(state, false) == L"0x80000005" && GetFocus() == terminal,
+        select(7, 0, 0);
+        Require(viewport.SelectionText(state, false) == L"80000005" && GetFocus() == terminal,
                 "Register inspection keeps the original selected text and terminal focus");
         for (const bool dark : {false, true}) {
             options.dark = dark;
@@ -321,7 +321,7 @@ struct AiDeviceTestAccess {
         viewport.ClearSelection();
         Require(viewport.Pointer(terminal, WM_LBUTTONDBLCLK, point(3, 0), &state, options) ==
                 TerminalViewport::PointerResult::CopySelection &&
-                viewport.SelectionText(state, false) == L"0x80000005", "Double-click selects the full hex word");
+                viewport.SelectionText(state, false) == L"80000005", "Double-click selects the full hex word");
         viewport.ShowRegisterPreview(terminal, viewport.SelectionText(state, false));
         SetWindowPos(terminal, nullptr, 0, 0, Ui::Scale(220), Ui::Scale(320), SWP_NOZORDER | SWP_NOACTIVATE);
         Require(digitBackground(render(), 0, 1) == UiTheme(true).accentSoft, "Narrow terminals must stack four byte groups");
@@ -346,7 +346,7 @@ struct AiDeviceTestAccess {
         state.terminal.Feed(L"\r\nordinary", L"");
         select(0, 7, 1);
         Require(digitBackground(render(), 0, 1) == UiTheme(true).field, "Ordinary text must dismiss register inspection");
-        select(0, 9, 0);
+        select(0, 7, 0);
         state.terminal.Feed(L"\x1b[Hchanged", L"");
         Require(digitBackground(render(), 0, 1) == UiTheme(true).field, "Replaced selection must clear stale register bits");
         DestroyWindow(terminal);
@@ -1678,6 +1678,14 @@ struct AiDeviceTestAccess {
                     "Sliced startup replay lost newer live data");
             SetWindowPos(parent, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         }
+        Require(main.AiDeviceRequest("mcp:ui.panel", {{"name", "live_terminal"}}).value("ok", false) &&
+                    main.aiVisible_ && main.aiSidebarTab_ == MainWindow::AiSidebarTab::Terminal,
+                "Built-in MCP opens the AI live terminal");
+        Require(main.AiDeviceRequest("mcp:ui.panel", {{"name", "tftp"}}).value("ok", false) &&
+                    !main.aiVisible_ && main.tftpPanelVisible_ && !main.rightPanelCollapsed_,
+                "Built-in MCP opens the visible TFTP panel from the AI page");
+        Require(main.AiDeviceRequest("mcp:ui.panel", {{"name", "invalid"}}).contains("error") &&
+                    main.tftpPanelVisible_, "Invalid MCP panel names leave the current panel selected");
         main.powerService_.Shutdown();
         main.aiPane_.Shutdown();
         DestroyWindow(parent);

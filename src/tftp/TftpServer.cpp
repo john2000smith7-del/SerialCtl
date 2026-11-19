@@ -80,20 +80,40 @@ public:
     }
 
     void Start() {
-        workerThread_ = std::thread(&TftpTransferSession::Run, this);
+        workerThread_ = std::thread([this] {
+            try {
+                Run();
+            } catch (const std::exception&) {
+                std::lock_guard<std::mutex> lock(statusMutex_);
+                phase_ = "failed";
+                error_ = L"TFTP 工作线程处理失败";
+                finishTimeMs_ = GetTickCount64();
+            }
+            source_->Close();
+            closesocket(socket_);
+            socket_ = INVALID_SOCKET;
+            {
+                std::lock_guard<std::mutex> lock(statusMutex_);
+                if (cancelled_ && phase_ != "completed") {
+                    phase_ = "cancelled";
+                    error_ = L"用户取消传输";
+                    finishTimeMs_ = GetTickCount64();
+                }
+            }
+            done_ = true;
+        });
     }
 
     void Cancel() {
-        cancelled_ = true;
-        if (source_) {
+        if (!done_ && !cancelled_.exchange(true))
             source_->Cancel();
-        }
     }
 
-    bool IsActive() const {
-        std::lock_guard<std::mutex> lock(statusMutex_);
-        return phase_ == "connecting" || phase_ == "transferring";
+    void Join() {
+        if (workerThread_.joinable()) workerThread_.join();
     }
+
+    bool IsActive() const { return !done_; }
 
     TftpTransferStatus Status() const {
         std::lock_guard<std::mutex> lock(statusMutex_);
@@ -122,8 +142,23 @@ public:
     uint64_t Id() const { return id_; }
 
 private:
+    bool WaitForReply(ULONGLONG deadline) const {
+        while (!cancelled_) {
+            const auto now = GetTickCount64();
+            if (now >= deadline) return false;
+            fd_set fds;
+            FD_ZERO(&fds);
+            FD_SET(socket_, &fds);
+            timeval wait{0, static_cast<long>(std::min<ULONGLONG>(100, deadline - now) * 1000)};
+            const int result = select(0, &fds, nullptr, nullptr, &wait);
+            if (result != 0) return result > 0;
+        }
+        return false;
+    }
+
     void Run() {
         std::wstring err;
+        if (cancelled_) return;
         if (!source_->Open(err)) {
             const auto info = source_->Info();
             {
@@ -170,20 +205,19 @@ private:
 
             bool oackAcked = false;
             uint32_t retries = 0;
+            bool sendOack = true;
+            ULONGLONG deadline = 0;
             while (!cancelled_ && !oackAcked) {
-                sendto(socket_, reinterpret_cast<const char*>(oackPkt.data()),
-                       static_cast<int>(oackPkt.size()), 0,
-                       reinterpret_cast<const sockaddr*>(&clientAddr_), sizeof(clientAddr_));
+                if (sendOack) {
+                    deadline = GetTickCount64() + timeoutSec_ * 1000ULL;
+                    sendOack = false;
+                    sendto(socket_, reinterpret_cast<const char*>(oackPkt.data()),
+                           static_cast<int>(oackPkt.size()), 0,
+                           reinterpret_cast<const sockaddr*>(&clientAddr_), sizeof(clientAddr_));
+                }
 
-                fd_set fds;
-                FD_ZERO(&fds);
-                FD_SET(socket_, &fds);
-                timeval tv{};
-                tv.tv_sec = timeoutSec_ ? timeoutSec_ : 2;
-                tv.tv_usec = 0;
-
-                int sel = select(0, &fds, nullptr, nullptr, &tv);
-                if (sel <= 0) {
+                if (!WaitForReply(deadline)) {
+                    if (cancelled_) return;
                     retries++;
                     {
                         std::lock_guard<std::mutex> lock(statusMutex_);
@@ -194,9 +228,9 @@ private:
                         phase_ = "failed";
                         error_ = L"OACK 确认超时";
                         finishTimeMs_ = GetTickCount64();
-                        source_->Close();
                         return;
                     }
+                    sendOack = true;
                     continue;
                 }
 
@@ -206,6 +240,10 @@ private:
                 int recvd = recvfrom(socket_, reinterpret_cast<char*>(reply), sizeof(reply), 0,
                                      reinterpret_cast<sockaddr*>(&from), &fromLen);
                 if (recvd >= 4) {
+                    if (from.sin_addr.s_addr != clientAddr_.sin_addr.s_addr || from.sin_port != clientAddr_.sin_port) {
+                        SendTftpError(socket_, from, 5, "Unknown transfer ID");
+                        continue;
+                    }
                     uint16_t op = (reply[0] << 8) | reply[1];
                     if (op == 4) { // ACK
                         uint16_t blk = (reply[2] << 8) | reply[3];
@@ -218,7 +256,6 @@ private:
                         phase_ = "cancelled";
                         error_ = L"客户端取消传输";
                         finishTimeMs_ = GetTickCount64();
-                        source_->Close();
                         return;
                     }
                 }
@@ -235,11 +272,11 @@ private:
             size_t bytesRead = 0;
             if (!source_->Read(currentOffset, readBuf.data(), blksize_, bytesRead, err)) {
                 std::lock_guard<std::mutex> lock(statusMutex_);
+                if (cancelled_) return;
                 phase_ = "failed";
                 error_ = err.empty() ? L"读取文件源失败" : err;
                 finishTimeMs_ = GetTickCount64();
                 SendTftpError(socket_, clientAddr_, 2, "Read error: " + WideToAscii(err));
-                source_->Close();
                 return;
             }
 
@@ -265,16 +302,11 @@ private:
                     sentBytes_ = currentOffset + bytesRead;
                 }
 
+                const auto deadline = GetTickCount64() + timeoutSec_ * 1000ULL;
                 while (!cancelled_ && !blockAcked) {
-                    fd_set fds;
-                    FD_ZERO(&fds);
-                    FD_SET(socket_, &fds);
-                    timeval tv{};
-                    tv.tv_sec = timeoutSec_ ? timeoutSec_ : 2;
-                    tv.tv_usec = 0;
 
-                    int sel = select(0, &fds, nullptr, nullptr, &tv);
-                    if (sel <= 0) {
+                    if (!WaitForReply(deadline)) {
+                        if (cancelled_) return;
                         retries++;
                         {
                             std::lock_guard<std::mutex> lock(statusMutex_);
@@ -285,7 +317,6 @@ private:
                             phase_ = "failed";
                             error_ = L"等待 ACK 超时 (超过5次重试)";
                             finishTimeMs_ = GetTickCount64();
-                            source_->Close();
                             return;
                         }
                         break; // Timeout: retransmit data block
@@ -326,7 +357,6 @@ private:
                                         error_ = L"传输提前中断：读取字节数未达到文件总大小 (premature EOF)";
                                         finishTimeMs_ = GetTickCount64();
                                         SendTftpError(socket_, clientAddr_, 0, "Premature EOF: incomplete file transfer");
-                                        source_->Close();
                                         return;
                                     }
                                     finished = true;
@@ -349,7 +379,6 @@ private:
                             error_ = errMsg.empty() ? L"客户端发送 ERROR 取消" :
                                 std::wstring(errMsg.begin(), errMsg.end());
                             finishTimeMs_ = GetTickCount64();
-                            source_->Close();
                             return;
                         }
                     }
@@ -357,13 +386,6 @@ private:
             }
         }
 
-        source_->Close();
-        if (cancelled_ && phase_ != "completed") {
-            std::lock_guard<std::mutex> lock(statusMutex_);
-            phase_ = "cancelled";
-            error_ = L"用户取消传输";
-            finishTimeMs_ = GetTickCount64();
-        }
     }
 
     uint64_t id_ = 0;
@@ -377,7 +399,7 @@ private:
     std::vector<std::pair<std::string, std::string>> oackOptions_;
 
     std::thread workerThread_;
-    std::atomic<bool> cancelled_{false};
+    std::atomic<bool> cancelled_{false}, done_{false};
 
     mutable std::mutex statusMutex_;
     std::string phase_;
@@ -435,6 +457,7 @@ std::vector<std::string> TftpServer::LocalIps() const {
 }
 
 bool TftpServer::Start(const std::string& bindIp, uint16_t port, std::wstring& error) {
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex_);
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) {
         error = L"TFTP 服务已经在运行";
@@ -475,32 +498,42 @@ bool TftpServer::Start(const std::string& bindIp, uint16_t port, std::wstring& e
     }
 
     running_ = true;
-    stopping_ = false;
-    listenerThread_ = std::thread(&TftpServer::ListenerThread, this);
+    try {
+        listenerThread_ = std::thread([this] {
+            try {
+                ListenerThread();
+            } catch (const std::exception&) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                lastError_ = L"TFTP 监听线程处理失败";
+            }
+        });
+    } catch (const std::system_error&) {
+        closesocket(listener_);
+        listener_ = INVALID_SOCKET;
+        running_ = false;
+        error = L"无法启动 TFTP 监听线程";
+        return false;
+    }
+    lastError_.clear();
     return true;
 }
 
 void TftpServer::Stop() {
+    std::lock_guard<std::mutex> lifecycle(lifecycleMutex_);
+    running_ = false;
+    if (listenerThread_.joinable()) listenerThread_.join();
+    if (listener_ != INVALID_SOCKET) {
+        closesocket(listener_);
+        listener_ = INVALID_SOCKET;
+    }
+
+    std::vector<std::shared_ptr<TftpTransferSession>> sessions;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!running_) return;
-        stopping_ = true;
-        running_ = false;
-        if (listener_ != INVALID_SOCKET) {
-            closesocket(listener_);
-            listener_ = INVALID_SOCKET;
-        }
-        for (auto& session : sessions_) {
-            session->Cancel();
-        }
+        sessions = sessions_;
     }
-
-    if (listenerThread_.joinable()) {
-        listenerThread_.join();
-    }
-
-    std::lock_guard<std::mutex> lock(mutex_);
-    CleanCompletedSessions();
+    for (auto& session : sessions) session->Cancel();
+    for (auto& session : sessions) session->Join();
 }
 
 bool TftpServer::IsListening() const {
@@ -510,6 +543,7 @@ bool TftpServer::IsListening() const {
 std::string TftpServer::State() const {
     if (!running_) return "stopped";
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!lastError_.empty()) return "failed";
     for (const auto& s : sessions_) {
         if (s->IsActive()) return "transferring";
     }
@@ -669,14 +703,16 @@ std::vector<TftpTransferStatus> TftpServer::ListTransfers() const {
 }
 
 bool TftpServer::CancelTransfer(uint64_t transferId) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    for (auto& s : sessions_) {
-        if (s->Id() == transferId) {
-            s->Cancel();
-            return true;
-        }
+    std::shared_ptr<TftpTransferSession> session;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto found = std::find_if(sessions_.begin(), sessions_.end(),
+            [transferId](const auto& item) { return item->Id() == transferId; });
+        if (found == sessions_.end()) return false;
+        session = *found;
     }
-    return false;
+    session->Cancel();
+    return true;
 }
 
 size_t TftpServer::ActiveTransferCount() const {
@@ -707,6 +743,17 @@ void TftpServer::ListenerThread() {
     std::vector<uint8_t> packet(2048);
 
     while (running_) {
+        fd_set ready;
+        FD_ZERO(&ready);
+        FD_SET(listener_, &ready);
+        timeval wait{0, 100000};
+        const int result = select(0, &ready, nullptr, nullptr, &wait);
+        if (result == SOCKET_ERROR) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            lastError_ = L"TFTP 监听套接字读取失败";
+            return;
+        }
+        if (!result || !running_) continue;
         sockaddr_in clientAddr{};
         int clientLen = sizeof(clientAddr);
 
@@ -916,7 +963,13 @@ void TftpServer::ListenerThread() {
             sessions_.push_back(session);
         }
 
-        session->Start();
+        try {
+            session->Start();
+        } catch (const std::system_error&) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sessions_.pop_back();
+            SendTftpError(listener_, clientAddr, 0, "Server failed to start transfer");
+        }
     }
 }
 
