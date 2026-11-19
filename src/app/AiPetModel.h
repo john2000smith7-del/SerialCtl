@@ -78,8 +78,9 @@ class RoamingClock {
         if (walking == previous) return {x_, y_};
         const double t = static_cast<double>(walking) / 3000;
         const double radius = Radius * (.65 + .35 * std::cos(t * .61));
-        const double x = radius * std::sin(t) * std::min(t, 1.0);
-        y_ = radius * std::sin(t * .5) * std::cos(t) * std::min(t, 1.0);
+        const double easeIn = std::min(3 * t, 1.0);
+        const double x = radius * std::sin(t) * easeIn;
+        y_ = radius * std::sin(t * .5) * std::cos(t) * easeIn;
         const bool facingLeft = x < x_;
         x_ = x;
         return {x_, y_, true, facingLeft};

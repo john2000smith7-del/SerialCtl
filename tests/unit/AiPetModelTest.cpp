@@ -140,6 +140,12 @@ int main() {
         assert(companion.At(time + 45000).pose == PoseFor(character, Action::Sleep));
     }
     assert(spriteSlots.size() == 39);
+    RoamingClock departure;
+    departure.Step(1000, true);
+    RoamingClock::Position visible;
+    for (unsigned time = 1080; time <= 1400; time += 80)
+        visible = departure.Step(time, true);
+    assert(std::lround(visible.x) > 0 && std::lround(visible.y) > 0);
     RoamingClock roam;
     assert(!roam.Step(1000, true).moving);
     const auto first = roam.Step(1040, true);
