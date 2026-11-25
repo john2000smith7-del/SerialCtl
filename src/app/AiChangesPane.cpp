@@ -935,6 +935,8 @@ void AiChangesPane::SetScope(Scope scope) {
 void AiChangesPane::SetGitWorkspace(std::shared_ptr<ai::LocalWorkspaceService> workspace) {
     gitWorkspace_ = std::move(workspace);
     UpdateButtons();
+    if (IsGitScope())
+        RefreshGitChanges();
 }
 
 bool AiChangesPane::IsGitScope() const {

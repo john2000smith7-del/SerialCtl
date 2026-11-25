@@ -16,7 +16,10 @@
 #include <ctime>
 
 #include "CmdConnection.h"
+#include "ChildProcess.h"
+#include "PasswordPipe.h"
 #include "PlinkConnection.h"
+#include "PuttyHostKey.h"
 #include "QueuedConnection.h"
 #include "SerialConnection.h"
 #include "SharedSerialConnection.h"
@@ -70,6 +73,7 @@ constexpr UINT MessageLogExport = WM_APP + 21;
 constexpr UINT MessageSessionCleanup = WM_APP + 25;
 constexpr UINT MessageMcpDispatch = WM_APP + 26;
 constexpr UINT MessageTerminalParse = WM_APP + 27;
+constexpr UINT MessageTerminalSearchReady = WM_APP + 28;
 constexpr std::uint64_t kAiExecSessionId = 0x7FFFFFFFFFFFFFFEULL;
 
 struct McpDispatchContext {
@@ -104,6 +108,7 @@ constexpr UINT_PTR SettingsWriteTimerId = 4013;
 constexpr UINT_PTR SessionCleanupTimerId = 4014;
 constexpr UINT_PTR TerminalPaintTimerId = 4015;
 constexpr UINT_PTR PowerTestIdleTimerId = 4016;
+constexpr UINT_PTR TerminalSearchRefreshTimerId = 4017;
 constexpr ULONGLONG PowerTestIdleTimeoutMs = 30ULL * 60ULL * 1000ULL;
 constexpr int IdCommandDragGhost = 9020;
 constexpr std::uint32_t DefaultCommandIntervalMs = 500;
@@ -228,6 +233,13 @@ enum SftpTransferMenuId {
     IdMenuTransferCancel = 2401,
     IdMenuTransferRetry,
     IdMenuTransferClearFinished
+};
+
+enum AiCardMenuId {
+    IdMenuAiNew = 2451,
+    IdMenuAiRename,
+    IdMenuAiToggleConnect,
+    IdMenuAiClose
 };
 
 
@@ -936,16 +948,20 @@ void MainWindow::RequestShutdown() {
     if (pendingSession_ && pendingSession_->boot) pendingSession_->boot->Cancel();
     for (const auto &session : sessions_) if (session->boot) session->boot->Cancel();
     StopCommandSequence(CommandSequenceEnd::Silent);
-    tftpPane_.BeginShutdown();
     if (localWorkspace_) localWorkspace_->CancelAllExecs();
     if (aiExecParser_) terminalParser_.Cancel(aiExecParser_);
-    aiPane_.BeginShutdown(); // Release its device binding while still on the UI thread.
+    for (auto& card : aiCards_) {
+        if (!card) continue;
+        if (card->localWorkspace) card->localWorkspace->CancelAllExecs();
+        if (card->pane) card->pane->BeginShutdown();
+        if (card->loopbackMcpServer) {
+            card->loopbackMcpServer->Stop();
+            card->loopbackMcpServer.reset();
+        }
+        card->loopbackMcpDispatcher.reset();
+    }
     powerPane_.BeginShutdown();
     powerService_.RequestShutdown();
-    if (aiLoopbackMcpServer_) {
-        aiLoopbackMcpServer_->Stop();
-        aiLoopbackMcpServer_.reset();
-    }
     StopEmbeddedMcpServer();
     mcpStopping_.store(true);
     StopMcpIpc();
@@ -958,7 +974,9 @@ void MainWindow::RequestShutdown() {
         CancelSynchronousIo(reinterpret_cast<HANDLE>(logExportThread_.native_handle()));
     if (window_) {
         for (const auto timer : {ReceivePumpTimerId, BootPulseTimerId, LeftAnimationTimerId, LogExportTimerId,
-                                  CommandTimerId, PendingConnectionTimerId, SessionCleanupTimerId, TerminalPaintTimerId}) KillTimer(window_, timer);
+                                  CommandTimerId, PendingConnectionTimerId, SessionCleanupTimerId, TerminalPaintTimerId,
+                                  TerminalSearchRefreshTimerId}) KillTimer(window_, timer);
+        terminalSearchWorker_.Stop();
     }
     aiPet_.Shutdown();
 }
@@ -982,11 +1000,21 @@ void MainWindow::WaitForShutdown() {
         if (session->logger) session->logger->Stop();
     if (pendingSession_ && pendingSession_->logger) pendingSession_->logger->Stop();
     sftp_.Join();
-    aiPane_.WaitForShutdown();
+    for (auto& card : aiCards_) {
+        if (!card) continue;
+        if (card->pane) card->pane->WaitForShutdown();
+        if (card->localWorkspace) {
+            card->localWorkspace->CancelAllExecs();
+            card->localWorkspace.reset();
+        }
+    }
+    if (localWorkspace_) {
+        localWorkspace_->CancelAllExecs();
+        localWorkspace_.reset();
+    }
     aiRemoteFsWorker_.Drain();
     powerService_.Shutdown();
     powerPane_.WaitForBackground();
-    tftpPane_.WaitForBackground();
     if (updateThread_.joinable()) updateThread_.join();
     if (discoveryThread_.joinable()) discoveryThread_.join();
     if (serialPortScanThread_.joinable()) serialPortScanThread_.join();
@@ -1222,7 +1250,7 @@ bool MainWindow::CanInstallStartupUpdate(bool confirmed) const {
     // edits and ongoing gestures. Explicit consent may follow harmless UI use;
     // actual device work is still protected and defers installation.
     return !closing_.load() && (!startupUpdateDeferred_ || confirmed) && !logExportJob_ && !connectionCleanup_.Busy() && std::none_of(sessions_.begin(),sessions_.end(),[](const auto& s){return !s->disconnected||s->disconnecting;}) &&
-           !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !aiPane_.Busy() && !aiPageOpened_ &&
+           !pendingSession_ && !powerPageOpened_ && !powerVisible_ && !AnyAiBusy() && aiCards_.empty() &&
            !disconnectAllPending_ && !disconnectAllInProgress_ && !macro_.Dirty() && !notebook_.Dirty() && macro_.RunningIndex() < 0 &&
            !sftp_.Busy() && !sftp_.ActiveTransfer() && !xfer_.Busy() && !windowResizing_ && !rightPanelDragging_ && !rightPanelAnimating_ && !leftPanelAnimating_ &&
            draggingCommandIndex_ < 0 && !sftpColumnDragging_ && !GetCapture() &&
@@ -1249,6 +1277,9 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         return DLGC_WANTARROWS | DLGC_WANTCHARS | DLGC_WANTTAB | DLGC_WANTALLKEYS;
     }
     if (message == WM_ERASEBKGND) return 1;
+    if (message == WM_SIZE) {
+        self->terminalSearchBar_.Layout();
+    }
     if (message == WM_PAINT) {
         PAINTSTRUCT paint{};
         HDC dc = BeginPaint(window, &paint);
@@ -1326,6 +1357,10 @@ LRESULT CALLBACK MainWindow::TerminalSubclassProc(HWND window, UINT message, WPA
         const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
         const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         const bool alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
+        if (control && !shift && !alt && (wParam == L'F' || wParam == L'f')) {
+            self->OpenTerminalSearch();
+            return 0;
+        }
         if (self->ShowingAiExecTerminal()) {
             if (control && (wParam == L'C' || wParam == L'c')) {
                 if (self->HasTerminalSelection())
@@ -1914,6 +1949,35 @@ LRESULT CALLBACK MainWindow::OverlayListSubclassProc(HWND window, UINT message, 
     } else if (message == WM_CAPTURECHANGED && self->scrollingList_ == window) {
         self->scrollingList_ = nullptr;
         self->scrollingThumbOffset_ = 0;
+    } else if (message == WM_CONTEXTMENU && window == self->connectionList_) {
+        POINT screenPoint{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        int itemIndex = -1;
+        if (screenPoint.x == -1 && screenPoint.y == -1) {
+            itemIndex = static_cast<int>(SendMessageW(window, LB_GETCURSEL, 0, 0));
+            RECT itemRect{};
+            if (itemIndex >= 0 && SendMessageW(window, LB_GETITEMRECT, static_cast<WPARAM>(itemIndex),
+                                               reinterpret_cast<LPARAM>(&itemRect)) != LB_ERR) {
+                screenPoint = {(itemRect.left + itemRect.right) / 2, (itemRect.top + itemRect.bottom) / 2};
+                ClientToScreen(window, &screenPoint);
+            } else {
+                RECT rect{};
+                GetWindowRect(window, &rect);
+                screenPoint = {rect.left + Ui::Section, rect.top + Ui::Section};
+            }
+        } else {
+            POINT clientPoint = screenPoint;
+            ScreenToClient(window, &clientPoint);
+            const DWORD hit = static_cast<DWORD>(SendMessageW(window, LB_ITEMFROMPOINT, 0,
+                                                              MAKELPARAM(clientPoint.x, clientPoint.y)));
+            if (!HIWORD(hit)) {
+                itemIndex = static_cast<int>(LOWORD(hit));
+            }
+        }
+        if (itemIndex >= 0 && static_cast<size_t>(itemIndex) < self->connectionListItems_.size() &&
+            self->connectionListItems_[static_cast<size_t>(itemIndex)].kind == NavItemKind::AiCard) {
+            self->ShowAiCardContextMenu(self->connectionListItems_[static_cast<size_t>(itemIndex)].id, screenPoint);
+        }
+        return 0;
     }
 
     // Native listbox selection notifications occur inside this dispatch. Scope
@@ -2031,7 +2095,8 @@ bool MainWindow::PreTranslate(MSG& message) {
             static_cast<std::uint64_t>(elapsedMs) * 1000);
     }
     if (message.message == WM_KEYDOWN && message.wParam == VK_F6 && (GetKeyState(VK_CONTROL) & 0x8000)) {
-        std::vector<HWND> panes{connectionList_, aiVisible_ ? aiPane_.Handle() : powerVisible_ ? powerPane_.Handle() : terminal_,
+        HWND activeAiHandle = ActiveAiPane() ? ActiveAiPane()->Handle() : nullptr;
+        std::vector<HWND> panes{connectionList_, aiVisible_ ? activeAiHandle : powerVisible_ ? powerPane_.Handle() : terminal_,
                                 LiveMonitorPage() ? terminal_ : tftpPanelVisible_ ? tftpPane_.Handle() : xferPanelVisible_ ? xferPane_.Handle() : sftpPanelVisible_ ? sftpList_ : commandList_};
         panes.erase(std::remove_if(panes.begin(), panes.end(), [](HWND h) {
             return !h || !IsWindowVisible(h) || !IsWindowEnabled(h);
@@ -2044,28 +2109,49 @@ bool MainWindow::PreTranslate(MSG& message) {
             const int index = current == panes.end() ? 0 :
                 (static_cast<int>(current - panes.begin()) + step + static_cast<int>(panes.size())) % panes.size();
             HWND next = panes[static_cast<size_t>(index)];
-            if (next == aiPane_.Handle() || next == powerPane_.Handle()) {
+            if (next == activeAiHandle || next == powerPane_.Handle()) {
                 if (HWND child = GetNextDlgTabItem(next, nullptr, FALSE)) next = child;
             }
             SetFocus(next);
         }
         return true;
     }
-    if (aiVisible_ && aiPane_.PreTranslate(message)) return true;
+    if (aiVisible_ && ActiveAiPane() && ActiveAiPane()->PreTranslate(message)) return true;
     if (message.message == WM_KEYDOWN || message.message == WM_SYSKEYDOWN ||
         message.message == WM_LBUTTONDOWN || message.message == WM_RBUTTONDOWN ||
         message.message == WM_MBUTTONDOWN || message.message == WM_MOUSEWHEEL)
         startupUpdateDeferred_ = true;
+    if (terminalSearchBar_.Visible() &&
+        (message.hwnd == terminalSearchBar_.Handle() || IsChild(terminalSearchBar_.Handle(), message.hwnd))) {
+        if (message.message == WM_KEYDOWN) {
+            if (message.wParam == VK_ESCAPE) {
+                CloseTerminalSearch(true);
+                return true;
+            }
+            if ((message.wParam == L'F' || message.wParam == L'f') &&
+                (GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000)) {
+                OpenTerminalSearch();
+                return true;
+            }
+        }
+        return message.message == WM_KEYDOWN && message.wParam == VK_TAB && IsDialogMessageW(window_, &message);
+    }
     if (message.hwnd != terminal_) { return message.message == WM_KEYDOWN && message.wParam == VK_TAB && IsDialogMessageW(window_, &message); }
     if (message.message != WM_KEYDOWN) return false;
     const WPARAM key = message.wParam;
     if (key == 'A' && (GetKeyState(VK_CONTROL) & 0x8000) && (GetKeyState(VK_SHIFT) & 0x8000) && HasTerminalSelection() && activeSession_) {
         auto selection = TerminalSelectionText(false);
         const auto id = "session-" + std::to_string(activeSession_->id);
-        ShowAiPage(false); aiPane_.AttachSelection(selection, id); return true;
+        ShowAiPage(false);
+        if (auto* pane = ActiveAiPane()) pane->AttachSelection(selection, id);
+        return true;
     }
     const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
     const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    if ((key == 'F' || key == 'f') && ctrl && !shift && !(GetKeyState(VK_MENU) & 0x8000)) {
+        OpenTerminalSearch();
+        return true;
+    }
     const bool claimed = (ctrl && shift && (key == 'C' || key == 'V')) ||
         (ctrl && key == 'C' && HasTerminalSelection()) || (shift && key == VK_INSERT) ||
         key == VK_ESCAPE || (key == VK_TAB && shift) ||
@@ -2113,11 +2199,13 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 navigationTipText_ = L"复制当前全部命令输出";
             } else if (control == aiExecCombo_) {
                 navigationTipText_ = L"AI 执行的终端命令列表";
-                for (const auto& entry : aiExecHistory_) {
-                    if (entry.execId == aiExecSelectedId_) {
-                        auto cmdWide = MultiByteToWide(reinterpret_cast<const std::uint8_t*>(entry.command.data()), entry.command.size(), CP_UTF8);
-                        if (!cmdWide.empty()) navigationTipText_ = std::move(cmdWide);
-                        break;
+                if (const auto* card = ActiveAiCard()) {
+                    for (const auto& entry : card->execHistory) {
+                        if (entry.execId == card->execSelectedId) {
+                            auto cmdWide = MultiByteToWide(reinterpret_cast<const std::uint8_t*>(entry.command.data()), entry.command.size(), CP_UTF8);
+                            if (!cmdWide.empty()) navigationTipText_ = std::move(cmdWide);
+                            break;
+                        }
                     }
                 }
             } else {
@@ -2130,7 +2218,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         break;
     }
     case AiPetActivityChanged:
-        aiPet_.Activity(aiPane_.CompanionActivity());
+        UpdateAiPetActivity();
         return 0;
     case AiPetPreferencesChanged: {
         petSettings_ = aiPet_.Preferences();
@@ -2145,10 +2233,30 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         aiPet_.ShowMenu({anchor.left, anchor.bottom + Ui::Space});
         return 0;
     }
-    case AiStateChanged:
+    case AiStateChanged: {
+        const auto cid = static_cast<std::uint64_t>(wParam);
+        if (auto* card = FindAiCard(cid)) {
+            if (card->pane) {
+                const bool running = card->pane->TaskRunning();
+                if (running) {
+                    card->wasTaskRunning = true;
+                    card->unreadComplete = false;
+                    card->unreadError = false;
+                } else if (card->wasTaskRunning) {
+                    card->wasTaskRunning = false;
+                    if (!aiVisible_ || card->id != activeAiCardId_) {
+                        if (card->pane->CompanionActivity() == pet::Activity::Failed)
+                            card->unreadError = true;
+                        else
+                            card->unreadComplete = true;
+                    }
+                }
+            }
+        }
         RefreshConnectionList();
         if (aiVisible_) RefreshPowerTargets();
         return 0;
+    }
     case MessageUpdatePrompt: {
         std::unique_ptr<UpdatePrompt> prompt(reinterpret_cast<UpdatePrompt *>(lParam));
         if (!prompt)
@@ -2337,10 +2445,16 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case MessagePowerTarget:
         if (!wParam) {
             if (aiVisible_) {
-                aiPreviewSessionId_ = pendingPowerMonitorSession_;
-                if (!aiPane_.TaskRunning()) aiPane_.SelectTarget(pendingPowerMonitorSession_);
-                aiSidebarTab_ = AiSidebarTab::Terminal;
-                if (aiPane_.TaskRunning()) userOverrodeRightViewInTurn_ = true;
+                if (auto* card = ActiveAiCard()) {
+                    card->previewSessionId = pendingPowerMonitorSession_;
+                    aiPreviewSessionId_ = pendingPowerMonitorSession_;
+                    if (card->pane) {
+                        if (!card->pane->TaskRunning()) card->pane->SelectTarget(pendingPowerMonitorSession_);
+                        if (card->pane->TaskRunning()) card->userOverrodeRightViewInTurn = true;
+                    }
+                    card->sidebarTab = AiSidebarTab::Terminal;
+                    aiSidebarTab_ = AiSidebarTab::Terminal;
+                }
                 SyncAiTerminal();
             } else {
                 powerMonitorSession_ = pendingPowerMonitorSession_;
@@ -2350,8 +2464,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         RefreshPowerTargets();
         return 0;
     case AiTargetChanged:
-        SyncAiTargetBinding();
-        SyncAiTerminal();
+        if (!wParam || static_cast<std::uint64_t>(wParam) == activeAiCardId_) {
+            SyncAiTargetBinding();
+            if (aiVisible_) SyncAiTerminal();
+        }
         return 0;
     case WM_ENTERSIZEMOVE:
         windowResizing_ = true;
@@ -2517,6 +2633,14 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 terminalPaintPending_ = false;
                 lastTerminalPaintTick_ = GetTickCount64();
                 InvalidateRect(terminal_, nullptr, FALSE);
+            }
+            return 0;
+        }
+        if (wParam == TerminalSearchRefreshTimerId) {
+            KillTimer(window_, TerminalSearchRefreshTimerId);
+            terminalSearchRefreshPending_ = false;
+            if (terminalSearchBar_.Visible()) {
+                RefreshTerminalSearch(false);
             }
             return 0;
         }
@@ -2702,15 +2826,16 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             const int note = HIWORD(wParam);
             if (note == CBN_SELENDOK || (note == CBN_SELCHANGE && !SendMessageW(aiExecCombo_, CB_GETDROPPEDSTATE, 0, 0))) {
                 const int selected = static_cast<int>(SendMessageW(aiExecCombo_, CB_GETCURSEL, 0, 0));
-                if (selected >= 0 && static_cast<size_t>(selected) < aiExecHistory_.size()) {
-                    const size_t entryIndex = aiExecHistory_.size() - 1 - static_cast<size_t>(selected);
-                    FocusAiExecInSidebar(aiExecHistory_[entryIndex].execId);
+                if (const auto* card = ActiveAiCard();
+                    card && selected >= 0 && static_cast<size_t>(selected) < card->execHistory.size()) {
+                    const size_t entryIndex = card->execHistory.size() - 1 - static_cast<size_t>(selected);
+                    FocusAiExecInSidebar(card->id, card->execHistory[entryIndex].execId);
                 }
             }
             return 0;
         }
         if (reinterpret_cast<HWND>(lParam) == aiTerminalHeader_) return 0;
-        if (LOWORD(wParam) == IdAi && HIWORD(wParam) == BN_CLICKED) { ShowAiPage(); return 0; }
+        if (LOWORD(wParam) == IdAi && HIWORD(wParam) == BN_CLICKED) { OpenNewAiCard(); return 0; }
         if (LOWORD(wParam) == IdCmd && HIWORD(wParam) == BN_CLICKED) {
             if (pendingSession_) { AppendStatus(L"请等待当前连接完成", true); return 0; }
             if (connectionThread_.joinable()) connectionThread_.join();
@@ -2729,9 +2854,26 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
             else if (id == IdSettings) ShowSettings();
             else if (id == IdDisconnect) {
                 if (!UiTryAcquireActionCooldown(disconnectButton_, IdDisconnect, 250)) return 0;
-                if(aiVisible_) {if(aiPane_.Connected()) aiPane_.Disconnect();else {aiVisible_=false;aiPageOpened_=false;}}
-                else if(powerVisible_) {if(powerPane_.HasConnection()) powerPane_.DisconnectConnection(true);else {powerVisible_=false;powerPageOpened_=false;}}
-                else {
+                if (aiVisible_) {
+                    if (auto* card = ActiveAiCard()) {
+                        if (card->pane && card->pane->Connected()) {
+                            card->pane->Disconnect();
+                        } else {
+                            if (card->pane && card->pane->TaskRunning() &&
+                                MessageBoxW(window_, L"当前 AI 卡片正在执行任务，确定要关闭卡片吗？", L"关闭 AI 卡片",
+                                            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) {
+                                return 0;
+                            }
+                            CloseAiCard(card->id);
+                            return 0;
+                        }
+                    } else {
+                        aiVisible_ = false;
+                    }
+                } else if (powerVisible_) {
+                    if (powerPane_.HasConnection()) powerPane_.DisconnectConnection(true);
+                    else { powerVisible_ = false; powerPageOpened_ = false; }
+                } else {
                     const bool disconnectingLive = activeSession_ && !activeSession_->disconnected &&
                                                    !activeSession_->disconnecting &&
                                                    pendingReconnectId_ != activeSession_->id;
@@ -2746,7 +2888,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 Reconnect();
             }
             else if (id == IdDisconnectAll) {
-                const bool live = pendingSession_ || aiPane_.Connected() || powerPane_.HasConnection() ||
+                const bool live = pendingSession_ || AnyAiConnected() || powerPane_.HasConnection() ||
                     std::any_of(sessions_.begin(), sessions_.end(), [](const auto& s) { return !s->disconnected; });
                 if (!live && !UiTryAcquireActionCooldown(disconnectAllButton_, IdDisconnectAll, 250)) return 0;
                 if (live && !ConfirmActiveTransfers(L"断开全部连接", false)) return 0;
@@ -2782,8 +2924,10 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                 LayoutControls(r.right, r.bottom);
             } else if (id == IdRightPanelToggle) {
                 const bool nextCollapsed = !(powerVisible_ ? powerMonitorCollapsed_ : aiVisible_ ? aiMonitorCollapsed_ : rightPanelCollapsed_);
-                if (aiVisible_ && aiPane_.TaskRunning() && nextCollapsed) {
-                    userOverrodeRightViewInTurn_ = true;
+                if (aiVisible_ && nextCollapsed) {
+                    if (auto* card = ActiveAiCard(); card && card->pane && card->pane->TaskRunning()) {
+                        card->userOverrodeRightViewInTurn = true;
+                    }
                 }
                 SetRightPanelCollapsed(nextCollapsed);
             } else if (id == IdSftpNameHeader) SetSftpSort(SftpSortColumn::Name);
@@ -2814,13 +2958,20 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         if (id == IdConnectionList && notification == LBN_SELCHANGE) {
             const LRESULT selected = SendMessageW(connectionList_, LB_GETCURSEL, 0, 0);
-            if (selected != LB_ERR) {
-                if (aiPageOpened_ && static_cast<size_t>(selected) == sessions_.size() + (powerPageOpened_ ? 1 : 0))
-                    ShowAiPage(false);
-                else if (static_cast<size_t>(selected) == sessions_.size() && powerPageOpened_)
+            if (selected != LB_ERR && static_cast<size_t>(selected) < connectionListItems_.size()) {
+                const auto& item = connectionListItems_[static_cast<size_t>(selected)];
+                if (item.kind == NavItemKind::AiCard) {
+                    SelectAiCard(item.id, false);
+                } else if (item.kind == NavItemKind::Power) {
                     ShowPowerPage();
-                else SwitchSession(static_cast<size_t>(selected), connectionListKeyboardInput_
-                    ? SessionFocus::Preserve : SessionFocus::Terminal);
+                } else {
+                    for (size_t i = 0; i < sessions_.size(); ++i) {
+                        if (sessions_[i]->id == item.id) {
+                            SwitchSession(i, connectionListKeyboardInput_ ? SessionFocus::Preserve : SessionFocus::Terminal);
+                            break;
+                        }
+                    }
+                }
             }
             return 0;
         }
@@ -2909,6 +3060,9 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
         return 0;
     }
+    case MessageTerminalSearchReady:
+        ApplyTerminalSearchResult();
+        return 0;
     case MessageSessionCleanup:
         if(!closing_) PollSessionCleanup();
         return 0;
@@ -3197,29 +3351,26 @@ void MainWindow::CreateControls() {
     aiChangesPane_.SetCopyCallback([this](const std::wstring& text, const wchar_t* notice) {
         CopyTextToClipboard(window_, text, notice ? notice : L"已复制");
     });
-    terminal_ = CreateChild(L"STATIC", L"终端", SS_NOTIFY | WS_TABSTOP, IdTerminal);
+    terminal_ = CreateChild(L"STATIC", L"终端", SS_NOTIFY | WS_TABSTOP | WS_CLIPCHILDREN, IdTerminal);
     SendMessageW(terminal_, WM_SETFONT, reinterpret_cast<WPARAM>(terminalFont_), TRUE);
     SetWindowSubclass(terminal_, TerminalSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
-
-    aiPane_.Create(window_, uiFont_, darkMode_, [this](const std::string& method, const Json& params) { return AiDeviceRequest(method, params); });
-    aiPane_.SetLocalWorkspaceService(localWorkspace_);
-    aiPane_.SetEnsureMcpPortProvider([this]() { return EnsureAiMcpPort(); });
-    aiPane_.SetRemoteFsRunner([this](const std::string& op, const Json& params, AiPane::RemoteFsCallback done) {
-        RunAiRemoteFs(op, params, std::move(done));
+    terminalSearchBar_.Create(terminal_, instance_, TerminalSearchBar::Callbacks{
+        [this](const std::wstring& query) {
+            terminalSearchQuery_ = query;
+            RefreshTerminalSearch(true);
+        },
+        [this](int delta) {
+            StepTerminalSearch(delta);
+        },
+        [this]() {
+            CloseTerminalSearch(true);
+        }
     });
-    {
-        AiPane::SidebarCallbacks callbacks;
-        callbacks.onTurnStarted = [this](std::uint64_t turnSeq) { HandleAiTurnStarted(turnSeq); };
-        callbacks.onExecEvent = [this](const ai::ExecProgressEvent& ev) { HandleAiExecEvent(ev); };
-        callbacks.onFocusExec = [this](const std::string& execId) { FocusAiExecInSidebar(execId); };
-        callbacks.onFileChangesUpdated = [this](const std::vector<ai::FileChangeRecord>& changes,
-                                                std::uint64_t turnSeq,
-                                                const std::string& focusId,
-                                                bool autoSwitch) {
-            HandleAiFileChanges(changes, turnSeq, focusId, autoSwitch);
-        };
-        aiPane_.SetSidebarCallbacks(std::move(callbacks));
-    }
+    terminalSearchBar_.Theme(darkMode_, Ui::Dpi, smallFont_);
+    terminalSearchWorker_.Start([this] {
+        if (window_) PostMessageW(window_, MessageTerminalSearchReady, 0, 0);
+    });
+
     aiPet_.Create(window_, uiFont_, darkMode_, petSettings_);
     powerPane_.Create(window_, uiFont_, darkMode_, &powerService_);
     powerPane_.SetKeywordTarget([this](const PowerKeywordConfig &config) { return CreatePowerKeywordRun(config); });
@@ -3259,7 +3410,7 @@ void MainWindow::CreateControls() {
      tip.uId=reinterpret_cast<UINT_PTR>(tftpTabButton_);tip.lpszText=const_cast<wchar_t*>(L"TFTP 文件发布服务");
      SendMessageW(navigationTooltip_,TTM_ADDTOOLW,0,reinterpret_cast<LPARAM>(&tip));}
     tftpServer_ = std::make_shared<TftpServer>();
-    if(!tftpPane_.Create(window_,tftpServer_,[this]{return GetTftpSshSessions();},smallFont_,darkMode_,Ui::Dpi))
+    if(!tftpPane_.Create(window_,tftpServer_,smallFont_,darkMode_,Ui::Dpi))
         throw std::runtime_error("Cannot create TFTP pane");
     tftpPane_.stateChanged=[this]{
         if(!closing_) {
@@ -3530,13 +3681,17 @@ void MainWindow::LayoutControls(int width, int height) {
     batch.Move(powerPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
                layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
                centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
-    batch.Move(aiPane_.Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
-               layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
-               centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
-    if (aiVisible_) {
-        aiPane_.SetComposerWidth(Ui::Scale(Ui::AiComposerMaxWidth96));
+    for (auto& card : aiCards_) {
+        if (!card || !card->pane || !card->pane->Handle()) continue;
+        const bool isActiveCard = aiVisible_ && card->id == activeAiCardId_;
+        if (isActiveCard) {
+            batch.Move(card->pane->Handle(), layout.centerLeft + Ui::PanelPadding, cardTop + Ui::PanelPadding,
+                       layout.centerRight - layout.centerLeft - Ui::PanelPadding * 2,
+                       centerCardBottom - cardTop - Ui::PanelPadding * 2, TRUE);
+            card->pane->SetComposerWidth(Ui::Scale(Ui::AiComposerMaxWidth96));
+        }
+        batch.Show(card->pane->Handle(), isActiveCard ? SW_SHOW : SW_HIDE);
     }
-    batch.Show(aiPane_.Handle(), aiVisible_ ? SW_SHOW : SW_HIDE);
     const bool showTerminal = !LiveMonitorPage()
         ? true
         : (monitor && (aiVisible_
@@ -4070,8 +4225,9 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
             return;
         }
         if (id == IdDisconnect || id == IdReconnect) {
+            const auto* activeAi = ActiveAiPane();
             const bool close=(activeSession_&&!aiVisible_&&!powerVisible_&&activeSession_->disconnected&&pendingReconnectId_!=activeSession_->id)||
-                (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerPane_.HasConnection());
+                (aiVisible_&&(!activeAi||!activeAi->Connected()))||(powerVisible_&&!powerPane_.HasConnection());
             const COLORREF ink=!enabled?colors.muted:id==IdReconnect?(darkMode_?RGB(48,209,88):RGB(28,137,61)):close?colors.muted:colors.danger;
             const auto v=UiFlatIconVisual(UiTheme(darkMode_),colors.panel,enabled,pressed,hovered);
             if(v.fill!=colors.panel) UiRoundedSurface(dc,rect,v.fill,v.fill,UiCapsuleRadius(rect),Ui::Dpi);
@@ -4239,13 +4395,19 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
     DeleteObject(background);
 
     if (item.CtlID == IdConnectionList) {
-        const bool valid = item.itemID < sessions_.size();
-        const SessionState* session = valid ? sessions_[item.itemID].get() : nullptr;
-        const bool power=item.itemID==sessions_.size()&&powerPageOpened_;
-        const bool ai=item.itemID==sessions_.size()+(powerPageOpened_?1:0)&&aiPageOpened_;
-        const bool connected=ai?aiPane_.Connected():power?powerPane_.HasConnection():
-            session&&!session->disconnecting&&!session->disconnected&&session->connection&&session->connection->IsConnected();
-        const bool active=ai?aiVisible_:power?powerVisible_:!powerVisible_&&!aiVisible_&&session==activeSession_;
+        const bool hasNav = item.itemID < connectionListItems_.size();
+        const NavItem nav = hasNav ? connectionListItems_[item.itemID] : NavItem{};
+        SessionState* session = (hasNav && nav.kind == NavItemKind::Session) ? FindSession(nav.id) : nullptr;
+        const bool power = hasNav && nav.kind == NavItemKind::Power;
+        const AiCardState* aiCard = (hasNav && nav.kind == NavItemKind::AiCard) ? FindAiCard(nav.id) : nullptr;
+        const bool ai = aiCard != nullptr;
+        const bool connected = ai ? (aiCard->pane && aiCard->pane->Connected())
+                             : power ? powerPane_.HasConnection()
+                             : session && !session->disconnecting && !session->disconnected &&
+                                   session->connection && session->connection->IsConnected();
+        const bool active = ai ? (aiVisible_ && aiCard->id == activeAiCardId_)
+                          : power ? powerVisible_
+                          : !powerVisible_ && !aiVisible_ && session == activeSession_;
         OverlayScrollMetrics scrollMetrics;
         RECT card{rect.left, rect.top + Ui::Gap / 2,
                   rect.right - (GetOverlayScrollMetrics(item.hwndItem, scrollMetrics) ? Ui::OverlayScrollLaneWidth : 0),
@@ -4268,14 +4430,31 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         RECT title{textLeft, card.top + Ui::Scale(3), card.right - Ui::Scale(8), card.top + Ui::Scale(25)};
         RECT subtitle{textLeft, card.top + Ui::Scale(25), card.right - Ui::Scale(8), card.bottom - Ui::Scale(3)};
         DrawTextSimple(dc,
-                       ai        ? L"AI 助手"
+                       ai        ? AiCardTitle(*aiCard)
                        : power   ? L"IT6332A"
                        : session ? ConnectionCardTitle(*session)
                                  : L"暂无连接",
                        title, active ? RGB(255, 255, 255) : colors.text, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         std::wstring state = connected ? L"已连接" : L"已断开";
-        if (power) {
+        bool aiRunning = false;
+        bool aiUnreadNotice = false;
+        bool aiErrorNotice = false;
+        if (aiCard) {
+            const bool running = aiCard->pane && aiCard->pane->TaskRunning();
+            if (running) {
+                aiRunning = true;
+                state = L"运行中…";
+            } else if (aiCard->unreadError) {
+                aiErrorNotice = true;
+                state = L"任务失败";
+            } else if (aiCard->unreadComplete) {
+                aiUnreadNotice = true;
+                state = L"已完成";
+            } else {
+                state = connected ? L"已连接" : L"已断开";
+            }
+        } else if (power) {
             const auto powerState = powerPane_.ViewState();
             const auto host = powerState.value("remoteHost", std::string());
             if (!host.empty()) {
@@ -4302,10 +4481,18 @@ void MainWindow::DrawOwnerItem(const DRAWITEMSTRUCT& source) {
         }
         RECT dot{textLeft, subtitle.top + Ui::Scale(6), textLeft + Ui::Scale(5), subtitle.top + Ui::Scale(11)};
         const bool powerWarning = power && !connected && (powerPane_.ViewState().value("unconfirmedPowerOff", false) || !powerAlert_.empty());
-        const bool unreadError = (session && session->unreadStatus && session->lastStatusIsError) || powerWarning;
-        DrawStatusDot(dc, dot, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted);
+        const bool unreadError = (session && session->unreadStatus && session->lastStatusIsError) || powerWarning || aiErrorNotice;
+        const COLORREF dotColor = active ? RGB(255, 255, 255)
+                                : unreadError ? colors.danger
+                                : (aiRunning || aiUnreadNotice) ? colors.accent
+                                : colors.muted;
+        const COLORREF subColor = active ? RGB(255, 255, 255)
+                                : unreadError ? colors.danger
+                                : (aiRunning || aiUnreadNotice) ? colors.accent
+                                : colors.muted;
+        DrawStatusDot(dc, dot, dotColor);
         subtitle.left += Ui::Scale(12);
-        DrawTextSimple(dc, state, subtitle, active ? RGB(255, 255, 255) : unreadError ? colors.danger : colors.muted, smallFont_,
+        DrawTextSimple(dc, state, subtitle, subColor, smallFont_,
                        DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
     } else if (item.CtlID == IdCommandList && item.itemID < macro_.Items().size()) {
         const bool ghost = source.itemData == ~ULONG_PTR(0);
@@ -4502,9 +4689,12 @@ void MainWindow::ApplyTheme() {
     xferPane_.Theme(darkMode_,Ui::Dpi,smallFont_);
     tftpPane_.Theme(darkMode_,Ui::Dpi,smallFont_);
     if (aiChangesPane_.Handle()) aiChangesPane_.Theme(darkMode_, Ui::Dpi, smallFont_);
+    terminalSearchBar_.Theme(darkMode_, Ui::Dpi, smallFont_);
     notebook_.Style(darkMode_, Ui::Dpi, smallFont_, terminalFont_);
     powerPane_.Theme(darkMode_);
-    aiPane_.Theme(darkMode_);
+    for (auto& card : aiCards_) {
+        if (card && card->pane) card->pane->Theme(darkMode_);
+    }
     aiPet_.Theme(darkMode_);
     const Palette colors = Colors(darkMode_);
     if (windowBrush_) DeleteObject(windowBrush_);
@@ -5433,8 +5623,15 @@ void MainWindow::CompleteConnection(bool success, const std::wstring& error) {
     if (!credentialWarning.empty()) AppendStatus(credentialWarning, true);
     if (aiRemoteConnect_) {
         aiRemoteConnect_ = false;
-        aiPane_.SelectTarget("session-" + std::to_string(id));
-        ShowAiPage(false);
+        const auto targetCardId = aiRemoteConnectCardId_ ? aiRemoteConnectCardId_ : activeAiCardId_;
+        aiRemoteConnectCardId_ = 0;
+        if (auto* card = FindAiCard(targetCardId)) {
+            if (card->pane) card->pane->SelectTarget("session-" + std::to_string(id));
+            SelectAiCard(card->id, false);
+        } else {
+            ShowAiPage(false);
+            if (auto* pane = ActiveAiPane()) pane->SelectTarget("session-" + std::to_string(id));
+        }
     } else SetFocus(terminal_);
 }
 
@@ -5558,7 +5755,11 @@ void MainWindow::PollSessionCleanup() {
 }
 
 void MainWindow::Reconnect() {
-    if (aiVisible_) { if(!aiPane_.Connected()) ShowAiPage(true); return; }
+    if (aiVisible_) {
+        if (auto* card = ActiveAiCard(); card && card->pane && !card->pane->Connected())
+            SelectAiCard(card->id, true);
+        return;
+    }
     if (powerVisible_) { if(!powerPane_.HasConnection()&&!disconnectAllPending_) powerPane_.ShowConnection(); return; }
     if (!activeSession_ || pendingSession_ || pendingReconnectId_ || activeSession_->disconnecting || !activeSession_->disconnected) return;
     if (connectionThread_.joinable()) connectionThread_.join();
@@ -5576,40 +5777,46 @@ void MainWindow::Reconnect() {
 }
 
 void MainWindow::RefreshConnectionActions() {
+    const auto* activeAi = ActiveAiPane();
     const bool special=aiVisible_||powerVisible_;
     const bool available=activeSession_&&!special;
     const bool reconnecting=available&&pendingReconnectId_==activeSession_->id;
-    const bool closingCard=(available&&activeSession_->disconnected&&!reconnecting)||(aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerPane_.HasConnection());
+    const bool closingCard=(available&&activeSession_->disconnected&&!reconnecting)||(aiVisible_&&(!activeAi||!activeAi->Connected()))||(powerVisible_&&!powerPane_.HasConnection());
     const auto caption=closingCard?L"关闭卡片":reconnecting?L"取消重连":L"断开连接";
     SetWindowTextW(disconnectButton_,caption);
     UiSetButtonGlyph(disconnectButton_, closingCard?UiGlyph::Close:UiGlyph::Disconnect, caption);
     EnableWindow(disconnectButton_,special||(available&&!activeSession_->disconnecting&&!cancelledConnectionPending_));
     const bool reconnectable=(available&&activeSession_->disconnected&&!activeSession_->disconnecting)||
-        (aiVisible_&&!aiPane_.Connected())||(powerVisible_&&!powerPane_.HasConnection()&&!disconnectAllPending_);
+        (aiVisible_&&(!activeAi||!activeAi->Connected()))||(powerVisible_&&!powerPane_.HasConnection()&&!disconnectAllPending_);
     EnableWindow(reconnectButton_,reconnectable&&!pendingSession_&&!pendingReconnectId_&&!connectionCleanup_.Busy());
-    bool live=aiPane_.Connected()||powerPane_.HasConnection()||pendingSession_!=nullptr;
+    bool live=AnyAiConnected()||powerPane_.HasConnection()||pendingSession_!=nullptr;
     bool busy=disconnectAllPending_||connectionCleanup_.Busy()||cancelledConnectionPending_;
     for(const auto& session:sessions_) {live|=!session->disconnected; busy|=session->disconnecting;}
     SetWindowTextW(disconnectAllButton_,busy?L"正在断开…":live?L"全部断开":L"全部关闭");
-    EnableWindow(disconnectAllButton_,!busy&&(live||!sessions_.empty()||aiPageOpened_||powerPageOpened_));
+    EnableWindow(disconnectAllButton_,!busy&&(live||!sessions_.empty()||!aiCards_.empty()||powerPageOpened_));
     InvalidateRect(disconnectButton_,nullptr,FALSE); InvalidateRect(reconnectButton_,nullptr,FALSE);
     InvalidateRect(disconnectAllButton_,nullptr,FALSE);
 }
 
 void MainWindow::DisconnectAll() {
     if (connectionCleanup_.Busy() || disconnectAllPending_) return;
-    const bool live=pendingSession_||aiPane_.Connected()||powerPane_.HasConnection()||
+    const bool live=pendingSession_||AnyAiConnected()||powerPane_.HasConnection()||
         std::any_of(sessions_.begin(),sessions_.end(),[](const auto& s){return !s->disconnected;});
     if (!live) {
         OperationAuditLogger::Instance().Record("MANUAL", "session.close_all", "all",
                                                 "count=" + std::to_string(sessions_.size()));
         while(!sessions_.empty()) CloseSession(sessions_.back()->id);
-        aiVisible_=false; aiPageOpened_=false; powerVisible_=false; powerPageOpened_=false;
+        ShutdownAllAiCards();
+        aiVisible_=false; powerVisible_=false; powerPageOpened_=false;
         RefreshConnectionList(); RefreshConnectionActions();
         RECT r{};GetClientRect(window_,&r);LayoutControls(r.right,r.bottom);
         AppendStatus(L"全部卡片已关闭",false); return;
     }
-    xfer_.Cancel(); aiPane_.Disconnect(); sftp_.CancelIo();
+    xfer_.Cancel();
+    for (auto& card : aiCards_) {
+        if (card && card->pane) card->pane->Disconnect();
+    }
+    sftp_.CancelIo();
     const auto macroSession = macro_.Running() ? macro_.Session() : 0;
     StopCommandSequence(CommandSequenceEnd::Interrupted,L"用户断开全部连接");
     const std::wstring commandOutcome = macroSession ? statusText_ : L"";
@@ -5673,40 +5880,427 @@ MainWindow::SessionState* MainWindow::FindSession(std::uint64_t id) {
     return found == sessions_.end() ? nullptr : found->get();
 }
 
-void MainWindow::ShowAiPage(bool connect) {
-    if(macro_.Running()) StopCommandSequence(CommandSequenceEnd::Interrupted,L"切换到 AI 页面");
-    // The modal is the user's immediate action. Do not make it wait for page
-    // layout, transcript remeasurement, target refresh or terminal repaint.
-    const bool requestedConnection = connect && !aiPane_.Connected();
-    if (requestedConnection) aiPane_.ShowConnection();
+MainWindow::AiCardState* MainWindow::FindAiCard(std::uint64_t cardId) {
+    for (auto& card : aiCards_) {
+        if (card && card->id == cardId) return card.get();
+    }
+    return nullptr;
+}
+
+const MainWindow::AiCardState* MainWindow::FindAiCard(std::uint64_t cardId) const {
+    for (const auto& card : aiCards_) {
+        if (card && card->id == cardId) return card.get();
+    }
+    return nullptr;
+}
+
+MainWindow::AiCardState* MainWindow::ActiveAiCard() {
+    return FindAiCard(activeAiCardId_);
+}
+
+const MainWindow::AiCardState* MainWindow::ActiveAiCard() const {
+    return FindAiCard(activeAiCardId_);
+}
+
+AiPane* MainWindow::ActiveAiPane() {
+    auto* card = ActiveAiCard();
+    return card ? card->pane.get() : nullptr;
+}
+
+const AiPane* MainWindow::ActiveAiPane() const {
+    const auto* card = ActiveAiCard();
+    return card ? card->pane.get() : nullptr;
+}
+
+std::shared_ptr<ai::LocalWorkspaceService> MainWindow::ActiveLocalWorkspace() const {
+    if (const auto* card = ActiveAiCard(); card && card->localWorkspace)
+        return card->localWorkspace;
+    return localWorkspace_;
+}
+
+std::wstring MainWindow::AiCardTitle(const AiCardState& card) const {
+    if (!card.customTitle.empty()) return card.customTitle;
+    if (card.pane) {
+        const auto leaf = card.pane->WorkspaceDisplayName();
+        if (!leaf.empty()) return L"AI · " + leaf;
+    }
+    if (aiCards_.size() <= 1) return L"AI 助手";
+    return L"AI #" + std::to_wstring(card.id);
+}
+
+bool MainWindow::AnyAiConnected() const {
+    return std::any_of(aiCards_.begin(), aiCards_.end(), [](const auto& card) {
+        return card && card->pane && card->pane->Connected();
+    });
+}
+
+bool MainWindow::AnyAiBusy() const {
+    return std::any_of(aiCards_.begin(), aiCards_.end(), [](const auto& card) {
+        return card && card->pane && card->pane->Busy();
+    });
+}
+
+void MainWindow::UpdateAiPetActivity() {
+    pet::Activity activity = pet::Activity::Offline;
+    if (const auto* active = ActiveAiCard(); active && active->pane && aiVisible_) {
+        activity = active->pane->CompanionActivity();
+    } else if (const auto* active = ActiveAiCard(); active && active->pane && active->pane->TaskRunning()) {
+        activity = active->pane->CompanionActivity();
+    } else {
+        for (const auto& card : aiCards_) {
+            if (card && card->pane && card->pane->TaskRunning()) {
+                activity = card->pane->CompanionActivity();
+                break;
+            }
+        }
+        if (activity == pet::Activity::Offline) {
+            if (const auto* active = ActiveAiCard(); active && active->pane) {
+                activity = active->pane->CompanionActivity();
+            }
+        }
+    }
+    aiPet_.Activity(activity);
+}
+
+MainWindow::AiCardState* MainWindow::CreateAiCard() {
+    auto card = std::make_unique<AiCardState>();
+    const std::uint64_t cardId = nextAiCardId_++;
+    card->id = cardId;
+    card->localWorkspace = std::make_shared<ai::LocalWorkspaceService>();
+    card->pane = std::make_unique<AiPane>();
+    card->pane->SetCardId(cardId);
+    if (!card->pane->Create(window_, uiFont_, darkMode_,
+            [this, cardId](const std::string& method, const Json& params) {
+                return AiDeviceRequestForCard(cardId, method, params);
+            })) {
+        return nullptr;
+    }
+    if (card->pane->Handle()) ShowWindow(card->pane->Handle(), SW_HIDE);
+    card->pane->SetLocalWorkspaceService(card->localWorkspace);
+    card->pane->SetEnsureMcpPortProvider([this, cardId]() { return EnsureAiCardMcpPort(cardId); });
+    card->pane->SetRemoteFsRunner([this, cardId](const std::string& op, const Json& params, AiPane::RemoteFsCallback done) {
+        RunAiRemoteFsForCard(cardId, op, params, std::move(done));
+    });
+    card->pane->SetVoiceGuard([this, cardId]() {
+        for (const auto& c : aiCards_) {
+            if (c && c->id != cardId && c->pane && c->pane->VoiceBusy())
+                return false;
+        }
+        return true;
+    });
+    AiPane::SidebarCallbacks callbacks;
+    callbacks.onTurnStarted = [this, cardId](std::uint64_t turnSeq) { HandleAiTurnStarted(cardId, turnSeq); };
+    callbacks.onExecEvent = [this, cardId](const ai::ExecProgressEvent& ev) { HandleAiExecEvent(cardId, ev); };
+    callbacks.onFocusExec = [this, cardId](const std::string& execId) { FocusAiExecInSidebar(cardId, execId); };
+    callbacks.onFileChangesUpdated = [this, cardId](const std::vector<ai::FileChangeRecord>& changes,
+                                                    std::uint64_t turnSeq,
+                                                    const std::string& focusId,
+                                                    bool autoSwitch) {
+        HandleAiFileChanges(cardId, changes, turnSeq, focusId, autoSwitch);
+    };
+    card->pane->SetSidebarCallbacks(std::move(callbacks));
+    AiCardState* raw = card.get();
+    aiCards_.push_back(std::move(card));
+    return raw;
+}
+
+void MainWindow::SelectAiCard(std::uint64_t cardId, bool connectIfDisconnected) {
+    auto* card = FindAiCard(cardId);
+    if (!card || !card->pane) return;
+    if (macro_.Running()) StopCommandSequence(CommandSequenceEnd::Interrupted, L"切换到 AI 页面");
+    const bool switchingCard = !aiVisible_ || activeAiCardId_ != cardId;
+    if (activeAiCardId_ != cardId && aiChangesPane_.Handle()) {
+        if (auto* prevCard = FindAiCard(activeAiCardId_)) {
+            const std::string selectedId = aiChangesPane_.SelectedChangeId();
+            if (!selectedId.empty()) prevCard->fileChangesFocusId = selectedId;
+        }
+    }
+    activeAiCardId_ = cardId;
     KillTimer(window_, SideAnimationTimerId);
-    rightPanelAnimating_ = false; rightPanelAnimatedWidth_ = -1;
-    powerVisible_ = false; aiVisible_ = true; aiPageOpened_ = true;
-    // Entering or returning to the AI page is a new action context; an earlier
-    // close-card/disconnect cooldown must not swallow closing this page.
+    rightPanelAnimating_ = false;
+    rightPanelAnimatedWidth_ = -1;
+    powerVisible_ = false;
+    aiVisible_ = true;
+    card->unreadComplete = false;
+    card->unreadError = false;
+    aiSidebarTab_ = card->sidebarTab;
+    aiPreviewSessionId_ = card->previewSessionId;
     UiResetActionCooldown(disconnectButton_, IdDisconnect);
     SyncAiTargetBinding();
-    if (aiChangesPane_.Handle()) {
-        aiChangesPane_.SetChanges(aiPane_.FileChanges(), aiPane_.CurrentTurnSeq());
+    {
+        std::lock_guard<std::mutex> lock(activeMcpWorkspaceMutex_);
+        activeMcpWorkspace_ = card->localWorkspace ? card->localWorkspace : localWorkspace_;
+    }
+    if (switchingCard) {
+        if (aiChangesPane_.Handle()) {
+            aiChangesPane_.SetGitWorkspace(card->localWorkspace);
+            const auto& cardChanges = !card->pane->FileChanges().empty() ? card->pane->FileChanges() : card->fileChanges;
+            const std::uint64_t cardTurnSeq = !card->pane->FileChanges().empty() ? card->pane->CurrentTurnSeq() : card->fileChangesTurnSeq;
+            aiChangesPane_.SetChanges(cardChanges, cardTurnSeq, card->fileChangesFocusId);
+        }
+        const AiExecHistoryEntry* activeExec = nullptr;
+        for (const auto& entry : card->execHistory) {
+            if (entry.execId == card->execSelectedId) {
+                activeExec = &entry;
+                break;
+            }
+        }
+        if (activeExec) {
+            ResetAiExecTerminalToEntry(*activeExec);
+        } else {
+            if (aiExecParser_) {
+                const auto clearSeq = terminalParser_.Clear(aiExecParser_);
+                aiExecMinimumSequence_ = (std::max)(aiExecMinimumSequence_, clearSeq);
+            }
+            aiExecTerminalState_.terminal.Clear();
+            aiExecTerminalState_.terminalScrollOffset = 0;
+            aiExecTerminalState_.terminalHorizontalOffset = 0;
+            aiExecTerminalState_.terminalHasNewOutput = false;
+            terminalViewport_.ClearSelection();
+        }
+    } else if (aiChangesPane_.Handle()) {
+        const auto& cardChanges = !card->pane->FileChanges().empty() ? card->pane->FileChanges() : card->fileChanges;
+        const std::uint64_t cardTurnSeq = !card->pane->FileChanges().empty() ? card->pane->CurrentTurnSeq() : card->fileChangesTurnSeq;
+        aiChangesPane_.SetChanges(cardChanges, cardTurnSeq, card->fileChangesFocusId);
     }
     UpdateAiChangesTabBadge();
     RefreshAiExecCombo();
     RefreshConnectionList();
-    RECT client{}; GetClientRect(window_, &client); LayoutControls(client.right, client.bottom);
+    RECT client{};
+    GetClientRect(window_, &client);
+    LayoutControls(client.right, client.bottom);
     InvalidateRect(window_, nullptr, FALSE);
     for (HWND button : toolbarButtons_) InvalidateRect(button, nullptr, FALSE);
     SyncAiTerminal();
+    UpdateAiPetActivity();
     RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
-    // On first connection the pane was hidden while its modal was open.
-    // Restore the normal composer focus only after the final page layout.
-    if (requestedConnection && aiPane_.Connected()) aiPane_.FocusInput();
+
+    if (connectIfDisconnected && !card->pane->Connected()) {
+        const bool ok = card->pane->ShowConnection();
+        if (ok && card->pane->Connected()) card->pane->FocusInput();
+    }
 }
 
+void MainWindow::OpenNewAiCard() {
+    if (aiCards_.size() >= 12) {
+        AppendStatus(L"最多同时打开 12 个 AI 卡片", true);
+        if (auto* cur = ActiveAiCard()) SelectAiCard(cur->id, false);
+        else if (!aiCards_.empty()) SelectAiCard(aiCards_.back()->id, false);
+        return;
+    }
+    const bool hadCards = !aiCards_.empty();
+    const bool wasAi = aiVisible_;
+    const bool wasPower = powerVisible_;
+    const std::uint64_t prevCardId = activeAiCardId_;
+    auto* card = CreateAiCard();
+    if (!card || !card->pane) return;
+    SelectAiCard(card->id, false);
+    const bool confirmed = card->pane->ShowConnection();
+    if (!confirmed && hadCards && card->pane && !card->pane->Connected() && !card->pane->Busy()) {
+        const std::uint64_t newId = card->id;
+        CloseAiCard(newId);
+        if (wasAi && FindAiCard(prevCardId)) {
+            SelectAiCard(prevCardId, false);
+        } else if (wasPower && powerPageOpened_) {
+            ShowPowerPage();
+        } else if (activeSession_) {
+            for (size_t i = 0; i < sessions_.size(); ++i) {
+                if (sessions_[i].get() == activeSession_) {
+                    SwitchSession(i, SessionFocus::Preserve);
+                    break;
+                }
+            }
+        }
+        return;
+    }
+    RefreshConnectionList();
+    UpdateAiPetActivity();
+    if (card->pane && card->pane->Connected()) card->pane->FocusInput();
+}
+
+void MainWindow::ShowAiPage(bool connect) {
+    if (aiCards_.empty()) {
+        auto* card = CreateAiCard();
+        if (!card) return;
+        activeAiCardId_ = card->id;
+    } else if (!FindAiCard(activeAiCardId_)) {
+        activeAiCardId_ = aiCards_.back()->id;
+    }
+    SelectAiCard(activeAiCardId_, connect);
+}
+
+void MainWindow::CloseAiCard(std::uint64_t cardId) {
+    auto it = std::find_if(aiCards_.begin(), aiCards_.end(),
+                           [cardId](const auto& item) { return item && item->id == cardId; });
+    if (it == aiCards_.end()) return;
+    for (auto ownIt = sessionAiWriteOwner_.begin(); ownIt != sessionAiWriteOwner_.end();) {
+        if (ownIt->second == cardId) ownIt = sessionAiWriteOwner_.erase(ownIt);
+        else ++ownIt;
+    }
+    auto removed = std::move(*it);
+    aiCards_.erase(it);
+    const bool wasActive = (activeAiCardId_ == cardId);
+    const bool wasVisible = aiVisible_ && wasActive;
+    if (wasActive) activeAiCardId_ = 0;
+
+    if (removed->localWorkspace) removed->localWorkspace->CancelAllExecs();
+    if (removed->pane) removed->pane->DestroyUi();
+    if (removed->loopbackMcpServer) removed->loopbackMcpServer->Stop();
+    auto sharedCard = std::shared_ptr<AiCardState>(std::move(removed));
+    connectionCleanup_.Retire([sharedCard]() mutable {
+        if (sharedCard->loopbackMcpServer) {
+            sharedCard->loopbackMcpServer->Stop();
+            sharedCard->loopbackMcpServer.reset();
+        }
+        sharedCard->loopbackMcpDispatcher.reset();
+        if (sharedCard->pane) sharedCard->pane->WaitForShutdown();
+        if (sharedCard->localWorkspace) {
+            sharedCard->localWorkspace->CancelAllExecs();
+            sharedCard->localWorkspace.reset();
+        }
+        sharedCard->pane.reset();
+    });
+    if (window_) SetTimer(window_, SessionCleanupTimerId, 40, nullptr);
+
+    if (aiCards_.empty()) {
+        activeAiCardId_ = 0;
+        aiVisible_ = false;
+        aiPreviewSessionId_.clear();
+        if (aiExecParser_) {
+            const auto clearSeq = terminalParser_.Clear(aiExecParser_);
+            aiExecMinimumSequence_ = (std::max)(aiExecMinimumSequence_, clearSeq);
+        }
+        aiExecTerminalState_.terminal.Clear();
+        if (aiChangesPane_.Handle()) {
+            aiChangesPane_.SetGitWorkspace(localWorkspace_);
+            aiChangesPane_.SetChanges({}, 0);
+        }
+        {
+            std::lock_guard<std::mutex> lock(activeMcpWorkspaceMutex_);
+            activeMcpWorkspace_ = localWorkspace_;
+        }
+        if (wasVisible) {
+            if (activeSession_) {
+                for (size_t i = 0; i < sessions_.size(); ++i) {
+                    if (sessions_[i].get() == activeSession_) {
+                        SwitchSession(i, SessionFocus::Preserve);
+                        UpdateAiPetActivity();
+                        return;
+                    }
+                }
+            } else if (powerPageOpened_) {
+                ShowPowerPage();
+                UpdateAiPetActivity();
+                return;
+            }
+            ShowWindow(terminal_, SW_SHOW);
+        }
+    } else if (wasVisible || !FindAiCard(activeAiCardId_)) {
+        const auto nextId = aiCards_.back()->id;
+        if (wasVisible) {
+            SelectAiCard(nextId, false);
+            UpdateAiPetActivity();
+            return;
+        }
+        activeAiCardId_ = nextId;
+    }
+    RefreshConnectionList();
+    RECT r{};
+    GetClientRect(window_, &r);
+    LayoutControls(r.right, r.bottom);
+    UpdateAiPetActivity();
+    RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
+void MainWindow::ShowAiCardContextMenu(std::uint64_t cardId, POINT screenPoint) {
+    auto* card = FindAiCard(cardId);
+    if (!card) return;
+    HMENU menu = CreatePopupMenu();
+    const bool connected = card->pane && card->pane->Connected();
+    AppendMenuW(menu, MF_STRING, IdMenuAiNew, L"新建 AI 卡片");
+    AppendMenuW(menu, MF_STRING, IdMenuAiRename, L"重命名卡片…");
+    AppendMenuW(menu, MF_STRING, IdMenuAiToggleConnect, connected ? L"断开连接" : L"重新连接");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, IdMenuAiClose, L"关闭卡片");
+
+    HBRUSH menuBrush = CreateSolidBrush(Colors(darkMode_).panelAlt);
+    MENUINFO info{sizeof(info)};
+    info.fMask = MIM_BACKGROUND;
+    info.hbrBack = menuBrush;
+    SetMenuInfo(menu, &info);
+    const UINT cmd = UiPopupMenu::Track(
+        menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN,
+        screenPoint.x, screenPoint.y, window_, UiFieldStyle{&darkMode_, uiFont_, Ui::Dpi});
+    DestroyMenu(menu);
+    DeleteObject(menuBrush);
+    PostMessageW(window_, WM_NULL, 0, 0);
+
+    card = FindAiCard(cardId);
+    if (!card || !cmd) return;
+    if (cmd == IdMenuAiNew) {
+        OpenNewAiCard();
+    } else if (cmd == IdMenuAiRename) {
+        std::wstring nextTitle = card->customTitle.empty() ? AiCardTitle(*card) : card->customTitle;
+        if (PromptSftpValue(L"重命名 AI 卡片", L"卡片名称（留空恢复默认）", nextTitle,
+                            SftpInputPurpose::CardTitle, nextTitle)) {
+            while (!nextTitle.empty() && iswspace(nextTitle.front())) nextTitle.erase(nextTitle.begin());
+            while (!nextTitle.empty() && iswspace(nextTitle.back())) nextTitle.pop_back();
+            if (auto* target = FindAiCard(cardId)) {
+                target->customTitle = nextTitle;
+                RefreshConnectionList();
+            }
+        }
+    } else if (cmd == IdMenuAiToggleConnect) {
+        if (card->pane) {
+            if (card->pane->Connected()) card->pane->Disconnect();
+            else SelectAiCard(cardId, true);
+        }
+    } else if (cmd == IdMenuAiClose) {
+        if (card->pane && card->pane->TaskRunning() &&
+            MessageBoxW(window_, L"当前 AI 卡片正在执行任务，确定要关闭卡片吗？", L"关闭 AI 卡片",
+                        MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) {
+            return;
+        }
+        CloseAiCard(cardId);
+    }
+}
+
+void MainWindow::ShutdownAllAiCards() {
+    for (auto& card : aiCards_) {
+        if (!card) continue;
+        if (card->localWorkspace) card->localWorkspace->CancelAllExecs();
+        if (card->pane) card->pane->BeginShutdown();
+        if (card->loopbackMcpServer) {
+            card->loopbackMcpServer->Stop();
+            card->loopbackMcpServer.reset();
+        }
+        card->loopbackMcpDispatcher.reset();
+    }
+    for (auto& card : aiCards_) {
+        if (!card) continue;
+        if (card->pane) card->pane->WaitForShutdown();
+        if (card->localWorkspace) {
+            card->localWorkspace->CancelAllExecs();
+            card->localWorkspace.reset();
+        }
+    }
+    aiCards_.clear();
+    activeAiCardId_ = 0;
+    aiVisible_ = false;
+    sessionAiWriteOwner_.clear();
+}
 
 Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) {
+    return AiDeviceRequestForCard(activeAiCardId_, method, params);
+}
+
+Json MainWindow::AiDeviceRequestForCard(std::uint64_t cardId, const std::string& method, const Json& params) {
     auto error = [](const std::string& text) -> Json { return {{"error", text}}; };
     if (closing_ && method != "release") return error("Application closing");
     if (method.rfind("mcp:", 0) == 0) {
+        if (const auto* card = FindAiCard(cardId); card && method.rfind("mcp:workspace.", 0) == 0 && card->localWorkspace) {
+            return card->localWorkspace->ExecuteTool(method.substr(4), params);
+        }
         return McpExecute(method.substr(4), params);
     }
     if (method == "clipboardNotice") {
@@ -5724,8 +6318,12 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
     if (method == "connectRemote") {
         if (pendingSession_) return error("Another connection is being established");
         aiRemoteConnect_ = true;
+        aiRemoteConnectCardId_ = cardId;
         OpenConnectionDialog(3);
-        if (!pendingSession_) aiRemoteConnect_ = false;
+        if (!pendingSession_) {
+            aiRemoteConnect_ = false;
+            aiRemoteConnectCardId_ = 0;
+        }
         return {{"pending", pendingSession_ != nullptr}};
     }
     if (method == "remote_fs.sessions") {
@@ -5745,33 +6343,253 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
     }
     if (method.rfind("tftp.", 0) == 0) {
         if (!tftpServer_) return error("TFTP server not initialized");
+        auto isAllowedBindIp = [&](const std::string& ip) -> bool {
+            if (ip.empty()) return false;
+            if (ip == "0.0.0.0") return true;
+            sockaddr_in sa{};
+            if (InetPtonA(AF_INET, ip.c_str(), &sa.sin_addr) != 1) return false;
+            if (ip == "127.0.0.1") return true;
+            const auto ips = tftpServer_->LocalIps();
+            return std::find(ips.begin(), ips.end(), ip) != ips.end();
+        };
+        auto buildDirFilesJson = [](const std::wstring& dir, Json& outFiles, Json& outPublished, std::wstring& err) -> bool {
+            std::vector<TftpDirectoryEntry> entries;
+            if (!ListLocalTftpDirectory(dir, entries, err)) {
+                return false;
+            }
+            outFiles = Json::array();
+            outPublished = Json::array();
+            for (const auto& entry : entries) {
+                const auto nameW = MultiByteToWide(reinterpret_cast<const uint8_t*>(entry.name.data()),
+                                                   entry.name.size(), CP_UTF8);
+                const std::wstring fullW = (std::filesystem::path(dir) / nameW).native();
+                const std::string fullUtf8 = WideToMultiByte(fullW, CP_UTF8);
+                outFiles.push_back({
+                    {"name", entry.name},
+                    {"size", entry.size},
+                    {"sizeKnown", entry.sizeKnown},
+                    {"path", fullUtf8}
+                });
+                outPublished.push_back({
+                    {"tftpName", entry.name},
+                    {"type", "local"},
+                    {"path", fullUtf8},
+                    {"host", ""},
+                    {"size", entry.size},
+                    {"sizeKnown", entry.sizeKnown},
+                    {"status", "Ready"},
+                    {"error", ""}
+                });
+            }
+            return true;
+        };
+
         if (method == "tftp.status") {
+            const auto root = tftpServer_->RootConfig();
+            const auto localIps = tftpServer_->LocalIps();
+            const std::string defaultIp = tftpServer_->DefaultIp();
+            const std::string selectedIp = tftpPane_.Handle()
+                ? WideToMultiByte(tftpPane_.SelectedBindIp(), CP_UTF8)
+                : (tftpServer_->IsListening() ? tftpServer_->BindIp() : defaultIp);
+            const std::string effectiveBindIp = tftpServer_->IsListening()
+                ? tftpServer_->BindIp()
+                : (selectedIp.empty() ? defaultIp : selectedIp);
+            size_t fileCount = tftpServer_->PublishedCount();
+            if (root.mode == TftpRootMode::Local && !root.localDirectory.empty()) {
+                std::vector<TftpDirectoryEntry> entries;
+                std::wstring listErr;
+                fileCount = ListLocalTftpDirectory(root.localDirectory, entries, listErr) ? entries.size() : 0;
+            }
             Json res = Json::object();
             res["ok"] = true;
             res["status"] = tftpServer_->State();
             res["listening"] = tftpServer_->IsListening();
-            res["bindIp"] = tftpServer_->BindIp();
+            res["bindIp"] = effectiveBindIp;
+            res["selectedBindIp"] = selectedIp;
+            res["defaultIp"] = defaultIp;
             res["port"] = tftpServer_->Port();
-            res["serverIps"] = tftpServer_->LocalIps();
+            res["serverIps"] = localIps;
+            res["directory"] = WideToMultiByte(root.localDirectory, CP_UTF8);
+            res["rootMode"] = (root.mode == TftpRootMode::Local ? "local" : "none");
+            res["fileCount"] = fileCount;
             res["publishedCount"] = tftpServer_->PublishedCount();
             res["activeTransfers"] = tftpServer_->ActiveTransferCount();
             return res;
         }
-        if (method == "tftp.start") {
-            std::string bindIp = params.value("bindIp", std::string("0.0.0.0"));
-            uint16_t port = static_cast<uint16_t>(params.value("port", 69));
-            std::wstring err;
-            if (!tftpServer_->Start(bindIp, port, err)) {
+        if (method == "tftp.set_directory") {
+            if (!params.contains("directory") || !params["directory"].is_string()) {
+                return error("directory is required");
+            }
+            const std::string dirUtf8 = params["directory"].get<std::string>();
+            if (dirUtf8.empty()) {
+                return error("directory is required");
+            }
+            bool hasBindIp = false;
+            std::string newBindIp;
+            if (params.contains("bindIp") && !params["bindIp"].is_null()) {
+                if (!params["bindIp"].is_string()) {
+                    return error("bindIp must be a string");
+                }
+                newBindIp = params["bindIp"].get<std::string>();
+                if (!newBindIp.empty()) {
+                    if (!isAllowedBindIp(newBindIp)) {
+                        return error("bindIp must be a valid local IPv4 address from serverIps, 127.0.0.1, or 0.0.0.0");
+                    }
+                    hasBindIp = true;
+                }
+            }
+            const std::wstring dirW = MultiByteToWide(reinterpret_cast<const uint8_t*>(dirUtf8.data()),
+                                                      dirUtf8.size(), CP_UTF8);
+            std::wstring normalized, err;
+            if (!ValidateLocalTftpDirectory(dirW, normalized, err)) {
                 return error(WideToMultiByte(err, CP_UTF8));
             }
-            if (tftpPane_.Handle()) tftpPane_.Refresh();
+            const std::string prevIp = tftpServer_->BindIp();
+            const uint16_t prevPort = tftpServer_->Port();
+            if (!tftpServer_->SetLocalRoot(normalized, err)) {
+                return error(WideToMultiByte(err, CP_UTF8));
+            }
+            if (hasBindIp) {
+                if (tftpServer_->IsListening() && prevIp != newBindIp) {
+                    tftpServer_->Stop();
+                    if (!tftpServer_->Start(newBindIp, prevPort, err)) {
+                        std::wstring rollbackErr;
+                        tftpServer_->Start(prevIp, prevPort, rollbackErr);
+                        if (tftpPane_.Handle()) tftpPane_.Refresh();
+                        return error(WideToMultiByte(err, CP_UTF8));
+                    }
+                }
+                if (tftpPane_.Handle()) {
+                    tftpPane_.ConfigureBindIp(
+                        MultiByteToWide(reinterpret_cast<const uint8_t*>(newBindIp.data()), newBindIp.size(), CP_UTF8),
+                        true);
+                }
+            }
+            if (tftpPane_.Handle()) {
+                tftpPane_.ConfigureDirectory(normalized);
+            }
+            SaveUiState();
+            Json files = Json::array();
+            Json published = Json::array();
+            std::wstring listErr;
+            if (!buildDirFilesJson(normalized, files, published, listErr)) {
+                return error(WideToMultiByte(listErr, CP_UTF8));
+            }
+            const std::string effectiveBindIp = tftpServer_->IsListening()
+                ? tftpServer_->BindIp()
+                : (tftpPane_.Handle() ? WideToMultiByte(tftpPane_.SelectedBindIp(), CP_UTF8)
+                                      : (hasBindIp ? newBindIp : tftpServer_->DefaultIp()));
+            return {
+                {"ok", true},
+                {"directory", WideToMultiByte(normalized, CP_UTF8)},
+                {"listening", tftpServer_->IsListening()},
+                {"bindIp", effectiveBindIp},
+                {"fileCount", files.size()},
+                {"files", files}
+            };
+        }
+        if (method == "tftp.set_bind_ip") {
+            if (!params.contains("bindIp") || !params["bindIp"].is_string()) {
+                return error("bindIp is required");
+            }
+            const std::string newBindIp = params["bindIp"].get<std::string>();
+            if (!isAllowedBindIp(newBindIp)) {
+                return error("bindIp must be a valid local IPv4 address from serverIps, 127.0.0.1, or 0.0.0.0");
+            }
+            if (tftpServer_->IsListening() && tftpServer_->BindIp() != newBindIp) {
+                const std::string prevIp = tftpServer_->BindIp();
+                const uint16_t prevPort = tftpServer_->Port();
+                tftpServer_->Stop();
+                std::wstring err;
+                if (!tftpServer_->Start(newBindIp, prevPort, err)) {
+                    std::wstring rollbackErr;
+                    tftpServer_->Start(prevIp, prevPort, rollbackErr);
+                    if (tftpPane_.Handle()) tftpPane_.Refresh();
+                    return error(WideToMultiByte(err, CP_UTF8));
+                }
+            }
+            if (tftpPane_.Handle()) {
+                tftpPane_.ConfigureBindIp(
+                    MultiByteToWide(reinterpret_cast<const uint8_t*>(newBindIp.data()), newBindIp.size(), CP_UTF8),
+                    true);
+            }
+            SaveUiState();
+            return {
+                {"ok", true},
+                {"bindIp", tftpPane_.Handle() ? WideToMultiByte(tftpPane_.SelectedBindIp(), CP_UTF8) : newBindIp},
+                {"listening", tftpServer_->IsListening()},
+                {"port", tftpServer_->Port()},
+                {"serverIps", tftpServer_->LocalIps()}
+            };
+        }
+        if (method == "tftp.start") {
+            bool hasDirectory = false;
+            std::wstring normalizedDir;
+            if (params.contains("directory") && !params["directory"].is_null()) {
+                if (!params["directory"].is_string()) {
+                    return error("directory must be a string");
+                }
+                const std::string dirUtf8 = params["directory"].get<std::string>();
+                if (!dirUtf8.empty()) {
+                    const std::wstring dirW = MultiByteToWide(
+                        reinterpret_cast<const uint8_t*>(dirUtf8.data()), dirUtf8.size(), CP_UTF8);
+                    std::wstring dirErr;
+                    if (!ValidateLocalTftpDirectory(dirW, normalizedDir, dirErr)) {
+                        return error(WideToMultiByte(dirErr, CP_UTF8));
+                    }
+                    hasDirectory = true;
+                }
+            }
+            bool explicitIpProvided = false;
+            std::string bindIp;
+            if (params.contains("bindIp") && !params["bindIp"].is_null()) {
+                if (!params["bindIp"].is_string()) {
+                    return error("bindIp must be a string");
+                }
+                bindIp = params["bindIp"].get<std::string>();
+                if (!bindIp.empty()) {
+                    if (!isAllowedBindIp(bindIp)) {
+                        return error("bindIp must be a valid local IPv4 address from serverIps, 127.0.0.1, or 0.0.0.0");
+                    }
+                    explicitIpProvided = true;
+                }
+            }
+            if (!explicitIpProvided) {
+                bindIp = tftpPane_.Handle()
+                    ? WideToMultiByte(tftpPane_.SelectedBindIp(), CP_UTF8)
+                    : tftpServer_->DefaultIp();
+            }
+            std::wstring err;
+            if (hasDirectory) {
+                if (!tftpServer_->SetLocalRoot(normalizedDir, err)) {
+                    return error(WideToMultiByte(err, CP_UTF8));
+                }
+                if (tftpPane_.Handle()) {
+                    tftpPane_.ConfigureDirectory(normalizedDir);
+                }
+            }
+            uint16_t port = static_cast<uint16_t>(params.value("port", 69));
+            if (!tftpServer_->Start(bindIp, port, err)) {
+                if (tftpPane_.Handle()) tftpPane_.Refresh();
+                return error(WideToMultiByte(err, CP_UTF8));
+            }
+            if (tftpPane_.Handle()) {
+                if (explicitIpProvided) {
+                    tftpPane_.ConfigureBindIp(
+                        MultiByteToWide(reinterpret_cast<const uint8_t*>(bindIp.data()), bindIp.size(), CP_UTF8),
+                        true);
+                } else {
+                    tftpPane_.Refresh();
+                }
+            }
             SaveUiState();
             return {
                 {"ok", true},
                 {"status", tftpServer_->State()},
                 {"bindIp", tftpServer_->BindIp()},
                 {"port", tftpServer_->Port()},
-                {"serverIps", tftpServer_->LocalIps()}
+                {"serverIps", tftpServer_->LocalIps()},
+                {"directory", WideToMultiByte(tftpServer_->RootConfig().localDirectory, CP_UTF8)}
             };
         }
         if (method == "tftp.stop") {
@@ -5813,54 +6631,7 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
             };
         }
         if (method == "tftp.publish_remote") {
-            std::string tftpName = params.value("tftpName", std::string());
-            std::string remotePath = params.value("remotePath", std::string());
-            std::string sessionId = params.value("sessionId", std::string());
-            bool overwrite = params.value("allowOverwrite", false);
-            if (tftpName.empty() || remotePath.empty()) {
-                return error("tftpName and remotePath are required");
-            }
-            SessionState* targetSession = nullptr;
-            for (const auto& s : sessions_) {
-                if (s->mode == 0 && !s->disconnecting && !s->disconnected &&
-                    s->connection && s->connection->IsConnected()) {
-                    if (sessionId.empty() || sessionId == ("session-" + std::to_string(s->id))) {
-                        targetSession = s.get();
-                        break;
-                    }
-                }
-            }
-            if (!targetSession) {
-                return error("No matching SSH session found");
-            }
-            SshRemoteConfig cfg;
-            cfg.host = targetSession->host;
-            cfg.port = targetSession->port ? targetSession->port : 22;
-            cfg.username = targetSession->username;
-            cfg.password = targetSession->password;
-            cfg.remotePath = MultiByteToWide(reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size(), CP_UTF8);
-            wchar_t configuredRoot[32768]{};
-            const auto count = GetPrivateProfileStringW(L"Tftp", L"RemotePublishRoot", L"", configuredRoot,
-                static_cast<DWORD>(std::size(configuredRoot)), uiSettingsPath_.c_str());
-            std::wstring root(configuredRoot);
-            while (root.size() > 1 && root.back() == L'/') root.pop_back();
-            if (count >= std::size(configuredRoot) - 1 || root.size() <= 1 || root.front() != L'/' ||
-                cfg.remotePath.rfind(root + L"/", 0) != 0)
-                return error("Path is outside the locally configured Tftp.RemotePublishRoot");
-
-            std::wstring err;
-            if (!tftpServer_->PublishRemote(tftpName, cfg, overwrite, err)) {
-                return error(WideToMultiByte(err, CP_UTF8));
-            }
-            if (tftpPane_.Handle()) tftpPane_.Refresh();
-            return {
-                {"ok", true},
-                {"tftpName", tftpName},
-                {"type", "remote"},
-                {"host", WideToMultiByte(cfg.host, CP_UTF8)},
-                {"path", remotePath},
-                {"status", "Ready"}
-            };
+            return error("Remote SSH TFTP streaming has been removed; use local directory mode");
         }
         if (method == "tftp.unpublish") {
             std::string tftpName = params.value("tftpName", std::string());
@@ -5871,22 +6642,52 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
             return {{"ok", ok}, {"tftpName", tftpName}};
         }
         if (method == "tftp.list") {
+            const auto root = tftpServer_->RootConfig();
+            if (root.mode == TftpRootMode::Local && !root.localDirectory.empty()) {
+                Json files = Json::array();
+                Json published = Json::array();
+                std::wstring err;
+                if (!buildDirFilesJson(root.localDirectory, files, published, err)) {
+                    return error(WideToMultiByte(err, CP_UTF8));
+                }
+                return {
+                    {"ok", true},
+                    {"mode", "directory"},
+                    {"directory", WideToMultiByte(root.localDirectory, CP_UTF8)},
+                    {"files", files},
+                    {"published", published}
+                };
+            }
             auto items = tftpServer_->ListPublished();
-            auto arr = Json::array();
+            auto published = Json::array();
+            auto files = Json::array();
             for (const auto& item : items) {
                 auto info = item.source->Info();
-                arr.push_back({
+                const std::string pathUtf8 = WideToMultiByte(info.displayPath, CP_UTF8);
+                published.push_back({
                     {"tftpName", item.tftpName},
                     {"type", info.type},
-                    {"path", WideToMultiByte(info.displayPath, CP_UTF8)},
-                    {"host", WideToMultiByte(info.host, CP_UTF8)},
+                    {"path", pathUtf8},
+                    {"host", ""},
                     {"size", info.size},
                     {"sizeKnown", info.sizeKnown},
                     {"status", info.status},
                     {"error", WideToMultiByte(info.error, CP_UTF8)}
                 });
+                files.push_back({
+                    {"name", item.tftpName},
+                    {"size", info.size},
+                    {"sizeKnown", info.sizeKnown},
+                    {"path", pathUtf8}
+                });
             }
-            return {{"ok", true}, {"published", arr}};
+            return {
+                {"ok", true},
+                {"mode", "published"},
+                {"directory", ""},
+                {"files", files},
+                {"published", published}
+            };
         }
         if (method == "tftp.transfers") {
             auto trans = tftpServer_->ListTransfers();
@@ -5932,6 +6733,30 @@ Json MainWindow::AiDeviceRequest(const std::string& method, const Json& params) 
     if (method.rfind("power.", 0) == 0 || method == "recover") {
         context.selectedChannels = powerPane_.SelectedChannels();
         context.recoveryBinding = powerPane_.RecoveryBinding();
+    }
+    const bool isWriteOp = (method == "command" || method == "text" || method == "key" ||
+                            method == "boot_enter" || method == "boot_arm" ||
+                            method == "boot_stop" || method == "recover");
+    const std::string leasedSid = params.is_object() ? params.value("sessionId", std::string()) : std::string();
+    if (isWriteOp && !leasedSid.empty() && cardId != 0) {
+        if (const auto it = sessionAiWriteOwner_.find(leasedSid);
+            it != sessionAiWriteOwner_.end() && it->second != cardId) {
+            const auto* owner = FindAiCard(it->second);
+            if (owner && owner->pane && owner->pane->TaskRunning()) {
+                return error(u8"该终端正由另一张 AI 卡片操作中，请等待其本轮任务完成或切换目标终端");
+            }
+        }
+        sessionAiWriteOwner_[leasedSid] = cardId;
+    } else if (method == "release" && !leasedSid.empty()) {
+        if (const auto it = sessionAiWriteOwner_.find(leasedSid); it != sessionAiWriteOwner_.end()) {
+            if (cardId != 0 && it->second != cardId) {
+                const auto* owner = FindAiCard(it->second);
+                if (owner && owner->pane && owner->pane->TaskRunning()) {
+                    return {{"released", false}, {"heldByOtherCard", true}};
+                }
+            }
+            sessionAiWriteOwner_.erase(it);
+        }
     }
     bool armBootPulse = false;
     auto result = aiDeviceBridge_.Request(method, params, targets, context, GetTickCount64(), armBootPulse);
@@ -6007,7 +6832,9 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
         rightPanelAnimating_ = false;
         rightPanelAnimatedWidth_ = -1;
         aiVisible_ = false;
-        ShowWindow(aiPane_.Handle(), SW_HIDE);
+        for (auto& card : aiCards_) {
+            if (card && card->pane && card->pane->Handle()) ShowWindow(card->pane->Handle(), SW_HIDE);
+        }
     }
     if (focus != SessionFocus::PowerPreview) { powerVisible_ = false; ShowWindow(powerPane_.Handle(), SW_HIDE); }
     if (!aiVisible_) ShowWindow(terminal_, SW_SHOW);
@@ -6031,6 +6858,8 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
     pendingPort_ = activeSession_->port;
     sftp_.Select(*activeSession_);
     ClearTerminalSelection();
+    if (terminalSearchBar_.Visible()) RefreshTerminalSearch(false);
+    else terminalViewport_.ClearSearchHighlights();
     SyncTerminalVisibility();
     UpdateTerminalDimensions();
     InvalidateRect(terminal_, nullptr, TRUE);
@@ -6058,6 +6887,7 @@ void MainWindow::SwitchSession(size_t index, SessionFocus focus) {
         swprintf_s(timestamp, L"%02u:%02u:%02u · ", t.wHour, t.wMinute, t.wSecond);
         AppendStatus(timestamp + activeSession_->lastStatus, activeSession_->lastStatusIsError);
     } else AppendStatus(L"", false);
+    UpdateAiPetActivity();
 }
 
 bool MainWindow::SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText, std::function<bool()> allowed) {
@@ -7358,7 +8188,8 @@ INT_PTR CALLBACK MainWindow::SettingsDialogProc(HWND dialog, UINT message, WPARA
                 const auto text = self->TerminalSelectionText(false);
                 const auto target = "session-" + std::to_string(self->activeSession_->id);
                 UiEndOwnedDialog(dialog, IDCANCEL);
-                self->ShowAiPage(false); self->aiPane_.AttachSelection(text, target);
+                self->ShowAiPage(false);
+                if (auto* pane = self->ActiveAiPane()) pane->AttachSelection(text, target);
             }
             return TRUE;
         }
@@ -7443,6 +8274,8 @@ void MainWindow::ExecuteTerminalAction(UINT command, HWND owner) {
             activeSession_->terminalHasNewOutput = false;
         }
         ClearTerminalSelection();
+    if (terminalSearchBar_.Visible()) RefreshTerminalSearch(false);
+    else terminalViewport_.ClearSearchHighlights();
         InvalidateRect(terminal_, nullptr, TRUE);
         AppendStatus(L"终端内容已清空", false);
         break;
@@ -7531,6 +8364,8 @@ void MainWindow::PasteToTerminal() {
         ShowClipboardNotice(plan.submitted.empty()?L"已粘贴到 CMD 输入行":L"已提交粘贴内容");
         ScrollTerminalToBottom();
         ClearTerminalSelection();
+    if (terminalSearchBar_.Visible()) RefreshTerminalSearch(false);
+    else terminalViewport_.ClearSearchHighlights();
         InvalidateRect(terminal_, nullptr, FALSE);
         return;
     }
@@ -7553,6 +8388,8 @@ void MainWindow::PasteToTerminal() {
             if (localEchoEnabled_) RecordLocalEchoWidths(activeSession_->localEchoWidths, pasted);
             ScrollTerminalToBottom();
             ClearTerminalSelection();
+    if (terminalSearchBar_.Visible()) RefreshTerminalSearch(false);
+    else terminalViewport_.ClearSearchHighlights();
             ShowClipboardNotice(L"已提交粘贴内容");
         }
     }
@@ -7595,7 +8432,8 @@ TerminalViewport::Options MainWindow::TerminalViewportOptions() const {
         ShowingAiExecTerminal() ? -1 : (activeSession_ ? activeSession_->mode : -1),
         terminalFont_, smallFont_, &performanceMetrics_};
     if (ShowingAiExecTerminal()) {
-        options.emptyHint = aiExecHistory_.empty()
+        const auto* activeCard = ActiveAiCard();
+        options.emptyHint = (!activeCard || activeCard->execHistory.empty())
             ? L""
             : L"正在准备终端输出…";
     } else if (aiVisible_ && aiSidebarTab_ == AiSidebarTab::Terminal && !ActiveTerminalViewState()) {
@@ -7605,7 +8443,196 @@ TerminalViewport::Options MainWindow::TerminalViewportOptions() const {
 }
 
 void MainWindow::PaintTerminal(HDC dc) {
+    if (terminalSearchBar_.Visible()) {
+        const auto* state = ActiveTerminalViewState();
+        const std::uint64_t rev = state ? state->terminal.Revision() : 0;
+        if (state != terminalSearchOwner_) {
+            terminalViewport_.ClearSearchHighlights();
+            terminalSearchMatches_.reset();
+            ScheduleTerminalSearchRefresh();
+        } else if (rev != terminalSearchScheduledRevision_ && !terminalSearchQuery_.empty()) {
+            ScheduleTerminalSearchRefresh();
+        }
+    }
     terminalViewport_.Paint(dc, terminal_, ActiveTerminalViewState(), TerminalViewportOptions());
+}
+
+void MainWindow::ScheduleTerminalSearchRefresh() {
+    if (!window_ || terminalSearchRefreshPending_) return;
+    terminalSearchRefreshPending_ = true;
+    if (SetTimer(window_, TerminalSearchRefreshTimerId, 150, nullptr) == 0) {
+        terminalSearchRefreshPending_ = false;
+        RefreshTerminalSearch(false);
+    }
+}
+
+void MainWindow::OpenTerminalSearch() {
+    if (!terminal_ || !IsWindowVisible(terminal_)) return;
+    terminalSearchBar_.Theme(darkMode_, Ui::Dpi, smallFont_);
+    terminalSearchQuery_ = terminalSearchBar_.Query();
+    terminalSearchBar_.Open(true);
+    RefreshTerminalSearch(false);
+}
+
+void MainWindow::CloseTerminalSearch(bool returnFocus) {
+    if (window_) KillTimer(window_, TerminalSearchRefreshTimerId);
+    terminalSearchRefreshPending_ = false;
+    ++terminalSearchGeneration_;
+    terminalSearchWorker_.Cancel();
+    terminalSearchOwner_ = nullptr;
+    terminalSearchScheduledRevision_ = 0;
+    terminalSearchAppliedRevision_ = 0;
+    terminalSearchScrollOnReady_ = false;
+    terminalSearchMatches_.reset();
+    terminalSearchIndex_ = -1;
+    terminalViewport_.ClearSearchHighlights();
+    terminalSearchBar_.Close(returnFocus);
+    if (terminal_) InvalidateRect(terminal_, nullptr, FALSE);
+}
+
+void MainWindow::ScrollTerminalToMatch(const TerminalSearchMatch& match) {
+    auto* state = ActiveTerminalViewState();
+    if (!state || !terminal_) return;
+    const auto& metrics = terminalViewport_.Metrics();
+    const auto options = TerminalViewportOptions();
+    const bool showTimestamps = options.timestamps && !options.liveMonitor && !state->terminal.AlternateScreen();
+    RECT client{};
+    GetClientRect(terminal_, &client);
+    const RECT defaultBounds = terminalSearchBar_.DefaultCardBoundsInParent();
+
+    TerminalSearchViewportGeometry geom;
+    geom.padding = Ui::TerminalPadding;
+    geom.textLeft = Ui::TerminalPadding + (showTimestamps ? Ui::TerminalTimestampWidth : 0);
+    geom.textRight = std::max(geom.textLeft + std::max(1, metrics.cellWidth),
+        static_cast<int>(client.right) - Ui::OverlayScrollLaneWidth);
+    geom.cellWidth = std::max(1, metrics.cellWidth);
+    geom.lineHeight = std::max(1, metrics.lineHeight);
+    geom.rows = std::max(1, metrics.rows);
+    geom.columns = std::max(1, metrics.columns);
+    geom.lineWrap = state->terminal.LineWrapView();
+    geom.maxColumns = state->terminal.MaximumDisplayColumns();
+    geom.occludedLeft = static_cast<int>(defaultBounds.left);
+    geom.occludedTop = static_cast<int>(defaultBounds.top);
+    geom.occludedRight = static_cast<int>(defaultBounds.right);
+    geom.occludedBottom = static_cast<int>(defaultBounds.bottom);
+
+    const size_t totalLines = state->terminal.DisplayLineCount();
+    const auto offsets = TerminalSearchEngine::ScrollOffsetsForMatch(
+        match, totalLines,
+        state->terminalScrollOffset, state->terminalHorizontalOffset, geom);
+    if (offsets.first != state->terminalScrollOffset) {
+        state->terminalScrollOffset = offsets.first;
+        if (!state->terminalScrollOffset) state->terminalHasNewOutput = false;
+    }
+    if (!geom.lineWrap) {
+        state->terminalHorizontalOffset = offsets.second;
+    }
+
+    RECT avoidRect{};
+    if (!TerminalSearchEngine::IsMatchVisiblyClear(
+            match, totalLines, state->terminalScrollOffset, state->terminalHorizontalOffset, geom) &&
+        TerminalSearchEngine::MatchBoundingRect(
+            match, totalLines, state->terminalScrollOffset, state->terminalHorizontalOffset, geom, avoidRect)) {
+        terminalSearchBar_.SetAvoidRect(&avoidRect);
+    } else {
+        terminalSearchBar_.SetAvoidRect(nullptr);
+    }
+}
+
+void MainWindow::RefreshTerminalSearch(bool scrollToCurrent) {
+    if (window_) KillTimer(window_, TerminalSearchRefreshTimerId);
+    terminalSearchRefreshPending_ = false;
+    ++terminalSearchGeneration_;
+    auto* state = ActiveTerminalViewState();
+    terminalSearchOwner_ = state;
+    terminalSearchScheduledRevision_ = state ? state->terminal.Revision() : 0;
+    if (!state || terminalSearchQuery_.empty()) {
+        terminalSearchWorker_.Cancel();
+        terminalSearchAppliedRevision_ = 0;
+        terminalSearchScrollOnReady_ = false;
+        terminalSearchMatches_.reset();
+        terminalSearchIndex_ = -1;
+        terminalViewport_.ClearSearchHighlights();
+        terminalSearchBar_.SetAvoidRect(nullptr);
+        terminalSearchBar_.SetCountState(-1, 0, !terminalSearchQuery_.empty());
+        if (terminal_) InvalidateRect(terminal_, nullptr, FALSE);
+        return;
+    }
+
+    terminalSearchScrollOnReady_ = scrollToCurrent;
+    auto snap = TerminalSearchEngine::CaptureSnapshot(
+        state->terminal, state, terminalSearchGeneration_, terminalSearchQuery_);
+    terminalSearchWorker_.Submit(std::move(snap));
+}
+
+void MainWindow::ApplyTerminalSearchResult() {
+    auto res = terminalSearchWorker_.ConsumeResult();
+    if (!res) return;
+    if (!terminalSearchBar_.Visible()) return;
+    auto* state = ActiveTerminalViewState();
+    if (!state || res->owner != state || res->owner != terminalSearchOwner_) return;
+    if (res->generation != terminalSearchGeneration_) return;
+    const std::uint64_t currentRev = state->terminal.Revision();
+    if (res->modelRevision != currentRev && res->modelRevision <= terminalSearchAppliedRevision_) return;
+
+    terminalSearchMatches_ = std::move(res->matches);
+    terminalSearchAppliedRevision_ = res->modelRevision;
+    const size_t matchCount = terminalSearchMatches_ ? terminalSearchMatches_->size() : 0;
+    if (matchCount == 0) {
+        terminalSearchIndex_ = -1;
+        terminalSearchBar_.SetAvoidRect(nullptr);
+    } else if (terminalSearchScrollOnReady_ || terminalSearchIndex_ < 0 ||
+               static_cast<size_t>(terminalSearchIndex_) >= matchCount) {
+        const size_t totalLines = state->terminal.DisplayLineCount();
+        const int rows = std::max(1, terminalViewport_.Metrics().rows);
+        const size_t topLine = totalLines > static_cast<size_t>(rows + state->terminalScrollOffset)
+            ? totalLines - static_cast<size_t>(rows + state->terminalScrollOffset)
+            : 0;
+        terminalSearchIndex_ = TerminalSearchEngine::InitialMatchIndex(*terminalSearchMatches_, topLine);
+    }
+
+    if (terminalSearchScrollOnReady_ && terminalSearchIndex_ >= 0 &&
+        static_cast<size_t>(terminalSearchIndex_) < matchCount) {
+        ScrollTerminalToMatch((*terminalSearchMatches_)[static_cast<size_t>(terminalSearchIndex_)]);
+    }
+    terminalSearchScrollOnReady_ = false;
+
+    ++terminalSearchUiRevision_;
+    terminalViewport_.SetSearchHighlights(
+        state, terminalSearchMatches_, terminalSearchIndex_, terminalSearchUiRevision_);
+    terminalSearchBar_.SetCountState(terminalSearchIndex_, matchCount, true);
+    if (terminal_) InvalidateRect(terminal_, nullptr, FALSE);
+
+    if (res->modelRevision < currentRev && !terminalSearchQuery_.empty()) {
+        ScheduleTerminalSearchRefresh();
+    }
+}
+
+void MainWindow::StepTerminalSearch(int delta) {
+    auto* state = ActiveTerminalViewState();
+    if (!state) return;
+    if (state != terminalSearchOwner_) {
+        terminalViewport_.ClearSearchHighlights();
+        terminalSearchMatches_.reset();
+        RefreshTerminalSearch(true);
+        return;
+    }
+    if (state->terminal.Revision() != terminalSearchScheduledRevision_) {
+        ScheduleTerminalSearchRefresh();
+    }
+    if (!terminalSearchMatches_ || terminalSearchMatches_->empty()) return;
+    const size_t matchCount = terminalSearchMatches_->size();
+    terminalSearchIndex_ = TerminalSearchEngine::StepMatchIndex(
+        terminalSearchIndex_, matchCount, delta);
+    if (terminalSearchIndex_ >= 0 &&
+        static_cast<size_t>(terminalSearchIndex_) < matchCount) {
+        ScrollTerminalToMatch((*terminalSearchMatches_)[static_cast<size_t>(terminalSearchIndex_)]);
+    }
+    ++terminalSearchUiRevision_;
+    terminalViewport_.SetSearchHighlights(
+        state, terminalSearchMatches_, terminalSearchIndex_, terminalSearchUiRevision_);
+    terminalSearchBar_.SetCountState(terminalSearchIndex_, matchCount, true);
+    if (terminal_) InvalidateRect(terminal_, nullptr, FALSE);
 }
 
 void MainWindow::ScrollTerminal(int lines) {
@@ -7783,54 +8810,86 @@ std::wstring MainWindow::ConnectionCardTitle(const SessionState& session) {
 
 void MainWindow::RefreshConnectionList() {
     RefreshConnectionActions();
-    size_t selectedIndex = 0;
-    if (activeSession_) {
-        const auto selected = std::find_if(sessions_.begin(), sessions_.end(),
-            [this](const std::unique_ptr<SessionState>& item) { return item.get() == activeSession_; });
-        if (selected != sessions_.end()) selectedIndex = static_cast<size_t>(selected - sessions_.begin());
-    }
     const LRESULT top = SendMessageW(connectionList_, LB_GETTOPINDEX, 0, 0);
-    const auto topId = top >= 0 && static_cast<size_t>(top) < connectionListIds_.size()
-                           ? connectionListIds_[static_cast<size_t>(top)]
-                           : UINT64_MAX;
-    std::vector<std::uint64_t> ids;
-    for (const auto &session : sessions_)
-        ids.push_back(session->id);
-    if (powerPageOpened_)
-        ids.push_back(0);
-    if (aiPageOpened_) ids.push_back(UINT64_MAX - 1);
-    bool same = ids == connectionListIds_ &&
-                SendMessageW(connectionList_, LB_GETCOUNT, 0, 0) == static_cast<LRESULT>(ids.size());
-    if (same)
-        for (size_t i = 0; i < sessions_.size(); ++i) {
+    const NavItem topNav = (top >= 0 && static_cast<size_t>(top) < connectionListItems_.size())
+                               ? connectionListItems_[static_cast<size_t>(top)]
+                               : NavItem{NavItemKind::Session, UINT64_MAX};
+    std::vector<NavItem> items;
+    std::vector<std::wstring> titles;
+    items.reserve(sessions_.size() + (powerPageOpened_ ? 1 : 0) + aiCards_.size());
+    titles.reserve(items.capacity());
+    for (const auto& session : sessions_) {
+        items.push_back({NavItemKind::Session, session->id});
+        titles.push_back(ConnectionCardTitle(*session));
+    }
+    if (powerPageOpened_) {
+        items.push_back({NavItemKind::Power, 0});
+        titles.push_back(L"IT6332A");
+    }
+    for (const auto& card : aiCards_) {
+        if (!card) continue;
+        items.push_back({NavItemKind::AiCard, card->id});
+        titles.push_back(AiCardTitle(*card));
+    }
+    bool same = items.size() == connectionListItems_.size() &&
+                SendMessageW(connectionList_, LB_GETCOUNT, 0, 0) == static_cast<LRESULT>(items.size());
+    if (same) {
+        for (size_t i = 0; i < items.size(); ++i) {
+            if (items[i].kind != connectionListItems_[i].kind || items[i].id != connectionListItems_[i].id) {
+                same = false;
+                break;
+            }
             auto length = SendMessageW(connectionList_, LB_GETTEXTLEN, i, 0);
             std::vector<wchar_t> text(static_cast<size_t>(std::max<LRESULT>(length, 0)) + 1);
             SendMessageW(connectionList_, LB_GETTEXT, i, reinterpret_cast<LPARAM>(text.data()));
-            if (ConnectionCardTitle(*sessions_[i]) != text.data()) {
+            if (titles[i] != text.data()) {
                 same = false;
                 break;
             }
         }
+    }
     if (!same) {
         SendMessageW(connectionList_, WM_SETREDRAW, FALSE, 0);
         SendMessageW(connectionList_, LB_RESETCONTENT, 0, 0);
-        for (const auto &session : sessions_) {
-            const auto title = ConnectionCardTitle(*session);
+        for (const auto& title : titles) {
             SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(title.c_str()));
         }
-        if (powerPageOpened_)
-            SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"IT6332A"));
-        if (aiPageOpened_) SendMessageW(connectionList_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"AI 助手"));
-        auto found = std::find(ids.begin(), ids.end(), topId);
-        const auto anchored = found == ids.end() ? top : static_cast<LRESULT>(std::distance(ids.begin(), found));
-        SendMessageW(connectionList_, LB_SETTOPINDEX, anchored, 0);
+        size_t topIdx = static_cast<size_t>(top >= 0 ? top : 0);
+        for (size_t i = 0; i < items.size(); ++i) {
+            if (items[i].kind == topNav.kind && items[i].id == topNav.id) {
+                topIdx = i;
+                break;
+            }
+        }
+        SendMessageW(connectionList_, LB_SETTOPINDEX, static_cast<WPARAM>(topIdx), 0);
         SendMessageW(connectionList_, WM_SETREDRAW, TRUE, 0);
     }
-    connectionListIds_ = std::move(ids);
-    aiPane_.RefreshTargets();
-    if(powerVisible_)selectedIndex=sessions_.size();
-    if(aiVisible_)selectedIndex=sessions_.size()+(powerPageOpened_?1:0);
-    if (!sessions_.empty() || powerPageOpened_ || aiPageOpened_) {
+    connectionListItems_ = std::move(items);
+    for (auto& card : aiCards_) {
+        if (card && card->pane) card->pane->RefreshTargets();
+    }
+    size_t selectedIndex = 0;
+    bool hasSelection = false;
+    for (size_t i = 0; i < connectionListItems_.size(); ++i) {
+        const auto& nav = connectionListItems_[i];
+        if (aiVisible_ && nav.kind == NavItemKind::AiCard && nav.id == activeAiCardId_) {
+            selectedIndex = i;
+            hasSelection = true;
+            break;
+        }
+        if (powerVisible_ && !aiVisible_ && nav.kind == NavItemKind::Power) {
+            selectedIndex = i;
+            hasSelection = true;
+            break;
+        }
+        if (!aiVisible_ && !powerVisible_ && activeSession_ && nav.kind == NavItemKind::Session && nav.id == activeSession_->id) {
+            selectedIndex = i;
+            hasSelection = true;
+            break;
+        }
+    }
+    (void)hasSelection;
+    if (!connectionListItems_.empty()) {
         auto keepTop = SendMessageW(connectionList_, LB_GETTOPINDEX, 0, 0);
         SendMessageW(connectionList_, LB_SETCURSEL, selectedIndex, 0);
         SendMessageW(connectionList_, LB_SETTOPINDEX, keepTop, 0);
@@ -7862,12 +8921,16 @@ void MainWindow::RefreshPowerTargets() {
         SendMessageW(powerMonitorTarget_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"选择实时终端…"));
         for (const auto &label : labels) SendMessageW(powerMonitorTarget_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
+    const auto* activeAi = ActiveAiPane();
     const std::string activeTarget = aiVisible_
-        ? (aiPreviewSessionId_.empty() ? aiPane_.AssociatedTarget() : aiPreviewSessionId_)
+        ? (aiPreviewSessionId_.empty() ? (activeAi ? activeAi->AssociatedTarget() : std::string()) : aiPreviewSessionId_)
         : powerMonitorSession_;
     const auto selected = std::find(ids.begin(), ids.end(), activeTarget);
     if (!aiVisible_ && selected == ids.end()) powerMonitorSession_.clear();
-    if (aiVisible_ && selected == ids.end() && !aiPreviewSessionId_.empty()) aiPreviewSessionId_.clear();
+    if (aiVisible_ && selected == ids.end() && !aiPreviewSessionId_.empty()) {
+        aiPreviewSessionId_.clear();
+        if (auto* card = ActiveAiCard()) card->previewSessionId.clear();
+    }
     SendMessageW(powerMonitorTarget_, CB_SETCURSEL, selected == ids.end() ? 0 : selected - ids.begin() + 1, 0);
     EnableWindow(powerMonitorTarget_, TRUE);
     powerPane_.SetRecoveryTarget(powerMonitorSession_, selectedLabel, eligible);
@@ -8017,21 +9080,27 @@ int MainWindow::SidebarWidth() const {
                         Ui::Gap);
 }
 bool MainWindow::HasRunningAiExec() const {
-    return std::any_of(aiExecHistory_.begin(), aiExecHistory_.end(),
-                       [](const auto& entry) { return entry.running; });
+    const auto* card = ActiveAiCard();
+    return card && std::any_of(card->execHistory.begin(), card->execHistory.end(),
+                               [](const auto& entry) { return entry.running; });
 }
 
 void MainWindow::SyncAiTargetBinding() {
-    if (!aiPane_.TaskRunning()) {
-        const std::string target = aiPane_.AssociatedTarget();
-        const bool changed = (aiPreviewSessionId_ != target);
+    auto* card = ActiveAiCard();
+    if (!card || !card->pane) return;
+    if (!card->pane->TaskRunning()) {
+        const std::string target = card->pane->AssociatedTarget();
+        const bool changed = (card->previewSessionId != target);
+        card->previewSessionId = target;
         aiPreviewSessionId_ = target;
         if (!target.empty() && !HasRunningAiExec() &&
-            (changed || (aiExecHistory_.empty() && aiSidebarTab_ == AiSidebarTab::Compile))) {
+            (changed || (card->execHistory.empty() && card->sidebarTab == AiSidebarTab::Compile))) {
+            card->sidebarTab = AiSidebarTab::Terminal;
             aiSidebarTab_ = AiSidebarTab::Terminal;
         }
-    } else if (aiPreviewSessionId_.empty() && !aiPane_.AssociatedTarget().empty()) {
-        aiPreviewSessionId_ = aiPane_.AssociatedTarget();
+    } else if (card->previewSessionId.empty() && !card->pane->AssociatedTarget().empty()) {
+        card->previewSessionId = card->pane->AssociatedTarget();
+        aiPreviewSessionId_ = card->previewSessionId;
     }
 }
 
@@ -8195,9 +9264,16 @@ void MainWindow::SaveUiState() {
         snapshot.entries.push_back({L"Mcp", L"AuthToken", MultiByteToWide(reinterpret_cast<const uint8_t*>(mcpAuthToken_.data()), mcpAuthToken_.size(), CP_UTF8)});
     if (tftpServer_) {
         add(L"Tftp", L"Enabled", tftpServer_->IsListening() ? 1 : 0);
-        add(L"Tftp", L"Port", tftpServer_->Port());
-        const auto bindIp = MultiByteToWide(reinterpret_cast<const uint8_t*>(tftpServer_->BindIp().data()), tftpServer_->BindIp().size(), CP_UTF8);
-        snapshot.entries.push_back({L"Tftp", L"BindIp", bindIp.empty() ? L"0.0.0.0" : bindIp});
+        add(L"Tftp", L"Port", 69);
+        add(L"Tftp", L"BindIpExplicit", tftpPane_.IsBindIpExplicit() ? 1 : 0);
+        const std::string fallbackIpUtf8 = tftpServer_->DefaultIp();
+        const auto fallbackIp = MultiByteToWide(reinterpret_cast<const uint8_t*>(fallbackIpUtf8.data()),
+                                                fallbackIpUtf8.size(), CP_UTF8);
+        const auto bindIp = tftpPane_.Handle()
+            ? tftpPane_.SelectedBindIp()
+            : MultiByteToWide(reinterpret_cast<const uint8_t*>(tftpServer_->BindIp().data()),
+                              tftpServer_->BindIp().size(), CP_UTF8);
+        snapshot.entries.push_back({L"Tftp", L"BindIp", bindIp.empty() ? fallbackIp : bindIp});
         auto published = tftpServer_->ListPublished();
         int localCount = 0;
         for (const auto& item : published) {
@@ -8209,9 +9285,7 @@ void MainWindow::SaveUiState() {
             }
         }
         add(L"Tftp", L"LocalCount", localCount);
-        snapshot.entries.push_back({L"Tftp", L"RootMode", tftpPane_.RootMode()});
         snapshot.entries.push_back({L"Tftp", L"LocalRootDir", tftpPane_.LocalDirectory()});
-        snapshot.entries.push_back({L"Tftp", L"RemoteRootDir", tftpPane_.RemoteDirectory()});
     }
     for(const auto& preset:bootPresets_) {
         const auto value=preset.second.first+"|"+std::to_string(preset.second.second);
@@ -8225,9 +9299,9 @@ void MainWindow::LoadTftpState() {
     if (!tftpServer_ || uiSettingsPath_.empty()) return;
     const std::wstring& path = uiSettingsPath_;
     bool tftpEnabled = GetPrivateProfileIntW(L"Tftp", L"Enabled", 0, path.c_str()) != 0;
-    uint16_t tftpPort = static_cast<uint16_t>(GetPrivateProfileIntW(L"Tftp", L"Port", 69, path.c_str()));
     wchar_t bindIpBuf[64]{};
-    GetPrivateProfileStringW(L"Tftp", L"BindIp", L"0.0.0.0", bindIpBuf, 64, path.c_str());
+    GetPrivateProfileStringW(L"Tftp", L"BindIp", L"", bindIpBuf, 64, path.c_str());
+    bool bindIpExplicit = GetPrivateProfileIntW(L"Tftp", L"BindIpExplicit", 0, path.c_str()) != 0;
     std::string bindIp = WideToMultiByte(bindIpBuf, CP_UTF8);
     int localCount = GetPrivateProfileIntW(L"Tftp", L"LocalCount", 0, path.c_str());
     for (int i = 0; i < localCount; ++i) {
@@ -8243,21 +9317,26 @@ void MainWindow::LoadTftpState() {
             tftpServer_->PublishLocal(tftpName, localPath, true, err);
         }
     }
-    wchar_t rootModeBuf[32]{};
-    GetPrivateProfileStringW(L"Tftp", L"RootMode", L"local", rootModeBuf, 32, path.c_str());
     wchar_t localRootBuf[2048]{};
     GetPrivateProfileStringW(L"Tftp", L"LocalRootDir", L"", localRootBuf, 2048, path.c_str());
-    wchar_t remoteRootBuf[2048]{};
-    GetPrivateProfileStringW(L"Tftp", L"RemoteRootDir", L"", remoteRootBuf, 2048, path.c_str());
     if (tftpPane_.Handle()) {
-        tftpPane_.ConfigureDirectories(rootModeBuf, localRootBuf, remoteRootBuf);
-    } else if (std::wstring(rootModeBuf) != L"remote" && localRootBuf[0] != L'\0') {
+        tftpPane_.ConfigureBindIp(bindIpBuf, bindIpExplicit);
+        tftpPane_.ConfigureDirectory(localRootBuf);
+    } else if (localRootBuf[0] != L'\0') {
         std::wstring err;
         tftpServer_->SetLocalRoot(localRootBuf, err);
     }
     if (tftpEnabled) {
+        std::string effectiveBindIp;
+        if (tftpPane_.Handle()) {
+            effectiveBindIp = WideToMultiByte(tftpPane_.SelectedBindIp(), CP_UTF8);
+        } else if (bindIpExplicit && !bindIp.empty()) {
+            effectiveBindIp = bindIp;
+        } else {
+            effectiveBindIp = tftpServer_->DefaultIp();
+        }
         std::wstring err;
-        tftpServer_->Start(bindIp, tftpPort, err);
+        tftpServer_->Start(effectiveBindIp, 69, err);
     }
     if (tftpPane_.Handle()) tftpPane_.Refresh();
 }
@@ -8333,7 +9412,10 @@ XferPane::Target MainWindow::XferTarget() {
         if(boot.state=="prepared"||boot.state=="armed"||boot.state=="interrupting")
             target.unavailable=L"启动打断任务正在使用该串口，请先停止或等待进入目标界面";
         else if(macro_.Running())target.unavailable=L"请先完成或停止命令发送任务";
-        else if(aiPane_.TaskRunning()&&aiPane_.AssociatedTarget()=="session-"+std::to_string(target.id))
+        else if(std::any_of(aiCards_.begin(), aiCards_.end(), [&](const auto& c) {
+            return c && c->pane && c->pane->TaskRunning() &&
+                   c->pane->AssociatedTarget() == "session-" + std::to_string(target.id);
+        }))
             target.unavailable=L"AI 正在使用该串口，请先完成或停止当前 AI 任务";
     }
     return target;
@@ -8377,24 +9459,6 @@ void MainWindow::ShowTftpPanel(bool show) {
     tftpPane_.Refresh();
     for (HWND h : {commandHeader_, sftpTabButton_, xferTabButton_, tftpTabButton_})
         InvalidateRect(h, nullptr, FALSE);
-}
-
-std::vector<TftpSshSessionInfo> MainWindow::GetTftpSshSessions() const {
-    std::vector<TftpSshSessionInfo> list;
-    for (const auto& s : sessions_) {
-        if (s->mode == 0 && !s->host.empty()) {
-            TftpSshSessionInfo info;
-            info.sessionId = "session-" + std::to_string(s->id);
-            info.displayName = s->name.empty() ? (s->username + L"@" + s->host) : s->name;
-            info.host = s->host;
-            info.port = s->port ? s->port : 22;
-            info.username = s->username;
-            info.password = s->password;
-            info.connected = s->connection && s->connection->IsConnected();
-            list.push_back(std::move(info));
-        }
-    }
-    return list;
 }
 
 void MainWindow::QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth) {
@@ -9309,7 +10373,10 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
         SetDlgItemTextW(dialog, IDC_SFTP_INPUT_ERROR, L"");
         FitDialogLabels(dialog);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_LIMITTEXT,
-            self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4 : self->pendingSftpInputPurpose_ == SftpInputPurpose::Path ? 1024 : 255, 0);
+            self->pendingSftpInputPurpose_ == SftpInputPurpose::Mode ? 4
+            : self->pendingSftpInputPurpose_ == SftpInputPurpose::Path ? 1024
+            : self->pendingSftpInputPurpose_ == SftpInputPurpose::CardTitle ? 64
+                                                                           : 255, 0);
         SendDlgItemMessageW(dialog, IDC_SFTP_INPUT, EM_SETMARGINS,
             EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
         CenterOnOwner(dialog, self->window_);
@@ -9361,6 +10428,8 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                     });
             } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Path) {
                 valid = !value.empty() && value.find_first_of(L"\r\n\x001A") == std::wstring::npos && (value.front() == L'/' || value == L"~" || value.rfind(L"~/", 0) == 0);
+            } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::CardTitle) {
+                valid = value.find_first_of(L"\r\n\x001A") == std::wstring::npos;
             } else {
                 valid = !value.empty() && value != L"." && value != L".." &&
                     value.find_first_of(L"/\r\n\x001A") == std::wstring::npos;
@@ -9385,6 +10454,8 @@ INT_PTR CALLBACK MainWindow::SftpInputDialogProc(
                     error = L"请输入三位或四位八进制权限，例如 644。";
             } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::Path) {
                 if (value.empty() || value.find_first_of(L"\r\n\x001A") != std::wstring::npos || !(value.front() == L'/' || value == L"~" || value.rfind(L"~/", 0) == 0)) error = L"请输入绝对路径或 ~/ 路径";
+            } else if (self->pendingSftpInputPurpose_ == SftpInputPurpose::CardTitle) {
+                if (value.find_first_of(L"\r\n\x001A") != std::wstring::npos) error = L"卡片名称不能包含换行或控制字符。";
             } else if (value.empty()) {
                 error = L"名称不能为空。";
             } else if (value == L"." || value == L".." ||
@@ -10086,7 +11157,8 @@ void MainWindow::StopMcpIpc() {
     }
 }
 
-std::unique_ptr<mcp::McpDispatcher> MainWindow::CreateMcpDispatcher(bool http) {
+std::unique_ptr<mcp::McpDispatcher> MainWindow::CreateMcpDispatcher(
+    bool http, std::shared_ptr<ai::LocalWorkspaceService> workspaceOverride) {
     auto dispatcher = std::make_unique<mcp::McpDispatcher>();
     dispatcher->SetGuiStatusChecker([this] { return !closing_.load(); });
     dispatcher->SetGuiLauncher([this](bool focus, std::string& error) {
@@ -10127,9 +11199,20 @@ std::unique_ptr<mcp::McpDispatcher> MainWindow::CreateMcpDispatcher(bool http) {
             return McpExecute("app.service_configure", args);
         return DispatchMcpToUi("app.service_configure", args, http);
     });
-    dispatcher->SetWorkspaceExecutor([ws = localWorkspace_](const std::string& method, const Json& params) {
-        return ws ? ws->ExecuteTool(method, params) : Json{{"error", "Local workspace service unavailable"}};
-    });
+    if (workspaceOverride) {
+        dispatcher->SetWorkspaceExecutor([ws = std::move(workspaceOverride)](const std::string& method, const Json& params) {
+            return ws ? ws->ExecuteTool(method, params) : Json{{"error", "Local workspace service unavailable"}};
+        });
+    } else {
+        dispatcher->SetWorkspaceExecutor([this](const std::string& method, const Json& params) {
+            std::shared_ptr<ai::LocalWorkspaceService> ws;
+            {
+                std::lock_guard<std::mutex> lock(activeMcpWorkspaceMutex_);
+                ws = activeMcpWorkspace_ ? activeMcpWorkspace_ : localWorkspace_;
+            }
+            return ws ? ws->ExecuteTool(method, params) : Json{{"error", "Local workspace service unavailable"}};
+        });
+    }
     return dispatcher;
 }
 
@@ -10182,48 +11265,185 @@ void MainWindow::StartEmbeddedMcpServer() {
 }
 
 void MainWindow::StopEmbeddedMcpServer() {
-    if (!aiLoopbackMcpServer_ || !aiLoopbackMcpServer_->IsRunning()) mcpStopping_.store(true);
+    const bool anyCardLoopback = std::any_of(aiCards_.begin(), aiCards_.end(), [](const auto& card) {
+        return card && card->loopbackMcpServer && card->loopbackMcpServer->IsRunning();
+    });
+    if (!anyCardLoopback) mcpStopping_.store(true);
     if (mcpEmbeddedServer_) {
         mcpEmbeddedServer_->Stop();
         mcpEmbeddedServer_.reset();
     }
 }
 
-uint16_t MainWindow::EnsureAiMcpPort() {
+uint16_t MainWindow::EnsureAiCardMcpPort(std::uint64_t cardId) {
     if (closing_.load()) return 0;
+    auto* card = FindAiCard(cardId);
+    if (!card) return 0;
     mcpStopping_.store(false);
-    if (aiLoopbackMcpServer_ && aiLoopbackMcpServer_->IsRunning()) {
-        return aiLoopbackMcpServer_->Port();
+    if (card->loopbackMcpServer && card->loopbackMcpServer->IsRunning()) {
+        return card->loopbackMcpServer->Port();
     }
-    if (mcpEmbeddedServer_ && mcpEmbeddedServer_->IsRunning() &&
-        (mcpBindIp_ == "127.0.0.1" || mcpBindIp_ == "localhost")) {
-        return mcpPort_;
+    if (!card->loopbackMcpDispatcher) {
+        card->loopbackMcpDispatcher = CreateMcpDispatcher(true, card->localWorkspace);
     }
-    if (!mcpDispatcher_) mcpDispatcher_ = CreateMcpDispatcher(true);
-    aiLoopbackMcpServer_ = std::make_unique<mcp::McpHttpServer>();
+    card->loopbackMcpServer = std::make_unique<mcp::McpHttpServer>();
     std::wstring err;
-    if (!aiLoopbackMcpServer_->Start(
+    if (!card->loopbackMcpServer->Start(
             "127.0.0.1", 0,
-            [this](const std::string& ip, const std::string& body) {
-                return mcpDispatcher_->Dispatch(ip, body);
+            [dispatcher = card->loopbackMcpDispatcher.get()](const std::string& ip, const std::string& body) {
+                return dispatcher->Dispatch(ip, body);
             },
-            [this]() {
-                return mcpDispatcher_->CallTool("127.0.0.1", "app.health", Json::object()).dump();
+            [dispatcher = card->loopbackMcpDispatcher.get()]() {
+                return dispatcher->CallTool("127.0.0.1", "app.health", Json::object()).dump();
             },
             err, true)) {
-        aiLoopbackMcpServer_.reset();
+        card->loopbackMcpServer.reset();
         AppendStatus(L"AI 内部本地 MCP 监听失败：" + err, true);
         return 0;
     }
-    return aiLoopbackMcpServer_->Port();
+    return card->loopbackMcpServer->Port();
 }
 
-void MainWindow::RunAiRemoteFs(const std::string& op, const Json& params, AiPane::RemoteFsCallback done) {
+namespace {
+
+struct SshRemoteSnapshotConfig {
+    std::wstring host;
+    uint16_t port = 22;
+    std::wstring username;
+    std::wstring password;
+    std::wstring remotePath;
+    std::wstring hostKey;
+};
+
+struct SnapshotHandle {
+    HANDLE value = INVALID_HANDLE_VALUE;
+    ~SnapshotHandle() {
+        if (value != INVALID_HANDLE_VALUE) CloseHandle(value);
+    }
+    SnapshotHandle() = default;
+    SnapshotHandle(const SnapshotHandle&) = delete;
+    SnapshotHandle& operator=(const SnapshotHandle&) = delete;
+};
+
+bool CaptureRemoteSshCommand(SshRemoteSnapshotConfig config, const std::wstring& command, size_t maxOutputBytes,
+                             DWORD timeoutMs, std::string& output, std::wstring& error,
+                             const std::atomic<bool>* cancelled) {
+    output.clear();
+    if (config.remotePath.empty() || config.remotePath[0] != L'/' ||
+        std::any_of(config.remotePath.begin(), config.remotePath.end(), [](wchar_t ch) { return ch < 32; })) {
+        error = L"远程路径必须是以 '/' 开头的绝对 POSIX 路径，且不能包含控制字符";
+        return false;
+    }
+    if (config.host.empty() || config.host.front() == L'-' || config.username.empty()) {
+        error = L"SSH 主机或用户名无效";
+        return false;
+    }
+    if (config.hostKey.empty()) config.hostKey = TrustedPuttyHostKey(config.host, config.port);
+    if (config.hostKey.empty()) {
+        error = L"远程发布需要先在 SerialCtl 中核验该 SSH 主机的身份";
+        return false;
+    }
+
+    std::vector<wchar_t> module(32768);
+    const auto count = GetModuleFileNameW(nullptr, module.data(), static_cast<DWORD>(module.size()));
+    if (!count || count >= module.size()) {
+        error = L"无法定位配套 plink.exe";
+        return false;
+    }
+    const auto plink = std::filesystem::path(std::wstring(module.data(), count)).parent_path() / L"plink.exe";
+
+    PasswordPipe password;
+    if (!config.password.empty() && !password.Open(config.password, error)) return false;
+
+    std::wstring cmdLine = QuoteCommandLineArgument(plink.native()) +
+        L" -batch -ssh -T -no-antispoof -no-sanitise-stdout -P " + std::to_wstring(config.port) +
+        L" -l " + QuoteCommandLineArgument(config.username);
+    if (!password.Name().empty()) cmdLine += L" -pwfile " + QuoteCommandLineArgument(password.Name());
+    if (!config.hostKey.empty()) cmdLine += L" -hostkey " + QuoteCommandLineArgument(config.hostKey);
+    cmdLine += L" " + QuoteCommandLineArgument(config.host) + L" " + QuoteCommandLineArgument(command);
+
+    SECURITY_ATTRIBUTES inherit{sizeof(inherit), nullptr, TRUE};
+    SnapshotHandle nullDevice;
+    nullDevice.value = CreateFileW(L"NUL", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                   &inherit, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE reader = nullptr, writer = nullptr;
+    if (nullDevice.value == INVALID_HANDLE_VALUE || !CreatePipe(&reader, &writer, &inherit, 65536)) {
+        error = L"无法创建 plink 输入输出通道";
+        return false;
+    }
+    SnapshotHandle readEnd, writeEnd;
+    readEnd.value = reader;
+    writeEnd.value = writer;
+    RestrictedProcessStartup startup;
+    if (!SetHandleInheritable(reader, false, L"plink 输出", error) ||
+        !startup.Initialize(nullDevice.value, writer, nullDevice.value, {}, error)) {
+        return false;
+    }
+    PROCESS_INFORMATION child{};
+    if (!CreateProcessW(plink.c_str(), cmdLine.data(), nullptr, nullptr, TRUE,
+                        CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr, startup.StartupInfo(), &child)) {
+        error = L"无法启动配套 plink.exe";
+        return false;
+    }
+    CloseHandle(child.hThread);
+    SnapshotHandle childProcess;
+    childProcess.value = child.hProcess;
+    CloseHandle(std::exchange(writeEnd.value, INVALID_HANDLE_VALUE));
+
+    std::array<char, 4096> buffer{};
+    const auto deadline = GetTickCount64() + timeoutMs;
+    bool exited = false;
+    bool overflow = false;
+    DWORD exitCode = 1;
+    while (GetTickCount64() < deadline && !(cancelled && *cancelled)) {
+        if (!config.password.empty()) {
+            password.Poll();
+            if (password.Failed()) break;
+        }
+        DWORD available = 0, read = 0;
+        if (PeekNamedPipe(readEnd.value, nullptr, 0, nullptr, &available, nullptr) && available) {
+            const DWORD want = std::min<DWORD>(available, static_cast<DWORD>(buffer.size()));
+            if (!ReadFile(readEnd.value, buffer.data(), want, &read, nullptr) || !read) break;
+            if (output.size() + read > maxOutputBytes) {
+                overflow = true;
+                break;
+            }
+            output.append(buffer.data(), read);
+            continue;
+        }
+        if (WaitForSingleObject(childProcess.value, 0) == WAIT_OBJECT_0) {
+            if (PeekNamedPipe(readEnd.value, nullptr, 0, nullptr, &available, nullptr) && available) continue;
+            exited = true;
+            break;
+        }
+        Sleep(10);
+    }
+    if (!exited) {
+        TerminateProcess(childProcess.value, 1);
+        WaitForSingleObject(childProcess.value, 1000);
+        error = overflow ? L"SSH 返回数据超出限制" : L"SSH 检查超时";
+        return false;
+    }
+    if (!GetExitCodeProcess(childProcess.value, &exitCode)) {
+        error = L"无法获取 SSH 检查结果";
+        return false;
+    }
+    if (exitCode == 0) return true;
+    error = L"远程 SSH 命令未完成，退出码 " + std::to_wstring(exitCode);
+    return false;
+}
+
+} // namespace
+
+void MainWindow::RunAiRemoteFsForCard(std::uint64_t cardId, const std::string& op, const Json& params,
+                                    AiPane::RemoteFsCallback done) {
     if (!done) return;
     if (closing_.load()) {
         done({{"error", "Application closing"}});
         return;
     }
+    const auto* card = FindAiCard(cardId);
+    const AiPane* cardPane = card ? card->pane.get() : ActiveAiPane();
     const std::string requestedId = params.value("sessionId", std::string());
     SftpController::Endpoint endpoint;
     std::string sid;
@@ -10232,7 +11452,7 @@ void MainWindow::RunAiRemoteFs(const std::string& op, const Json& params, AiPane
         return s && s->mode == 0 && !s->disconnecting && !s->disconnected && s->connection && s->connection->IsConnected();
     };
     if (requestedId == "ai-settings") {
-        haveEndpoint = aiPane_.RemoteAiSshEndpoint(endpoint.host, endpoint.port, endpoint.username, endpoint.password);
+        haveEndpoint = cardPane && cardPane->RemoteAiSshEndpoint(endpoint.host, endpoint.port, endpoint.username, endpoint.password);
         if (!haveEndpoint) {
             done({{"error", "当前远程 AI 连接未配置有效 SSH 凭据，无法访问远程工作空间"}});
             return;
@@ -10261,8 +11481,8 @@ void MainWindow::RunAiRemoteFs(const std::string& op, const Json& params, AiPane
             endpoint = SftpEndpoint(*target);
             sid = "session-" + std::to_string(target->id);
             haveEndpoint = true;
-        } else if (requestedId.empty() &&
-                   aiPane_.RemoteAiSshEndpoint(endpoint.host, endpoint.port, endpoint.username, endpoint.password)) {
+        } else if (requestedId.empty() && cardPane &&
+                   cardPane->RemoteAiSshEndpoint(endpoint.host, endpoint.port, endpoint.username, endpoint.password)) {
             sid = "ai-settings";
             haveEndpoint = true;
         }
@@ -10575,8 +11795,9 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         };
     }
     if (method.rfind("workspace.", 0) == 0) {
-        return localWorkspace_ ? localWorkspace_->ExecuteTool(method, params)
-                               : error("Local workspace service unavailable");
+        auto ws = ActiveLocalWorkspace();
+        return ws ? ws->ExecuteTool(method, params)
+                  : error("Local workspace service unavailable");
     }
 
     // UI-thread security enforcement for both IPC and embedded HTTP callers
@@ -11358,25 +12579,32 @@ Json MainWindow::McpExecute(const std::string& method, const Json& params) {
         };
     }
     if (method == "ai.status") {
+        const auto* pane = ActiveAiPane();
         return {
             {"ok", true},
-            {"connected", aiPane_.Connected()},
-            {"visible", aiVisible_}
+            {"connected", pane && pane->Connected()},
+            {"visible", aiVisible_},
+            {"cardCount", aiCards_.size()}
         };
     }
     if (method == "ai.workspace") {
+        const auto* pane = ActiveAiPane();
         return {
             {"ok", true},
-            {"instructions", aiPane_.WorkspacePractices()}
+            {"instructions", pane ? pane->WorkspacePractices() : std::string()}
         };
     }
     if (method == "ai.send") {
         std::string prompt = params.value("prompt", "");
-        aiPane_.SendPrompt(MultiByteToWide(reinterpret_cast<const uint8_t*>(prompt.data()), prompt.size(), CP_UTF8));
-        return {{"ok", true}, {"sent", true}};
+        if (!ActiveAiPane()) ShowAiPage(false);
+        if (auto* pane = ActiveAiPane()) {
+            pane->SendPrompt(MultiByteToWide(reinterpret_cast<const uint8_t*>(prompt.data()), prompt.size(), CP_UTF8));
+            return {{"ok", true}, {"sent", true}};
+        }
+        return error("AI card unavailable");
     }
     if (method == "ai.stop") {
-        aiPane_.Stop();
+        if (auto* pane = ActiveAiPane()) pane->Stop();
         return {{"ok", true}, {"stopped", true}};
     }
     if (method == "power.output") {
@@ -11482,7 +12710,8 @@ bool MainWindow::ShowingAiExecTerminal() const {
 
 TerminalViewport::State* MainWindow::ActiveTerminalViewState() {
     if (ShowingAiExecTerminal()) {
-        return aiExecHistory_.empty() ? nullptr : &aiExecTerminalState_;
+        const auto* card = ActiveAiCard();
+        return (!card || card->execHistory.empty()) ? nullptr : &aiExecTerminalState_;
     }
     if (aiVisible_) {
         if (aiSidebarTab_ != AiSidebarTab::Terminal || aiPreviewSessionId_.empty()) {
@@ -11499,12 +12728,18 @@ const TerminalViewport::State* MainWindow::ActiveTerminalViewState() const {
 }
 
 void MainWindow::SelectAiSidebarTab(AiSidebarTab tab, bool userInitiated) {
-    if (userInitiated && aiPane_.TaskRunning()) {
-        userOverrodeRightViewInTurn_ = true;
+    auto* card = ActiveAiCard();
+    if (userInitiated && card && card->pane && card->pane->TaskRunning()) {
+        card->userOverrodeRightViewInTurn = true;
     }
     const bool changed = (aiSidebarTab_ != tab);
     aiSidebarTab_ = tab;
-    if (changed) terminalViewport_.ClearSelection();
+    if (card) card->sidebarTab = tab;
+    if (changed) {
+        terminalViewport_.ClearSelection();
+        if (terminalSearchBar_.Visible()) RefreshTerminalSearch(false);
+        else terminalViewport_.ClearSearchHighlights();
+    }
     if (aiVisible_ && aiMonitorCollapsed_ && userInitiated) {
         SetRightPanelCollapsed(false);
     }
@@ -11535,9 +12770,9 @@ void MainWindow::UpdateAiChangesTabBadge() {
         count = aiChangesPane_.CurrentTurnSeq() > 0
             ? aiChangesPane_.CurrentTurnCount()
             : aiChangesPane_.TotalCount();
-    } else {
-        const auto& changes = aiPane_.FileChanges();
-        const auto turnSeq = aiPane_.CurrentTurnSeq();
+    } else if (const auto* pane = ActiveAiPane()) {
+        const auto& changes = pane->FileChanges();
+        const auto turnSeq = pane->CurrentTurnSeq();
         if (turnSeq > 0) {
             for (const auto& change : changes) {
                 if (change.turnSeq == turnSeq) ++count;
@@ -11612,7 +12847,8 @@ void MainWindow::ResetAiExecTerminalToEntry(const AiExecHistoryEntry& entry) {
 void MainWindow::RefreshAiExecCombo() {
     if (!aiExecCombo_) return;
     SendMessageW(aiExecCombo_, CB_RESETCONTENT, 0, 0);
-    if (aiExecHistory_.empty()) {
+    const auto* card = ActiveAiCard();
+    if (!card || card->execHistory.empty()) {
         SendMessageW(aiExecCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"暂无执行命令"));
         SendMessageW(aiExecCombo_, CB_SETCURSEL, 0, 0);
         EnableWindow(aiExecCombo_, FALSE);
@@ -11623,7 +12859,7 @@ void MainWindow::RefreshAiExecCombo() {
     if (aiExecCopyButton_) EnableWindow(aiExecCopyButton_, TRUE);
     int selectedIndex = 0;
     int comboIndex = 0;
-    for (auto it = aiExecHistory_.rbegin(); it != aiExecHistory_.rend(); ++it, ++comboIndex) {
+    for (auto it = card->execHistory.rbegin(); it != card->execHistory.rend(); ++it, ++comboIndex) {
         std::string label;
         if (it->running) label = "[运行中] ";
         else if (it->cancelled) label = "[已取消] ";
@@ -11639,17 +12875,18 @@ void MainWindow::RefreshAiExecCombo() {
         label += cmd;
         auto wide = MultiByteToWide(reinterpret_cast<const std::uint8_t*>(label.data()), label.size(), CP_UTF8);
         SendMessageW(aiExecCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(wide.c_str()));
-        if (it->execId == aiExecSelectedId_) selectedIndex = comboIndex;
+        if (it->execId == card->execSelectedId) selectedIndex = comboIndex;
     }
     SendMessageW(aiExecCombo_, CB_SETCURSEL, selectedIndex, 0);
 }
 
 void MainWindow::CopyAiExecOutput() {
-    if (aiExecHistory_.empty()) return;
+    const auto* card = ActiveAiCard();
+    if (!card || card->execHistory.empty()) return;
     std::wstring text = terminalViewport_.SelectionText(aiExecTerminalState_, true);
     if (text.empty()) {
-        for (const auto& entry : aiExecHistory_) {
-            if (entry.execId == aiExecSelectedId_) {
+        for (const auto& entry : card->execHistory) {
+            if (entry.execId == card->execSelectedId) {
                 const std::string normalized = "$ " + entry.command + "\r\n" +
                     ai::NormalizeLineEndingsForTerminal(entry.rawLog);
                 text = MultiByteToWide(reinterpret_cast<const std::uint8_t*>(normalized.data()), normalized.size(), CP_UTF8);
@@ -11661,14 +12898,31 @@ void MainWindow::CopyAiExecOutput() {
 }
 
 void MainWindow::HandleAiTurnStarted(std::uint64_t turnSeq) {
-    userOverrodeRightViewInTurn_ = false;
+    HandleAiTurnStarted(activeAiCardId_, turnSeq);
+}
+
+void MainWindow::HandleAiTurnStarted(std::uint64_t cardId, std::uint64_t turnSeq) {
+    auto* card = FindAiCard(cardId);
+    if (!card) return;
+    card->userOverrodeRightViewInTurn = false;
+    card->unreadComplete = false;
+    card->unreadError = false;
+    card->fileChangesTurnSeq = turnSeq;
+    if (card->id != activeAiCardId_) return;
     if (aiChangesPane_.Handle()) aiChangesPane_.SetCurrentTurnSeq(turnSeq);
     UpdateAiChangesTabBadge();
 }
 
 void MainWindow::HandleAiExecEvent(const ai::ExecProgressEvent& ev) {
-    auto findEntry = [this](const std::string& id) -> AiExecHistoryEntry* {
-        for (auto& item : aiExecHistory_) {
+    HandleAiExecEvent(activeAiCardId_, ev);
+}
+
+void MainWindow::HandleAiExecEvent(std::uint64_t cardId, const ai::ExecProgressEvent& ev) {
+    auto* card = FindAiCard(cardId);
+    if (!card) return;
+    const bool isActive = (card->id == activeAiCardId_);
+    auto findEntry = [card](const std::string& id) -> AiExecHistoryEntry* {
+        for (auto& item : card->execHistory) {
             if (item.execId == id) return &item;
         }
         return nullptr;
@@ -11676,11 +12930,11 @@ void MainWindow::HandleAiExecEvent(const ai::ExecProgressEvent& ev) {
     if (ev.phase == ai::ExecProgressEvent::Phase::Started) {
         AiExecHistoryEntry* entry = findEntry(ev.execId);
         if (!entry) {
-            if (aiExecHistory_.size() >= 64) {
-                aiExecHistory_.erase(aiExecHistory_.begin());
+            if (card->execHistory.size() >= 64) {
+                card->execHistory.erase(card->execHistory.begin());
             }
-            aiExecHistory_.push_back({});
-            entry = &aiExecHistory_.back();
+            card->execHistory.push_back({});
+            entry = &card->execHistory.back();
         }
         entry->execId = ev.execId;
         entry->command = ev.command;
@@ -11694,11 +12948,16 @@ void MainWindow::HandleAiExecEvent(const ai::ExecProgressEvent& ev) {
         entry->exitCode = 0;
         entry->durationMs = 0;
 
-        aiExecSelectedId_ = ev.execId;
+        card->execSelectedId = ev.execId;
+        if (!card->userOverrodeRightViewInTurn) {
+            card->sidebarTab = AiSidebarTab::Compile;
+        }
+        if (!isActive) return;
+
         RefreshAiExecCombo();
         ResetAiExecTerminalToEntry(*entry);
 
-        if (aiVisible_ && !userOverrodeRightViewInTurn_) {
+        if (aiVisible_ && !card->userOverrodeRightViewInTurn) {
             aiSidebarTab_ = AiSidebarTab::Compile;
             if (aiMonitorCollapsed_) SetRightPanelCollapsed(false);
             RECT r{}; GetClientRect(window_, &r); LayoutControls(r.right, r.bottom);
@@ -11720,7 +12979,7 @@ void MainWindow::HandleAiExecEvent(const ai::ExecProgressEvent& ev) {
             const size_t nl = entry->rawLog.find('\n', drop);
             entry->rawLog.erase(0, nl == std::string::npos ? drop : nl + 1);
         }
-        if (ev.execId == aiExecSelectedId_) {
+        if (isActive && ev.execId == card->execSelectedId) {
             EnsureAiExecParser();
             std::string chunk = entry->utf8Carry + ev.chunk;
             entry->utf8Carry.clear();
@@ -11755,7 +13014,8 @@ void MainWindow::HandleAiExecEvent(const ai::ExecProgressEvent& ev) {
         entry->cancelled = ev.cancelled;
         entry->exitCode = ev.exitCode;
         entry->durationMs = ev.durationMs;
-        if (!entry->utf8Carry.empty() && ev.execId == aiExecSelectedId_) {
+        if (!isActive) return;
+        if (!entry->utf8Carry.empty() && ev.execId == card->execSelectedId) {
             EnsureAiExecParser();
             std::string flushed = std::move(entry->utf8Carry);
             entry->utf8Carry.clear();
@@ -11766,7 +13026,7 @@ void MainWindow::HandleAiExecEvent(const ai::ExecProgressEvent& ev) {
             entry->utf8Carry.clear();
         }
         RefreshAiExecCombo();
-        if (ev.execId == aiExecSelectedId_) {
+        if (ev.execId == card->execSelectedId) {
             EnsureAiExecParser();
             std::string footer;
             if (!entry->rawLog.empty() && entry->rawLog.back() != '\n') footer += "\r\n";
@@ -11786,19 +13046,28 @@ void MainWindow::HandleAiExecEvent(const ai::ExecProgressEvent& ev) {
 }
 
 void MainWindow::FocusAiExecInSidebar(const std::string& execId) {
+    FocusAiExecInSidebar(activeAiCardId_, execId);
+}
+
+void MainWindow::FocusAiExecInSidebar(std::uint64_t cardId, const std::string& execId) {
+    auto* card = FindAiCard(cardId);
+    if (!card) return;
     const AiExecHistoryEntry* found = nullptr;
-    for (const auto& entry : aiExecHistory_) {
+    for (const auto& entry : card->execHistory) {
         if (entry.execId == execId) {
             found = &entry;
             break;
         }
     }
     if (!found) {
-        AppendStatus(L"未找到该命令的输出记录", true);
+        if (card->id == activeAiCardId_)
+            AppendStatus(L"未找到该命令的输出记录", true);
         return;
     }
-    userOverrodeRightViewInTurn_ = false;
-    aiExecSelectedId_ = execId;
+    card->userOverrodeRightViewInTurn = false;
+    card->execSelectedId = execId;
+    card->sidebarTab = AiSidebarTab::Compile;
+    if (card->id != activeAiCardId_) return;
     aiSidebarTab_ = AiSidebarTab::Compile;
     RefreshAiExecCombo();
     ResetAiExecTerminalToEntry(*found);
@@ -11815,15 +13084,35 @@ void MainWindow::HandleAiFileChanges(const std::vector<ai::FileChangeRecord>& re
                                      std::uint64_t turnSeq,
                                      const std::string& focusChangeId,
                                      bool autoSwitch) {
+    HandleAiFileChanges(activeAiCardId_, records, turnSeq, focusChangeId, autoSwitch);
+}
+
+void MainWindow::HandleAiFileChanges(std::uint64_t cardId,
+                                     const std::vector<ai::FileChangeRecord>& records,
+                                     std::uint64_t turnSeq,
+                                     const std::string& focusChangeId,
+                                     bool autoSwitch) {
+    auto* card = FindAiCard(cardId);
+    if (!card) return;
+    card->fileChanges = records;
+    card->fileChangesTurnSeq = turnSeq;
+    if (!focusChangeId.empty()) card->fileChangesFocusId = focusChangeId;
+    else if (records.empty() && turnSeq == 0) card->fileChangesFocusId.clear();
+    const bool isActive = (card->id == activeAiCardId_);
+    const bool shouldSwitch = !focusChangeId.empty() || (autoSwitch && !card->userOverrodeRightViewInTurn);
+    if (shouldSwitch) {
+        if (!focusChangeId.empty() && card->pane && card->pane->TaskRunning()) {
+            card->userOverrodeRightViewInTurn = true;
+        }
+        card->sidebarTab = AiSidebarTab::Changes;
+    }
+    if (!isActive) return;
+
     if (aiChangesPane_.Handle()) {
         aiChangesPane_.SetChanges(records, turnSeq, focusChangeId);
     }
     UpdateAiChangesTabBadge();
-    const bool shouldSwitch = !focusChangeId.empty() || (autoSwitch && !userOverrodeRightViewInTurn_);
     if (shouldSwitch) {
-        if (!focusChangeId.empty() && aiPane_.TaskRunning()) {
-            userOverrodeRightViewInTurn_ = true;
-        }
         aiSidebarTab_ = AiSidebarTab::Changes;
         if (aiVisible_ && aiMonitorCollapsed_) SetRightPanelCollapsed(false);
         if (!focusChangeId.empty() && aiChangesPane_.Handle()) {

@@ -10,7 +10,7 @@ void Check(bool ok, const char *why) {
         throw std::runtime_error(why);
 }
 std::wstring evidenceName;
-bool menuTest = false, saveDialog = false, modalObserved = false, modalFits = true;
+bool menuTest = false, cornerMenuTest = false, saveDialog = false, modalObserved = false, modalFits = true;
 struct OwnerClickProbe {
     unsigned downs = 0, ups = 0;
     static LRESULT CALLBACK Observe(HWND window, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR data) {
@@ -54,6 +54,26 @@ void CALLBACK ModalTimer(HWND, UINT, UINT_PTR timer, DWORD) {
                     r.bottom <= monitor.rcWork.bottom;
     }
     KillTimer(nullptr, timer);
+    if (cornerMenuTest) {
+        RECT r0{};
+        GetWindowRect(h, &r0);
+        MONITORINFO mi{sizeof(mi)};
+        GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi);
+        SendMessageW(h, WM_MOUSEMOVE, 0, MAKELPARAM(60, 56));
+        RECT r1{};
+        GetWindowRect(h, &r1);
+        Check(r1.right == r0.right && r1.left < r0.left,
+              "Opening submenu near right screen edge must keep main menu pinned");
+        Check(r1.left >= mi.rcWork.left && r1.top >= mi.rcWork.top &&
+                  r1.right <= mi.rcWork.right && r1.bottom <= mi.rcWork.bottom,
+              "Submenu escaped monitor work area");
+        SendMessageW(h, WM_MOUSEMOVE, 0, MAKELPARAM(r0.left + 60 - r1.left, r0.top + 24 - r1.top));
+        RECT r2{};
+        GetWindowRect(h, &r2);
+        Check(EqualRect(&r0, &r2), "Closing submenu must keep main menu at its exact anchor");
+        PostMessageW(h, WM_KEYDOWN, VK_ESCAPE, 0);
+        return;
+    }
     if (menuTest) {
         SendMessageW(h, WM_KEYDOWN, VK_DOWN, 0);
         SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 0);
@@ -84,18 +104,34 @@ struct AiPetPaneTestAccess {
                 for (unsigned i = 0; i < actions.count; ++i) {
                     pane.model_.Play(actions.items[i].action, 100);
                     pane.sample_ = pane.model_.At(400);
-                    const unsigned pose = pane.sample_.pose;
-                    const auto &atlas = pose < 36 ? pane.image_ : pane.actionImage_;
-                    const unsigned cell = pose < 36 ? pose : pose - 36;
-                    Gdiplus::Color pixel;
-                    const unsigned tile = atlas->bitmap->GetWidth() / 8;
-                    unsigned opaque = 0;
-                    for (unsigned y = 0; y < tile; y += 5)
-                        for (unsigned x = 0; x < tile; x += 5) {
-                            atlas->bitmap->GetPixel((cell % 8) * tile + x, (cell / 8) * tile + y, &pixel);
-                            if (pixel.GetAlpha() > 128) ++opaque;
+                    if (character == pet::Character::Cat) {
+                        const unsigned basePose = pet::PoseFor(character, actions.items[i].action);
+                        const unsigned tile = pane.catImage_->bitmap->GetWidth() / 8;
+                        for (unsigned f = 0; f < pet::CatFramesPerAction; ++f) {
+                            const unsigned cell = (basePose - pet::CatPoseBase) + f;
+                            Gdiplus::Color pixel;
+                            unsigned opaque = 0;
+                            for (unsigned y = 0; y < tile; y += 5)
+                                for (unsigned x = 0; x < tile; x += 5) {
+                                    pane.catImage_->bitmap->GetPixel((cell % 8) * tile + x, (cell / 8) * tile + y, &pixel);
+                                    if (pixel.GetAlpha() > 128) ++opaque;
+                                }
+                            Check(opaque > 50, "Animated cat action frame is missing embedded sprite pixels");
                         }
-                    Check(opaque > 50, "Selected action is missing embedded sprite pixels");
+                    } else {
+                        const unsigned pose = pane.sample_.pose;
+                        const auto &atlas = pose < 36 ? pane.image_ : pane.actionImage_;
+                        const unsigned cell = pose < 36 ? pose : pose - 36;
+                        Gdiplus::Color pixel;
+                        const unsigned tile = atlas->bitmap->GetWidth() / 8;
+                        unsigned opaque = 0;
+                        for (unsigned y = 0; y < tile; y += 5)
+                            for (unsigned x = 0; x < tile; x += 5) {
+                                atlas->bitmap->GetPixel((cell % 8) * tile + x, (cell / 8) * tile + y, &pixel);
+                                if (pixel.GetAlpha() > 128) ++opaque;
+                            }
+                        Check(opaque > 50, "Selected action is missing embedded sprite pixels");
+                    }
                     const auto dc = GetDC(pane.Handle());
                     pane.Paint(dc);
                     ReleaseDC(pane.Handle(), dc);
@@ -109,6 +145,17 @@ struct AiPetPaneTestAccess {
                                           (dark ? L"-dark.png" : L"-light.png");
                 ui_test::SaveUiEvidence(pane.Handle(), name, [&](HDC dc) { pane.Paint(dc); });
             }
+        }
+        const unsigned actionTile = pane.actionImage_->bitmap->GetWidth() / 8;
+        for (unsigned oldSlot = 27; oldSlot < 39; ++oldSlot) {
+            unsigned opaqueOld = 0;
+            for (unsigned y = 0; y < actionTile; y += 2)
+                for (unsigned x = 0; x < actionTile; x += 2) {
+                    Gdiplus::Color pixel;
+                    pane.actionImage_->bitmap->GetPixel((oldSlot % 8) * actionTile + x, (oldSlot / 8) * actionTile + y, &pixel);
+                    if (pixel.GetAlpha() > 0) ++opaqueOld;
+                }
+            Check(opaqueOld == 0, "Legacy cat sprite must be deleted from ai-pet-actions.png");
         }
     }
     static void Run(AiPetPane &pane, HWND parent) {
@@ -175,6 +222,7 @@ struct AiPetPaneTestAccess {
         for (bool dark : {false, true}) {
             pane.Theme(dark);
             menuTest = true;
+            cornerMenuTest = false;
             evidenceName = dark ? L"v208-pet-menu-dark.png" : L"v208-pet-menu-light.png";
             SetTimer(nullptr, 0, 50, ModalTimer);
             modalObserved = false;
@@ -183,6 +231,20 @@ struct AiPetPaneTestAccess {
             SetFocus(pane.Handle());
             pane.ShowMenu({60, 80});
             Check(modalObserved, "Pet action menu did not remain open for interaction");
+        }
+        {
+            MONITORINFO mi{sizeof(mi)};
+            GetMonitorInfoW(MonitorFromWindow(parent, MONITOR_DEFAULTTONEAREST), &mi);
+            menuTest = true;
+            cornerMenuTest = true;
+            SetTimer(nullptr, 0, 50, ModalTimer);
+            modalObserved = false;
+            SetForegroundWindow(parent);
+            SetActiveWindow(parent);
+            SetFocus(pane.Handle());
+            pane.ShowMenu({mi.rcWork.right - 16, mi.rcWork.bottom - 16});
+            Check(modalObserved, "Corner pet menu regression did not execute");
+            cornerMenuTest = false;
         }
         menuTest = false;
         saveDialog = true;
@@ -454,7 +516,7 @@ int main(int argc, char **argv) {
             Check(pane.Create(parent, font, false, docked), "Cannot decode embedded native pet asset");
             if (argc > 1 && std::string(argv[1]) == "--render-only") {
                 AiPetPaneTestAccess::RenderCharacters(pane);
-                std::cout << "AI pet: all 39 actions rendered in both themes PASS\n";
+                std::cout << "AI pet: all 33 actions (48 animated cat frames) rendered in both themes PASS\n";
             } else {
                 AiPetPaneTestAccess::Run(pane, parent);
                 AiPetPaneTestAccess::RenderCharacters(pane);

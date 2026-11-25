@@ -221,35 +221,26 @@ inline void UiDrawGlyph(HDC dc, const RECT &bounds, COLORREF color, UiGlyph icon
         line(8, 5, 8, 19); line(16, 5, 16, 19);
         break;
     case UiGlyph::Disconnect:
-        pen.SetWidth(2.6f);
-        line(3, 11, 9, 5);
-        line(9, 5, 13, 5);
-        line(3, 11, 3, 15);
-        line(3, 15, 6, 18);
-        line(21, 13, 15, 19);
-        line(15, 19, 11, 19);
-        line(21, 13, 21, 9);
-        line(21, 9, 18, 6);
-        line(8, 16, 16, 8);
+        pen.SetWidth(2.4f);
+        line(6, 6, 18, 18);
+        line(6, 18, 18, 6);
         break;
     case UiGlyph::Reconnect:
-        pen.SetWidth(2.6f);
-        g.DrawArc(&pen, 4.f, 4.f, 16.f, 16.f, 20.f, 304.f);
-        line(19, 9, 19, 4);
-        line(19, 9, 14, 9);
+        pen.SetWidth(3.1f);
+        pen.SetLineJoin(Gdiplus::LineJoinRound);
+        g.DrawArc(&pen, 4.5f, 4.5f, 15.f, 15.f, 24.f, 298.f);
+        g.DrawLine(&pen, 19.5f, 9.2f, 19.5f, 4.2f);
+        g.DrawLine(&pen, 19.5f, 9.2f, 14.5f, 9.2f);
         break;
-    case UiGlyph::ParentFolder:
+    case UiGlyph::ParentFolder: {
         pen.SetWidth(2.1f);
-        line(2, 19, 2, 6);
-        line(2, 6, 8, 6);
-        line(8, 6, 10, 8);
-        line(10, 8, 22, 8);
-        line(22, 8, 22, 19);
-        line(22, 19, 2, 19);
-        line(12, 17, 12, 11);
-        line(9, 14, 12, 11);
-        line(12, 11, 15, 14);
+        pen.SetLineJoin(Gdiplus::LineJoinRound);
+        const Gdiplus::PointF stem[3] = {{18.f, 6.f}, {18.f, 14.f}, {6.f, 14.f}};
+        const Gdiplus::PointF head[3] = {{10.f, 10.f}, {6.f, 14.f}, {10.f, 18.f}};
+        g.DrawLines(&pen, stem, 3);
+        g.DrawLines(&pen, head, 3);
         break;
+    }
     case UiGlyph::Close:
         line(6, 6, 18, 18); line(6, 18, 18, 6);
         break;

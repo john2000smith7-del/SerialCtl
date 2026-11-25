@@ -62,7 +62,7 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
         method = "thread/start";
         params = {
             {"baseInstructions", EngineerInstructions()},
-            {"developerInstructions", u8"可使用 Codex 原生工具读取、修改服务器项目代码并执行服务器命令，权限限于 SSH 登录用户。Windows 内的终端、电源及本程序其他功能可通过 serialctl_ 和 mcp_* 动态工具直接操作；显示实际路径、命令、输出和文件修改结果，不混淆服务器与板端。"},
+            {"developerInstructions", u8"可使用 Codex 原生工具读取、修改服务器项目代码并执行服务器命令，权限限于 SSH 登录用户。Windows 内的终端、电源及本程序其他功能可通过 serialctl_ 和 mcp_* 动态工具直接操作；右侧「修改」面板已展示全部文件变更，回答时仅简要说明本轮新增修改与验证结果，不罗列文件清单、不重复上一轮更改，也不混淆服务器与板端。"},
             {"sandbox", "danger-full-access"},
             {"sandboxPolicy", {{"type", "dangerFullAccess"}}},
             {"approvalPolicy", "never"},
@@ -94,7 +94,7 @@ inline Json MakeRequest(Operation operation, std::uint64_t token, const Json &da
                   {"sandboxPolicy", {{"type", "dangerFullAccess"}}},
                   {"approvalPolicy", "never"},
                   {"baseInstructions", EngineerInstructions()},
-                  {"developerInstructions", u8"工程项目可位于远端服务器或 Windows 本地工作空间；当本回合注入声明当前激活为 Windows 本地工作空间时，一律通过内置 mcp_workspace_* 工具操作本地目录，不要假定本机安装有 git/bash/rg/python；远程目录才使用原生文件及命令工具。终端、电源及本程序功能使用已注册的 serialctl_ 与 mcp_* 工具。"},
+                  {"developerInstructions", u8"工程项目可位于远端服务器或 Windows 本地工作空间；当本回合注入声明当前激活为 Windows 本地工作空间时，一律通过内置 mcp_workspace_* 工具操作本地目录，不要假定本机安装有 git/bash/rg/python；远程目录才使用原生文件及命令工具。终端、电源及本程序功能使用已注册的 serialctl_ 与 mcp_* 工具；右侧「修改」面板已展示文件改动，回答仅说明本轮新增修改和验证结果，不罗列修改文件清单也不重复上一轮更改。"},
                   {"dynamicTools", AllDynamicTools()},
                   {"config", policy}};
         break;
@@ -686,7 +686,7 @@ inline Json MakeAcpRequest(Operation operation, std::uint64_t token, const Json 
                              {{"append", std::string(EngineerInstructions()) + "\n" +
                                              std::string(u8"可使用 Antigravity 工具读取、修改项目代码并执行命令。"
                                                             u8"Windows 内的终端、电源及本程序其他功能可通过 serialctl MCP 工具直接操作；"
-                                                            u8"显示实际路径、命令、输出和文件修改结果，不混淆服务器与板端。")}}}}}};
+                                                            u8"右侧「修改」面板已展示文件变更，回答仅说明本轮新增修改和验证结果，不罗列文件清单、不重复上一轮更改，不混淆服务器与板端。")}}}}}};
     const std::string cwd = data.value("cwd", std::string()).empty() ? std::string("/home/linux/workspace")
                                                                      : data.at("cwd").get<std::string>();
     switch (operation) {

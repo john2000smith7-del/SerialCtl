@@ -1,4 +1,6 @@
 #include "McpService.h"
+#include <algorithm>
+#include <filesystem>
 #include <sddl.h>
 #include <vector>
 
@@ -36,6 +38,44 @@ std::wstring GetSettingsIniPath() {
     auto pos = path.find_last_of(L"\\/");
     if (pos != std::wstring::npos) path = path.substr(0, pos + 1);
     return path + L"state.ini";
+}
+
+bool IsAllowedTftpBindIp(const TftpServer& server, const std::string& ip) {
+    if (ip.empty()) return false;
+    if (ip == "0.0.0.0") return true;
+    sockaddr_in sa{};
+    if (InetPtonA(AF_INET, ip.c_str(), &sa.sin_addr) != 1) return false;
+    if (ip == "127.0.0.1") return true;
+    const auto ips = server.LocalIps();
+    return std::find(ips.begin(), ips.end(), ip) != ips.end();
+}
+
+bool BuildTftpDirFilesJson(const std::wstring& dir, Json& outFiles, Json& outItems, std::wstring& err) {
+    std::vector<TftpDirectoryEntry> entries;
+    if (!ListLocalTftpDirectory(dir, entries, err)) {
+        return false;
+    }
+    outFiles = Json::array();
+    outItems = Json::array();
+    for (const auto& entry : entries) {
+        const std::wstring nameW = Utf8ToWide(entry.name);
+        const std::string fullUtf8 = WideToUtf8((std::filesystem::path(dir) / nameW).native());
+        outFiles.push_back({
+            {"name", entry.name},
+            {"size", entry.size},
+            {"sizeKnown", entry.sizeKnown},
+            {"path", fullUtf8}
+        });
+        outItems.push_back({
+            {"tftpName", entry.name},
+            {"type", "local"},
+            {"path", fullUtf8},
+            {"size", entry.size},
+            {"sizeKnown", entry.sizeKnown},
+            {"status", "Ready"}
+        });
+    }
+    return true;
 }
 }
 
@@ -613,25 +653,165 @@ bool McpService::LaunchGui(bool /*forceFocus*/, std::string& error) {
 
 Json McpService::HandleOfflineTftp(const std::string& method, const Json& params) {
     auto error = [](const std::string& msg) -> Json { return {{"error", msg}}; };
+    const std::string currentSelectedIp = tftpBindIp_.empty() ? tftpServer_.DefaultIp() : tftpBindIp_;
 
     if (method == "tftp.status") {
+        const auto root = tftpServer_.RootConfig();
+        const auto localIps = tftpServer_.LocalIps();
+        const std::string defaultIp = tftpServer_.DefaultIp();
+        const std::string effectiveBindIp = tftpServer_.IsListening() ? tftpServer_.BindIp() : currentSelectedIp;
+        size_t fileCount = tftpServer_.PublishedCount();
+        if (root.mode == TftpRootMode::Local && !root.localDirectory.empty()) {
+            std::vector<TftpDirectoryEntry> entries;
+            std::wstring listErr;
+            fileCount = ListLocalTftpDirectory(root.localDirectory, entries, listErr) ? entries.size() : 0;
+        }
         Json res = {{"ok", true}};
         res["status"] = tftpServer_.State();
         res["listening"] = tftpServer_.IsListening();
-        res["bindIp"] = tftpServer_.BindIp();
+        res["bindIp"] = effectiveBindIp;
+        res["selectedBindIp"] = currentSelectedIp;
+        res["defaultIp"] = defaultIp;
         res["port"] = tftpServer_.Port();
-        res["serverIps"] = tftpServer_.LocalIps();
+        res["serverIps"] = localIps;
+        res["directory"] = WideToUtf8(root.localDirectory);
+        res["rootMode"] = (root.mode == TftpRootMode::Local ? "local" : "none");
+        res["fileCount"] = fileCount;
         res["publishedCount"] = tftpServer_.PublishedCount();
         res["activeTransfers"] = tftpServer_.ActiveTransferCount();
         res["guiOnline"] = false;
         return res;
     }
+    if (method == "tftp.set_directory") {
+        if (!params.contains("directory") || !params["directory"].is_string()) {
+            return error("directory is required");
+        }
+        const std::string dirUtf8 = params["directory"].get<std::string>();
+        if (dirUtf8.empty()) {
+            return error("directory is required");
+        }
+        bool hasBindIp = false;
+        std::string newBindIp;
+        if (params.contains("bindIp") && !params["bindIp"].is_null()) {
+            if (!params["bindIp"].is_string()) return error("bindIp must be a string");
+            newBindIp = params["bindIp"].get<std::string>();
+            if (!newBindIp.empty()) {
+                if (!IsAllowedTftpBindIp(tftpServer_, newBindIp)) {
+                    return error("bindIp must be a valid local IPv4 address from serverIps, 127.0.0.1, or 0.0.0.0");
+                }
+                hasBindIp = true;
+            }
+        }
+        std::wstring normalized, err;
+        if (!ValidateLocalTftpDirectory(Utf8ToWide(dirUtf8), normalized, err)) {
+            return error(WideToUtf8(err));
+        }
+        const std::string prevIp = tftpServer_.BindIp();
+        const uint16_t prevPort = tftpServer_.Port();
+        if (!tftpServer_.SetLocalRoot(normalized, err)) {
+            return error(WideToUtf8(err));
+        }
+        if (hasBindIp) {
+            if (tftpServer_.IsListening() && prevIp != newBindIp) {
+                tftpServer_.Stop();
+                if (!tftpServer_.Start(newBindIp, prevPort, err)) {
+                    std::wstring rollbackErr;
+                    tftpServer_.Start(prevIp, prevPort, rollbackErr);
+                    return error(WideToUtf8(err));
+                }
+            }
+            tftpBindIp_ = newBindIp;
+            tftpBindIpExplicit_ = true;
+        }
+        PersistTftpConfig();
+        Json files = Json::array();
+        Json items = Json::array();
+        std::wstring listErr;
+        if (!BuildTftpDirFilesJson(normalized, files, items, listErr)) {
+            return error(WideToUtf8(listErr));
+        }
+        const std::string effectiveBindIp = tftpServer_.IsListening()
+            ? tftpServer_.BindIp()
+            : (tftpBindIp_.empty() ? tftpServer_.DefaultIp() : tftpBindIp_);
+        return {
+            {"ok", true},
+            {"directory", WideToUtf8(normalized)},
+            {"listening", tftpServer_.IsListening()},
+            {"bindIp", effectiveBindIp},
+            {"fileCount", files.size()},
+            {"files", files}
+        };
+    }
+    if (method == "tftp.set_bind_ip") {
+        if (!params.contains("bindIp") || !params["bindIp"].is_string()) {
+            return error("bindIp is required");
+        }
+        const std::string newBindIp = params["bindIp"].get<std::string>();
+        if (!IsAllowedTftpBindIp(tftpServer_, newBindIp)) {
+            return error("bindIp must be a valid local IPv4 address from serverIps, 127.0.0.1, or 0.0.0.0");
+        }
+        if (tftpServer_.IsListening() && tftpServer_.BindIp() != newBindIp) {
+            const std::string prevIp = tftpServer_.BindIp();
+            const uint16_t prevPort = tftpServer_.Port();
+            tftpServer_.Stop();
+            std::wstring err;
+            if (!tftpServer_.Start(newBindIp, prevPort, err)) {
+                std::wstring rollbackErr;
+                tftpServer_.Start(prevIp, prevPort, rollbackErr);
+                return error(WideToUtf8(err));
+            }
+        }
+        tftpBindIp_ = newBindIp;
+        tftpBindIpExplicit_ = true;
+        PersistTftpConfig();
+        return {
+            {"ok", true},
+            {"bindIp", tftpBindIp_},
+            {"listening", tftpServer_.IsListening()},
+            {"port", tftpServer_.Port()},
+            {"serverIps", tftpServer_.LocalIps()}
+        };
+    }
     if (method == "tftp.start") {
-        std::string ip = params.value("bindIp", bindIp_);
-        uint16_t p = static_cast<uint16_t>(params.value("port", 69));
+        bool hasDirectory = false;
+        std::wstring normalizedDir;
+        if (params.contains("directory") && !params["directory"].is_null()) {
+            if (!params["directory"].is_string()) return error("directory must be a string");
+            const std::string dirUtf8 = params["directory"].get<std::string>();
+            if (!dirUtf8.empty()) {
+                std::wstring dirErr;
+                if (!ValidateLocalTftpDirectory(Utf8ToWide(dirUtf8), normalizedDir, dirErr)) {
+                    return error(WideToUtf8(dirErr));
+                }
+                hasDirectory = true;
+            }
+        }
+        bool explicitIpProvided = false;
+        std::string ip;
+        if (params.contains("bindIp") && !params["bindIp"].is_null()) {
+            if (!params["bindIp"].is_string()) return error("bindIp must be a string");
+            ip = params["bindIp"].get<std::string>();
+            if (!ip.empty()) {
+                if (!IsAllowedTftpBindIp(tftpServer_, ip)) {
+                    return error("bindIp must be a valid local IPv4 address from serverIps, 127.0.0.1, or 0.0.0.0");
+                }
+                explicitIpProvided = true;
+            }
+        }
+        if (!explicitIpProvided) {
+            ip = currentSelectedIp;
+        }
         std::wstring err;
+        if (hasDirectory && !tftpServer_.SetLocalRoot(normalizedDir, err)) {
+            return error(WideToUtf8(err));
+        }
+        uint16_t p = static_cast<uint16_t>(params.value("port", 69));
         if (!tftpServer_.Start(ip, p, err)) {
             return error(WideToUtf8(err));
+        }
+        if (explicitIpProvided) {
+            tftpBindIp_ = ip;
+            tftpBindIpExplicit_ = true;
         }
         PersistTftpConfig();
         return {
@@ -639,7 +819,8 @@ Json McpService::HandleOfflineTftp(const std::string& method, const Json& params
             {"status", tftpServer_.State()},
             {"bindIp", tftpServer_.BindIp()},
             {"port", tftpServer_.Port()},
-            {"serverIps", tftpServer_.LocalIps()}
+            {"serverIps", tftpServer_.LocalIps()},
+            {"directory", WideToUtf8(tftpServer_.RootConfig().localDirectory)}
         };
     }
     if (method == "tftp.stop") {
@@ -666,7 +847,7 @@ Json McpService::HandleOfflineTftp(const std::string& method, const Json& params
         };
     }
     if (method == "tftp.publish_remote") {
-        return error("Remote streaming publish requires GUI with active SSH session");
+        return error("Remote SSH TFTP streaming has been removed; use local directory mode");
     }
     if (method == "tftp.unpublish") {
         std::string tftpName = params.value("tftpName", "");
@@ -676,18 +857,48 @@ Json McpService::HandleOfflineTftp(const std::string& method, const Json& params
         return {{"ok", ok}, {"tftpName", tftpName}};
     }
     if (method == "tftp.list") {
+        const auto root = tftpServer_.RootConfig();
+        if (root.mode == TftpRootMode::Local && !root.localDirectory.empty()) {
+            Json files = Json::array();
+            Json items = Json::array();
+            std::wstring err;
+            if (!BuildTftpDirFilesJson(root.localDirectory, files, items, err)) {
+                return error(WideToUtf8(err));
+            }
+            return {
+                {"ok", true},
+                {"mode", "directory"},
+                {"directory", WideToUtf8(root.localDirectory)},
+                {"files", files},
+                {"items", items}
+            };
+        }
         Json items = Json::array();
+        Json files = Json::array();
         for (const auto& item : tftpServer_.ListPublished()) {
             auto info = item.source ? item.source->Info() : TftpSourceInfo{};
+            const std::string pathUtf8 = WideToUtf8(info.displayPath);
             items.push_back({
                 {"tftpName", item.tftpName},
                 {"type", info.type},
-                {"path", WideToUtf8(info.displayPath)},
+                {"path", pathUtf8},
                 {"size", info.size},
                 {"status", info.status}
             });
+            files.push_back({
+                {"name", item.tftpName},
+                {"size", info.size},
+                {"sizeKnown", info.sizeKnown},
+                {"path", pathUtf8}
+            });
         }
-        return {{"ok", true}, {"items", items}};
+        return {
+            {"ok", true},
+            {"mode", "published"},
+            {"directory", ""},
+            {"files", files},
+            {"items", items}
+        };
     }
     if (method == "tftp.transfers") {
         Json arr = Json::array();
@@ -721,8 +932,16 @@ void McpService::LoadTftpConfig() {
     int enabled = GetPrivateProfileIntW(L"Tftp", L"Enabled", 0, iniPath.c_str());
     int port = GetPrivateProfileIntW(L"Tftp", L"Port", 69, iniPath.c_str());
     wchar_t ipBuf[64]{};
-    GetPrivateProfileStringW(L"Tftp", L"BindIp", L"0.0.0.0", ipBuf, 64, iniPath.c_str());
-    std::string ip = WideToUtf8(ipBuf);
+    GetPrivateProfileStringW(L"Tftp", L"BindIp", L"", ipBuf, 64, iniPath.c_str());
+    const bool bindIpExplicit = GetPrivateProfileIntW(L"Tftp", L"BindIpExplicit", 0, iniPath.c_str()) != 0;
+    const std::string savedIp = WideToUtf8(ipBuf);
+    if (bindIpExplicit && IsAllowedTftpBindIp(tftpServer_, savedIp)) {
+        tftpBindIp_ = savedIp;
+        tftpBindIpExplicit_ = true;
+    } else {
+        tftpBindIp_ = tftpServer_.DefaultIp();
+        tftpBindIpExplicit_ = false;
+    }
 
     int localCount = GetPrivateProfileIntW(L"Tftp", L"LocalCount", -1, iniPath.c_str());
     if (localCount >= 0) {
@@ -754,18 +973,16 @@ void McpService::LoadTftpConfig() {
             }
         }
     }
-    wchar_t rootModeBuf[32]{};
-    GetPrivateProfileStringW(L"Tftp", L"RootMode", L"local", rootModeBuf, 32, iniPath.c_str());
     wchar_t localRootBuf[2048]{};
     GetPrivateProfileStringW(L"Tftp", L"LocalRootDir", L"", localRootBuf, 2048, iniPath.c_str());
-    if (std::wstring(rootModeBuf) != L"remote" && localRootBuf[0] != L'\0') {
+    if (localRootBuf[0] != L'\0') {
         std::wstring err;
         tftpServer_.SetLocalRoot(localRootBuf, err);
     }
 
     if (enabled && !IsGuiRunning() && !tftpServer_.IsListening()) {
         std::wstring err;
-        tftpServer_.Start(ip, static_cast<uint16_t>(port), err);
+        tftpServer_.Start(tftpBindIp_, static_cast<uint16_t>(port), err);
     }
 }
 
@@ -773,7 +990,12 @@ void McpService::PersistTftpConfig() {
     std::wstring iniPath = GetSettingsIniPath();
     WritePrivateProfileStringW(L"Tftp", L"Enabled", tftpServer_.IsListening() ? L"1" : L"0", iniPath.c_str());
     WritePrivateProfileStringW(L"Tftp", L"Port", std::to_wstring(tftpServer_.Port()).c_str(), iniPath.c_str());
-    WritePrivateProfileStringW(L"Tftp", L"BindIp", Utf8ToWide(tftpServer_.BindIp()).c_str(), iniPath.c_str());
+    const std::string effectiveBindIp = tftpServer_.IsListening()
+        ? tftpServer_.BindIp()
+        : (tftpBindIp_.empty() ? tftpServer_.DefaultIp() : tftpBindIp_);
+    WritePrivateProfileStringW(L"Tftp", L"BindIp", Utf8ToWide(effectiveBindIp).c_str(), iniPath.c_str());
+    WritePrivateProfileStringW(L"Tftp", L"BindIpExplicit", tftpBindIpExplicit_ ? L"1" : L"0", iniPath.c_str());
+    WritePrivateProfileStringW(L"Tftp", L"LocalRootDir", tftpServer_.RootConfig().localDirectory.c_str(), iniPath.c_str());
 
     auto published = tftpServer_.ListPublished();
     int localCount = 0;

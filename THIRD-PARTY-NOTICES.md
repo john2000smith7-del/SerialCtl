@@ -6,6 +6,12 @@ SSH 和 SFTP 功能使用 PuTTY 项目的 `plink.exe` 与 `psftp.exe`。其中 `
 
 来源：https://www.chiark.greenend.org.uk/~sgtatham/putty/
 
+## Tftpd32 4.74
+
+TFTP 文件服务功能使用原版未修改的 Tftpd32 4.74 (`tftpd32.exe`，随程序资源内嵌并在运行时以 `tftp32.exe` 托管启动)，许可证为 EUPL v1.1，来源及说明位于 `third_party/tftpd32`。
+
+来源：https://github.com/PJO2/tftpd64/releases/tag/v4.74
+
 ## YY-Thunks 1.2.1
 
 用于兼容 Windows 7，MIT License。许可证全文随交付包保存为 `YY-THUNKS-LICENSE.txt`。

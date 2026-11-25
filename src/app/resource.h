@@ -64,5 +64,6 @@
 #define IdSettingsMcpStop 1506
 #define IdSettingsMcpStart 1507
 #define IDR_VOICE_MODEL 2801
+#define IDR_TFTP32_EXE 2802
 #define IdSettingsMcpRiskNote 1509
 

@@ -265,7 +265,7 @@ struct AiDeviceTestAccess {
                 {"scope", "actual MainWindow and terminal paint/layout and WM_CHAR local echo through a visible Win32 fixture with 1000 seeded lines and fake transport; no UART, physical keyboard or display scan"}};
             main.aiPet_.Shutdown();
             main.powerService_.Shutdown();
-            main.aiPane_.Shutdown();
+            main.ShutdownAllAiCards();
             DestroyWindow(parent);
             for (auto font : {main.uiFont_, main.smallFont_, main.titleFont_, main.terminalFont_}) if (font) DeleteObject(font);
             for (auto brush : {main.windowBrush_, main.panelBrush_, main.terminalBrush_}) if (brush) DeleteObject(brush);

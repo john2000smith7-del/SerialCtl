@@ -1,11 +1,13 @@
 #pragma once
 #include "TerminalViewportController.h"
 #include "TerminalDecoder.h"
+#include "TerminalSearch.h"
 #include "PaintBuffer.h"
 #include <array>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 #include <windows.h>
 namespace serialctl {
 class PerformanceMetrics;
@@ -36,6 +38,8 @@ public:
     std::wstring SelectionText(const State& state, bool all) const { return controller_.SelectionText(state, all); }
     void ShowRegisterPreview(HWND, std::wstring_view selection);
     void DismissRegisterPreview(HWND window = nullptr);
+    void SetSearchHighlights(const State* owner, std::shared_ptr<const std::vector<TerminalSearchMatch>> matches, int currentIndex, std::uint64_t revision);
+    void ClearSearchHighlights();
     void Resize(State& state, bool wrap, bool active, int previousRows) { controller_.Resize(state, wrap, active, previousRows); }
     bool PointToCell(HWND, const State&, POINT, const Options&, size_t&, int&) const;
     void Measure(HWND, HFONT, bool timestamps);
@@ -56,6 +60,7 @@ private:
         std::wstring draft;
         std::wstring emptyHint;
         size_t draftCursor = 0;
+        std::uint64_t searchRevision = 0;
         bool valid = false;
     } cache_;
     struct RegisterPreview {
@@ -65,6 +70,10 @@ private:
     std::optional<RegisterPreview> registerPreview_;
     RECT registerCardBounds_{};
     std::array<RECT, 32> registerBitBounds_{};
+    const State* searchOwner_ = nullptr;
+    std::shared_ptr<const std::vector<TerminalSearchMatch>> searchMatches_;
+    int searchCurrentIndex_ = -1;
+    std::uint64_t searchRevision_ = 0;
     TerminalViewportController controller_;
     PaintBuffer paintBuffer_;
     struct AsyncRasterizer;

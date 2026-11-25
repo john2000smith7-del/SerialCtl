@@ -18,6 +18,7 @@
 #include "TerminalModel.h"
 #include "TerminalParseScheduler.h"
 #include "TerminalViewport.h"
+#include "TerminalSearchBar.h"
 #include "PaintBuffer.h"
 #include "PerformanceMetrics.h"
 #include "BackgroundCleanup.h"
@@ -74,7 +75,12 @@ private:
     using SftpTransferDirection = SftpController::Direction;
     using SftpTransferState = SftpController::TransferState;
     using SftpMutationKind = SftpController::Mutation;
-    enum class SftpInputPurpose { Name, Mode, Path };
+    enum class SftpInputPurpose { Name, Mode, Path, CardTitle };
+    enum class NavItemKind { Session, Power, AiCard };
+    struct NavItem {
+        NavItemKind kind = NavItemKind::Session;
+        std::uint64_t id = 0;
+    };
 
     struct SettingsDialogState {
         MainWindow* owner = nullptr;
@@ -208,6 +214,7 @@ private:
     void ShowPowerPage();
     void ShowAiPage(bool connect = true);
     Json AiDeviceRequest(const std::string&, const Json&);
+    Json AiDeviceRequestForCard(std::uint64_t cardId, const std::string&, const Json&);
     SessionState* FindSession(std::uint64_t id);
     bool SendBytesToActive(const Bytes& data, bool localEcho, const std::wstring& echoedText = {}, std::function<bool()> allowed = {});
     void SendTerminalCharacter(wchar_t character);
@@ -227,6 +234,13 @@ private:
     bool HasTerminalSelection() const;
     std::wstring TerminalSelectionText(bool selectAll) const;
     void CopyTerminalSelection(bool selectAll, bool inspectRegister = false);
+    void OpenTerminalSearch();
+    void CloseTerminalSearch(bool returnFocus = true);
+    void ScheduleTerminalSearchRefresh();
+    void RefreshTerminalSearch(bool scrollToCurrent);
+    void ApplyTerminalSearchResult();
+    void StepTerminalSearch(int delta);
+    void ScrollTerminalToMatch(const TerminalSearchMatch& match);
     void SendCommand(size_t index);
     void SendNextCommandStep();
     using CommandSequenceEnd = CommandMacroController::End;
@@ -291,9 +305,17 @@ private:
     bool CopyTextToClipboard(HWND owner, const std::wstring &text, const wchar_t *notice);
     void CopyAiExecOutput();
     void HandleAiTurnStarted(std::uint64_t turnSeq);
+    void HandleAiTurnStarted(std::uint64_t cardId, std::uint64_t turnSeq);
     void HandleAiExecEvent(const ai::ExecProgressEvent &event);
+    void HandleAiExecEvent(std::uint64_t cardId, const ai::ExecProgressEvent &event);
     void FocusAiExecInSidebar(const std::string &execId);
+    void FocusAiExecInSidebar(std::uint64_t cardId, const std::string &execId);
     void HandleAiFileChanges(const std::vector<ai::FileChangeRecord> &records,
+                             std::uint64_t turnSeq,
+                             const std::string &focusChangeId,
+                             bool autoSwitch);
+    void HandleAiFileChanges(std::uint64_t cardId,
+                             const std::vector<ai::FileChangeRecord> &records,
                              std::uint64_t turnSeq,
                              const std::string &focusChangeId,
                              bool autoSwitch);
@@ -306,7 +328,6 @@ private:
     void ShowSftpPanel(bool show,bool preserveXfer=false);
     void ShowXferPanel();
     void ShowTftpPanel(bool show=true);
-    std::vector<TftpSshSessionInfo> GetTftpSshSessions() const;
     XferPane::Target XferTarget();
     void QueueSidebarVisibility(UiLayoutBatch& batch, int contentWidth);
     void RefreshSftp(const std::wstring& directory = {}, bool followTerminal = false);
@@ -402,17 +423,16 @@ private:
 
     std::vector<HWND> toolbarButtons_;
     ApiServer apiServer_;
-    std::vector<std::uint64_t> connectionListIds_;
+    std::vector<NavItem> connectionListItems_;
     SessionService sessionService_;
     PowerService powerService_;
     AiDeviceBridge aiDeviceBridge_{powerService_, sessionService_};
     PowerPane powerPane_;
-    AiPane aiPane_;
     AiPetPane aiPet_;
     pet::Settings petSettings_;
     std::wstring uiSettingsPath_;
     UiSettingsWriter uiSettingsWriter_;
-    bool aiVisible_ = false, aiPageOpened_ = false;
+    bool aiVisible_ = false;
     bool aiMonitorCollapsed_ = false;
     int aiMonitorWidth_ = 360;
     int aiMonitorRatio_ = 500;
@@ -426,7 +446,6 @@ private:
     HWND aiExecCopyButton_ = nullptr;
     AiChangesPane aiChangesPane_;
     AiSidebarTab aiSidebarTab_ = AiSidebarTab::Terminal;
-    bool userOverrodeRightViewInTurn_ = false;
     std::string aiPreviewSessionId_;
     struct AiExecHistoryEntry {
         std::string execId;
@@ -441,14 +460,54 @@ private:
         int exitCode = 0;
         std::uint64_t durationMs = 0;
     };
+    struct AiCardState {
+        std::uint64_t id = 0;
+        std::wstring customTitle;
+        std::unique_ptr<AiPane> pane;
+        std::shared_ptr<ai::LocalWorkspaceService> localWorkspace;
+        std::unique_ptr<mcp::McpDispatcher> loopbackMcpDispatcher;
+        std::unique_ptr<mcp::McpHttpServer> loopbackMcpServer;
+        AiSidebarTab sidebarTab = AiSidebarTab::Terminal;
+        bool userOverrodeRightViewInTurn = false;
+        std::string previewSessionId;
+        std::vector<AiExecHistoryEntry> execHistory;
+        std::string execSelectedId;
+        std::vector<ai::FileChangeRecord> fileChanges;
+        std::uint64_t fileChangesTurnSeq = 0;
+        std::string fileChangesFocusId;
+        bool unreadComplete = false;
+        bool unreadError = false;
+        bool wasTaskRunning = false;
+    };
+    std::vector<std::unique_ptr<AiCardState>> aiCards_;
+    std::uint64_t activeAiCardId_ = 0;
+    std::uint64_t nextAiCardId_ = 1;
+    std::map<std::string, std::uint64_t> sessionAiWriteOwner_;
     TerminalViewport::State aiExecTerminalState_;
     std::shared_ptr<TerminalParseScheduler::Context> aiExecParser_;
     std::uint64_t aiExecMinimumSequence_ = 0;
     std::uint64_t aiExecSnapshotSequence_ = 0;
-    std::vector<AiExecHistoryEntry> aiExecHistory_;
-    std::string aiExecSelectedId_;
     bool aiRemoteConnect_ = false;
+    std::uint64_t aiRemoteConnectCardId_ = 0;
     HWND aiButton_ = nullptr;
+
+    AiCardState* FindAiCard(std::uint64_t cardId);
+    const AiCardState* FindAiCard(std::uint64_t cardId) const;
+    AiCardState* ActiveAiCard();
+    const AiCardState* ActiveAiCard() const;
+    AiPane* ActiveAiPane();
+    const AiPane* ActiveAiPane() const;
+    std::shared_ptr<ai::LocalWorkspaceService> ActiveLocalWorkspace() const;
+    std::wstring AiCardTitle(const AiCardState& card) const;
+    bool AnyAiConnected() const;
+    bool AnyAiBusy() const;
+    void UpdateAiPetActivity();
+    AiCardState* CreateAiCard();
+    void OpenNewAiCard();
+    void SelectAiCard(std::uint64_t cardId, bool connectIfDisconnected = false);
+    void CloseAiCard(std::uint64_t cardId);
+    void ShowAiCardContextMenu(std::uint64_t cardId, POINT screenPoint);
+    void ShutdownAllAiCards();
     bool powerVisible_ = false;
     bool powerPageOpened_ = false;
     bool powerMonitorCollapsed_ = false, powerMonitorWrap_ = false;
@@ -587,6 +646,18 @@ private:
     BackgroundCleanup connectionCleanup_;
     PaintBuffer windowPaintBuffer_;
     TerminalViewport terminalViewport_;
+    TerminalSearchBar terminalSearchBar_;
+    TerminalSearchWorker terminalSearchWorker_;
+    const TerminalViewport::State* terminalSearchOwner_ = nullptr;
+    std::uint64_t terminalSearchGeneration_ = 0;
+    std::uint64_t terminalSearchScheduledRevision_ = 0;
+    std::uint64_t terminalSearchAppliedRevision_ = 0;
+    std::uint64_t terminalSearchUiRevision_ = 0;
+    std::wstring terminalSearchQuery_;
+    std::shared_ptr<const std::vector<TerminalSearchMatch>> terminalSearchMatches_;
+    int terminalSearchIndex_ = -1;
+    bool terminalSearchRefreshPending_ = false;
+    bool terminalSearchScrollOnReady_ = false;
     mutable PerformanceMetrics performanceMetrics_;
     TerminalParseScheduler terminalParser_;
     std::atomic_bool connectionCancel_{false};
@@ -651,9 +722,10 @@ private:
 
     std::unique_ptr<mcp::McpIpcServer> mcpIpcServer_;
     std::unique_ptr<mcp::McpHttpServer> mcpEmbeddedServer_;
-    std::unique_ptr<mcp::McpHttpServer> aiLoopbackMcpServer_;
     std::unique_ptr<mcp::McpDispatcher> mcpDispatcher_;
     std::shared_ptr<ai::LocalWorkspaceService> localWorkspace_ = std::make_shared<ai::LocalWorkspaceService>();
+    mutable std::mutex activeMcpWorkspaceMutex_;
+    std::shared_ptr<ai::LocalWorkspaceService> activeMcpWorkspace_;
     BackgroundCleanup aiRemoteFsWorker_;
     std::atomic<bool> mcpStopping_{false};
     bool mcpEnabled_ = true;
@@ -664,11 +736,13 @@ private:
 
     void StartMcpIpc();
     void StopMcpIpc();
-    std::unique_ptr<mcp::McpDispatcher> CreateMcpDispatcher(bool http);
+    std::unique_ptr<mcp::McpDispatcher> CreateMcpDispatcher(
+        bool http, std::shared_ptr<ai::LocalWorkspaceService> workspaceOverride = nullptr);
     void StartEmbeddedMcpServer();
     void StopEmbeddedMcpServer();
-    uint16_t EnsureAiMcpPort();
-    void RunAiRemoteFs(const std::string& op, const Json& params, AiPane::RemoteFsCallback done);
+    uint16_t EnsureAiCardMcpPort(std::uint64_t cardId);
+    void RunAiRemoteFsForCard(std::uint64_t cardId, const std::string& op, const Json& params,
+                              AiPane::RemoteFsCallback done);
     void ApplyMcpSettings(bool enabled, uint16_t port);
     Json DispatchMcpToUi(const std::string& method, const Json& params, bool http);
     Json McpExecute(const std::string& method, const Json& params);

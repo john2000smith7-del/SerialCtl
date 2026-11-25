@@ -1,0 +1,13 @@
+Tftpd32 v4.74
+Copyright (c) Philippe Jounin
+
+Upstream: https://github.com/PJO2/tftpd64/releases/tag/v4.74
+Source archive: tftpd32_portable_v4.74.zip (tftpd32.exe, stored as tftp32.exe)
+
+License: European Union Public Licence v.1.1 (EUPL v1.1)
+Included upstream license document: EUPL-EN.pdf (SHA-256: cd5d9e2a925d8daa92d083fd8c1cea48df1bcfffd857f4f93e2148fddc5001ec)
+Full EUPL v1.1 text: https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-11
+
+SerialCtl bundles the unmodified upstream Tftpd32 v4.74 binary (`tftp32.exe`)
+as an embedded resource and invokes it as an unmodified standalone TFTP server
+process via `CreateProcessW` and `tftpd32.ini`.

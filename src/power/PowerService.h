@@ -63,7 +63,7 @@ class PowerService {
     void Outputs(const Json &channels, bool enabled, Json &result);
     void StopTask(Json *offResults = nullptr, bool completed = false, bool preserveOutputs = false);
     void CancelKeywordCycle(const wchar_t *reason); // mutex_ held
-    void Disconnect(bool preserveOutputs = false, Json *action = nullptr);
+    void Disconnect(bool preserveOutputs = false, Json *action = nullptr, bool manualDisconnect = false);
     void Command(const std::string &command);
     std::string Query(const std::string &command);
     double Number(const std::string &command);

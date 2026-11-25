@@ -9,6 +9,9 @@ enum class Activity { Offline, Connecting, Idle, Thinking, Working, Replying, Do
 enum class Action { None, Idle, Wave, Boxing, Hop, Dance, Cheer, Listen, Think, Work, Reply, Concern, Settle, Walk,
                     Stretch, Sleep, Groom, Treat };
 enum class Character { Whale, Lulu, Cat };
+inline constexpr unsigned CatPoseBase = 80;
+inline constexpr unsigned CatFramesPerAction = 8;
+inline constexpr unsigned CatActionCount = 6;
 inline const wchar_t *CharacterName(Character character) {
     constexpr const wchar_t *names[] = {L"鲸鱼娘", L"水豚噜噜", L"小猫"};
     return names[static_cast<unsigned>(character)];
@@ -26,14 +29,47 @@ inline CharacterActions ActionsFor(Character character) {
         {Action::Think,L"托腮思考"}, {Action::Work,L"敲键盘"}, {Action::Reply,L"举书展示"}, {Action::Cheer,L"跳起庆祝"},
         {Action::Concern,L"歪头担心"}, {Action::Settle,L"放下双手"}, {Action::Sleep,L"坐着打盹"}, {Action::Treat,L"吃冰淇淋"}};
     static constexpr PoseAction cat[] = {
-        {Action::Idle,L"坐好"}, {Action::Listen,L"竖耳探身"}, {Action::Think,L"托腮"}, {Action::Work,L"敲键盘"},
-        {Action::Reply,L"举纸抬头"}, {Action::Cheer,L"举爪跳起"}, {Action::Concern,L"歪头垂耳"}, {Action::Settle,L"收爪坐定"},
-        {Action::Stretch,L"伸懒腰"}, {Action::Groom,L"舔爪洗脸"}, {Action::Walk,L"迈步"}, {Action::Sleep,L"蜷睡"}};
+        {Action::Idle, L"待机"},
+        {Action::Listen, L"倾听"},
+        {Action::Think, L"思考"},
+        {Action::Work, L"工作"},
+        {Action::Stretch, L"伸懒腰"},
+        {Action::Walk, L"走路"}};
     if (character == Character::Lulu) return {lulu, 12, 15};
-    if (character == Character::Cat) return {cat, 12, 27};
+    if (character == Character::Cat) return {cat, CatActionCount, 0};
     return {whale, 15, 0};
 }
+inline unsigned CatActionRow(Action action) {
+    switch (action) {
+    case Action::Idle: return 0;
+    case Action::Listen: return 1;
+    case Action::Think: return 2;
+    case Action::Work: return 3;
+    case Action::Stretch: return 4;
+    case Action::Walk: return 5;
+    default: return 0;
+    }
+}
+inline unsigned CatFrameDurationMs(Action action) {
+    switch (action) {
+    case Action::Idle: return 220;
+    case Action::Listen: return 180;
+    case Action::Think: return 180;
+    case Action::Work: return 160;
+    case Action::Stretch: return 140;
+    case Action::Walk: return 180;
+    default: return 220;
+    }
+}
+inline unsigned CatPoseFrame(Action action, std::uint64_t elapsedMs) {
+    const unsigned row = CatActionRow(action);
+    const unsigned frame = static_cast<unsigned>((elapsedMs / CatFrameDurationMs(action)) % CatFramesPerAction);
+    return CatPoseBase + row * CatFramesPerAction + frame;
+}
 inline unsigned PoseFor(Character character, Action action) {
+    if (character == Character::Cat) {
+        return CatPoseBase + CatActionRow(action) * CatFramesPerAction;
+    }
     const auto actions = ActionsFor(character);
     for (unsigned i = 0; i < actions.count; ++i)
         if (actions.items[i].action == action) return 36 + actions.offset + i;
@@ -209,6 +245,70 @@ class Model {
     }
     Sample Last(std::uint64_t now) const {
         Sample sample;
+        if (settings_.character == Character::Cat) {
+            sample.breath = 1.0;
+            if (action_ != Action::None) {
+                sample.manual = true;
+                sample.opening = opening_;
+                const auto time = Age(now, actionAt_);
+                Action chosen = action_;
+                if (chosen == Action::Wave) chosen = Action::Listen;
+                else if (chosen != Action::Idle && chosen != Action::Listen && chosen != Action::Think &&
+                         chosen != Action::Work && chosen != Action::Stretch && chosen != Action::Walk) {
+                    chosen = Action::Idle;
+                }
+                const auto actions = ActionsFor(Character::Cat);
+                sample.pose = CatPoseFrame(chosen, time);
+                sample.label = actions.items[CatActionRow(chosen)].name;
+                return sample;
+            }
+            const auto activity = settings_.follow ? activity_ : Activity::Idle;
+            const auto age = Age(now, activityAt_);
+            Action pose = Action::Idle;
+            std::uint64_t animAge = age;
+            switch (activity) {
+            case Activity::Offline:
+                sample.label = L"AI 未连接";
+                break;
+            case Activity::Connecting:
+                pose = Action::Listen;
+                sample.label = L"正在连接 AI…";
+                break;
+            case Activity::Thinking:
+                pose = Action::Think;
+                sample.label = L"正在思考…";
+                break;
+            case Activity::Working:
+                pose = Action::Work;
+                sample.label = L"正在处理工具任务…";
+                break;
+            case Activity::Replying:
+                pose = Action::Work;
+                sample.label = L"正在整理回复…";
+                break;
+            case Activity::Done:
+                if (age < 1120) pose = Action::Stretch;
+                else animAge = age - 1120;
+                if (age < 5500) sample.label = L"任务已完成";
+                break;
+            case Activity::Failed:
+                pose = Action::Listen;
+                sample.label = L"任务遇到问题，请查看对话";
+                break;
+            case Activity::Stopped:
+                pose = Action::Idle;
+                sample.label = L"任务已停止";
+                break;
+            case Activity::Idle:
+                if (settings_.follow && age >= 12000 && age % 12000 < 2240) {
+                    pose = Action::Stretch;
+                    animAge = age % 12000;
+                }
+                break;
+            }
+            sample.pose = CatPoseFrame(pose, animAge);
+            return sample;
+        }
         sample.breath = 1 + .008 * std::sin(static_cast<double>(now % 4000) * 6.283185307179586 / 4000);
         if (action_ != Action::None) {
             sample.manual = true;

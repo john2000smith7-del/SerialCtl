@@ -58,6 +58,7 @@ file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-black.png" SERIAL
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/toolbar-white.png" SERIALCTL_TOOLBAR_WHITE_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/ai-pet.png" SERIALCTL_AI_PET_PATH)
 file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/ai-pet-actions.png" SERIALCTL_AI_PET_ACTIONS_PATH)
+file(TO_CMAKE_PATH "${SERIALCTL_SOURCE_DIR}/app/assets/ai-pet-cat.png" SERIALCTL_AI_PET_CAT_PATH)
 foreach(asset surface-fill surface-stroke utility-icons)
     string(REPLACE "-" "_" variable "${asset}")
     string(TOUPPER "${variable}" variable)
@@ -107,6 +108,8 @@ if(NOT EXISTS "${YY_THUNKS_OBJECT}")
 endif()
 set_source_files_properties("${YY_THUNKS_OBJECT}" PROPERTIES EXTERNAL_OBJECT TRUE)
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 function(serialctl_add_whisper)
     set(vendor "${CMAKE_CURRENT_SOURCE_DIR}/third_party/whisper")
     set(archive "${vendor}/whisper.cpp-1.7.6.tar.gz")
@@ -136,11 +139,37 @@ function(serialctl_add_whisper)
         target_compile_definitions(${target} PRIVATE WINVER=0x0601 _WIN32_WINNT=0x0601)
         set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}")
     endforeach()
-    set(SERIALCTL_VOICE_MODEL_PATH "${model}")
+    file(SIZE "${model}" model_raw_size)
+    set(compressed_model "${SERIALCTL_GENERATED_DIR}/ggml-tiny-q4_0.zlib")
+    if(NOT EXISTS "${compressed_model}")
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}" -c
+                "import pathlib, sys, zlib; pathlib.Path(sys.argv[2]).write_bytes(zlib.compress(pathlib.Path(sys.argv[1]).read_bytes(), 6))"
+                "${model}" "${compressed_model}"
+            RESULT_VARIABLE compress_result
+        )
+        if(NOT compress_result EQUAL 0 OR NOT EXISTS "${compressed_model}")
+            message(FATAL_ERROR "Failed to compress embedded voice model: ${model}")
+        endif()
+    endif()
+    set(SERIALCTL_VOICE_MODEL_RAW_SIZE "${model_raw_size}" PARENT_SCOPE)
+    file(TO_CMAKE_PATH "${compressed_model}" SERIALCTL_VOICE_MODEL_PATH)
     configure_file("${SERIALCTL_SOURCE_DIR}/app/voice-model.rc.in"
                    "${SERIALCTL_GENERATED_DIR}/voice-model.rc" @ONLY)
 endfunction()
 serialctl_add_whisper()
+
+set(SERIALCTL_TFTP32_BIN "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tftpd32/tftp32.exe")
+if(NOT EXISTS "${SERIALCTL_TFTP32_BIN}")
+    message(FATAL_ERROR "Bundled Tftpd32 binary is missing: ${SERIALCTL_TFTP32_BIN}")
+endif()
+file(SHA256 "${SERIALCTL_TFTP32_BIN}" SERIALCTL_TFTP32_HASH)
+if(NOT SERIALCTL_TFTP32_HASH STREQUAL "2c9263e39f60c81a721b9fc7af2cba2f6e0eaae8abf22e8d0734f207a61a2dc4")
+    message(FATAL_ERROR "Bundled Tftpd32 binary failed SHA-256 verification")
+endif()
+file(TO_CMAKE_PATH "${SERIALCTL_TFTP32_BIN}" SERIALCTL_TFTP32_PATH)
+configure_file("${SERIALCTL_SOURCE_DIR}/app/tftp32.rc.in"
+               "${SERIALCTL_GENERATED_DIR}/tftp32.rc" @ONLY)
 
 set(SERIALCTL_PRIVATE_INCLUDE_DIRS
     "${SERIALCTL_SOURCE_DIR}/app"
@@ -217,6 +246,7 @@ add_executable(serialctl WIN32
     src/mcp/McpStdioBridge.cpp
     src/app/MainWindow.cpp
     src/app/TerminalViewport.cpp
+    src/app/TerminalSearchBar.cpp
     src/app/CommandMacroController.cpp
     src/app/ToolbarIcons.cpp
     src/app/PowerPane.cpp
@@ -265,12 +295,14 @@ add_executable(serialctl WIN32
     src/terminal/TerminalModel.cpp
     src/terminal/TerminalParseScheduler.cpp
     "${SERIALCTL_GENERATED_DIR}/serialctl.rc"
+    "${SERIALCTL_GENERATED_DIR}/tftp32.rc"
 )
 serialctl_configure_native_target(serialctl WINDOWS)
 target_sources(serialctl PRIVATE src/ai/AiVoiceWorker.cpp "${SERIALCTL_GENERATED_DIR}/voice-model.rc")
 target_link_libraries(serialctl PRIVATE whisper)
 target_compile_definitions(serialctl PRIVATE SERIALCTL_VERSION=L"${SERIALCTL_CPP_VERSION}")
 target_compile_definitions(serialctl PRIVATE SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
+target_compile_definitions(serialctl PRIVATE SERIALCTL_VOICE_MODEL_RAW_SIZE=${SERIALCTL_VOICE_MODEL_RAW_SIZE})
 if(MSVC)
     # serialctl.rc embeds the generated, version-controlled application manifest.
     # Disable the linker-generated default manifest to avoid duplicate RT_MANIFEST
@@ -620,7 +652,6 @@ if(BUILD_TESTING)
     target_link_libraries(shared_terminal_response_test PRIVATE ws2_32 advapi32)
     add_test(NAME shared_terminal_response COMMAND shared_terminal_response_test)
     set_tests_properties(shared_terminal_response PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME api_client COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/test_api_client.py")
     set_tests_properties(api_client PROPERTIES TIMEOUT 30)
@@ -682,12 +713,10 @@ if(BUILD_TESTING)
         tests/integration/TftpServerTest.cpp
         src/tftp/TftpServer.cpp
         src/tftp/TftpFileSource.cpp
-        src/connections/PasswordPipe.cpp
-        src/connections/ChildProcess.cpp
-        src/connections/PuttyHostKey.cpp
+        "${SERIALCTL_GENERATED_DIR}/tftp32.rc"
     )
     serialctl_configure_native_target(tftp_server_test CONSOLE)
-    target_link_libraries(tftp_server_test PRIVATE ws2_32 advapi32 ole32)
+    target_link_libraries(tftp_server_test PRIVATE ws2_32)
     add_test(NAME tftp_server COMMAND tftp_server_test)
     set_tests_properties(tftp_server PROPERTIES TIMEOUT 40)
 
@@ -701,16 +730,14 @@ if(BUILD_TESTING)
         src/ai/LocalWorkspace.cpp
         src/tftp/TftpServer.cpp
         src/tftp/TftpFileSource.cpp
-        src/connections/PasswordPipe.cpp
-        src/connections/ChildProcess.cpp
-        src/connections/PuttyHostKey.cpp
         src/power/PowerService.cpp
         src/logging/SessionLogger.cpp
         src/logging/OperationAuditLogger.cpp
+        "${SERIALCTL_GENERATED_DIR}/tftp32.rc"
     )
     serialctl_configure_native_target(mcp_server_test CONSOLE)
     target_compile_definitions(mcp_server_test PRIVATE SERIALCTL_POWER_TESTING SERIALCTL_APP_VERSION="${SERIALCTL_CPP_VERSION}")
-    target_link_libraries(mcp_server_test PRIVATE shell32 ws2_32 advapi32 ole32)
+    target_link_libraries(mcp_server_test PRIVATE shell32 ws2_32 advapi32)
     add_test(NAME mcp_server COMMAND mcp_server_test)
     set_tests_properties(mcp_server PROPERTIES TIMEOUT 40)
 
@@ -718,12 +745,10 @@ if(BUILD_TESTING)
         tests/unit/TftpPacketUnitTest.cpp
         src/tftp/TftpServer.cpp
         src/tftp/TftpFileSource.cpp
-        src/connections/PasswordPipe.cpp
-        src/connections/ChildProcess.cpp
-        src/connections/PuttyHostKey.cpp
+        "${SERIALCTL_GENERATED_DIR}/tftp32.rc"
     )
     serialctl_configure_native_target(tftp_packet_test CONSOLE)
-    target_link_libraries(tftp_packet_test PRIVATE ws2_32 advapi32 ole32)
+    target_link_libraries(tftp_packet_test PRIVATE ws2_32)
     add_test(NAME tftp_packet COMMAND tftp_packet_test)
     set_tests_properties(tftp_packet PROPERTIES TIMEOUT 20)
 
