@@ -543,7 +543,7 @@ struct AiPaneTestAccess {
         };
         checkProgress();
         pane.Add(L"工具", L"读取串口状态", "centered-tool");
-        check(!pane.messages_.back().folded, "Running tool details must be visible by default");
+        check(pane.messages_.back().folded, "Running tool details must be collapsed by default");
         checkProgress();
         pane.Event({{"event", "textStarted"}, {"messageId", "centered-answer"}, {"final", true}});
         pane.Event({{"event", "textDelta"}, {"messageId", "centered-answer"},
@@ -801,6 +801,11 @@ struct AiPaneTestAccess {
         const ai::Json result{{"sessionId", "session-1"}, {"text", u8"当前屏幕第一行\n当前屏幕第二行"},
             {"cursor", 8490}, {"alternateScreen", true}, {"truncated", false}};
         pane.AddTool("serialctl_screen", {{"sessionId", "session-1"}}, result, L"SSH");
+        check(pane.messages_.front().folded && pane.waitingBounds_.top > pane.messages_.front().bounds.bottom,
+              "Turn progress must follow the collapsed tool process");
+        pane.collapsedGroups_.erase("v209-tools");
+        pane.userExpandedGroups_.insert("v209-tools");
+        pane.Reflow();
         check(!pane.messages_.front().folded && pane.waitingBounds_.top > pane.messages_.front().bounds.bottom,
               "Turn progress must follow the visible tool process");
         check(pane.messages_.front().text.find(L"sessionId") == std::wstring::npos &&
@@ -1282,6 +1287,7 @@ struct AiPaneTestAccess {
         }
 
         pane.collapsedGroups_.erase("process-fixture");
+        pane.userExpandedGroups_.insert("process-fixture");
         pane.Reflow();
         require(!pane.messages_[1].folded, "Process could not be expanded");
         pane.displayGroup_ = "failed-fixture";
@@ -1290,12 +1296,28 @@ struct AiPaneTestAccess {
         pane.Add(L"工具", L"退出码 1", "failed-tool");
         const auto failedTool = pane.messages_.size() - 1;
         pane.Add(L"AI", L"已根据日志完成分析", "recovered-final");
-        require(!pane.messages_[failedTool].folded, "Running process must default to expanded");
+        require(pane.messages_[failedTool].folded, "Running failed process must default to collapsed");
         pane.Event({{"event", "taskFinished"}, {"status", "completed"}});
         require(pane.messages_[failedTool].folded && !pane.messages_.back().folded &&
                     pane.groupStates_["failed-fixture"] == L"已完成 · 含失败记录",
-                "A completed answer must collapse diagnostic failures while retaining their summary");
+                "A completed answer must keep diagnostic failures collapsed while retaining their summary");
         require(pane.messages_[failedTool].text == L"退出码 1", "Folding lost a failed command's evidence");
+        pane.displayGroup_ = "manual-expand-fixture";
+        pane.busy_ = true;
+        pane.Add(L"工具", L"步骤一", "manual-step-1");
+        const auto manualHeader = pane.messages_.size() - 1;
+        require(pane.messages_[manualHeader].folded, "Running step must start collapsed");
+        {
+            const auto &hdr = pane.messages_[manualHeader].bounds;
+            const auto clickHdr = MAKELPARAM(hdr.right - pane.D(20), hdr.top + pane.D(20) - pane.scroll_.offset);
+            SendMessageW(pane.transcript_, WM_LBUTTONDOWN, MK_LBUTTON, clickHdr);
+            SendMessageW(pane.transcript_, WM_LBUTTONUP, 0, clickHdr);
+        }
+        require(!pane.messages_[manualHeader].folded, "Clicking header must expand running process");
+        pane.Add(L"AI", L"手动展开后完成回答", "manual-final");
+        pane.Event({{"event", "taskFinished"}, {"status", "completed"}});
+        require(!pane.messages_[manualHeader].folded && !pane.messages_.back().folded,
+                "User-expanded process group must remain expanded after completion");
         for (const bool dark : {false, true}) {
             pane.NewConversation();
             pane.Theme(dark);
@@ -1305,8 +1327,8 @@ struct AiPaneTestAccess {
             pane.Event({{"event", "textComplete"}, {"messageId", "progress"}, {"text", "Checking logs"}, {"final", true}});
             pane.Add(L"工具", L"完整工具输出", "phase-less-tool");
             pane.Event({{"event", "textComplete"}, {"messageId", "answer"}, {"text", "Final diagnosis"}, {"final", true}});
-            require(!pane.messages_[0].process && !pane.messages_[1].folded,
-                    "New tool process should be visible while running");
+            require(!pane.messages_[0].process && pane.messages_[1].folded,
+                    "New tool process should default to collapsed while running");
             const std::wstring palette = dark ? L"dark" : L"light";
             ui_test::SaveUiEvidence(pane.transcript_, L"v205-process-" + palette + L"-running.png",
                                  [&](HDC dc) { pane.PaintTranscript(dc); });
@@ -2039,6 +2061,9 @@ struct AiPaneTestAccess {
                     pane.groupDurations_.clear();
                     pane.collapsedGroups_.clear();
                     pane.initializedGroups_.clear();
+                    pane.userExpandedGroups_.clear();
+                    pane.prevTurnDiffs_.clear();
+                    pane.currTurnDiffs_.clear();
                     pane.settings_ = settings;
                     pane.ApplyWorkspaceSelection(isLocal, readOnly, localDir, remoteDir, sshSid);
                     pane.Reflow();
@@ -2057,6 +2082,9 @@ struct AiPaneTestAccess {
             pane.messageBytes_ = 0;
             pane.collapsedGroups_.clear();
             pane.initializedGroups_.clear();
+            pane.userExpandedGroups_.clear();
+            pane.prevTurnDiffs_.clear();
+            pane.currTurnDiffs_.clear();
             pane.groupStates_.clear();
             pane.groupDurations_.clear();
             pane.transcriptCache_.clear();
@@ -2266,6 +2294,81 @@ struct AiPaneTestAccess {
             require(!cbFocusExecs.empty() && cbFocusExecs.back() == "srv-exec-1" &&
                         cbLastFocusChange == "srv-chg-1",
                     "ActivateLink must dispatch serialctl-exec:// and serialctl-change:// deep links");
+
+            // 3f. RemoteSnapshotAfter records FileChanges without appending a file-list bubble to transcript
+            pane.NewConversation();
+            pane.thread_ = "snap-thread";
+            pane.ApplyWorkspaceSelection(false, false, {}, L"/home/proj", "ssh-1");
+            pane.turnSeq_ = 1;
+            const size_t msgCountBeforeSnap = pane.messages_.size();
+            {
+                AiPane::AsyncWorkResult snap;
+                snap.kind = AiPane::AsyncWorkResult::Kind::RemoteSnapshotAfter;
+                snap.conversationId = "snap-thread";
+                snap.workspace = L"/home/proj";
+                snap.seq = 1;
+                snap.args = {{"complete", true}, {"root", ai::Json::array({"/home/proj", 1, 2})},
+                             {"files", {{"a.cpp", {{"digest", "h1"}, {"text", "int x = 1;\n"}}}}}};
+                snap.result = {{"complete", true}, {"root", ai::Json::array({"/home/proj", 1, 2})},
+                               {"files", {{"a.cpp", {{"digest", "h2"}, {"text", "int x = 2;\n"}}}}}};
+                pane.EnqueueAsyncWork(std::move(snap));
+                pane.ProcessAsyncWork();
+            }
+            require(pane.messages_.size() == msgCountBeforeSnap &&
+                        pane.FileChanges().size() == 1 && pane.FileChanges()[0].path == "a.cpp",
+                    "RemoteSnapshotAfter must record changes in sidebar without appending a reply-tail card");
+
+            // 3g. Cumulative turnDiff across turns must filter out unchanged prior-turn files
+            pane.prevTurnDiffs_.clear();
+            pane.currTurnDiffs_.clear();
+            pane.fileChanges_.clear();
+            pane.turnSeq_ = 1;
+            pane.busy_ = true;
+            pane.stopRequested_ = false;
+            pane.turn_ = "td-1";
+            const std::string diffA1 = "--- a/a.cpp\n+++ b/a.cpp\n@@ -1 +1 @@\n-1\n+2\n";
+            const std::string diffB1 = "--- a/b.cpp\n+++ b/b.cpp\n@@ -1 +1 @@\n-3\n+4\n";
+            const std::string diffA2 = "--- a/a.cpp\n+++ b/a.cpp\n@@ -1 +1 @@\n-1\n+5\n";
+            pane.Event({{"event", "turnDiff"}, {"conversationId", "snap-thread"}, {"taskId", "td-1"},
+                        {"fileChanges", ai::Json::array({{{"path", "a.cpp"}, {"action", "edit"}, {"diff", diffA1},
+                                                          {"detail", ""}, {"addedLines", 1}, {"removedLines", 1}, {"truncated", false}}})}});
+            pane.Event({{"event", "taskFinished"}, {"conversationId", "snap-thread"}, {"taskId", "td-1"}, {"status", "completed"}});
+            // Simulate turn 2 starting with SendPrompt's baseline advance
+            for (const auto &[p, fp] : pane.currTurnDiffs_) pane.prevTurnDiffs_[p] = fp;
+            pane.currTurnDiffs_.clear();
+            pane.turnSeq_ = 2;
+            pane.busy_ = true;
+            pane.turn_ = "td-2";
+            pane.Event({{"event", "turnDiff"}, {"conversationId", "snap-thread"}, {"taskId", "td-2"},
+                        {"fileChanges", ai::Json::array({
+                            {{"path", "a.cpp"}, {"action", "edit"}, {"diff", diffA1}, {"detail", ""}, {"addedLines", 1}, {"removedLines", 1}, {"truncated", false}},
+                            {{"path", "b.cpp"}, {"action", "edit"}, {"diff", diffB1}, {"detail", ""}, {"addedLines", 1}, {"removedLines", 1}, {"truncated", false}}})}});
+            pane.Event({{"event", "taskFinished"}, {"conversationId", "snap-thread"}, {"taskId", "td-2"}, {"status", "completed"}});
+            size_t turn2Count = 0;
+            std::string turn2OnlyPath;
+            for (const auto &fc : pane.FileChanges()) {
+                if (fc.turnSeq == 2) { ++turn2Count; turn2OnlyPath = fc.path; }
+            }
+            require(turn2Count == 1 && turn2OnlyPath == "b.cpp",
+                    "Cumulative turnDiff must exclude unchanged turn-1 files from turn-2 changes");
+            for (const auto &[p, fp] : pane.currTurnDiffs_) pane.prevTurnDiffs_[p] = fp;
+            pane.currTurnDiffs_.clear();
+            pane.turnSeq_ = 3;
+            pane.busy_ = true;
+            pane.turn_ = "td-3";
+            pane.Event({{"event", "turnDiff"}, {"conversationId", "snap-thread"}, {"taskId", "td-3"},
+                        {"fileChanges", ai::Json::array({
+                            {{"path", "a.cpp"}, {"action", "edit"}, {"diff", diffA2}, {"detail", ""}, {"addedLines", 1}, {"removedLines", 1}, {"truncated", false}},
+                            {{"path", "b.cpp"}, {"action", "edit"}, {"diff", diffB1}, {"detail", ""}, {"addedLines", 1}, {"removedLines", 1}, {"truncated", false}}})}});
+            pane.Event({{"event", "taskFinished"}, {"conversationId", "snap-thread"}, {"taskId", "td-3"}, {"status", "completed"}});
+            size_t turn3Count = 0;
+            std::string turn3OnlyPath;
+            for (const auto &fc : pane.FileChanges()) {
+                if (fc.turnSeq == 3) { ++turn3Count; turn3OnlyPath = fc.path; }
+            }
+            require(turn3Count == 1 && turn3OnlyPath == "a.cpp",
+                    "Modifying a previously edited file again with a new diff must record under the new turn");
+            pane.busy_ = false;
             pane.SetSidebarCallbacks({});
         }
 

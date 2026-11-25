@@ -607,7 +607,6 @@ void PowerPane::KeywordTargetDisconnected(std::uint64_t session) {
 void PowerPane::ThemeKeywords() {
     ThemeList(Control(KeywordStatsId), dark_);
     const auto c = UiTheme(dark_);
-    for (int id = 110; id <= 110 + MaxAutomationMode; ++id) UiSetControlBackdrop(Control(id), c.surface);
     UiSetControlBackdrop(Control(KeywordConfigId), c.surface);
     UiSetControlBackdrop(Control(KeywordResumeId), c.surface);
 }

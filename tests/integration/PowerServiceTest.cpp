@@ -273,8 +273,8 @@ void TestPreserveDisconnectPublication() {
 void TestConnectScpiDiagnostics() {
     const std::vector<std::pair<std::string, std::string>> scenarios = {
         {"*IDN?", "identify"},
-        {"INST:NSEL?", "select_channel"},
         {"OUTP:TRAC?", "read_mode"},
+        {"INST:NSEL?", "zero_outputs_ch1"},
         {"MEAS:VOLT?", "initial_poll"}
     };
     for (const auto &scenario : scenarios) {
@@ -322,8 +322,9 @@ void TestConnectScpiDiagnostics() {
             return trace.size();
         };
         Expect(position("*IDN?") < position("SYST:REM") &&
-                   position("SYST:REM") < position("INST:NSEL 1") &&
-                   position("INST:NSEL 1") < position("OUTP:TRAC?"),
+                   position("SYST:REM") < position("OUTP:TRAC?") &&
+                   position("OUTP:TRAC?") < position("INST:NSEL 1") &&
+                   position("INST:NSEL 1") < position("CHAN:OUTP OFF"),
                "Identity precedes remote-control request and subsequent queries");
         Expect(power.State().value("connected", false) &&
                    power.State().value("lastConnectDiagnostic", Json::object()).value("stage", "") == "complete",
@@ -550,8 +551,8 @@ void TestDisconnectOutputConfirmation(const std::string &scenario) {
            "Connected simulation for disconnect test");
     Expect(Wait(power, power.Submit({{"type", "output"}, {"channels", {1, 2}}, {"enabled", true}})).value("state", "") == "completed",
            "Both owned and unowned channel start with verified ON readback");
-    Expect(Wait(power, power.Submit({{"type", "schedule"}, {"channels", {1}}, {"startMs", 60000}, {"durationMs", 200}})).value("state", "") == "completed",
-           "Scheduled task owns CH1 only");
+    Expect(Wait(power, power.Submit({{"type", "task"}, {"channels", {1}}, {"onMs", 200}, {"offMs", 60000}, {"count", 1}})).value("state", "") == "completed",
+           "Task owns CH1 only");
     const bool paused = PowerServiceTestAccess::Pause(power);
     Expect(paused, "paused worker for disconnect fault injection");
     if (!paused) return;
@@ -611,7 +612,98 @@ void TestDisconnectOutputConfirmation(const std::string &scenario) {
     }
 }
 
+void TestConnectZeroingAndFailures() {
+    // 1. Pre-existing non-zero settings and active outputs must be cleared and verified on connect.
+    {
+        PowerService power;
+        const auto connect = Wait(power, power.Submit({
+            {"type", "connect"},
+            {"backend", "simulation"},
+            {"testInitialMode", "independent"},
+            {"testInitialChannels", Json::array({
+                Json{{"voltage", 12.0}, {"current", 2.5}, {"output", true}},
+                Json{{"voltage", 5.0}, {"current", 1.0}, {"output", true}},
+                Json{{"voltage", 3.3}, {"current", 0.5}, {"output", false}}
+            })}
+        }));
+        Expect(connect["state"] == "completed", "Connect with pre-existing non-zero outputs completes");
+        const auto st = power.State();
+        Expect(st["connected"] == true, "Connected flag is true after zeroing");
+        for (int i = 0; i < 3; ++i) {
+            Expect(st["channels"][i]["paramsConfirmed"] == true &&
+                       st["channels"][i]["output"] == false &&
+                       st["channels"][i]["setVoltage"] == 0.0 &&
+                       st["channels"][i]["setCurrent"] == 0.0,
+                   "Each channel is confirmed OFF / 0 V / 0 A after connect");
+        }
+        const auto writes = st.value("testWrites", Json::array());
+        Expect(std::count(writes.begin(), writes.end(), Json("SYST:BEEP")) == 1,
+               "Connect triggers SYST:BEEP exactly once after zeroing readback");
+        const auto disc = Wait(power, power.Submit({{"type", "disconnect"}}));
+        Expect(disc["state"] == "completed", "Active disconnect succeeds");
+        const auto afterDisc = power.State();
+        Expect(afterDisc["connected"] == false && afterDisc["disconnectReason"] == "manual" &&
+                   afterDisc["connectionLost"] == false,
+               "Active disconnect records manual disconnect state");
+        const auto discWrites = afterDisc.value("testWrites", Json::array());
+        Expect(std::count(discWrites.begin(), discWrites.end(), Json("SYST:BEEP")) == 2,
+               "Active disconnect triggers SYST:BEEP once before closing transport");
+    }
+    // 2. Combined mode (series) connect zeroing.
+    {
+        PowerService power;
+        const auto connect = Wait(power, power.Submit({
+            {"type", "connect"},
+            {"backend", "simulation"},
+            {"testInitialMode", "series"},
+            {"testInitialChannels", Json::array({
+                Json{{"voltage", 10.0}, {"current", 2.0}, {"output", true}},
+                Json{{"voltage", 10.0}, {"current", 2.0}, {"output", true}},
+                Json{{"voltage", 3.3}, {"current", 1.0}, {"output", true}}
+            })}
+        }));
+        Expect(connect["state"] == "completed" && power.State()["mode"] == "series",
+               "Combined series mode zeroing on connect succeeds");
+        for (int i = 0; i < 3; ++i)
+            Expect(power.State()["channels"][i]["output"] == false &&
+                       power.State()["channels"][i]["setVoltage"] == 0.0 &&
+                       power.State()["channels"][i]["setCurrent"] == 0.0,
+                   "Combined mode connect leaves all 3 channels OFF / 0 V / 0 A");
+    }
+    // 3. Any channel failing verify_zero blocks connection and task start, reporting stage & channel.
+    for (int ch = 1; ch <= 3; ++ch) {
+        PowerService power;
+        const auto fail = Wait(power, power.Submit({
+            {"type", "connect"},
+            {"backend", "simulation"},
+            {"testZeroFailChannel", ch},
+            {"testZeroFailField", "voltage"}
+        }));
+        Expect(fail["state"] == "failed" &&
+                   fail.value("stage", std::string()) == ("verify_zero_ch" + std::to_string(ch)) &&
+                   fail.value("error", std::string()).find("CH" + std::to_string(ch)) != std::string::npos,
+               "Zeroing verification failure reports exact stage and channel");
+        Expect(power.State()["connected"] == false, "Failed zeroing keeps supply disconnected");
+        Expect(Wait(power, power.Submit({{"type", "task"}, {"channels", {ch}}, {"onMs", 100}, {"offMs", 100}, {"count", 1}}))["state"] == "failed",
+               "Cannot start cycle task when connect zeroing failed");
+    }
+    // 4. Unexpected connection loss marks connectionLost=true and outputs unknown.
+    {
+        PowerService power;
+        Expect(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}, {"testFailAfterReads", 47}}))["state"] == "completed",
+               "Connect succeeds before scheduled communication loss");
+        for (int i = 0; i < 120 && power.State()["connected"] == true; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        const auto st = power.State();
+        Expect(st["connected"] == false && st["connectionLost"] == true &&
+                   st["disconnectReason"] == "lost" && st["unconfirmedPowerOff"] == true &&
+                   st["channels"][0]["output"].is_null() && st["channels"][0]["paramsConfirmed"] == false,
+               "Unexpected loss marks connectionLost and outputs unknown");
+    }
+}
+
 int main() {
+    TestConnectZeroingAndFailures();
     TestKeywordCycle();
     TestBoundRemoteCommands();
     TestPreserveDisconnectPublication();
@@ -679,27 +771,6 @@ int main() {
     auto stop = Wait(power, power.Submit({{"type", "stop"}}));
     Expect(stop["state"] == "completed" && power.State()["channels"][1]["output"] == false,
            "stop disables owned output");
-    auto protect = Wait(power, power.Submit({{"type", "protection"},
-                                             {"channels", Json::array({1})},
-                                             {"enabled", true},
-                                             {"voltageLimit", 5.0},
-                                             {"currentLimit", 2.0}}));
-    Expect(protect["state"] == "completed" && power.State()["channels"][0]["protection"]["voltageLimit"] == 5.0,
-           "protection hardware readback");
-    Wait(power, power.Submit({{"type", "output"}, {"channels", Json::array({1})}, {"enabled", true}}));
-    for (int i = 0; i < 100 && power.State()["channels"][0]["output"] == true; ++i)
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    Expect(power.State()["channels"][0]["output"] == false && power.State().contains("error"),
-           "overvoltage sampling shuts down channel");
-    Expect(power.State()["channels"][2]["output"] == true, "protection leaves unselected output alone");
-    Expect(power
-               .Submit({{"type", "protection"},
-                        {"channels", Json::array({1, 3})},
-                        {"enabled", true},
-                        {"voltageLimit", 10.0},
-                        {"currentLimit", 1.0}})
-               .contains("error"),
-           "mixed-channel protection validation is atomic");
     Wait(power,
          power.Submit(
              {{"type", "task"}, {"channels", Json::array({2, 3})}, {"onMs", 10000}, {"offMs", 10000}, {"count", 10}}));
@@ -710,6 +781,13 @@ int main() {
     Expect(power.State()["channels"][2]["output"] == false, "stop handles channels retained after manual off");
     const auto csv = power.State().value("csvPath", std::string());
     Expect(!csv.empty(), "measurement CSV created");
+    std::wstring exportError;
+    const auto exportedCsv = std::filesystem::path(csv).replace_filename(L"power-export-test.csv").wstring();
+    const auto exportedLog = std::filesystem::path(csv).replace_filename(L"power-export-test.log").wstring();
+    Expect(power.ExportLog(true, exportedCsv, exportError) && power.ExportLog(false, exportedLog, exportError),
+           "CSV and operation log export succeed");
+    DeleteFileW(exportedCsv.c_str());
+    DeleteFileW(exportedLog.c_str());
     power.Shutdown();
     Expect(power.State()["connected"] == false && power.State()["channels"][0]["output"].is_null(),
            "disconnected state is unknown");
@@ -720,7 +798,7 @@ int main() {
            "query timeout does not claim connection");
     PowerService interrupted;
     auto ready = Wait(interrupted,
-                      interrupted.Submit({{"type", "connect"}, {"backend", "simulation"}, {"testFailAfterReads", 33}}));
+                      interrupted.Submit({{"type", "connect"}, {"backend", "simulation"}, {"testFailAfterReads", 49}}));
     Expect(ready["state"] == "completed", "fault injection leaves initial readback intact");
     auto partial = Wait(interrupted,
                         interrupted.Submit({{"type", "output"}, {"channels", Json::array({1, 2})}, {"enabled", true}}));
@@ -779,8 +857,10 @@ int main() {
                   {"settings", Json::array({Json{{"channels", Json::array({1})}, {"voltage", 3}, {"current", 1}},
                                             Json{{"channels", Json::array({3})}, {"voltage", 5}, {"current", 2}}})}}));
     Expect(batch["state"] == "completed" && extended.State()["channels"][0]["setVoltage"] == 3 &&
-               extended.State()["channels"][2]["setVoltage"] == 5,
-           "independent settings remain distinct");
+               extended.State()["channels"][2]["setVoltage"] == 5 &&
+               extended.State()["channels"][0]["paramsConfirmed"] == true &&
+               extended.State()["channels"][2]["paramsConfirmed"] == true,
+           "independent settings remain distinct and confirmed");
     const auto rejectedRemoteBatch = extended.Submit(
         Json{{"type", "batch"}, {"source", "gui"}, {"steps", Json::array()}},
         "remote-ws-1");
@@ -792,94 +872,8 @@ int main() {
     Expect(rejectedRemoteSourceBatch.contains("error") &&
                !rejectedRemoteSourceBatch["error"].get<std::string>().empty(),
            "batch power commands reject non-local source");
-    Expect(extended.Submit({{"type", "settings"}, {"operation", "savePreset"}, {"slot", 0}}).contains("error"),
-           "device storage is 1..36");
-    auto preset = Wait(extended, extended.Submit({{"type", "settings"}, {"operation", "savePreset"}, {"slot", 36}}));
-    Expect(preset["state"] == "completed", "device preset saved");
-    auto timer = Wait(extended, extended.Submit({{"type", "deviceTimer"}, {"enabled", true}, {"seconds", 3.5}}));
-    Expect(timer["state"] == "completed" && extended.State()["timer"]["seconds"] == 3.5,
-           "device timer configured and read back");
-    Expect(extended.Submit({{"type", "deviceTimer"}, {"enabled", true}, {"seconds", 100000}}).contains("error"),
-           "device timer upper limit");
-    auto panel = Wait(extended, extended.Submit({{"type", "settings"},
-                                                 {"operation", "panel"},
-                                                 {"control", "remote"},
-                                                 {"locked", true},
-                                                 {"display", false},
-                                                 {"text", "SerialCtl"}}));
-    Expect(panel["state"] == "completed" && extended.State()["panel"]["display"] == false, "panel screen readback");
-    Expect(extended
-               .Submit({{"type", "settings"},
-                        {"operation", "panel"},
-                        {"control", "remote"},
-                        {"locked", false},
-                        {"display", true},
-                        {"text", "hello\";OUTP ON"}})
-               .contains("error"),
-           "screen text cannot inject SCPI");
-    auto protection = Wait(extended, extended.Submit({{"type", "settings"},
-                                                      {"operation", "protection"},
-                                                      {"channels", Json::array({3})},
-                                                      {"enabled", true},
-                                                      {"limit", 4.5},
-                                                      {"ovp", 5.5},
-                                                      {"softwareVoltage", 0},
-                                                      {"softwareCurrent", 0}}));
-    Expect(protection["state"] == "completed" && extended.State()["channels"][2]["deviceProtection"]["ovp"] == 5.5,
-           "CH3 hardware OVP distinct from software threshold");
-    auto trigger = Wait(extended, extended.Submit({{"type", "trigger"},
-                                                   {"channels", Json::array({1})},
-                                                   {"delay", 0},
-                                                   {"voltageStep", 0.1},
-                                                   {"currentStep", 0.1},
-                                                   {"voltage", 4},
-                                                   {"current", 1},
-                                                   {"fire", true}}));
-    Expect(trigger["state"] == "completed" && extended.State()["channels"][0]["setVoltage"] == 4,
-           "triggered parameter readback");
-    auto step = Wait(
-        extended,
-        extended.Submit({{"type", "step"}, {"channels", Json::array({1})}, {"quantity", "voltage"}, {"direction", 1}}));
-    Expect(step["state"] == "completed" &&
-               std::abs(extended.State()["channels"][0]["setVoltage"].get<double>() - 4.1) < 0.001,
-           "step uses device step size and verifies new setpoint");
-    auto sequence = Wait(
-        extended,
-        extended.Submit(
-            {{"type", "sequence"},
-             {"channels", Json::array({1})},
-             {"steps", Json::array({Json{{"voltage", 2}, {"current", 1}, {"durationMs", 100}, {"enabled", true}},
-                                    Json{{"voltage", 3}, {"current", 1}, {"durationMs", 100}, {"enabled", false}}})}}));
-    Expect(sequence["state"] == "completed", "sequence accepted");
-    for (int i = 0; i < 100 && extended.State()["task"].value("running", false); ++i)
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    Expect(!extended.State()["task"].value("running", false) && extended.State()["channels"][0]["output"] == false &&
-               extended.State()["channels"][0]["setVoltage"] == 3,
-           "sequence advances and powers off on completion");
-    Wait(extended, extended.Submit(
-                       {{"type", "schedule"}, {"channels", Json::array({1})}, {"startMs", 200}, {"durationMs", 200}}));
-    Wait(extended, extended.Submit({{"type", "stop"}}));
-    std::this_thread::sleep_for(std::chrono::milliseconds(450));
-    Expect(extended.State()["channels"][0]["output"] == false && !extended.State()["task"].value("running", false),
-           "canceling scheduled task prevents later energizing");
-    Expect(
-        extended.Submit({{"type", "diagnostic"}, {"operation", "scpi"}, {"line", "*IDN?\nOUTP ON"}}).contains("error"),
-        "SCPI debug rejects multiple instructions");
-    Wait(extended, extended.Submit({{"type", "mode"}, {"mode", "parallel"}}));
-    auto combinedSequence = Wait(
-        extended,
-        extended.Submit(
-            {{"type", "sequence"},
-             {"channels", Json::array({1, 2, 3})},
-             {"steps", Json::array({Json{{"voltage", 2}, {"current", 2}, {"durationMs", 100}, {"enabled", true}}})}}));
-    Expect(combinedSequence["state"] == "completed", "combined group and CH3 sequence accepted");
-    for (int i = 0; i < 100 && extended.State()["task"].value("running", false); ++i)
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    Expect(extended.State()["connected"] == true && extended.State()["channels"][0]["setCurrent"] == 1 &&
-               extended.State()["channels"][1]["setCurrent"] == 1 && extended.State()["channels"][2]["setCurrent"] == 2,
-           "sequence partitions combined total and independent CH3 parameters");
-    Expect(!extended.State()["task"].value("running", false) && extended.State()["channels"][2]["output"] == false,
-           "combined sequence completion powers off entire owned scope");
+    for (const auto *removed : {"protection", "deviceTimer", "trigger", "sequence", "schedule", "step", "settings", "diagnostic"})
+        Expect(extended.Submit({{"type", removed}}).contains("error"), "removed power action is rejected");
     Expect(!extended.State()["records"].empty(), "bounded action history includes local operations");
     return failures ? 1 : 0;
 }

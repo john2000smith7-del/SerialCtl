@@ -15,14 +15,28 @@ void Label(HDC dc, HFONT font, COLORREF ink, const std::wstring &text, RECT r,
     DrawTextW(dc, text.c_str(), static_cast<int>(text.size()), &r, flags | DT_NOPREFIX);
     SelectObject(dc, old);
 }
+Gdiplus::Bitmap *ResolveSpriteAtlas(unsigned pose, const UiResourceBitmap *base,
+                                    const UiResourceBitmap *actions, const UiResourceBitmap *cat,
+                                    unsigned &outCell) {
+    if (pose >= pet::CatPoseBase && cat && cat->bitmap) {
+        outCell = pose - pet::CatPoseBase;
+        return cat->bitmap.get();
+    }
+    if (pose >= 36 && actions && actions->bitmap) {
+        outCell = pose - 36;
+        return actions->bitmap.get();
+    }
+    outCell = pose;
+    return base ? base->bitmap.get() : nullptr;
+}
 struct Popup {
     HWND window = nullptr, owner = nullptr;
     HFONT font = nullptr;
     pet::Settings prefs;
     bool dark = false, done = false, inSub = false;
     int dpi = 96, width = 220, row = 32, sub = 0, selected = 0, subSelected = 0, result = 0;
-    POINT anchor{};
-    RECT work{};
+    POINT anchor{}, mainPos{};
+    RECT work{}, mainRect{}, subRect{};
     int D(int n) const {
         return MulDiv(n, dpi, 96);
     }
@@ -32,13 +46,10 @@ struct Popup {
     int SubCount() const {
         return sub == 1 ? static_cast<int>(pet::ActionsFor(prefs.character).count) + 1 : 3;
     }
-    int SubTop() const { return D(8 + 32 * (sub == 1 ? 1 : 2)); }
     int SubRow() const {
-        const int available = work.bottom - work.top - D(40) - SubTop();
-        return std::clamp(available / SubCount(), D(16), row);
+        const int maxSubH = std::max(D(64), static_cast<int>(work.bottom - work.top) - D(24));
+        return std::clamp((maxSubH - D(16)) / SubCount(), D(20), row);
     }
-    int SubBottom() const { return SubTop() + D(16) + SubCount() * SubRow(); }
-    int Height() const { return std::max(MainHeight(), sub ? SubBottom() : 0); }
     std::wstring MainText(int i) const {
         const wchar_t *rows[] = {L"跟随 AI 状态", L"播放动作", L"宠物大小", L"", L"打开主窗口", L"收起宠物", L"宠物设置…"};
         if (i == 3) return prefs.desktop ? L"返回窗口内" : L"桌面悬浮";
@@ -51,24 +62,40 @@ struct Popup {
         return static_cast<unsigned>(i) == actions.count ? L"停止演示" : actions.items[i].name;
     }
     RECT Row(int column, int index) const {
-        const int left = column ? width + D(12) : 0, top = column ? SubTop() : 0;
+        const int left = column ? subRect.left : mainRect.left;
+        const int top = column ? subRect.top : mainRect.top;
         const auto rowHeight = column ? SubRow() : row;
         const int y = top + D(8) + index * rowHeight + (!column && index == 6 ? D(8) : 0);
         return {left + D(4), y, left + width - D(4), y + rowHeight};
     }
     void Resize() {
-        const int total = width + (sub ? D(12) + width : 0), height = Height();
-        const int x =
-            std::clamp(static_cast<int>(anchor.x), static_cast<int>(work.left) + D(12),
-                       std::max(static_cast<int>(work.left) + D(12), static_cast<int>(work.right) - D(12) - total));
-        const int y =
-            std::clamp(static_cast<int>(anchor.y), static_cast<int>(work.top) + D(12),
-                       std::max(static_cast<int>(work.top) + D(12), static_cast<int>(work.bottom) - D(12) - height));
-        SetWindowPos(window, nullptr, x, y, total, height, SWP_NOZORDER | SWP_NOACTIVATE);
-        HRGN region = CreateRoundRectRgn(0, 0, width, MainHeight(), D(24), D(24));
+        const int margin = D(12), gap = D(8);
+        const RECT mainScreen{mainPos.x, mainPos.y, mainPos.x + width, mainPos.y + MainHeight()};
+        int winX = mainScreen.left, winY = mainScreen.top, winW = width, winH = MainHeight();
+        mainRect = {0, 0, width, MainHeight()};
+        subRect = {};
         if (sub) {
-            HRGN other =
-                CreateRoundRectRgn(width + D(12), SubTop(), total, SubBottom(), D(24), D(24));
+            const bool subOnLeft =
+                (mainScreen.right + gap + width > work.right - margin) &&
+                (mainScreen.left - gap - width >= work.left + margin);
+            const int subScreenX = subOnLeft ? (mainScreen.left - gap - width) : (mainScreen.right + gap);
+            const int subHeight = D(16) + SubCount() * SubRow();
+            const int idealSubY = mainScreen.top + D(32 * sub);
+            const int subScreenY = std::clamp(
+                idealSubY, static_cast<int>(work.top) + margin,
+                std::max(static_cast<int>(work.top) + margin, static_cast<int>(work.bottom) - margin - subHeight));
+            const RECT subScreen{subScreenX, subScreenY, subScreenX + width, subScreenY + subHeight};
+            winX = std::min(mainScreen.left, subScreen.left);
+            winY = std::min(mainScreen.top, subScreen.top);
+            winW = std::max(mainScreen.right, subScreen.right) - winX;
+            winH = std::max(mainScreen.bottom, subScreen.bottom) - winY;
+            mainRect = {mainScreen.left - winX, mainScreen.top - winY, mainScreen.right - winX, mainScreen.bottom - winY};
+            subRect = {subScreen.left - winX, subScreen.top - winY, subScreen.right - winX, subScreen.bottom - winY};
+        }
+        SetWindowPos(window, nullptr, winX, winY, winW, winH, SWP_NOZORDER | SWP_NOACTIVATE);
+        HRGN region = CreateRoundRectRgn(mainRect.left, mainRect.top, mainRect.right, mainRect.bottom, D(24), D(24));
+        if (sub) {
+            HRGN other = CreateRoundRectRgn(subRect.left, subRect.top, subRect.right, subRect.bottom, D(24), D(24));
             CombineRgn(region, region, other, RGN_OR);
             DeleteObject(other);
         }
@@ -109,10 +136,9 @@ struct Popup {
         HBRUSH background = CreateSolidBrush(c.surface);
         FillRect(dc, &bounds, background);
         DeleteObject(background);
-        UiBox(dc, {0, 0, width, MainHeight()}, c.surface, c.border, D(12));
+        UiBox(dc, mainRect, c.surface, c.border, D(12));
         if (sub)
-            UiBox(dc, {width + D(12), SubTop(), width * 2 + D(12), SubBottom()}, c.surface,
-                  c.border, D(12));
+            UiBox(dc, subRect, c.surface, c.border, D(12));
         for (int column = 0; column <= (sub ? 1 : 0); ++column)
             for (int i = 0; i < (column ? SubCount() : 7); ++i) {
                 const auto r = Row(column, i);
@@ -141,7 +167,7 @@ struct Popup {
                     UiDrawGlyph(dc, {r.right - D(22), icon.top, r.right - D(6), icon.bottom}, ink,
                                 UiGlyph::ChevronRight);
             }
-        UiSeparator(dc, D(12), width - D(12), D(8 + 32 * 6 + 4), c.border);
+        UiSeparator(dc, mainRect.left + D(12), mainRect.right - D(12), mainRect.top + D(8 + 32 * 6 + 4), c.border);
     }
     static LRESULT CALLBACK Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         auto p = reinterpret_cast<Popup *>(GetWindowLongPtrW(h, GWLP_USERDATA));
@@ -242,6 +268,13 @@ struct Popup {
         work = monitor.rcWork;
         width = std::min(D(220), std::max(D(96), (static_cast<int>(work.right - work.left) - D(36)) / 2));
         row = D(32);
+        const int margin = D(12);
+        mainPos.x = std::clamp(
+            static_cast<int>(anchor.x), static_cast<int>(work.left) + margin,
+            std::max(static_cast<int>(work.left) + margin, static_cast<int>(work.right) - margin - width));
+        mainPos.y = std::clamp(
+            static_cast<int>(anchor.y), static_cast<int>(work.top) + margin,
+            std::max(static_cast<int>(work.top) + margin, static_cast<int>(work.bottom) - margin - MainHeight()));
         WNDCLASSW wc{};
         wc.lpfnWndProc = Proc;
         wc.hInstance = GetModuleHandleW(nullptr);
@@ -307,10 +340,13 @@ bool AiPetPane::Create(HWND parent, HFONT font, bool dark, pet::Settings setting
     model_.Configure(settings, GetTickCount64());
     image_ = std::make_unique<UiResourceBitmap>(2013);
     actionImage_ = std::make_unique<UiResourceBitmap>(2014);
+    catImage_ = std::make_unique<UiResourceBitmap>(2015);
     if (!image_->bitmap || image_->bitmap->GetWidth() != 2048 || image_->bitmap->GetHeight() != 1280 ||
-        !actionImage_->bitmap || actionImage_->bitmap->GetWidth() != 1280 || actionImage_->bitmap->GetHeight() != 800) {
+        !actionImage_->bitmap || actionImage_->bitmap->GetWidth() != 1280 || actionImage_->bitmap->GetHeight() != 800 ||
+        !catImage_->bitmap || catImage_->bitmap->GetWidth() != 1536 || catImage_->bitmap->GetHeight() != 1152) {
         image_.reset();
         actionImage_.reset();
+        catImage_.reset();
         return false;
     }
     WNDCLASSW wc{};
@@ -368,6 +404,7 @@ void AiPetPane::Shutdown() {
     ReleaseDesktopPaint();
     image_.reset();
     actionImage_.reset();
+    catImage_.reset();
     if (small_)
         DeleteObject(small_);
     small_ = nullptr;
@@ -388,16 +425,22 @@ void AiPetPane::Tick() {
         ((GetWindowRect(owner, &ownerBounds) && PtInRect(&ownerBounds, pointer)) ||
          (GetWindowRect(foreground, &foregroundBounds) && PtInRect(&foregroundBounds, pointer)));
     if (!Preferences().roaming) roaming_ = {};
-    const auto sleepPose = pet::PoseFor(Preferences().character, pet::Action::Sleep);
-    const auto position = roaming_.Step(now, present && model_.CanRoam() && sample_.pose != sleepPose &&
+    const bool sleeping = Preferences().character != pet::Character::Cat &&
+        sample_.pose == pet::PoseFor(Preferences().character, pet::Action::Sleep);
+    const auto position = roaming_.Step(now, present && model_.CanRoam() && !sleeping &&
         !dragging_ && !hover_ && !interacting_ && !ownerInUse);
     walking_ = position.moving;
     if (walking_) {
         roamDirection_ = position.facingLeft ? -1 : 1;
         const auto character = Preferences().character;
-        sample_.pose = character == pet::Character::Whale ? roaming_.Pose() : pet::PoseFor(character, pet::Action::Walk);
-        if (character != pet::Character::Whale)
-            sample_.lift = .035 * std::abs(std::sin((now % 560) * 6.283185307179586 / 560));
+        if (character == pet::Character::Cat) {
+            sample_.pose = pet::CatPoseFrame(pet::Action::Walk, now);
+            sample_.lift = 0;
+        } else {
+            sample_.pose = character == pet::Character::Whale ? roaming_.Pose() : pet::PoseFor(character, pet::Action::Walk);
+            if (character != pet::Character::Whale)
+                sample_.lift = .035 * std::abs(std::sin((now % 560) * 6.283185307179586 / 560));
+        }
         sample_.label.clear();
     }
     const POINT offset{static_cast<LONG>(std::lround(position.x * dpi_ / 96.0)),
@@ -519,18 +562,19 @@ void AiPetPane::PaintDesktop() {
         Gdiplus::SolidBrush shadow(Gdiplus::Color(32, 80, 85, 100));
         g.FillEllipse(&shadow, static_cast<float>(x - body * .32), static_cast<float>(base - D(2)),
                       static_cast<float>(body * .64), static_cast<float>(D(6)));
-        const unsigned pose = sample_.pose >= 36 ? sample_.pose - 36 : sample_.pose;
-        const auto &atlas = sample_.pose >= 36 ? actionImage_ : image_;
-        const float tile = static_cast<float>(atlas->bitmap->GetWidth() / 8);
+        unsigned pose = 0;
+        Gdiplus::Bitmap *atlasBmp = ResolveSpriteAtlas(sample_.pose, image_.get(), actionImage_.get(), catImage_.get(), pose);
+        const float tile = atlasBmp ? static_cast<float>(atlasBmp->GetWidth() / 8) : 0.f;
         const auto spriteState = g.Save();
         const bool facesLeft = Preferences().character == pet::Character::Cat;
         if (walking_ && ((roamDirection_ < 0) != facesLeft)) {
             g.TranslateTransform(static_cast<float>(2 * x), 0);
             g.ScaleTransform(-1, 1);
         }
-        g.DrawImage(atlas->bitmap.get(), Gdiplus::RectF(static_cast<float>(x - side / 2), static_cast<float>(top),
-            static_cast<float>(side), static_cast<float>(side * sample_.breath)),
-            (pose % 8) * tile, (pose / 8) * tile, tile, tile, Gdiplus::UnitPixel);
+        if (atlasBmp)
+            g.DrawImage(atlasBmp, Gdiplus::RectF(static_cast<float>(x - side / 2), static_cast<float>(top),
+                static_cast<float>(side), static_cast<float>(side * sample_.breath)),
+                (pose % 8) * tile, (pose / 8) * tile, tile, tile, Gdiplus::UnitPixel);
         g.Restore(spriteState);
         LOGFONTW lf{}; GetObjectW(small_, sizeof(lf), &lf);
         Gdiplus::Font font(desktopDc_, &lf);
@@ -585,13 +629,14 @@ void AiPetPane::Paint(HDC target) {
                          static_cast<float>(D(6)));
     graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
     graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
-    const unsigned pose = sample_.pose >= 36 ? sample_.pose - 36 : sample_.pose;
-    const auto &atlas = sample_.pose >= 36 ? actionImage_ : image_;
-    const float tile = static_cast<float>(atlas->bitmap->GetWidth() / 8);
-    graphics.DrawImage(atlas->bitmap.get(),
-                       Gdiplus::RectF(static_cast<float>(x - side / 2), static_cast<float>(top),
-                                      static_cast<float>(side), static_cast<float>(side * sample_.breath)),
-                       (pose % 8) * tile, (pose / 8) * tile, tile, tile, Gdiplus::UnitPixel);
+    unsigned pose = 0;
+    Gdiplus::Bitmap *atlasBmp = ResolveSpriteAtlas(sample_.pose, image_.get(), actionImage_.get(), catImage_.get(), pose);
+    const float tile = atlasBmp ? static_cast<float>(atlasBmp->GetWidth() / 8) : 0.f;
+    if (atlasBmp)
+        graphics.DrawImage(atlasBmp,
+                           Gdiplus::RectF(static_cast<float>(x - side / 2), static_cast<float>(top),
+                                          static_cast<float>(side), static_cast<float>(side * sample_.breath)),
+                           (pose % 8) * tile, (pose / 8) * tile, tile, tile, Gdiplus::UnitPixel);
     if (!sample_.label.empty()) {
         const int bubbleTop = std::max(D(4), static_cast<int>(base - body - lift) - D(36));
         RECT bubble{D(4), bubbleTop, width - D(4), bubbleTop + D(28)};
@@ -653,7 +698,7 @@ void AiPetPane::Action(int action) {
     model_.Configure(settings, now);
     if (chosenPose) model_.Play(actions.items[action - FirstPose].action, now);
     else if (action == TapPet)
-        model_.Play(settings.character == pet::Character::Cat ? pet::Action::Groom : pet::Action::Wave, now);
+        model_.Play(settings.character == pet::Character::Cat ? pet::Action::Listen : pet::Action::Wave, now);
     Changed();
     DesktopMode();
     if (desktopMode_) PlaceDesktop();

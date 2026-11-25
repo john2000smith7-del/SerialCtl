@@ -129,7 +129,8 @@ void RequireNoOtherProcesses(const fs::path& installation, DWORD ignorePid = 0) 
         Handle instance(OpenMutexW(SYNCHRONIZE, FALSE, InstanceName(installation, item.th32ProcessID).c_str()));
         if (instance.value || GetLastError() == ERROR_ACCESS_DENIED)
             throw std::runtime_error("Another application instance from this installation is still running; close it before updating");
-        if (_wcsicmp(item.szExeFile, L"serialctl.exe") && _wcsicmp(item.szExeFile, L"plink.exe") && _wcsicmp(item.szExeFile, L"psftp.exe")) continue;
+        if (_wcsicmp(item.szExeFile, L"serialctl.exe") && _wcsicmp(item.szExeFile, L"plink.exe") &&
+            _wcsicmp(item.szExeFile, L"psftp.exe") && _wcsicmp(item.szExeFile, L"tftp32.exe")) continue;
         Handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, item.th32ProcessID));
         if (!process.value) {
             if (GetLastError() == ERROR_INVALID_PARAMETER) continue; // process already exited

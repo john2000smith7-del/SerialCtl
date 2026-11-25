@@ -67,7 +67,7 @@ void DrawRegisterPreview(HDC dc, RECT client, const RECT& selection, std::uint32
     const int pad = Ui::Scale(10), gap = Ui::Scale(6);
     const int cellWidth = Ui::Scale(20), groupPad = Ui::Scale(3);
     const int groupWidth = 8 * cellWidth + 2 * groupPad;
-    const int groupHeight = Ui::Scale(39), titleHeight = Ui::Scale(21), headerHeight = 2 * titleHeight;
+    const int groupHeight = Ui::Scale(39), headerHeight = Ui::Scale(28);
     client.left += gap;
     client.right -= Ui::OverlayScrollLaneWidth + gap;
     client.top += gap;
@@ -95,12 +95,49 @@ void DrawRegisterPreview(HDC dc, RECT client, const RECT& selection, std::uint32
     UiBox(dc, card, colors.surface, colors.border, Ui::CardRadius);
     wchar_t hex[11]{};
     swprintf_s(hex, L"0x%08X", static_cast<unsigned>(value));
-    const RECT title{card.left + pad, card.top, card.right - pad, card.top + titleHeight};
-    DrawTextSimple(dc, hex, title, colors.text, options.smallFont, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    DrawTextSimple(dc, L"32 位", title, colors.muted, options.smallFont, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-    const RECT decimal{title.left, title.bottom, title.right, title.bottom + titleHeight};
-    DrawTextSimple(dc, L"十进制  " + std::to_wstring(value), decimal, colors.text, options.smallFont,
-                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    const std::wstring summary = std::wstring(hex) + L" = " + std::to_wstring(value);
+    const int titlePad = columns >= 2 ? pad : Ui::Scale(6);
+    const RECT title{card.left + titlePad, card.top + Ui::Scale(2), card.right - titlePad, card.top + headerHeight - Ui::Scale(2)};
+    auto measureWidth = [&](HFONT font) -> int {
+        RECT calc{0, 0, 0, 0};
+        HFONT prev = reinterpret_cast<HFONT>(SelectObject(dc, font));
+        DrawTextW(dc, summary.c_str(), static_cast<int>(summary.size()), &calc, DT_CALCRECT | DT_SINGLELINE);
+        SelectObject(dc, prev);
+        return static_cast<int>(calc.right - calc.left);
+    };
+    const int availWidth = (std::max)(
+        1, static_cast<int>(columns >= 2 ? (title.right - title.left - Ui::Scale(42)) : (title.right - title.left)));
+    const int measuredWidth = measureWidth(options.smallFont);
+    if (measuredWidth <= availWidth) {
+        DrawTextSimple(dc, summary, title, colors.text, options.smallFont, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    } else {
+        HFONT fittedFont = nullptr;
+        LOGFONTW lf{};
+        if (options.smallFont && GetObjectW(options.smallFont, sizeof(lf), &lf) > 0) {
+            const int sign = lf.lfHeight > 0 ? 1 : -1;
+            const int minMag = Ui::Scale(8);
+            lf.lfWidth = 0;
+            int mag = (std::max)(minMag, static_cast<int>(
+                (std::abs(lf.lfHeight) ? std::abs(lf.lfHeight) : Ui::Scale(12)) * availWidth /
+                (std::max)(1, measuredWidth)));
+            while (true) {
+                lf.lfHeight = sign * mag;
+                HFONT candidate = CreateFontIndirectW(&lf);
+                if (!candidate) break;
+                if (measureWidth(candidate) <= availWidth || mag <= minMag) {
+                    fittedFont = candidate;
+                    break;
+                }
+                DeleteObject(candidate);
+                --mag;
+            }
+        }
+        DrawTextSimple(dc, summary, title, colors.text, fittedFont ? fittedFont : options.smallFont,
+                       DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        if (fittedFont) DeleteObject(fittedFont);
+    }
+    if (columns >= 2)
+        DrawTextSimple(dc, L"32 位", title, colors.muted, options.smallFont, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
     for (int group = 0; group < 4; ++group) {
         const LONG x = card.left + pad + (group % columns) * (groupWidth + gap);
         const LONG y = card.top + headerHeight + (group / columns) * (groupHeight + gap);
@@ -146,6 +183,25 @@ void TerminalViewport::DismissRegisterPreview(HWND window) {
     if (window) InvalidateRect(window, nullptr, FALSE);
 }
 
+void TerminalViewport::SetSearchHighlights(const State* owner, std::shared_ptr<const std::vector<TerminalSearchMatch>> matches,
+                                           int currentIndex, std::uint64_t revision) {
+    searchOwner_ = owner;
+    searchMatches_ = std::move(matches);
+    searchCurrentIndex_ = currentIndex;
+    searchRevision_ = revision;
+    cache_.valid = false;
+}
+
+void TerminalViewport::ClearSearchHighlights() {
+    if (!searchOwner_ && !searchMatches_ && searchCurrentIndex_ == -1 && searchRevision_ == 0)
+        return;
+    searchOwner_ = nullptr;
+    searchMatches_.reset();
+    searchCurrentIndex_ = -1;
+    searchRevision_ = 0;
+    cache_.valid = false;
+}
+
 namespace {
 struct FrameKey {
     const TerminalViewport::State* state = nullptr;
@@ -159,6 +215,7 @@ struct FrameKey {
     HFONT font = nullptr, smallFont = nullptr;
     std::wstring draft;
     size_t draftCursor = 0;
+    std::uint64_t searchRevision = 0;
     bool operator==(const FrameKey& other) const {
         return state == other.state && revision == other.revision &&
                width == other.width && height == other.height &&
@@ -169,7 +226,8 @@ struct FrameKey {
                focused == other.focused && dark == other.dark &&
                timestamps == other.timestamps && liveMonitor == other.liveMonitor &&
                mode == other.mode && font == other.font && smallFont == other.smallFont &&
-               draft == other.draft && draftCursor == other.draftCursor;
+               draft == other.draft && draftCursor == other.draftCursor &&
+               searchRevision == other.searchRevision;
     }
 };
 
@@ -189,6 +247,7 @@ struct RenderFrameParams {
     RECT vThumb{}, hThumb{};
     HFONT font = nullptr, smallFont = nullptr;
     int radius3 = 3, radiusCard = 6, outerRadius = 8;
+    std::vector<TerminalSearchHighlightSpan> searchHighlights;
 };
 
 template <typename LineAt>
@@ -228,9 +287,15 @@ void RenderTerminalSurface(HDC buffer, const RECT& client, const RenderFramePara
         text.reserve(static_cast<size_t>(availableColumns));
         advances.reserve(static_cast<size_t>(availableColumns));
 
+        size_t highlightCursor = 0;
         for (int viewRow = 0; viewRow < p.rows; ++viewRow) {
             const size_t lineIndex = p.topLine + static_cast<size_t>(viewRow);
             if (lineIndex >= p.totalLines) break;
+            while (highlightCursor < p.searchHighlights.size() && p.searchHighlights[highlightCursor].line < lineIndex)
+                ++highlightCursor;
+            size_t rowHighlightEnd = highlightCursor;
+            while (rowHighlightEnd < p.searchHighlights.size() && p.searchHighlights[rowHighlightEnd].line == lineIndex)
+                ++rowHighlightEnd;
             const TerminalLine& line = lineAt(lineIndex);
             const int y = p.padding + viewRow * p.lineHeight;
             if (p.showTimestamps && !line.timestamp.empty()) {
@@ -252,12 +317,28 @@ void RenderTerminalSurface(HDC buffer, const RECT& client, const RenderFramePara
                             (lineIndex == p.selectionStartLine && modelColumn >= p.selectionStartColumn)) &&
                         (lineIndex < p.selectionEndLine ||
                             (lineIndex == p.selectionEndLine && modelColumn <= p.selectionEndColumn));
+                    int matchKind = 0; // 0 = none, 1 = other match, 2 = current match
+                    if (!selected) {
+                        for (size_t hi = highlightCursor; hi < rowHighlightEnd; ++hi) {
+                            const auto& span = p.searchHighlights[hi];
+                            if (modelColumn >= span.startColumn && modelColumn < span.endColumn) {
+                                matchKind = span.current ? 2 : std::max(matchKind, 1);
+                            }
+                        }
+                    }
                     COLORREF foreground = ResolveTerminalColor(value.attributes.foreground,
                         colors.text, p.dark, value.attributes.bold);
                     COLORREF background = ResolveTerminalColor(value.attributes.background,
                         colors.field, p.dark, false);
                     if (value.attributes.inverse) std::swap(foreground, background);
                     if (selected) { background = colors.accentSoft; foreground = colors.text; }
+                    else if (matchKind == 2) {
+                        background = p.dark ? RGB(255, 204, 0) : RGB(255, 212, 59);
+                        foreground = p.dark ? RGB(20, 20, 22) : RGB(29, 29, 31);
+                    } else if (matchKind == 1) {
+                        background = p.dark ? RGB(92, 78, 28) : RGB(255, 243, 176);
+                        foreground = p.dark ? RGB(255, 243, 184) : RGB(29, 29, 31);
+                    }
                     struct Visual { COLORREF foreground, background; bool bold, underline; };
                     return Visual{foreground, background, value.attributes.bold, value.attributes.underline};
                 };
@@ -548,6 +629,8 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
     const std::wstring draft = activeSession_ && options.mode == 4 ? activeSession_->cmdEditor.Text() : L"";
     const size_t draftCursor = activeSession_ && options.mode == 4 ? activeSession_->cmdEditor.Cursor() : 0;
     const bool focused = GetFocus() == terminal_;
+    const std::uint64_t effectiveSearchRevision =
+        (activeSession_ && searchOwner_ == activeSession_ && searchMatches_ && !searchMatches_->empty()) ? searchRevision_ : 0;
     const bool reusable = buffer != dc && cache_.valid && cache_.state == activeSession_ &&
         cache_.revision == revision && cache_.bufferGeneration == paintBuffer_.Generation() &&
         cache_.width == client.right && cache_.height == client.bottom &&
@@ -561,7 +644,8 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
         cache_.liveMonitor == options.liveMonitor && cache_.mode == options.mode &&
         cache_.font == options.font && cache_.smallFont == options.smallFont &&
         cache_.draft == draft && cache_.draftCursor == draftCursor &&
-        cache_.emptyHint == options.emptyHint;
+        cache_.emptyHint == options.emptyHint &&
+        cache_.searchRevision == effectiveSearchRevision;
     if (reusable) {
         BitBlt(dc, 0, 0, client.right, client.bottom, buffer, 0, 0, SRCCOPY);
         if (options.measure)
@@ -587,6 +671,7 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
         cache_.font = options.font; cache_.smallFont = options.smallFont;
         cache_.draft = draft; cache_.draftCursor = draftCursor;
         cache_.emptyHint.assign(options.emptyHint);
+        cache_.searchRevision = effectiveSearchRevision;
         cache_.valid = buffer != dc;
     };
 
@@ -696,6 +781,10 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
         params.radius3 = Ui::Scale(3);
         params.radiusCard = Ui::Radius;
         params.outerRadius = Ui::Scale(8);
+        if (effectiveSearchRevision != 0 && searchMatches_) {
+            params.searchHighlights = TerminalSearchEngine::CollectVisibleHighlights(
+                *searchMatches_, searchCurrentIndex_, topLine, topLine + static_cast<size_t>(Metrics().rows));
+        }
 
         if (!options.measure && buffer != dc && !registerPreview_) {
             FrameKey key{activeSession_, revision, client.right, client.bottom,
@@ -703,7 +792,7 @@ void TerminalViewport::Paint(HDC dc, HWND terminal_, State* activeSession_, cons
                 input.anchorLine, input.focusLine, input.anchorColumn, input.focusColumn,
                 input.selectionActive, activeSession_->terminalHasNewOutput, focused,
                 options.dark, options.timestamps, options.liveMonitor, options.mode,
-                options.font, options.smallFont, draft, draftCursor};
+                options.font, options.smallFont, draft, draftCursor, effectiveSearchRevision};
             std::vector<std::uint32_t> readyPixels;
             if (rasterizer_ && rasterizer_->TryConsume(key, readyPixels) &&
                 readyPixels.size() == static_cast<size_t>(client.right) * static_cast<size_t>(client.bottom)) {

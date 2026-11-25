@@ -120,32 +120,68 @@ int main() {
         companion.Configure(preferences, 1);
         companion.Page(true, 1);
         const auto actions = ActionsFor(character);
-        assert(actions.count == (character == Character::Whale ? 15u : 12u));
+        assert(actions.count == (character == Character::Whale ? 15u : character == Character::Lulu ? 12u : 6u));
         for (unsigned i = 0; i < actions.count; ++i) {
             const auto action = actions.items[i].action;
             assert(spriteSlots.insert(PoseFor(character, action)).second);
             companion.Play(action, 2);
             assert(companion.At(80).manual);
-            if (character != Character::Whale)
+            if (character == Character::Cat) {
+                const unsigned basePose = PoseFor(Character::Cat, action);
+                const unsigned pose = companion.At(80).pose;
+                assert(pose >= basePose && pose < basePose + CatFramesPerAction);
+                std::set<unsigned> frames;
+                for (unsigned f = 0; f < CatFramesPerAction; ++f) {
+                    const auto sample = companion.At(2 + f * CatFrameDurationMs(action));
+                    assert(sample.pose == basePose + f);
+                    frames.insert(sample.pose);
+                }
+                assert(frames.size() == CatFramesPerAction);
+            } else if (character != Character::Whale)
                 assert(companion.At(80).pose == PoseFor(character, action));
         }
         companion.Stop(100);
         unsigned time = 101;
-        for (const auto &state : {std::pair{Activity::Connecting, Action::Listen},
-                                  std::pair{Activity::Thinking, Action::Think},
-                                  std::pair{Activity::Working, Action::Work},
-                                  std::pair{Activity::Replying, Action::Reply},
-                                  std::pair{Activity::Done, Action::Cheer},
-                                  std::pair{Activity::Failed, Action::Concern},
-                                  std::pair{Activity::Stopped, Action::Settle}}) {
-            companion.SetActivity(state.first, time);
-            assert(companion.At(time + 10).pose == PoseFor(character, state.second));
-            time += 100;
+        if (character == Character::Cat) {
+            for (const auto &state : {std::pair{Activity::Connecting, Action::Listen},
+                                      std::pair{Activity::Thinking, Action::Think},
+                                      std::pair{Activity::Working, Action::Work},
+                                      std::pair{Activity::Replying, Action::Work},
+                                      std::pair{Activity::Done, Action::Stretch},
+                                      std::pair{Activity::Failed, Action::Listen},
+                                      std::pair{Activity::Stopped, Action::Idle}}) {
+                companion.SetActivity(state.first, time);
+                const unsigned basePose = PoseFor(Character::Cat, state.second);
+                const unsigned actualPose = companion.At(time + 10).pose;
+                assert(actualPose >= basePose && actualPose < basePose + CatFramesPerAction);
+                time += 100;
+            }
+            companion.SetActivity(Activity::Idle, time);
+            const unsigned idleBase = PoseFor(Character::Cat, Action::Idle);
+            const unsigned stretchBase = PoseFor(Character::Cat, Action::Stretch);
+            const unsigned pIdle = companion.At(time + 10).pose;
+            const unsigned pStretch = companion.At(time + 12100).pose;
+            const unsigned pLateIdle = companion.At(time + 45000).pose;
+            assert(pIdle >= idleBase && pIdle < idleBase + CatFramesPerAction);
+            assert(pStretch >= stretchBase && pStretch < stretchBase + CatFramesPerAction);
+            assert(pLateIdle >= idleBase && pLateIdle < idleBase + CatFramesPerAction);
+        } else {
+            for (const auto &state : {std::pair{Activity::Connecting, Action::Listen},
+                                      std::pair{Activity::Thinking, Action::Think},
+                                      std::pair{Activity::Working, Action::Work},
+                                      std::pair{Activity::Replying, Action::Reply},
+                                      std::pair{Activity::Done, Action::Cheer},
+                                      std::pair{Activity::Failed, Action::Concern},
+                                      std::pair{Activity::Stopped, Action::Settle}}) {
+                companion.SetActivity(state.first, time);
+                assert(companion.At(time + 10).pose == PoseFor(character, state.second));
+                time += 100;
+            }
+            companion.SetActivity(Activity::Idle, time);
+            assert(companion.At(time + 45000).pose == PoseFor(character, Action::Sleep));
         }
-        companion.SetActivity(Activity::Idle, time);
-        assert(companion.At(time + 45000).pose == PoseFor(character, Action::Sleep));
     }
-    assert(spriteSlots.size() == 39);
+    assert(spriteSlots.size() == 33);
     RoamingClock departure;
     departure.Step(1000, true);
     RoamingClock::Position visible;

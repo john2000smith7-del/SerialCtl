@@ -206,12 +206,12 @@ foreach ($item in @(Resolve-SerialCtlArchitectures -Architecture $Architecture))
         # provided by KERNEL32 on Windows 7; retain the exact import check.
         'serial_share_backpressure_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
         'sftp_model_test.exe' = @('KERNEL32.dll')
-        'tftp_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll', 'OLE32.dll')
-        'tftp_packet_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll')
+        'tftp_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
+        'tftp_packet_test.exe' = @('KERNEL32.dll', 'WS2_32.dll')
         'session_dispatcher_load_test.exe' = @('KERNEL32.dll')
         'logger_circular_audit_test.exe' = @('KERNEL32.dll', 'SHELL32.dll')
         'ui_style_metrics_test.exe' = @('KERNEL32.dll', 'USER32.dll')
-        'mcp_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll', 'SHELL32.dll', 'OLE32.dll')
+        'mcp_server_test.exe' = @('KERNEL32.dll', 'WS2_32.dll', 'ADVAPI32.dll', 'SHELL32.dll')
         'local_workspace_test.exe' = @('KERNEL32.dll')
     }
     # Report every test-binary mismatch in the same build. Keep the verifier's

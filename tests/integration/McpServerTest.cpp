@@ -9,6 +9,7 @@
 #include <atomic>
 #include <sddl.h>
 #include <filesystem>
+#include <fstream>
 #include <aclapi.h>
 
 #include "LocalWorkspace.h"
@@ -43,6 +44,14 @@ void Expect(bool condition, const char* message) {
         std::cerr << "REQUIRE FAILED: " << message << std::endl;
         std::exit(1);
     }
+}
+
+std::string WideToUtf8(const std::wstring& str) {
+    if (str.empty()) return {};
+    const int size = WideCharToMultiByte(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), nullptr, 0, nullptr, nullptr);
+    std::string out(size, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), out.data(), size, nullptr, nullptr);
+    return out;
 }
 
 std::string HttpPostWithOrigin(uint16_t port, const std::string& path, const std::string& body,
@@ -219,6 +228,8 @@ void TestProtocolAndDiscovery() {
     Expect(hasTool("sftp.list"), "Must contain sftp.list");
     Expect(hasTool("sftp.chmod"), "Must contain sftp.chmod");
     Expect(hasTool("xfer.start"), "Must contain xfer.start");
+    Expect(hasTool("tftp.set_directory"), "Must contain tftp.set_directory");
+    Expect(hasTool("tftp.set_bind_ip"), "Must contain tftp.set_bind_ip");
     Expect(hasTool("tftp.publish_local"), "Must contain tftp.publish_local");
     Expect(hasTool("power.get"), "Must contain power.get");
     Expect(hasTool("power.output"), "Must contain power.output");
@@ -553,6 +564,94 @@ void TestResidentLifecycle() {
                                                                               {{"tftpName", "Image"}, {"remotePath", "/boot/Image"}});
         Expect(offlineTftpRemote.contains("error") && offlineTftpRemote["error"]["code"] == ErrAppNotRunning,
                "tftp.publish_remote must require GUI when GUI is offline");
+
+        namespace fs = std::filesystem;
+        const fs::path tempRoot = fs::temp_directory_path() /
+            (L"serialctl_mcp_tftp_" + std::to_wstring(GetCurrentProcessId()));
+        std::error_code ec;
+        fs::remove_all(tempRoot, ec);
+        Expect(fs::create_directories(tempRoot / L"subdir", ec), "Create MCP TFTP test root directory");
+        {
+            std::ofstream f1(tempRoot / L"uImage", std::ios::binary);
+            f1 << "uimage-sample";
+            std::ofstream f2(tempRoot / L"rootfs.cpio", std::ios::binary);
+            f2 << "rootfs-sample";
+            std::ofstream f3(tempRoot / L"subdir" / L"ignored.bin", std::ios::binary);
+            f3 << "subdir-ignored";
+        }
+        wchar_t exePath[MAX_PATH]{};
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        const fs::path stateIniPath = fs::path(exePath).parent_path() / L"state.ini";
+        const bool hadStateIni = fs::exists(stateIniPath, ec);
+        std::string priorStateIni;
+        if (hadStateIni) {
+            std::ifstream in(stateIniPath, std::ios::binary);
+            priorStateIni.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        }
+        struct OfflineTftpGuard {
+            fs::path root;
+            TftpServer& srv;
+            fs::path stateIni;
+            bool hadIni;
+            std::string priorIni;
+            ~OfflineTftpGuard() {
+                srv.ClearRoot();
+                std::error_code cleanupEc;
+                fs::remove_all(root, cleanupEc);
+                if (hadIni) {
+                    std::ofstream out(stateIni, std::ios::binary | std::ios::trunc);
+                    out.write(priorIni.data(), static_cast<std::streamsize>(priorIni.size()));
+                } else {
+                    fs::remove(stateIni, cleanupEc);
+                }
+            }
+        } tftpGuard{tempRoot, srvTftp, stateIniPath, hadStateIni, std::move(priorStateIni)};
+
+        const std::string rootUtf8 = WideToUtf8(tempRoot.wstring());
+        Json setDirRes = McpService::Instance().Dispatcher().CallTool(
+            "192.168.31.50", "tftp.set_directory", {{"directory", rootUtf8}});
+        Expect(!setDirRes.contains("error") && !setDirRes.value("isError", false),
+               "Remote LAN MCP client must be able to call tftp.set_directory");
+        Json setDirBody = Json::parse(setDirRes["content"][0]["text"].get<std::string>());
+        Expect(setDirBody.value("ok", false) && setDirBody.value("fileCount", 0) == 2 &&
+                   setDirBody["files"].is_array() && setDirBody["files"].size() == 2,
+               "tftp.set_directory must return 2 regular files");
+
+        Json statusAfter = McpService::Instance().Dispatcher().CallTool("192.168.31.50", "tftp.status", Json::object());
+        Expect(!statusAfter.contains("error") && !statusAfter.value("isError", false),
+               "tftp.status must succeed from LAN client");
+        Json statusBody = Json::parse(statusAfter["content"][0]["text"].get<std::string>());
+        Expect(statusBody.value("ok", false) && !statusBody.value("directory", std::string()).empty() &&
+                   !statusBody.value("defaultIp", std::string()).empty() &&
+                   statusBody.contains("serverIps") && statusBody["serverIps"].is_array() &&
+                   !statusBody["serverIps"].empty() && statusBody.value("fileCount", 0) == 2,
+               "tftp.status must expose directory, defaultIp, serverIps, and fileCount");
+
+        Json listRes = McpService::Instance().Dispatcher().CallTool("192.168.31.50", "tftp.list", Json::object());
+        Expect(!listRes.contains("error") && !listRes.value("isError", false),
+               "tftp.list must succeed from LAN client");
+        Json listBody = Json::parse(listRes["content"][0]["text"].get<std::string>());
+        Expect(listBody.value("mode", std::string()) == "directory" &&
+                   listBody["files"].is_array() && listBody["files"].size() == 2,
+               "tftp.list must return directory files");
+        const std::string listDump = listBody["files"].dump();
+        Expect(listDump.find("uImage") != std::string::npos &&
+                   listDump.find("rootfs.cpio") != std::string::npos &&
+                   listDump.find("ignored.bin") == std::string::npos,
+               "tftp.list must include root files and exclude nested subdirectory files");
+
+        Json setIpRes = McpService::Instance().Dispatcher().CallTool(
+            "192.168.31.50", "tftp.set_bind_ip", {{"bindIp", "127.0.0.1"}});
+        Expect(!setIpRes.contains("error") && !setIpRes.value("isError", false),
+               "Remote LAN MCP client must be able to call tftp.set_bind_ip");
+        Json setIpBody = Json::parse(setIpRes["content"][0]["text"].get<std::string>());
+        Expect(setIpBody.value("ok", false) && setIpBody.value("bindIp", std::string()) == "127.0.0.1",
+               "tftp.set_bind_ip must update bindIp to 127.0.0.1");
+
+        Json badIpRes = McpService::Instance().Dispatcher().CallTool(
+            "192.168.31.50", "tftp.set_bind_ip", {{"bindIp", "203.0.113.99"}});
+        Expect(badIpRes.contains("error") || badIpRes.value("isError", false),
+               "tftp.set_bind_ip must reject non-local IPv4 addresses");
     }
 
     // 2. Simulate Session 0 / no interactive login

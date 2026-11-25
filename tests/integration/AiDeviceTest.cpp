@@ -64,6 +64,9 @@ Json Wait(PowerService& power, Json action) {
     throw std::runtime_error("Power operation timed out");
 }
 }
+struct AiPaneTestAccess {
+    static void SetBusy(AiPane& pane, bool busy) { pane.busy_ = busy; }
+};
 struct AiDeviceTestAccess {
     static void RunTransferPaneLayout(HWND parent) {
         constexpr int dpi = 120;
@@ -74,15 +77,31 @@ struct AiDeviceTestAccess {
         xfer::TransferController transfer;
         TftpPane tftp;
         XferPane xfer;
-        Require(tftp.Create(parent, server, [] {
-                    return std::vector<TftpSshSessionInfo>{{"fixture", L"linux@127.0.0.1", L"127.0.0.1", 22,
-                                                            L"linux", L"", true}};
-                }, font, true, dpi) &&
+        Require(tftp.Create(parent, server, font, true, dpi) &&
                 xfer.Create(parent, transfer, [] { return XferPane::Target{1, L"COM4 · USB Serial Port"}; },
                             font, true, dpi), "Create real transfer controls");
         const auto tftpBody = GetWindow(tftp.Handle(), GW_CHILD);
         const auto xferBody = FindWindowExW(xfer.Handle(), nullptr, L"SerialCtlXferBody", nullptr);
         Require(tftpBody && xferBody, "Find transfer content viewports");
+        {
+            const auto defaultIpUtf8 = server->DefaultIp();
+            const auto defaultIpW = MultiByteToWide(
+                reinterpret_cast<const uint8_t*>(defaultIpUtf8.data()), defaultIpUtf8.size(), CP_UTF8);
+            Require(tftp.SelectedBindIp() == defaultIpW, "TFTP pane must default bind IP to current PC LAN IP");
+            Require(!tftp.IsBindIpExplicit(), "Initial default bind IP must not be marked explicit");
+            Require(SendMessageW(GetDlgItem(tftpBody, TftpPane::BindIp), CB_FINDSTRING, static_cast<WPARAM>(-1),
+                                 reinterpret_cast<LPARAM>(L"0.0.0.0")) != CB_ERR,
+                    "BindIp combo box must retain 0.0.0.0 wildcard entry");
+            tftp.ConfigureBindIp(L"0.0.0.0", false);
+            Require(tftp.SelectedBindIp() == defaultIpW && !tftp.IsBindIpExplicit(),
+                    "Non-explicit legacy 0.0.0.0 must select default PC IP");
+            tftp.ConfigureBindIp(L"0.0.0.0", true);
+            Require(tftp.SelectedBindIp() == L"0.0.0.0" && tftp.IsBindIpExplicit(),
+                    "Explicit 0.0.0.0 choice must select wildcard bind IP");
+            tftp.ConfigureBindIp(L"203.0.113.99", true);
+            Require(tftp.SelectedBindIp() == defaultIpW && !tftp.IsBindIpExplicit(),
+                    "Unavailable saved bind IP must fall back to default PC IP");
+        }
         Require(SendMessageW(GetDlgItem(xferBody, XferPane::Mode), CB_SETCURSEL, 1, 0) == 1,
                 "Select XMODEM in the native transfer form");
         xfer.Refresh();
@@ -121,7 +140,7 @@ struct AiDeviceTestAccess {
             }
             return items;
         };
-        tftp.ConfigureDirectories(L"local", tftpSampleDir.wstring(), L"");
+        tftp.ConfigureDirectory(tftpSampleDir.wstring());
         Require(server->RootConfig().mode == TftpRootMode::Local, "TFTP local directory configured on server");
         const auto localItems = readTftpDirItems();
         std::wstring listed;
@@ -133,7 +152,7 @@ struct AiDeviceTestAccess {
                 listed.find(L"nested_subdir") == std::wstring::npos,
                 "TFTP directory listing must auto-list regular files and exclude subdirectories");
         ShowWindow(parent, SW_SHOW);
-        const auto noOverlap = [&](HWND body) {
+        const auto noOverlap = [&](HWND body, size_t minControls) {
             std::vector<RECT> visible;
             for (auto child = GetWindow(body, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
                 if (!IsWindowVisible(child)) continue;
@@ -145,7 +164,7 @@ struct AiDeviceTestAccess {
                 }
                 visible.push_back(bounds);
             }
-            Require(visible.size() >= 10, "Transfer form lost its visible controls");
+            Require(visible.size() >= minControls, "Transfer form lost its visible controls");
         };
         for (bool dark : {false, true}) {
             tftp.Theme(dark, dpi, font);
@@ -153,52 +172,24 @@ struct AiDeviceTestAccess {
             for (const int width : {350, 430}) {
                 ShowWindow(xfer.Handle(), SW_HIDE);
                 SetWindowPos(tftp.Handle(), nullptr, 0, 0, width, 680, SWP_NOZORDER | SWP_SHOWWINDOW);
-                for (int source : {1, 0}) {
-                    const auto combo = GetDlgItem(tftpBody, TftpPane::SourceType);
-                    SendMessageW(combo, CB_SETCURSEL, source, 0);
-                    SendMessageW(tftpBody, WM_COMMAND, MAKEWPARAM(TftpPane::SourceType, CBN_SELCHANGE),
-                                 reinterpret_cast<LPARAM>(combo));
-                    SendMessageW(tftpBody, WM_COMMAND, MAKEWPARAM(TftpPane::SourceType, CBN_CLOSEUP),
-                                 reinterpret_cast<LPARAM>(combo));
-                    const auto items = readTftpDirItems();
-                    std::wstring joined;
-                    for (const auto &it : items) joined += it + L"\n";
-                    if (source == 1) {
-                        Require(joined.find(L"Image") == std::wstring::npos &&
-                                joined.find(L"board.dtb") == std::wstring::npos,
-                                "Switching TFTP source to Remote must clear local file entries");
-                    } else {
-                        Require(joined.find(L"Image") != std::wstring::npos &&
-                                joined.find(L"board.dtb") != std::wstring::npos,
-                                "Switching TFTP source back to Local must restore local file entries");
-                    }
-                    noOverlap(tftpBody);
-                }
-                const auto statusCtrl = GetDlgItem(tftpBody, TftpPane::ServiceStatus);
-                RECT statusScreen{}, bodyScreen{};
-                GetWindowRect(statusCtrl, &statusScreen);
+                const auto items = readTftpDirItems();
+                std::wstring joined;
+                for (const auto &it : items) joined += it + L"\n";
+                Require(joined.find(L"Image") != std::wstring::npos &&
+                        joined.find(L"board.dtb") != std::wstring::npos,
+                        "TFTP directory file list must display regular files");
+                noOverlap(tftpBody, 9);
+                const auto bindLabelCtrl = GetDlgItem(tftpBody, TftpPane::BindIpLabel);
+                Require(bindLabelCtrl != nullptr && GetWindow(tftpBody, GW_CHILD) == bindLabelCtrl,
+                        "TFTP pane must start directly with BindIpLabel after removing redundant hints");
+                RECT bindLabelScreen{}, bodyScreen{};
+                GetWindowRect(bindLabelCtrl, &bindLabelScreen);
                 GetWindowRect(tftpBody, &bodyScreen);
-                Require(statusScreen.top - bodyScreen.top >= MulDiv(8, dpi, 96),
-                        "TFTP top status text must maintain clear spacing below tabs");
-                RECT transfersLabelRect{}, transferCountRect{};
-                GetWindowRect(GetDlgItem(tftpBody, TftpPane::TransfersLabel), &transfersLabelRect);
-                GetWindowRect(GetDlgItem(tftpBody, TftpPane::TransferCount), &transferCountRect);
-                Require(transferCountRect.top - transfersLabelRect.bottom >= MulDiv(10, dpi, 96),
-                        "TFTP transfer section must reserve room for the Xfer-style progress bar");
-                RECT statusRect{};
-                GetClientRect(statusCtrl, &statusRect);
-                HDC statusDc = GetDC(statusCtrl);
-                const auto oldStatusFont = SelectObject(statusDc, font);
-                RECT measured{0, 0, statusRect.right, 0};
-                DrawTextW(statusDc, L"服务状态：未启动 [远程文件不存在、不可读、含链接或 SSH 检查失败]", -1,
-                          &measured, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_EDITCONTROL);
-                SelectObject(statusDc, oldStatusFont);
-                ReleaseDC(statusCtrl, statusDc);
-                Require(statusRect.bottom - statusRect.top >= measured.bottom,
-                        "TFTP service status label height clipped wrapped error text");
+                Require(bindLabelScreen.top - bodyScreen.top >= MulDiv(8, dpi, 96),
+                        "TFTP top label must maintain clear spacing below tabs");
                 ShowWindow(tftp.Handle(), SW_HIDE);
                 SetWindowPos(xfer.Handle(), nullptr, 0, 0, width, 680, SWP_NOZORDER | SWP_SHOWWINDOW);
-                noOverlap(xferBody);
+                noOverlap(xferBody, 10);
             }
             ui_test::SaveUiEvidence(xfer.Handle(), dark ? L"xfer-reflow-dark.png" : L"xfer-reflow-light.png",
                 [&](HDC dc) { Require(PrintWindow(xfer.Handle(), dc, PW_CLIENTONLY), "Capture native Xfer pane"); });
@@ -207,7 +198,7 @@ struct AiDeviceTestAccess {
             ui_test::SaveUiEvidence(tftp.Handle(), dark ? L"tftp-reflow-dark.png" : L"tftp-reflow-light.png",
                 [&](HDC dc) { Require(PrintWindow(tftp.Handle(), dc, PW_CLIENTONLY), "Capture native TFTP pane"); });
             SendMessageW(tftpBody, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-4 * WHEEL_DELTA)), 0);
-            noOverlap(tftpBody);
+            noOverlap(tftpBody, 9);
             ui_test::SaveUiEvidence(tftp.Handle(), dark ? L"tftp-reflow-bottom-dark.png" : L"tftp-reflow-bottom-light.png",
                 [&](HDC dc) { Require(PrintWindow(tftp.Handle(), dc, PW_CLIENTONLY), "Capture scrolled native TFTP pane"); });
             SendMessageW(tftpBody, WM_MOUSEWHEEL, MAKEWPARAM(0, 4 * WHEEL_DELTA), 0);
@@ -290,7 +281,7 @@ struct AiDeviceTestAccess {
             const int group = (31 - bit) / 8, offset = (31 - bit) % 8;
             const int cell = Ui::Scale(20), gap = Ui::Scale(6), groupPad = Ui::Scale(3);
             const int left = Ui::TerminalPadding + Ui::Scale(10);
-            const int top = Ui::TerminalPadding + viewport.Metrics().lineHeight + gap + 2 * Ui::Scale(21);
+            const int top = Ui::TerminalPadding + viewport.Metrics().lineHeight + gap + Ui::Scale(28);
             return POINT{
                 left + (group % groupsPerRow) * (8 * cell + 2 * groupPad + gap) + groupPad + offset * cell + 4,
                 top + (group / groupsPerRow) * (Ui::Scale(39) + gap) + Ui::Scale(24)};
@@ -1135,7 +1126,8 @@ struct AiDeviceTestAccess {
         main.RefreshCommandList();
         // Reuse the real terminal HWND and session model, not a copied AI log.
         main.ShowAiPage(false);
-        main.aiPane_.SelectTarget("session-2");
+        Require(main.ActiveAiPane() != nullptr, "Active AI pane missing");
+        main.ActiveAiPane()->SelectTarget("session-2");
         main.SyncAiTerminal();
         Require(main.aiVisible_ && main.activeSession_ == main.sessions_[1].get(),
             "AI target binding left the conversation page or selected wrong terminal");
@@ -1149,7 +1141,7 @@ struct AiDeviceTestAccess {
         main.aiMonitorRatio_ = 500;
         main.LayoutControls(viewport.right, viewport.bottom);
         RECT ai{}, terminal{}, header{};
-        GetWindowRect(main.aiPane_.Handle(), &ai);
+        GetWindowRect(main.ActiveAiPane()->Handle(), &ai);
         GetWindowRect(main.terminal_, &terminal);
         GetWindowRect(main.aiCompileTabButton_, &header);
         std::cout << "[GEOMETRY] client=" << viewport.right << "x" << viewport.bottom << " chat=" << ai.right - ai.left
@@ -1218,14 +1210,14 @@ struct AiDeviceTestAccess {
         RECT resized{}; GetWindowRect(main.terminal_, &resized);
         Require(resized.right - resized.left > terminal.right - terminal.left,
             "Monitor width change did not resize real terminal");
-        main.aiPane_.SelectTarget("session-5"); main.SyncAiTerminal();
+        main.ActiveAiPane()->SelectTarget("session-5"); main.SyncAiTerminal();
         Require(main.aiVisible_ && main.activeSession_ == main.sessions_[4].get(),
             "Changing AI terminal target failed to bind actual CMD session");
         const std::string live = "LIVE_MONITOR_EVIDENCE\n";
         appendAndWait(*main.sessions_[4], live);
         Require(main.AiDeviceRequest("read", {{"sessionId", "session-5"}, {"lines", 1}})["text"] == live,
             "Monitor receive did not share the AI device data source");
-        main.aiPane_.SelectTarget(""); main.SyncAiTerminal();
+        main.ActiveAiPane()->SelectTarget(""); main.SyncAiTerminal();
         Require(main.ActiveTerminalViewState() == nullptr &&
                     main.TerminalViewportOptions().emptyHint == L"请在上方选择已连接的实时终端",
                 "Missing AI target exposed another session output");
@@ -1343,7 +1335,7 @@ struct AiDeviceTestAccess {
                 "Focusing AI exec from card failed to switch back to Compile tab");
         main.SwitchSession(4, MainWindow::SessionFocus::Preserve);
         main.LayoutControls(viewport.right, viewport.bottom);
-        GetWindowRect(main.terminal_, &terminal); GetWindowRect(main.aiPane_.Handle(), &ai);
+        GetWindowRect(main.terminal_, &terminal); GetWindowRect(main.ActiveAiPane()->Handle(), &ai);
         Require(!main.aiVisible_ && IsWindowVisible(main.terminal_) && terminal.left == ai.left &&
             !IsWindowVisible(main.aiChangesPane_.Handle()) && !IsWindowVisible(main.aiExecCombo_) &&
             main.rightPanelWidth_ == 320, "Leaving AI failed to restore original terminal layout");
@@ -1686,8 +1678,113 @@ struct AiDeviceTestAccess {
                 "Built-in MCP opens the visible TFTP panel from the AI page");
         Require(main.AiDeviceRequest("mcp:ui.panel", {{"name", "invalid"}}).contains("error") &&
                     main.tftpPanelVisible_, "Invalid MCP panel names leave the current panel selected");
+        {
+            const auto card1Id = main.activeAiCardId_;
+            auto* card1 = main.FindAiCard(card1Id);
+            Require(card1 != nullptr && card1->pane != nullptr && card1->localWorkspace != nullptr,
+                    "Initial AI card must exist before opening a second card");
+            const auto card1ExecCount = card1->execHistory.size();
+            const std::string card1ExecSelected = card1->execSelectedId;
+            auto* card2 = main.CreateAiCard();
+            Require(card2 != nullptr && card2->id != 0 && card2->id != card1Id && main.aiCards_.size() >= 2,
+                    "CreateAiCard must create a distinct second AI card");
+            const auto card2Id = card2->id;
+            main.SelectAiCard(card2Id, false);
+            Require(main.aiVisible_ && main.activeAiCardId_ == card2Id && main.ActiveAiCard() == card2 &&
+                        main.ActiveAiPane() == card2->pane.get() &&
+                        main.ActiveLocalWorkspace() == card2->localWorkspace &&
+                        card1->localWorkspace != card2->localWorkspace,
+                    "Selecting second AI card must switch active pane and LocalWorkspaceService cleanly");
+            const uint16_t port1 = main.EnsureAiCardMcpPort(card1Id);
+            const uint16_t port2 = main.EnsureAiCardMcpPort(card2Id);
+            Require(port1 != 0 && port2 != 0 && port1 != port2,
+                    "Multiple AI cards must expose independent loopback MCP ports");
+
+            main.HandleAiTurnStarted(card2Id, 201);
+            ai::ExecProgressEvent c2Start{};
+            c2Start.phase = ai::ExecProgressEvent::Phase::Started;
+            c2Start.execId = "exec-card-2";
+            c2Start.toolName = "run_command";
+            c2Start.command = "ls -la";
+            c2Start.cwd = "D:/repo-card2";
+            main.HandleAiExecEvent(card2Id, c2Start);
+            ai::ExecProgressEvent c2Done{};
+            c2Done.phase = ai::ExecProgressEvent::Phase::Completed;
+            c2Done.execId = "exec-card-2";
+            c2Done.exitCode = 0;
+            main.HandleAiExecEvent(card2Id, c2Done);
+
+            ai::FileChangeRecord change2{};
+            change2.changeId = "chg-card-2";
+            change2.path = "src/card2.cpp";
+            change2.action = "edit";
+            change2.addedLines = 1;
+            change2.removedLines = 1;
+            change2.turnSeq = 201;
+            change2.contentPreview = "b\n";
+            change2.diffText = "@@ -1 +1 @@\n-a\n+b\n";
+            main.HandleAiFileChanges(card2Id, {change2}, 201, "chg-card-2", true);
+            Require(main.aiChangesPane_.SelectedChangeId() == "chg-card-2" &&
+                        card2->execHistory.size() == 1 && card2->execSelectedId == "exec-card-2",
+                    "Second AI card must track its own execHistory and file changes");
+
+            main.SelectAiCard(card1Id, false);
+            Require(main.aiChangesPane_.SelectedChangeId() == "chg-dev-1" &&
+                        card1->execHistory.size() == card1ExecCount &&
+                        card1->execSelectedId == card1ExecSelected,
+                    "Switching back to first AI card must restore its prior file changes and exec history");
+
+            main.SelectAiCard(card2Id, false);
+            Require(main.aiChangesPane_.SelectedChangeId() == "chg-card-2" &&
+                        card2->execSelectedId == "exec-card-2",
+                    "Switching back to second AI card must preserve its file changes and exec history");
+
+            const auto leaseTargets = main.AiDeviceRequest("sessions", {});
+            Require(leaseTargets.is_array() && !leaseTargets.empty(),
+                    "Connected session required for multi-AI write lease test");
+            const std::string leaseSid = leaseTargets.front().at("id").get<std::string>();
+            AiPaneTestAccess::SetBusy(*card1->pane, true);
+            const auto writeCard1 = main.AiDeviceRequestForCard(
+                card1Id, "command", {{"sessionId", leaseSid}, {"command", "echo card1"}});
+            Require(!writeCard1.contains("error") && main.sessionAiWriteOwner_[leaseSid] == card1Id,
+                    "Active AI card command must acquire per-session write lease");
+            const auto conflictCard2 = main.AiDeviceRequestForCard(
+                card2Id, "command", {{"sessionId", leaseSid}, {"command", "pwd"}});
+            Require(conflictCard2.contains("error"),
+                    "Second AI card write on leased session must fail while first card is running");
+            const auto foreignRelease = main.AiDeviceRequestForCard(
+                card2Id, "release", {{"sessionId", leaseSid}});
+            Require(!foreignRelease.value("released", true) &&
+                        foreignRelease.value("heldByOtherCard", false) &&
+                        main.sessionAiWriteOwner_[leaseSid] == card1Id,
+                    "Foreign AI card release must not revoke active owner write lease");
+            AiPaneTestAccess::SetBusy(*card1->pane, false);
+            main.AiDeviceRequestForCard(card1Id, "release", {{"sessionId", leaseSid}});
+            Require(main.sessionAiWriteOwner_.count(leaseSid) == 0,
+                    "Owner release must clear session write lease");
+            const auto writeCard2After = main.AiDeviceRequestForCard(
+                card2Id, "command", {{"sessionId", leaseSid}, {"command", "pwd"}});
+            Require(!writeCard2After.contains("error"),
+                    "Second AI card write must succeed once first card releases write lease");
+            main.AiDeviceRequestForCard(card2Id, "release", {{"sessionId", leaseSid}});
+
+            main.CloseAiCard(card2Id);
+            const bool hasCard1Nav = std::any_of(
+                main.connectionListItems_.begin(), main.connectionListItems_.end(),
+                [&](const MainWindow::NavItem& item) {
+                    return item.kind == MainWindow::NavItemKind::AiCard && item.id == card1Id;
+                });
+            const bool hasCard2Nav = std::any_of(
+                main.connectionListItems_.begin(), main.connectionListItems_.end(),
+                [&](const MainWindow::NavItem& item) {
+                    return item.kind == MainWindow::NavItemKind::AiCard && item.id == card2Id;
+                });
+            Require(main.FindAiCard(card2Id) == nullptr && main.FindAiCard(card1Id) != nullptr &&
+                        main.activeAiCardId_ == card1Id && hasCard1Nav && !hasCard2Nav,
+                    "CloseAiCard must remove closed card from aiCards_ and nav list while keeping Card 1 active");
+        }
         main.powerService_.Shutdown();
-        main.aiPane_.Shutdown();
+        main.ShutdownAllAiCards();
         DestroyWindow(parent);
         for (auto font : {main.uiFont_, main.smallFont_, main.titleFont_, main.terminalFont_}) DeleteObject(font);
     }
@@ -1718,7 +1815,7 @@ struct AiDeviceTestAccess {
         main.ShowPowerPage();
         Require(Wait(power, power.Submit({{"type", "connect"}, {"backend", "simulation"}}))["state"] == "completed",
                 "Connect the controlled power backend");
-        Require(Wait(power, power.Submit({{"type", "schedule"}, {"channels", {1}}, {"startMs", 60000}, {"durationMs", 200}}))["state"] == "completed",
+        Require(Wait(power, power.Submit({{"type", "task"}, {"channels", {1}}, {"onMs", 200}, {"offMs", 60000}, {"count", 1}}))["state"] == "completed",
                 "Power task owns CH1");
         {
             std::unique_lock<std::mutex> lock(power.mutex_);
@@ -1755,7 +1852,7 @@ struct AiDeviceTestAccess {
                 "Ordinary status timeout cannot remove the power warning");
         ui_test::SaveUiEvidence(main.window_, L"power-disconnect-after-close.png");
         main.ShowPowerPage();
-        SendMessageW(main.powerPane_.Handle(), WM_COMMAND, 93, 0);
+        SendMessageW(main.powerPane_.Handle(), WM_COMMAND, 92, 0);
         const auto record = power.State()["records"].back();
         Require(main.powerPageOpened_ && record["operation"] == "disconnect" &&
                 record["unconfirmedChannels"] == Json::array({1}) && record["offResults"][0]["state"] == "unknown",

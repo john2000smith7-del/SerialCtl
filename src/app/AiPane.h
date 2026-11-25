@@ -30,22 +30,28 @@ class AiPane {
     using RemoteFsRunner = std::function<void(const std::string &, const Json &, RemoteFsCallback)>;
     ~AiPane();
     bool Create(HWND parent, HFONT font, bool dark, DeviceRequest devices);
+    void SetCardId(std::uint64_t id) { cardId_ = id; }
+    std::uint64_t CardId() const { return cardId_; }
+    void SetVoiceGuard(std::function<bool()> guard);
     void SetLocalWorkspaceService(std::shared_ptr<ai::LocalWorkspaceService> service);
     void SetEnsureMcpPortProvider(std::function<uint16_t()> provider);
     void SetRemoteFsRunner(RemoteFsRunner runner);
     bool RemoteAiSshEndpoint(std::wstring &host, std::uint16_t &port,
                              std::wstring &username, std::wstring &password) const;
     bool WorkspaceIsLocal() const { return workspaceIsLocal_; }
+    std::wstring WorkspaceDisplayName() const;
+    ai::AiProvider Provider() const { return settings_.provider; }
     HWND Handle() const {
         return window_;
     }
     pet::Activity CompanionActivity() const { return companionActivity_; }
     void Theme(bool dark);
-    void ShowConnection();
+    bool ShowConnection();
     void FocusInput();
     // Begin on the UI thread; wait on the owning cleanup thread.
     void BeginShutdown();
     void WaitForShutdown();
+    void DestroyUi();
     void Shutdown();
     void Disconnect();
     bool Connected() const {
@@ -55,6 +61,7 @@ class AiPane {
         return busy_ || client_.Running();
     }
     bool TaskRunning() const {return busy_;}
+    bool VoiceBusy() const { return voice_.Status() != ai::VoiceInput::State::Idle; }
     void RefreshTargets();
     void SelectTarget(const std::string &id);
     const std::string& AssociatedTarget() const { return busy_ ? turnTarget_ : target_; }
@@ -214,7 +221,6 @@ class AiPane {
     bool InsertVoiceDraft(const std::wstring &);
     void UpdateVoiceControls();
     std::wstring VoicePhaseLabel() const;
-    bool VoiceBusy() const { return voice_.Status() != ai::VoiceInput::State::Idle; }
     void ChooseAttachments(bool images);
     void LoadAttachments(std::vector<std::wstring> paths);
     void DropAttachments(HDROP drop);
@@ -264,6 +270,7 @@ class AiPane {
     std::string displayGroup_;
     std::set<std::string> collapsedGroups_;
     std::set<std::string> initializedGroups_;
+    std::set<std::string> userExpandedGroups_;
     std::map<std::string, std::wstring> groupStates_;
     std::map<std::string, ULONGLONG> groupDurations_;
     std::vector<std::wstring> targetLabels_;
@@ -497,12 +504,23 @@ class AiPane {
     bool remoteSnapshotPending_ = false;
     std::uint64_t nextServerChangeSeq_ = 0;
     std::vector<ai::FileChangeRecord> fileChanges_;
+    struct DiffFingerprint {
+        std::uint64_t hash = 0;
+        size_t length = 0;
+        bool operator==(const DiffFingerprint &o) const { return hash == o.hash && length == o.length; }
+    };
+    std::map<std::string, DiffFingerprint> prevTurnDiffs_;
+    std::map<std::string, DiffFingerprint> currTurnDiffs_;
     std::set<std::string> knownWsExecIds_;
     std::set<std::string> knownWsChangeIds_;
     std::map<std::string, WsExecState> wsExecStates_;
     std::map<std::string, ServerExecState> serverExecs_;
     std::map<std::string, std::string> acpToWsExec_;
     std::map<std::string, std::string> pendingAcpBySummary_;
+
+    std::uint64_t cardId_ = 0;
+    std::function<bool()> voiceGuard_;
+    void NotifyCardState() const;
 
     std::mutex asyncQueueMutex_;
     std::deque<AsyncWorkResult> asyncResults_;

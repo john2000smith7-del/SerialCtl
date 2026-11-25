@@ -48,6 +48,7 @@ class PowerPane {
     static LRESULT CALLBACK Proc(HWND, UINT, WPARAM, LPARAM);
     static LRESULT CALLBACK BodyProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
     static INT_PTR CALLBACK ConnectProc(HWND, UINT, WPARAM, LPARAM);
+    static INT_PTR CALLBACK ParamsProc(HWND, UINT, WPARAM, LPARAM);
     HWND Child(const wchar_t *type, const wchar_t *text, int id, DWORD style = 0);
     void Scroll(int position);
     RECT ScrollThumb() const;
@@ -65,15 +66,10 @@ class PowerPane {
     void DetailsLayout(int width, int top);
     void PaintDetails(HDC dc, int width, int top);
     void SelectMode();
-    void DeviceAction(int id);
+    void ShowParameters();
     void Export(bool csv);
-    void Profile(bool save);
-    void EditSequence();
-    void ShowScpi();
-    static INT_PTR CALLBACK TextProc(HWND, UINT, WPARAM, LPARAM);
     std::wstring ChooseFile(bool save, const wchar_t *filter, const wchar_t *extension);
     std::string Mode() const;
-    void PopulateSettings();
     Json Selection();
     void Submit(Json command);
     static std::wstring Text(HWND);
@@ -91,7 +87,7 @@ class PowerPane {
     static INT_PTR CALLBACK KeywordConfigProc(HWND, UINT, WPARAM, LPARAM);
     static INT_PTR CALLBACK KeywordRuleProc(HWND, UINT, WPARAM, LPARAM);
     static INT_PTR CALLBACK KeywordCommandProc(HWND, UINT, WPARAM, LPARAM);
-    static constexpr int MaxAutomationMode = 4, KeywordConfigId = 138, KeywordStatsId = 139, KeywordStatusId = 140,
+    static constexpr int KeywordConfigId = 138, KeywordStatsId = 139, KeywordStatusId = 140,
                          KeywordEnableId = 141, KeywordResumeId = 142;
     HWND window_ = nullptr;
     HWND body_ = nullptr;
@@ -113,21 +109,19 @@ class PowerPane {
     int cardTop_ = 0, cardWidth_ = 0, cardHeight_ = 0, cardColumns_ = 1, taskTop_ = 0;
     bool scrolling_ = false;
     int scrollGrab_ = 0;
-    int tab_ = 0, automation_ = 0, settings_ = 0, draftMode_ = 0, independentSelection_ = 1;
-    int detailsTop_ = 0, automationOffset_ = 0;
+    int tab_ = 0, draftMode_ = 0, independentSelection_ = 1;
+    int detailsTop_ = 0;
     UiLayoutBatch* currentLayout_ = nullptr;
     bool refreshRequired_ = true;
-    bool paused_ = false, populated_ = false, reporting_ = false;
+    bool paused_ = false, reporting_ = false, wasLost_ = false;
     std::string sampleStamp_;
     std::deque<Json> history_;
-    Json steps_ = Json::array({Json{{"voltage", 0.0}, {"current", 0.0}, {"durationMs", 5000}, {"enabled", true}}});
     std::map<int, HWND> controls_;
     PowerService *service_ = nullptr;
     LogExportHandler logExportHandler_;
     bool logExportBusy_ = false;
-    std::array<HWND, 3> check_{}, voltage_{}, current_{}, apply_{};
-    std::array<HWND, 4> buttons_{};
-    HWND protectionButton_ = nullptr;
+    std::array<HWND, 3> check_{};
+    std::array<HWND, 2> buttons_{};
     HWND onTime_ = nullptr, offTime_ = nullptr, count_ = nullptr, start_ = nullptr, stop_ = nullptr, save_ = nullptr;
     HBRUSH brush_ = nullptr, fieldBrush_ = nullptr, surfaceBrush_ = nullptr, panelBrush_ = nullptr;
     std::string action_;

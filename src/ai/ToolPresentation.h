@@ -72,6 +72,12 @@ inline std::string ToolText(const std::string &tool, const Json &args, const Jso
     else if (tool == "mcp_workspace_move") title = u8"移动本地工作空间路径 · `" + args.value("from", std::string()) + "`";
     else if (tool == "mcp_workspace_delete") title = u8"删除本地工作空间条目 · `" + args.value("path", std::string()) + "`";
     else if (tool == "mcp_workspace_exec") title = u8"在本地工作空间执行命令";
+    else if (tool == "mcp_tftp_status") title = u8"查询 TFTP 服务状态";
+    else if (tool == "mcp_tftp_start") title = u8"启动 TFTP 服务";
+    else if (tool == "mcp_tftp_stop") title = u8"停止 TFTP 服务";
+    else if (tool == "mcp_tftp_set_directory") title = u8"设置 TFTP 目录 · `" + args.value("directory", std::string()) + "`";
+    else if (tool == "mcp_tftp_set_bind_ip") title = u8"设置 TFTP 监听 IP · `" + args.value("bindIp", std::string()) + "`";
+    else if (tool == "mcp_tftp_list") title = u8"列出 TFTP 文件";
     else if (tool.rfind("mcp_", 0) == 0) title = u8"调用 MCP 工具 `" + tool.substr(4) + "`" + where;
     else title = u8"查询终端连接";
     std::string text = "**" + title + "**";

@@ -342,17 +342,29 @@ const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
         }},
 
         // --- TFTP ---
-        {"tftp.status", "Query TFTP service status and local published items", {
+        {"tftp.status", "Query TFTP service status, bind IP, recommended local IPs, current root directory, and file count", {
             {"type", "object"}, {"properties", Json::object()}
         }},
-        {"tftp.start", "Start UDP TFTP server", {
+        {"tftp.start", "Start UDP TFTP server (port 69 by default). Optional bindIp (defaults to selected/primary local IP) and optional directory to set root folder before starting.", {
             {"type", "object"}, {"properties", {
-                {"bindIp", {{"type", "string"}, {"description", "IP to bind, e.g. 0.0.0.0"}}},
-                {"port", {{"type", "integer"}, {"description", "UDP port (default 69)"}}}
+                {"bindIp", {{"type", "string"}, {"description", "IPv4 address to bind (optional; defaults to selected/primary local IP, or 0.0.0.0)"}}},
+                {"port", {{"type", "integer"}, {"description", "UDP port (default 69)"}}},
+                {"directory", {{"type", "string"}, {"description", "Optional local absolute directory path to set as TFTP root before starting"}}}
             }}
         }},
         {"tftp.stop", "Stop UDP TFTP server", {
             {"type", "object"}, {"properties", Json::object()}
+        }},
+        {"tftp.set_directory", "Set or switch the local TFTP root directory (synced with the TFTP panel; live-restarts tftp32.exe if running) and optionally select bindIp", {
+            {"type", "object"}, {"properties", {
+                {"directory", {{"type", "string"}, {"description", "Local absolute directory path to serve via TFTP"}}},
+                {"bindIp", {{"type", "string"}, {"description", "Optional IPv4 address to select on the TFTP panel (local LAN IP or 0.0.0.0)"}}}
+            }}, {"required", {"directory"}}
+        }},
+        {"tftp.set_bind_ip", "Select or switch the TFTP listening IPv4 address (synced with the TFTP panel; restarts tftp32.exe if running)", {
+            {"type", "object"}, {"properties", {
+                {"bindIp", {{"type", "string"}, {"description", "Local IPv4 address from serverIps, 127.0.0.1, or 0.0.0.0"}}}
+            }}, {"required", {"bindIp"}}
         }},
         {"tftp.publish_local", "Publish a local file via TFTP", {
             {"type", "object"}, {"properties", {
@@ -374,7 +386,7 @@ const std::vector<McpToolDefinition>& McpProtocol::ToolDefinitions() {
                 {"tftpName", {{"type", "string"}, {"description", "Virtual TFTP filename to remove"}}}
             }}, {"required", {"tftpName"}}
         }},
-        {"tftp.list", "List all currently published TFTP files", {
+        {"tftp.list", "List files in the configured TFTP root directory (or legacy published items)", {
             {"type", "object"}, {"properties", Json::object()}
         }},
         {"tftp.transfers", "List active TFTP client transfers and progress", {

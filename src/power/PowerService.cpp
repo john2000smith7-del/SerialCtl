@@ -107,6 +107,8 @@ struct PowerService::Transport {
     bool testFailOutputOffWrite = false;
     bool testFailRemoteWrite = false;
     std::string testFailQuery;
+    int testZeroFailChannel = 0; // 1..3: fail verify_zero on this channel
+    std::string testZeroFailField; // "output", "voltage", "current"
 #endif
     Json scpiTrace = Json::array();
     void RecordScpi(const char *direction, const std::string &command, const std::string &value = "",
@@ -124,18 +126,15 @@ struct PowerService::Transport {
             } else row["error"] = value;
         }
         scpiTrace.push_back(std::move(row));
-        if (scpiTrace.size() > 64) scpiTrace.erase(scpiTrace.begin());
+        if (scpiTrace.size() > 128) scpiTrace.erase(scpiTrace.begin());
     }
     int failAfter = -1;
     Json simulation =
-        Json::array({Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}, {"ovp", 30.0}, {"ovpEnabled", false}},
-                     Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}, {"ovp", 30.0}, {"ovpEnabled", false}},
-                     Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}, {"ovp", 5.5}, {"ovpEnabled", false}}});
+        Json::array({Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}},
+                     Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}},
+                     Json{{"voltage", 0.0}, {"current", 0.0}, {"output", false}}});
     int selected = 0;
-    std::string mode = "independent", screen;
-    bool display = true, timer = false;
-    double delay = 5, triggerDelay = 0;
-    std::map<int, Json> presets;
+    std::string mode = "independent";
     Json writes = Json::array();
     ~Transport() {
         if (device)
@@ -165,68 +164,26 @@ struct PowerService::Transport {
                 mode = "tracking";
             else if (command == "OUTP:PAR OFF" || command == "OUTP:SER OFF" || command == "OUTP:TRAC OFF")
                 mode = "independent";
-            else if (command.rfind("*SAV ", 0) == 0)
-                presets[std::stoi(command.substr(5))] = simulation;
-            else if (command.rfind("*RCL ", 0) == 0) {
-                auto i = presets.find(std::stoi(command.substr(5)));
-                if (i != presets.end())
-                    simulation = i->second;
-            } else if (command == "DISP ON" || command == "DISP OFF")
-                display = command == "DISP ON";
-            else if (command.rfind("DISP:TEXT ", 0) == 0)
-                screen = command.substr(10);
-            else if (command == "DISP:TEXT:CLEAR")
-                screen.clear();
-            else if (command == "OUTP:TIM ON" || command == "OUTP:TIM OFF")
-                timer = command == "OUTP:TIM ON";
-            else if (command.rfind("OUTP:TIM:DEL ", 0) == 0)
-                delay = std::stod(command.substr(13));
-            else if (command.rfind("TRIG:DEL ", 0) == 0)
-                triggerDelay = std::stod(command.substr(9));
-            else if (command == "*RST") {
-                mode = "independent";
-                for (auto &c : simulation) {
-                    c["voltage"] = 0.0;
-                    c["current"] = 0.0;
-                    c["output"] = false;
-                }
-            } else if (command.rfind("VOLT:LIMIT ", 0) == 0)
-                simulation[selected]["limit"] = std::stod(command.substr(11));
-            else if (command.rfind("VOLT:STEP ", 0) == 0)
-                simulation[selected]["vstep"] = std::stod(command.substr(10));
-            else if (command.rfind("CURR:STEP ", 0) == 0)
-                simulation[selected]["astep"] = std::stod(command.substr(10));
-            else if (command.rfind("VOLT:TRIG ", 0) == 0)
-                simulation[selected]["vtrig"] = std::stod(command.substr(10));
-            else if (command.rfind("CURR:TRIG ", 0) == 0)
-                simulation[selected]["atrig"] = std::stod(command.substr(10));
-            else if (command == "*TRG")
-                for (auto &c : simulation) {
-                    if (c.contains("vtrig"))
-                        c["voltage"] = c["vtrig"];
-                    if (c.contains("atrig"))
-                        c["current"] = c["atrig"];
-                }
             else if (command.rfind("INST:NSEL ", 0) == 0)
                 selected = std::stoi(command.substr(10)) - 1;
-            else if (command == "VOLT:UP" || command == "VOLT:DOWN")
-                simulation[selected]["voltage"] =
-                    simulation[selected]["voltage"].get<double>() +
-                    (command == "VOLT:UP" ? 1 : -1) * simulation[selected].value("vstep", 0.1);
-            else if (command == "CURR:UP" || command == "CURR:DOWN")
-                simulation[selected]["current"] =
-                    simulation[selected]["current"].get<double>() +
-                    (command == "CURR:UP" ? 1 : -1) * simulation[selected].value("astep", 0.1);
-            else if (command.rfind("VOLT ", 0) == 0)
-                simulation[selected]["voltage"] = std::stod(command.substr(5));
-            else if (command.rfind("CURR ", 0) == 0)
-                simulation[selected]["current"] = std::stod(command.substr(5));
-            else if (command.rfind("VOLT:PROT:STAT ", 0) == 0)
-                simulation[selected]["ovpEnabled"] = command.substr(15) == "ON";
-            else if (command.rfind("VOLT:PROT ", 0) == 0)
-                simulation[selected]["ovp"] = std::stod(command.substr(10));
-            else if (command.rfind("CHAN:OUTP ", 0) == 0)
-                simulation[selected]["output"] = command.substr(10) == "ON";
+            else if (command.rfind("VOLT ", 0) == 0) {
+                const double val = std::stod(command.substr(5));
+                simulation[selected]["voltage"] = val;
+                if (mode != "independent" && selected == 0)
+                    simulation[1]["voltage"] = val;
+            } else if (command.rfind("CURR ", 0) == 0) {
+                const double val = std::stod(command.substr(5));
+                simulation[selected]["current"] = val;
+                if (mode != "independent" && selected == 0)
+                    simulation[1]["current"] = val;
+            } else if (command.rfind("CHAN:OUTP ", 0) == 0) {
+                const bool on = command.substr(10) == "ON";
+                simulation[selected]["output"] = on;
+                if (mode != "independent" && selected < 2) {
+                    simulation[0]["output"] = on;
+                    simulation[1]["output"] = on;
+                }
+            }
             return;
         }
         command += "\n";
@@ -237,10 +194,11 @@ struct PowerService::Transport {
                                static_cast<Vi>(command.size()), &written) >= 0 &&
                         written == command.size(),
                     "USB write failed");
-        } else
+        } else {
             Require(WriteFile(serial, command.data(), static_cast<DWORD>(command.size()), &count, nullptr) &&
                         count == command.size(),
                     "Serial write failed");
+        }
     }
     std::string Query(const std::string &command) {
         const auto started = GetTickCount64();
@@ -263,6 +221,14 @@ struct PowerService::Transport {
                 testFailOutputReadback = false;
                 throw std::runtime_error("Simulated output readback timeout");
             }
+            if (testZeroFailChannel == selected + 1) {
+                if (testZeroFailField == "output" && command == "CHAN:OUTP?")
+                    return "1";
+                if (testZeroFailField == "voltage" && command == "VOLT?")
+                    return "5.0";
+                if (testZeroFailField == "current" && command == "CURR?")
+                    return "1.0";
+            }
 #endif
             if (failAfter == 0)
                 throw std::runtime_error("Simulated communication timeout");
@@ -276,24 +242,6 @@ struct PowerService::Transport {
                 return mode == "tracking" ? "1" : "0";
             if (command == "SYST:ERR?")
                 return "0,\"No error\"";
-            if (command == "SYST:VERS?")
-                return "1999.0";
-            if (command == "DISP?")
-                return display ? "1" : "0";
-            if (command == "DISP:TEXT?")
-                return screen;
-            if (command == "OUTP:TIM?")
-                return timer ? "1" : "0";
-            if (command == "OUTP:TIM:DEL?")
-                return Decimal(delay);
-            if (command == "TRIG:DEL?")
-                return Decimal(triggerDelay);
-            if (command == "VOLT:LIMIT?")
-                return Decimal(simulation[selected].value("limit", selected == 2 ? 5.0 : 30.0));
-            if (command == "VOLT:STEP?")
-                return Decimal(simulation[selected].value("vstep", 0.1));
-            if (command == "CURR:STEP?")
-                return Decimal(simulation[selected].value("astep", 0.1));
             if (command == "INST:NSEL?")
                 return std::to_string(selected + 1);
             if (command == "*IDN?")
@@ -301,14 +249,6 @@ struct PowerService::Transport {
             if (command == "CHAN:OUTP?")
                 return simulation[selected]["output"].get<bool>() ? "1" : "0";
             const bool enabled = simulation[selected]["output"].get<bool>();
-            if (command == "VOLT:PROT? MAX")
-                return selected == 2 ? "5.5" : "33";
-            if (command == "VOLT:PROT?")
-                return Decimal(simulation[selected]["ovp"].get<double>());
-            if (command == "VOLT:PROT:STAT?")
-                return simulation[selected]["ovpEnabled"].get<bool>() ? "1" : "0";
-            if (command == "VOLT:PROT:TRIP?")
-                return "0";
             if (command == "VOLT?")
                 return Decimal(simulation[selected]["voltage"].get<double>());
             if (command == "CURR?")
@@ -319,6 +259,8 @@ struct PowerService::Transport {
                 return "0";
             return "0";
         }
+        if (serial != INVALID_HANDLE_VALUE)
+            PurgeComm(serial, PURGE_RXCLEAR);
         Write(command, false);
         std::string result;
         auto end = GetTickCount64() + 2500;
@@ -332,17 +274,33 @@ struct PowerService::Transport {
                 Require(status >= 0, "USB query timeout or read failure");
                 count = got;
                 endOfTransfer = status != 0x3FFF0006 && count > 0;
-            } else
-                Require(ReadFile(serial, buffer, sizeof(buffer), &count, nullptr) != FALSE, "Serial read failed");
+            } else {
+                if (ReadFile(serial, buffer, sizeof(buffer), &count, nullptr) == FALSE) {
+                    DWORD commErrors = 0;
+                    COMSTAT stat{};
+                    ClearCommError(serial, &commErrors, &stat);
+                    throw std::runtime_error("Serial read failed (commErrors=" + std::to_string(commErrors) + ")");
+                }
+            }
             result.append(reinterpret_cast<char *>(buffer), count);
-            if (result.find('\n') != std::string::npos || (device && endOfTransfer)) {
+            const auto lf = result.find('\n');
+            if (lf != std::string::npos || (device && endOfTransfer)) {
+                if (lf != std::string::npos)
+                    result.resize(lf);
                 while (!result.empty() && (result.back() == '\r' || result.back() == '\n'))
                     result.pop_back();
                 return result;
             }
         }
+        std::string extra;
+        if (serial != INVALID_HANDLE_VALUE) {
+            DWORD commErrors = 0;
+            COMSTAT stat{};
+            if (ClearCommError(serial, &commErrors, &stat) && (commErrors != 0 || stat.cbInQue != 0))
+                extra = "; commErrors=" + std::to_string(commErrors) + ", inQue=" + std::to_string(stat.cbInQue);
+        }
         throw std::runtime_error("SCPI response timed out after 2500 ms (received " +
-                                 std::to_string(result.size()) + " bytes; hex=" + ScpiHexPreview(result) + ")");
+                                 std::to_string(result.size()) + " bytes; hex=" + ScpiHexPreview(result) + extra + ")");
     }
 };
 std::atomic<bool> PowerService::testEnabled_{false};
@@ -466,13 +424,14 @@ Json PowerService::UsbResources() {
     return resources;
 }
 PowerService::PowerService() {
-    state_ = {{"id", "power-1"},           {"connected", false},          {"model", "IT6332A"},
-              {"simulation", false},       {"mode", "independent"},       {"records", Json::array()},
-              {"channels", Json::array()}, {"task", {{"running", false}}}};
+    state_ = {{"id", "power-1"},           {"connected", false},          {"connectionLost", false},
+              {"model", "IT6332A"},        {"simulation", false},       {"mode", "independent"},
+              {"records", Json::array()},  {"channels", Json::array()}, {"task", {{"running", false}}}};
     for (int i = 1; i <= 3; ++i)
         state_["channels"].push_back({{"channel", i},
                                       {"maxVoltage", i == 3 ? 5 : 30},
                                       {"maxCurrent", i == 3 ? 3 : 6},
+                                      {"paramsConfirmed", false},
                                       {"setVoltage", nullptr},
                                       {"setCurrent", nullptr},
                                       {"voltage", nullptr},
@@ -565,12 +524,11 @@ Json PowerService::Submit(const Json &command, const std::string &connectionId, 
 #endif
             Require(allowed, "Unsupported production power transport");
         }
-        Require(type == "connect" || type == "disconnect" || type == "recover" || type == "output" || type == "parameters" ||
-                    type == "protection" || type == "task" || type == "stop" || type == "mode" || type == "batch" ||
-                    type == "settings" || type == "deviceTimer" || type == "trigger" || type == "diagnostic" ||
-                    type == "sequence" || type == "schedule" || type == "interval" || type == "step",
+        Require(type == "connect" || type == "disconnect" || type == "recover" || type == "output" ||
+                    type == "parameters" || type == "task" || type == "stop" || type == "mode" || type == "batch" ||
+                    type == "interval",
                 "Unknown power action");
-        if (type == "output" || type == "parameters" || type == "protection" || type == "task" || type == "recover") {
+        if (type == "output" || type == "parameters" || type == "task" || type == "recover") {
             auto channels = ValidateChannels(command);
             if (type == "output")
                 Require(command.at("enabled").is_boolean(), "Invalid output state");
@@ -584,16 +542,6 @@ Json PowerService::Submit(const Json &command, const std::string &connectionId, 
                                 a <= (n == 3 ? 3 : 6),
                             "Voltage or current outside channel range");
                 }
-            if (type == "protection") {
-                Require(command.at("enabled").is_boolean(), "Invalid protection state");
-                for (const auto &c : channels) {
-                    int n = c.get<int>();
-                    double v = command.at("voltageLimit"), a = command.at("currentLimit");
-                    Require(std::isfinite(v) && std::isfinite(a) && v > 0 && a > 0 && v <= (n == 3 ? 5 : 30) &&
-                                a <= (n == 3 ? 3 : 6),
-                            "Invalid protection thresholds");
-                }
-            }
             if (type == "task") {
                 Require(command.at("onMs").is_number_integer() && command.at("offMs").is_number_integer() &&
                             command.at("count").is_number_integer(),
@@ -641,108 +589,8 @@ Json PowerService::Submit(const Json &command, const std::string &connectionId, 
                 }
             }
         }
-        if (type == "step") {
-            ValidateChannels(command);
-            Require(command.at("quantity") == "voltage" || command["quantity"] == "current", "Invalid step quantity");
-            Require(command.at("direction") == 1 || command["direction"] == -1, "Invalid step direction");
-        }
         if (type == "interval")
             bounded("milliseconds", 1000, 10000);
-        if (type == "deviceTimer") {
-            Require(command.at("enabled").is_boolean(), "Invalid timer state");
-            bounded("seconds", 0.1, 99999.9);
-        }
-        if (type == "trigger") {
-            ValidateChannels(command);
-            bounded("delay", 0, 3600);
-            bounded("voltageStep", 0, 30);
-            bounded("currentStep", 0, 6);
-            bounded("voltage", 0, 30);
-            bounded("current", 0, 6);
-            for (auto c : command["channels"])
-                if (c == 3)
-                    Require(command["voltage"] <= 5 && command["current"] <= 3 && command["voltageStep"] <= 5 &&
-                                command["currentStep"] <= 3,
-                            "CH3 trigger outside range");
-        }
-        if (type == "sequence") {
-            ValidateChannels(command);
-            Require(command.at("steps").is_array() && !command["steps"].empty() && command["steps"].size() <= 1000,
-                    "Invalid sequence");
-            const auto mode = State().value("mode", std::string("independent"));
-            bool one = std::find(command["channels"].begin(), command["channels"].end(), Json(1)) !=
-                       command["channels"].end(),
-                 two = std::find(command["channels"].begin(), command["channels"].end(), Json(2)) !=
-                       command["channels"].end();
-            if (mode != "independent")
-                Require(one == two, "Select the full sequence channel group");
-            for (const auto &step : command["steps"]) {
-                Require(step.at("durationMs").is_number_integer() && step["durationMs"] >= 100 &&
-                            step["durationMs"] <= 604800000 && step.at("enabled").is_boolean(),
-                        "Invalid sequence timing/output");
-                for (auto c : command["channels"]) {
-                    double v = step.at("voltage"), a = step.at("current");
-                    Require(std::isfinite(v) && std::isfinite(a) && v >= 0 && a >= 0 &&
-                                v <= (c == 3             ? 5
-                                      : mode == "series" ? 60
-                                                         : 30) &&
-                                a <= (c == 3               ? 3
-                                      : mode == "parallel" ? 12
-                                                           : 6),
-                            "Sequence parameter outside range");
-                }
-            }
-        }
-        if (type == "schedule") {
-            ValidateChannels(command);
-            Require(command.at("startMs").is_number_integer() && command["startMs"] >= 0 &&
-                        command["startMs"] <= 604800000,
-                    "Invalid start time");
-            Require(command.at("durationMs").is_number_integer() && command["durationMs"] >= 100 &&
-                        command["durationMs"] <= 604800000,
-                    "Invalid duration");
-        }
-        if (type == "settings" || type == "diagnostic") {
-            const auto op = command.at("operation").get<std::string>();
-            const std::set<std::string> allowed = {
-                "readTimer",    "readMode", "readProtection", "protection", "clearProtection",
-                "readPanel",    "panel",    "beep",           "clearText",  "savePreset",
-                "recallPreset", "identity", "errors",         "status",     "selfTest",
-                "reset",        "scpi"};
-            Require(allowed.count(op) != 0, "Unknown device operation");
-            if (op == "readProtection" || op == "protection" || op == "clearProtection")
-                ValidateChannels(command);
-            if (op == "protection") {
-                Require(command.at("enabled").is_boolean(), "Invalid protection state");
-                bounded("limit", 0, 30);
-                bounded("ovp", 0.01, 33);
-                bounded("softwareVoltage", 0, 30);
-                bounded("softwareCurrent", 0, 6);
-                for (auto c : command["channels"])
-                    if (c == 3)
-                        Require(command["limit"] <= 5 && command["ovp"] <= 5.5 && command["softwareVoltage"] <= 5 &&
-                                    command["softwareCurrent"] <= 3,
-                                "CH3 protection outside range");
-            }
-            if (op == "savePreset" || op == "recallPreset")
-                Require(command.at("slot").is_number_integer() && command["slot"] >= 1 && command["slot"] <= 36,
-                        "Storage slot must be 1..36");
-            if (op == "panel") {
-                Require(command.at("display").is_boolean() && command.at("locked").is_boolean(), "Invalid panel state");
-                const auto text = command.at("text").get<std::string>();
-                Require(text.size() <= 32 &&
-                            std::all_of(text.begin(), text.end(),
-                                        [](unsigned char c) { return c >= 32 && c < 127 && c != '"' && c != ';'; }),
-                        "Screen text must be at most 32 plain ASCII characters");
-                Require(command.at("control") == "local" || command["control"] == "remote", "Invalid control mode");
-            }
-            if (op == "scpi") {
-                auto line = command.at("line").get<std::string>();
-                Require(!line.empty() && line.size() <= 256 && line.find_first_of("\r\n;") == std::string::npos &&
-                            std::all_of(line.begin(), line.end(), [](unsigned char c) { return c >= 32 && c < 127; }),
-                        "Enter one ASCII SCPI instruction");
-            }
-        }
         std::lock_guard<std::mutex> lock(mutex_);
         Require(!stopping_, "Power service is shutting down");
         if (!connectionId.empty()) {
@@ -1022,11 +870,16 @@ void PowerService::StopTask(Json *offResults, bool finished, bool preserveOutput
         state_["ownedChannels"] = owned_;
     }
 }
-void PowerService::Disconnect(bool preserveOutputs, Json *action) {
+void PowerService::Disconnect(bool preserveOutputs, Json *action, bool manualDisconnect) {
     const auto ownedChannels = owned_;
     Json offResults = Json::array();
     bool stopFailed = false;
     std::string stopError;
+    bool wasConnected = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        wasConnected = state_.value("connected", false);
+    }
     if (preserveOutputs) {
         if (activeCycle_) activeCycle_->Cancel(L"电源连接已断开");
         activeCycle_.reset();
@@ -1051,6 +904,12 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
             state_["error"] = e.what();
         }
     }
+    if (manualDisconnect && transport_) {
+        try {
+            transport_->Write("SYST:BEEP");
+        } catch (...) {
+        }
+    }
 #ifdef SERIALCTL_POWER_TESTING
     if (transport_ && transport_->simulated) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -1061,13 +920,21 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
     log_.Stop();
     measurements_.Stop();
     std::lock_guard<std::mutex> lock(mutex_);
+    const bool unexpectedLoss = !manualDisconnect && wasConnected && !stopping_;
     state_["connected"] = false;
+    state_["connectionLost"] = unexpectedLoss;
+    if (manualDisconnect)
+        state_["disconnectReason"] = "manual";
+    else if (unexpectedLoss)
+        state_["disconnectReason"] = "lost";
     state_.erase("connectionId");
     state_["task"]["running"] = false;
     task_ = Json();
     owned_ = Json::array();
     state_["ownedChannels"] = owned_;
-    state_["readbackStale"] = preserveOutputs && std::any_of(state_["channels"].begin(),state_["channels"].end(),[](const Json& channel){return channel["output"].is_boolean();});
+    state_["readbackStale"] = !unexpectedLoss && preserveOutputs &&
+        std::any_of(state_["channels"].begin(), state_["channels"].end(),
+                    [](const Json &channel) { return channel["output"].is_boolean(); });
 
     Json unconfirmed = Json::array();
     if (stopFailed) {
@@ -1079,6 +946,8 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
         }
         state_["unconfirmedPowerOff"] = true;
         state_["unconfirmedPowerOffChannels"] = unconfirmed;
+    } else if (unexpectedLoss) {
+        state_["unconfirmedPowerOff"] = true;
     }
 
     if (action) {
@@ -1098,7 +967,10 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
         }
     }
 
-    if (preserveOutputs) {
+    for (auto &channel : state_["channels"])
+        channel["paramsConfirmed"] = false;
+
+    if (preserveOutputs && !unexpectedLoss) {
         SyncEmergencyFlagsLocked();
         return;
     }
@@ -1110,7 +982,7 @@ void PowerService::Disconnect(bool preserveOutputs, Json *action) {
         channel.erase("protection");
     }
     SyncEmergencyFlagsLocked();
-    if (!stopFailed && !state_.value("unconfirmedPowerOff", false)) ClearRecoveryFile();
+    if (!stopFailed && !unexpectedLoss && !state_.value("unconfirmedPowerOff", false)) ClearRecoveryFile();
 }
 void PowerService::Execute(const std::string &id, const Json &command,
                            const std::shared_ptr<PowerCycleObserver> &cycle) {
@@ -1139,6 +1011,13 @@ void PowerService::Execute(const std::string &id, const Json &command,
         if (type == "connect") {
             connectStage = "open_transport";
             Require(!transport_, "Already connected");
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                state_["connectionLost"] = false;
+                state_.erase("disconnectReason");
+                for (auto &ch : state_["channels"])
+                    ch["paramsConfirmed"] = false;
+            }
             connectingTransport = std::make_unique<Transport>();
             auto *transport = connectingTransport.get();
             std::string backend = command.at("backend");
@@ -1148,6 +1027,18 @@ void PowerService::Execute(const std::string &id, const Json &command,
 #ifdef SERIALCTL_POWER_TESTING
                 transport->testFailQuery = command.value("testFailQuery", std::string());
                 transport->testFailRemoteWrite = command.value("testFailRemoteWrite", false);
+                transport->testZeroFailChannel = command.value("testZeroFailChannel", 0);
+                transport->testZeroFailField = command.value("testZeroFailField", std::string());
+                if (command.contains("testInitialMode") && command["testInitialMode"].is_string())
+                    transport->mode = command["testInitialMode"].get<std::string>();
+                if (command.contains("testInitialChannels") && command["testInitialChannels"].is_array()) {
+                    for (size_t i = 0; i < 3 && i < command["testInitialChannels"].size(); ++i) {
+                        const auto &src = command["testInitialChannels"][i];
+                        if (src.contains("voltage")) transport->simulation[i]["voltage"] = src["voltage"];
+                        if (src.contains("current")) transport->simulation[i]["current"] = src["current"];
+                        if (src.contains("output")) transport->simulation[i]["output"] = src["output"];
+                    }
+                }
 #endif
             } else if (backend == "usb") {
                 Require(transport->visa.dll != nullptr, "Install bundled VISA runtime first");
@@ -1164,16 +1055,25 @@ void PowerService::Execute(const std::string &id, const Json &command,
                 Require(port.rfind(L"COM", 0) == 0 && port.size() > 3 && port.size() <= 12 &&
                             port.find_first_not_of(L"0123456789", 3) == std::wstring::npos,
                         "Invalid COM name");
+                const int baud = command.value("baud", 9600);
+                const int dataBits = command.value("dataBits", 8);
+                const int parity = command.value("parity", 0);
+                const int stopBits = command.value("stopBits", 0);
+                Require(baud > 0 && dataBits >= 5 && dataBits <= 8 &&
+                            (parity == NOPARITY || parity == ODDPARITY || parity == EVENPARITY) &&
+                            (stopBits == ONESTOPBIT || stopBits == TWOSTOPBITS),
+                        "Invalid serial parameters");
                 transport->serial = CreateFileW((L"\\\\.\\" + port).c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                                                 OPEN_EXISTING, 0, nullptr);
                 Require(transport->serial != INVALID_HANDLE_VALUE, "COM busy or unavailable");
+                SetupComm(transport->serial, 4096, 4096);
                 DCB dcb{};
                 dcb.DCBlength = sizeof(dcb);
                 Require(GetCommState(transport->serial, &dcb) != FALSE, "Cannot read COM settings");
-                dcb.BaudRate = command.value("baud", 9600);
-                dcb.ByteSize = static_cast<BYTE>(command.value("dataBits", 8));
-                dcb.Parity = static_cast<BYTE>(command.value("parity", 0));
-                dcb.StopBits = static_cast<BYTE>(command.value("stopBits", 0));
+                dcb.BaudRate = static_cast<DWORD>(baud);
+                dcb.ByteSize = static_cast<BYTE>(dataBits);
+                dcb.Parity = static_cast<BYTE>(parity);
+                dcb.StopBits = static_cast<BYTE>(stopBits);
                 dcb.fBinary = TRUE;
                 dcb.fParity = dcb.Parity != NOPARITY;
                 dcb.fOutxCtsFlow = FALSE;
@@ -1183,8 +1083,8 @@ void PowerService::Execute(const std::string &id, const Json &command,
                 dcb.fErrorChar = FALSE;
                 dcb.fNull = FALSE;
                 dcb.fAbortOnError = FALSE;
-                dcb.fDtrControl = DTR_CONTROL_DISABLE;
-                dcb.fRtsControl = RTS_CONTROL_DISABLE;
+                dcb.fDtrControl = DTR_CONTROL_ENABLE;
+                dcb.fRtsControl = RTS_CONTROL_ENABLE;
                 Require(SetCommState(transport->serial, &dcb) != FALSE, "Invalid serial configuration");
                 COMMTIMEOUTS timeouts{MAXDWORD, 0, 250, 0, 2500};
                 Require(SetCommTimeouts(transport->serial, &timeouts) != FALSE, "Cannot set COM timeout");
@@ -1202,15 +1102,41 @@ void PowerService::Execute(const std::string &id, const Json &command,
                 std::remove_if(model.begin(), model.end(), [](unsigned char c) { return std::isspace(c) != 0; }),
                 model.end());
             Require(model == "IT6332A", "Instrument is not IT6332A");
-            // Request remote operation only after identifying the intended supply.
-            // No reset or output enable occurs during connection.
             connectStage = "enter_remote";
             transport->Write("SYST:REM");
             transport_ = std::move(connectingTransport);
-            connectStage = "select_channel";
-            Select(1);
             connectStage = "read_mode";
             ReadMode();
+            const std::string activeMode = State().value("mode", std::string("independent"));
+            const bool combinedMode = activeMode != "independent";
+            for (int ch : {1, 2, 3}) {
+                connectStage = "zero_outputs_ch" + std::to_string(ch);
+                Select(ch);
+                if (!combinedMode || ch != 2)
+                    Command("CHAN:OUTP OFF");
+                const double out = Number("CHAN:OUTP?");
+                Require(out == 0, ("CH" + std::to_string(ch) + " output OFF readback failed").c_str());
+            }
+            for (int ch : {1, 2, 3}) {
+                if (combinedMode && ch == 2)
+                    continue;
+                connectStage = "zero_parameters_ch" + std::to_string(ch);
+                Select(ch);
+                Command("VOLT 0");
+                Command("CURR 0");
+            }
+            for (int ch : {1, 2, 3}) {
+                connectStage = "verify_zero_ch" + std::to_string(ch);
+                Select(ch);
+                Require(Number("CHAN:OUTP?") == 0,
+                        ("CH" + std::to_string(ch) + " output is not OFF after zeroing").c_str());
+                Require(std::abs(Number("VOLT?")) < 0.01,
+                        ("CH" + std::to_string(ch) + " voltage setpoint is not 0 V after zeroing").c_str());
+                Require(std::abs(Number("CURR?")) < 0.01,
+                        ("CH" + std::to_string(ch) + " current limit is not 0 A after zeroing").c_str());
+            }
+            connectStage = "beep";
+            Command("SYST:BEEP");
             std::wstring error;
             log_.Start(L"IT6332A", error);
             std::wstring csvError;
@@ -1220,11 +1146,15 @@ void PowerService::Execute(const std::string &id, const Json &command,
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 state_["connected"] = true;
+                state_["connectionLost"] = false;
+                state_.erase("disconnectReason");
                 state_["identity"] = identity;
                 state_["backend"] = backend;
                 state_["simulation"] = backend == "simulation";
                 state_.erase("error");
                 state_.erase("logError");
+                for (auto &ch : state_["channels"])
+                    ch["paramsConfirmed"] = true;
                 state_["csvPath"] = WideToMultiByte(measurements_.Path(), CP_UTF8);
                 if (!csvError.empty())
                     state_["logError"] = WideToMultiByte(csvError, CP_UTF8);
@@ -1243,10 +1173,35 @@ void PowerService::Execute(const std::string &id, const Json &command,
             }
             connectStage.clear();
         } else if (type == "disconnect")
-            Disconnect(command.value("preserveOutputs", false), &action);
-        else if (type == "stop")
+            Disconnect(command.value("preserveOutputs", false), &action, true);
+        else if (type == "stop") {
+            const bool hadOwned = !owned_.empty();
             StopTask();
-        else if (type == "recover") {
+            if (!hadOwned && transport_) {
+                Json active = Json::array();
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    const auto mode = state_.value("mode", std::string("independent"));
+                    for (int i = 0; i < 3; ++i) {
+                        const auto &out = state_["channels"][i]["output"];
+                        if (!out.is_boolean() || out.get<bool>())
+                            active.push_back(i + 1);
+                    }
+                    if (mode != "independent") {
+                        bool has1 = std::find(active.begin(), active.end(), Json(1)) != active.end();
+                        bool has2 = std::find(active.begin(), active.end(), Json(2)) != active.end();
+                        if (has1 != has2) {
+                            if (!has1) active.push_back(1);
+                            if (!has2) active.push_back(2);
+                        }
+                    }
+                }
+                if (!active.empty()) {
+                    communication = true;
+                    Outputs(active, false, action["channels"]);
+                }
+            }
+        } else if (type == "recover") {
             Require(command.at("_recoveryEpoch").get<std::uint64_t>() == recoveryCancelEpoch_.load(), "Recovery canceled before start");
             const auto state = State();
             Require(transport_ && state.value("connected", false), "Supply disconnected");
@@ -1299,44 +1254,45 @@ void PowerService::Execute(const std::string &id, const Json &command,
             Json result = Json::array();
             for (const auto &c : command["channels"]) {
                 int channel = c.get<int>();
-                Select(channel);
-                Command("VOLT " + Decimal(command["voltage"]));
-                Command("CURR " + Decimal(command["current"]));
-                double v = Number("VOLT?"), a = Number("CURR?");
-                Require(std::abs(v - command["voltage"].get<double>()) < 0.02 &&
-                            std::abs(a - command["current"].get<double>()) < 0.02,
-                        "Parameter readback differs");
-                result.push_back({{"channel", channel}, {"voltage", v}, {"current", a}});
+                try {
+                    Select(channel);
+                    Command("VOLT " + Decimal(command["voltage"]));
+                    Command("CURR " + Decimal(command["current"]));
+                    CheckScpi();
+                    double v = Number("VOLT?"), a = Number("CURR?");
+                    Require(std::abs(v - command["voltage"].get<double>()) < 0.02 &&
+                                std::abs(a - command["current"].get<double>()) < 0.02,
+                            "Parameter readback differs");
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        state_["channels"][channel - 1]["paramsConfirmed"] = true;
+                        state_["channels"][channel - 1]["setVoltage"] = v;
+                        state_["channels"][channel - 1]["setCurrent"] = a;
+                    }
+                    result.push_back({{"channel", channel}, {"voltage", v}, {"current", a}});
+                } catch (const std::exception &e) {
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        state_["channels"][channel - 1]["paramsConfirmed"] = false;
+                    }
+                    throw std::runtime_error("CH" + std::to_string(channel) + ": " + e.what());
+                }
             }
             action["channels"] = result;
             Poll();
-        } else if (type == "protection") {
-            Require(task_.is_null() || task_.empty(), "Stop the task before changing protection");
-            communication = true;
-            // Preflight every hardware limit before changing any selected channel.
-            for (const auto &c : command["channels"]) {
-                Select(c.get<int>());
-                Require(command["voltageLimit"].get<double>() <= Number("VOLT:PROT? MAX"),
-                        "OVP threshold exceeds instrument range");
-            }
-            for (const auto &c : command["channels"]) {
-                int channel = c.get<int>();
-                Select(channel);
-                Command("VOLT:PROT " + Decimal(command["voltageLimit"]));
-                Command(command["enabled"].get<bool>() ? "VOLT:PROT:STAT ON" : "VOLT:PROT:STAT OFF");
-                Require(std::abs(Number("VOLT:PROT?") - command["voltageLimit"].get<double>()) < 0.02 &&
-                            (Number("VOLT:PROT:STAT?") != 0) == command["enabled"].get<bool>(),
-                        "Protection readback differs");
-                std::lock_guard<std::mutex> lock(mutex_);
-                state_["channels"][channel - 1]["protection"] = {{"enabled", command["enabled"]},
-                                                                 {"voltageLimit", command["voltageLimit"]},
-                                                                 {"currentLimit", command["currentLimit"]}};
-            }
-        } else if (type == "task" || type == "sequence" || type == "schedule") {
+        } else if (type == "task") {
             Require(transport_ != nullptr, "Supply disconnected");
             Require(task_.is_null() || task_.empty(), "A task is already running");
             Require(owned_.empty(), "Stop and power off the previous canceled task first");
             Require(!cycle || cycle->Healthy(), "Keyword test canceled or terminal disconnected");
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                for (const auto &c : command["channels"]) {
+                    const int ch = c.get<int>();
+                    Require(state_["channels"][ch - 1].value("paramsConfirmed", false),
+                            ("CH" + std::to_string(ch) + " parameters are not confirmed in current connection").c_str());
+                }
+            }
             task_ = command;
             activeCycle_ = cycle;
             owned_ = command["channels"];
@@ -1438,28 +1394,6 @@ void PowerService::Poll() {
                           Decimal(c["voltage"]) + "," + Decimal(c["current"]) + "," + Decimal(c["power"]) + "," +
                           (c["output"].get<bool>() ? "ON" : "OFF") + "\r\n";
         measurements_.WriteRaw(Bytes(csv.begin(), csv.end()));
-        c["ovpTripped"] = Number("VOLT:PROT:TRIP?") != 0;
-        if (c["ovpTripped"].get<bool>() || c["output"].get<bool>()) {
-            bool fault = c["ovpTripped"].get<bool>();
-            if (c.contains("protection") && c["protection"].value("enabled", false)) {
-                fault = fault || c["voltage"].get<double>() > c["protection"]["voltageLimit"].get<double>() ||
-                        c["current"].get<double>() > c["protection"]["currentLimit"].get<double>();
-            }
-            if (fault) {
-                log_.WriteStatus(L"通道 " + std::to_wstring(i + 1) + L" 保护触发，停止测试并请求掉电");
-                StopTask();
-                task_ = Json();
-                Json off;
-                auto mode = State().value("mode", std::string("independent"));
-                Outputs(i < 2 && mode != "independent" ? Json::array({1, 2}) : Json::array({i + 1}), false, off);
-                c["output"] = false;
-                std::lock_guard<std::mutex> lock(mutex_);
-                state_["task"]["running"] = false;
-                state_["error"] = "Channel protection triggered; output disabled";
-                state_["channels"][i] = c;
-                return;
-            }
-        }
     }
     std::lock_guard<std::mutex> lock(mutex_);
     state_["channels"] = channels;
@@ -1672,27 +1606,46 @@ void PowerService::SetParameters(const Json &settings) {
             int n = ch;
             Require(v >= 0 && a >= 0 && std::isfinite(v) && std::isfinite(a) && v <= (n == 3 ? 5 : 30) &&
                         a <= (n == 3 ? 3 : 6),
-                    "Parameter outside physical channel range");
-            Select(n);
-            Require(v <= Number("VOLT:LIMIT?"), "Voltage exceeds device setting limit");
-            expanded.push_back({{"channel", n}, {"voltage", v}, {"current", a}});
+                    ("CH" + std::to_string(n) + ": Parameter outside physical channel range").c_str());
+            expanded.push_back({{"channel", n}, {"voltage", v}, {"current", a}, {"write", !(group && n == 2)}});
         }
     }
     for (const auto &item : expanded) {
-        Select(item["channel"]);
-        Command("VOLT " + Decimal(item["voltage"]));
-        Command("CURR " + Decimal(item["current"]));
-        CheckScpi();
+        const int ch = item["channel"].get<int>();
+        if (!item["write"].get<bool>()) continue;
+        try {
+            Select(ch);
+            Command("VOLT " + Decimal(item["voltage"]));
+            Command("CURR " + Decimal(item["current"]));
+            CheckScpi();
+        } catch (const std::exception &e) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["channels"][ch - 1]["paramsConfirmed"] = false;
+            throw std::runtime_error("CH" + std::to_string(ch) + ": " + e.what());
+        }
     }
     for (const auto &item : expanded) {
-        Select(item["channel"]);
-        Require(std::abs(Number("VOLT?") - item["voltage"].get<double>()) < 0.02 &&
-                    std::abs(Number("CURR?") - item["current"].get<double>()) < 0.02,
-                "Parameter readback differs");
+        const int ch = item["channel"].get<int>();
+        try {
+            Select(ch);
+            const double readV = Number("VOLT?");
+            const double readA = Number("CURR?");
+            Require(std::abs(readV - item["voltage"].get<double>()) < 0.02 &&
+                        std::abs(readA - item["current"].get<double>()) < 0.02,
+                    "Parameter readback differs");
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["channels"][ch - 1]["paramsConfirmed"] = true;
+            state_["channels"][ch - 1]["setVoltage"] = readV;
+            state_["channels"][ch - 1]["setCurrent"] = readA;
+        } catch (const std::exception &e) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_["channels"][ch - 1]["paramsConfirmed"] = false;
+            throw std::runtime_error("CH" + std::to_string(ch) + ": " + e.what());
+        }
     }
     Poll();
 }
-void PowerService::Extended(const Json &command, Json &action) {
+void PowerService::Extended(const Json &command, Json &) {
     const auto type = command.at("type").get<std::string>();
     if (type == "interval") {
         pollInterval_ = command["milliseconds"];
@@ -1711,227 +1664,7 @@ void PowerService::Extended(const Json &command, Json &action) {
         SetParameters(command["settings"]);
         return;
     }
-    if (type == "deviceTimer") {
-        Command("OUTP:TIM:DEL " + Decimal(command["seconds"]));
-        Command(command["enabled"].get<bool>() ? "OUTP:TIM ON" : "OUTP:TIM OFF");
-        CheckScpi();
-        action["result"] = {{"enabled", Number("OUTP:TIM?") != 0}, {"seconds", Number("OUTP:TIM:DEL?")}};
-        Require(action["result"]["enabled"] == command["enabled"] &&
-                    std::abs(action["result"]["seconds"].get<double>() - command["seconds"].get<double>()) < 0.02,
-                "Timer readback differs");
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_["timer"] = action["result"];
-        return;
-    }
-    if (type == "step") {
-        Require(State()["mode"] == "independent", "Use independent mode for physical-channel stepping");
-        const bool voltage = command["quantity"] == "voltage";
-        const std::string prefix = voltage ? "VOLT" : "CURR";
-        Json expected = Json::array();
-        for (auto ch : command["channels"]) {
-            Select(ch);
-            double target = Number(prefix + "?") + command["direction"].get<int>() * Number(prefix + ":STEP?");
-            Require(target >= 0 && target <= (voltage   ? Number("VOLT:LIMIT?")
-                                              : ch == 3 ? 3
-                                                        : 6),
-                    "Step exceeds physical channel range");
-            expected.push_back({{"channel", ch}, {"value", target}});
-        }
-        for (auto item : expected) {
-            Select(item["channel"]);
-            Command(prefix + (command["direction"] == 1 ? ":UP" : ":DOWN"));
-            CheckScpi();
-            Require(std::abs(Number(prefix + "?") - item["value"].get<double>()) < 0.02, "Step readback differs");
-        }
-        Poll();
-        return;
-    }
-    if (type == "trigger") {
-        const auto mode = State().value("mode", std::string("independent"));
-        Require(mode == "independent", "Use independent mode for physical-channel trigger settings");
-        std::string channels;
-        for (auto ch : command["channels"]) {
-            Select(ch);
-            Command("VOLT:STEP " + Decimal(command["voltageStep"]));
-            Command("CURR:STEP " + Decimal(command["currentStep"]));
-            Command("VOLT:TRIG " + Decimal(command["voltage"]));
-            Command("CURR:TRIG " + Decimal(command["current"]));
-            if (!channels.empty())
-                channels += ",";
-            channels += "CH" + std::to_string(ch.get<int>());
-        }
-        Command("TRIG:DEL " + Decimal(command["delay"]));
-        Command("INST:COUP " + channels);
-        CheckScpi();
-        if (command.value("fire", false)) {
-            Command("*TRG");
-            CheckScpi();
-        }
-        action["result"] = {{"delay", Number("TRIG:DEL?")}};
-        Poll();
-        return;
-    }
-    const auto op = command.at("operation").get<std::string>();
-    if (op == "readTimer") {
-        Json timer = {{"enabled", Number("OUTP:TIM?") != 0}, {"seconds", Number("OUTP:TIM:DEL?")}};
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_["timer"] = timer;
-        action["result"] = timer;
-        return;
-    }
-    if (op == "readMode") {
-        ReadMode();
-        Poll();
-        return;
-    }
-    if (op == "readProtection" || op == "protection" || op == "clearProtection") {
-        if (op == "protection")
-            for (auto ch : command["channels"]) {
-                Select(ch);
-                Require(command["ovp"].get<double>() <= Number("VOLT:PROT? MAX"), "OVP outside device range");
-            }
-        Json items = Json::array();
-        for (auto ch : command["channels"]) {
-            Select(ch);
-            if (op == "protection") {
-                Command("VOLT:LIMIT " + Decimal(command["limit"]));
-                Command("VOLT:PROT " + Decimal(command["ovp"]));
-                Command(command["enabled"].get<bool>() ? "VOLT:PROT:STAT ON" : "VOLT:PROT:STAT OFF");
-                CheckScpi();
-                Require(std::abs(Number("VOLT:LIMIT?") - command["limit"].get<double>()) < 0.02 &&
-                            std::abs(Number("VOLT:PROT?") - command["ovp"].get<double>()) < 0.02 &&
-                            (Number("VOLT:PROT:STAT?") != 0) == command["enabled"].get<bool>(),
-                        "Protection readback differs");
-            }
-            if (op == "clearProtection") {
-                Json result;
-                auto mode = State().value("mode", std::string("independent"));
-                Outputs(ch != 3 && mode != "independent" ? Json::array({1, 2}) : Json::array({ch}), false, result);
-                Select(ch);
-                Command("VOLT:PROT:CLEAR");
-                CheckScpi();
-            }
-            Json item = {{"channel", ch},
-                         {"limit", Number("VOLT:LIMIT?")},
-                         {"ovp", Number("VOLT:PROT?")},
-                         {"enabled", Number("VOLT:PROT:STAT?") != 0},
-                         {"tripped", Number("VOLT:PROT:TRIP?") != 0}};
-            if (op == "protection") {
-                std::lock_guard<std::mutex> lock(mutex_);
-                state_["channels"][ch.get<int>() - 1]["protection"] = {
-                    {"enabled", command["softwareVoltage"] > 0 || command["softwareCurrent"] > 0},
-                    {"voltageLimit", command["softwareVoltage"] == 0 ? 1e9 : command["softwareVoltage"].get<double>()},
-                    {"currentLimit", command["softwareCurrent"] == 0 ? 1e9 : command["softwareCurrent"].get<double>()}};
-                item["softwareVoltage"] = command["softwareVoltage"];
-                item["softwareCurrent"] = command["softwareCurrent"];
-            } else {
-                auto protect = State()["channels"][ch.get<int>() - 1].value("protection", Json::object());
-                item["softwareVoltage"] = protect.value("voltageLimit", 0.0);
-                item["softwareCurrent"] = protect.value("currentLimit", 0.0);
-                if (item["softwareVoltage"] == 1e9)
-                    item["softwareVoltage"] = 0;
-                if (item["softwareCurrent"] == 1e9)
-                    item["softwareCurrent"] = 0;
-            }
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                state_["channels"][ch.get<int>() - 1]["deviceProtection"] = item;
-            }
-            items.push_back(item);
-        }
-        action["result"] = items;
-        return;
-    }
-    if (op == "panel") {
-        if (command["control"] == "local")
-            Command("SYST:LOC");
-        else
-            Command(command["locked"].get<bool>() ? "SYST:RWL" : "SYST:REM");
-        Command(command["display"].get<bool>() ? "DISP ON" : "DISP OFF");
-        if (command["text"].get<std::string>().empty())
-            Command("DISP:TEXT:CLEAR");
-        else
-            Command("DISP:TEXT \"" + command["text"].get<std::string>() + "\"");
-        CheckScpi();
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            state_["panel"] = {{"control", command["control"]},
-                               {"locked", command["control"] == "remote" && command["locked"].get<bool>()}};
-        }
-    }
-    if (op == "panel" || op == "readPanel") {
-        action["result"] = {{"display", Number("DISP?") != 0}, {"text", Query("DISP:TEXT?")}};
-        std::lock_guard<std::mutex> lock(mutex_);
-        state_["panel"].update(action["result"]);
-        return;
-    }
-    if (op == "beep" || op == "clearText") {
-        Command(op == "beep" ? "SYST:BEEP" : "DISP:TEXT:CLEAR");
-        CheckScpi();
-        return;
-    }
-    if (op == "savePreset") {
-        Command("*SAV " + std::to_string(command["slot"].get<int>()));
-        CheckScpi();
-        return;
-    }
-    if (op == "recallPreset" || op == "reset") {
-        Json off;
-        Outputs(Json::array({1, 2, 3}), false, off);
-        Command(op == "reset" ? "*RST" : "*RCL " + std::to_string(command["slot"].get<int>()));
-        CheckScpi();
-        ReadMode();
-        Outputs(Json::array({1, 2, 3}), false, off);
-        Poll();
-        return;
-    }
-    if (op == "identity")
-        action["result"] = {{"identity", Query("*IDN?")}, {"scpiVersion", Query("SYST:VERS?")}};
-    if (op == "errors") {
-        action["result"] = Json::array();
-        for (int n = 0; n < 32; ++n) {
-            auto error = Query("SYST:ERR?");
-            action["result"].push_back(error);
-            std::istringstream input(error);
-            int code = 0;
-            input >> code;
-            Require(!input.fail(), "Invalid error queue response");
-            if (code == 0)
-                break;
-        }
-    }
-    if (op == "status")
-        action["result"] = {{"statusByte", Number("*STB?")},
-                            {"questionable", Number("STAT:QUES:COND?")},
-                            {"operation", Number("STAT:OPER:COND?")}};
-    if (op == "selfTest") {
-        Json off;
-        Outputs(Json::array({1, 2, 3}), false, off);
-        action["result"] = Number("*TST?");
-    }
-    if (op == "scpi") {
-        Json off;
-        Outputs(Json::array({1, 2, 3}), false, off);
-        const auto line = command["line"].get<std::string>();
-        try {
-            if (line.find('?') != std::string::npos)
-                action["result"] = Query(line);
-            else {
-                Command(line);
-                CheckScpi();
-                action["result"] = "Command accepted";
-            }
-            ReadMode();
-            Outputs(Json::array({1, 2, 3}), false, off);
-            Poll();
-        } catch (...) {
-            try {
-                Command("OUTP OFF");
-            } catch (...) {
-            }
-            throw;
-        }
-    }
+    throw std::runtime_error("Unknown power action");
 }
 void PowerService::AdvanceTask(bool forcePowerOff) {
     const auto type = task_.value("type", std::string("task"));
@@ -1972,54 +1705,19 @@ void PowerService::AdvanceTask(bool forcePowerOff) {
         owned_ = Json::array();
         return;
     }
-    if (type == "sequence") {
-        int index = task_["index"];
-        if (index >= static_cast<int>(task_["steps"].size())) {
-            StopTask();
+    bool on = !forcePowerOff && task_["phase"] == "off";
+    if (activeCycle_ && !forcePowerOff) {
+        if (on && (!activeCycle_->BeginRound() || !activeCycle_->Healthy())) { StopTask(); return; }
+        if (!on && !activeCycle_->EndRound()) return;
+    }
+    Outputs(owned_, on, result);
+    task_["phase"] = on ? "on" : "off";
+    taskAt_ = GetTickCount64() + task_[on ? "onMs" : "offMs"].get<std::uint64_t>();
+    if (!on) {
+        task_["completed"] = task_["completed"].get<int>() + 1;
+        if (task_["completed"] >= task_["count"]) {
+            StopTask(nullptr, true);
             return;
-        }
-        auto step = task_["steps"][index];
-        Outputs(owned_, false, result);
-        Json settings = Json::array();
-        const auto mode = State().value("mode", std::string("independent"));
-        bool grouped = mode != "independent" && std::find(owned_.begin(), owned_.end(), Json(1)) != owned_.end();
-        if (grouped)
-            settings.push_back(
-                {{"channels", Json::array({1, 2})}, {"voltage", step["voltage"]}, {"current", step["current"]}});
-        for (auto ch : owned_) {
-            if (grouped && ch != 3)
-                continue;
-            settings.push_back(
-                {{"channels", Json::array({ch})}, {"voltage", step["voltage"]}, {"current", step["current"]}});
-        }
-        SetParameters(settings);
-        Outputs(owned_, step["enabled"], result);
-        task_["index"] = index + 1;
-        task_["completed"] = index + 1;
-        taskAt_ = GetTickCount64() + step["durationMs"].get<std::uint64_t>();
-    } else if (type == "schedule") {
-        if (task_["phase"] == "on") {
-            StopTask();
-            return;
-        }
-        Outputs(owned_, true, result);
-        task_["phase"] = "on";
-        taskAt_ = GetTickCount64() + task_["durationMs"].get<std::uint64_t>();
-    } else {
-        bool on = !forcePowerOff && task_["phase"] == "off";
-        if (activeCycle_ && !forcePowerOff) {
-            if (on && (!activeCycle_->BeginRound() || !activeCycle_->Healthy())) { StopTask(); return; }
-            if (!on && !activeCycle_->EndRound()) return;
-        }
-        Outputs(owned_, on, result);
-        task_["phase"] = on ? "on" : "off";
-        taskAt_ = GetTickCount64() + task_[on ? "onMs" : "offMs"].get<std::uint64_t>();
-        if (!on) {
-            task_["completed"] = task_["completed"].get<int>() + 1;
-            if (task_["completed"] >= task_["count"]) {
-                StopTask(nullptr, true);
-                return;
-            }
         }
     }
     std::lock_guard<std::mutex> lock(mutex_);

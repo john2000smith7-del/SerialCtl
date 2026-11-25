@@ -1,0 +1,56 @@
+{
+  "columns": 8,
+  "rows": 6,
+  "cell": 192,
+  "baseline": 180,
+  "width": 1536,
+  "height": 1152,
+  "scale": 0.379085,
+  "sha256": "82343ed28fb97208a8cd1050bb6deeed32eb52a993d750dceee079abb01ab045",
+  "source_zip": "素材包.zip",
+  "source_zip_sha256": "f0325d0d085f3518703eaf3ea16ab0d877c3d22f4a08e00e1c62b3b0fdae069e",
+  "actions": [
+    {
+      "row": 0,
+      "action": "01_idle",
+      "name_zh": "待机",
+      "duration_ms": 220,
+      "frame_count": 8
+    },
+    {
+      "row": 1,
+      "action": "02_listening",
+      "name_zh": "倾听",
+      "duration_ms": 180,
+      "frame_count": 8
+    },
+    {
+      "row": 2,
+      "action": "03_thinking",
+      "name_zh": "思考",
+      "duration_ms": 180,
+      "frame_count": 8
+    },
+    {
+      "row": 3,
+      "action": "04_working",
+      "name_zh": "工作",
+      "duration_ms": 160,
+      "frame_count": 8
+    },
+    {
+      "row": 4,
+      "action": "09_stretching",
+      "name_zh": "伸懒腰",
+      "duration_ms": 140,
+      "frame_count": 8
+    },
+    {
+      "row": 5,
+      "action": "11_walking",
+      "name_zh": "走路",
+      "duration_ms": 180,
+      "frame_count": 8
+    }
+  ]
+}

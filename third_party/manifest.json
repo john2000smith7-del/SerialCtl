@@ -161,6 +161,24 @@
           "sha256": "040aad2d9ca23c487652c150277d950be12e72c5453ae1f7c6713ed2efd16b4e"
         }
       ]
+    },
+    {
+      "name": "Tftpd32",
+      "version": "4.74",
+      "upstream": "https://github.com/PJO2/tftpd64/releases/tag/v4.74",
+      "files": [
+        {
+          "path": "third_party/tftpd32/LICENSE",
+          "role": "license",
+          "sha256": "71aeed622334854c0d1f38087204d3181bce862185e29e7cffe375e74c7e2808"
+        },
+        {
+          "path": "third_party/tftpd32/tftp32.exe",
+          "role": "runtime",
+          "architecture": "x86",
+          "sha256": "2c9263e39f60c81a721b9fc7af2cba2f6e0eaae8abf22e8d0734f207a61a2dc4"
+        }
+      ]
     }
   ]
 }

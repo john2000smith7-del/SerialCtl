@@ -75,6 +75,8 @@ private:
 
     std::string bindIp_ = "0.0.0.0";
     uint16_t port_ = 7080;
+    std::string tftpBindIp_;
+    bool tftpBindIpExplicit_ = false;
     std::atomic<bool> running_{false};
     HANDLE serviceMutex_ = nullptr;
     std::mutex launchMutex_;

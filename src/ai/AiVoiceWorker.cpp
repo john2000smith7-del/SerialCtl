@@ -1,6 +1,7 @@
 #include "AiVoiceInput.h"
 #include "resource.h"
 #include "whisper.h"
+#include "../../third_party/miniz/miniz.h"
 
 #include <windows.h>
 #include <algorithm>
@@ -61,11 +62,24 @@ int RunVoiceWorker(const wchar_t *input, const wchar_t *output) {
         const auto bytes = SizeofResource(module, model);
         const auto data = LockResource(LoadResource(module, model));
         if (!data || !bytes) return 3;
+        std::vector<mz_uint8> inflated;
+        const void *modelBuffer = data;
+        size_t modelBytes = bytes;
+#ifdef SERIALCTL_VOICE_MODEL_RAW_SIZE
+        inflated.resize(static_cast<size_t>(SERIALCTL_VOICE_MODEL_RAW_SIZE));
+        const size_t outBytes = tinfl_decompress_mem_to_mem(
+            inflated.data(), inflated.size(), data, bytes, TINFL_FLAG_PARSE_ZLIB_HEADER);
+        if (outBytes != inflated.size()) return 3;
+        modelBuffer = inflated.data();
+        modelBytes = inflated.size();
+#endif
         auto settings = whisper_context_default_params();
         settings.use_gpu = false;
         whisper_log_set([](ggml_log_level, const char *, void *) {}, nullptr);
         std::unique_ptr<whisper_context, decltype(&whisper_free)> context(
-            whisper_init_from_buffer_with_params(data, bytes, settings), whisper_free);
+            whisper_init_from_buffer_with_params(const_cast<void *>(modelBuffer), modelBytes, settings), whisper_free);
+        inflated.clear();
+        inflated.shrink_to_fit();
         if (!context) return 3;
         auto params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
         params.n_threads = static_cast<int>(std::clamp(std::thread::hardware_concurrency(), 1u, 4u));
